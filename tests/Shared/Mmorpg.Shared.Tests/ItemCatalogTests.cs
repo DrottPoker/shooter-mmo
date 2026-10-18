@@ -1,5 +1,6 @@
 using Mmorpg.Testing.Content;
 using Mmorpg.Tools.ItemCatalogCompiler;
+using Mmorpg.WorldData.Combat;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Shared.Tests;
@@ -14,6 +15,7 @@ public sealed class ItemCatalogTests
         "food.cooked_trout",
         "jewelry.copper_ring",
         "material.iron_ore",
+        "material.wolf_pelt",
         "potion.minor_healing",
         "quest_item.sealed_letter",
         "tool.starter_pickaxe",
@@ -37,8 +39,23 @@ public sealed class ItemCatalogTests
         Assert.Equal(2000, catalog.Character.BaseCarryCapacity);
         Assert.Equal(1000, catalog.EquipmentSlots.Single(slot => slot.Id == "ammunition").MaximumQuantity);
         Assert.Equal(4, catalog.SecureContainerTiers.Single().SlotCapacity);
+        Assert.Equal(200, catalog.Progression.MaximumCharacterLevel);
+        var bow = Assert.Single(catalog.WeaponFamilies);
+        Assert.Equal(
+            ("bow", CombatStyleIds.Ranged, "arrow", 30f),
+            (bow.Id, bow.CombatStyle, bow.AmmunitionFamily, bow.ProjectileSpeed));
+        var shortbow = Definition(catalog, "weapon.training_shortbow").Weapon;
+        Assert.Equal(
+            ("bow", DamageTypeIds.Normal, 10, 18),
+            (shortbow.WeaponFamily, shortbow.DamageType, shortbow.MinimumDamage, shortbow.MaximumDamage));
+        Assert.Equal((2.4f, 10f), (shortbow.AttackIntervalSeconds, shortbow.Range));
+        var arrow = Definition(catalog, "ammunition.bronze_arrow").Ammunition;
+        Assert.Equal(("arrow", 5), (arrow.AmmunitionFamily, arrow.DamageBonusPercent));
         Assert.All(catalog.Definitions, definition =>
-            Assert.Equal(64, definition.StructuralFingerprint.Length));
+        {
+            Assert.Equal(64, definition.StructuralFingerprint.Length);
+            Assert.Equal(1, definition.RequiredCharacterLevel);
+        });
         Assert.Equal(
             ItemCatalogJson.SerializeRuntime(catalog),
             NormalizeLineEndings(ItemCatalogTestData.RuntimeJson));
@@ -131,6 +148,166 @@ public sealed class ItemCatalogTests
         Assert.NotEqual(
             Definition(original, "material.iron_ore").StructuralFingerprint,
             Definition(changed, "material.iron_ore").StructuralFingerprint);
+    }
+
+    // Pinned when catalog format 4 added combat data: a format change that adds no structural
+    // field must keep every persisted definition compatible.
+    [Fact]
+    public void StructuralFingerprintsDoNotDependOnTheCatalogFormatVersion()
+    {
+        var catalog = ItemCatalogTestData.Compile();
+
+        Assert.Equal(3, ItemCatalogFormat.StructuralFingerprintVersion);
+        Assert.Equal(
+            "f062a6af3f7a41e821539b89a50408d07abd5a6577548fe54e7167c749542732",
+            Definition(catalog, "weapon.training_shortbow").StructuralFingerprint);
+    }
+
+    [Fact]
+    public void CombatDataAndLevelRequirementsChangeOnlyTheRevision()
+    {
+        var original = ItemCatalogTestData.Compile();
+        var authoring = ItemCatalogTestData.LoadAuthoring();
+        var shortbow = AuthoringDefinition(authoring, "weapon.training_shortbow");
+        shortbow.Weapon.MaximumDamage++;
+        shortbow.RequiredCharacterLevel = 5;
+        authoring.WeaponFamilies.Single().ProjectileSpeed = 40f;
+
+        var changed = ItemCatalogCompiler.Compile(authoring);
+
+        Assert.NotEqual(original.Revision, changed.Revision);
+        Assert.Equal(
+            original.Definitions.Select(definition => definition.StructuralFingerprint),
+            changed.Definitions.Select(definition => definition.StructuralFingerprint));
+    }
+
+    [Theory]
+    [InlineData("missing-weapon", "uses category 'weapon' but has no weapon block")]
+    [InlineData("weapon-on-material", "has a weapon block but does not use category 'weapon'")]
+    [InlineData("unknown-weapon-family", "references unknown weapon family")]
+    [InlineData("unknown-damage-type", ".weapon.damageType must be")]
+    [InlineData("inverted-damage", ".weapon.minimumDamage and maximumDamage")]
+    [InlineData("zero-damage", ".weapon.minimumDamage and maximumDamage")]
+    [InlineData("short-interval", ".weapon.attackIntervalSeconds")]
+    [InlineData("nan-range", ".weapon.range")]
+    [InlineData("missing-ammunition", "uses category 'ammunition' but has no ammunition block")]
+    [InlineData("unknown-ammunition-family", "references unknown ammunition family")]
+    [InlineData("negative-bonus", ".ammunition.damageBonusPercent")]
+    [InlineData("level-zero", ".requiredCharacterLevel must be between 1")]
+    [InlineData("level-above-cap", ".requiredCharacterLevel must be between 1")]
+    [InlineData("missing-progression", "progression is required")]
+    [InlineData("ranged-without-ammunition", "weaponFamilies[0].ammunitionFamily references unknown ammunition family")]
+    [InlineData("ranged-without-speed", "projectileSpeed must be positive for a ranged family")]
+    [InlineData("melee-with-ammunition", "ammunitionFamily must be empty unless the style is ranged")]
+    [InlineData("melee-with-speed", "projectileSpeed must be 0 for a melee family")]
+    [InlineData("unknown-style", "combatStyle must be melee, ranged, or magic")]
+    [InlineData("duplicate-weapon-family", "weaponFamilies contains duplicate id 'bow'")]
+    [InlineData("missing-weapon-families", "weaponFamilies is required")]
+    public void InvalidCombatDataFailsValidation(string mutation, string expectedError)
+    {
+        var authoring = ItemCatalogTestData.LoadAuthoring();
+        var shortbow = AuthoringDefinition(authoring, "weapon.training_shortbow");
+        var arrow = AuthoringDefinition(authoring, "ammunition.bronze_arrow");
+        var ore = AuthoringDefinition(authoring, "material.iron_ore");
+        var bow = authoring.WeaponFamilies.Single();
+        switch (mutation)
+        {
+            case "missing-weapon":
+                shortbow.Weapon = null;
+                break;
+            case "weapon-on-material":
+                ore.Weapon = shortbow.Weapon;
+                break;
+            case "unknown-weapon-family":
+                shortbow.Weapon.WeaponFamily = "crossbow";
+                break;
+            case "unknown-damage-type":
+                shortbow.Weapon.DamageType = "lightning";
+                break;
+            case "inverted-damage":
+                shortbow.Weapon.MinimumDamage = shortbow.Weapon.MaximumDamage + 1;
+                break;
+            case "zero-damage":
+                shortbow.Weapon.MinimumDamage = 0;
+                shortbow.Weapon.MaximumDamage = 0;
+                break;
+            case "short-interval":
+                shortbow.Weapon.AttackIntervalSeconds = 0.1f;
+                break;
+            case "nan-range":
+                shortbow.Weapon.Range = float.NaN;
+                break;
+            case "missing-ammunition":
+                arrow.Ammunition = null;
+                break;
+            case "unknown-ammunition-family":
+                arrow.Ammunition.AmmunitionFamily = "bolt";
+                break;
+            case "negative-bonus":
+                arrow.Ammunition.DamageBonusPercent = -1;
+                break;
+            case "level-zero":
+                ore.RequiredCharacterLevel = 0;
+                break;
+            case "level-above-cap":
+                shortbow.RequiredCharacterLevel = authoring.Progression.MaximumCharacterLevel + 1;
+                break;
+            case "missing-progression":
+                authoring.Progression = null;
+                break;
+            case "ranged-without-ammunition":
+                bow.AmmunitionFamily = "bolt";
+                break;
+            case "ranged-without-speed":
+                bow.ProjectileSpeed = 0f;
+                break;
+            case "melee-with-ammunition":
+                bow.CombatStyle = CombatStyleIds.Melee;
+                bow.ProjectileSpeed = 0f;
+                break;
+            case "melee-with-speed":
+                bow.CombatStyle = CombatStyleIds.Melee;
+                bow.AmmunitionFamily = string.Empty;
+                break;
+            case "unknown-style":
+                bow.CombatStyle = "siege";
+                break;
+            case "duplicate-weapon-family":
+                authoring.WeaponFamilies = [bow, bow];
+                break;
+            case "missing-weapon-families":
+                authoring.WeaponFamilies = null;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(mutation));
+        }
+
+        var exception = Assert.Throws<ItemCatalogValidationException>(
+            () => ItemCatalogCompiler.Compile(authoring));
+
+        Assert.Contains(
+            exception.Errors,
+            error => error.Contains(expectedError, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MissingDamageValueFailsValidation()
+    {
+        const string definitionId = "weapon.training_shortbow";
+        var malformed = ItemCatalogTestData.DefinitionJson(definitionId).Replace(
+            "    \"minimumDamage\": 10,\n",
+            string.Empty,
+            StringComparison.Ordinal);
+        var authoring = ItemCatalogTestData.LoadAuthoring();
+        var index = Array.FindIndex(authoring.Definitions, value => value.Id == definitionId);
+        authoring.Definitions[index] = ItemCatalogJson.DeserializeDefinition(malformed);
+
+        var exception = Assert.Throws<ItemCatalogValidationException>(
+            () => ItemCatalogCompiler.Compile(authoring));
+
+        Assert.Contains(
+            exception.Errors,
+            error => error.Contains(".weapon.minimumDamage", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -267,6 +444,13 @@ public sealed class ItemCatalogTests
             () => ItemCatalogJson.DeserializeCatalog(malformed));
 
         Assert.Contains("duplicate property", exception.Message, StringComparison.Ordinal);
+    }
+
+    private static ItemDefinitionAuthoringEntry AuthoringDefinition(
+        ItemCatalogAuthoringDocument authoring,
+        string id)
+    {
+        return authoring.Definitions.Single(definition => definition.Id == id);
     }
 
     private static ItemDefinition Definition(ItemCatalogRuntimeDocument catalog, string id)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.WorldData.Combat;
 using Mmorpg.WorldData.Editor.ContentTools;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
@@ -14,8 +15,8 @@ namespace Mmorpg.WorldData.Editor.Items
 {
     // The Item Catalog tool: a filterable list of item definitions beside an editor for the
     // selected ones, live validation with the shared compiler, and the save and bake actions.
-    // Several selected definitions are edited together; identity, bag layout, and client
-    // presentation are edited one definition at a time.
+    // Several selected definitions are edited together; identity, bag layout, combat data, and
+    // client presentation are edited one definition at a time.
     public sealed class ItemCatalogEditorView : VisualElement, IDisposable
     {
         public const long LiveValidationDelayMilliseconds = 300;
@@ -413,7 +414,10 @@ namespace Mmorpg.WorldData.Editor.Items
 
             var definition = selection[0];
             var slots = definition.bag?.slots ?? Array.Empty<ItemCatalogJsonBagSlot>();
-            return "one:" + definition.id + ":" + (definition.bag == null ? "no-bag" : string.Join(",", slots.Select(slot => slot.kind)));
+            return "one:" + definition.id
+                + ":" + (definition.bag == null ? "no-bag" : string.Join(",", slots.Select(slot => slot.kind)))
+                + ":" + (definition.weapon == null ? "no-weapon" : "weapon")
+                + ":" + (definition.ammunition == null ? "no-ammunition" : "ammunition");
         }
 
         private void BuildDetail(IReadOnlyList<ItemCatalogJsonDefinition> selection)
@@ -437,7 +441,7 @@ namespace Mmorpg.WorldData.Editor.Items
             {
                 identity.Add(ContentToolStyles.CreateHint(
                     selection.Count + " definitions selected. Changes apply to every selected definition. "
-                        + "Id, display name, bag layout, and presentation are edited one definition at a time."));
+                        + "Id, display name, bag layout, combat data, and presentation are edited one definition at a time."));
             }
 
             identity.Add(form.Choice("Category", "category", CategoryOptions, definition => definition.category, (definition, value) => definition.category = value));
@@ -445,6 +449,9 @@ namespace Mmorpg.WorldData.Editor.Items
             weight.tooltip = "Neutral whole-number gameplay units with no physical measurement.";
             identity.Add(weight);
             identity.Add(form.Integer("Maximum Stack Size", "maximumStackSize", definition => definition.maximumStackSize, (definition, value) => definition.maximumStackSize = value));
+            var level = form.Integer("Required Character Level", "requiredCharacterLevel", definition => definition.requiredCharacterLevel, (definition, value) => definition.requiredCharacterLevel = value);
+            level.tooltip = "The character level needed to equip the item. 1 means every character.";
+            identity.Add(level);
             toolLayout.Detail.Add(identity);
 
             var compatibility = ContentToolStyles.CreateSection("Tags And Compatibility");
@@ -500,6 +507,7 @@ namespace Mmorpg.WorldData.Editor.Items
             if (single)
             {
                 toolLayout.Detail.Add(BuildBagSection(selection[0]));
+                toolLayout.Detail.Add(BuildCombatSection(selection[0]));
                 toolLayout.Detail.Add(BuildPresentationSection());
             }
 
@@ -628,6 +636,82 @@ namespace Mmorpg.WorldData.Editor.Items
             }
 
             return box;
+        }
+
+        // Weapons carry weapon data and ammunition carries ammunition data; the families and
+        // their combat styles are edited in catalog.json.
+        private VisualElement BuildCombatSection(ItemCatalogJsonDefinition definition)
+        {
+            var section = ContentToolStyles.CreateSection("Combat");
+            section.Add(form.Toggle(
+                "Has Weapon Data",
+                "weapon",
+                entry => entry.weapon != null,
+                (entry, value) => entry.weapon = value ? entry.weapon ?? CreateWeapon() : null));
+            if (definition.weapon != null)
+            {
+                section.Add(form.Choice("Weapon Family", "weapon.weaponFamily", WeaponFamilyOptions, entry => entry.weapon?.weaponFamily, (entry, value) => EditWeapon(entry, weapon => weapon.weaponFamily = value)));
+                section.Add(form.Choice("Damage Type", "weapon.damageType", DamageTypeOptions, entry => entry.weapon?.damageType, (entry, value) => EditWeapon(entry, weapon => weapon.damageType = value)));
+                section.Add(form.Integer("Minimum Damage", "weapon.minimumDamage", entry => entry.weapon?.minimumDamage ?? 0, (entry, value) => EditWeapon(entry, weapon => weapon.minimumDamage = value)));
+                section.Add(form.Integer("Maximum Damage", "weapon.maximumDamage", entry => entry.weapon?.maximumDamage ?? 0, (entry, value) => EditWeapon(entry, weapon => weapon.maximumDamage = value)));
+                section.Add(form.Float("Attack Interval Seconds", "weapon.attackIntervalSeconds", entry => entry.weapon?.attackIntervalSeconds ?? 0f, (entry, value) => EditWeapon(entry, weapon => weapon.attackIntervalSeconds = value)));
+                var range = form.Float("Range", "weapon.range", entry => entry.weapon?.range ?? 0f, (entry, value) => EditWeapon(entry, weapon => weapon.range = value));
+                range.tooltip = "Metres from the attacker to the closest point of the target.";
+                section.Add(range);
+            }
+
+            section.Add(form.Toggle(
+                "Has Ammunition Data",
+                "ammunition",
+                entry => entry.ammunition != null,
+                (entry, value) => entry.ammunition = value ? entry.ammunition ?? CreateAmmunition() : null));
+            if (definition.ammunition != null)
+            {
+                section.Add(form.Choice("Ammunition Family", "ammunition.ammunitionFamily", AmmunitionFamilyOptions, entry => entry.ammunition?.ammunitionFamily, (entry, value) => EditAmmunition(entry, ammunition => ammunition.ammunitionFamily = value)));
+                var bonus = form.Integer("Damage Bonus Percent", "ammunition.damageBonusPercent", entry => entry.ammunition?.damageBonusPercent ?? 0, (entry, value) => EditAmmunition(entry, ammunition => ammunition.damageBonusPercent = value));
+                bonus.tooltip = "The bonus in percent of the weapon's damage roll.";
+                section.Add(bonus);
+            }
+
+            return section;
+        }
+
+        private ItemCatalogJsonWeapon CreateWeapon()
+        {
+            return new ItemCatalogJsonWeapon
+            {
+                weaponFamily = workspace?.Authoring.weaponFamilies?.FirstOrDefault()?.id ?? string.Empty,
+                damageType = DamageTypeIds.Normal,
+                minimumDamage = 1,
+                maximumDamage = 1,
+                attackIntervalSeconds = 2.4f,
+                range = 1.5f
+            };
+        }
+
+        private ItemCatalogJsonAmmunition CreateAmmunition()
+        {
+            return new ItemCatalogJsonAmmunition
+            {
+                ammunitionFamily = workspace?.Authoring.ammunitionFamilies?.FirstOrDefault()?.id ?? string.Empty,
+                damageBonusPercent = 0
+            };
+        }
+
+        private static void EditWeapon(ItemCatalogJsonDefinition entry, Action<ItemCatalogJsonWeapon> edit)
+        {
+            if (entry.weapon != null)
+            {
+                edit(entry.weapon);
+            }
+        }
+
+        private static void EditAmmunition(ItemCatalogJsonDefinition entry, Action<ItemCatalogJsonAmmunition> edit)
+        {
+            if (entry.ammunition != null)
+            {
+                edit(entry.ammunition);
+            }
         }
 
         private VisualElement BuildPresentationSection()
@@ -863,6 +947,22 @@ namespace Mmorpg.WorldData.Editor.Items
         {
             return (workspace?.Authoring.equipmentSlots ?? Array.Empty<ItemCatalogJsonEquipmentSlot>())
                 .Select(slot => (slot.id, slot.displayName));
+        }
+
+        private IEnumerable<(string Value, string Label)> WeaponFamilyOptions()
+        {
+            return (workspace?.Authoring.weaponFamilies ?? Array.Empty<ItemCatalogJsonWeaponFamily>())
+                .Select(family => (family.id, family.displayName + " (" + family.combatStyle + ")"));
+        }
+
+        private IEnumerable<(string Value, string Label)> AmmunitionFamilyOptions()
+        {
+            return IdentityOptions(workspace?.Authoring.ammunitionFamilies);
+        }
+
+        private static IEnumerable<(string Value, string Label)> DamageTypeOptions()
+        {
+            return DamageTypeIds.All.Select(id => (id, char.ToUpperInvariant(id[0]) + id.Substring(1)));
         }
 
         private static IEnumerable<(string Value, string Label)> PolicyOptions()

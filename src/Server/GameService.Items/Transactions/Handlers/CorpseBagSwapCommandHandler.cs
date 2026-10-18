@@ -71,6 +71,10 @@ internal sealed class CorpseBagSwapCommandHandler
 
         await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, corpseBag, cancellationToken);
         await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, playerBag, cancellationToken);
+        await context.Placement.EnsureCharacterLevelAsync(
+            command.CharacterId,
+            await context.State.LoadDefinitionAsync(corpseBag.DefinitionId, cancellationToken),
+            cancellationToken);
 
         var corpseBagBefore = await context.Journal.CaptureItemStateJsonAsync(
             corpseBag.ItemInstanceId,

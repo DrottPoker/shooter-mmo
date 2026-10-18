@@ -36,7 +36,12 @@ The implemented foundation includes:
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
 - A shared four-definition actor catalog, a checked-in
   `development-world-1` baseline with five deterministic instances, and
-  prepared `development-world-2` content with seven deterministic instances.
+  prepared `development-world-2` content with eight deterministic instances,
+  including one Feral Alpha.
+- Mob combat, brain, locomotion, and loot profiles in actor format 2, validated
+  by the compiler and, for loot, against the compiled item catalog. The
+  combat slice in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md)
+  consumes them in SimulationWorker.
 - Reliable interest-based actor presence, bounded actor state, and correlated
   interaction messages in the versioned realtime protocol.
 - A bounded worker-runtime actor store, fresh runtime and network identities,
@@ -199,8 +204,8 @@ Every actor definition contains at least:
 - Faction id.
 - Interaction bounds and targeting anchor.
 - Capability descriptors for an NPC.
-- Mob activity, brain, combat, locomotion, and loot-profile references for a Mob
-  when those systems exist.
+- Mob activity, respawn, combat, brain, locomotion, and loot-profile
+  references for a Mob. NPCs leave every Mob profile reference empty.
 - Explicit lifecycle and respawn profile references.
 - Content tags used by authoring, queries, and future rule systems.
 
@@ -208,10 +213,19 @@ Actor definitions contain gameplay references and validation data, not Unity
 materials, components, scene object references, or authoritative MonoBehaviour
 state.
 
-The first NPC definition contract uses an invulnerable damage policy. The first
-Mob contract may reference future brain, combat, and loot profiles before those
-systems are active, but the compiler distinguishes an intentionally unresolved
-future profile from an invalid content reference.
+The first NPC definition contract uses an invulnerable damage policy. Every Mob
+references a combat, brain, and locomotion profile in `content/actors/catalog.json`
+and may reference a loot profile:
+
+| Profile | Fields | Rule |
+| --- | --- | --- |
+| Combat | maximum health, attack style, attack damage type, damage roll, attack interval, attack range | The styles and damage types are the closed sets of [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md) |
+| Brain | aggression (`aggressive` or `defensive`), detection range, leash range, give-up time | An aggressive brain needs a detection range, and the leash range exceeds it |
+| Locomotion | walk speed, collision radius and height | The capsule height exceeds twice its radius |
+| Loot | ordered entries of item definition, quantity range, and chance in basis points | Every entry names a non-quest item definition whose stack holds the largest quantity |
+
+A Mob without a loot profile drops nothing. Loot rolls follow the authored entry
+order, which also orders the corpse slots.
 
 ## NPC Capability Composition
 

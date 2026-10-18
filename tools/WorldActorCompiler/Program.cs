@@ -2,6 +2,7 @@ using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Items;
 
 if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
 {
@@ -14,6 +15,7 @@ try
 {
     var contentRoot = options!.ContentRoot;
     var catalog = WorldActorContent.LoadCatalog(ContentLayout.ActorsDirectory(contentRoot));
+    var itemCatalog = LoadItemCatalog(options.GeneratedRoot);
     var worldIds = WorldActorContent.ListWorldIds(contentRoot);
     if (worldIds.Length == 0)
     {
@@ -24,6 +26,7 @@ try
     foreach (var worldId in worldIds)
     {
         var runtime = CompileWorld(catalog, contentRoot, worldId);
+        WorldActorItemReferences.Validate(runtime, itemCatalog);
         GeneratedOutput.WriteOrVerifyText(
             ContentLayout.GeneratedWorldActorsPath(options.GeneratedRoot, worldId),
             WorldActorJson.SerializeRuntime(runtime),
@@ -63,6 +66,17 @@ static WorldActorRuntimeDocument CompileWorld(
     {
         throw new InvalidDataException($"World '{worldId}': {exception.Message}", exception);
     }
+}
+
+// Loot references item definitions, so the compiled item catalog must exist first, as the
+// content compilers run in that order.
+static ItemCatalogRuntimeDocument LoadItemCatalog(string generatedRoot)
+{
+    var path = ContentLayout.GeneratedItemCatalogPath(generatedRoot);
+    var runtime = StrictContentJson.DeserializeFile<ItemCatalogRuntimeDocument>(
+        path,
+        "Compiled item catalog");
+    return ItemCatalogRuntimeVerifier.VerifyAndCanonicalize(runtime);
 }
 
 static string[] FindStaleRuntimeFiles(string generatedRoot, string[] worldIds)

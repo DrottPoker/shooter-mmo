@@ -1,4 +1,8 @@
 {
+  "ammunition": {
+    "ammunitionFamily": "arrow",
+    "damageBonusPercent": 5
+  },
   "bag": null,
   "blockedEquipmentSlots": [ ],
   "category": "ammunition",
@@ -13,8 +17,10 @@
   },
   "maximumStackSize": 1000,
   "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
   "tags": [
     "ammunition"
   ],
-  "unitWeight": 1
+  "unitWeight": 1,
+  "weapon": null
 }

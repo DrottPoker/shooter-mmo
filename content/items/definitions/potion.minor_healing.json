@@ -1,4 +1,5 @@
 {
+  "ammunition": null,
   "bag": null,
   "blockedEquipmentSlots": [ ],
   "category": "potion",
@@ -11,8 +12,10 @@
   },
   "maximumStackSize": 10,
   "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
   "tags": [
     "potion"
   ],
-  "unitWeight": 20
+  "unitWeight": 20,
+  "weapon": null
 }

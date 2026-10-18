@@ -812,7 +812,17 @@ dotnet run --project src/Server/GameService --configuration Release -- `
 
 dotnet run --project src/Server/GameService --configuration Release -- `
   --dev-items-corpse <characterId> local-shard-1 0 0 -1
+
+dotnet run --project src/Server/GameService --configuration Release -- `
+  --dev-items-level <characterId> 5
 ```
+
+`--dev-items-level` sets an offline character's level, from 1 up to the item
+catalog's `progression.maximumCharacterLevel`. Experience does not exist yet, so
+this is how an item level requirement is tested: every character starts at level
+1, and GameService refuses to equip an item whose `requiredCharacterLevel` is
+higher with `equipment_level_requirement_not_met`. Every shipped item requires
+level 1.
 
 The packages come from `content/development/item-packages.json`, which GameService
 copies next to its build output. Before the first grant, the tool checks the

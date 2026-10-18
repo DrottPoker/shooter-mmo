@@ -29,6 +29,40 @@ namespace Mmorpg.WorldData.Items
         public int bankSlotCount;
     }
 
+    [Serializable]
+    public sealed class ItemCatalogJsonProgression
+    {
+        public int maximumCharacterLevel;
+    }
+
+    [Serializable]
+    public sealed class ItemCatalogJsonWeaponFamily
+    {
+        public string id;
+        public string displayName;
+        public string combatStyle;
+        public string ammunitionFamily;
+        public float projectileSpeed;
+    }
+
+    [Serializable]
+    public sealed class ItemCatalogJsonWeapon
+    {
+        public string weaponFamily;
+        public string damageType;
+        public int minimumDamage;
+        public int maximumDamage;
+        public float attackIntervalSeconds;
+        public float range;
+    }
+
+    [Serializable]
+    public sealed class ItemCatalogJsonAmmunition
+    {
+        public string ammunitionFamily;
+        public int damageBonusPercent;
+    }
+
     // Released ids that left the catalog. They stay locked so they are never reused.
     [Serializable]
     public sealed class ItemCatalogJsonRetired
@@ -76,16 +110,34 @@ namespace Mmorpg.WorldData.Items
         public ItemCatalogJsonLocationEligibility locationEligibility;
         public string[] defaultPolicies;
         public ItemCatalogJsonBagDefinition bag;
+        public int requiredCharacterLevel;
+        public ItemCatalogJsonWeapon weapon;
+        public ItemCatalogJsonAmmunition ammunition;
 
-        // JsonUtility materializes an empty nested class for a missing Bag field, so a
-        // non-Bag definition with a slotless Bag has no Bag.
-        public void ClearMissingBagPlaceholder()
+        // JsonUtility materializes an empty nested class for a missing nested field, so a
+        // non-Bag definition with a slotless Bag has no Bag, and a weapon or ammunition
+        // block without a family is no block, unless the category requires one.
+        public void ClearMissingPlaceholders()
         {
             if (bag != null
                 && (bag.slots == null || bag.slots.Length == 0)
                 && !string.Equals(category, ItemCategoryIds.Bag, StringComparison.Ordinal))
             {
                 bag = null;
+            }
+
+            if (weapon != null
+                && string.IsNullOrEmpty(weapon.weaponFamily)
+                && !string.Equals(category, ItemCategoryIds.Weapon, StringComparison.Ordinal))
+            {
+                weapon = null;
+            }
+
+            if (ammunition != null
+                && string.IsNullOrEmpty(ammunition.ammunitionFamily)
+                && !string.Equals(category, ItemCategoryIds.Ammunition, StringComparison.Ordinal))
+            {
+                ammunition = null;
             }
         }
 
@@ -122,6 +174,25 @@ namespace Mmorpg.WorldData.Items
                                 AcceptedTags = slot.acceptedTags ?? Array.Empty<string>()
                             })
                             .ToArray()
+                    },
+                RequiredCharacterLevel = requiredCharacterLevel,
+                Weapon = weapon == null
+                    ? null
+                    : new ItemWeaponEntry
+                    {
+                        WeaponFamily = weapon.weaponFamily,
+                        DamageType = weapon.damageType,
+                        MinimumDamage = weapon.minimumDamage,
+                        MaximumDamage = weapon.maximumDamage,
+                        AttackIntervalSeconds = weapon.attackIntervalSeconds,
+                        Range = weapon.range
+                    },
+                Ammunition = ammunition == null
+                    ? null
+                    : new ItemAmmunitionEntry
+                    {
+                        AmmunitionFamily = ammunition.ammunitionFamily,
+                        DamageBonusPercent = ammunition.damageBonusPercent
                     }
             };
         }
@@ -144,9 +215,12 @@ namespace Mmorpg.WorldData.Items
         public string catalogId;
         public string baseSecureContainerTierId;
         public ItemCatalogJsonCharacter character;
+        public ItemCatalogJsonProgression progression;
         public ItemCatalogJsonIdentity[] categories;
         public ItemCatalogJsonIdentity[] tags;
         public ItemCatalogJsonEquipmentSlot[] equipmentSlots;
+        public ItemCatalogJsonWeaponFamily[] weaponFamilies;
+        public ItemCatalogJsonIdentity[] ammunitionFamilies;
         public ItemCatalogJsonDefinition[] definitions;
         public ItemCatalogJsonSecureContainerTier[] secureContainerTiers;
         public ItemCatalogJsonRetired retired;
@@ -166,6 +240,12 @@ namespace Mmorpg.WorldData.Items
                         InventorySlotCount = character.inventorySlotCount,
                         BankSlotCount = character.bankSlotCount
                     },
+                Progression = progression == null
+                    ? null
+                    : new ItemProgressionSettingsEntry
+                    {
+                        MaximumCharacterLevel = progression.maximumCharacterLevel
+                    },
                 Categories = ConvertIdentities(categories),
                 Tags = ConvertIdentities(tags),
                 EquipmentSlots = (equipmentSlots ?? Array.Empty<ItemCatalogJsonEquipmentSlot>())
@@ -176,6 +256,17 @@ namespace Mmorpg.WorldData.Items
                         MaximumQuantity = slot.maximumQuantity
                     })
                     .ToArray(),
+                WeaponFamilies = (weaponFamilies ?? Array.Empty<ItemCatalogJsonWeaponFamily>())
+                    .Select(family => new ItemWeaponFamilyEntry
+                    {
+                        Id = family.id,
+                        DisplayName = family.displayName,
+                        CombatStyle = family.combatStyle,
+                        AmmunitionFamily = family.ammunitionFamily ?? string.Empty,
+                        ProjectileSpeed = family.projectileSpeed
+                    })
+                    .ToArray(),
+                AmmunitionFamilies = ConvertIdentities(ammunitionFamilies),
                 Definitions = (definitions ?? Array.Empty<ItemCatalogJsonDefinition>())
                     .Select(definition => definition.ToAuthoringEntry())
                     .ToArray(),

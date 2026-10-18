@@ -55,6 +55,7 @@ The canonical World manifest and actor content already reserve these coordinates
 | City Services NPC | `(8, 0, 4)` |
 | City Guard group | centered at `(-16, 0, 12)` |
 | Feral Wolf spawn area | X/Z `-190` to `-130` |
+| Feral Alpha spawn point | `(-120, 0, -195)`, between rocks 05 and 12 |
 
 Do not move these authored landmarks without updating the matching `world.json`
 manifest and actor spawn content in the same change.

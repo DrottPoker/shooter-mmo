@@ -40,7 +40,7 @@ Platform <- Accounts <- Characters <- Placement <- Items <- host
 | --- | --- | --- | --- |
 | `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, and `IGameServiceModule`. No domain model. |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
-| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, and character currency |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency, and character level |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, and Development simulation bots. It decides where a character plays right now. |
 | `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog, item state, item transactions, corpses, death partition, Recovery, policies, item operations maintenance, and the Development item tools |
 | `Mmorpg.GameService` (host) | `src/Server/GameService` | every module | `Program.cs`, the configuration loader, database startup, the frozen baseline migrations, health routes, and the shipped configuration and content files |
@@ -106,7 +106,7 @@ tests. Startup runs in this order:
 | --- | --- |
 | Platform | `schema_migrations`; advisory lock `7104202607071600` |
 | Accounts | `accounts`, `account_sessions` |
-| Characters | `characters`, including `currency` |
+| Characters | `characters`, including `currency` and `level` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
 | Items | every item, container, catalog, Recovery, operation, corpse, and death table, the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, the catalog advisory lock `7104202607151230`, and the per-account Secure Container entitlement advisory lock |
 
@@ -151,8 +151,9 @@ caller keeps its own check order, error codes, and messages.
 | `AccountsSql` | Accounts | Placement, Items | Active account session, revocation reason, existing account id, and username fragments |
 | `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order |
 | `ICharacterWallet` | Characters | Items | Debit character currency for insurance |
+| `ICharacterProgression` | Characters | Items | Set a character's level for the Development item tool |
 | `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state for a new character |
-| `CharactersSql` | Characters | Placement, Items | The active character derived table and the existing character id fragment |
+| `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, and the character level fragment |
 | `SimulationWorkerLeasePolicy` | Placement | Items | The worker heartbeat timeout |
 | `ISimulationSessionAuthority` | Placement | Items | Lock a simulation session for an item mutation, or read it with its worker lease and assignment |
 | `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment |
@@ -243,7 +244,7 @@ contracts or SQL fragments.
 | `item_catalog_revisions` | Applied deterministic catalog revisions and the current one |
 | `item_system_settings` | Base carry capacity and the inventory and bank slot counts from the catalog's character settings |
 | `item_categories`, `item_tags`, `equipment_slots` | Catalog vocabulary with display order, slot maximum quantity, and active state |
-| `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, structural fingerprint, and active state |
+| `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, required character level, structural fingerprint, and active state |
 | `item_definition_tags`, `item_definition_default_policies` | Many-to-many definition tags and default policies |
 | `item_definition_equipment_slots`, `item_definition_blocked_equipment_slots` | Compatible equipment slots and the slots an equipped definition blocks |
 | `item_definition_location_rules` | Secure Container and other explicit location eligibility |
@@ -326,6 +327,9 @@ migration's SQL.
 | 15 | `202607191200_worker_selected_world_binding` | Placement |
 | 16 | `202610141800_release_retryable_operation_claims` | Items |
 | 17 | `202610151000_equipped_item_lookup_index` | Items |
+| 18 | `202610171200_item_catalog_alignment` | Items |
+| 19 | `202610181200_character_level` | Characters |
+| 20 | `202610181210_item_level_requirement` | Items |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -334,7 +338,7 @@ Each module lists its own migrations in `IGameServiceModule.Migrations`.
 ordinal id, which reproduces the original application order exactly. Startup
 fails when an id repeats or when the merged list does not start with the shipped
 history, so every new migration must sort after
-`202610151000_equipped_item_lookup_index`. A new migration also appends its id
+`202610181210_item_level_requirement`. A new migration also appends its id
 to `GameServiceSchema.FrozenHistory` and its id and SQL hash to
 `MigrationHistoryTests`.
 
@@ -367,8 +371,9 @@ unchanged.
 ## Cross-Module Statements
 
 These are every SQL statement that crossed a module boundary when the split
-started, and how each one crosses now. Acc is Accounts, Chr is Characters, Plc
-is Placement, and Itm is Items. R is read, W is write, and L is lock.
+started, and how each one crosses now, followed by the statements added since
+then from S41 on. Acc is Accounts, Chr is Characters, Plc is Placement, and Itm
+is Items. R is read, W is write, and L is lock.
 
 | # | Statement | Foreign access | Now |
 | --- | --- | --- | --- |
@@ -412,6 +417,8 @@ is Placement, and Itm is Items. R is read, W is write, and L is lock.
 | S38 | Development item tool loads a target | Chr R, Plc R | `CharactersSql.ActiveCharacters`, `PlacementSql.HasActiveSimulationSession` |
 | S39 | The Development item tool loads and validates a target | Chr R, Plc R | `CharactersSql.ActiveCharacters`, `PlacementSql.HasActiveSimulationSession` |
 | S40 | Baseline migrations #1 and #6 | mixed DDL | R4, frozen |
+| S41 | Equipment checks the level requirement against the character level | Chr R | `CharactersSql.LevelOf` in `ItemSlotPlacement` |
+| S42 | The Development item tool sets a character's level | Chr L, W | `ICharacterProgression.SetLevelAsync` in `DevelopmentItemToolService` |
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,
 and `update` on owned tables and fails on any foreign table outside the frozen

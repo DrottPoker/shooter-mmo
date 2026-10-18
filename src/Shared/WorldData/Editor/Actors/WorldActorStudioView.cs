@@ -617,7 +617,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             if (selection.All(actor => actor.kind == WorldActorKindIds.Npc))
             {
                 section.Add(ContentToolStyles.CreateHint(
-                    "NPCs are always invulnerable and have no activity, respawn, or corpse settings."));
+                    "NPCs are always invulnerable and have no activity, respawn, combat, brain, locomotion, loot, or corpse settings."));
                 return section;
             }
 
@@ -630,6 +630,10 @@ namespace Mmorpg.WorldData.Editor.Actors
             section.Add(form.Choice("Damage Policy", "damagePolicy", () => DamagePolicies, actor => actor.damagePolicy, (actor, value) => actor.damagePolicy = value, isMob));
             section.Add(form.Choice("Activity Profile", "activityProfileId", ActivityProfileOptions, actor => actor.activityProfileId, (actor, value) => actor.activityProfileId = value, isMob));
             section.Add(form.Choice("Respawn Profile", "respawnProfileId", RespawnProfileOptions, actor => actor.respawnProfileId, (actor, value) => actor.respawnProfileId = value, isMob));
+            section.Add(form.Choice("Combat Profile", "combatProfileId", CombatProfileOptions, actor => actor.combatProfileId, (actor, value) => actor.combatProfileId = value, isMob));
+            section.Add(form.Choice("Brain Profile", "brainProfileId", BrainProfileOptions, actor => actor.brainProfileId, (actor, value) => actor.brainProfileId = value, isMob));
+            section.Add(form.Choice("Locomotion Profile", "locomotionProfileId", LocomotionProfileOptions, actor => actor.locomotionProfileId, (actor, value) => actor.locomotionProfileId = value, isMob));
+            section.Add(form.Choice("Loot Profile", "lootProfileId", LootProfileOptions, actor => actor.lootProfileId, (actor, value) => actor.lootProfileId = value, isMob));
             section.Add(form.Choice("Corpse Persistence", "corpsePersistenceMode", () => CorpseModes, actor => actor.corpsePersistenceMode, (actor, value) => actor.corpsePersistenceMode = value, isMob));
             var lifetime = form.Float("Corpse Lifetime Seconds", "corpseLifetimeSeconds", actor => actor.corpseLifetimeSeconds, (actor, value) => actor.corpseLifetimeSeconds = value, isMob);
             lifetime.tooltip = "Between " + WorldActorCorpseRules.MinimumLifetimeSeconds + " and " + WorldActorCorpseRules.MaximumLifetimeSeconds + " seconds.";
@@ -807,6 +811,10 @@ namespace Mmorpg.WorldData.Editor.Actors
                 actor.respawnProfileId = string.Empty;
                 actor.corpsePersistenceMode = string.Empty;
                 actor.corpseLifetimeSeconds = 0f;
+                actor.combatProfileId = string.Empty;
+                actor.brainProfileId = string.Empty;
+                actor.locomotionProfileId = string.Empty;
+                actor.lootProfileId = string.Empty;
             }
             else
             {
@@ -824,6 +832,16 @@ namespace Mmorpg.WorldData.Editor.Actors
                 actor.corpseLifetimeSeconds = actor.corpseLifetimeSeconds > 0f
                     ? actor.corpseLifetimeSeconds
                     : WorldActorCorpseRules.DefaultLiveLifetimeSeconds;
+                actor.combatProfileId = string.IsNullOrEmpty(actor.combatProfileId)
+                    ? workspace.Catalog.combatProfiles?.FirstOrDefault()?.id ?? string.Empty
+                    : actor.combatProfileId;
+                actor.brainProfileId = string.IsNullOrEmpty(actor.brainProfileId)
+                    ? workspace.Catalog.brainProfiles?.FirstOrDefault()?.id ?? string.Empty
+                    : actor.brainProfileId;
+                actor.locomotionProfileId = string.IsNullOrEmpty(actor.locomotionProfileId)
+                    ? workspace.Catalog.locomotionProfiles?.FirstOrDefault()?.id ?? string.Empty
+                    : actor.locomotionProfileId;
+                actor.lootProfileId = actor.lootProfileId ?? string.Empty;
             }
 
             var presentationKind = workspace.Catalog.presentationArchetypes?.FirstOrDefault(value =>
@@ -909,7 +927,11 @@ namespace Mmorpg.WorldData.Editor.Actors
                 activityProfileId = npc ? string.Empty : workspace.Catalog.activityProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 respawnProfileId = npc ? string.Empty : workspace.Catalog.respawnProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 corpsePersistenceMode = npc ? string.Empty : WorldActorCorpsePersistenceModeIds.Live,
-                corpseLifetimeSeconds = npc ? 0f : WorldActorCorpseRules.DefaultLiveLifetimeSeconds
+                corpseLifetimeSeconds = npc ? 0f : WorldActorCorpseRules.DefaultLiveLifetimeSeconds,
+                combatProfileId = npc ? string.Empty : workspace.Catalog.combatProfiles?.FirstOrDefault()?.id ?? string.Empty,
+                brainProfileId = npc ? string.Empty : workspace.Catalog.brainProfiles?.FirstOrDefault()?.id ?? string.Empty,
+                locomotionProfileId = npc ? string.Empty : workspace.Catalog.locomotionProfiles?.FirstOrDefault()?.id ?? string.Empty,
+                lootProfileId = string.Empty
             };
         }
 
@@ -1050,6 +1072,32 @@ namespace Mmorpg.WorldData.Editor.Actors
         {
             return (workspace?.Catalog.respawnProfiles ?? Array.Empty<WorldActorEditorRespawnProfile>())
                 .Select(profile => (profile.id, profile.id));
+        }
+
+        private IEnumerable<(string Value, string Label)> CombatProfileOptions()
+        {
+            return (workspace?.Catalog.combatProfiles ?? Array.Empty<WorldActorEditorCombatProfile>())
+                .Select(profile => (profile.id, profile.id + " (" + profile.maximumHealth + " health)"));
+        }
+
+        private IEnumerable<(string Value, string Label)> BrainProfileOptions()
+        {
+            return (workspace?.Catalog.brainProfiles ?? Array.Empty<WorldActorEditorBrainProfile>())
+                .Select(profile => (profile.id, profile.id + " (" + profile.aggression + ")"));
+        }
+
+        private IEnumerable<(string Value, string Label)> LocomotionProfileOptions()
+        {
+            return (workspace?.Catalog.locomotionProfiles ?? Array.Empty<WorldActorEditorLocomotionProfile>())
+                .Select(profile => (profile.id, profile.id));
+        }
+
+        // A Mob without a loot profile drops nothing and leaves no corpse.
+        private IEnumerable<(string Value, string Label)> LootProfileOptions()
+        {
+            return new[] { (string.Empty, "(no loot)") }.Concat(
+                (workspace?.Catalog.lootProfiles ?? Array.Empty<WorldActorEditorLootProfile>())
+                    .Select(profile => (profile.id, profile.id)));
         }
 
         // Archetypes of the selected kind, or of every kind when the selection mixes kinds.

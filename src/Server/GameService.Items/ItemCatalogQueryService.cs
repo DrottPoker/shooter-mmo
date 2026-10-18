@@ -80,7 +80,8 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                     category_id as "CategoryId",
                     unit_weight as "UnitWeight",
                     maximum_stack_size as "MaximumStackSize",
-                    player_destroyable as "PlayerDestroyable"
+                    player_destroyable as "PlayerDestroyable",
+                    required_character_level as "RequiredCharacterLevel"
                 from item_definitions
                 where catalog_id = @CatalogId
                   and catalog_revision = @Revision
@@ -241,6 +242,7 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                     definition.UnitWeight,
                     definition.MaximumStackSize,
                     definition.PlayerDestroyable,
+                    definition.RequiredCharacterLevel,
                     tagsByDefinition[definition.Id].ToArray(),
                     equipmentSlotsByDefinition[definition.Id].ToArray(),
                     blockedSlotsByDefinition[definition.Id].ToArray(),
@@ -326,6 +328,8 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
         public int MaximumStackSize { get; set; }
 
         public bool PlayerDestroyable { get; set; }
+
+        public int RequiredCharacterLevel { get; set; }
     }
 
     private sealed class DefinitionValueRow

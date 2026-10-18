@@ -1,4 +1,5 @@
 {
+  "ammunition": null,
   "bag": null,
   "blockedEquipmentSlots": [ ],
   "category": "quest_item",
@@ -13,6 +14,8 @@
   },
   "maximumStackSize": 1,
   "playerDestroyable": false,
+  "requiredCharacterLevel": 1,
   "tags": [ ],
-  "unitWeight": 10
+  "unitWeight": 10,
+  "weapon": null
 }

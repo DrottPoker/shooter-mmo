@@ -1,7 +1,7 @@
 {
     "formatVersion": 2,
-    "sourceCatalogRevision": "112857ebd8a9af67c17d634365399ef91eaef469057f786e8a89962de87aab83",
-    "presentationRevision": "88ef8dca64d5210d602aef8a4eb893a58da425660b280b97c5a3fd411e4a713a",
+    "sourceCatalogRevision": "9e29d1f0ad2c43b782f448abe247e59ebeab90457344770edbc1cda97e06316f",
+    "presentationRevision": "ed839d901a91c1d14d1987c7d476d36ea9dbdcd410c95a753425a8a65d7df8c1",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
@@ -43,6 +43,13 @@
             "iconAddress": "",
             "localizationKey": "items.material.iron_ore.name",
             "fallbackDisplayName": "Iron Ore",
+            "prefabPresentationKey": ""
+        },
+        {
+            "definitionId": "material.wolf_pelt",
+            "iconAddress": "",
+            "localizationKey": "items.material.wolf_pelt.name",
+            "fallbackDisplayName": "Wolf Pelt",
             "prefabPresentationKey": ""
         },
         {

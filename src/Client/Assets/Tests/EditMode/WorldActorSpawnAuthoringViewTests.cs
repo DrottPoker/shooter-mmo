@@ -204,7 +204,9 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 Assert.That(view.Form.TrySetValue("respawn.populationLimit", 12), Is.True);
 
-                Assert.That(view.Workspace.Catalog.respawnProfiles.Single().populationLimit, Is.EqualTo(12));
+                Assert.That(
+                    view.Workspace.Catalog.respawnProfiles.Single(profile => profile.id == "mob.normal").populationLimit,
+                    Is.EqualTo(12));
                 Assert.That(view.Workspace.Catalog.actors.Single(actor => actor.id == "npc.city_services").respawnProfileId, Is.Empty);
             }
             finally

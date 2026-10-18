@@ -1,0 +1,21 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "armor",
+  "defaultPolicies": [ ],
+  "displayName": "Fixture Helm",
+  "equipmentSlots": [
+    "head"
+  ],
+  "id": "fixture.helm",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 3,
+  "tags": [ ],
+  "unitWeight": 15,
+  "weapon": null
+}

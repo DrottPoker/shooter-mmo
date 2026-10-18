@@ -4,6 +4,7 @@ using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
+using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Http;
@@ -25,7 +26,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         await context.InitializeDatabaseAsync();
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(18, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(ExpectedMigrationCount(context), await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             2,
             await context.ExecuteScalarIntAsync(
@@ -566,7 +567,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
 
         Assert.Equal(12, await CountFoundationTablesAsync(context));
-        Assert.Equal(18, await CountAppliedMigrationsAsync(context));
+        Assert.Equal(ExpectedMigrationCount(context), await CountAppliedMigrationsAsync(context));
         Assert.Equal(
             1,
             await context.ExecuteScalarIntAsync(
@@ -1161,6 +1162,12 @@ public sealed class AuthSimulationFlowIntegrationTests
     private static Task<int> CountAppliedMigrationsAsync(PostgresIntegrationTestContext context)
     {
         return context.ExecuteScalarIntAsync("select count(*) from schema_migrations;");
+    }
+
+    // Every migration of the composed schema is applied exactly once.
+    private static int ExpectedMigrationCount(PostgresIntegrationTestContext context)
+    {
+        return context.Services.GetRequiredService<GameServiceSchema>().Migrations.Count;
     }
 
     private static Task<int> CountActiveTicketsAsync(PostgresIntegrationTestContext context)

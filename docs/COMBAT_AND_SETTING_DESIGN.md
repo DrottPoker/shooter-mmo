@@ -708,11 +708,13 @@ Expected to change:
 
 Expected additions:
 
-- An ammunition equipment slot. The current slots are Head, BodyArmor,
-  PrimaryWeapon, SecondaryWeapon, Tool, Ring1, Ring2, and Bag.
+- An ammunition equipment slot. Implemented: see
+  [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 - Item definition data for base damage, damage type, ammunition family,
   ammunition bonus, defensive stats such as armor, healing multipliers, and
-  elemental resistance.
+  elemental resistance. Weapon and ammunition data are implemented as catalog
+  content, see [Item Catalog Authoring](../content/items/README.md); armor,
+  healing, and resistance data remain.
 - Ability definitions with an optional equipped-weapon requirement and an
   explicit usable-while-moving flag. The server
   rejects other abilities while the character moves and cancels channeled and
@@ -724,7 +726,9 @@ Expected additions:
 - A server-owned attack lockout timestamp that every equipment change
   refreshes. Attack, ability, and spell intents are rejected until it expires.
 - Durable character level, combat experience, and talent point allocation, and
-  separate durable experience and level per profession.
+  separate durable experience and level per profession. The durable character
+  level exists and gates equipment through item level requirements; every
+  character stays at level 1 until experience is implemented.
 - Profession definitions, recipes, crafting stations, and gathering resource
   nodes for the profession list.
 - Threat tables on Mobs, with threat from damage and healing, tank threat
