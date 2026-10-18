@@ -44,6 +44,7 @@ namespace Mmorpg.Client.Editor
         private string statusMessage = "Refresh to load local development data.";
         private MessageType statusType = MessageType.Info;
         private bool initialRefreshScheduled;
+        private long currencyAmount = 100;
         private string corpseShardId = "local-shard-1";
         private Vector3 corpsePosition = new Vector3(0f, 0f, -1f);
 
@@ -102,6 +103,8 @@ namespace Mmorpg.Client.Editor
             DrawCustomGrant();
             EditorGUILayout.Space(8f);
             DrawPackageGrant();
+            EditorGUILayout.Space(8f);
+            DrawCurrencyGrant();
             EditorGUILayout.Space(8f);
             DrawCorpseFixture();
             EditorGUILayout.Space(8f);
@@ -275,6 +278,42 @@ namespace Mmorpg.Client.Editor
                     "--dev-items-package",
                     character.characterId,
                     selectedPackage.packageId);
+            }
+
+            EditorGUI.EndDisabledGroup();
+            EditorGUILayout.EndVertical();
+        }
+
+        // The grant goes through the character wallet, so it writes a development ledger row.
+        private void DrawCurrencyGrant()
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            GUILayout.Label("Give Currency", EditorStyles.boldLabel);
+            var character = SelectedCharacter();
+            if (character == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "An initialized target character is required.",
+                    MessageType.Warning);
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            EditorGUILayout.LabelField(
+                "Balance",
+                character.currency.ToString("N0", CultureInfo.InvariantCulture));
+            currencyAmount = EditorGUILayout.LongField("Amount", currencyAmount);
+            var canGrant = activeProcess == null
+                && !character.isOnline
+                && currencyAmount > 0;
+            EditorGUI.BeginDisabledGroup(!canGrant);
+            if (GUILayout.Button("Give Currency", GUILayout.Height(30f)))
+            {
+                StartCommand(
+                    "Granting currency to " + character.characterName,
+                    "--dev-items-currency",
+                    character.characterId,
+                    currencyAmount.ToString(CultureInfo.InvariantCulture));
             }
 
             EditorGUI.EndDisabledGroup();
@@ -969,6 +1008,7 @@ namespace Mmorpg.Client.Editor
         public long itemStateRevision;
         public long carriedWeight;
         public long carryCapacity;
+        public long currency;
     }
 
     [Serializable]

@@ -21,7 +21,8 @@ internal sealed record DevelopmentItemToolCharacter(
     int RecoveryDeliveryCount,
     long ItemStateRevision,
     long CarriedWeight,
-    long CarryCapacity);
+    long CarryCapacity,
+    long Currency);
 
 internal sealed record DevelopmentItemToolDefinition(
     string DefinitionId,
