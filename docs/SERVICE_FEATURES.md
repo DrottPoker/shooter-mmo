@@ -466,8 +466,9 @@ concurrent inspection, and authoritative looting:
 - Framework-neutral pure rules cover stack compatibility, specialized slot tag
   acceptance, equipment compatibility, Secure Container eligibility, empty and
   non-empty Bag destinations, Bag containment-cycle rejection, unitless integer
-  stack weight, base character capacity `200`, exact 140 percent admission, and
-  the fixed-point linear encumbrance multiplier.
+  stack weight, exact 140 percent admission, and the fixed-point linear
+  encumbrance multiplier. The base character capacity, `2000`, is catalog
+  content.
 - `MMORPG > Tools > Item Catalog` edits definitions through an Editor-only
   assembly, invokes the strict shared compiler, shows display-only and structural
   changes, locks baked ids, and writes authoring plus deterministic bake output
@@ -501,9 +502,10 @@ concurrent inspection, and authoritative looting:
   check from `character_item_states`. The transaction kernel remains the only
   hard-cap authority so an authoritative death can persist retained Secure
   Container weight after its equipped Bag capacity bonus is removed.
-- Startup idempotently backfills every active character with base carry capacity
-  `200`, 20 permanent inventory slots, 40 bank slots, the account-entitled
-  Secure Container slots, and one unbounded Recovery Storage identity.
+- Startup idempotently backfills every active character with the catalog's
+  character settings, today base carry capacity `2000`, 20 permanent inventory
+  slots, and 40 bank slots, plus the account-entitled Secure Container slots and
+  one unbounded Recovery Storage identity.
 - New character creation calls the same PostgreSQL bootstrap function before
   committing its existing transaction, so a character cannot commit through
   the service without its required item state.

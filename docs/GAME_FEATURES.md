@@ -213,8 +213,8 @@ Status: Temporary UI presentation
 Status: Implemented authority and transport foundation
 
 Every accepted world session receives the character's authoritative unitless
-carried weight, capacity, and item-state revision. Base capacity is `200`, and an
-equipped Bag can add its authored capacity bonus. Permanent inventory,
+carried weight, capacity, and item-state revision. Base capacity is `2000`, set in
+catalog content, and an equipped Bag can add its authored capacity bonus. Permanent inventory,
 Bag contents, carried empty Bags, and Secure Container contents contribute to
 weight. Items assigned to equipment slots, including the equipped Bag item
 itself, do not. The equipped Bag's capacity bonus still applies. Bank, Recovery
@@ -241,9 +241,8 @@ no city requirement. Only committed GameService results can
 change the live carry tuple, and reconnect restores the same committed revision.
 
 Local Development explicitly enables global Bank and Recovery access so item
-flows can be tested anywhere on the map. Production keeps the configured
-service-point requirement, and insurance access is never included in the
-Development override.
+flows can be tested anywhere on the map. Production keeps the NPC interaction
+requirement, and insurance access is never included in the Development override.
 
 Unity now exposes the first player-facing inventory loop. Press `B` in
 an active World scene for character storage only, `C` for equipment together

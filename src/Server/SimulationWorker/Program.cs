@@ -164,7 +164,7 @@ if (developmentItemInteractionOptions.GlobalBankAndRecoveryAccess)
 {
     logger.LogWarning(
         "Development global Bank and Recovery Storage access is enabled. "
-        + "Production service-point authority remains unchanged.");
+        + "Production requires an open Bank or Recovery Storage NPC interaction.");
 }
 
 logger.LogInformation(

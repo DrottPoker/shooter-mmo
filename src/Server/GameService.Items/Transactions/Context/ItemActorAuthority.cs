@@ -62,8 +62,9 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
         }
     }
 
-    // Bank and Recovery Storage are city services. Only a live character at a validated
-    // service point may change them, so offline account routes can never reach them.
+    // Bank and Recovery Storage are city services. Only a live character whose worker
+    // granted access through an NPC interaction may change them, so offline account
+    // routes can never reach them.
     public void EnsureLiveContainerAccess(string? containerType)
     {
         if (Actor.Authority == ItemTransactionAuthority.System

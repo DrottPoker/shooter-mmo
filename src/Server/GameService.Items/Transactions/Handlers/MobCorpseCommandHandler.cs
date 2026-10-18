@@ -187,9 +187,9 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
         CreatePersistentMobCorpseCommand command)
     {
         if (command.CorpseId == Guid.Empty
-            || !Identifiers.IsContentIdentifier(command.WorkerId)
-            || !Identifiers.IsContentIdentifier(command.WorkerRuntimeId)
-            || !Identifiers.IsContentIdentifier(command.ShardId)
+            || !Identifiers.IsServiceIdentifier(command.WorkerId)
+            || !Identifiers.IsServiceIdentifier(command.WorkerRuntimeId)
+            || !Identifiers.IsServiceIdentifier(command.ShardId)
             || !Identifiers.IsContentIdentifier(command.SourceActorDefinitionId)
             || string.IsNullOrWhiteSpace(command.SourceDisplayName)
             || command.SourceDisplayName.Length > 128
