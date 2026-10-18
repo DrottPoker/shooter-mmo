@@ -48,8 +48,8 @@ namespace Mmorpg.WorldData.Editor.Items
         public string structuralFingerprint;
     }
 
-    // content/items/catalog.json: every authoring field except the definitions, which
-    // live in one file each below definitions/.
+    // content/items/catalog.json: every authoring field except the definitions and the vendor
+    // profiles, which live in one file each below definitions/ and vendors/.
     [Serializable]
     public sealed class ItemCatalogEditorCatalogHeader
     {
@@ -57,9 +57,11 @@ namespace Mmorpg.WorldData.Editor.Items
         public string catalogId;
         public string baseSecureContainerTierId;
         public ItemCatalogJsonCharacter character;
+        public ItemCatalogJsonEconomy economy;
         public ItemCatalogJsonProgression progression;
         public ItemCatalogJsonIdentity[] categories;
         public ItemCatalogJsonIdentity[] tags;
+        public ItemCatalogJsonIdentity[] toolKinds;
         public ItemCatalogJsonEquipmentSlot[] equipmentSlots;
         public ItemCatalogJsonWeaponFamily[] weaponFamilies;
         public ItemCatalogJsonIdentity[] ammunitionFamilies;
@@ -81,6 +83,11 @@ namespace Mmorpg.WorldData.Editor.Items
             return definition;
         }
 
+        public static ItemCatalogJsonVendor DeserializeVendor(string json)
+        {
+            return Deserialize<ItemCatalogJsonVendor>(json, "Vendor profile");
+        }
+
         public static ItemCatalogEditorRuntimeDocument DeserializeRuntime(string json)
         {
             return Deserialize<ItemCatalogEditorRuntimeDocument>(json, "Item catalog runtime");
@@ -96,6 +103,11 @@ namespace Mmorpg.WorldData.Editor.Items
         public static string SerializeDefinition(ItemCatalogJsonDefinition definition)
         {
             return Serialize(definition);
+        }
+
+        public static string SerializeVendor(ItemCatalogJsonVendor vendor)
+        {
+            return Serialize(vendor);
         }
 
         public static ItemCatalogJsonDocument Clone(ItemCatalogJsonDocument document)
@@ -125,6 +137,17 @@ namespace Mmorpg.WorldData.Editor.Items
         {
             document.categories = document.categories ?? Array.Empty<ItemCatalogJsonIdentity>();
             document.tags = document.tags ?? Array.Empty<ItemCatalogJsonIdentity>();
+            document.toolKinds = document.toolKinds ?? Array.Empty<ItemCatalogJsonIdentity>();
+            // Vendor offers keep their authored order: it is the order the vendor lists them.
+            document.vendors = (document.vendors ?? Array.Empty<ItemCatalogJsonVendor>())
+                .OrderBy(vendor => vendor.id, StringComparer.Ordinal)
+                .ToArray();
+            foreach (var vendor in document.vendors)
+            {
+                vendor.offers = vendor.offers ?? Array.Empty<ItemCatalogJsonVendorOffer>();
+                vendor.saleCategories = SortStrings(vendor.saleCategories);
+            }
+
             // Equipment slots keep their authored order: it is the display order.
             document.equipmentSlots = document.equipmentSlots
                 ?? Array.Empty<ItemCatalogJsonEquipmentSlot>();
@@ -147,6 +170,7 @@ namespace Mmorpg.WorldData.Editor.Items
             foreach (var definition in document.definitions)
             {
                 definition.tags = SortStrings(definition.tags);
+                definition.toolKinds = SortStrings(definition.toolKinds);
                 definition.equipmentSlots = SortStrings(definition.equipmentSlots);
                 definition.blockedEquipmentSlots = SortStrings(definition.blockedEquipmentSlots);
                 definition.defaultPolicies = SortStrings(definition.defaultPolicies);
@@ -230,7 +254,8 @@ namespace Mmorpg.WorldData.Editor.Items
         }
     }
 
-    // Reads and writes content/items: catalog.json plus one file per item definition.
+    // Reads and writes content/items: catalog.json plus one file per item definition and one
+    // per vendor profile.
     public static class ItemCatalogEditorContent
     {
         public static ItemCatalogJsonDocument Load(string itemsDirectory)
@@ -246,20 +271,26 @@ namespace Mmorpg.WorldData.Editor.Items
             var definitions = ContentLayout.ListDefinitionFiles(itemsDirectory)
                 .Select(LoadDefinition)
                 .ToArray();
+            var vendors = ContentLayout.ListVendorFiles(itemsDirectory)
+                .Select(LoadVendor)
+                .ToArray();
             return new ItemCatalogJsonDocument
             {
                 formatVersion = header.formatVersion,
                 catalogId = header.catalogId,
                 baseSecureContainerTierId = header.baseSecureContainerTierId,
                 character = header.character,
+                economy = header.economy,
                 progression = header.progression,
                 categories = header.categories,
                 tags = header.tags,
+                toolKinds = header.toolKinds,
                 equipmentSlots = header.equipmentSlots,
                 weaponFamilies = header.weaponFamilies,
                 ammunitionFamilies = header.ammunitionFamilies,
                 definitions = definitions,
                 secureContainerTiers = header.secureContainerTiers,
+                vendors = vendors,
                 retired = header.retired
             };
         }
@@ -283,9 +314,11 @@ namespace Mmorpg.WorldData.Editor.Items
                         catalogId = normalized.catalogId,
                         baseSecureContainerTierId = normalized.baseSecureContainerTierId,
                         character = normalized.character,
+                        economy = normalized.economy,
                         progression = normalized.progression,
                         categories = normalized.categories,
                         tags = normalized.tags,
+                        toolKinds = normalized.toolKinds,
                         equipmentSlots = normalized.equipmentSlots,
                         weaponFamilies = normalized.weaponFamilies,
                         ammunitionFamilies = normalized.ammunitionFamilies,
@@ -307,7 +340,42 @@ namespace Mmorpg.WorldData.Editor.Items
                 files.Add(path, ItemCatalogEditorJson.SerializeDefinition(definition));
             }
 
+            foreach (var vendor in normalized.vendors)
+            {
+                var path = Path.Combine(
+                    ContentLayout.VendorsDirectoryName,
+                    ContentLayout.DefinitionFileName(vendor.id));
+                if (files.ContainsKey(path))
+                {
+                    throw new InvalidDataException(
+                        "Vendor profile id '" + vendor.id + "' is used more than once.");
+                }
+
+                files.Add(path, ItemCatalogEditorJson.SerializeVendor(vendor));
+            }
+
             return files;
+        }
+
+        private static ItemCatalogJsonVendor LoadVendor(ContentDefinitionFile file)
+        {
+            ItemCatalogJsonVendor vendor;
+            try
+            {
+                vendor = ItemCatalogEditorJson.DeserializeVendor(File.ReadAllText(file.Path));
+            }
+            catch (InvalidDataException exception)
+            {
+                throw new InvalidDataException(file.Path + ": " + exception.Message, exception);
+            }
+
+            if (!string.Equals(vendor.id, file.Id, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Vendor profile file '" + file.Path + "' must contain id '" + file.Id + "'.");
+            }
+
+            return vendor;
         }
 
         private static ItemCatalogJsonDefinition LoadDefinition(ContentDefinitionFile file)
@@ -441,6 +509,7 @@ namespace Mmorpg.WorldData.Editor.Items
             Presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
             Authoring.definitions = Authoring.definitions
                 ?? Array.Empty<ItemCatalogJsonDefinition>();
+            Authoring.vendors = Authoring.vendors ?? Array.Empty<ItemCatalogJsonVendor>();
             Presentation.entries = Presentation.entries ?? Array.Empty<ItemPresentationEntry>();
             bakedDefinitionIds = new HashSet<string>(
                 (CurrentRuntime.definitions ?? Array.Empty<ItemCatalogEditorRuntimeDefinition>())
@@ -493,15 +562,18 @@ namespace Mmorpg.WorldData.Editor.Items
             Authoring.catalogId = authoring.catalogId;
             Authoring.baseSecureContainerTierId = authoring.baseSecureContainerTierId;
             Authoring.character = authoring.character;
+            Authoring.economy = authoring.economy;
             Authoring.progression = authoring.progression;
             Authoring.retired = authoring.retired;
             Authoring.categories = authoring.categories;
             Authoring.tags = authoring.tags;
+            Authoring.toolKinds = authoring.toolKinds;
             Authoring.equipmentSlots = authoring.equipmentSlots;
             Authoring.weaponFamilies = authoring.weaponFamilies;
             Authoring.ammunitionFamilies = authoring.ammunitionFamilies;
             Authoring.definitions = authoring.definitions ?? Array.Empty<ItemCatalogJsonDefinition>();
             Authoring.secureContainerTiers = authoring.secureContainerTiers;
+            Authoring.vendors = authoring.vendors ?? Array.Empty<ItemCatalogJsonVendor>();
             Presentation.formatVersion = presentation.formatVersion;
             Presentation.sourceCatalogRevision = presentation.sourceCatalogRevision;
             Presentation.presentationRevision = presentation.presentationRevision;
@@ -531,7 +603,9 @@ namespace Mmorpg.WorldData.Editor.Items
                     ? Authoring.categories[0].id
                     : string.Empty,
                 tags = Array.Empty<string>(),
+                toolKinds = Array.Empty<string>(),
                 unitWeight = 0,
+                value = 0,
                 maximumStackSize = 1,
                 equipmentSlots = Array.Empty<string>(),
                 blockedEquipmentSlots = Array.Empty<string>(),
@@ -654,6 +728,52 @@ namespace Mmorpg.WorldData.Editor.Items
             return true;
         }
 
+        // A new vendor offers nothing yet, sells at the item value, buys at 40 percent, and buys
+        // nothing until sale categories are chosen.
+        public ItemCatalogJsonVendor CreateVendor()
+        {
+            var vendor = new ItemCatalogJsonVendor
+            {
+                id = CreateUniqueVendorId("vendor.new_vendor"),
+                displayName = "New Vendor",
+                offers = Array.Empty<ItemCatalogJsonVendorOffer>(),
+                purchasePriceBasisPoints = VendorPricing.BasisPointsScale,
+                salePriceBasisPoints = 4000,
+                saleCategories = Array.Empty<string>()
+            };
+            Authoring.vendors = Authoring.vendors.Concat(new[] { vendor }).ToArray();
+            return vendor;
+        }
+
+        // Actor content names vendor profiles, so a removed or renamed vendor fails the actor
+        // compiler until the vendor capability is updated too.
+        public void RemoveVendor(ItemCatalogJsonVendor vendor)
+        {
+            Authoring.vendors = Authoring.vendors
+                .Where(candidate => !ReferenceEquals(candidate, vendor))
+                .ToArray();
+        }
+
+        public bool TryRenameVendor(ItemCatalogJsonVendor vendor, string newId, out string error)
+        {
+            error = string.Empty;
+            if (vendor == null)
+            {
+                error = "Vendor profile is missing.";
+                return false;
+            }
+
+            if (Authoring.vendors.Any(candidate => !ReferenceEquals(candidate, vendor)
+                && string.Equals(candidate.id, newId, StringComparison.Ordinal)))
+            {
+                error = "Another vendor profile already uses id '" + newId + "'.";
+                return false;
+            }
+
+            vendor.id = newId;
+            return true;
+        }
+
         public ItemPresentationEntry FindPresentation(string definitionId)
         {
             return Presentation.entries.FirstOrDefault(entry => string.Equals(
@@ -694,6 +814,19 @@ namespace Mmorpg.WorldData.Editor.Items
                     prefabPresentationKey = string.Empty
                 }
             }).ToArray();
+        }
+
+        private string CreateUniqueVendorId(string preferredId)
+        {
+            var candidate = preferredId;
+            var suffix = 2;
+            while (Authoring.vendors.Any(vendor => string.Equals(vendor.id, candidate, StringComparison.Ordinal)))
+            {
+                candidate = preferredId + "_" + suffix;
+                suffix++;
+            }
+
+            return candidate;
         }
 
         private string CreateUniqueId(string preferredId)

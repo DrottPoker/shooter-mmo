@@ -98,6 +98,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         "services.vendor",
                         RealtimeWorldActorCapabilityKind.Vendor,
                         "Trade",
+                        "vendor.city_general_store",
                         true,
                         4)
                 });

@@ -16,8 +16,9 @@ namespace Mmorpg.WorldData.Editor.Items
     // The Item Catalog tool: a filterable list of item definitions beside an editor for the
     // selected ones, live validation with the shared compiler, and the save and bake actions.
     // Several selected definitions are edited together; identity, bag layout, combat data, and
-    // client presentation are edited one definition at a time.
-    public sealed class ItemCatalogEditorView : VisualElement, IDisposable
+    // client presentation are edited one definition at a time. The Vendors mode edits vendor
+    // profiles with the same history and save.
+    public sealed partial class ItemCatalogEditorView : VisualElement, IDisposable
     {
         public const long LiveValidationDelayMilliseconds = 300;
 
@@ -77,14 +78,15 @@ namespace Mmorpg.WorldData.Editor.Items
             list.AddToggleFilter("Problems", definition => IssueState(definition) != null);
             list.SelectionChanged += OnSelectionChanged;
             toolLayout.ListSlot.Add(list);
-            var listActions = new VisualElement();
-            listActions.AddToClassList(ContentToolStyles.Row);
-            listActions.Add(new Button(CreateDefinition) { text = "New", tooltip = "Create a draft item definition." });
+            definitionActions = new VisualElement();
+            definitionActions.AddToClassList(ContentToolStyles.Row);
+            definitionActions.Add(new Button(CreateDefinition) { text = "New", tooltip = "Create a draft item definition." });
             duplicateButton = new Button(DuplicateSelected) { text = "Duplicate", tooltip = "Create a draft copy of every selected definition." };
             removeButton = new Button(RemoveSelectedDrafts) { text = "Remove Draft", tooltip = "Remove the selected definitions that were never baked." };
-            listActions.Add(duplicateButton);
-            listActions.Add(removeButton);
-            toolLayout.ListSlot.Add(listActions);
+            definitionActions.Add(duplicateButton);
+            definitionActions.Add(removeButton);
+            toolLayout.ListSlot.Add(definitionActions);
+            CreateVendorMode();
 
             toolLayout.Actions.Add(new Button(() => ValidateWithCompiler()) { text = "Validate", tooltip = "Compile the catalog with the content compiler." });
             toolLayout.Actions.Add(new Button(() => Save(false)) { text = "Save", tooltip = "Write the authoring and presentation files." });
@@ -139,6 +141,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 detailShape = string.Empty;
                 session.Changed += OnContentChanged;
                 session.Load(keepPendingEdits);
+                LoadVendors();
                 if (list.Selection.Count == 0 && workspace.Authoring.definitions.Length > 0)
                 {
                     list.Select(new[] { workspace.Authoring.definitions.OrderBy(definition => definition.id, StringComparer.Ordinal).First().id });
@@ -157,6 +160,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 session?.Dispose();
                 session = null;
                 list.SetItems(Array.Empty<ItemCatalogJsonDefinition>());
+                vendorList.SetItems(Array.Empty<ItemCatalogJsonVendor>());
                 ShowDetailHint("The item catalog could not be loaded.");
                 toolLayout.SetStatus(exception.Message, HelpBoxMessageType.Error);
             }
@@ -197,10 +201,12 @@ namespace Mmorpg.WorldData.Editor.Items
             }
             catch (ItemCatalogValidationException exception)
             {
-                found.AddRange(exception.Errors.Select(error => ContentIssuePath.ToIssue(
-                    error,
-                    "definitions",
-                    index => index < definitions.Length ? definitions[index].id : null)));
+                found.AddRange(exception.Errors.Select(error => error.StartsWith("vendors", StringComparison.Ordinal)
+                    ? ToVendorIssue(error)
+                    : ContentIssuePath.ToIssue(
+                        error,
+                        "definitions",
+                        index => index < definitions.Length ? definitions[index].id : null)));
             }
             catch (Exception exception)
             {
@@ -363,6 +369,7 @@ namespace Mmorpg.WorldData.Editor.Items
             lastValidation = null;
             UpdateValidationInfo();
             list.SetItems(workspace.Authoring.definitions);
+            OnVendorContentChanged();
             UnsavedChangesChanged?.Invoke();
             liveValidation.ExecuteLater(LiveValidationDelayMilliseconds);
         }
@@ -371,13 +378,15 @@ namespace Mmorpg.WorldData.Editor.Items
         {
             issues = ValidateLive();
             list.SetIssueState(IssueState);
+            vendorList.SetIssueState(VendorIssueState);
             toolLayout.Issues.SetIssues(issues, DescribeIssue);
             form?.ApplyIssues(issues);
+            vendorForm?.ApplyIssues(VendorIssues());
         }
 
         private void OnSelectionChanged()
         {
-            if (workspace == null || form == null)
+            if (workspace == null || form == null || showVendors)
             {
                 return;
             }
@@ -423,6 +432,7 @@ namespace Mmorpg.WorldData.Editor.Items
         private void BuildDetail(IReadOnlyList<ItemCatalogJsonDefinition> selection)
         {
             form.Clear();
+            vendorForm?.Clear();
             toolLayout.Detail.Clear();
             if (selection.Count == 0)
             {
@@ -449,6 +459,9 @@ namespace Mmorpg.WorldData.Editor.Items
             weight.tooltip = "Neutral whole-number gameplay units with no physical measurement.";
             identity.Add(weight);
             identity.Add(form.Integer("Maximum Stack Size", "maximumStackSize", definition => definition.maximumStackSize, (definition, value) => definition.maximumStackSize = value));
+            var value = form.Long("Value", "value", definition => definition.value, (definition, newValue) => definition.value = newValue);
+            value.tooltip = "The base price in currency units. Vendors sell and buy at a share of it; 0 means vendors never trade it.";
+            identity.Add(value);
             var level = form.Integer("Required Character Level", "requiredCharacterLevel", definition => definition.requiredCharacterLevel, (definition, value) => definition.requiredCharacterLevel = value);
             level.tooltip = "The character level needed to equip the item. 1 means every character.";
             identity.Add(level);
@@ -478,6 +491,15 @@ namespace Mmorpg.WorldData.Editor.Items
                 "No equipment slots are defined in the catalog.");
             blocked.tooltip = "Slots that stay empty while this item is equipped, such as the off hand for a two-handed weapon.";
             compatibility.Add(blocked);
+            var toolKinds = form.Flags(
+                "Tool Kinds",
+                "toolKinds",
+                ToolKindNames,
+                definition => definition.toolKinds,
+                (definition, newValue) => definition.toolKinds = newValue,
+                "No tool kinds are defined in the catalog.");
+            toolKinds.tooltip = "Gathering kinds this item serves as a tool for while equipped in the Tool slot.";
+            compatibility.Add(toolKinds);
             toolLayout.Detail.Add(compatibility);
 
             var rules = ContentToolStyles.CreateSection("Eligibility And Policies");
@@ -873,9 +895,14 @@ namespace Mmorpg.WorldData.Editor.Items
 
         private void ShowIssue(ContentIssue issue)
         {
-            if (string.IsNullOrEmpty(issue.EntityKey))
+            if (string.IsNullOrEmpty(issue.EntityKey) || TryShowVendorIssue(issue))
             {
                 return;
+            }
+
+            if (showVendors)
+            {
+                ShowVendors(false);
             }
 
             list.Select(new[] { issue.EntityKey });
@@ -913,6 +940,11 @@ namespace Mmorpg.WorldData.Editor.Items
                 return issue.Message;
             }
 
+            if (issue.EntityKey.StartsWith(VendorIssueKeyPrefix, StringComparison.Ordinal))
+            {
+                return DescribeVendorIssue(issue);
+            }
+
             var definition = workspace?.Authoring.definitions.FirstOrDefault(entry =>
                 string.Equals(entry.id, issue.EntityKey, StringComparison.Ordinal));
             var name = definition == null ? issue.EntityKey : definition.displayName + " (" + definition.id + ")";
@@ -941,6 +973,11 @@ namespace Mmorpg.WorldData.Editor.Items
         private IEnumerable<(string Value, string Label)> TagNames()
         {
             return IdentityNames(workspace?.Authoring.tags);
+        }
+
+        private IEnumerable<(string Value, string Label)> ToolKindNames()
+        {
+            return IdentityNames(workspace?.Authoring.toolKinds);
         }
 
         private IEnumerable<(string Value, string Label)> EquipmentSlotNames()

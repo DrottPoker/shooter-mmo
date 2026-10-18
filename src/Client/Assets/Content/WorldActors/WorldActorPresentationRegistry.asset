@@ -41,3 +41,10 @@ MonoBehaviour:
       m_SubObjectType: 
       m_SubObjectGUID: 
       m_EditorAssetChanged: 0
+  - presentationArchetypeId: resource.iron_vein
+    prefab:
+      m_AssetGUID: 369e84af558b70d48b1e5074503a3f24
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0

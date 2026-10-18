@@ -27,7 +27,8 @@ namespace Mmorpg.WorldData.Editor.Actors
         private static readonly (string Value, string Label)[] Kinds =
         {
             (WorldActorKindIds.Npc, "NPC"),
-            (WorldActorKindIds.Mob, "Mob")
+            (WorldActorKindIds.Mob, "Mob"),
+            (WorldActorKindIds.ResourceNode, "Resource Node")
         };
 
         private static readonly (string Value, string Label)[] Dispositions =
@@ -59,7 +60,8 @@ namespace Mmorpg.WorldData.Editor.Actors
             (WorldActorCapabilityKindIds.Insurance, "Insurance"),
             (WorldActorCapabilityKindIds.Trainer, "Trainer"),
             (WorldActorCapabilityKindIds.Bank, "Bank"),
-            (WorldActorCapabilityKindIds.RecoveryStorage, "Recovery Storage")
+            (WorldActorCapabilityKindIds.RecoveryStorage, "Recovery Storage"),
+            (WorldActorCapabilityKindIds.Gathering, "Gathering")
         };
 
         private readonly WorldActorEditorService service;
@@ -109,6 +111,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             listActions.AddToClassList(ContentToolStyles.Row);
             listActions.Add(new Button(() => AddActor(WorldActorKindIds.Npc)) { text = "New NPC" });
             listActions.Add(new Button(() => AddActor(WorldActorKindIds.Mob)) { text = "New Mob" });
+            listActions.Add(new Button(() => AddActor(WorldActorKindIds.ResourceNode)) { text = "New Resource Node", tooltip = "An ore vein or another node that players gather from." });
             duplicateButton = new Button(DuplicateSelected) { text = "Duplicate", tooltip = "Copy every selected actor." };
             deleteButton = new Button(() => DeleteSelected()) { text = "Delete", tooltip = "Delete the selected actors that no spawn places." };
             listActions.Add(duplicateButton);
@@ -257,7 +260,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             }
 
             WorldActorEditorDefinition actor = null;
-            session.Change(kind == WorldActorKindIds.Npc ? "New NPC" : "New mob", () =>
+            session.Change("New " + Label(Kinds, kind), () =>
             {
                 var actors = workspace.Catalog.actors ?? Array.Empty<WorldActorEditorDefinition>();
                 actor = CreateTemplate(kind, actors.Length + 1);
@@ -614,14 +617,15 @@ namespace Mmorpg.WorldData.Editor.Actors
         private VisualElement BuildLifecycleSection(IReadOnlyList<WorldActorEditorDefinition> selection)
         {
             var section = ContentToolStyles.CreateSection("Combat And Lifecycle");
-            if (selection.All(actor => actor.kind == WorldActorKindIds.Npc))
+            if (selection.All(actor => actor.kind != WorldActorKindIds.Mob))
             {
                 section.Add(ContentToolStyles.CreateHint(
-                    "NPCs are always invulnerable and have no activity, respawn, combat, brain, locomotion, loot, or corpse settings."));
+                    "NPCs and resource nodes are always invulnerable and have no activity, respawn, combat, brain, locomotion, loot, or corpse settings. "
+                        + "A resource node's charges and respawn come from its gathering capability's resource profile."));
                 return section;
             }
 
-            if (selection.Any(actor => actor.kind == WorldActorKindIds.Npc))
+            if (selection.Any(actor => actor.kind != WorldActorKindIds.Mob))
             {
                 section.Add(ContentToolStyles.CreateHint("These settings apply to the selected mobs only."));
             }
@@ -740,8 +744,17 @@ namespace Mmorpg.WorldData.Editor.Actors
             box.AddToClassList(ContentToolStyles.Section);
             var path = "capabilities[" + position + "]";
             box.Add(form.Text("Stable Capability Id", path + ".id", actor => CapabilityAt(actor, position)?.id, (actor, value) => EditCapability(actor, position, capability => capability.id = value)));
-            box.Add(form.Choice("Kind", path + ".kind", () => CapabilityKinds, actor => CapabilityAt(actor, position)?.kind, (actor, value) => EditCapability(actor, position, capability => capability.kind = value)));
+            box.Add(form.Choice("Kind", path + ".kind", () => CapabilityKinds, actor => CapabilityAt(actor, position)?.kind, (actor, value) => EditCapability(actor, position, capability => SetCapabilityKind(capability, value))));
             box.Add(form.Text("Display Name", path + ".displayName", actor => CapabilityAt(actor, position)?.displayName, (actor, value) => EditCapability(actor, position, capability => capability.displayName = value)));
+            var profile = form.Choice(
+                "Profile",
+                path + ".profileId",
+                () => CapabilityProfileOptions(form.Targets.Count == 1 ? CapabilityAt(form.Targets[0], position) : null),
+                actor => CapabilityAt(actor, position)?.profileId,
+                (actor, value) => EditCapability(actor, position, capability => capability.profileId = value),
+                actor => UsesProfile(CapabilityAt(actor, position)?.kind));
+            profile.tooltip = "A vendor names an item catalog vendor profile; a gathering capability names a resource profile from catalog.json.";
+            box.Add(profile);
             var buttons = new VisualElement();
             buttons.AddToClassList(ContentToolStyles.Row);
             var up = new Button(() => MoveCapability(position, -1)) { text = "Move Up" };
@@ -804,7 +817,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             }
 
             actor.kind = kind;
-            if (kind == WorldActorKindIds.Npc)
+            if (kind != WorldActorKindIds.Mob)
             {
                 actor.damagePolicy = WorldActorDamagePolicyIds.Invulnerable;
                 actor.activityProfileId = string.Empty;
@@ -815,6 +828,11 @@ namespace Mmorpg.WorldData.Editor.Actors
                 actor.brainProfileId = string.Empty;
                 actor.locomotionProfileId = string.Empty;
                 actor.lootProfileId = string.Empty;
+                actor.capabilities = kind == WorldActorKindIds.ResourceNode
+                    ? new[] { CreateGatheringCapability(actor) }
+                    : (actor.capabilities ?? Array.Empty<WorldActorEditorCapability>())
+                        .Where(capability => capability?.kind != WorldActorCapabilityKindIds.Gathering)
+                        .ToArray();
             }
             else
             {
@@ -910,6 +928,11 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         private WorldActorEditorDefinition CreateTemplate(string kind, int index)
         {
+            if (kind == WorldActorKindIds.ResourceNode)
+            {
+                return CreateResourceNodeTemplate(index);
+            }
+
             var npc = kind == WorldActorKindIds.Npc;
             return new WorldActorEditorDefinition
             {
@@ -933,6 +956,88 @@ namespace Mmorpg.WorldData.Editor.Actors
                 locomotionProfileId = npc ? string.Empty : workspace.Catalog.locomotionProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 lootProfileId = string.Empty
             };
+        }
+
+        // A resource node is a neutral, invulnerable world object with one gathering capability.
+        private WorldActorEditorDefinition CreateResourceNodeTemplate(int index)
+        {
+            var node = new WorldActorEditorDefinition
+            {
+                id = CreateUniqueActorId("resource.new_node_" + index),
+                displayName = "New Resource Node",
+                kind = WorldActorKindIds.ResourceNode,
+                factionId = workspace.Catalog.factions?.FirstOrDefault()?.id ?? string.Empty,
+                disposition = WorldActorDispositionIds.Neutral,
+                presentationArchetypeId = workspace.Catalog.presentationArchetypes?
+                    .FirstOrDefault(value => value.actorKind == WorldActorKindIds.ResourceNode)?.id ?? string.Empty,
+                damagePolicy = WorldActorDamagePolicyIds.Invulnerable,
+                interactionBounds = new WorldActorEditorBounds
+                {
+                    centerY = 0.6f,
+                    sizeX = 1.6f,
+                    sizeY = 1.2f,
+                    sizeZ = 1.6f
+                },
+                tags = new[] { "resource" },
+                activityProfileId = string.Empty,
+                respawnProfileId = string.Empty,
+                corpsePersistenceMode = string.Empty,
+                corpseLifetimeSeconds = 0f,
+                combatProfileId = string.Empty,
+                brainProfileId = string.Empty,
+                locomotionProfileId = string.Empty,
+                lootProfileId = string.Empty
+            };
+            node.capabilities = new[] { CreateGatheringCapability(node) };
+            return node;
+        }
+
+        private WorldActorEditorCapability CreateGatheringCapability(WorldActorEditorDefinition actor)
+        {
+            var existing = actor.capabilities?.FirstOrDefault(capability =>
+                capability?.kind == WorldActorCapabilityKindIds.Gathering);
+            return existing ?? new WorldActorEditorCapability
+            {
+                id = CreateUniqueCapabilityId(actor, actor.id + ".gather"),
+                kind = WorldActorCapabilityKindIds.Gathering,
+                displayName = "Gather",
+                profileId = workspace.Catalog.resourceProfiles?.FirstOrDefault()?.id ?? string.Empty
+            };
+        }
+
+        // A kind without a profile clears it, and a kind with one starts at the first choice.
+        private void SetCapabilityKind(WorldActorEditorCapability capability, string kind)
+        {
+            capability.kind = kind;
+            var options = CapabilityProfileOptions(capability).Select(option => option.Value).ToArray();
+            capability.profileId = !UsesProfile(kind)
+                ? string.Empty
+                : options.Contains(capability.profileId, StringComparer.Ordinal)
+                    ? capability.profileId
+                    : options.FirstOrDefault() ?? string.Empty;
+        }
+
+        private static bool UsesProfile(string capabilityKind)
+        {
+            return capabilityKind == WorldActorCapabilityKindIds.Vendor
+                || capabilityKind == WorldActorCapabilityKindIds.Gathering;
+        }
+
+        private IEnumerable<(string Value, string Label)> CapabilityProfileOptions(WorldActorEditorCapability capability)
+        {
+            if (capability?.kind == WorldActorCapabilityKindIds.Vendor)
+            {
+                return (workspace?.ItemReferences.vendors ?? Array.Empty<WorldActorEditorItemReference>())
+                    .Select(vendor => (vendor.id, vendor.displayName + " (" + vendor.id + ")"));
+            }
+
+            if (capability?.kind == WorldActorCapabilityKindIds.Gathering)
+            {
+                return (workspace?.Catalog.resourceProfiles ?? Array.Empty<WorldActorEditorResourceProfile>())
+                    .Select(profile => (profile.id, profile.id + " (" + profile.yieldDefinitionId + ", " + profile.requiredToolKind + ")"));
+            }
+
+            return new[] { (string.Empty, "(none)") };
         }
 
         private string CreateUniqueActorId(string candidate)
