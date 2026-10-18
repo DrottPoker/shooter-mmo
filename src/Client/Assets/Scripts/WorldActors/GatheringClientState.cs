@@ -36,8 +36,9 @@ namespace Mmorpg.Client.WorldActors
         public string StopMessage { get; private set; } = string.Empty;
 
         // Applies one GatheringState. Started must belong to the open interaction; Yielded
-        // and Stopped may arrive after the interaction closed, because a cycle that was in
-        // flight still completes. A message for another gathering session is ignored.
+        // and Stopped may arrive after the interaction closed, and a Yielded even after
+        // Stopped, because a cycle that was in flight still completes. A message for another
+        // gathering session is ignored.
         public bool TryApply(
             RealtimeGatheringState state,
             Guid activeInteractionSessionId,
@@ -71,7 +72,9 @@ namespace Mmorpg.Client.WorldActors
                     StopMessage = string.Empty;
                     break;
                 case RealtimeGatheringStateKind.Yielded:
-                    if (!IsCurrent(state))
+                    // A cycle that was in flight when gathering stopped still yields.
+                    if (!IsSameSession(state)
+                        || Status is not (GatheringClientStatus.Gathering or GatheringClientStatus.Stopped))
                     {
                         error = "Gathering yield belongs to another gathering session.";
                         return false;
@@ -135,8 +138,12 @@ namespace Mmorpg.Client.WorldActors
 
         private bool IsCurrent(RealtimeGatheringState state)
         {
-            return Status == GatheringClientStatus.Gathering
-                && state.InteractionSessionId == InteractionSessionId
+            return Status == GatheringClientStatus.Gathering && IsSameSession(state);
+        }
+
+        private bool IsSameSession(RealtimeGatheringState state)
+        {
+            return state.InteractionSessionId == InteractionSessionId
                 && state.TargetEntityId == TargetEntityId;
         }
     }

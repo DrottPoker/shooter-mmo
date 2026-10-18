@@ -62,6 +62,30 @@ public sealed class RealtimeGatheringTests
     }
 
     [Fact]
+    public void AYieldThatCommitsAfterGatheringStoppedStillReachesTheClient()
+    {
+        using var fixture = new RealtimeLoopFixture(enableWorldActors: true);
+        var gathering = fixture.CreateGatheringHandler();
+        var player = fixture.ConnectPlayer(1);
+        var vein = Vein(fixture);
+        var charges = vein.RemainingResourceCharges;
+        var first = Begin(fixture, gathering, player, vein);
+        var cycle = RunCycle(fixture, gathering, out _);
+
+        // A new gathering start stops the first one while its yield is still in flight.
+        gathering.Begin(player.Peer, player.Context, player.Session, new GatheringStart(Guid.NewGuid(), CapabilityId, vein));
+        Assert.Equal(GatheringStopCodes.Interrupted, States(player)[^2].Code);
+        gathering.Complete(Yielded(cycle, player, 1));
+
+        var yielded = States(player).Last();
+        Assert.Equal(RealtimeGatheringStateKind.Yielded, yielded.Kind);
+        Assert.Equal(first.InteractionSessionId, yielded.InteractionSessionId);
+        Assert.Equal(1, yielded.ItemStateRevision);
+        Assert.Equal(charges - 1, vein.RemainingResourceCharges);
+        Assert.Equal(0, vein.ReservedResourceCharges);
+    }
+
+    [Fact]
     public void ARejectedYieldStopsGatheringAndReleasesTheCharge()
     {
         using var fixture = new RealtimeLoopFixture(enableWorldActors: true);

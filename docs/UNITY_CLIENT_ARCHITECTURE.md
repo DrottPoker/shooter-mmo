@@ -1051,8 +1051,10 @@ must belong to the open interaction and starts a cycle timer. `Yielded` adds the
 gathered quantity and restarts the timer, and every yield refreshes the
 inventory to its committed item-state revision. `Stopped` keeps the gathered
 count and the worker's stop message. `Yielded` and `Stopped` may still arrive
-after the interaction closed, and a message for another gathering session is
-ignored. A session end clears the state.
+after the interaction closed, and a `Yielded` even after `Stopped`, because a
+cycle in flight still completes; it adds to the gathered count. A message for
+another gathering session is ignored, but a yield still refreshes the
+inventory. A session end clears the state.
 
 While gathering, the interaction panel shows the capability name with a
 trailing ellipsis, such as `Mine...`, the gathered count, and a progress bar for

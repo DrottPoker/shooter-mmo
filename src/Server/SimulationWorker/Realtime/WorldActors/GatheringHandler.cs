@@ -273,19 +273,20 @@ internal sealed class GatheringHandler(
             carrySync.ApplyLatest(entity!);
         }
 
-        if (activity is null)
+        var profile = completed.Request.Profile;
+        if (activity is not null)
         {
-            return;
+            activity.OperationId = Guid.Empty;
+            activity.UncertainRetries = 0;
+            activity.NextCycleTick = clock.ServerTick + CycleTicks(profile.CycleSeconds);
         }
 
-        var profile = completed.Request.Profile;
-        activity.OperationId = Guid.Empty;
-        activity.UncertainRetries = 0;
-        activity.NextCycleTick = clock.ServerTick + CycleTicks(profile.CycleSeconds);
+        // The yield committed even when gathering stopped while it was in flight, so the client
+        // always learns the item-state revision that holds it.
         sender.SendControl(peer, RealtimeProtocol.EncodeGatheringState(RealtimeGatheringState.CreateYielded(
-            activity.InteractionSessionId,
-            activity.Node.NetworkEntityId,
-            activity.Node.RuntimeActorId,
+            completed.Request.InteractionSessionId,
+            completed.Node.NetworkEntityId,
+            completed.Node.RuntimeActorId,
             CycleMilliseconds(profile.CycleSeconds),
             profile.YieldDefinitionId,
             profile.YieldQuantity,

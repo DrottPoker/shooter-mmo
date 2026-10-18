@@ -314,8 +314,10 @@ cycle time, the yield definition and quantity, and the item-state revision
 after the yield, or `Stopped` with a stable code and a message, such as
 `resource_node_depleted`, `gathering_interrupted`, `world_interaction_closed`,
 or a GameService rejection code. A `Yielded` or `Stopped` can arrive after the
-interaction closed, because a cycle that was already in flight still
-completes.
+interaction closed, and a `Yielded` even after `Stopped`, because a cycle that
+was already in flight still completes. The worker always sends the `Yielded` of
+a committed cycle, so the client learns the item-state revision that holds the
+yield.
 
 ## Versioning
 

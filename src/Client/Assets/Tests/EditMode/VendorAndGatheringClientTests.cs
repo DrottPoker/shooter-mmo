@@ -177,6 +177,18 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.CycleProgress(5f), Is.EqualTo(0f));
             Assert.That(changes, Is.EqualTo(3));
 
+            // A cycle that was in flight when gathering stopped still yields.
+            Assert.That(
+                state.TryApply(
+                    RealtimeGatheringState.CreateYielded(interaction, 9, runtime, 3000, "fixture.ore", 1, 5),
+                    Guid.Empty,
+                    6f,
+                    out error),
+                Is.True,
+                error);
+            Assert.That(state.Status, Is.EqualTo(GatheringClientStatus.Stopped));
+            Assert.That(state.YieldedQuantity, Is.EqualTo(2));
+
             state.Clear();
             Assert.That(state.Status, Is.EqualTo(GatheringClientStatus.Idle));
             Assert.That(state.YieldedQuantity, Is.EqualTo(0));
