@@ -602,6 +602,89 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.Error, Is.Null);
         }
 
+        // The worker rejects these without asking for a corpse refresh, so no view state
+        // follows that could make the view usable again.
+        [TestCase(
+            RealtimeCorpseInteractionKind.LootItem,
+            "carry_weight_limit_exceeded",
+            "The carried weight would exceed the limit.")]
+        [TestCase(
+            RealtimeCorpseInteractionKind.DepositItem,
+            "item_stack_incompatible",
+            "The items cannot share a stack.")]
+        [TestCase(
+            RealtimeCorpseInteractionKind.MoveItem,
+            "corpse_out_of_range",
+            "Move closer to the corpse before interacting with it.")]
+        public void RejectionKeepsTheOpenViewUsableAndShowsTheError(
+            RealtimeCorpseInteractionKind operationKind,
+            string code,
+            string message)
+        {
+            var state = new CorpseClientState();
+            var corpseId = Guid.NewGuid();
+            OpenView(state, corpseId);
+            var operation = Begin(state, operationKind, corpseId);
+
+            AssertCompletes(state, Rejected(operation, operationKind, corpseId, code, message));
+
+            Assert.That(state.ActiveView.CorpseId, Is.EqualTo(corpseId));
+            Assert.That(state.PendingOperationId, Is.EqualTo(Guid.Empty));
+            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Ready));
+            Assert.That(state.CanMutate, Is.True);
+            Assert.That(state.Error.ToDisplayMessage(), Is.EqualTo(code + ": " + message));
+            Assert.That(state.Notice, Is.Empty);
+
+            Begin(state, operationKind, corpseId);
+
+            Assert.That(state.Error, Is.Null);
+        }
+
+        [Test]
+        public void AnotherViewersChangeKeepsTheRejectionVisible()
+        {
+            var state = new CorpseClientState();
+            var corpseId = Guid.NewGuid();
+            var itemId = Guid.NewGuid();
+            var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+            CompleteOpen(state, corpseId);
+            foreach (var chunk in CreateSnapshot(corpseId, itemId, containers, 5, 5, 1))
+            {
+                state.ApplyViewChunk(chunk);
+            }
+
+            var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
+            AssertCompletes(
+                state,
+                Rejected(
+                    loot,
+                    RealtimeCorpseInteractionKind.LootItem,
+                    corpseId,
+                    "carry_weight_limit_exceeded",
+                    "The carried weight would exceed the limit."));
+            var otherViewerDelta = CreateChunk(
+                Guid.NewGuid(),
+                RealtimeCorpseViewUpdateKind.Delta,
+                corpseId,
+                5,
+                6,
+                0,
+                1,
+                "general_inventory",
+                containers[0],
+                2,
+                false,
+                1,
+                new[] { CreateSlot(0, itemId, 3, 2) });
+
+            Assert.That(
+                state.ApplyViewChunk(otherViewerDelta),
+                Is.EqualTo(CorpseStateApplyResult.Applied));
+            Assert.That(state.ActiveView.Revision, Is.EqualTo(6));
+            Assert.That(state.CanMutate, Is.True);
+            Assert.That(state.Error.Code, Is.EqualTo("carry_weight_limit_exceeded"));
+        }
+
         [Test]
         public void RejectedOpenForgetsTheCorpse()
         {
@@ -618,7 +701,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     "corpse_out_of_range",
                     "Move closer to the corpse before interacting with it."));
 
-            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Error));
+            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Ready));
+            Assert.That(state.CanMutate, Is.False);
             Assert.That(state.Error.Code, Is.EqualTo("corpse_out_of_range"));
             var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
             Assert.That(

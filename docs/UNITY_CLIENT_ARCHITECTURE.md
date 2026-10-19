@@ -793,6 +793,21 @@ open snapshot that the worker sends after the result of an operation whose view
 it already closed never reopens that view. A rejected open forgets its corpse.
 View state that arrives while an operation is pending keeps the state busy.
 
+`CorpseClientStatus` only says whether the state can start an operation:
+`Unavailable` before the first presence snapshot or operation and after a
+session reset, `Busy` while an operation is pending, and `Ready` otherwise. A
+rejection is an outcome, not a broken state, matching
+`InventoryClientState.SetServerRejection`. When the worker rejects an operation
+on an open view without `RequiresCorpseRefresh`, for example
+`carry_weight_limit_exceeded`, `item_stack_incompatible`, or
+`corpse_out_of_range`, no view state follows, so `TryComplete` returns the state
+to `Ready` and reports the rejection only in `Error`. `CanMutate` stays true and
+the panel keeps every corpse slot draggable while it shows the error in red. The
+error stays until the next operation, a closure, or a session reset; view state
+caused by other viewers does not clear it. A rejection that does require a
+corpse refresh makes the controller start a refresh at once, which clears the
+error like any new operation.
+
 A view-closure message ends the active view through
 `CorpseClientState.ApplyClosure`, which asks `CorpseViewClosureRule` in
 `Mmorpg.Client.Items` how to present the stable closure code. The viewer's own
