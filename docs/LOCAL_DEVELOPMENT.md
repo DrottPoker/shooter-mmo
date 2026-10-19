@@ -230,9 +230,11 @@ and lists the remaining worktrees. For a pull request that is already merged,
 the script skips the merge and only runs the cleanup, so running it again
 finishes a cleanup that failed halfway. Exit code 0 means merged and cleaned up,
 1 means nothing was merged, and 2 means merged but the cleanup is incomplete:
-the remote branch moved after the merge, the current checkout has uncommitted
-changes, or the local `development` could not be fast-forwarded, usually
-because of uncommitted changes in the main checkout. The report says which.
+the remote branch moved after the merge, the task branch had to stay
+(uncommitted changes in the current checkout, another worktree has it checked
+out, or it has commits that are not in `development`), or the local
+`development` could not be fast-forwarded, usually because of uncommitted
+changes in the main checkout. The report says which.
 Never discard those changes to get past exit code 2.
 
 Expected result: the pull request shows as merged with a merge commit,

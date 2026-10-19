@@ -7,9 +7,9 @@
 # records. Run it again on an already merged pull request to finish a cleanup that failed.
 #
 # Exit codes: 0 merged and cleaned up, 1 not merged, 2 merged but the cleanup is incomplete: the
-# remote branch moved after the merge, the current checkout has uncommitted changes, or the local
-# development branch could not be fast-forwarded. The report says why; never discard local work
-# to fix it.
+# remote branch moved after the merge, the task branch had to stay (uncommitted changes, another
+# worktree, or commits that are not in development), or the local development branch could not
+# be fast-forwarded. The report says why; never discard local work to fix it.
 param(
     [Parameter(Mandatory = $true)]
     [int]$Number,
@@ -150,19 +150,22 @@ $deletedBranches = @()
 $keptBranches = @()
 if (Test-Git show-ref --verify --quiet "refs/heads/$head") {
     if ($holderIsDirty) {
-        $keptBranches += "$head because this checkout has uncommitted changes; commit or move them, then run this script again"
-        $exitCode = 2
+        $keptBranches += "$head because this checkout has uncommitted changes; move them to a new branch for their own pull request, then run this script again"
     }
     elseif ($holder) {
-        $keptBranches += "$head (checked out in $($holder.Path))"
+        $keptBranches += "$head because it is checked out in $($holder.Path)"
     }
     elseif (Test-Git merge-base --is-ancestor $head origin/development) {
         Invoke-Git branch -D --quiet $head | Out-Null
         $deletedBranches += $head
     }
     else {
-        $keptBranches += "$head (has commits that are not in origin/development)"
+        $keptBranches += "$head because it has commits that are not in origin/development; merge them through another pull request or move them to another branch"
     }
+}
+# Any task branch that stays behind means the cleanup is not finished.
+if ($keptBranches.Count -gt 0) {
+    $exitCode = 2
 }
 
 $worktrees = @(Get-Worktrees)
