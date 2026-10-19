@@ -1,10 +1,12 @@
 # Combat And Setting Design
 
-Last updated: 2026-10-16
+Last updated: 2026-10-19
 
 Status: Agreed design direction. Click-to-move movement and the orbit camera are
-implemented, as recorded in [Movement And Camera](#movement-and-camera); the
-rest of this document is not implemented yet. It replaces the earlier modern
+implemented, as recorded in [Movement And Camera](#movement-and-camera), and so
+is the first combat slice, as recorded in
+[Implemented First Combat Slice](#implemented-first-combat-slice); the rest of
+this document is not implemented yet. It replaces the earlier modern
 third-person shooter combat direction.
 
 ## Purpose
@@ -220,6 +222,33 @@ direction with these decisions:
   occluding walls is not implemented yet.
 
 ## Combat Model
+
+### Implemented First Combat Slice
+
+The combat slice in October 2026, recorded in
+[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md), implements the first
+part of this model:
+
+- One Ranged weapon, the Training Shortbow, with Bronze Arrows in the
+  ammunition slot. Every shot consumes one arrow, and arrows are never
+  recovered. All damage is Normal; the combat triangle, armor, elements, and
+  resistances are not implemented.
+- Target-based auto attack. A left click on a hostile Mob or another player
+  walks into weapon range, stops, and attacks until the target dies or the
+  player clicks the ground. SimulationWorker resolves range, line of sight,
+  attack timing, and hits, and the client never predicts combat.
+- Health and regeneration. A character has 100 health and regenerates 2 percent
+  of it per second after 10 s out of combat. A dead character respawns at the
+  World spawn after 5 s.
+- Every equipment change blocks attacks for 1 s.
+- Every death, Mob or player, produces one authoritative death event with its
+  killer. A player death runs the death partition in
+  [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). PvP
+  and PvE use the same numbers.
+- The Feral Wolf detects players, chases, bites, and evades home past its leash.
+  When its target dies or becomes invalid, it turns to the attacker that dealt
+  the most damage instead of using a threat table. It has one attack and no
+  abilities.
 
 ### Combat Styles
 
@@ -689,7 +718,8 @@ Expected to change:
 
 - Movement input changes from per-tick directional input and camera yaw to
   move-to-destination and attack-target commands. Implemented for movement:
-  each input names a client-planned path. Attack-target commands remain.
+  each input names a client-planned path. Attack-target commands are
+  implemented by the first combat slice.
 - Server-side pathfinding with navigation data generated from World authoring
   data. The shared grid planner samples the baked collision and runs in the
   client today. SimulationWorker can use it for world actors; a baked navigation
@@ -705,6 +735,7 @@ Expected to change:
 - The projectile and fire-intent combat direction in the
   [MVP Specification](MVP_SPEC.md) is replaced by target-based combat where the
   server resolves hits. Shooter-style lag compensation is not needed.
+  Implemented.
 
 Expected additions:
 
@@ -725,6 +756,7 @@ Expected additions:
   diminishing returns per target and removal by a cleanse effect.
 - A server-owned attack lockout timestamp that every equipment change
   refreshes. Attack, ability, and spell intents are rejected until it expires.
+  Implemented for attacks; abilities and spells do not exist yet.
 - Durable character level, combat experience, and talent point allocation, and
   separate durable experience and level per profession. The durable character
   level exists and gates equipment through item level requirements; every
@@ -734,7 +766,8 @@ Expected additions:
 - Threat tables on Mobs, with threat from damage and healing, tank threat
   multipliers, taunt, and a target switch margin.
 - Mob combat data for health, defense, elemental weaknesses, and movement
-  impairment resistance.
+  impairment resistance. Health and the attack are implemented as actor combat
+  profiles; defense, weaknesses, and impairment resistance remain.
 - Item content with fantasy definitions, categories, and equipment slots.
   Implemented: see
   [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).

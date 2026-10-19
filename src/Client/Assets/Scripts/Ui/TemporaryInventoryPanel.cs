@@ -29,6 +29,9 @@ namespace Mmorpg.Client.Ui
         public const string ContextModuleName = "ContextPanel";
         public const string CharacterModuleName = "Character InventoryPanel";
 
+        // The inventory canvas draws above the world interaction panel and the combat HUD.
+        public const int CanvasSortingOrder = 100;
+
         private const int StorageColumns = 5;
         private const float SlotHeight = 64f;
         private const float MinimumSlotWidth = 72f;
@@ -352,7 +355,7 @@ namespace Mmorpg.Client.Ui
             canvasObject.transform.SetParent(transform, false);
             var canvas = canvasObject.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 100;
+            canvas.sortingOrder = CanvasSortingOrder;
             var scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);

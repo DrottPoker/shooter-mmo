@@ -632,6 +632,19 @@ incoherent snapshot, or a stack the client does not know as equipped
 ammunition, it calls `EnsureFullState` with the new revision, which refreshes
 unless a coherent snapshot already reached it.
 
+Other committed changes that no client intent caused, such as a death that moves
+the carried items into the corpse and Recovery Storage, reach the client only as
+a newer carry state in `NetworkMovementSession`, which
+`RealtimeSimulationClient.CarryItemStateRevision` exposes. Every frame,
+`InventoryClientController` compares it with the newest known revision, and
+`InventoryServerRevisionFollower` asks for a complete refresh to that revision
+once no own operation is pending and no refresh runs. A refresh that fails or
+stays behind is retried for the same revision 1 second after it ended, and every
+further failure doubles the delay up to 30 seconds, so a failing GameService is
+never asked every frame; a newer revision or a new session starts over at once.
+The check runs a frame after the carry state arrives, so an arrow batch that was
+already patched in place needs no refresh.
+
 `InventoryOperationJournal` permits one pending mutation, retains its generated
 operation id and rejection refresh scope, and never changes custody locally.
 Successful results always cause a complete refresh to the committed revision.
@@ -1297,9 +1310,9 @@ character is dead, so the clock keeps running for the respawn countdown.
 Status: Temporary. Every object is created at runtime, so no scene, prefab, or
 asset changes are needed.
 
-`TemporaryCombatHud` in `Mmorpg.Client.Ui` is a runtime uGUI canvas below the
-interaction panel and the inventory. Nothing on it takes a raycast, so it never
-blocks a world click. It shows:
+`TemporaryCombatHud` in `Mmorpg.Client.Ui` is a runtime uGUI canvas at sorting
+order 20, below the interaction panel at 40 and the inventory at 100. Nothing on
+it takes a raycast, so it never blocks a world click. It shows:
 
 - An owner frame at the top left with health and a bar, the live arrow count
   from `OwnerCombatState`, and the attack status as a short label from
@@ -1315,7 +1328,10 @@ blocks a world click. It shows:
 - A floating damage number at the hit target for every `Hit` event, white for
   Normal damage, rising and fading over 1.1 seconds.
 - A death overlay while the owner state says dead, with a countdown from
-  `RespawnTick` and `CombatServerClock` that rounds up to whole seconds.
+  `RespawnTick` and `CombatServerClock` that rounds up to whole seconds. The
+  overlay is a nested canvas that overrides the sorting order with
+  `DeathOverlaySortingOrder`, 150, so an open inventory or corpse view never
+  hides it.
 
 `CombatProjectilePresentation` in `Mmorpg.Client.Combat` draws a simple arrow,
 a collider-free stretched cube, from the attacker to the target of every

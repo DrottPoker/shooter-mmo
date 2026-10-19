@@ -3,10 +3,11 @@
 MMORPG is an early classless, profession-driven, open-world MMORPG with a
 World of Warcraft style fantasy setting and RuneScape-inspired click-to-move
 combat. That direction is defined in
-[Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md) and is not
-implemented yet. This repository contains the global
-identity, regional simulation topology, authoritative movement, shared collision,
-and Unity client foundation for the first playable MVP.
+[Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md); its click-to-move
+movement and first combat slice are implemented. This repository contains the
+global identity, regional simulation topology, authoritative movement and
+combat, shared collision, and Unity client foundation for the first playable
+MVP.
 
 ## Architecture In One Minute
 
@@ -103,6 +104,10 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - A persistent Gold balance with a ledger, one NPC vendor that sells supplies
   and buys carried items at fixed catalog prices, and shared Iron Vein resource
   nodes mined with a pickaxe, with live Shard depletion and respawn.
+- Server-authoritative target-based combat with the Training Shortbow and
+  batched arrow consumption, wolves that detect, chase, bite, and evade home,
+  one death event per Mob or player death with its killer, Mob loot corpses,
+  player respawn, and a temporary combat HUD in Unity.
 - OpenTelemetry metrics, logs, and traces from both server processes, exported
   over OTLP to a local Collector, Prometheus, Loki, Tempo, and Grafana stack with
   a playtest dashboard, a GameService dashboard, and tested Prometheus alert
@@ -132,9 +137,9 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   maintained as long-term foundations.
 
 The slot-based item and world-actor foundation is implemented; its status is
-summarized in [Project Overview](docs/PROJECT_OVERVIEW.md). Combat, damage,
-death-event production, loot-table generation, durable unique actors, zones,
-layers, and production orchestration remain deferred.
+summarized in [Project Overview](docs/PROJECT_OVERVIEW.md). Combat beyond the
+first slice, durable unique actors, zones, layers, and production orchestration
+remain deferred.
 
 ## Requirements
 
@@ -299,8 +304,8 @@ Start with [Project Overview](docs/PROJECT_OVERVIEW.md), then use the complete
 
 The agreed setting, movement, camera, combat triangle, damage type, weapon,
 ammunition, and magic direction is in
-[Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md). The planned
-first combat slice, with its decisions and implementation order, is in
+[Combat And Setting Design](docs/COMBAT_AND_SETTING_DESIGN.md). The first
+combat slice, with its decisions, implementation, and acceptance run, is in
 [Combat And Mob Slice Plan](docs/COMBAT_AND_MOB_SLICE_PLAN.md). The vendor,
 currency, and gathering decisions and their implementation are in
 [Vendor And Gathering Plan](docs/VENDOR_AND_GATHERING_PLAN.md).

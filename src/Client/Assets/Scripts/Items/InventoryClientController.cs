@@ -110,6 +110,8 @@ namespace Mmorpg.Client.Items
         private bool queuedOperationRefresh;
         private bool initialized;
         private bool observedRealtimeJoin;
+        private readonly InventoryServerRevisionFollower serverRevisionFollower =
+            new InventoryServerRevisionFollower();
         private string observedAccountId = string.Empty;
         private string observedCharacterId = string.Empty;
 
@@ -170,6 +172,19 @@ namespace Mmorpg.Client.Items
                 }
 
                 observedRealtimeJoin = joined;
+                // A committed change that no client intent caused, such as a death, reaches
+                // the client only as a newer carry state. It is read a frame later, so an
+                // arrow batch that patches its stack in the same packet needs no refresh.
+                var serverRevision = joined ? simulationClient.CarryItemStateRevision : -1;
+                if (serverRevisionFollower.ShouldRefresh(
+                        serverRevision,
+                        State.KnownItemStateRevision,
+                        operationJournal.Pending != null,
+                        refreshInProgress,
+                        Time.unscaledTime))
+                {
+                    EnsureFullState(serverRevision);
+                }
             }
         }
 
@@ -588,6 +603,7 @@ namespace Mmorpg.Client.Items
             State.MarkDisconnected(operationJournal.Pending != null);
             operationJournal.Reset();
             observedRealtimeJoin = false;
+            serverRevisionFollower.Reset();
         }
 
         private void BeginRefresh(
@@ -866,6 +882,7 @@ namespace Mmorpg.Client.Items
             observedAccountId = accountId;
             observedCharacterId = characterId;
             operationJournal.Reset();
+            serverRevisionFollower.Reset();
             if (!Guid.TryParse(characterId, out var parsedCharacterId)
                 || parsedCharacterId == Guid.Empty
                 || string.IsNullOrWhiteSpace(accountId))

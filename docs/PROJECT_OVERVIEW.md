@@ -1,14 +1,16 @@
 # Project Overview
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## What MMORPG Is
 
 MMORPG is an early classless, profession-driven, open-world MMORPG with a
 World of Warcraft style fantasy setting and RuneScape-inspired click-to-move
 combat, defined in [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md).
-That direction replaces the earlier modern third-person shooter direction and is
-not implemented yet. The project is currently focused on a
+That direction replaces the earlier modern third-person shooter direction.
+Click-to-move movement and the first combat slice, one bow with arrows against
+wolves and other players, are implemented; the rest of that direction is not
+implemented yet. The project is currently focused on a
 stable technical foundation for identity, character access, regional compute,
 server-authoritative simulation, and a Unity client before larger gameplay
 systems are added.
@@ -25,7 +27,9 @@ The current playable flow is intentionally small:
 6. Unity predicts local movement while SimulationWorker remains authoritative.
 7. In the World, the player can buy a pickaxe from the NPC vendor with Gold,
    mine Iron Ore from shared Iron Veins, and sell the ore back to the vendor.
-8. Leaving the shard releases the exact simulation session before returning to
+8. With the Training Shortbow and Bronze Arrows equipped, the player can fight
+   the wolves and other players, loot their corpses, die, and respawn.
+9. Leaving the shard releases the exact simulation session before returning to
    character selection.
 
 ## Shared World And Global Player Data
@@ -69,8 +73,9 @@ scaling. They are not implemented and are not faked in the current runtime.
   models, and the character currency wallet with its ledger.
 - **SimulationWorker** is a headless .NET console process that owns the realtime
   UDP transport, active players and world actors, interest management,
-  authoritative movement, actor activity tiers, interaction sessions, and live
-  resource node charges, gathering cycles, and respawn for its assigned shard.
+  authoritative movement, actor activity tiers, interaction sessions, live
+  resource node charges, gathering cycles, and respawn, and authoritative combat,
+  Mob brains, deaths, and respawns for its assigned shard.
 - **PostgreSQL** is the durable authority for identity, topology, assignments,
   tickets, session leases, mirrored item definitions and vendor profiles, the
   item custody foundation, and character currency with its ledger.
@@ -154,8 +159,8 @@ The repository currently supports:
   The Bank and Recovery Storage are reachable only in the world.
 - Pure policy capability evaluation, auditable protected and insured records,
   insurance removal, and exact quest-grant cleanup and reaccept behavior.
-- Admission-fenced and heartbeat-refreshed carry state, protocol version `17`,
-  movement revision `movement-simulation-v5`, and identical authoritative and
+- Admission-fenced and heartbeat-refreshed carry state, protocol version `18`,
+  movement revision `movement-simulation-v6`, and identical authoritative and
   predicted encumbrance behavior.
 - A persistent Gold balance per character with a starting balance of `100`, a
   wallet that writes one ledger row per change, and currency that stays with the
@@ -180,6 +185,16 @@ The repository currently supports:
 - Server-authoritative click interaction using exact-session, runtime,
   Shard, target-revision, range, bounds, line-of-sight, capability, rate, and
   one-active-session validation.
+- Server-authoritative target-based combat: a left click on a wolf or another
+  player walks into weapon range and auto-attacks with the Training Shortbow.
+  SimulationWorker owns range, line of sight, attack timing, damage, arrows in
+  flight, the equipment-change lockout, health, regeneration, and respawn, and
+  spends arrows in batches through GameService.
+- One death event per death, Mob or player, with its killer. A player death runs
+  the existing death partition into Recovery Storage and a durable corpse, and a
+  Mob death rolls its loot profile into a live or durable corpse.
+- Mob brains that idle or patrol, detect players on a shared spatial grid, chase,
+  bite, and evade home past their leash, with moving Mobs in movement snapshots.
 
 ## Current Scale Boundary
 
@@ -201,8 +216,8 @@ serves every world actor:
 - `NPC` means a social or service actor assembled from capabilities such as
   dialogue, vendor, quest, crafting, insurance, trainer, bank, or Recovery
   Storage.
-- `Mob` means a combat actor with future AI, aggro, combat, loot, corpse, and
-  respawn behavior.
+- `Mob` means a combat actor with AI, aggro, combat, loot, corpse, and respawn
+  behavior.
 - A resource node, such as the Iron Vein, is a gatherable actor with exactly one
   gathering capability and a resource profile. Its charges, depletion, and
   respawn are live Shard state in SimulationWorker.
@@ -229,7 +244,8 @@ The permanent Editor workflows live at
 `MMORPG > Tools > Content > Spawn Authoring`. The vendor capability trades
 through GameService, as decided in
 [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md). Combat, Mob brains,
-and Mob loot rolls follow the [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
+and Mob loot rolls are implemented as recorded in the
+[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
 Quest progression and crafting are not implemented yet. See
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
@@ -272,8 +288,7 @@ and the rules in [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESI
 Still to come on this foundation:
 
 - Final inventory visual design, interaction polish, and accessibility.
-- The combat death producer, consume and use intents, per-shot ammunition,
-  Mob loot tables, final corpse art, and respawn.
+- Consume and use intents and final corpse art.
 - Quest progression and rewards, further vendors and resource types, and
   gathering progression.
 
@@ -281,15 +296,14 @@ Still to come on this foundation:
 
 - Zone ownership, cross-zone handoff, and layer orchestration.
 - Replicated dynamic collision transforms and general rigid-body simulation.
-- Combat, weapons, abilities, damage, death, and respawning.
-- Authoritative combat death production and final corpse presentation. Durable
-  player corpse identity, generic active representation, and loot transactions
-  already exist behind the service boundary.
+- Combat beyond the first slice: abilities, further weapons, the combat
+  triangle, magic and mana, threat, and Mob abilities beyond one attack.
+- Final combat and corpse presentation. Unity shows both with temporary UI.
 - Crafting, professions, gathering progression, and the broader economy beyond
   the first NPC vendor.
-- Durable unique actor persistence, the remaining NPC capability behavior, Mob
-  AI, combat, and loot remain deferred beyond the implemented neutral actor and
-  interaction runtime. Complete quests, guilds, social systems, and
+- Durable unique actor persistence and the remaining NPC capability behavior
+  remain deferred beyond the implemented actor, interaction, and combat
+  runtime. Complete quests, guilds, social systems, and
   world events also remain later work.
 - Production orchestration and live operations. Metrics, logs, traces,
   dashboards, and alerts exist for local and staged use, see
@@ -318,6 +332,8 @@ implementation.
   the inventory and death-loot rules.
 - [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) records the vendor,
   currency, and gathering decisions and how the slice was implemented.
+- [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) records the combat
+  and Mob decisions, how the slice was implemented, and its acceptance run.
 - [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) defines the approved
   world-actor, NPC, Mob, spawn-authoring, and interaction foundation.
 - [Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)

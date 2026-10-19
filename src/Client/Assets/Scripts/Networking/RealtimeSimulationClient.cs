@@ -112,6 +112,13 @@ namespace Mmorpg.Client.Networking
 
         public NetworkMovementSession MovementSession { get; private set; }
 
+        // The item-state revision of the newest committed carry state the worker sent, or -1
+        // outside a joined session.
+        public long CarryItemStateRevision
+        {
+            get { return MovementSession != null ? MovementSession.CarryState.ItemStateRevision : -1; }
+        }
+
         public uint LatestServerTick { get; private set; }
 
         public long SnapshotPacketsReceived { get; private set; }
