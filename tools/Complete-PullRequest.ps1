@@ -80,6 +80,14 @@ else {
         $Body = "$($pr.title) (#$Number)."
     }
 
+    # --match-head-commit pins the head but not the base, so the base is read again right before
+    # the merge and checked again after it.
+    $latest = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "state,baseRefName,headRefOid")
+    if ($latest.state -ne "OPEN" -or $latest.baseRefName -ne "development" -or $latest.headRefOid -ne $pr.headRefOid) {
+        Write-Output "Pull request #$Number changed during the readiness check (state $($latest.state), base $($latest.baseRefName), head $("$($latest.headRefOid)".Substring(0, 7))), so nothing was merged."
+        exit 1
+    }
+
     # The body goes through a file because native arguments cannot carry double quotes here.
     $bodyFile = Join-Path ([IO.Path]::GetTempPath()) "merge-body-$Number-$PID.txt"
     [IO.File]::WriteAllText($bodyFile, $Body, (New-Object Text.UTF8Encoding $false))
@@ -93,9 +101,13 @@ else {
     finally {
         Remove-Item -LiteralPath $bodyFile -ErrorAction SilentlyContinue
     }
-    $merged = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "state,mergeCommit")
+    $merged = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "state,baseRefName,mergeCommit")
     if ($merge.ExitCode -ne 0 -or $merged.state -ne "MERGED") {
         Write-Output "Merging pull request #$Number failed (gh exit code $($merge.ExitCode), state $($merged.state)), so nothing was cleaned up."
+        exit 1
+    }
+    if ($merged.baseRefName -ne "development") {
+        Write-Output "Pull request #$Number was retargeted and merged into $($merged.baseRefName), not development. Nothing was cleaned up; tell the user."
         exit 1
     }
     $mergeCommit = "$($merged.mergeCommit.oid)".Substring(0, 7)
