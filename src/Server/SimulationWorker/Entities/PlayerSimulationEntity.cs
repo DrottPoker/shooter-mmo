@@ -1,3 +1,4 @@
+using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
 
@@ -8,8 +9,6 @@ public sealed class PlayerSimulationEntity(
     ActiveSimulationSession session,
     AuthoritativePlayerMovement movement)
 {
-    public const string DefaultArchetypeId = "player.default";
-
     public ulong NetworkEntityId { get; } = networkEntityId != 0
         ? networkEntityId
         : throw new ArgumentOutOfRangeException(nameof(networkEntityId));
@@ -19,6 +18,11 @@ public sealed class PlayerSimulationEntity(
 
     public AuthoritativePlayerMovement Movement { get; } = movement
         ?? throw new ArgumentNullException(nameof(movement));
+
+    // A development bot presents differently, so players can tell it from a person.
+    public string ArchetypeId => Session.IsSyntheticBot
+        ? RealtimePlayerArchetypeIds.DevelopmentBot
+        : RealtimePlayerArchetypeIds.Player;
 
     public void RefreshSession(ActiveSimulationSession refreshedSession)
     {

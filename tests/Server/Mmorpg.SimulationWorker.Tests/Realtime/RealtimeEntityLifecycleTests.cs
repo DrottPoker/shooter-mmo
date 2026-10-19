@@ -121,6 +121,36 @@ public sealed class RealtimeEntityLifecycleTests
         }
     }
 
+    [Fact]
+    public async Task PlayersAndDevelopmentBotsSpawnWithTheirOwnPresentationArchetypes()
+    {
+        await using var harness = RealtimeServerHarness.Create();
+        var player = harness.AddCharacter("Player Hero");
+        harness.GameService.AddCharacter(player);
+        var bot = harness.AddCharacter("Active Bot 1", isSyntheticBot: true);
+        harness.GameService.AddCharacter(bot);
+        await harness.StartAsync();
+        var playerClient = await harness.JoinAsync(player);
+        var botClient = await harness.JoinAsync(bot);
+        var playerEntityId = playerClient.JoinAccepted!.ControlledEntityId;
+        var botEntityId = botClient.JoinAccepted!.ControlledEntityId;
+
+        await harness.PollUntilAsync(
+            () => playerClient.Spawns.Any(spawn => spawn.EntityId == botEntityId)
+                && botClient.Spawns.Any(spawn => spawn.EntityId == playerEntityId),
+            "the player and the bot to see each other");
+
+        Assert.Equal(
+            RealtimePlayerArchetypeIds.DevelopmentBot,
+            playerClient.Spawns.First(spawn => spawn.EntityId == botEntityId).ArchetypeId);
+        Assert.Equal(
+            RealtimePlayerArchetypeIds.Player,
+            botClient.Spawns.First(spawn => spawn.EntityId == playerEntityId).ArchetypeId);
+        Assert.Equal(
+            RealtimePlayerArchetypeIds.Player,
+            playerClient.Spawns.First(spawn => spawn.EntityId == playerEntityId).ArchetypeId);
+    }
+
     private static async Task PollUntilAsync(
         Func<bool> completed,
         CancellationToken cancellationToken,

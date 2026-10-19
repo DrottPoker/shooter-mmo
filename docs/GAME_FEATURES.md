@@ -76,7 +76,8 @@ cover, and dedicated camera-collision wall used by focused movement tests.
 
 The test shard has no durable gameplay simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
-rendered from interpolated SimulationWorker snapshots. SimulationWorker assigns each live
+rendered from interpolated SimulationWorker snapshots. The local player is
+purple, other players are orange, and synthetic development bots are blue. SimulationWorker assigns each live
 player a network entity id. Reliable spawn and despawn messages decide when a
 remote player exists, while unreliable snapshots update only its movement.
 Remote instances are kept under the active World scene's separate

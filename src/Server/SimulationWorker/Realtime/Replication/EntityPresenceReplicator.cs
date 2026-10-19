@@ -259,7 +259,7 @@ internal sealed class EntityPresenceReplicator(
             RealtimeEntityKind.Player,
             entity.Session.CharacterId.ToString("D"),
             entity.Session.CharacterName,
-            PlayerSimulationEntity.DefaultArchetypeId,
+            entity.ArchetypeId,
             clock.ServerTick,
             RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State));
     }
