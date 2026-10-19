@@ -143,7 +143,7 @@ internal sealed class CorpseOperationFinalizer(
                 peer,
                 RealtimeProtocol.EncodeCorpseViewClosed(new RealtimeCorpseViewClosed(
                     completed.Result.Intent.CorpseId,
-                    "corpse_view_closed",
+                    RealtimeCorpseViewClosureCodes.ViewClosed,
                     "The corpse view was closed.")));
             authorityScheduler.StartNext(completed.Context);
             return;
@@ -164,11 +164,10 @@ internal sealed class CorpseOperationFinalizer(
         var resultSnapshot = completed.Result.Snapshot;
         if (resultSnapshot is null)
         {
-            corpseViews.CloseCorpseForAll(
+            corpseViews.CloseInactiveCorpseForAll(
                 completed.Result.Intent.CorpseId,
-                "corpse_invalidated",
-                "The corpse is no longer available.",
-                removeFromStore: true);
+                RealtimeCorpseViewClosureCodes.Invalidated,
+                "The corpse is no longer available.");
             authorityScheduler.StartNext(completed.Context);
             return;
         }

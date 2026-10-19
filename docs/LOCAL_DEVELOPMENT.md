@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Requirements
 
@@ -1615,7 +1615,11 @@ Play the combat loop on the local stack:
    target frame closes, the status reads `No target`, and the shooting stops.
 8. Attack a wolf until it dies. Expected result: the target frame closes, the
    wolf leaves a corpse that loots as before, and a new wolf appears after 30
-   seconds.
+   seconds. Click the corpse and drag every item into the inventory. Expected
+   result: after the last item the corpse disappears, and the Corpse context
+   shows `The corpse is empty.` in neutral text, not a red error. A corpse left
+   alone for 120 seconds closes with `The corpse expired and is no longer
+   available.`, also in neutral text.
 9. Unequip the bow and click a wolf. Expected result: the character does not
    walk, and the status reads `No weapon equipped`. Without arrows it reads `No
    ammunition`, and right after swapping the bow it reads `Equipment changed`

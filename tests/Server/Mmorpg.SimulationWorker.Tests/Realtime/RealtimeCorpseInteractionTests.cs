@@ -428,6 +428,116 @@ public sealed class RealtimeCorpseInteractionTests
         Assert.Equal(1, metrics.LiveCorpses);
     }
 
+    [Fact]
+    public async Task LastLiveMobLootClosesTheViewAsEmptiedForEveryViewer()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableLiveMobCorpses = true
+        });
+        var loot = new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.ore", 3, 0);
+        var corpse = harness.LiveMobCorpseStore!.CreateOrGet(LiveWolfCorpse(loot));
+        var looterCharacter = harness.AddCharacter("Last Looter");
+        var watcherCharacter = harness.AddCharacter("Empty Watcher");
+        await harness.StartAsync();
+        var looter = await harness.JoinAsync(looterCharacter);
+        var watcher = await harness.JoinAsync(watcherCharacter);
+        looter.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpse.CorpseId));
+        watcher.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpse.CorpseId));
+        await harness.PollUntilAsync(
+            () => looter.CorpseResults.Count == 1
+                && watcher.CorpseResults.Count == 1
+                && HasCompleteSnapshot(looter)
+                && HasCompleteSnapshot(watcher),
+            "both opens and their snapshots");
+
+        var lootIntent = RealtimeCorpseInteractionIntent.CreateLootItem(
+            Guid.NewGuid(),
+            corpse.CorpseId,
+            corpse.Revision,
+            loot.LootEntryId,
+            0,
+            Guid.NewGuid(),
+            0,
+            0,
+            Guid.Empty,
+            0);
+        looter.SendCorpseIntent(lootIntent);
+        await harness.PollUntilAsync(
+            () => looter.CorpseResults.Count == 2
+                && looter.CorpseViewClosures.Count == 1
+                && watcher.CorpseViewClosures.Count == 1,
+            "the loot result and the closure for every viewer");
+
+        var lootResult = looter.CorpseResults[^1];
+        Assert.Equal(lootIntent.OperationId, lootResult.OperationId);
+        Assert.True(lootResult.Succeeded);
+        // The presence broadcast may notice the emptied corpse before the loot completes;
+        // either path closes the view as emptied, never as invalidated.
+        foreach (var client in new[] { looter, watcher })
+        {
+            var closed = Assert.Single(client.CorpseViewClosures);
+            Assert.Equal(corpse.CorpseId, closed.CorpseId);
+            Assert.Equal(RealtimeCorpseViewClosureCodes.Emptied, closed.Code);
+            Assert.Equal("The corpse is empty.", closed.Message);
+        }
+
+        Assert.Empty(harness.CorpseViewers.GetViewers(corpse.CorpseId));
+        Assert.True(harness.LiveMobCorpseStore.IsEmptied(corpse.CorpseId));
+    }
+
+    [Fact]
+    public async Task EmptiedLiveMobCorpseLeavingThePresenceClosesAsEmptied()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableLiveMobCorpses = true
+        });
+        var loot = new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.ore", 3, 0);
+        var corpse = harness.LiveMobCorpseStore!.CreateOrGet(LiveWolfCorpse(loot));
+        var character = harness.AddCharacter("Late Viewer");
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+        client.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpse.CorpseId));
+        await harness.PollUntilAsync(
+            () => client.CorpseResults.Count == 1 && HasCompleteSnapshot(client),
+            "the live corpse open");
+
+        Assert.Null(harness.LiveMobCorpseStore.CompleteClaim(
+            corpse.CorpseId,
+            loot.LootEntryId,
+            loot.GrantId));
+        await harness.PollUntilAsync(
+            () => client.CorpseViewClosures.Count == 1,
+            "the presence closure");
+
+        var closed = Assert.Single(client.CorpseViewClosures);
+        Assert.Equal(RealtimeCorpseViewClosureCodes.Emptied, closed.Code);
+        Assert.Empty(harness.CorpseViewers.GetViewers(corpse.CorpseId));
+    }
+
+    private static LiveMobCorpseState LiveWolfCorpse(LiveMobCorpseLootEntry loot)
+    {
+        var createdAt = DateTime.UtcNow;
+        return new LiveMobCorpseState(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "mob.feral_wolf",
+            "Feral Wolf",
+            RealtimeServerHarness.ShardId,
+            1d,
+            0d,
+            -1d,
+            MobCorpseLifecycleService.DefaultPresentationKey,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            1,
+            createdAt,
+            createdAt.AddMinutes(2),
+            [loot]);
+    }
+
     // Chunks of one snapshot arrive in order on the reliable ordered channel, so the
     // snapshot is complete once its last chunk has arrived.
     private static bool HasCompleteSnapshot(RealtimeRecordingClient client)

@@ -1,6 +1,6 @@
 # Realtime Protocol
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 The realtime protocol is the binary contract between SimulationWorker and the
 Unity client over LiteNetLib. Its single source is the local Unity package
@@ -284,6 +284,25 @@ A corpse view section may have zero slots. Protocol version 16 allows
 `SectionSlotCapacity` 0, because a live Mob corpse carries only general loot and
 its equipment and Bag sections are empty, and a fully looted live Mob corpse has
 no general slots left. Carried weight and carry capacity are unitless integers.
+
+## Corpse View Closures
+
+`CorpseViewClosed` names why a view ended with a stable code, and the hand-written
+`RealtimeCorpseViewClosureCodes` holds the codes the worker sends itself:
+
+| Code | Meaning |
+| --- | --- |
+| `corpse_view_closed` | The viewer closed the view; it follows the close result. |
+| `corpse_emptied` | The last item of a live Mob corpse was taken. |
+| `corpse_expired` | The corpse reached its deadline. |
+| `corpse_invalidated` | The corpse disappeared or its state can no longer be trusted. |
+| `corpse_not_found` | The worker or GameService no longer knows the corpse. |
+
+A view also closes with `combat_character_dead` when its viewer dies, and with
+the code of a rejection that ends it, such as `wrong_simulation_worker`. The code
+is ordinary text up to the error-code limit, so `corpse_emptied` was added without
+a new protocol version. The client treats the viewer's own close, an emptied or
+expired corpse, and a death as intended ends and every other code as an error.
 
 ## Capability Actions
 

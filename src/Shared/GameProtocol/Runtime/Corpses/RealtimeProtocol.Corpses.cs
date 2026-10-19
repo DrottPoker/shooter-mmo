@@ -68,4 +68,25 @@ namespace Mmorpg.GameProtocol
         {
         }
     }
+
+    // The stable codes of a corpse view closure. A view also closes with
+    // RealtimeCombatErrorCodes.CharacterDead when its viewer dies, or with the code of a
+    // rejection that ends it, such as wrong_simulation_worker.
+    public static class RealtimeCorpseViewClosureCodes
+    {
+        // The viewer closed the view.
+        public const string ViewClosed = "corpse_view_closed";
+
+        // The last item of a live Mob corpse was taken.
+        public const string Emptied = "corpse_emptied";
+
+        // The corpse reached its deadline.
+        public const string Expired = "corpse_expired";
+
+        // The corpse disappeared or its state can no longer be trusted.
+        public const string Invalidated = "corpse_invalidated";
+
+        // The worker or GameService no longer knows the corpse.
+        public const string NotFound = "corpse_not_found";
+    }
 }

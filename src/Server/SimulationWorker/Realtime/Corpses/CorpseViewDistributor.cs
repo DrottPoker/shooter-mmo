@@ -120,10 +120,24 @@ internal sealed class CorpseViewDistributor(
         }
     }
 
+    // Closes every view of a corpse that is no longer active. A live Mob corpse whose last
+    // item was taken closes as emptied, which the client does not present as a failure;
+    // any other corpse closes with the given code.
+    public void CloseInactiveCorpseForAll(Guid corpseId, string code, string message)
+    {
+        if (liveMobCorpseStore?.IsEmptied(corpseId) == true)
+        {
+            code = RealtimeCorpseViewClosureCodes.Emptied;
+            message = "The corpse is empty.";
+        }
+
+        CloseCorpseForAll(corpseId, code, message, removeFromStore: true);
+    }
+
     public static bool ShouldCloseCorpseForAll(string code)
     {
-        return code is "corpse_expired"
-            or "corpse_invalidated"
-            or "corpse_not_found";
+        return code is RealtimeCorpseViewClosureCodes.Expired
+            or RealtimeCorpseViewClosureCodes.Invalidated
+            or RealtimeCorpseViewClosureCodes.NotFound;
     }
 }

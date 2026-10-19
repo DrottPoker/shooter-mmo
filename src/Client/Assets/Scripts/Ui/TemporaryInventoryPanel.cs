@@ -878,6 +878,10 @@ namespace Mmorpg.Client.Ui
             {
                 CreateMessage(parent, corpseState.Error.ToDisplayMessage(), TemporaryUiKit.DangerColor);
             }
+            else if (!string.IsNullOrEmpty(corpseState.Notice))
+            {
+                CreateMessage(parent, corpseState.Notice, TemporaryUiKit.TextSecondary);
+            }
 
             if (corpseState.ActiveView == null)
             {

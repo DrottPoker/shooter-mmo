@@ -93,6 +93,17 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
         }
     }
 
+    // An emptied corpse stays until its deadline, so a replayed creation cannot restore
+    // its claimed loot; it is no longer active meanwhile.
+    public bool IsEmptied(Guid corpseId)
+    {
+        lock (sync)
+        {
+            PurgeExpiredLocked();
+            return corpses.TryGetValue(corpseId, out var corpse) && corpse.IsEmpty;
+        }
+    }
+
     public bool TryGetForReplay(Guid corpseId, out LiveMobCorpseState? corpse)
     {
         lock (sync)

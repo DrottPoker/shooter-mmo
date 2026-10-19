@@ -321,6 +321,70 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(occupiedView.BagHasContents(bag), Is.True);
         }
 
+        [Test]
+        public void EmptiedClosureAfterTheLastLootLeavesANoticeInsteadOfAnError()
+        {
+            var state = new CorpseClientState();
+            var corpseId = Guid.NewGuid();
+            OpenView(state, corpseId);
+            var loot = Guid.NewGuid();
+            state.BeginOperation(loot);
+            state.CompleteOperation(loot);
+
+            state.ApplyClosure("corpse_emptied", "The corpse is empty.");
+
+            Assert.That(state.ActiveView, Is.Null);
+            Assert.That(state.Error, Is.Null);
+            Assert.That(state.Notice, Is.EqualTo("The corpse is empty."));
+            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Ready));
+            Assert.That(state.PendingOperationId, Is.EqualTo(Guid.Empty));
+
+            state.BeginOperation(Guid.NewGuid());
+
+            Assert.That(state.Notice, Is.Empty);
+        }
+
+        [Test]
+        public void InvalidationClosureEndsTheViewWithAnError()
+        {
+            var state = new CorpseClientState();
+            OpenView(state, Guid.NewGuid());
+
+            state.ApplyClosure("corpse_invalidated", "The corpse is no longer available.");
+
+            Assert.That(state.ActiveView, Is.Null);
+            Assert.That(state.Notice, Is.Empty);
+            Assert.That(
+                state.Error.ToDisplayMessage(),
+                Is.EqualTo("corpse_invalidated: The corpse is no longer available."));
+        }
+
+        [Test]
+        public void OwnCloseAndItsTrailingClosureLeaveNoMessage()
+        {
+            var state = new CorpseClientState();
+            OpenView(state, Guid.NewGuid());
+            state.SetError(Guid.Empty, new CorpseClientError("item_slot_occupied", "The slot is occupied."));
+
+            state.CloseView();
+            state.ApplyClosure("corpse_view_closed", "The corpse view was closed.");
+
+            Assert.That(state.ActiveView, Is.Null);
+            Assert.That(state.Error, Is.Null);
+            Assert.That(state.Notice, Is.Empty);
+        }
+
+        private static void OpenView(CorpseClientState state, Guid corpseId)
+        {
+            var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+            foreach (var chunk in CreateSnapshot(corpseId, Guid.NewGuid(), containers, 1, 1, 1))
+            {
+                state.ApplyViewChunk(chunk);
+            }
+
+            Assert.That(state.ActiveView, Is.Not.Null);
+        }
+
         private static RealtimeCorpsePresence CreatePresence(Guid corpseId, string name)
         {
             return new RealtimeCorpsePresence(
