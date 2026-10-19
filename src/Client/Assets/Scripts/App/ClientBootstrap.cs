@@ -28,6 +28,7 @@ namespace Mmorpg.Client.App
         private CorpseClientController corpseController;
         private WorldActorClientController worldActorController;
         private WorldInteractionClientController worldInteractionController;
+        private CombatClientController combatController;
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -66,8 +67,9 @@ namespace Mmorpg.Client.App
                 corpseController,
                 inventoryController);
 
-            // Mirrors the worker's combat state across scenes for later combat presentation.
-            GetOrAddComponent<CombatClientController>().Initialize(simulationClient);
+            // Mirrors the worker's combat state across scenes.
+            combatController = GetOrAddComponent<CombatClientController>();
+            combatController.Initialize(simulationClient);
 
             simulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;
@@ -252,11 +254,13 @@ namespace Mmorpg.Client.App
                 return;
             }
 
+            WorldSceneContext sceneContext = null;
             foreach (var root in scene.GetRootGameObjects())
             {
                 foreach (var context in root.GetComponentsInChildren<WorldSceneContext>(true))
                 {
                     context.Initialize(simulationClient, pointerFocus);
+                    sceneContext = sceneContext != null ? sceneContext : context;
                 }
             }
 
@@ -267,10 +271,11 @@ namespace Mmorpg.Client.App
                 panel => panel.Initialize(
                     inventoryController,
                     corpseController,
-                    worldInteractionController));
+                    worldInteractionController,
+                    combatController));
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(corpseController));
-            AddSceneComponentIfMissing<WorldActorPresentationController>(
+            var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(worldActorController));
             AddSceneComponentIfMissing<WorldInteractionTargetingController>(
                 targeting => targeting.Initialize(
@@ -278,14 +283,39 @@ namespace Mmorpg.Client.App
                     worldActorController));
             AddSceneComponentIfMissing<TemporaryWorldInteractionPanel>(
                 panel => panel.Initialize(worldInteractionController, inventoryController));
+
+            var combatantViews = new CombatantViewLocator(
+                simulationClient,
+                sceneContext,
+                actorPresentation);
+            var combatTargeting = AddSceneComponentIfMissing<CombatTargetingController>(
+                targeting => targeting.Initialize(
+                    combatController,
+                    simulationClient,
+                    worldActorController,
+                    inventoryController,
+                    combatantViews));
+            AddSceneComponentIfMissing<CombatProjectilePresentation>(
+                presentation => presentation.Initialize(
+                    combatController,
+                    simulationClient,
+                    combatantViews));
+            AddSceneComponentIfMissing<TemporaryCombatHud>(
+                hud => hud.Initialize(
+                    combatController,
+                    combatTargeting,
+                    simulationClient,
+                    combatantViews));
         }
 
-        private static void AddSceneComponentIfMissing<T>(Action<T> initialize)
+        // Returns the scene's existing component, or a new one initialized before it activates.
+        private static T AddSceneComponentIfMissing<T>(Action<T> initialize)
             where T : Component
         {
-            if (FindAnyObjectByType<T>() != null)
+            var existing = FindAnyObjectByType<T>();
+            if (existing != null)
             {
-                return;
+                return existing;
             }
 
             var gameObject = new GameObject(typeof(T).Name);
@@ -293,6 +323,7 @@ namespace Mmorpg.Client.App
             var component = gameObject.AddComponent<T>();
             initialize?.Invoke(component);
             gameObject.SetActive(true);
+            return component;
         }
     }
 }

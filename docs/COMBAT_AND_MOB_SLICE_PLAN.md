@@ -5,9 +5,10 @@ Last updated: 2026-10-18
 Status: Decided and in progress. The product owner accepted every
 recommendation on 2026-10-18, including C1. Implementation follows the
 [Implementation Plan](#implementation-plan): step 1, the combat content,
-step 2, the GameService combat boundaries, and step 3, the protocol and
-authoritative combat, are implemented; steps 4 to 6 are not. Where step 3
-differs from this plan, [Step 3 Notes](#step-3-notes) says how.
+step 2, the GameService combat boundaries, step 3, the protocol and
+authoritative combat, and step 4, the Unity combat presentation, are
+implemented; steps 5 and 6 are not. Where steps 3 and 4 differ from this plan,
+[Step 3 Notes](#step-3-notes) and [Step 4 Notes](#step-4-notes) say how.
 
 ## Purpose
 
@@ -46,7 +47,7 @@ The audit on 2026-10-18 at `development` `4f38e9c` found:
 | SimulationWorker | A 30 Hz fixed tick, interest management, world actors with dormant and active Mob tiers that only change a tier flag, `WorldActorLineOfSightService`, `MobCorpseLifecycleService`, and `GameServiceClient.ProcessPlayerDeathAsync`. Both death seams have no production caller. | Health, attacks, AI, Mob movement, respawn, deaths, and ammunition batching. The worker knows no equipment and does not load the item catalog today. |
 | GameService.Items | The transaction kernel with `ConsumeItemQuantityCommand` (no route), the death partition with idempotent death events, durable and live Mob corpse boundaries, and equipped ammunition stacks up to 1000. | A worker-only batched consumption route, ammunition consumption inside the death transaction, an equipment summary for the worker, and a level requirement on equip. |
 | Content | `mob.feral_wolf` (hostile, damageable, live corpse 120 s) and `mob.feral_alpha` (durable corpse 600 s, not spawned). Activity profile `mob.standard`, respawn profile `mob.normal` (30 s). Patrol paths for the wolves. No combat fields on items or actors. | Combat data on item definitions, Mob combat, brain, locomotion, and loot profiles, and player combat rules. |
-| Unity client | Remote player interpolation, world actor views that jump to each reliable state, pointer targeting that treats a Mob like an NPC, and no health or combat UI. | Combat targeting, approach to weapon range, Mob interpolation, and temporary combat presentation. |
+| Unity client | Remote player interpolation, world actor views that jump to each reliable state, pointer targeting that treats a Mob like an NPC, and no health or combat UI. Step 4 has since added combat targeting, the approach, and temporary combat presentation. | Combat targeting, approach to weapon range, Mob interpolation, and temporary combat presentation. |
 
 ## Scope
 
@@ -581,6 +582,36 @@ Step 3 follows the architecture above with these refinements:
   the character is dead would still run from the spawn after the respawn, so
   step 4 blocks world clicks while dead and stops the navigator on death and on
   `CombatClientState.Respawned`.
+
+### Step 4 Notes
+
+Step 4 follows the [Unity Client](#unity-client) design with these
+refinements, described in
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#combat-client):
+
+- **Click order.** `WorldClickOrder` orders the world click handlers
+  explicitly: combat before world interaction. One `WorldPointerPicker` serves
+  both, and the nearest picked object wins, so a remote player in front of an
+  NPC takes the click. Remote players get a runtime trigger capsule for picking.
+- **Clearing the target.** Every world click that combat does not take, such as
+  the ground, an NPC, a corpse, or a resource node, and `Escape` send
+  `ClearTarget`, but only when there is a target or a request. A click on a Mob
+  that cannot be attacked now, such as an evading one, is taken without action.
+- **Approach.** The character approaches to the weapon range minus 0.75 m, at
+  least 0.5 m, re-plans when the target moves more than 1.5 m from the goal,
+  walks again when the target is beyond the weapon range or the worker reports
+  `OutOfRange`, walks 2 m closer for each `LineOfSightBlocked`, never walks
+  while the worker reports `Attacking`, and starts at most one approach of its
+  own per second.
+- **Server clock.** The death countdown and the arrows estimate the worker's
+  tick from the newest owner snapshot, its age, and half the round trip. The
+  round trip now reads LiteNetLib's `RoundTripTime`; the client showed `Ping`,
+  half the round trip, before, so the F2 panel's round trip doubles to its real
+  value.
+- **Assemblies.** `Mmorpg.Client.Combat` now references Core, Gameplay, Items,
+  and WorldActors as well, and Ui references Combat for the temporary HUD.
+- **Open.** A hover prompt for attacks, a search for a spot with line of sight,
+  and Mob interpolation follow later; Mob interpolation belongs to step 5.
 
 ## Coordination
 

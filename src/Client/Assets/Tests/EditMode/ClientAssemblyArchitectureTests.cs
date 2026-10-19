@@ -95,8 +95,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 },
                 ["Mmorpg.Client.Combat"] = new[]
                 {
+                    "Mmorpg.Client.Core",
                     "Mmorpg.Client.Networking",
-                    "Mmorpg.GameProtocol"
+                    "Mmorpg.Client.Items",
+                    "Mmorpg.Client.Gameplay",
+                    "Mmorpg.Client.WorldActors",
+                    "Mmorpg.GameProtocol",
+                    "Mmorpg.GameSimulation",
+                    "Mmorpg.WorldData"
                 },
                 ["Mmorpg.Client.Ui"] = new[]
                 {
@@ -107,6 +113,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Items",
                     "Mmorpg.Client.Gameplay",
                     "Mmorpg.Client.WorldActors",
+                    "Mmorpg.Client.Combat",
                     "Unity.InputSystem",
                     "UnityEngine.UI",
                     "Mmorpg.GameProtocol",

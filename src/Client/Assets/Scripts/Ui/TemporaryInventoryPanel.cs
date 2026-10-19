@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Mmorpg.Client.Combat;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
@@ -41,6 +42,7 @@ namespace Mmorpg.Client.Ui
         private InventoryClientController controller;
         private CorpseClientController corpseController;
         private WorldInteractionClientController worldInteractionController;
+        private CombatClientController combatController;
         private LocalPlayerInput localPlayerInput;
         private GameObject canvasObject;
         private GameObject rootObject;
@@ -71,6 +73,7 @@ namespace Mmorpg.Client.Ui
         private string corpseQuantityText = "1";
         private bool corpsePartialLoot;
         private string localStatus = "Drag an item onto a highlighted destination.";
+        private LiveAmmunitionSlot liveAmmunition;
 
         public bool IsOpen
         {
@@ -101,11 +104,13 @@ namespace Mmorpg.Client.Ui
         public void Initialize(
             InventoryClientController inventory,
             CorpseClientController corpses,
-            WorldInteractionClientController worldInteraction)
+            WorldInteractionClientController worldInteraction,
+            CombatClientController combat)
         {
             controller = inventory;
             corpseController = corpses;
             worldInteractionController = worldInteraction;
+            combatController = combat;
         }
 
         private void Start()
@@ -124,6 +129,11 @@ namespace Mmorpg.Client.Ui
             {
                 worldInteractionController.InventoryCapabilityOpened += OnInventoryCapabilityOpened;
                 worldInteractionController.State.Changed += OnWorldInteractionStateChanged;
+            }
+
+            if (combatController != null)
+            {
+                combatController.State.Changed += OnCombatStateChanged;
             }
 
             FindPlayerPresentation();
@@ -185,6 +195,53 @@ namespace Mmorpg.Client.Ui
                 worldInteractionController.InventoryCapabilityOpened -= OnInventoryCapabilityOpened;
                 worldInteractionController.State.Changed -= OnWorldInteractionStateChanged;
             }
+
+            if (combatController != null)
+            {
+                combatController.State.Changed -= OnCombatStateChanged;
+            }
+        }
+
+        // Every shot changes the live arrow count. The drawn slot updates in place, so a
+        // shot never redraws the panel or cancels a drag.
+        private void OnCombatStateChanged()
+        {
+            if (!isOpen || liveAmmunition == null || liveAmmunition.QuantityText == null)
+            {
+                return;
+            }
+
+            var live = LiveAmmunitionQuantity(liveAmmunition.Item);
+            if (live == liveAmmunition.DrawnQuantity)
+            {
+                return;
+            }
+
+            liveAmmunition.DrawnQuantity = live;
+            liveAmmunition.QuantityText.text = InventorySlotPresentation.LiveQuantityText(
+                liveAmmunition.Item.Quantity,
+                live);
+            if (liveAmmunition.Tooltip != null && controller != null && controller.State.Catalog != null)
+            {
+                liveAmmunition.Tooltip.Configure(
+                    tooltip,
+                    InventorySlotPresentation.BuildItemTooltip(
+                        controller.State.Catalog,
+                        liveAmmunition.Item,
+                        InventorySlotPresentation.LiveQuantityDescription(
+                            liveAmmunition.Description,
+                            liveAmmunition.Item.Quantity,
+                            live)));
+            }
+        }
+
+        // The worker's live count while it names the equipped stack, else the committed one.
+        private int LiveAmmunitionQuantity(InventoryItem item)
+        {
+            return CombatLoadoutRules.DisplayedAmmunitionQuantity(
+                item.ItemInstanceId,
+                item.Quantity,
+                combatController != null ? combatController.State.Owner : null);
         }
 
         public void SetOpen(bool value)
@@ -405,6 +462,7 @@ namespace Mmorpg.Client.Ui
             }
 
             slotSize = ResolveSlotSize();
+            liveAmmunition = null;
             if (state.FullSnapshot != null)
             {
                 characterHeaderDetail.text = VendorClientRules.FormatAmount(
@@ -677,18 +735,37 @@ namespace Mmorpg.Client.Ui
                 equipmentSlot.SlotId);
             var isBlocked = item == null
                 && blocked.TryGetValue(equipmentSlot.SlotId, out _);
+            // The equipped arrows show the worker's live count, which already subtracts
+            // shots that are not committed yet.
+            string quantityText = null;
+            var baseDescription = "Equipped in " + slotName;
+            var description = baseDescription;
+            var live = 0;
+            var showsLiveCount = item != null
+                && string.Equals(equipmentSlot.SlotId, ItemEquipmentSlotIds.Ammunition, StringComparison.Ordinal);
+            if (showsLiveCount)
+            {
+                live = LiveAmmunitionQuantity(item);
+                quantityText = InventorySlotPresentation.LiveQuantityText(item.Quantity, live);
+                description = InventorySlotPresentation.LiveQuantityDescription(
+                    baseDescription,
+                    item.Quantity,
+                    live);
+            }
+
             var tooltipText = item != null
                 ? InventorySlotPresentation.BuildItemTooltip(
                     state.Catalog,
                     item,
-                    "Equipped in " + slotName)
+                    description)
                 : "<b>" + slotName + "</b>\n" + (isBlocked
                     ? BlockedSlotText(state, blocked[equipmentSlot.SlotId])
                     : EmptyEquipmentSlotText(state, equipmentSlot.SlotId));
-            CreateSlot(parent, new SlotSpec
+            var slotObject = CreateSlot(parent, new SlotSpec
             {
                 Key = "equipment:" + equipmentSlot.SlotId,
                 Item = item,
+                QuantityText = quantityText,
                 CornerLabel = slotName,
                 EmptyLabel = slotName,
                 Blocked = isBlocked,
@@ -704,6 +781,18 @@ namespace Mmorpg.Client.Ui
                 OnDrop = candidate => OnEquipmentDrop(equipmentSlot, candidate),
                 Tooltip = tooltipText
             });
+            if (showsLiveCount)
+            {
+                var quantityLabel = slotObject.transform.Find(QuantityLabelName);
+                liveAmmunition = new LiveAmmunitionSlot
+                {
+                    Item = item,
+                    Description = baseDescription,
+                    DrawnQuantity = live,
+                    QuantityText = quantityLabel != null ? quantityLabel.GetComponent<Text>() : null,
+                    Tooltip = slotObject.GetComponent<InventoryTooltipTrigger>()
+                };
+            }
         }
 
         private static string BlockedSlotText(

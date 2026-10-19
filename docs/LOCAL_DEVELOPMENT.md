@@ -1005,9 +1005,8 @@ loot, partial stacks, and atomic equipped-Bag swaps use the separate flow in
 
 ## Player Death And Durable Corpse Verification
 
-Combat produces deaths in SimulationWorker, but Unity cannot attack or show a
-death before the combat presentation step of the
-[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md). Verify the complete
+Combat produces deaths in SimulationWorker, as
+[Combat Verification](#combat-verification) shows in Unity. Verify the complete
 durable boundary against the isolated PostgreSQL database:
 
 ```powershell
@@ -1354,9 +1353,10 @@ Expected result:
   through the shared interaction authority path.
 
 Recovery Storage headings label `death_recovered_insured` as consumed insurance
-and `death_recovered_protected` as protected-on-death. Unity cannot attack yet,
-so use the existing backend death fixture to verify first-death consumption and
-replay idempotency.
+and `death_recovered_protected` as protected-on-death. A combat death in
+[Combat Verification](#combat-verification) consumes insurance the same way;
+the backend death fixture verifies first-death consumption and replay
+idempotency without a second client.
 
 No manual Unity Editor setup is required for this verification. Editor actions are needed
 only for the optional offline item grant used by this manual workflow.
@@ -1451,8 +1451,8 @@ migration backfills an `opening_balance` ledger row for every nonzero balance.
    button. Expected result: the vendor panel reports `Sold.`, the stack shrinks
    by the sold quantity, and the balance rises by 4 Gold per ore, rounded down
    on the total.
-9. Currency stays with the character on death. Unity cannot attack yet, so use
-   the development death fixture: leave the shard, open
+9. Currency stays with the character on death. A combat death needs a second
+   client, so use the development death fixture: leave the shard, open
    `MMORPG > Tools > Inventory Item Grants`, select the character, note
    `Balance` under `Give Currency`, and click `Create Durable Corpse` as
    described in
@@ -1555,18 +1555,18 @@ Expected result: all three integration tests pass. Retrying one live Mob loot gr
 creates one persistent player item. A durable alpha corpse restores into a new
 worker store with the same database deadline, three-section custody, and loot.
 
-No manual Unity gameplay setup is required. Combat kills Mobs and rolls their
-loot in SimulationWorker, which [Combat Verification](#combat-verification)
-covers, and Unity can attack Mobs from the combat presentation step on.
+No manual Unity gameplay setup is required. To kill a wolf and loot its
+corpse in Unity, follow [Combat Verification](#combat-verification).
 
 ## Combat Verification
 
 Protocol 18 adds target-based combat to SimulationWorker: attack targets,
 attack timing, arrows and their batches, damage, player and Mob death, Mob loot
-and respawn, player respawn, regeneration, and the Shard rule. Unity receives
-every combat message, but it cannot attack before the combat presentation step
-of the [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md), so the combat
-flow is verified with the worker's socket-level tests:
+and respawn, player respawn, regeneration, and the Shard rule. Unity attacks
+with a left click and shows the combat with temporary presentation. Mobs stand
+still and do not attack until the Mob AI step of the
+[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md). The worker's
+socket-level tests cover the authoritative flow:
 
 ```powershell
 dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
@@ -1584,22 +1584,62 @@ stopped, an equipment change holds attacks for the lockout, only the lethal
 arrow of a volley hits and takes the kill, a wolf without a corpse despawns
 after its death reached the viewer, and a synthetic bot is no target.
 
-Check the join on the local stack:
+Play the combat loop on the local stack:
 
 1. Start the local stack as described in [Backend Services](#backend-services).
    Expected result: SimulationWorker registers its Shard and does not stop with
    `shard_rule_set_unknown`.
-2. Enter Play Mode in Unity, log in, and join `local-shard-1`. Expected result:
-   the client stays connected, and the Console shows `[CLIENT]
-   Server-authoritative movement is active at 30 ticks per second with ...
-   snapshots per second. Player versus player is allowed on this Shard.`
-3. With the [Monitoring Stack](#monitoring-stack) running, open the MMORPG
-   Playtest dashboard. Expected result: the `Combat` panel shows the combatants
-   of the World, and the count rises by one while the character is joined.
+2. With the character offline, open `MMORPG > Tools > Inventory Item Grants` and
+   grant the `equipment` package, as described in
+   [Give A Character Development Items](#give-a-character-development-items).
+3. Enter Play Mode, log in, and join `local-shard-1`. Expected result: the
+   Console shows `[CLIENT] Server-authoritative movement is active at 30 ticks
+   per second with ... snapshots per second. Player versus player is allowed on
+   this Shard.`, and the top-left combat frame shows `Health 100 / 100`, `No
+   arrows equipped`, and `No target`.
+4. Press `C`, equip the Training Shortbow in Main Hand and the Bronze Arrows in
+   Ammunition. Expected result: the frame shows `Arrows 500`.
+5. Walk to the Feral Wolf area of Development World 2, X and Z between `-190`
+   and `-130`, with several clicks. Hover a wolf. Expected result: no `Click to
+   interact` prompt, because a Mob is a combat target, never an interaction.
+6. Left-click a wolf from more than 10 m away. Expected result: the target frame
+   shows `Feral Wolf 50 / 50`, the character walks to about 9 m and stops, the
+   status reads `Attacking`, arrows fly, white damage numbers rise from the
+   wolf, the wolf gets a health bar, and the arrow count drops by one per shot in
+   the frame and in the inventory Ammunition slot.
+7. Click the ground or press `Escape` while it fights. Expected result: the
+   target frame closes, the status reads `No target`, and the shooting stops.
+8. Attack a wolf until it dies. Expected result: the target frame closes, the
+   wolf leaves a corpse that loots as before, and a new wolf appears after 30
+   seconds.
+9. Unequip the bow and click a wolf. Expected result: the character does not
+   walk, and the status reads `No weapon equipped`. Without arrows it reads `No
+   ammunition`, and right after swapping the bow it reads `Equipment changed`
+   for about 1 second.
+10. Join a second client with another character and attack it until it dies,
+    because Mobs do not attack before the Mob AI step. Expected result on the
+    dead client: `You died` with `Respawning in 5 s` counting down, clicks do
+    nothing while dead, and after the respawn the character stands at the World
+    spawn with full health and does not walk on. Its items are in its corpse at
+    the place of death.
+11. With the [Monitoring Stack](#monitoring-stack) running, open the MMORPG
+    Playtest dashboard. Expected result: the `Combat` panel shows the attacks,
+    hits, and deaths, and the `Arrows and deaths` panel shows the committed
+    arrow batches.
 
 No manual Unity Editor steps are required. The combat client adds no scene,
-prefab, Inspector reference, or asset; `ClientBootstrap` creates
-`CombatClientController` at runtime.
+prefab, Inspector reference, input action, or asset; `ClientBootstrap` creates
+the combat controllers, the targeting, the arrows, and the temporary combat HUD
+at runtime. The EditMode and PlayMode suites cover the click rules, the
+approach, the HUD values, the live arrow count, and the bootstrap:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
+```
+
+With the Editor open, use the live Editor test commands in
+[Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli)
+instead.
 
 ## Item Operations Hardening Verification
 

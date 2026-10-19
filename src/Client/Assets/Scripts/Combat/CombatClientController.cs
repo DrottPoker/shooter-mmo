@@ -47,8 +47,10 @@ namespace Mmorpg.Client.Combat
 
         // Selects the target the character attacks until it is cleared, dies, or despawns.
         // The worker checks every rule; these checks only avoid a request that must fail.
-        public bool TryAttackTarget(ulong targetEntityId, out string error)
+        // The operation id names the result that answers the request.
+        public bool TryAttackTarget(ulong targetEntityId, out Guid operationId, out string error)
         {
+            operationId = Guid.Empty;
             if (!CanSend(out error))
             {
                 return false;
@@ -72,15 +74,32 @@ namespace Mmorpg.Client.Combat
                 return false;
             }
 
-            return TrySend(
-                RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId),
-                out error);
+            var intent = RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId);
+            if (!TrySend(intent, out error))
+            {
+                return false;
+            }
+
+            operationId = intent.OperationId;
+            return true;
         }
 
-        public bool TryClearTarget(out string error)
+        public bool TryClearTarget(out Guid operationId, out string error)
         {
-            return CanSend(out error)
-                && TrySend(RealtimeCombatIntent.CreateClearTarget(Guid.NewGuid()), out error);
+            operationId = Guid.Empty;
+            if (!CanSend(out error))
+            {
+                return false;
+            }
+
+            var intent = RealtimeCombatIntent.CreateClearTarget(Guid.NewGuid());
+            if (!TrySend(intent, out error))
+            {
+                return false;
+            }
+
+            operationId = intent.OperationId;
+            return true;
         }
 
         private bool CanSend(out string error)

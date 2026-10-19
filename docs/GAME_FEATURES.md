@@ -341,7 +341,7 @@ context but no producer yet.
 
 ## Durable Player Death Foundation
 
-Status: Durable and interactive foundation implemented, live combat activation pending
+Status: Implemented, with combat deaths since protocol 18
 
 An authoritative player death can now be committed as one idempotent durable
 transaction. Currency and Secure Container contents stay with the character.
@@ -374,8 +374,8 @@ Every viewer receives committed state, while a stale or losing request gets a
 stable refreshable result. The dead character competes under the same rules as
 every other player.
 
-The project still has no combat death producer. Development testing creates a
-real durable corpse from an offline source character through `MMORPG >
+[Combat](#combat) produces these deaths. Development testing can also create
+a real durable corpse from an offline source character through `MMORPG >
 Tools > Inventory Item Grants`. The generic capsule and current uGUI are
 temporary visuals over permanent protocol, state, authority, transaction, and
 revision foundations.
@@ -389,8 +389,8 @@ interactables is implemented:
 
 - `NPC` identifies a social or service actor with freely composable dialogue,
   vendor, quest, crafting, insurance, trainer, bank, and Recovery capabilities.
-- `Mob` identifies a combat actor with later AI, aggro, combat, loot, corpse,
-  and respawn behavior.
+- `Mob` identifies a combat actor. A click on a Mob attacks it, and a dead Mob
+  leaves loot in its corpse and respawns; AI and aggro come later.
 - A resource node identifies a gatherable world object, such as an Iron Vein,
   with exactly one gathering capability. See [Gathering](#gathering).
 - The pointer picks a registered target with a direct ray and a `0.15` metre
@@ -423,10 +423,9 @@ the inventory with that storage, and `Trade` opens it with the vendor; each stay
 usable while the interaction is open. The insurance and quest offer
 capabilities run their item lifecycle. Dialogue, crafting, trainer, and quest
 completion buttons return an explicit server result and never fabricate
-success. Quest progression, crafting, combat AI, damage, death-event production,
-and Mob loot-table generation remain unimplemented. The live and durable Mob
-corpse lifecycle is ready for an authoritative producer that supplies a death
-event and resolved loot seeds.
+success. Quest progression, crafting, and Mob AI remain unimplemented. Combat
+damages and kills Mobs, rolls their loot, and fills the live or durable Mob
+corpse.
 
 ## Currency And Vendor Trade
 
@@ -498,17 +497,51 @@ Known limitations: one resource type, no Mining experience or level, no success
 chance per cycle, and a placeholder vein model. Manual test steps are in
 [Local Development](LOCAL_DEVELOPMENT.md#vendor-and-gathering-verification).
 
+## Combat
+
+Status: Implemented with temporary presentation; Mobs stand still and do not
+attack until the Mob AI step
+
+Combat is target based and server authoritative:
+
+- A left click on a living Mob, or on another character when the Shard allows
+  player versus player, selects it as the target. The character walks into the
+  range of its equipped weapon, about 9 m for the Training Shortbow, and attacks
+  on the weapon's cooldown, every 2.4 seconds for the shortbow, while it stands
+  still. Moving between shots is allowed.
+- A click anywhere else or `Escape` ends the attack.
+- A bow needs arrows of its family in the Ammunition slot. Every shot spends one
+  arrow, even when it flies at a target that died, and the inventory shows the
+  live arrow count. An equipment change holds attacks for 1 second.
+- The top-left frame shows health, arrows, and the attack status, such as `Out
+  of range` or `No ammunition`. The target frame shows the target's health,
+  damaged combatants get health bars, hits show white damage numbers, and
+  arrows fly to their target.
+- A character at 0 health dies: `You died` counts down 5 seconds, the
+  character respawns at the World spawn with full health, and its items follow
+  the [Durable Player Death Foundation](#durable-player-death-foundation).
+- Out of combat for 10 seconds, a character regains 2 percent of its health
+  every second.
+- A Feral Wolf has 50 health, drops a Wolf Pelt and sometimes Bronze Arrows,
+  and returns after 30 seconds. The Feral Alpha boss has 240 health, leaves a
+  durable corpse, and returns after 300 seconds. In Development World 2 the
+  wolves live in the southwest wilderness, X and Z between `-190` and `-130`,
+  and the Feral Alpha stands at `(-120, 0, -195)`.
+
+[Combat Verification](LOCAL_DEVELOPMENT.md#combat-verification) walks through
+the loop.
+
 ## Planned Feature Categories
 
 These categories are defined by the project direction but are not implemented.
 They remain in the MVP specification until working behavior is available:
 
 - Dynamic collision transform replication.
-- Combat, weapons, damage, death, and respawning.
+- Mob AI, Mob attacks, melee and magic weapons, armor, and final combat
+  visuals.
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
-- Live combat death production, final corpse art and loot presentation,
-  Mob loot-table generation, and insurance or quest UI polish.
+- Final corpse art and loot presentation, and insurance or quest UI polish.
 - Crafting, professions, further resource types and gathering progression, and
   the player economy beyond the first NPC vendor.
 - Complete NPC capability behavior, Mob AI, quests, events, and world

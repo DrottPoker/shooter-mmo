@@ -23,6 +23,18 @@ namespace Mmorpg.Client.Gameplay
         private WorldPointerFocus pointerFocus;
         private LocalPlayerController localPlayer;
 
+        // The local player of the joined session, or null before it spawned.
+        public LocalPlayerController LocalPlayer
+        {
+            get { return localPlayer; }
+        }
+
+        // The presentation of another player by its network entity id.
+        public bool TryGetRemotePlayer(ulong entityId, out RemotePlayerView view)
+        {
+            return remotePlayers.TryGetValue(entityId, out view) && view != null;
+        }
+
         // The composition root passes the persistent realtime client and the pointer focus
         // when the scene loads, before Start runs.
         public void Initialize(RealtimeSimulationClient realtimeClient, WorldPointerFocus focus)

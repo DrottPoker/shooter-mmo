@@ -29,6 +29,9 @@ namespace Mmorpg.Client.WorldActors
         public string TargetDisplayName { get; private set; } = string.Empty;
         public string PresentationArchetypeId { get; private set; } = string.Empty;
 
+        // The top of the interaction bounds above the root, where a health bar can sit.
+        public float TargetHeight { get; private set; }
+
         public Vector3 TargetPosition
         {
             get { return transform.position; }
@@ -72,6 +75,7 @@ namespace Mmorpg.Client.WorldActors
                 actor.BoundsSizeX,
                 actor.BoundsSizeY,
                 actor.BoundsSizeZ);
+            TargetHeight = Mathf.Max(0f, actor.BoundsCenterY + (actor.BoundsSizeY * 0.5f));
             Apply(actor);
         }
 

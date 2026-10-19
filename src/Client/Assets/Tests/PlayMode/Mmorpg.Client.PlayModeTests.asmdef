@@ -13,6 +13,7 @@
     "Mmorpg.Client.App",
     "Mmorpg.Client.Worlds",
     "Mmorpg.WorldData",
+    "Mmorpg.GameProtocol",
     "Unity.ResourceManager"
   ],
   "includePlatforms": [],

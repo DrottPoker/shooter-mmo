@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Purpose
 
@@ -45,15 +45,15 @@ layers from the bottom up:
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
-| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, prediction, interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
-| `Mmorpg.Client.WorldActors` | Actor and interaction state, targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
-| `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror | Networking |
-| `Mmorpg.Client.Ui` | Every panel, drag and drop, `ClientOperationState` | Every row above it except Combat |
+| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, ordered world click handlers, prediction, interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
+| `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
+| `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
+| `Mmorpg.Client.Ui` | Every panel including the combat HUD, drag and drop, `ClientOperationState` | Every row above it |
 | `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | Every row above it |
 
 Ui is the top feature area; only the App composition root, which creates the
-panels, sits above it. Ui and App may reference Combat; today only App does,
-and combat presentation adds the Ui reference when it arrives. Each namespace
+panels, sits above it. Ui and App reference Combat: the combat HUD and the
+inventory's live arrow count read its state. Each namespace
 equals its assembly name. Areas that read `ClientSession` reference Api as
 well, because the session caches Api contracts. The Editor-only
 `Mmorpg.Client.Editor` assembly references Core and Worlds plus the shared
@@ -126,8 +126,20 @@ Realtime movement
 
 World pointer input
   +-- WorldPointerFocus, owned by ClientBootstrap
-  +-- IWorldClickHandler, such as WorldInteractionTargetingController
+  +-- WorldClickHandlerList in LocalPlayerController, sorted by WorldClickOrder
+      +-- CombatTargetingController (Combat, first)
+      +-- WorldInteractionTargetingController (WorldInteraction)
+  +-- WorldPointerPicker, one per handler, the same picking rules
   +-- MovementDestinationMarker
+
+Combat (World scene, created at runtime by ClientBootstrap)
+  +-- CombatantViewLocator (local player, remote players, world actor views)
+  +-- CombatTargetingController
+      +-- CombatClickRules, CombatTargetSelection, CombatApproachPlanner
+      +-- CombatLoadoutRules (weapon range from the bundled item catalog)
+  +-- CombatProjectilePresentation (replaceable arrows)
+  +-- TemporaryCombatHud (replaceable runtime uGUI)
+      +-- CombatHudPresentation (pure labels and values)
 ```
 
 ## Persistent Client Bootstrap
@@ -525,14 +537,17 @@ input packets, or SimulationWorker state.
 
 `LocalPlayerController` moves the player only in an authenticated World-scene
 session; the prefab has no offline movement mode. A left click goes through the
-registered `IWorldClickHandler` instances first, so a click on an NPC, a
-resource node, or a corpse belongs to world interaction. Otherwise a ray through
-the pointer is cast against the same baked collision world that prediction uses,
-and the hit point becomes the destination. `LocalPlayerNavigator` plans the
-route with the shared `MovementPathPlanner` on a background thread. The
-collision world is
-lock-protected, and only one plan runs at a time, so a long search never stalls
-a frame while chunk streaming continues on the main thread. Every walk,
+registered `IWorldClickHandler` instances first. `WorldClickHandlerList` sorts
+them by their `WorldClickOrder`, so the order never depends on which feature
+registered first: combat sees every click before world interaction. A click on
+a Mob or an attackable player therefore belongs to combat, and a click on an
+NPC, a resource node, or a corpse belongs to world interaction. Otherwise a ray
+through the pointer is cast against the same baked collision world that
+prediction uses, and the hit point becomes the destination.
+`LocalPlayerNavigator` plans the route with the shared `MovementPathPlanner` on
+a background thread. The collision world is lock-protected, and only one plan
+runs at a time, so a long search never stalls a frame while chunk streaming
+continues on the main thread. Every walk,
 approach, or stop is a new intent with an id; only the newest intent's plan is
 applied, and the previous path continues until it is ready. The navigator gives
 every applied plan a new path id. A plan that stopped at the 32 waypoint limit
@@ -890,9 +905,12 @@ transforms. Runtime code never scans the Unity scene or treats PhysX as network
 authority.
 
 `RemotePlayerView` is presentation-only. It has no input, camera, audio listener,
-rigidbody, or collider. It stores the network entity id, persistent character
-id, display name, and presentation archetype supplied by the spawn message. It
-buffers server states in
+rigidbody, or solid collider; the prefab has no collider at all. At runtime it
+adds one trigger capsule of the movement capsule's size, so the pointer can pick
+the player for combat, and it reports that height for health bars. A trigger
+never blocks movement, the camera, or the pointer. It stores the network entity
+id, persistent character id, display name, and presentation archetype supplied
+by the spawn message. It buffers server states in
 `RemoteMovementInterpolation` and advances an adaptive monotonic frame-rate
 render clock approximately 100 ms behind the latest server tick. The clock uses
 bounded catch-up and slow-down corrections during normal delivery. After a
@@ -986,11 +1004,17 @@ and durable player or boss corpses. The same client view, pointer target,
 operation journal, canonical three-section snapshot, committed delta, inventory
 refresh, and reconnect cleanup paths remain authoritative.
 
-The pointer selects targets: a direct ray through the cursor first, then a
-`0.15` metre spherecast tolerance, among registered targets within `100` metres
-of the camera that no solid collider hides. The targeting controller is an
-`IWorldClickHandler` of the local player, so a left click on a target never
-becomes a walk to the ground behind it. The click instead approaches the target:
+The pointer selects targets through `WorldPointerPicker`, which combat uses as
+well: a direct ray through the cursor first, then a `0.15` metre spherecast
+tolerance, among registered targets and remote players within `100` metres of
+the camera that no solid collider hides. The nearest candidate decides, so a
+click never reaches past an NPC to a Mob behind it or the other way around. A
+Mob is no interaction target: `OffersInteraction` accepts corpses, NPCs, and
+resource nodes by the authoritative actor kind, so hovering a Mob shows no
+interaction prompt and a click on it belongs to combat. The targeting
+controller is an `IWorldClickHandler` of the local player at
+`WorldClickOrder.WorldInteraction`, so a left click on a target never becomes a
+walk to the ground behind it. The click instead approaches the target:
 the player walks until it is within `2.75` metres, inside the worker's start
 range, and the controller sends the open intent once the authoritative owner
 position is that close. A newer click or stop cancels the approach. A target
@@ -1094,8 +1118,9 @@ rejected yield, such as a missing tool or a full inventory.
 
 ## Combat Client
 
-Status: Protocol handling and the combat state mirror implemented; combat
-targeting and presentation follow in their own step of the
+Status: Protocol handling, the combat state mirror, combat targeting and
+approach, and the temporary combat presentation implemented; Mob interpolation
+follows with the Mob AI step of the
 [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md#unity-client).
 
 Combat is server-authoritative and never predicted. `RealtimeSimulationClient`
@@ -1132,8 +1157,11 @@ for presentation; health always comes from the combatant and owner states. The
 state clears on `SessionJoined` and `SessionEnded`, so reconnect cleanup never
 compares revisions across sessions.
 
-`Respawned` fires when an owner state's life sequence advances and the life
-state is alive again, also when the dead state itself was never received. The
+`Died` fires when an owner state says dead and the previous one did not, or
+belonged to an earlier life, so it fires once per death, also when the client
+joins while dead. `Respawned` fires when an owner state's life sequence
+advances and the life state is alive again, also when the dead state itself was
+never received. The
 worker then has moved the character to the World spawn with full health. The
 owner's movement prediction needs no extra reset for that: the teleport arrives
 as the next owner snapshot, the worker ignores movement inputs while the
@@ -1141,6 +1169,108 @@ character is dead and halts its path, and a reconciliation of 3 metres or more
 is a hard correction that snaps the presentation to the reconciled state
 instead of blending. A respawn within 3 metres of the death position blends
 like any small correction.
+
+### Combat Targeting And Approach
+
+`CombatTargetingController` is the permanent click handler of combat, created
+by the bootstrap in every World scene and registered with the local player at
+`WorldClickOrder.Combat`, before world interaction. Its decisions live in pure
+classes that EditMode tests cover:
+
+- `CombatClickRules.Describe` turns the nearest `WorldPointerPicker` candidate
+  into a Mob, a player, another target, or nothing, by the authoritative actor
+  kind. `Classify` then decides: while the owner state says dead, every world
+  click is ignored, so it neither walks, attacks, nor interacts. A living Mob
+  is attacked. A Mob that cannot be attacked now, such as one walking home,
+  takes the click without action. A living player is attacked only when the
+  joined Shard's `ShardRules.PlayerVersusPlayer` allows it; otherwise the click
+  passes on and walks. A player without combat state, such as a development
+  bot, is never a target. Every click that combat passes on, a ground click, an
+  NPC, a resource node, or a corpse, sends `ClearTarget` when there is a
+  target, and so does Escape.
+- `CombatTargetSelection` names the target the client acts on. The worker owns
+  the target, so it is the owner state's target, except while a request is on
+  its way, when it is the requested target. A confirmed request keeps its target
+  until a newer owner state arrives, because the result can arrive before the
+  owner state that shows it. A rejected request falls back to the owner's
+  target and keeps the worker's error for the HUD. A request that its session
+  dropped is forgotten.
+- `CombatApproachPlanner` walks the character into range through
+  `LocalPlayerController.Approach`. The range is the weapon range minus
+  `0.75` metres, at least `0.5` metres, because the worker measures to the
+  target's bounds in three dimensions while the route stops on the planar
+  distance. `CombatLoadoutRules.TryGetWeaponRange` reads the weapon range from
+  the bundled item catalog for the item in the `main_hand` slot of the
+  committed inventory, as the worker resolves the loadout; without a weapon the
+  character does not walk, and the worker reports `WeaponMissing`. The first
+  approach also stops a walk that is already in range. While walking, a target
+  that moved more than `1.5` metres from the planned goal gets a new route.
+  While standing, the character walks again when the target stands beyond the
+  weapon range or the worker reports `OutOfRange`, a margin closer than its
+  measured distance, and it walks `2` metres closer each time the worker
+  reports `LineOfSightBlocked`. It never walks while the worker reports
+  `Attacking`, and it starts at most one approach per second by itself. Losing
+  the target stops only the planner's own approach, never a walk that a newer
+  click started.
+
+On `Died` the controller drops its requests and stops the navigator, and on
+`Respawned` it stops it again, so a path planned before the death never runs
+from the spawn. The worker clears the target on death.
+
+`CombatantViewLocator` finds the presentation of a combatant by network entity
+id: the local player from `WorldSceneContext.LocalPlayer`, another player from
+`WorldSceneContext.TryGetRemotePlayer`, and a world actor from
+`WorldActorPresentationController.TryGetView`, with the height for health bars.
+Approach, arrows, health bars, and damage numbers use it; the worker never
+sees these positions.
+
+`CombatServerClock` is the client's best estimate of the worker's current tick
+for presentation: the tick of the newest owner snapshot,
+`RealtimeSimulationClient.LatestServerTick`, plus the time since it arrived,
+`LatestSnapshotAgeSeconds`, plus half of `RoundTripTimeMilliseconds`, at the
+session's tick rate. The worker keeps sending owner snapshots while the
+character is dead, so the clock keeps running for the respawn countdown.
+`RoundTripTimeMilliseconds` reads LiteNetLib's round trip time; LiteNetLib's
+`Ping` is only half of it.
+
+### Combat Presentation
+
+Status: Temporary. Every object is created at runtime, so no scene, prefab, or
+asset changes are needed.
+
+`TemporaryCombatHud` in `Mmorpg.Client.Ui` is a runtime uGUI canvas below the
+interaction panel and the inventory. Nothing on it takes a raycast, so it never
+blocks a world click. It shows:
+
+- An owner frame at the top left with health and a bar, the live arrow count
+  from `OwnerCombatState`, and the attack status as a short label from
+  `CombatHudPresentation.AttackStatusLabel`, such as `Out of range`,
+  `No line of sight`, or `No weapon equipped`, plus `In combat`. The worker's
+  error for a rejected request shows below it for four seconds.
+- A target frame at the top centre for the target of
+  `CombatTargetingController` with its name, health, and whether it is in
+  combat or returning home.
+- Health bars over every damaged living combatant in view within 60 metres:
+  the local player from its owner state, other players and Mobs from their
+  combatant states.
+- A floating damage number at the hit target for every `Hit` event, white for
+  Normal damage, rising and fading over 1.1 seconds.
+- A death overlay while the owner state says dead, with a countdown from
+  `RespawnTick` and `CombatServerClock` that rounds up to whole seconds.
+
+`CombatProjectilePresentation` in `Mmorpg.Client.Combat` draws a simple arrow,
+a collider-free stretched cube, from the attacker to the target of every
+`AttackReleased` event whose impact tick lies after its batch tick, so a Mob
+bite shows none. It follows the target and lands at the impact tick by
+`CombatServerClock`; an arrow that already landed is not drawn.
+
+The equipped ammunition slot of `TemporaryInventoryPanel` shows the live arrow
+count from `OwnerCombatState` when its `AmmunitionItemInstanceId` names the
+equipped stack, and the committed quantity otherwise, through
+`CombatLoadoutRules.DisplayedAmmunitionQuantity`. A live count that differs
+from the committed quantity always shows, even 0 or 1, and the tooltip says
+how many are left. The drawn slot updates in place when that count changes, so
+a shot never redraws the panel or cancels a drag.
 
 ## Test Architecture
 
@@ -1170,8 +1300,21 @@ tier, quantity and policy badges, and the item tooltip text.
 Combat coverage in `CombatClientTests` verifies monotonic combatant and owner
 revisions and their conflicts, despawn removal, intent completion by operation
 id and kind, the pending intent bound, reconnect cleanup, the respawn signal,
-event forwarding, and that every combat message, and every other reliable
-worker message outside the session lifecycle, is ignored while leaving.
+the death signal once per death, event forwarding, and that every combat
+message, and every other reliable worker message outside the session
+lifecycle, is ignored while leaving.
+`CombatTargetingTests` verify that combat sees every click before world
+interaction whatever registered first, that a dead character ignores every
+click, the Mob and player classification and the player versus player rule,
+that world interaction no longer accepts Mobs, the nearest-candidate rule, the
+remote player trigger, target selection with confirmed, rejected, cleared, and
+stale requests, and the approach distance, re-approach, line-of-sight, retry,
+and stop rules. `CombatPresentationTests` verify the weapon range from the
+main hand item, the live arrow count and its slot label, the server clock with
+tick wrap, the respawn countdown, a distinct label for every attack status,
+health bar visibility, and projectile timing. A PlayMode test draws the
+equipped arrow slot of the real inventory panel and follows the owner state's
+live count without a redraw.
 `InventoryQuantityChangeTests` cover the in-place arrow patch, a used-up stack,
 a pending operation that stays busy, and the refresh fallback for a missed or
 skipped revision, an unknown or wrongly placed stack, a growing quantity, and an
@@ -1212,7 +1355,10 @@ PlayMode tests verify that loading LoginMenu creates the persistent client
 bootstrap, realtime, inventory, corpse, actor, interaction, combat, targeting,
 and presentation controllers plus the runtime login panel. World-scene coverage
 loads `DevelopmentWorld1` through Addressables, opens and closes the runtime uGUI
-inventory root, and finds the runtime corpse and actor presentation controllers.
+inventory root, and finds the runtime corpse and actor presentation controllers,
+the combat targeting controller without a target, the projectile presentation,
+and the combat HUD, which shows nothing without a joined session and has no
+raycast target.
 An inventory panel test applies a committed snapshot without a GameService and
 checks that the complete view draws one slot per catalog equipment slot, the
 blocked slot of a two-handed item, one shared slot size in every module, the
@@ -1255,12 +1401,19 @@ Manual flows and expected results are documented in
 - Plan routes only through `LocalPlayerNavigator` and the shared planner, and
   route world clicks through `IWorldClickHandler` and `WorldPointerFocus` instead
   of reading the mouse in feature code.
+- Register a world click handler with a `WorldClickOrder` value and never rely
+  on registration order. Pick pointer targets through `WorldPointerPicker`, so
+  the nearest target decides for every feature.
 - Keep persistent cross-scene session state in `ClientSession` and
   item and corpse state in their bootstrap-owned controllers, not scene panels.
 - Keep planned actor and world-interaction state in bootstrap-owned controllers,
   not actor prefabs or the temporary interaction panel.
 - Keep combat state in `CombatClientController`. Presentation reads its state
   and never decides range, damage, or death.
+- Keep combat decisions, such as click classification, target selection, and
+  the approach, in the pure classes of `Mmorpg.Client.Combat`, and keep its
+  MonoBehaviours thin. Find combatant presentations through
+  `CombatantViewLocator` instead of searching the scene.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
 - Give every type that holds static state a
