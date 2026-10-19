@@ -10,7 +10,7 @@
 # remote branch moved after the merge, the task branch had to stay (uncommitted changes, another
 # worktree, or commits that are not in development), or the local development branch does not
 # match origin/development. The report says why; never discard local work to fix it. Pull
-# requests from main or development are refused.
+# requests from main, development, a fork, or an unusual branch name are refused.
 param(
     [Parameter(Mandatory = $true)]
     [int]$Number,
@@ -48,14 +48,28 @@ function Get-Worktrees {
 # The head is read once and pinned: readiness is judged for this commit, and the merge only
 # succeeds while the pull request head is still this commit. A pull request that is already
 # merged goes straight to the cleanup, so a rerun finishes a cleanup that failed halfway.
-$pr = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "title,url,state,baseRefName,headRefName,headRefOid,mergeCommit")
+$pr = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "title,url,state,baseRefName,headRefName,headRefOid,isCrossRepository,mergeCommit")
 if ($pr.baseRefName -ne "development") {
     Write-Output "Pull request #$Number targets $($pr.baseRefName), not development, so nothing was merged."
     exit 1
 }
-# The cleanup deletes the head branch, so a long-lived branch must never be the head.
+# The cleanup deletes the head branch on origin, so the head must be a task branch of this
+# repository: never a long-lived branch, never a fork, and with a name that native arguments
+# carry unchanged.
+if ($pr.isCrossRepository) {
+    Write-Output "Pull request #$Number comes from a fork. This script only completes task branches of this repository, so nothing was merged or deleted."
+    exit 1
+}
 if ($pr.headRefName -in @("main", "development")) {
     Write-Output "Pull request #$Number comes from the long-lived branch $($pr.headRefName). This script only completes task branches, so nothing was merged or deleted."
+    exit 1
+}
+if ($pr.headRefName -notmatch '^[A-Za-z0-9._/-]+$') {
+    Write-Output "Pull request #$Number comes from a branch name with characters other than letters, digits, '.', '_', '/', and '-', so nothing was merged or deleted."
+    exit 1
+}
+if ($Subject -and $Subject.Contains('"')) {
+    Write-Output "The merge commit subject must not contain double quotes, so nothing was merged."
     exit 1
 }
 

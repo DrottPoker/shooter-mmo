@@ -235,9 +235,10 @@ the remote branch moved after the merge, the task branch had to stay
 out, or it has commits that are not in `development`), or the local
 `development` does not match `origin/development` afterwards, usually because
 uncommitted changes in the main checkout block the fast-forward or local
-commits sit on `development`. The report says which. The script refuses pull
-requests whose head is `main` or `development`, because the cleanup deletes the
-head branch.
+commits sit on `development`. The report says which. Because the cleanup
+deletes the head branch on `origin`, the script refuses pull requests whose
+head is `main` or `development`, comes from a fork, or has a branch name with
+characters other than letters, digits, `.`, `_`, `/`, and `-`.
 Never discard those changes to get past exit code 2.
 
 Expected result: the pull request shows as merged with a merge commit,
