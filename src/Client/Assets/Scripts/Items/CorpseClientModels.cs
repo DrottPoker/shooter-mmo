@@ -6,12 +6,13 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Items
 {
+    // Whether the state can start an operation. A rejection or closure is reported through
+    // CorpseClientState.Error or Notice and never blocks the view.
     public enum CorpseClientStatus
     {
         Unavailable,
         Ready,
-        Busy,
-        Error
+        Busy
     }
 
     public enum CorpseStateApplyResult
@@ -349,14 +350,6 @@ namespace Mmorpg.Client.Items
             }
         }
 
-        public void MarkAvailable()
-        {
-            Status = CorpseClientStatus.Ready;
-            Error = null;
-            Notice = string.Empty;
-            RaiseChanged();
-        }
-
         public void BeginOperation(
             Guid operationId,
             RealtimeCorpseInteractionKind operationKind,
@@ -422,7 +415,9 @@ namespace Mmorpg.Client.Items
                     viewCorpseId = Guid.Empty;
                 }
 
-                Status = CorpseClientStatus.Error;
+                // A rejection keeps an open view usable. Error only reports why the
+                // operation failed, and the controller refreshes a view the result marks stale.
+                Status = CorpseClientStatus.Ready;
                 Error = new CorpseClientError(
                     result.Error?.Code ?? "corpse_operation_rejected",
                     result.Error?.Message ?? "The corpse operation was rejected.");
@@ -634,11 +629,12 @@ namespace Mmorpg.Client.Items
                 }
             }
 
+            // Error and Notice report the viewer's own last outcome, so another viewer's
+            // change keeps a rejection visible until the next operation.
             ActiveView = next;
             Status = PendingOperationId == Guid.Empty
                 ? CorpseClientStatus.Ready
                 : CorpseClientStatus.Busy;
-            Error = null;
             RaiseChanged();
             return CorpseStateApplyResult.Applied;
         }
