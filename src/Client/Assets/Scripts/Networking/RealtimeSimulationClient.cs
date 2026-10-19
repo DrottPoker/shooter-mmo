@@ -19,7 +19,7 @@ namespace Mmorpg.Client.Networking
         Leaving
     }
 
-    public sealed class RealtimeSimulationClient : MonoBehaviour
+    public sealed class RealtimeSimulationClient : MonoBehaviour, IRealtimeCorpseChannel
     {
         private EventBasedNetListener listener;
         private NetManager client;

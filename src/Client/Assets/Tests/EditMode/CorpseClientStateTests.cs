@@ -3,13 +3,12 @@ using System.Linq;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
 using NUnit.Framework;
+using static Mmorpg.Client.Tests.EditMode.CorpseProtocolFixtures;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class CorpseClientStateTests
     {
-        private const long ExpiresAtUnixMilliseconds = 2_000_000_000_000L;
-
         [Test]
         public void PresenceChunksApplyOnceAndRejectDuplicateOrStaleSequences()
         {
@@ -685,6 +684,164 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.Error.Code, Is.EqualTo("carry_weight_limit_exceeded"));
         }
 
+        // The worker asks for a corpse refresh with these rejections, and the controller
+        // starts it at once.
+        [TestCase("item_already_looted", "The item was already looted.")]
+        [TestCase("auth_service_unavailable", "GameService is unavailable.")]
+        public void AutomaticRefreshKeepsTheRejectionThatAskedForIt(string code, string message)
+        {
+            var state = new CorpseClientState();
+            var corpseId = Guid.NewGuid();
+            var itemId = Guid.NewGuid();
+            var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+            CompleteOpen(state, corpseId);
+            foreach (var chunk in CreateSnapshot(corpseId, itemId, containers, 5, 5, 1))
+            {
+                state.ApplyViewChunk(chunk);
+            }
+
+            var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
+            AssertCompletes(
+                state,
+                Rejected(
+                    loot,
+                    RealtimeCorpseInteractionKind.LootItem,
+                    corpseId,
+                    code,
+                    message,
+                    requiresCorpseRefresh: true));
+            var refresh = Guid.NewGuid();
+
+            state.BeginAutomaticRefresh(refresh, corpseId);
+
+            Assert.That(state.PendingOperationId, Is.EqualTo(refresh));
+            Assert.That(state.IsAutomaticRefreshPending, Is.True);
+            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Busy));
+            Assert.That(state.CanMutate, Is.False);
+            Assert.That(state.Error.ToDisplayMessage(), Is.EqualTo(code + ": " + message));
+
+            AssertCompletes(state, Succeeded(refresh, RealtimeCorpseInteractionKind.Refresh, corpseId));
+
+            Assert.That(state.IsAutomaticRefreshPending, Is.False);
+            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Ready));
+            Assert.That(state.Error.Code, Is.EqualTo(code));
+
+            // The worker sends the refreshed snapshot after the result.
+            foreach (var chunk in CreateSnapshot(corpseId, itemId, containers, 4, 6, 1))
+            {
+                Assert.That(state.ApplyViewChunk(chunk), Is.Not.EqualTo(CorpseStateApplyResult.Invalid));
+            }
+
+            Assert.That(state.ActiveView.Revision, Is.EqualTo(6));
+            Assert.That(state.CanMutate, Is.True);
+            Assert.That(state.Error.Code, Is.EqualTo(code));
+            Assert.That(state.Notice, Is.Empty);
+
+            Begin(state, RealtimeCorpseInteractionKind.Refresh, corpseId);
+
+            Assert.That(state.IsAutomaticRefreshPending, Is.False);
+            Assert.That(state.Error, Is.Null);
+        }
+
+        [Test]
+        public void RejectedAutomaticRefreshReportsItsOwnError()
+        {
+            var state = new CorpseClientState();
+            var corpseId = Guid.NewGuid();
+            OpenView(state, corpseId);
+            var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
+            AssertCompletes(
+                state,
+                Rejected(
+                    loot,
+                    RealtimeCorpseInteractionKind.LootItem,
+                    corpseId,
+                    "item_already_looted",
+                    "The item was already looted.",
+                    requiresCorpseRefresh: true));
+            var refresh = Guid.NewGuid();
+            state.BeginAutomaticRefresh(refresh, corpseId);
+
+            AssertCompletes(
+                state,
+                Rejected(
+                    refresh,
+                    RealtimeCorpseInteractionKind.Refresh,
+                    corpseId,
+                    "corpse_out_of_range",
+                    "Move closer to the corpse before interacting with it."));
+
+            Assert.That(state.IsAutomaticRefreshPending, Is.False);
+            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Ready));
+            Assert.That(state.CanMutate, Is.True);
+            Assert.That(state.Error.Code, Is.EqualTo("corpse_out_of_range"));
+        }
+
+        [Test]
+        public void ClosureDuringAnAutomaticRefreshReplacesTheRejection()
+        {
+            var state = new CorpseClientState();
+            var corpseId = Guid.NewGuid();
+            OpenView(state, corpseId);
+            var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
+            AssertCompletes(
+                state,
+                Rejected(
+                    loot,
+                    RealtimeCorpseInteractionKind.LootItem,
+                    corpseId,
+                    "item_already_looted",
+                    "The item was already looted.",
+                    requiresCorpseRefresh: true));
+            var refresh = Guid.NewGuid();
+            state.BeginAutomaticRefresh(refresh, corpseId);
+
+            Assert.That(state.ApplyClosure(corpseId, "corpse_emptied", "The corpse is empty."), Is.True);
+
+            Assert.That(state.ActiveView, Is.Null);
+            Assert.That(state.PendingOperationId, Is.EqualTo(refresh));
+            Assert.That(state.Error, Is.Null);
+            Assert.That(state.Notice, Is.EqualTo("The corpse is empty."));
+
+            AssertCompletes(state, Succeeded(refresh, RealtimeCorpseInteractionKind.Refresh, corpseId));
+
+            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Ready));
+            Assert.That(state.Error, Is.Null);
+            Assert.That(state.Notice, Is.EqualTo("The corpse is empty."));
+        }
+
+        [Test]
+        public void SessionResetClearsTheRejectionAndTheAutomaticRefresh()
+        {
+            var state = new CorpseClientState();
+            var corpseId = Guid.NewGuid();
+            OpenView(state, corpseId);
+            var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
+            AssertCompletes(
+                state,
+                Rejected(
+                    loot,
+                    RealtimeCorpseInteractionKind.LootItem,
+                    corpseId,
+                    "item_already_looted",
+                    "The item was already looted.",
+                    requiresCorpseRefresh: true));
+            var refresh = Guid.NewGuid();
+            state.BeginAutomaticRefresh(refresh, corpseId);
+
+            state.Reset();
+
+            Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Unavailable));
+            Assert.That(state.PendingOperationId, Is.EqualTo(Guid.Empty));
+            Assert.That(state.IsAutomaticRefreshPending, Is.False);
+            Assert.That(state.Error, Is.Null);
+            Assert.That(
+                state.TryComplete(
+                    Succeeded(refresh, RealtimeCorpseInteractionKind.Refresh, corpseId),
+                    out _),
+                Is.False);
+        }
+
         [Test]
         public void RejectedOpenForgetsTheCorpse()
         {
@@ -844,176 +1001,6 @@ namespace Mmorpg.Client.Tests.EditMode
             RealtimeCorpseInteractionResult result)
         {
             Assert.That(state.TryComplete(result, out var error), Is.True, error);
-        }
-
-        private static RealtimeCorpseInteractionResult Succeeded(
-            Guid operationId,
-            RealtimeCorpseInteractionKind operationKind,
-            Guid corpseId,
-            bool requiresInventoryRefresh = false)
-        {
-            return new RealtimeCorpseInteractionResult(
-                operationId,
-                operationKind,
-                corpseId,
-                true,
-                false,
-                requiresInventoryRefresh,
-                new RealtimeCarryState(3, 0, 100),
-                null);
-        }
-
-        private static RealtimeCorpseInteractionResult Rejected(
-            Guid operationId,
-            RealtimeCorpseInteractionKind operationKind,
-            Guid corpseId,
-            string code,
-            string message)
-        {
-            return new RealtimeCorpseInteractionResult(
-                operationId,
-                operationKind,
-                corpseId,
-                false,
-                false,
-                false,
-                new RealtimeCarryState(3, 0, 100),
-                new RealtimeError(code, message));
-        }
-
-        private static RealtimeCorpsePresence CreatePresence(Guid corpseId, string name)
-        {
-            return new RealtimeCorpsePresence(
-                corpseId,
-                1f,
-                2f,
-                3f,
-                ExpiresAtUnixMilliseconds,
-                false,
-                name,
-                "corpse.remains");
-        }
-
-        private static RealtimeCorpseViewStateChunk[] CreateSnapshot(
-            Guid corpseId,
-            Guid itemId,
-            Guid[] containers,
-            int quantity,
-            long revision,
-            int generalCapacity)
-        {
-            var updateId = Guid.NewGuid();
-            var generalSlots = Enumerable.Range(0, generalCapacity)
-                .Select(index => index == 0
-                    ? CreateSlot(index, itemId, quantity, 1)
-                    : new RealtimeCorpseSlot(index, "general", null))
-                .ToArray();
-            return new[]
-            {
-                CreateChunk(
-                    updateId,
-                    RealtimeCorpseViewUpdateKind.Snapshot,
-                    corpseId,
-                    -1,
-                    revision,
-                    0,
-                    3,
-                    "general_inventory",
-                    containers[0],
-                    1,
-                    true,
-                    generalCapacity,
-                    generalSlots),
-                CreateChunk(
-                    updateId,
-                    RealtimeCorpseViewUpdateKind.Snapshot,
-                    corpseId,
-                    -1,
-                    revision,
-                    1,
-                    3,
-                    "equipment",
-                    containers[1],
-                    1,
-                    true,
-                    1,
-                    new[]
-                    {
-                        new RealtimeCorpseSlot(
-                            0,
-                            "general",
-                            Array.Empty<string>(),
-                            "head",
-                            null)
-                    }),
-                CreateChunk(
-                    updateId,
-                    RealtimeCorpseViewUpdateKind.Snapshot,
-                    corpseId,
-                    -1,
-                    revision,
-                    2,
-                    3,
-                    "bag",
-                    containers[2],
-                    1,
-                    true,
-                    1,
-                    new[] { new RealtimeCorpseSlot(0, "general", null) })
-            };
-        }
-
-        private static RealtimeCorpseViewStateChunk CreateChunk(
-            Guid updateId,
-            RealtimeCorpseViewUpdateKind updateKind,
-            Guid corpseId,
-            long baseRevision,
-            long revision,
-            ushort chunkIndex,
-            ushort chunkCount,
-            string sectionKind,
-            Guid containerId,
-            long containerRevision,
-            bool replaceSection,
-            int slotCapacity,
-            RealtimeCorpseSlot[] slots)
-        {
-            return new RealtimeCorpseViewStateChunk(
-                updateId,
-                updateKind,
-                corpseId,
-                baseRevision,
-                revision,
-                ExpiresAtUnixMilliseconds,
-                "Fallen Hero",
-                "corpse.remains",
-                chunkIndex,
-                chunkCount,
-                sectionKind,
-                containerId,
-                containerRevision,
-                replaceSection,
-                slotCapacity,
-                0,
-                slots);
-        }
-
-        private static RealtimeCorpseSlot CreateSlot(
-            int slotIndex,
-            Guid itemId,
-            int quantity,
-            long revision)
-        {
-            return new RealtimeCorpseSlot(
-                slotIndex,
-                "general",
-                new RealtimeCorpseItem(
-                    itemId,
-                    "fixture.potion",
-                    quantity,
-                    revision,
-                    Guid.Empty,
-                    0));
         }
 
         private static CorpseLootItem FindItem(CorpseClientState state, Guid itemId)

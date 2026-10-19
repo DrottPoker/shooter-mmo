@@ -340,6 +340,9 @@ namespace Mmorpg.Client.Items
 
         public Guid PendingOperationId { get; private set; }
 
+        // True while the pending operation is a refresh the client started on its own.
+        public bool IsAutomaticRefreshPending { get; private set; }
+
         public bool CanMutate
         {
             get
@@ -350,10 +353,30 @@ namespace Mmorpg.Client.Items
             }
         }
 
+        // Starts an operation the player asked for. It replaces the last outcome, so Error
+        // and Notice clear.
         public void BeginOperation(
             Guid operationId,
             RealtimeCorpseInteractionKind operationKind,
             Guid corpseId)
+        {
+            Begin(operationId, operationKind, corpseId, false);
+        }
+
+        // Starts a refresh the client asks for on its own, after a rejection that requires
+        // one or a stale delta. It tells the player nothing new, so the last outcome, such
+        // as the rejection that asked for it, stays visible through its success and its
+        // snapshot. Its own rejection replaces Error like any rejection.
+        public void BeginAutomaticRefresh(Guid operationId, Guid corpseId)
+        {
+            Begin(operationId, RealtimeCorpseInteractionKind.Refresh, corpseId, true);
+        }
+
+        private void Begin(
+            Guid operationId,
+            RealtimeCorpseInteractionKind operationKind,
+            Guid corpseId,
+            bool automaticRefresh)
         {
             if (operationId == Guid.Empty)
             {
@@ -373,14 +396,19 @@ namespace Mmorpg.Client.Items
             pendingOperationKind = operationKind;
             pendingCorpseId = corpseId;
             pendingOutlivedView = false;
+            IsAutomaticRefreshPending = automaticRefresh;
             if (operationKind == RealtimeCorpseInteractionKind.Open)
             {
                 viewCorpseId = corpseId;
             }
 
             Status = CorpseClientStatus.Busy;
-            Error = null;
-            Notice = string.Empty;
+            if (!automaticRefresh)
+            {
+                Error = null;
+                Notice = string.Empty;
+            }
+
             RaiseChanged();
         }
 
@@ -400,6 +428,7 @@ namespace Mmorpg.Client.Items
 
             error = string.Empty;
             var outlivedView = pendingOutlivedView;
+            var automaticRefresh = IsAutomaticRefreshPending;
             ClearPendingOperation();
             if (outlivedView)
             {
@@ -416,7 +445,8 @@ namespace Mmorpg.Client.Items
                 }
 
                 // A rejection keeps an open view usable. Error only reports why the
-                // operation failed, and the controller refreshes a view the result marks stale.
+                // operation failed, and the automatic refresh of a view the result marks
+                // stale keeps it.
                 Status = CorpseClientStatus.Ready;
                 Error = new CorpseClientError(
                     result.Error?.Code ?? "corpse_operation_rejected",
@@ -432,8 +462,11 @@ namespace Mmorpg.Client.Items
             else
             {
                 Status = CorpseClientStatus.Ready;
-                Error = null;
-                Notice = string.Empty;
+                if (!automaticRefresh)
+                {
+                    Error = null;
+                    Notice = string.Empty;
+                }
             }
 
             RaiseChanged();
@@ -476,6 +509,7 @@ namespace Mmorpg.Client.Items
             pendingOperationKind = default;
             pendingCorpseId = Guid.Empty;
             pendingOutlivedView = false;
+            IsAutomaticRefreshPending = false;
         }
 
         public void Reset()
