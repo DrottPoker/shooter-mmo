@@ -266,7 +266,9 @@ Run Unity tests through `Window > General > Test Runner`, or use the licensed
 headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 CI runs both Unity suites for every pull request on a self-hosted Windows
 runner, described in
-[Unity CI Runner](docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
+[Unity CI Runner](docs/LOCAL_DEVELOPMENT.md#unity-ci-runner). A pull request is
+waited for, merged, and cleaned up with the two scripts in
+[Pull Request Workflow](docs/LOCAL_DEVELOPMENT.md#pull-request-workflow).
 
 ## Repository Layout
 
@@ -288,7 +290,7 @@ runner, described in
 | `src/Shared/DotNet` | .NET projects that compile the shared Unity package sources for the server |
 | `src/Client` | Unity project and Unity tests |
 | `observability` | Local monitoring stack configuration: OpenTelemetry Collector, Prometheus with alert rules and their tests, Loki, Tempo, and the Grafana data sources and dashboards |
-| `tools` | Verification, content compilers and their shared pipeline library, the realtime protocol generator, stress benchmark, shared headless bot client, and active bot population |
+| `tools` | Verification, content compilers and their shared pipeline library, the realtime protocol generator, stress benchmark, shared headless bot client, active bot population, and the pull request wait and merge scripts |
 | `tests` | Backend tests: one test project per server module, shared runtime and tool tests, cross-module integration tests, and shared test infrastructure. See [Backend Tests](tests/README.md) |
 | `docs` | Architecture, implemented features, setup, and product references |
 

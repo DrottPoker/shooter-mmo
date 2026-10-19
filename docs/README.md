@@ -24,8 +24,9 @@ operations, and future design do not drift into duplicate descriptions.
 6. [Service Features](SERVICE_FEATURES.md) for implemented backend and
    infrastructure behavior.
 7. [Game Features](GAME_FEATURES.md) for implemented player-facing gameplay.
-8. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, and manual test
-   instructions.
+8. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, manual test
+   instructions, and the pull request workflow that waits for CI, merges, and
+   cleans up.
 9. [Monitoring](MONITORING.md) for the server metrics, logs, and traces, the
    local OpenTelemetry, Prometheus, Loki, Tempo, and Grafana stack, the
    dashboards and alerts, and what to watch during a playtest.

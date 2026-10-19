@@ -4,7 +4,45 @@
 
 The shared repository rules are in `AGENTS.md`, imported above. The
 documentation map and documentation rules are in `docs/README.md`. This file
-only adds the workflow notes that a coding agent needs to verify its own work.
+only adds the workflow notes that a coding agent needs to carry a task through
+and verify its own work.
+
+## Task Workflow In The Claude App
+
+Victor has given standing approval for the whole loop in `AGENTS.md` under
+Task Workflow. These notes override the app's defaults where they differ.
+
+- Never offer Auto-fix, and never ask whether to wait for CI, fix CI, address
+  review findings, merge, or clean up. Never end a turn with such a question or
+  button in the wrap-up box. Auto-fix wakes a session only on failures, never
+  when CI turns green, so a session that relied on it stopped and waited for
+  Victor.
+- After `gh pr create`, bind the pull request with the ccd_pr tools so the app
+  shows it, then run `tools/Wait-PullRequest.ps1 -Number <number>` once as a
+  background command (`run_in_background`). The harness wakes the session when
+  the script exits. Act on its exit code as `docs/LOCAL_DEVELOPMENT.md`
+  describes under Pull Request Workflow, start it again after every push, and
+  do not poll CI in any other way. On exit code 0, run
+  `tools/Complete-PullRequest.ps1`.
+- Do not start side sessions (`start_session`) for related fixes or follow-ups,
+  and do not split an accepted plan into parallel sessions. Do the work in this
+  session. Propose a separate session only for large, independent work, and say
+  why in the summary.
+- The wrap-up recap is too short for the task summary. When nothing waits on
+  Victor, call `wrap_up` without a question and write the full summary from
+  `AGENTS.md` in the closing message after it.
+- Archive finished sessions at the start and at the end of every task: list
+  this repository's sessions with `ccd_session_mgmt` `list_sessions` and
+  archive every other session that is not running and whose pull request is
+  merged or closed, or that has no pull request and a clean worktree whose
+  commit is in `origin/development`. Archiving hands the worktree back to the
+  app's reuse pool, which the app reuses or removes itself. Never archive a
+  session that is running or waits for Victor, or the session that started one,
+  because archiving a session also archives its finished side sessions. A
+  session cannot remove its own worktree while it runs, so the next task
+  archives it, and the finished session keeps its summary visible until then.
+  When the app blocks an archive, name the sessions in the summary so Victor can
+  archive them from the sidebar.
 
 ## Verification
 
