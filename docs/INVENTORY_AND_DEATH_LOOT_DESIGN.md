@@ -245,8 +245,9 @@ normal death rules and keeps its quantity in the matching corpse equipment slot,
 which applies the same limit. A whole corpse item can also be looted straight
 into an equipment slot under the same equip rules, including the level
 requirement and blocked slots: it tops up an equipped stack of the same
-definition, equips into an empty slot, or swaps the equipped item into the
-corpse slot it leaves, as a deposit into that slot would. Bags still swap only
+stackable definition, and is rejected when the two cannot merge, equips into an
+empty slot, or swaps any other equipped item into the corpse slot it leaves, as
+a deposit into that slot would. Bags still swap only
 as whole aggregates, and a live Mob corpse, which the worker holds in memory,
 equips only into an empty slot (decided 2026-10-19, replacing the earlier rule
 that corpse loot enters carried storage only).

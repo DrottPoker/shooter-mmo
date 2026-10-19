@@ -823,8 +823,9 @@ concurrent inspection, and authoritative looting:
   `equipment_slot_blocked`. A corpse equipment slot keeps the same quantity
   limit. `loot_corpse_item_to_equipment` loots a whole corpse item into an
   equipment slot under the same checks: the occupant the worker names must still
-  hold the slot, an equipped stack of the same definition takes a top-up when the
-  stacks merge, and any other occupant swaps into the corpse slot the loot left
+  hold the slot, an equipped stack of the same stackable definition only takes a
+  top-up and is rejected when the stacks cannot merge, so a full equipped stack
+  never lands in the corpse, and any other occupant swaps into the corpse slot the loot left
   under the deposit placement and policy rules. `grant_mob_loot` accepts an
   equipment slot instead of a container slot and then grants only into an empty
   slot, because the worker cannot take live Mob loot back.

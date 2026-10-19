@@ -10,9 +10,9 @@ internal sealed class CorpseLootCommandHandler
     IItemCommandHandler<LootCorpsePartialStackCommand>,
     IItemCommandHandler<LootCorpseItemToEquipmentCommand>
 {
-    // An equipped stack of the same definition takes the loot as a top-up when the stacks can
-    // merge. Otherwise the loot equips under the normal equip rules, and an equipped item in the
-    // slot swaps into the corpse slot the loot came from, as a deposit into that slot would.
+    // An equipped stack of the same stackable definition takes the loot as a top-up, or the loot
+    // is rejected. Otherwise the loot equips under the normal equip rules, and an equipped item in
+    // the slot swaps into the corpse slot the loot came from, as a deposit into that slot would.
     public async Task ExecuteAsync(
         ItemTransactionContext context,
         LootCorpseItemToEquipmentCommand command,
@@ -66,37 +66,43 @@ internal sealed class CorpseLootCommandHandler
                 command.CharacterId,
                 command.ExpectedTargetItemRevision!.Value,
                 cancellationToken);
+        // A stack of the equipped stackable definition only tops up, as from the inventory: it
+        // never swaps, so a full equipped stack cannot end up in the corpse.
         if (occupant is not null
-            && string.Equals(occupant.DefinitionId, source.DefinitionId, StringComparison.Ordinal))
+            && string.Equals(occupant.DefinitionId, source.DefinitionId, StringComparison.Ordinal)
+            && definition.RuntimeDefinition.MaximumStackSize > 1)
         {
             var occupantPolicies = await context.State.LoadPoliciesAsync(
                 occupant.ItemInstanceId,
                 cancellationToken);
-            if (CorpseItemTransfers.GetCorpseStackDisposition(
-                    source,
-                    sourcePolicies,
-                    sourceCapabilities,
-                    occupant,
-                    occupantPolicies,
-                    definition,
-                    source.Quantity) == CorpseStackDisposition.Merge)
+            var disposition = CorpseItemTransfers.GetCorpseStackDisposition(
+                source,
+                sourcePolicies,
+                sourceCapabilities,
+                occupant,
+                occupantPolicies,
+                definition,
+                source.Quantity);
+            if (disposition != CorpseStackDisposition.Merge)
             {
-                await context.Placement.EnsureEquippedStackQuantityAsync(
-                    command.CharacterId,
-                    command.EquipmentSlotId,
-                    definition,
-                    occupant.Quantity + source.Quantity,
-                    cancellationToken);
-                await CorpseCustodyWrites.MergeCorpseQuantityAsync(
-                    context,
-                    source,
-                    occupant,
-                    source.Quantity,
-                    false,
-                    cancellationToken);
-                await FinishEquipmentLootAsync(context, corpse, source, command.CharacterId, cancellationToken);
-                return;
+                CorpseItemTransfers.RejectCorpseStackMerge(disposition);
             }
+
+            await context.Placement.EnsureEquippedStackQuantityAsync(
+                command.CharacterId,
+                command.EquipmentSlotId,
+                definition,
+                occupant.Quantity + source.Quantity,
+                cancellationToken);
+            await CorpseCustodyWrites.MergeCorpseQuantityAsync(
+                context,
+                source,
+                occupant,
+                source.Quantity,
+                false,
+                cancellationToken);
+            await FinishEquipmentLootAsync(context, corpse, source, command.CharacterId, cancellationToken);
+            return;
         }
 
         await context.Placement.EnsureEquipmentDestinationAsync(

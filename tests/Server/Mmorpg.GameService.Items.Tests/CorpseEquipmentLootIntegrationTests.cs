@@ -61,6 +61,26 @@ public sealed class CorpseEquipmentLootIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task CorpseArrowsThatCannotTopUpTheEquippedStackAreRejectedInsteadOfSwapped()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var scenario = await CreateLootScenarioAsync(world, "full_arrows");
+        var arrowsBefore = await world.LoadItemAsync(scenario.ArrowsId);
+        // 45 equipped and 20 looted arrows exceed the 60 an arrow stack holds, so before this rule the
+        // stacks would have swapped and left the 45 arrows in the corpse.
+        var equippedArrows = await GrantAndEquipAsync(world, scenario.LooterId, "fixture.arrow", 45, "ammunition");
+
+        var result = await LootToEquipmentAsync(world, scenario, scenario.ArrowsId, "ammunition", equippedArrows);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.ItemStackLimitExceeded, result.Error!.Code);
+        Assert.Equal(45, (await world.LoadItemAsync(equippedArrows)).Quantity);
+        Assert.Equal(equippedArrows, await LoadEquippedItemAsync(world, scenario.LooterId, "ammunition"));
+        Assert.Equal(arrowsBefore.ContainerId, (await world.LoadItemAsync(scenario.ArrowsId)).ContainerId);
+    }
+
+    [PostgresIntegrationFact]
     public async Task AStaleEquipmentSlotViewIsRejectedWithoutChanges()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -149,7 +169,7 @@ public sealed class CorpseEquipmentLootIntegrationTests
 
     private sealed record LootScenario(Guid LooterId, Guid CorpseId, Guid BowId, Guid ArrowsId, Guid HelmId);
 
-    // A dead character leaves a bow, ten arrows, and a level 3 helm in a corpse, and a second
+    // A dead character leaves a bow, twenty arrows, and a level 3 helm in a corpse, and a second
     // character loots them.
     private static async Task<LootScenario> CreateLootScenarioAsync(ItemScenarioWorld world, string name)
     {
@@ -158,7 +178,7 @@ public sealed class CorpseEquipmentLootIntegrationTests
         var sourceId = source.Character.Id;
         var inventoryId = (await world.LoadStateAsync(sourceId)).PermanentInventoryContainerId;
         var bow = await world.GrantAsync(sourceId, "fixture.bow", 1, inventoryId, 0);
-        var arrows = await world.GrantAsync(sourceId, "fixture.arrow", 10, inventoryId, 1);
+        var arrows = await world.GrantAsync(sourceId, "fixture.arrow", 20, inventoryId, 1);
         var helm = await world.GrantAsync(sourceId, "fixture.helm", 1, inventoryId, 2);
         var corpseId = await world.ProcessDeathAsync(sourceId);
         return new LootScenario(looter.Character.Id, corpseId, bow, arrows, helm);
