@@ -1,9 +1,10 @@
 # Merges a ready pull request into development with a merge commit and cleans up after it, so a
 # task ends with nothing left behind. It refuses to merge unless Wait-PullRequest.ps1 reports the
-# pull request ready. After the merge it deletes the task branch on GitHub and locally (detaching
-# the current worktree when it has the branch checked out), deletes every other local branch that
-# is fully merged into origin/development and checked out in no worktree, fast-forwards the local
-# development branch, and prunes stale worktree records.
+# pull request ready. After the merge it deletes the task branch on GitHub and locally (switching
+# the main checkout to development, or detaching a task worktree, when it has the branch checked
+# out), deletes every other local branch that is fully merged into origin/development and checked
+# out in no worktree, fast-forwards the local development branch, and prunes stale worktree
+# records.
 #
 # Exit codes: 0 merged and cleaned up, 1 not merged, 2 merged but the local development branch
 # could not be fast-forwarded. Never discard local work to fix exit code 2; the report says why.
@@ -88,9 +89,19 @@ else {
 }
 
 $currentRoot = Get-FullPath "$(Invoke-Git rev-parse --show-toplevel)"
-$holder = Get-Worktrees | Where-Object { $_.Branch -eq $head } | Select-Object -First 1
+$worktrees = Get-Worktrees
+$mainRoot = Get-FullPath $worktrees[0].Path
+$holder = $worktrees | Where-Object { $_.Branch -eq $head } | Select-Object -First 1
 if ($holder -and (Get-FullPath $holder.Path) -eq $currentRoot) {
-    Invoke-Git switch --detach --quiet | Out-Null
+    # The main checkout returns to development, which is fast-forwarded below. A task worktree
+    # is detached instead, because development is checked out in the main checkout.
+    $developmentHeld = @($worktrees | Where-Object { $_.Branch -eq "development" }).Count -gt 0
+    if ($currentRoot -eq $mainRoot -and -not $developmentHeld -and (Test-Git switch --quiet development)) {
+        Write-Output "Switched the main checkout to development"
+    }
+    else {
+        Invoke-Git switch --detach --quiet | Out-Null
+    }
     $holder = $null
 }
 
@@ -147,7 +158,6 @@ else {
 }
 
 Invoke-Git worktree prune | Out-Null
-$mainRoot = Get-FullPath $worktrees[0].Path
 $otherWorktrees = @($worktrees | Where-Object { (Get-FullPath $_.Path) -notin @($mainRoot, $currentRoot) })
 if ($otherWorktrees.Count -gt 0) {
     Write-Output "Other worktrees (belong to other sessions or the app's reuse pool):"

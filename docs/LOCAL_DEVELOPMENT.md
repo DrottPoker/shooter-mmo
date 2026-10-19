@@ -186,11 +186,15 @@ The script polls GitHub every 30 seconds and returns as soon as there is
 something to act on. Ready means that GitHub reports the local `HEAD` as the
 pull request head, every check passed, including every check that
 `.github/rulesets/development-ci-gate.json` requires, the Codex review bot
-(`chatgpt-codex-connector[bot]`) finished its review, no review thread is
-unresolved, and GitHub reports the pull request mergeable. The Codex state is
-read from the bot's summary comment. When the bot posts nothing or does not
-finish within 20 minutes (`-CodexWaitMinutes`), the script continues without
-it and says so. `-NoWait` evaluates once.
+(`chatgpt-codex-connector[bot]`) finished a review of the head commit, no
+review thread is unresolved, and GitHub reports the pull request mergeable. The
+Codex state is read from the bot's summary comment. The bot reviews by itself
+only when a pull request opens, so for every later head the script posts one
+`@codex review` comment, marked with the head commit in an HTML comment. When
+the bot posts nothing or does not finish within 20 minutes
+(`-CodexWaitMinutes`), the script continues without it and says so. The bot's
+`has_unresolved_findings` flag stays true after its threads are resolved, so
+the review threads decide. `-NoWait` evaluates once and never posts.
 
 | Exit code | Meaning | Next step |
 | --- | --- | --- |
@@ -212,8 +216,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Complete-PullRequest.p
 The script checks readiness again and merges into `development` with a merge
 commit only if the pull request head is still the commit it checked. The body
 defaults to `<pull request title> (#<number>).`. It then deletes the branch on
-GitHub and locally (detaching the current worktree first when it has the branch
-checked out), deletes every other local branch that is fully merged into
+GitHub and locally (when the current checkout has the branch checked out, the
+main checkout switches to `development` and a task worktree detaches first),
+deletes every other local branch that is fully merged into
 `origin/development` and checked out in no worktree, fast-forwards the local
 `development` branch wherever it is checked out, prunes stale worktree records,
 and lists the remaining worktrees. Exit code 0 means merged and cleaned up,

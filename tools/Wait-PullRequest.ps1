@@ -1,9 +1,11 @@
 # Waits until a pull request is ready to merge or needs work. An agent runs it once in the
 # background after it opens or updates a pull request, instead of asking the user to watch CI.
 # Ready means that GitHub sees the local head commit, every check passed (including every check
-# the development CI gate ruleset requires), the Codex review bot finished, no review thread is
-# unresolved, and GitHub reports the pull request mergeable. It returns as soon as there is
-# something to fix, so the agent can start on a failure while other checks still run.
+# the development CI gate ruleset requires), the Codex review bot finished a review of the head
+# commit, no review thread is unresolved, and GitHub reports the pull request mergeable. The bot
+# reviews by itself only when a pull request opens, so for a later head the script asks it with
+# an "@codex review" comment. It returns as soon as there is something to fix, so the agent can
+# start on a failure while other checks still run.
 #
 # Exit codes: 0 ready to merge, 1 a check failed, 2 unresolved review threads,
 # 3 merge conflict, 4 pull request not open, 5 timed out, 6 not ready yet (only with -NoWait),
@@ -22,6 +24,7 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "PullRequestCommon.ps1")
 
 $codexLogin = "chatgpt-codex-connector[bot]"
+$codexRequestMarker = "wait-pull-request:codex-review-request"
 $rulesetPath = Join-Path $PSScriptRoot "..\.github\rulesets\development-ci-gate.json"
 $reviewThreadsQuery = 'query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved path line comments(first: 1) { nodes { author { login } body url } } } } } } }'
 
@@ -76,36 +79,64 @@ function Get-CheckResults($rollup) {
     @($results.Values | Sort-Object Name)
 }
 
-function Get-CodexReview($createdAt) {
+# The Codex review state of the head commit. The bot reviews a pull request by itself only when
+# it opens, so a later head needs an "@codex review" request, which this script posts once per
+# head and marks with the head commit. Status is completed, pending, unrequested, or unavailable
+# (the bot stayed silent or unfinished for CodexWaitMinutes).
+function Get-CodexReview($pr) {
+    $head = "$($pr.headRefOid)"
     $comments = Invoke-GitHubJson -ArgumentList @("api", "repos/{owner}/{repo}/issues/$Number/comments?per_page=100")
     $state = $null
-    $updatedAt = $null
+    $stateUpdatedAt = $null
+    $requestedAt = $null
     foreach ($comment in @($comments)) {
-        if ($comment.user.login -ne $codexLogin) {
-            continue
-        }
-        if ($comment.body -match 'codex-review-state:v1 (?<state>\{.*?\}) -->') {
+        if ($comment.user.login -eq $codexLogin -and $comment.body -match 'codex-review-state:v1 (?<state>\{.*?\}) -->') {
             $state = ($Matches["state"] | ConvertFrom-Json).code_review
-            $updatedAt = ConvertTo-UtcDateTime $comment.updated_at
+            $stateUpdatedAt = ConvertTo-UtcDateTime $comment.updated_at
+        }
+        elseif ($comment.body -match "$codexRequestMarker head=(?<head>[0-9a-f]{40})" -and $Matches["head"] -eq $head) {
+            $requestedAt = ConvertTo-UtcDateTime $comment.created_at
         }
     }
 
+    $review = [pscustomobject]@{
+        Status = $null
+        Commit = $head.Substring(0, 7)
+        HasUnresolvedFindings = $false
+    }
     $now = [DateTime]::UtcNow
-    if ($null -eq $state) {
-        $status = if (($now - $createdAt).TotalMinutes -ge $CodexWaitMinutes) { "unavailable" } else { "pending" }
-        return [pscustomobject]@{ Status = $status; Commit = $null; HasUnresolvedFindings = $false }
+    if ($state -and "$($state.commit_sha)" -eq $head) {
+        $review.HasUnresolvedFindings = [bool]$state.has_unresolved_findings
+        if ($state.status -eq "completed") { $review.Status = "completed" }
+        elseif (($now - $stateUpdatedAt).TotalMinutes -ge $CodexWaitMinutes) { $review.Status = "unavailable" }
+        else { $review.Status = "pending" }
     }
-    if ($state.status -eq "completed") {
-        $status = "completed"
+    elseif ($requestedAt) {
+        $review.Status = if (($now - $requestedAt).TotalMinutes -ge $CodexWaitMinutes) { "unavailable" } else { "pending" }
     }
-    elseif (($now - $updatedAt).TotalMinutes -ge $CodexWaitMinutes) {
-        $status = "unavailable"
+    elseif (-not $state -and ($now - (ConvertTo-UtcDateTime $pr.createdAt)).TotalMinutes -lt $CodexWaitMinutes) {
+        # The automatic review of a newly opened pull request has not reported yet.
+        $review.Status = "pending"
     }
     else {
-        $status = "pending"
+        $review.Status = "unrequested"
     }
-    $commit = if ($state.commit_sha) { "$($state.commit_sha)".Substring(0, 7) } else { $null }
-    [pscustomobject]@{ Status = $status; Commit = $commit; HasUnresolvedFindings = [bool]$state.has_unresolved_findings }
+    $review
+}
+
+function Request-CodexReview($head) {
+    $bodyFile = Join-Path ([IO.Path]::GetTempPath()) "codex-review-request-$Number-$PID.txt"
+    $body = "@codex review`n`n<!-- $codexRequestMarker head=$head -->`n"
+    [IO.File]::WriteAllText($bodyFile, $body, (New-Object Text.UTF8Encoding $false))
+    try {
+        $result = Invoke-NativeCommand -FilePath "gh" -ArgumentList @("pr", "comment", "$Number", "--body-file", $bodyFile)
+    }
+    finally {
+        Remove-Item -LiteralPath $bodyFile -ErrorAction SilentlyContinue
+    }
+    if ($result.ExitCode -ne 0) {
+        throw "Requesting a Codex review failed with exit code $($result.ExitCode)."
+    }
 }
 
 function Get-UnresolvedThreads {
@@ -143,7 +174,11 @@ function Get-Readiness {
     }
 
     $readiness.Checks = Get-CheckResults $pr.statusCheckRollup
-    $readiness.Codex = Get-CodexReview (ConvertTo-UtcDateTime $pr.createdAt)
+    $readiness.Codex = Get-CodexReview $pr
+    if ($readiness.Codex.Status -eq "unrequested" -and -not $NoWait) {
+        Request-CodexReview $pr.headRefOid
+        $readiness.Codex.Status = "pending"
+    }
     $readiness.Threads = Get-UnresolvedThreads
 
     $failed = @($readiness.Checks | Where-Object { $_.State -eq "failed" })
@@ -166,7 +201,7 @@ function Get-Readiness {
     }
 
     $pending = @($readiness.Checks | Where-Object { $_.State -eq "pending" } | ForEach-Object { $_.Name })
-    if ($readiness.Codex.Status -eq "pending") { $pending += "Codex review" }
+    if ($readiness.Codex.Status -in @("pending", "unrequested")) { $pending += "Codex review of $($readiness.Codex.Commit)" }
     if ($pr.mergeable -ne "MERGEABLE") { $pending += "GitHub mergeability" }
     $readiness.Pending = $pending
     if ($pending.Count -eq 0) {
@@ -195,15 +230,17 @@ function Write-Report($readiness) {
                 $findings = if ($codex.HasUnresolvedFindings) { "with unresolved findings" } else { "with no unresolved findings" }
                 Write-Output "Codex review: completed on $($codex.Commit) $findings"
             }
-            "unavailable" { Write-Output "Codex review: no finished review after $CodexWaitMinutes minutes; continuing without it" }
-            default { Write-Output "Codex review: pending" }
+            "unavailable" { Write-Output "Codex review: no finished review of $($codex.Commit) after $CodexWaitMinutes minutes; continuing without it" }
+            "unrequested" { Write-Output "Codex review: $($codex.Commit) is not reviewed yet; waiting without -NoWait requests a review" }
+            default { Write-Output "Codex review: pending for $($codex.Commit)" }
         }
     }
     if ($readiness.Threads.Count -gt 0) {
         Write-Output "Unresolved review threads:"
         foreach ($thread in $readiness.Threads) {
             $comment = @($thread.comments.nodes)[0]
-            $firstLine = "$($comment.body)".Split("`n")[0].Trim()
+            # Drop the badge images and markup that the Codex bot puts in its first line.
+            $firstLine = ("$($comment.body)".Split("`n")[0] -replace '</?sub>|!\[[^\]]*\]\([^)]*\)|\*\*', '').Trim()
             if ($firstLine.Length -gt 140) { $firstLine = $firstLine.Substring(0, 140) + "..." }
             Write-Output "  $($thread.path):$($thread.line) by $($comment.author.login): $firstLine"
             Write-Output "    $($comment.url)"
