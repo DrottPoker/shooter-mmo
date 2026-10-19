@@ -389,8 +389,9 @@ interactables is implemented:
 
 - `NPC` identifies a social or service actor with freely composable dialogue,
   vendor, quest, crafting, insurance, trainer, bank, and Recovery capabilities.
-- `Mob` identifies a combat actor. A click on a Mob attacks it, and a dead Mob
-  leaves loot in its corpse and respawns; AI and aggro come later.
+- `Mob` identifies a combat actor. A click on a Mob attacks it, an aggressive
+  Mob attacks characters it notices, and a dead Mob leaves loot in its corpse
+  and respawns.
 - A resource node identifies a gatherable world object, such as an Iron Vein,
   with exactly one gathering capability. See [Gathering](#gathering).
 - The pointer picks a registered target with a direct ray and a `0.15` metre
@@ -423,9 +424,9 @@ the inventory with that storage, and `Trade` opens it with the vendor; each stay
 usable while the interaction is open. The insurance and quest offer
 capabilities run their item lifecycle. Dialogue, crafting, trainer, and quest
 completion buttons return an explicit server result and never fabricate
-success. Quest progression, crafting, and Mob AI remain unimplemented. Combat
-damages and kills Mobs, rolls their loot, and fills the live or durable Mob
-corpse.
+success. Quest progression and crafting remain unimplemented. Combat damages
+and kills Mobs, rolls their loot, and fills the live or durable Mob corpse, and
+Mobs chase, bite, and walk home.
 
 ## Currency And Vendor Trade
 
@@ -499,8 +500,7 @@ chance per cycle, and a placeholder vein model. Manual test steps are in
 
 ## Combat
 
-Status: Implemented with temporary presentation; Mobs stand still and do not
-attack until the Mob AI step
+Status: Implemented with temporary presentation
 
 Combat is target based and server authoritative:
 
@@ -522,9 +522,16 @@ Combat is target based and server authoritative:
   the [Durable Player Death Foundation](#durable-player-death-foundation).
 - Out of combat for 10 seconds, a character regains 2 percent of its health
   every second.
+- Wolves are aggressive: a wolf notices a living character within 8 m that it
+  can see, runs to it at 4.5 m/s, and bites for 4 to 9 every 1.8 seconds. A
+  wolf hit by a character always fights back. A wolf that is lured more than 30
+  m from where the fight started, or that neither bites nor is hit for 10
+  seconds, turns back home, cannot be damaged on the way, and arrives with full
+  health. Wolves walk their patrol path between fights.
 - A Feral Wolf has 50 health, drops a Wolf Pelt and sometimes Bronze Arrows,
   and returns after 30 seconds. The Feral Alpha boss has 240 health, leaves a
-  durable corpse, and returns after 300 seconds. In Development World 2 the
+  durable corpse, notices characters within 10 m, bites for 7 to 12 every 2.4
+  seconds, and returns after 300 seconds. In Development World 2 the
   wolves live in the southwest wilderness, X and Z between `-190` and `-130`,
   and the Feral Alpha stands at `(-120, 0, -195)`.
 
@@ -537,15 +544,14 @@ These categories are defined by the project direction but are not implemented.
 They remain in the MVP specification until working behavior is available:
 
 - Dynamic collision transform replication.
-- Mob AI, Mob attacks, melee and magic weapons, armor, and final combat
-  visuals.
+- A threat table, Mob abilities and groups, melee and magic weapons, armor, and
+  final combat visuals.
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
 - Final corpse art and loot presentation, and insurance or quest UI polish.
 - Crafting, professions, further resource types and gathering progression, and
   the player economy beyond the first NPC vendor.
-- Complete NPC capability behavior, Mob AI, quests, events, and world
-  activities.
+- Complete NPC capability behavior, quests, events, and world activities.
 - Character progression and long-term persistence.
 - Zone partitioning, cross-zone handoff, and population layers.
 - Social, grouping, guild, chat, and trading systems.

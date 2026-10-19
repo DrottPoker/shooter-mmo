@@ -27,6 +27,9 @@ internal sealed class WorldActorRuntimeDriver(
     // Hears the actors of an activated assignment, such as combat registering its Mobs.
     public Action<IReadOnlyList<WorldActorRuntimeState>>? Activated { get; set; }
 
+    // Keeps a Mob active while it is busy, such as fighting or walking home.
+    public Func<WorldActorRuntimeState, bool>? KeepActive { get; set; }
+
     public void Activate()
     {
         timers.Clear();
@@ -56,13 +59,19 @@ internal sealed class WorldActorRuntimeDriver(
 
     public void EvaluateTick(IReadOnlyList<PlayerSimulationEntity> players, uint serverTick)
     {
+        EvaluateTick(PlayerSpatialGrid.From(players), serverTick);
+    }
+
+    public void EvaluateTick(PlayerSpatialGrid players, uint serverTick)
+    {
         RespawnDueResourceNodes(serverTick);
         if (worldActorActivityScheduler is not null)
         {
             foreach (var changedActor in worldActorActivityScheduler.Evaluate(
                          players,
                          serverTick,
-                         config.MovementSimulation.TickRateHz))
+                         config.MovementSimulation.TickRateHz,
+                         KeepActive))
             {
                 presence.BroadcastWorldActorState(changedActor);
             }

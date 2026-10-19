@@ -695,7 +695,7 @@
     {
       "type": "timeseries",
       "title": "Tick phases (p95)",
-      "description": "95th percentile of each tick phase. Snapshot broadcast includes the interest phase.",
+      "description": "95th percentile of each tick phase. Snapshot broadcast includes the interest phase, and the combat phase follows the Mob phase.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -777,6 +777,24 @@
           "refId": "F",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(simulation_worker_loop_completed_operations_duration_milliseconds_bucket{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m])))",
           "legendFormat": "completed operations",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "G",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(simulation_worker_combat_mob_phase_duration_milliseconds_bucket{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m])))",
+          "legendFormat": "mob brains and movement",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "H",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(simulation_worker_combat_phase_duration_milliseconds_bucket{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m])))",
+          "legendFormat": "combat",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -1666,7 +1684,7 @@
     {
       "type": "timeseries",
       "title": "Combat",
-      "description": "Characters and Mobs that can fight, attacks and deaths per minute by combatant kind, and hits per minute by the kind of the target.",
+      "description": "Characters and Mobs that can fight, Mobs that fight or walk home and Mobs that move, attacks and deaths per minute by combatant kind, hits per minute by the kind of the target, and Mob routes per minute by outcome.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1730,6 +1748,33 @@
           "refId": "D",
           "expr": "sum by (kind) (increase(simulation_worker_combat_deaths_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
           "legendFormat": "{{kind}} deaths per minute",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "E",
+          "expr": "sum(simulation_worker_combat_engaged_mobs{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"})",
+          "legendFormat": "engaged mobs",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "F",
+          "expr": "sum(simulation_worker_combat_moving_mobs{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"})",
+          "legendFormat": "moving mobs",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "G",
+          "expr": "sum by (outcome) (increase(simulation_worker_combat_mob_path_plans_total{job=\"mmorpg/simulation-worker\", instance=~\"$worker\"}[1m]))",
+          "legendFormat": "mob routes {{outcome}} per minute",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"

@@ -814,8 +814,9 @@ presentation joins the shared client target selection, and its view consumes
 the shared interaction lease. Policy and quest item lifecycle run on NPC
 interactions. Live worker-owned Mob corpses and durable player or selected boss
 corpses share the same presence, view, range, lease, mutation, carry-state, and
-closure foundation. Quest progression, complete Mob AI, combat, damage,
-death-event production, and loot-table generation remain later work.
+closure foundation. Combat, Mob brains, death-event production, and loot
+rolls run in SimulationWorker, as [Service Features](SERVICE_FEATURES.md#target-based-combat)
+describes; quest progression remains later work.
 
 Operational hardening bounds this authority graph without adding a new service
 or mutation path. GameService bounds HTTP bodies, canonical commands,

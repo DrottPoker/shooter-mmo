@@ -159,7 +159,12 @@ public sealed class RealtimeMetricNamesTests
                 "simulation_worker.combat.death_partitions",
                 "simulation_worker.combat.deaths",
                 "simulation_worker.combat.dropped_shots",
+                "simulation_worker.combat.engaged_mobs",
                 "simulation_worker.combat.hits",
+                "simulation_worker.combat.mob_path_plans",
+                "simulation_worker.combat.mob_path_queue",
+                "simulation_worker.combat.mob_phase.duration",
+                "simulation_worker.combat.moving_mobs",
                 "simulation_worker.combat.pending_shots",
                 "simulation_worker.combat.phase.duration"
             ],

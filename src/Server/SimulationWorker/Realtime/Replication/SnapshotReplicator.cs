@@ -6,10 +6,12 @@ using Mmorpg.SimulationWorker.Entities;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Broadcasts movement snapshots: one owner snapshot per player plus interest-filtered
-// remote snapshots, within the per-peer and aggregate byte budgets. The recipient
-// rotation keeps the remote budget fair across peers in registry order. Loop-confined.
+// remote snapshots of players and of the Mobs that moved, within the per-peer and
+// aggregate byte budgets. The recipient rotation keeps the remote budget fair across
+// peers in registry order. Loop-confined.
 internal sealed class SnapshotReplicator(
     SimulationWorkerConfig config,
+    MobSystem mobs,
     SimulationEntityRegistry entityRegistry,
     ConnectionEntityBindingRegistry connectionBindings,
     RealtimePeerRegistry peers,
@@ -21,6 +23,7 @@ internal sealed class SnapshotReplicator(
 {
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
+    private readonly List<RealtimeEntitySnapshot> mobSnapshotBuffer = [];
     private readonly SnapshotPacketCache snapshotPacketCache = new();
     private readonly Dictionary<ulong, RealtimeMovementPathProgress> ownerPathProgress = [];
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
@@ -62,6 +65,12 @@ internal sealed class SnapshotReplicator(
                 // must still be pruned, or their tombstones stay until a player joins.
                 presence.PruneDespawned();
                 return;
+            }
+
+            mobs.CopyPendingSnapshotsTo(mobSnapshotBuffer);
+            foreach (var mobSnapshot in mobSnapshotBuffer)
+            {
+                snapshotPacketCache.Add(mobSnapshot);
             }
 
             var interestStarted = Stopwatch.GetTimestamp();

@@ -1,4 +1,6 @@
 using System;
+using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
 
@@ -91,15 +93,21 @@ namespace Mmorpg.Client.WorldActors
 
             TargetRevision = actor.InteractionRevision;
             IsTargetActive = actor.IsActive;
-            transform.SetPositionAndRotation(
-                new Vector3(actor.PositionX, actor.PositionY, actor.PositionZ),
-                Quaternion.Euler(0f, actor.YawDegrees, 0f));
+            ApplyPose(actor);
             if (interactionCollider != null)
             {
                 interactionCollider.enabled = actor.IsActive;
             }
 
             ApplyActivity(actor.IsActive);
+        }
+
+        // Places the actor at its replicated pose.
+        protected virtual void ApplyPose(WorldActorClientEntry actor)
+        {
+            transform.SetPositionAndRotation(
+                new Vector3(actor.PositionX, actor.PositionY, actor.PositionZ),
+                Quaternion.Euler(0f, actor.YawDegrees, 0f));
         }
 
         // An inactive actor, such as a dead Mob, is hidden until it returns.
@@ -113,8 +121,78 @@ namespace Mmorpg.Client.WorldActors
     {
     }
 
+    // A Mob travels in the snapshots while its pose changes and rests at the pose of its
+    // newest reliable state. RemoteActorMovement interpolates the snapshots like a remote
+    // player's and settles on the rest pose without a jump.
     public sealed class MobView : WorldActorView
     {
+        private readonly RemoteActorMovement movement = new RemoteActorMovement();
+        private long appliedStateRevision = long.MinValue;
+        private Vector3 restPosition;
+        private float restYawDegrees;
+
+        // The snapshot movement of this Mob. Presentation only.
+        public RemoteActorMovement Movement
+        {
+            get { return movement; }
+        }
+
+        // Lets the joined session's snapshots move this Mob.
+        public void ConfigureMovement(NetworkMovementSession session)
+        {
+            movement.ConfigureForSession(session);
+        }
+
+        // Buffers a snapshot state of this Mob. A hidden Mob, such as a dead one, ignores it.
+        public void PushSnapshot(uint serverTick, RealtimePlayerState state)
+        {
+            if (!IsTargetActive
+                || !movement.PushSnapshot(serverTick, state, restPosition, restYawDegrees))
+            {
+                return;
+            }
+
+            ApplyMovementPose();
+        }
+
+        protected override void ApplyPose(WorldActorClientEntry actor)
+        {
+            restPosition = new Vector3(actor.PositionX, actor.PositionY, actor.PositionZ);
+            restYawDegrees = actor.YawDegrees;
+            if (!actor.IsActive)
+            {
+                // A hidden Mob starts again from its reliable pose when it returns.
+                movement.Clear();
+                appliedStateRevision = actor.StateRevision;
+                base.ApplyPose(actor);
+                return;
+            }
+
+            // Every change applies every actor again; only a newer state can move this one.
+            if (actor.StateRevision == appliedStateRevision)
+            {
+                return;
+            }
+
+            appliedStateRevision = actor.StateRevision;
+            if (!movement.TrySettle(restPosition, restYawDegrees))
+            {
+                base.ApplyPose(actor);
+            }
+        }
+
+        private void Update()
+        {
+            if (movement.Advance(Time.unscaledDeltaTime, Time.deltaTime))
+            {
+                ApplyMovementPose();
+            }
+        }
+
+        private void ApplyMovementPose()
+        {
+            transform.SetPositionAndRotation(movement.Position, movement.Rotation);
+        }
     }
 
     // A depleted resource node stays visible but cannot be targeted until it respawns. An

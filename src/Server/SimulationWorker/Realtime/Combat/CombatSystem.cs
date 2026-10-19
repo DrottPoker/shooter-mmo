@@ -17,9 +17,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // attacks on its weapon's cooldown whenever it stands still in range with line of sight,
 // a weapon, and matching arrows. Arrows fly and hit at their impact tick; damage that
 // reaches 0 kills, a dead character respawns after the respawn delay at the World spawn,
-// and a character out of combat regenerates. Mobs are targets: they take damage, die,
-// leave loot, and respawn. Every change reaches clients at the end of the tick.
-// Loop-confined.
+// and a character out of combat regenerates. A Mob attacks the target its brain chose
+// once the brain stands ready in range, takes damage, dies, leaves loot, and respawns.
+// Every change reaches clients at the end of the tick. Loop-confined.
 internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunitionSource
 {
     private readonly SimulationWorkerConfig config;
@@ -36,6 +36,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
     private readonly CombatReplicator replicator;
     private readonly PlayerCombatAuthority authority;
     private readonly MobDeathProcessor mobDeaths;
+    private readonly MobSystem mobs;
     private readonly CombatItemCatalog itemCatalog;
     private readonly CombatLineOfSight lineOfSight;
     private readonly ICombatRandom random;
@@ -69,6 +70,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         CombatReplicator replicator,
         PlayerCombatAuthority authority,
         MobDeathProcessor mobDeaths,
+        MobSystem mobs,
         CombatItemCatalog itemCatalog,
         CombatLineOfSight lineOfSight,
         ICombatRandom random,
@@ -93,6 +95,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         this.replicator = replicator;
         this.authority = authority;
         this.mobDeaths = mobDeaths;
+        this.mobs = mobs;
         this.itemCatalog = itemCatalog;
         this.lineOfSight = lineOfSight;
         this.random = random;
@@ -108,6 +111,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         authority.OwnerStateChanged = OnOwnerStateChanged;
         replicator.Ammunition = this;
         mobDeaths.Respawned = OnMobRespawned;
+        mobDeaths.Despawned = mobs.Remove;
     }
 
     // Closes the world interaction of a character that died; set by the composition.
@@ -231,6 +235,10 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             {
                 UpdatePlayer(combatant, serverTick);
             }
+            else
+            {
+                UpdateMob(combatant, serverTick);
+            }
         }
 
         ProcessDeaths();
@@ -267,6 +275,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         replicator.Clear();
         authority.Clear();
         mobDeaths.Clear();
+        mobs.Clear();
     }
 
     private (string Code, string Message)? ValidateTarget(RealtimePeerContext context, Combatant attacker, ulong targetEntityId)
@@ -367,6 +376,37 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         attacker.MarkOwnerStateChanged();
         EnterCombat(attacker, serverTick);
         Release(attacker, target, attack, ammunitionBonus, distance, serverTick);
+    }
+
+    // A Mob bites its brain's target once the brain stands ready, the target is within its
+    // attack range with line of sight, and the cooldown passed. The bite lands at once.
+    private void UpdateMob(Combatant attacker, uint serverTick)
+    {
+        var attack = attacker.MobAttack;
+        if (attack is null
+            || !attacker.IsAlive
+            || attacker.TargetEntityId == 0
+            || !CombatTicks.IsReached(serverTick, attacker.NextAttackTick)
+            || !mobs.IsReadyToAttack(attacker)
+            || !combatants.TryGet(attacker.TargetEntityId, out var target)
+            || !target.IsAlive
+            || target.Kind != CombatantKind.Player)
+        {
+            return;
+        }
+
+        var actor = attacker.Actor!;
+        var bounds = BoundsOf(target);
+        var distance = bounds.DistanceFrom(new SimulationVector3(actor.PositionX, actor.PositionY, actor.PositionZ));
+        if (distance > attack.Range || !lineOfSight.HasLineOfSight(mobs.EyeOf(attacker), bounds.Center))
+        {
+            return;
+        }
+
+        attacker.NextAttackTick = serverTick + attack.IntervalTicks;
+        EnterCombat(attacker, serverTick);
+        mobs.OnEngaged(attacker.EntityId, serverTick);
+        Release(attacker, target, attack, 0, distance, serverTick);
     }
 
     private RealtimeCombatAttackStatus DetermineStatus(
@@ -486,6 +526,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         {
             target.DamageLedger[attackerEntityId] =
                 target.DamageLedger.GetValueOrDefault(attackerEntityId) + damage.Amount;
+            mobs.OnEngaged(target.EntityId, serverTick);
         }
 
         EnterCombat(target, serverTick);
@@ -715,7 +756,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             return;
         }
 
-        combatants.Add(Combatant.ForMob(
+        var mob = Combatant.ForMob(
             actor,
             profile.MaximumHealth,
             new CombatAttackProfile(
@@ -727,7 +768,9 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
                 Math.Max(1u, CombatTicks.FromSeconds(profile.AttackIntervalSeconds, config.MovementSimulation.TickRateHz)),
                 profile.AttackRange,
                 0f,
-                null)));
+                null));
+        combatants.Add(mob);
+        mobs.Register(mob);
     }
 
     private SimulationDeathKillerRequest? KillerOf(Combatant dead)

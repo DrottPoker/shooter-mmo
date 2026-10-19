@@ -12,7 +12,8 @@ internal enum CombatantKind
 }
 
 // The combat state of one player entity or Mob actor. Loop-confined; only the combat
-// system changes it, and every change that clients see advances a revision.
+// system and the Mob brains change it, and every change that clients see advances a
+// revision.
 internal sealed class Combatant
 {
     private Combatant(ulong entityId, CombatantKind kind, int maximumHealth)

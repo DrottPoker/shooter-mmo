@@ -276,7 +276,7 @@ namespace Mmorpg.Client.App
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(corpseController));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
-                presentation => presentation.Initialize(worldActorController));
+                presentation => presentation.Initialize(worldActorController, simulationClient));
             AddSceneComponentIfMissing<WorldInteractionTargetingController>(
                 targeting => targeting.Initialize(
                     worldInteractionController,

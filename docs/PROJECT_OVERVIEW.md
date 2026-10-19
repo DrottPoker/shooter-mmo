@@ -228,8 +228,9 @@ The permanent Editor workflows live at
 `MMORPG > Tools > Content > Actor Studio` and
 `MMORPG > Tools > Content > Spawn Authoring`. The vendor capability trades
 through GameService, as decided in
-[Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md). Quest progression,
-crafting, combat AI, and Mob loot tables are not implemented yet. See
+[Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md). Combat, Mob brains,
+and Mob loot rolls follow the [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
+Quest progression and crafting are not implemented yet. See
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Item Foundation Status
