@@ -46,6 +46,7 @@ internal sealed class CorpseAuthorityOperations(
                             CancellationToken.None),
                 RealtimeCorpseInteractionKind.LootItem
                     or RealtimeCorpseInteractionKind.LootPartialStack
+                    or RealtimeCorpseInteractionKind.LootToEquipment
                     or RealtimeCorpseInteractionKind.DepositItem
                     or RealtimeCorpseInteractionKind.DepositPartialStack
                     or RealtimeCorpseInteractionKind.MoveItem

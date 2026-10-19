@@ -125,6 +125,24 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
+            return CanEquipIntoSlot(state, item, destination, out reason);
+        }
+
+        // The equip rules of the slot itself: compatibility, the quantity limit, and blocked slots.
+        // An item in the slot is the one an equip replaces, so it no longer blocks anything.
+        public static bool CanEquipIntoSlot(
+            InventoryClientState state,
+            InventoryItem item,
+            InventoryEquipmentSlot destination,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (state?.Catalog == null || state.FullSnapshot == null || item == null || destination == null)
+            {
+                reason = "Inventory state is unavailable.";
+                return false;
+            }
+
             if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
                 || !ItemEquipmentRules.IsCompatible(definition, destination.SlotId)
                 || !state.Catalog.TryGetEquipmentSlot(destination.SlotId, out var slot))
@@ -141,7 +159,6 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            // A swapped-out occupant no longer blocks anything.
             var blockedSlots = BlockedSlotsByOccupiedSlot(state);
             blockedSlots.Remove(destination.SlotId);
             var blockingSlotId = ItemEquipmentRules.FindBlockingSlot(
@@ -157,6 +174,22 @@ namespace Mmorpg.Client.Items
             }
 
             return true;
+        }
+
+        // A stack of the equipped stackable definition tops up the equipped stack, such as arrows in
+        // the ammunition slot, instead of swapping with it.
+        public static bool IsEquippedStackTopUp(
+            ClientItemCatalog catalog,
+            InventoryItem item,
+            InventoryItem equipped)
+        {
+            return catalog != null
+                && item != null
+                && equipped != null
+                && item.ItemInstanceId != equipped.ItemInstanceId
+                && string.Equals(item.DefinitionId, equipped.DefinitionId, StringComparison.Ordinal)
+                && catalog.TryGetDefinition(item.DefinitionId, out var definition)
+                && definition.MaximumStackSize > 1;
         }
 
         private static bool CanSwapIntoEquipment(

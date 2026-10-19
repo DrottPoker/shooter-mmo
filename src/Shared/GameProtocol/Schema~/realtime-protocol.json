@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 18,
+    "version": 19,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -232,7 +232,8 @@
         { "name": "DepositItem", "value": 7 },
         { "name": "DepositPartialStack", "value": 8 },
         { "name": "MoveItem", "value": 9 },
-        { "name": "MovePartialStack", "value": 10 }
+        { "name": "MovePartialStack", "value": 10 },
+        { "name": "LootToEquipment", "value": 11 }
       ]
     },
     {
@@ -1390,7 +1391,7 @@
           {
             "name": "TargetItemInstanceId",
             "type": "guid",
-            "description": "The stack the item merges into, or empty."
+            "description": "The stack the item merges into, the equipped item it swaps with, or empty."
           },
           {
             "name": "ExpectedTargetItemRevision",
@@ -1422,6 +1423,12 @@
             "name": "ExpectedPlayerBagContentsRevision",
             "type": "i64",
             "description": "The character bag contents revision the client saw."
+          },
+          {
+            "name": "EquipmentSlotId",
+            "type": "string",
+            "maxLength": "MaximumEquipmentSlotIdLength",
+            "description": "The equipment slot that a looted item is equipped into."
           }
         ],
         "cases": [
@@ -1469,6 +1476,19 @@
               { "field": "DestinationContainerId", "nonEmpty": true },
               { "field": "ExpectedDestinationContainerRevision", "minimum": 0 },
               { "field": "DestinationSlotIndex", "minimum": 0 },
+              {
+                "group": [ { "field": "TargetItemInstanceId" }, { "field": "ExpectedTargetItemRevision", "minimum": 0 } ],
+                "presence": "TargetItemInstanceId"
+              }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "LootToEquipment", "factory": "CreateLootToEquipment" } ],
+            "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
+            "fields": [
+              { "field": "ItemInstanceId", "nonEmpty": true },
+              { "field": "ExpectedItemRevision", "minimum": 0 },
+              { "field": "EquipmentSlotId" },
               {
                 "group": [ { "field": "TargetItemInstanceId" }, { "field": "ExpectedTargetItemRevision", "minimum": 0 } ],
                 "presence": "TargetItemInstanceId"

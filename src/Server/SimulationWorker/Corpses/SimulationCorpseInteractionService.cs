@@ -72,6 +72,7 @@ public sealed class SimulationCorpseInteractionService(GameServiceClient gameSer
         {
             RealtimeCorpseInteractionKind.LootItem => "loot_item",
             RealtimeCorpseInteractionKind.LootPartialStack => "loot_partial_stack",
+            RealtimeCorpseInteractionKind.LootToEquipment => "loot_item_to_equipment",
             RealtimeCorpseInteractionKind.DepositItem => "deposit_item",
             RealtimeCorpseInteractionKind.DepositPartialStack => "deposit_partial_stack",
             RealtimeCorpseInteractionKind.MoveItem => "move_item",
@@ -124,7 +125,8 @@ public sealed class SimulationCorpseInteractionService(GameServiceClient gameSer
                 : intent.PlayerBagContentsContainerId,
             intent.PlayerBagContentsContainerId == Guid.Empty
                 ? null
-                : intent.ExpectedPlayerBagContentsRevision);
+                : intent.ExpectedPlayerBagContentsRevision,
+            string.IsNullOrEmpty(intent.EquipmentSlotId) ? null : intent.EquipmentSlotId);
     }
 
     private static SimulationCorpseInteractionResult FromError(

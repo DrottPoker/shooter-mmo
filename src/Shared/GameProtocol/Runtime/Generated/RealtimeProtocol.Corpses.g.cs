@@ -20,7 +20,8 @@ namespace Mmorpg.GameProtocol
         DepositItem = 7,
         DepositPartialStack = 8,
         MoveItem = 9,
-        MovePartialStack = 10
+        MovePartialStack = 10,
+        LootToEquipment = 11
     }
 
     /// <summary>
@@ -256,7 +257,8 @@ namespace Mmorpg.GameProtocol
             Guid playerBagItemInstanceId,
             long expectedPlayerBagRevision,
             Guid playerBagContentsContainerId,
-            long expectedPlayerBagContentsRevision)
+            long expectedPlayerBagContentsRevision,
+            string equipmentSlotId)
         {
             OperationId = operationId;
             OperationKind = operationKind;
@@ -276,6 +278,7 @@ namespace Mmorpg.GameProtocol
             ExpectedPlayerBagRevision = expectedPlayerBagRevision;
             PlayerBagContentsContainerId = playerBagContentsContainerId;
             ExpectedPlayerBagContentsRevision = expectedPlayerBagContentsRevision;
+            EquipmentSlotId = equipmentSlotId;
         }
 
         /// <summary>
@@ -329,7 +332,7 @@ namespace Mmorpg.GameProtocol
         public int DestinationSlotIndex { get; }
 
         /// <summary>
-        /// The stack the item merges into, or empty.
+        /// The stack the item merges into, the equipped item it swaps with, or empty.
         /// </summary>
         public Guid TargetItemInstanceId { get; }
 
@@ -368,6 +371,11 @@ namespace Mmorpg.GameProtocol
         /// </summary>
         public long ExpectedPlayerBagContentsRevision { get; }
 
+        /// <summary>
+        /// The equipment slot that a looted item is equipped into.
+        /// </summary>
+        public string EquipmentSlotId { get; }
+
         public static RealtimeCorpseInteractionIntent CreateOpen(
             Guid operationId,
             Guid corpseId)
@@ -390,7 +398,8 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
         }
 
         public static RealtimeCorpseInteractionIntent CreateClose(
@@ -416,7 +425,8 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
         }
 
         public static RealtimeCorpseInteractionIntent CreateRefresh(
@@ -442,7 +452,8 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
         }
 
         public static RealtimeCorpseInteractionIntent CreateLootItem(
@@ -475,7 +486,8 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
         }
 
         public static RealtimeCorpseInteractionIntent CreateDepositItem(
@@ -508,7 +520,8 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
         }
 
         public static RealtimeCorpseInteractionIntent CreateMoveItem(
@@ -541,7 +554,8 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
         }
 
         public static RealtimeCorpseInteractionIntent CreateLootPartialStack(
@@ -575,7 +589,8 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
         }
 
         public static RealtimeCorpseInteractionIntent CreateDepositPartialStack(
@@ -609,7 +624,8 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
         }
 
         public static RealtimeCorpseInteractionIntent CreateMovePartialStack(
@@ -643,7 +659,40 @@ namespace Mmorpg.GameProtocol
                 Guid.Empty,
                 0,
                 Guid.Empty,
-                0);
+                0,
+                string.Empty);
+        }
+
+        public static RealtimeCorpseInteractionIntent CreateLootToEquipment(
+            Guid operationId,
+            Guid corpseId,
+            long expectedCorpseRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            string equipmentSlotId,
+            Guid targetItemInstanceId,
+            long expectedTargetItemRevision)
+        {
+            return new RealtimeCorpseInteractionIntent(
+                operationId,
+                RealtimeCorpseInteractionKind.LootToEquipment,
+                corpseId,
+                expectedCorpseRevision,
+                itemInstanceId,
+                expectedItemRevision,
+                0,
+                Guid.Empty,
+                0,
+                -1,
+                targetItemInstanceId,
+                expectedTargetItemRevision,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                0,
+                equipmentSlotId);
         }
 
         public static RealtimeCorpseInteractionIntent CreateSwapBag(
@@ -677,7 +726,8 @@ namespace Mmorpg.GameProtocol
                 playerBagItemInstanceId,
                 expectedPlayerBagRevision,
                 playerBagContentsContainerId,
-                expectedPlayerBagContentsRevision);
+                expectedPlayerBagContentsRevision,
+                string.Empty);
         }
     }
 
@@ -1138,6 +1188,20 @@ namespace Mmorpg.GameProtocol
                     }
                     break;
                 }
+                case RealtimeCorpseInteractionKind.LootToEquipment:
+                {
+                    writer.WriteGuid(value.ItemInstanceId);
+                    writer.WriteInt64(value.ExpectedItemRevision);
+                    writer.WriteString(value.EquipmentSlotId);
+                    var hasTargetItemInstanceId = value.TargetItemInstanceId != Guid.Empty;
+                    writer.WriteBoolean(hasTargetItemInstanceId);
+                    if (hasTargetItemInstanceId)
+                    {
+                        writer.WriteGuid(value.TargetItemInstanceId);
+                        writer.WriteInt64(value.ExpectedTargetItemRevision);
+                    }
+                    break;
+                }
                 case RealtimeCorpseInteractionKind.SwapBag:
                 {
                     writer.WriteGuid(value.ItemInstanceId);
@@ -1188,6 +1252,17 @@ namespace Mmorpg.GameProtocol
                 case RealtimeCorpseInteractionKind.MovePartialStack:
                 {
                     size += 57;
+                    if (value.TargetItemInstanceId != Guid.Empty)
+                    {
+                        size += 24;
+                    }
+
+                    break;
+                }
+                case RealtimeCorpseInteractionKind.LootToEquipment:
+                {
+                    size += 25;
+                    size += StringSize(value.EquipmentSlotId);
                     if (value.TargetItemInstanceId != Guid.Empty)
                     {
                         size += 24;
@@ -1248,6 +1323,7 @@ namespace Mmorpg.GameProtocol
             long expectedPlayerBagRevision = 0;
             Guid playerBagContentsContainerId = Guid.Empty;
             long expectedPlayerBagContentsRevision = 0;
+            string equipmentSlotId = string.Empty;
 
             switch (operationKind)
             {
@@ -1371,6 +1447,43 @@ namespace Mmorpg.GameProtocol
 
                     break;
                 }
+                case RealtimeCorpseInteractionKind.LootToEquipment:
+                {
+                    if (!reader.TryReadGuid(out itemInstanceId, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadInt64(out expectedItemRevision, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadString(MaximumEquipmentSlotIdLength, out equipmentSlotId, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadBoolean(out var hasTargetItemInstanceId, out error))
+                    {
+                        return false;
+                    }
+
+                    if (hasTargetItemInstanceId)
+                    {
+                        if (!reader.TryReadGuid(out targetItemInstanceId, out error))
+                        {
+                            return false;
+                        }
+
+                        if (!reader.TryReadInt64(out expectedTargetItemRevision, out error))
+                        {
+                            return false;
+                        }
+                    }
+
+                    break;
+                }
                 case RealtimeCorpseInteractionKind.SwapBag:
                 {
                     if (!reader.TryReadGuid(out itemInstanceId, out error))
@@ -1422,7 +1535,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            value = new RealtimeCorpseInteractionIntent(operationId, operationKind, corpseId, expectedCorpseRevision, itemInstanceId, expectedItemRevision, quantity, destinationContainerId, expectedDestinationContainerRevision, destinationSlotIndex, targetItemInstanceId, expectedTargetItemRevision, corpseBagContentsContainerId, expectedCorpseBagContentsRevision, playerBagItemInstanceId, expectedPlayerBagRevision, playerBagContentsContainerId, expectedPlayerBagContentsRevision);
+            value = new RealtimeCorpseInteractionIntent(operationId, operationKind, corpseId, expectedCorpseRevision, itemInstanceId, expectedItemRevision, quantity, destinationContainerId, expectedDestinationContainerRevision, destinationSlotIndex, targetItemInstanceId, expectedTargetItemRevision, corpseBagContentsContainerId, expectedCorpseBagContentsRevision, playerBagItemInstanceId, expectedPlayerBagRevision, playerBagContentsContainerId, expectedPlayerBagContentsRevision, equipmentSlotId);
             return true;
         }
 
@@ -1487,6 +1600,21 @@ namespace Mmorpg.GameProtocol
                         || value.DestinationContainerId == Guid.Empty
                         || value.ExpectedDestinationContainerRevision < 0
                         || value.DestinationSlotIndex < 0
+                        || value.ExpectedTargetItemRevision < 0
+                        || (value.TargetItemInstanceId == Guid.Empty && value.ExpectedTargetItemRevision != 0))
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeCorpseInteractionKind.LootToEquipment:
+                {
+                    if (value.ExpectedCorpseRevision < 0
+                        || value.ItemInstanceId == Guid.Empty
+                        || value.ExpectedItemRevision < 0
+                        || string.IsNullOrWhiteSpace(value.EquipmentSlotId)
+                        || value.EquipmentSlotId.Length > MaximumEquipmentSlotIdLength
                         || value.ExpectedTargetItemRevision < 0
                         || (value.TargetItemInstanceId == Guid.Empty && value.ExpectedTargetItemRevision != 0))
                     {
@@ -2286,7 +2414,7 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeCorpseInteractionKind value)
         {
-            return (byte)value >= 1 && (byte)value <= 10;
+            return (byte)value >= 1 && (byte)value <= 11;
         }
 
         private static bool IsDefined(RealtimeCorpseViewUpdateKind value)

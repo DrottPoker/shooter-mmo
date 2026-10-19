@@ -254,9 +254,102 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.True);
         }
 
+        [Test]
+        public void CorpseItemsEquipIntoEmptySlotsTopUpStacksAndSwapIntoTheCorpse()
+        {
+            var bow = CorpseItem("fixture.bow", 1);
+            var general = GeneralSection(bow);
+            var emptyMainHand = new InventoryEquipmentSlot("main_hand", 2, null);
+            Assert.That(
+                CorpseTargetAdvisor.CanLootIntoEquipment(
+                    CreateState(null, null, emptyMainHand),
+                    bow,
+                    general,
+                    general.Slots[0],
+                    emptyMainHand,
+                    out var emptyReason),
+                Is.True,
+                emptyReason);
+
+            // An equipped sword swaps into the corpse slot that the bow leaves.
+            var sword = new InventoryItem(Guid.NewGuid(), "fixture.sword", 1, 1, Array.Empty<InventoryPolicy>());
+            var occupiedMainHand = new InventoryEquipmentSlot("main_hand", 2, sword);
+            Assert.That(
+                CorpseTargetAdvisor.CanLootIntoEquipment(
+                    CreateState(null, null, occupiedMainHand),
+                    bow,
+                    general,
+                    general.Slots[0],
+                    occupiedMainHand,
+                    out var swapReason),
+                Is.True,
+                swapReason);
+
+            // The bow still needs a free off hand.
+            var shieldOffHand = new InventoryEquipmentSlot(
+                "off_hand",
+                3,
+                new InventoryItem(Guid.NewGuid(), "fixture.shield", 1, 1, Array.Empty<InventoryPolicy>()));
+            Assert.That(
+                CorpseTargetAdvisor.CanLootIntoEquipment(
+                    CreateState(null, null, emptyMainHand, shieldOffHand),
+                    bow,
+                    general,
+                    general.Slots[0],
+                    emptyMainHand,
+                    out var blockedReason),
+                Is.False);
+            Assert.That(blockedReason, Does.Contain("Off Hand"));
+
+            // Corpse arrows top up the equipped arrows up to the 50 the fixture slot holds.
+            var equippedArrows = new InventoryItem(Guid.NewGuid(), "fixture.arrow", 30, 1, Array.Empty<InventoryPolicy>());
+            var ammunition = new InventoryEquipmentSlot("ammunition", 4, equippedArrows);
+            var arrowState = CreateState(null, null, ammunition);
+            var fittingArrows = CorpseItem("fixture.arrow", 20);
+            var fittingSection = GeneralSection(fittingArrows);
+            Assert.That(
+                CorpseTargetAdvisor.CanLootIntoEquipment(
+                    arrowState,
+                    fittingArrows,
+                    fittingSection,
+                    fittingSection.Slots[0],
+                    ammunition,
+                    out var topUpReason),
+                Is.True,
+                topUpReason);
+            var tooManyArrows = CorpseItem("fixture.arrow", 25);
+            var tooManySection = GeneralSection(tooManyArrows);
+            Assert.That(
+                CorpseTargetAdvisor.CanLootIntoEquipment(
+                    arrowState,
+                    tooManyArrows,
+                    tooManySection,
+                    tooManySection.Slots[0],
+                    ammunition,
+                    out _),
+                Is.False);
+
+            // The equipped Bag swaps only through the Bag aggregate swap.
+            var equippedBag = new InventoryItem(Guid.NewGuid(), "fixture.pack", 1, 1, Array.Empty<InventoryPolicy>());
+            var bagSlot = new InventoryEquipmentSlot("bag", 8, equippedBag);
+            var emptyPack = CorpseItem("fixture.pack", 1);
+            var packSection = GeneralSection(emptyPack);
+            Assert.That(
+                CorpseTargetAdvisor.CanLootIntoEquipment(
+                    CreateState(null, equippedBag, bagSlot),
+                    emptyPack,
+                    packSection,
+                    packSection.Slots[0],
+                    bagSlot,
+                    out var bagReason),
+                Is.False);
+            Assert.That(bagReason, Does.Contain("Bag"));
+        }
+
         private InventoryClientState CreateState(
             InventoryItem permanentItem,
-            InventoryItem equippedBag = null)
+            InventoryItem equippedBag = null,
+            params InventoryEquipmentSlot[] equipment)
         {
             var characterId = Guid.NewGuid();
             var bag = equippedBag == null
@@ -283,7 +376,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         new InventorySlot(0, "general", Array.Empty<string>(), permanentItem),
                         new InventorySlot(1, "general", Array.Empty<string>(), null)
                     }),
-                Array.Empty<InventoryEquipmentSlot>(),
+                equipment ?? Array.Empty<InventoryEquipmentSlot>(),
                 bag,
                 Container("bank"),
                 new SecureContainerInventory("secure_container.base", 1, Container("secure_container")),

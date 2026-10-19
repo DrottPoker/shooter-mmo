@@ -292,6 +292,118 @@ internal static class CorpseCustodyWrites
         context.Journal.IncludeResultItem(target.ItemInstanceId);
     }
 
+    public static async Task EquipCorpseItemAsync(
+        ItemTransactionContext context,
+        LockedItem source,
+        Guid characterId,
+        string equipmentSlotId,
+        CancellationToken cancellationToken)
+    {
+        var before = await context.Journal.CaptureItemStateJsonAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            update item_instances
+            set container_id = null,
+                container_slot_index = null,
+                equipped_character_id = @CharacterId,
+                equipment_slot_id = @EquipmentSlotId,
+                revision = revision + 1,
+                updated_at = now()
+            where id = @ItemInstanceId;
+            """,
+            new
+            {
+                CharacterId = characterId,
+                EquipmentSlotId = equipmentSlotId,
+                source.ItemInstanceId
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+        var after = await context.Journal.CaptureItemStateJsonAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        context.Journal.AddItemAudit(
+            "corpse_item_looted_to_equipment",
+            source.ItemInstanceId,
+            before,
+            after);
+        context.Journal.IncludeResultItem(source.ItemInstanceId);
+    }
+
+    // The corpse item becomes equipped and the equipped item takes its corpse slot.
+    public static async Task SwapCorpseItemWithEquipmentAsync(
+        ItemTransactionContext context,
+        LockedItem source,
+        LockedItem equipped,
+        Guid characterId,
+        string equipmentSlotId,
+        CancellationToken cancellationToken)
+    {
+        var sourceBefore = await context.Journal.CaptureItemStateJsonAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        var equippedBefore = await context.Journal.CaptureItemStateJsonAsync(
+            equipped.ItemInstanceId,
+            cancellationToken);
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            set constraints ux_item_instances_equipment_slot deferred;
+            set constraints ux_item_instances_container_slot deferred;
+
+            update item_instances
+            set container_id = case id
+                    when @SourceItemInstanceId then null
+                    when @EquippedItemInstanceId then @SourceContainerId
+                end,
+                container_slot_index = case id
+                    when @SourceItemInstanceId then null
+                    when @EquippedItemInstanceId then @SourceSlotIndex
+                end,
+                equipped_character_id = case id
+                    when @SourceItemInstanceId then @CharacterId
+                    when @EquippedItemInstanceId then null
+                end,
+                equipment_slot_id = case id
+                    when @SourceItemInstanceId then @EquipmentSlotId
+                    when @EquippedItemInstanceId then null
+                end,
+                revision = revision + 1,
+                updated_at = now()
+            where id in (@SourceItemInstanceId, @EquippedItemInstanceId);
+            """,
+            new
+            {
+                SourceItemInstanceId = source.ItemInstanceId,
+                EquippedItemInstanceId = equipped.ItemInstanceId,
+                SourceContainerId = source.ContainerId!.Value,
+                SourceSlotIndex = source.ContainerSlotIndex!.Value,
+                CharacterId = characterId,
+                EquipmentSlotId = equipmentSlotId
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+        var sourceAfter = await context.Journal.CaptureItemStateJsonAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        var equippedAfter = await context.Journal.CaptureItemStateJsonAsync(
+            equipped.ItemInstanceId,
+            cancellationToken);
+        context.Journal.AddItemAudit(
+            "corpse_item_swapped_to_equipment",
+            source.ItemInstanceId,
+            sourceBefore,
+            sourceAfter);
+        context.Journal.AddItemAudit(
+            "equipped_item_swapped_to_corpse",
+            equipped.ItemInstanceId,
+            equippedBefore,
+            equippedAfter);
+        context.Journal.IncludeResultItem(source.ItemInstanceId);
+        context.Journal.IncludeResultItem(equipped.ItemInstanceId);
+    }
+
     public static async Task SwapCorpseContainerItemsAsync(
         ItemTransactionContext context,
         LockedItem source,

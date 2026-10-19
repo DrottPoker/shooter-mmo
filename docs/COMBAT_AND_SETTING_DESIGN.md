@@ -1,6 +1,6 @@
 # Combat And Setting Design
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 Status: Agreed design direction. Click-to-move movement and the orbit camera are
 implemented, as recorded in [Movement And Camera](#movement-and-camera), and so
@@ -477,8 +477,9 @@ bypassing armor and becoming strictly better against armored targets.
   data, not hard-coded, so it can be tuned after playtests.
 - Ammunition carried in the inventory has normal weight.
 - Ammunition in the slot follows the normal death rules for equipment in
-  [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), and
-  corpse loot enters carried storage only, never the ammunition slot directly.
+  [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). Corpse
+  arrows can be looted into carried storage or straight into the ammunition
+  slot, where they top up equipped arrows of the same definition.
 
 ### Proposed
 

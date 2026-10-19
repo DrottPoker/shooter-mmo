@@ -185,6 +185,13 @@ public sealed class ItemOperationCanonicalRequestTests
         await AssertStoredAsync(
             context,
             await service.ExecuteAsync(
+                Request(new LootCorpseItemToEquipmentCommand(A, B, C, 1, "main_hand", E, 5)),
+                CancellationToken.None),
+            ItemOperationKinds.LootCorpseItemToEquipment,
+            $$"""{"characterId":"{{A}}","corpseId":"{{B}}","itemInstanceId":"{{C}}","expectedItemRevision":1,"equipmentSlotId":"main_hand","targetItemInstanceId":"{{E}}","expectedTargetItemRevision":5}""");
+        await AssertStoredAsync(
+            context,
+            await service.ExecuteAsync(
                 Request(new DepositCorpseItemCommand(A, B, C, 1, D, 2, 3, null, null)),
                 CancellationToken.None),
             ItemOperationKinds.DepositCorpseItem,
@@ -391,7 +398,7 @@ public sealed class ItemOperationCanonicalRequestTests
             ItemOperationKinds.GrantMobLoot,
             Canonical(
                 $$"""{"authority":3,"accountId":"{{session.AccountId}}","requiresOfflineCharacter":false,"simulationSessionId":"{{session.SimulationSessionId}}","characterId":"{{session.CharacterId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1"}""",
-                $$"""{"characterId":"{{looter.Character.Id}}","expectedCharacterRevision":{{looterState.Revision}},"grantId":"{{grantId}}","sourceCorpseId":"{{sourceCorpseId}}","sourceActorDefinitionId":"mob.feral_wolf","definitionId":"fixture.ore","quantity":2,"destinationContainerId":"{{looterState.PermanentInventoryContainerId}}","expectedDestinationContainerRevision":{{inventoryRevision}},"destinationSlotIndex":0}"""),
+                $$"""{"characterId":"{{looter.Character.Id}}","expectedCharacterRevision":{{looterState.Revision}},"grantId":"{{grantId}}","sourceCorpseId":"{{sourceCorpseId}}","sourceActorDefinitionId":"mob.feral_wolf","definitionId":"fixture.ore","quantity":2,"destinationContainerId":"{{looterState.PermanentInventoryContainerId}}","expectedDestinationContainerRevision":{{inventoryRevision}},"destinationSlotIndex":0,"equipmentSlotId":null}"""),
             looter.Registration.AccountId,
             looter.Character.Id);
 

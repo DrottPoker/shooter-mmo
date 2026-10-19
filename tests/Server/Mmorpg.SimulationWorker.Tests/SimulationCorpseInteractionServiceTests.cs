@@ -133,6 +133,37 @@ public sealed class SimulationCorpseInteractionServiceTests
     }
 
     [Fact]
+    public async Task EquipmentLootIntentMapsTheSlotAndTheEquippedTargetWithoutAContainer()
+    {
+        var handler = new CapturingProblemHandler();
+        var service = CreateService(handler);
+        var itemId = Guid.NewGuid();
+        var equippedId = Guid.NewGuid();
+        var intent = RealtimeCorpseInteractionIntent.CreateLootToEquipment(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            12,
+            itemId,
+            7,
+            "main_hand",
+            equippedId,
+            4);
+
+        await service.MutateAsync(CreateSession(), intent, CancellationToken.None);
+
+        Assert.NotNull(handler.Body);
+        var body = handler.Body.Value;
+        Assert.Equal("loot_item_to_equipment", body.GetProperty("operationKind").GetString());
+        Assert.Equal(itemId, body.GetProperty("itemInstanceId").GetGuid());
+        Assert.Equal(7, body.GetProperty("expectedItemRevision").GetInt64());
+        Assert.Equal("main_hand", body.GetProperty("equipmentSlotId").GetString());
+        Assert.Equal(equippedId, body.GetProperty("targetItemInstanceId").GetGuid());
+        Assert.Equal(4, body.GetProperty("expectedTargetItemRevision").GetInt64());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("destinationContainerId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("destinationSlotIndex").ValueKind);
+    }
+
+    [Fact]
     public async Task InternalMoveIntentMapsEveryTransferExpectationToDurableAuthority()
     {
         var handler = new CapturingProblemHandler();

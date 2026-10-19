@@ -4,11 +4,252 @@ using Mmorpg.WorldData.Items;
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Loots a whole or partial corpse stack into carried character storage, merging
-// or swapping with a target stack.
+// or swapping with a target stack, or a whole stack straight into an equipment slot.
 internal sealed class CorpseLootCommandHandler
     : IItemCommandHandler<LootCorpseItemCommand>,
-    IItemCommandHandler<LootCorpsePartialStackCommand>
+    IItemCommandHandler<LootCorpsePartialStackCommand>,
+    IItemCommandHandler<LootCorpseItemToEquipmentCommand>
 {
+    // An equipped stack of the same stackable definition takes the loot as a top-up, or the loot
+    // is rejected. Otherwise the loot equips under the normal equip rules, and an equipped item in
+    // the slot swaps into the corpse slot the loot came from, as a deposit into that slot would.
+    public async Task ExecuteAsync(
+        ItemTransactionContext context,
+        LootCorpseItemToEquipmentCommand command,
+        CancellationToken cancellationToken)
+    {
+        ValidateEquipmentLootCommand(command);
+        await context.Locks.LockCharacterStateForIdempotentEventAsync(
+            command.CharacterId,
+            cancellationToken);
+        var corpse = await CorpseCustody.LockOpenCorpseAsync(
+            context,
+            command.CorpseId,
+            cancellationToken);
+        var occupantId = await context.State.LoadEquippedItemIdAsync(
+            command.CharacterId,
+            command.EquipmentSlotId,
+            cancellationToken);
+        if (occupantId != command.TargetItemInstanceId)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStateConflict,
+                "The equipment slot changed before the loot operation committed.");
+        }
+
+        await context.Locks.LockMutationScopeAsync(
+            occupantId is null ? [command.ItemInstanceId] : [command.ItemInstanceId, occupantId.Value],
+            [],
+            cancellationToken);
+        var source = await LoadCorpseSourceAsync(
+            context,
+            command.CorpseId,
+            command.ItemInstanceId,
+            command.ExpectedItemRevision,
+            cancellationToken);
+        var definition = await context.State.LoadDefinitionAsync(source.DefinitionId, cancellationToken);
+        var sourcePolicies = await context.State.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
+        var sourceCapabilities = ItemPolicyRules.Evaluate(
+            definition.RuntimeDefinition,
+            ItemPolicyStates.ToPolicyStates(sourcePolicies));
+        if (!sourceCapabilities.CanChangeOwningCharacter)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyRestricted,
+                "An active item policy prevents this corpse item from changing ownership.");
+        }
+
+        var occupant = occupantId is null
+            ? null
+            : await context.State.LoadOwnedItemAsync(
+                occupantId.Value,
+                command.CharacterId,
+                command.ExpectedTargetItemRevision!.Value,
+                cancellationToken);
+        // A stack of the equipped stackable definition only tops up, as from the inventory: it
+        // never swaps, so a full equipped stack cannot end up in the corpse.
+        if (occupant is not null
+            && string.Equals(occupant.DefinitionId, source.DefinitionId, StringComparison.Ordinal)
+            && definition.RuntimeDefinition.MaximumStackSize > 1)
+        {
+            var occupantPolicies = await context.State.LoadPoliciesAsync(
+                occupant.ItemInstanceId,
+                cancellationToken);
+            var disposition = CorpseItemTransfers.GetCorpseStackDisposition(
+                source,
+                sourcePolicies,
+                sourceCapabilities,
+                occupant,
+                occupantPolicies,
+                definition,
+                source.Quantity);
+            if (disposition != CorpseStackDisposition.Merge)
+            {
+                CorpseItemTransfers.RejectCorpseStackMerge(disposition);
+            }
+
+            await context.Placement.EnsureEquippedStackQuantityAsync(
+                command.CharacterId,
+                command.EquipmentSlotId,
+                definition,
+                occupant.Quantity + source.Quantity,
+                cancellationToken);
+            await CorpseCustodyWrites.MergeCorpseQuantityAsync(
+                context,
+                source,
+                occupant,
+                source.Quantity,
+                false,
+                cancellationToken);
+            await FinishEquipmentLootAsync(context, corpse, source, command.CharacterId, cancellationToken);
+            return;
+        }
+
+        await context.Placement.EnsureEquipmentDestinationAsync(
+            command.CharacterId,
+            command.EquipmentSlotId,
+            definition,
+            source.Quantity,
+            false,
+            cancellationToken,
+            occupantId);
+        if (occupant is null)
+        {
+            await CorpseCustodyWrites.EquipCorpseItemAsync(
+                context,
+                source,
+                command.CharacterId,
+                command.EquipmentSlotId,
+                cancellationToken);
+        }
+        else
+        {
+            await EnsureOccupantCanEnterCorpseSlotAsync(context, source, occupant, cancellationToken);
+            await CorpseCustodyWrites.SwapCorpseItemWithEquipmentAsync(
+                context,
+                source,
+                occupant,
+                command.CharacterId,
+                command.EquipmentSlotId,
+                cancellationToken);
+        }
+
+        await FinishEquipmentLootAsync(context, corpse, source, command.CharacterId, cancellationToken);
+    }
+
+    // The swapped-out item enters corpse custody in the loot's source slot, under the rules a
+    // deposit into that slot follows.
+    private static async Task EnsureOccupantCanEnterCorpseSlotAsync(
+        ItemTransactionContext context,
+        LockedItem source,
+        LockedItem occupant,
+        CancellationToken cancellationToken)
+    {
+        if (occupant.IsBag)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.BagStateChanged,
+                "An equipped Bag swaps with a corpse Bag only through the atomic Bag swap.");
+        }
+
+        var occupantDefinition = await context.State.LoadDefinitionAsync(
+            occupant.DefinitionId,
+            cancellationToken);
+        var occupantCapabilities = ItemPolicyRules.Evaluate(
+            occupantDefinition.RuntimeDefinition,
+            ItemPolicyStates.ToPolicyStates(
+                await context.State.LoadPoliciesAsync(occupant.ItemInstanceId, cancellationToken)));
+        if (!occupantCapabilities.CanChangeOwningCharacter)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyRestricted,
+                "An active item policy prevents the equipped item from entering corpse custody.");
+        }
+
+        var sourceContainer = await context.State.LoadContainerAsync(
+            source.ContainerId!.Value,
+            cancellationToken);
+        await context.Placement.SelectDestinationSlotAsync(
+            sourceContainer,
+            occupantDefinition,
+            occupant.Quantity,
+            source.ContainerSlotIndex,
+            false,
+            null,
+            false,
+            cancellationToken,
+            source.ItemInstanceId);
+    }
+
+    private static async Task FinishEquipmentLootAsync(
+        ItemTransactionContext context,
+        LockedCorpseRow corpse,
+        LockedItem source,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        await CorpseCustody.AdvanceCorpseRevisionAsync(context, corpse, cancellationToken);
+        context.Journal.TouchContainer(source.ContainerId);
+        context.Journal.TouchCharacter(characterId);
+    }
+
+    private static async Task<LockedItem> LoadCorpseSourceAsync(
+        ItemTransactionContext context,
+        Guid corpseId,
+        Guid itemInstanceId,
+        long expectedItemRevision,
+        CancellationToken cancellationToken)
+    {
+        var source = await context.State.LoadItemAsync(itemInstanceId, cancellationToken);
+        if (source is null
+            || source.ContainerId is null
+            || source.ContainerSlotIndex is null
+            || !await CorpseCustody.IsCorpseSectionContainerAsync(
+                context,
+                corpseId,
+                source.ContainerId.Value,
+                cancellationToken))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemAlreadyLooted,
+                "The requested item is no longer on this corpse.");
+        }
+
+        if (source.Revision != expectedItemRevision)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStateConflict,
+                "The corpse item changed before the loot operation committed.");
+        }
+
+        if (source.IsBag)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.BagStateChanged,
+                "Corpse Bags move only through an atomic Bag aggregate swap.");
+        }
+
+        return source;
+    }
+
+    private static void ValidateEquipmentLootCommand(LootCorpseItemToEquipmentCommand command)
+    {
+        if (command.CharacterId == Guid.Empty
+            || command.CorpseId == Guid.Empty
+            || command.ItemInstanceId == Guid.Empty
+            || command.ExpectedItemRevision < 0
+            || string.IsNullOrWhiteSpace(command.EquipmentSlotId)
+            || (command.TargetItemInstanceId is null) != (command.ExpectedTargetItemRevision is null)
+            || command.TargetItemInstanceId == Guid.Empty
+            || command.TargetItemInstanceId == command.ItemInstanceId
+            || command.ExpectedTargetItemRevision < 0)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.SimulationOperationInvalid,
+                "The corpse equipment loot command is incomplete or invalid.");
+        }
+    }
+
     public Task ExecuteAsync(
         ItemTransactionContext context,
         LootCorpseItemCommand command,

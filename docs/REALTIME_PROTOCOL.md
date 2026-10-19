@@ -1,6 +1,6 @@
 # Realtime Protocol
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 The realtime protocol is the binary contract between SimulationWorker and the
 Unity client over LiteNetLib. Its single source is the local Unity package
@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 18 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 19 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -406,6 +406,20 @@ player: an `EntitySnapshot` with the Mob's world actor entity id, input sequence
 sends one reliable `WorldActorState` with its rest pose and a newer state
 revision. The wire format already allowed any entity id, and clients skip
 snapshot entities they do not know, so this needed no new protocol version.
+
+## Corpse Loot Into Equipment
+
+Protocol version 19 added `CorpseInteractionKind.LootToEquipment` (11) and the
+variant field `EquipmentSlotId` to `CorpseInteractionIntent`. The case carries
+the whole corpse item (`ItemInstanceId`, `ExpectedItemRevision`), the
+equipment slot, and, as the `TargetItemInstanceId` group, the item the
+character had equipped in that slot when the client looked, or no target for
+an empty slot. The hand-written rule rejects a target equal to the looted
+item. GameService tops up an equipped stack of the same definition, equips into
+an empty slot, or swaps the equipped item into the corpse slot the loot left;
+a live Mob corpse accepts only an empty slot and answers anything else with
+`live_mob_corpse_operation_unsupported`. Payloads of every earlier case are
+unchanged.
 
 ## Versioning
 

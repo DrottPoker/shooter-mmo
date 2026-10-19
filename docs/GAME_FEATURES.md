@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## Purpose
 
@@ -320,8 +320,12 @@ when both original slots accept the opposite item and the result stays within
 the hard cap. Every corpse equipment slot displays its equipment type and
 accepts only a compatible definition up to its equipment slot limit. Dropping either equipped
 Bag onto the other occupied Bag slot submits one atomic aggregate swap when both
-complete Bags satisfy the rules. Bank, Recovery Storage, and ordinary equipped
-items cannot enter corpse custody. The panel never moves either side
+complete Bags satisfy the rules. Drag a whole corpse item onto a compatible
+equipment slot to equip it straight from the corpse: an empty slot equips it,
+equipped arrows of the same type are topped up, and an occupied slot swaps your
+equipped item into the corpse slot the loot came from. A live Mob corpse equips
+only into an empty slot. Bank and Recovery Storage items cannot enter corpse
+custody, and an ordinary equipped item enters it only through that swap. The panel never moves either side
 optimistically. Custody-changing transfers refresh character inventory to the
 committed revision, while pure corpse rearrangement updates only corpse state.
 

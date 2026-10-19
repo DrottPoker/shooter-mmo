@@ -972,7 +972,7 @@ namespace Mmorpg.Client.Ui
 
             CreateMessage(
                 parent,
-                "Drag items between the corpse and your carried storage, or within the corpse. Typed slots accept only their shown type, stacks merge, other items swap, and an occupied Bag slot swaps the whole Bag.",
+                "Drag items between the corpse and your carried storage, or within the corpse. Typed slots accept only their shown type, stacks merge, other items swap, and an occupied Bag slot swaps the whole Bag. Drag a corpse item onto an equipment slot to equip it; an occupied slot swaps the equipped item into the corpse.",
                 TemporaryUiKit.TextMuted);
         }
 
@@ -1388,18 +1388,36 @@ namespace Mmorpg.Client.Ui
                     || view.CorpseId != payload.CorpseId
                     || !view.TryFindItem(
                         payload.ItemInstanceId,
-                        out var corpseBag,
+                        out var corpseItem,
                         out var sourceSection,
-                        out _))
+                        out var sourceSlot))
                 {
-                    reason = "The corpse Bag is no longer available.";
+                    reason = "The corpse item is no longer available.";
                     return false;
                 }
 
-                return CorpseTargetAdvisor.CanSwapCorpseBagIntoEquipment(
+                // A corpse Bag swaps with the equipped Bag; any other corpse item equips whole.
+                if (corpseItem.HasBagContents)
+                {
+                    return CorpseTargetAdvisor.CanSwapCorpseBagIntoEquipment(
+                        state,
+                        corpseItem,
+                        sourceSection,
+                        equipmentSlot,
+                        out reason);
+                }
+
+                if (RequestedCorpseQuantity() != null)
+                {
+                    reason = "A partial corpse stack cannot be equipped. Turn the partial-stack control off.";
+                    return false;
+                }
+
+                return CorpseTargetAdvisor.CanLootIntoEquipment(
                     state,
-                    corpseBag,
+                    corpseItem,
                     sourceSection,
+                    sourceSlot,
                     equipmentSlot,
                     out reason);
             }
@@ -1548,13 +1566,22 @@ namespace Mmorpg.Client.Ui
                 var view = corpseController.State.ActiveView;
                 view.TryFindItem(
                     payload.ItemInstanceId,
-                    out var corpseBag,
+                    out var corpseItem,
                     out _,
                     out _);
+                if (corpseItem.HasBagContents)
+                {
+                    ExecuteCorpse(
+                        corpseController.TrySwapBag(corpseItem, out var bagError),
+                        bagError,
+                        "Atomic Bag swap submitted.");
+                    return;
+                }
+
                 ExecuteCorpse(
-                    corpseController.TrySwapBag(corpseBag, out var corpseError),
+                    corpseController.TryLootToEquipment(corpseItem, equipmentSlot, out var corpseError),
                     corpseError,
-                    "Atomic Bag swap submitted.");
+                    equipmentSlot.Item == null ? "Corpse equip submitted." : "Corpse equip swap submitted.");
                 return;
             }
 
@@ -1581,11 +1608,7 @@ namespace Mmorpg.Client.Ui
             InventoryItem item,
             InventoryEquipmentSlot equipmentSlot)
         {
-            return equipmentSlot.Item != null
-                && equipmentSlot.Item.ItemInstanceId != item.ItemInstanceId
-                && string.Equals(equipmentSlot.Item.DefinitionId, item.DefinitionId, StringComparison.Ordinal)
-                && state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
-                && definition.MaximumStackSize > 1;
+            return InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, item, equipmentSlot.Item);
         }
 
         private static bool CanTopUpEquippedStack(

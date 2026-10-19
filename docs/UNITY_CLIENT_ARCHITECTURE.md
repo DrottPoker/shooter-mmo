@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## Purpose
 
@@ -879,7 +879,12 @@ another corpse slot submits an authoritative internal move, split, merge, or
 complete swap. Equipment destinations show the catalog display name, and local
 feedback rejects obvious type mismatches. Dropping
 a corpse Bag onto the occupied player Bag slot submits one atomic aggregate
-swap. `CorpseTargetAdvisor` in `Mmorpg.Client.Items` holds these corpse target
+swap. Dropping any other whole corpse item onto a player equipment slot submits
+`LootToEquipment` with the item now in that slot as its target:
+`CorpseTargetAdvisor.CanLootIntoEquipment` shows green for an empty compatible
+slot, a top-up of an equipped stack of the same definition, or a swap whose
+equipped item fits the corpse slot the loot leaves, and red for a Bag, a partial
+stack, or a blocked slot. `CorpseTargetAdvisor` in `Mmorpg.Client.Items` holds these corpse target
 rules next to `InventoryTargetAdvisor`, and EditMode tests cover both. Green and
 red target feedback remains advisory, while GameService owns all final slot,
 equipment, policy, revision, weight, capacity, and hard-cap validation.

@@ -637,6 +637,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         {
             "loot_item" => "loot_corpse_item",
             "loot_partial_stack" => "loot_corpse_partial_stack",
+            "loot_item_to_equipment" => "loot_corpse_item_to_equipment",
             "deposit_item" => "deposit_corpse_item",
             "deposit_partial_stack" => "deposit_corpse_partial_stack",
             "move_item" => "move_corpse_item",
@@ -681,10 +682,13 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 response.CharacterRevisions[0].CarriedWeight,
                 response.CharacterRevisions[0].CarryCapacity)
             && response.ContainerRevisions is not null
-            && response.ContainerRevisions.Count == 1
-            && response.ContainerRevisions[0].ContainerId == request.DestinationContainerId
-            && response.ContainerRevisions[0].Revision
-                > request.ExpectedDestinationContainerRevision
+            // A grant into an equipment slot touches no container.
+            && (request.EquipmentSlotId is null
+                ? response.ContainerRevisions.Count == 1
+                    && response.ContainerRevisions[0].ContainerId == request.DestinationContainerId
+                    && response.ContainerRevisions[0].Revision
+                        > request.ExpectedDestinationContainerRevision
+                : response.ContainerRevisions.Count == 0)
             && response.ItemRevisions is not null
             && response.ItemRevisions.Count == 1
             && response.ItemRevisions[0].ItemInstanceId != Guid.Empty

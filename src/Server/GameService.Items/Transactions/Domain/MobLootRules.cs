@@ -18,4 +18,14 @@ internal static class MobLootRules
         }
     }
 
+    // A grant into an equipment slot names no container: no id, revision 0, and slot -1.
+    public static bool NamesEquipmentDestinationOnly(
+        Guid destinationContainerId,
+        long expectedDestinationContainerRevision,
+        int destinationSlotIndex)
+    {
+        return destinationContainerId == Guid.Empty
+            && expectedDestinationContainerRevision == 0
+            && destinationSlotIndex == -1;
+    }
 }

@@ -292,6 +292,74 @@ namespace Mmorpg.Client.Items
                     out reason);
         }
 
+        // A whole corpse item dropped on an equipment slot equips it. A stack of the equipped
+        // definition tops up the equipped stack, and any other equipped item swaps into the
+        // corpse slot the loot leaves, as a deposit into that slot would. A live Mob corpse
+        // cannot take an item back, so GameService and the worker accept only an empty slot there.
+        public static bool CanLootIntoEquipment(
+            InventoryClientState state,
+            CorpseLootItem corpseItem,
+            CorpseLootSection sourceSection,
+            CorpseLootSlot sourceSlot,
+            InventoryEquipmentSlot equipmentSlot,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (state?.FullSnapshot == null
+                || corpseItem == null
+                || sourceSection == null
+                || sourceSlot == null
+                || equipmentSlot == null)
+            {
+                reason = "The corpse item is no longer available for mutation.";
+                return false;
+            }
+
+            if (corpseItem.HasBagContents)
+            {
+                reason = "A corpse Bag swaps only with the equipped Bag on the Bag slot.";
+                return false;
+            }
+
+            var item = corpseItem.ToInventoryItem();
+            var occupant = equipmentSlot.Item;
+            if (occupant != null && InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, item, occupant))
+            {
+                return InventoryTargetAdvisor.CanMerge(
+                    state,
+                    item,
+                    ToLocation(sourceSection, sourceSlot),
+                    occupant,
+                    InventoryItemLocation.ForEquipment(equipmentSlot.SlotId),
+                    out reason);
+            }
+
+            if (occupant != null)
+            {
+                if (state.FullSnapshot.EquippedBag != null
+                    && state.FullSnapshot.EquippedBag.Item.ItemInstanceId == occupant.ItemInstanceId)
+                {
+                    reason = "The equipped Bag swaps only with a corpse Bag.";
+                    return false;
+                }
+
+                if (!CanOccupyEquipmentSlot(state.Catalog, occupant, sourceSlot, out reason)
+                    || !InventoryTargetAdvisor.CanPlaceInContainer(
+                        state,
+                        occupant,
+                        InventoryItemLocation.ForEquipment(equipmentSlot.SlotId),
+                        ToInventoryContainer(sourceSection),
+                        ToEmptyInventorySlot(sourceSlot),
+                        out reason))
+                {
+                    reason = "The equipped item cannot move into the corpse slot: " + reason;
+                    return false;
+                }
+            }
+
+            return InventoryTargetAdvisor.CanEquipIntoSlot(state, item, equipmentSlot, out reason);
+        }
+
         // A corpse Bag with contents dropped on the occupied Bag equipment slot swaps both
         // complete Bags atomically.
         public static bool CanSwapCorpseBagIntoEquipment(

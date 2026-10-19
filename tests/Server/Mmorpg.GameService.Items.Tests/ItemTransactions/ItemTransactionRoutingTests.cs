@@ -59,9 +59,9 @@ public sealed class ItemTransactionRoutingTests
             })
             .ToArray();
 
-        Assert.Equal(32, overloads.Length);
-        Assert.Equal(32, requestTypes.Distinct().Count());
-        Assert.Equal(32, Routes.Count);
+        Assert.Equal(33, overloads.Length);
+        Assert.Equal(33, requestTypes.Distinct().Count());
+        Assert.Equal(33, Routes.Count);
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -207,6 +207,11 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new LootCorpsePartialStackCommand(Id, Id, Id, 1, 1, Id, 1, 0, null, null),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.LootCorpseItemToEquipment] = (service, actor) => Run(
+                service,
+                actor,
+                new LootCorpseItemToEquipmentCommand(Id, Id, Id, 1, "main_hand", null, null),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.DepositCorpseItem] = (service, actor) => Run(
                 service,

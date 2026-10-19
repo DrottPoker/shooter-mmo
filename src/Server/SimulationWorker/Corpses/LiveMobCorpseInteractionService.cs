@@ -61,7 +61,10 @@ public sealed class LiveMobCorpseInteractionService(
                 "Synthetic development sessions cannot interact with live Mob corpses.");
         }
 
-        if (intent.OperationKind != RealtimeCorpseInteractionKind.LootItem)
+        // Live loot never swaps or merges: the worker holds the corpse in memory and cannot take an
+        // item back, so it claims a whole item into an empty inventory or equipment slot.
+        var toEquipment = intent.OperationKind == RealtimeCorpseInteractionKind.LootToEquipment;
+        if (intent.OperationKind != RealtimeCorpseInteractionKind.LootItem && !toEquipment)
         {
             return SimulationCorpseInteractionResult.Rejected(
                 intent,
@@ -105,11 +108,20 @@ public sealed class LiveMobCorpseInteractionService(
                 requiresInventoryRefresh: true);
         }
 
-        if (intent.DestinationContainerId == Guid.Empty
-            || intent.ExpectedDestinationContainerRevision < 0
-            || intent.DestinationSlotIndex < 0
-            || intent.TargetItemInstanceId != Guid.Empty
-            || intent.Quantity > 0)
+        if (toEquipment && intent.TargetItemInstanceId != Guid.Empty)
+        {
+            return SimulationCorpseInteractionResult.Rejected(
+                intent,
+                "live_mob_corpse_operation_unsupported",
+                "Live Mob loot equips only into an empty equipment slot.");
+        }
+
+        if (!toEquipment
+            && (intent.DestinationContainerId == Guid.Empty
+                || intent.ExpectedDestinationContainerRevision < 0
+                || intent.DestinationSlotIndex < 0
+                || intent.TargetItemInstanceId != Guid.Empty
+                || intent.Quantity > 0))
         {
             return SimulationCorpseInteractionResult.Rejected(
                 intent,
@@ -146,9 +158,10 @@ public sealed class LiveMobCorpseInteractionService(
                 corpse.SourceActorDefinitionId,
                 lootEntry.DefinitionId,
                 lootEntry.Quantity,
-                intent.DestinationContainerId,
-                intent.ExpectedDestinationContainerRevision,
-                intent.DestinationSlotIndex),
+                toEquipment ? Guid.Empty : intent.DestinationContainerId,
+                toEquipment ? 0 : intent.ExpectedDestinationContainerRevision,
+                toEquipment ? -1 : intent.DestinationSlotIndex,
+                toEquipment ? intent.EquipmentSlotId : null),
             cancellationToken);
         if (!response.Succeeded)
         {

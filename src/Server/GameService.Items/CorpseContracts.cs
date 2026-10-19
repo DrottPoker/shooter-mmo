@@ -81,7 +81,8 @@ internal sealed record SimulationMobLootGrantRequest(
     int Quantity,
     Guid DestinationContainerId,
     long ExpectedDestinationContainerRevision,
-    int DestinationSlotIndex);
+    int DestinationSlotIndex,
+    string? EquipmentSlotId = null);
 
 internal sealed record CorpseRestoreResponse(
     DateTime DatabaseTime,
@@ -151,7 +152,8 @@ internal sealed record SimulationCorpseMutationRequest(
     Guid? PlayerBagItemInstanceId = null,
     long? ExpectedPlayerBagRevision = null,
     Guid? PlayerBagContentsContainerId = null,
-    long? ExpectedPlayerBagContentsRevision = null);
+    long? ExpectedPlayerBagContentsRevision = null,
+    string? EquipmentSlotId = null);
 
 internal sealed record CorpseMutationResponse(
     ItemTransactionResult Transaction,
@@ -208,6 +210,7 @@ internal static class CorpseInteractionOperationKinds
 {
     public const string LootItem = "loot_item";
     public const string LootPartialStack = "loot_partial_stack";
+    public const string LootItemToEquipment = "loot_item_to_equipment";
     public const string DepositItem = "deposit_item";
     public const string DepositPartialStack = "deposit_partial_stack";
     public const string MoveItem = "move_item";
