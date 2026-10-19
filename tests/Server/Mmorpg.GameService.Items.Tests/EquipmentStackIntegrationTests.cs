@@ -107,6 +107,101 @@ public sealed class EquipmentStackIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task EquippingOntoAnOccupiedSlotMovesTheEquippedItemIntoTheSourceSlot()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("swap_player");
+        var characterId = player.Character.Id;
+        var state = await world.LoadStateAsync(characterId);
+        var inventoryId = state.PermanentInventoryContainerId;
+        var sword = await world.GrantAsync(characterId, "fixture.sword", 1, inventoryId, 0);
+        var bow = await world.GrantAsync(characterId, "fixture.bow", 1, inventoryId, 3);
+        await world.EquipAsync(characterId, sword, "main_hand");
+        var weightBefore = await LoadCarriedWeightAsync(world, characterId);
+
+        var result = await EquipAsync(world, characterId, bow, "main_hand");
+
+        ItemScenarioWorld.AssertCommitted(result);
+        Assert.Contains(result.ItemRevisions, item => item.ItemInstanceId == sword);
+        Assert.Contains(result.ItemRevisions, item => item.ItemInstanceId == bow);
+        Assert.Equal(sword, await world.FindItemAsync(inventoryId, 3));
+        Assert.Equal(bow, await LoadEquippedItemAsync(world, characterId, "main_hand"));
+        Assert.Equal(1, await CountEquippedAsync(world, characterId));
+        // Sword and bow weigh the same, so the carried weight does not change.
+        Assert.Equal(weightBefore, await LoadCarriedWeightAsync(world, characterId));
+
+        // Swapping back restores the original layout.
+        ItemScenarioWorld.AssertCommitted(await EquipAsync(world, characterId, sword, "main_hand"));
+        Assert.Equal(bow, await world.FindItemAsync(inventoryId, 3));
+        Assert.Equal(sword, await LoadEquippedItemAsync(world, characterId, "main_hand"));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task ASwapStillRejectsASlotThatTheNewItemBlocks()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("blocked_swap_player");
+        var characterId = player.Character.Id;
+        var state = await world.LoadStateAsync(characterId);
+        var inventoryId = state.PermanentInventoryContainerId;
+        var sword = await world.GrantAsync(characterId, "fixture.sword", 1, inventoryId, 0);
+        var shield = await world.GrantAsync(characterId, "fixture.shield", 1, inventoryId, 1);
+        var bow = await world.GrantAsync(characterId, "fixture.bow", 1, inventoryId, 2);
+        await world.EquipAsync(characterId, sword, "main_hand");
+        await world.EquipAsync(characterId, shield, "off_hand");
+
+        var blocked = await EquipAsync(world, characterId, bow, "main_hand");
+
+        Assert.False(blocked.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentSlotBlocked, blocked.Error!.Code);
+        Assert.Equal(sword, await LoadEquippedItemAsync(world, characterId, "main_hand"));
+        Assert.Equal(bow, await world.FindItemAsync(inventoryId, 2));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task SwappingBagsMovesOnlyAnEmptyEquippedBag()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("bag_swap_player");
+        var characterId = player.Character.Id;
+        var state = await world.LoadStateAsync(characterId);
+        var inventoryId = state.PermanentInventoryContainerId;
+        var equippedBag = await world.GrantAsync(characterId, "fixture.pack", 1, inventoryId, 0);
+        var newBag = await world.GrantAsync(characterId, "fixture.pack", 1, inventoryId, 1);
+        await world.EquipAsync(characterId, equippedBag, "bag");
+        var contentsId = (await world.LoadItemAsync(equippedBag)).BagContentsContainerId!.Value;
+        var potion = await world.GrantAsync(characterId, "fixture.potion", 1, contentsId, 0);
+
+        var notEmpty = await EquipAsync(world, characterId, newBag, "bag");
+        Assert.False(notEmpty.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.BagNotEmpty, notEmpty.Error!.Code);
+
+        ItemScenarioWorld.AssertCommitted(await world.Context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<RelocateItemCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new RelocateItemCommand(
+                    characterId,
+                    (await world.LoadStateAsync(characterId)).Revision,
+                    potion,
+                    (await world.LoadItemAsync(potion)).Revision,
+                    inventoryId,
+                    2)),
+            CancellationToken.None));
+        ItemScenarioWorld.AssertCommitted(await EquipAsync(world, characterId, newBag, "bag"));
+
+        Assert.Equal(newBag, await LoadEquippedItemAsync(world, characterId, "bag"));
+        Assert.Equal(equippedBag, await world.FindItemAsync(inventoryId, 1));
+        Assert.Equal("closed", await LoadContainerLifecycleAsync(world, contentsId));
+        Assert.Equal(
+            "active",
+            await LoadContainerLifecycleAsync(world, (await world.LoadItemAsync(newBag)).BagContentsContainerId!.Value));
+    }
+
+    [PostgresIntegrationFact]
     public async Task EquipmentAboveTheCharacterLevelIsRejectedUntilTheLevelIsReached()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -346,6 +441,30 @@ public sealed class EquipmentStackIntegrationTests
         return await connection.QuerySingleAsync<long>(
             "select carried_weight from character_item_states where character_id = @CharacterId;",
             new { CharacterId = characterId });
+    }
+
+    private static async Task<Guid?> LoadEquippedItemAsync(
+        ItemScenarioWorld world,
+        Guid characterId,
+        string equipmentSlotId)
+    {
+        await using var connection = await world.Context.DataSource.OpenConnectionAsync();
+        return await connection.QuerySingleOrDefaultAsync<Guid?>(
+            """
+            select id
+            from item_instances
+            where equipped_character_id = @CharacterId
+              and equipment_slot_id = @EquipmentSlotId;
+            """,
+            new { CharacterId = characterId, EquipmentSlotId = equipmentSlotId });
+    }
+
+    private static async Task<string> LoadContainerLifecycleAsync(ItemScenarioWorld world, Guid containerId)
+    {
+        await using var connection = await world.Context.DataSource.OpenConnectionAsync();
+        return await connection.QuerySingleAsync<string>(
+            "select lifecycle from item_containers where id = @ContainerId;",
+            new { ContainerId = containerId });
     }
 
     private static async Task<int> CountEquippedAsync(ItemScenarioWorld world, Guid characterId)

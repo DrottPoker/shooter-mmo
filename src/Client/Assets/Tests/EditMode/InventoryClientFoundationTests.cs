@@ -968,6 +968,76 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(capReason, Does.Contain("140 percent"));
         }
 
+        [Test]
+        public void EquippingOntoAnOccupiedSlotSwapsWhenTheSourceSlotAcceptsTheEquippedItem()
+        {
+            var bow = CreateItem("fixture.bow", 1);
+            var state = CreateAdvisorStateWithEquipment(
+                100,
+                200,
+                new InventoryEquipmentSlot("main_hand", 2, bow),
+                new InventoryEquipmentSlot("off_hand", 3, null));
+            var mainHand = state.FullSnapshot.Equipment[0];
+
+            Assert.That(
+                InventoryTargetAdvisor.CanEquip(
+                    state,
+                    CreateItem("fixture.sword", 1),
+                    ContainerLocation(state.FullSnapshot.PermanentInventory),
+                    mainHand,
+                    out var swapReason),
+                Is.True,
+                swapReason);
+
+            // The bow may not enter the Secure Container, so it cannot swap into a slot there.
+            Assert.That(
+                InventoryTargetAdvisor.CanEquip(
+                    state,
+                    CreateItem("fixture.sword", 1),
+                    ContainerLocation(state.FullSnapshot.SecureContainer.Contents),
+                    mainHand,
+                    out var secureReason),
+                Is.False);
+            Assert.That(secureReason, Does.Contain("Secure Container"));
+
+            Assert.That(
+                InventoryTargetAdvisor.CanEquip(
+                    state,
+                    bow,
+                    ContainerLocation(state.FullSnapshot.PermanentInventory),
+                    mainHand,
+                    out var selfReason),
+                Is.False);
+            Assert.That(selfReason, Does.Contain("already equipped"));
+
+            // The swapped-out sword frees the main hand, but the new bow still needs the off hand.
+            var shieldState = CreateAdvisorStateWithEquipment(
+                100,
+                200,
+                new InventoryEquipmentSlot("main_hand", 2, CreateItem("fixture.sword", 1)),
+                new InventoryEquipmentSlot("off_hand", 3, CreateItem("fixture.shield", 1)));
+            Assert.That(
+                InventoryTargetAdvisor.CanEquip(
+                    shieldState,
+                    CreateItem("fixture.bow", 1),
+                    ContainerLocation(shieldState.FullSnapshot.PermanentInventory),
+                    shieldState.FullSnapshot.Equipment[0],
+                    out var blockedReason),
+                Is.False);
+            Assert.That(blockedReason, Does.Contain("Off Hand"));
+        }
+
+        private static InventoryItemLocation ContainerLocation(InventoryContainer container)
+        {
+            return new InventoryItemLocation(
+                InventoryItemLocationKind.Container,
+                container.ContainerId,
+                container.ContainerType,
+                0,
+                string.Empty,
+                Guid.Empty);
+        }
+
         private InventoryClientState CreateAdvisorStateWithEquipment(
             long carriedWeight,
             long carryCapacity,

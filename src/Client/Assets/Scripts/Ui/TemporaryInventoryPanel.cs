@@ -539,7 +539,7 @@ namespace Mmorpg.Client.Ui
 
             CreateMessage(
                 equipmentContent,
-                "Drag an item onto a green slot to equip it. Drag a corpse Bag onto the Bag slot to swap Bags together with their contents.",
+                "Drag an item onto a green slot to equip it. On an occupied slot the equipped item swaps into the slot the new item came from. Drag a corpse Bag onto the Bag slot to swap Bags together with their contents.",
                 TemporaryUiKit.TextMuted);
         }
 
@@ -1417,17 +1417,20 @@ namespace Mmorpg.Client.Ui
                 return false;
             }
 
-            if (equipmentSlot.Item != null)
+            if (IsEquippedStackTopUp(state, item, equipmentSlot))
             {
                 return CanTopUpEquippedStack(state, item, source, equipmentSlot, out reason);
             }
 
             if (source.Kind == InventoryItemLocationKind.Equipment)
             {
-                reason = "Move the equipped item to an inventory slot before changing equipment slots.";
+                reason = equipmentSlot.Item != null && equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId
+                    ? "The item is already equipped in this slot."
+                    : "Move the equipped item to an inventory slot before changing equipment slots.";
                 return false;
             }
 
+            // An occupied slot swaps: the equipped item moves into the slot the new item came from.
             return InventoryTargetAdvisor.CanEquip(
                 state,
                 item,
@@ -1556,7 +1559,7 @@ namespace Mmorpg.Client.Ui
             }
 
             state.TryFindItem(payload.ItemInstanceId, out var item, out _);
-            if (equipmentSlot.Item != null)
+            if (IsEquippedStackTopUp(state, item, equipmentSlot))
             {
                 Execute(
                     controller.TryMerge(item, equipmentSlot.Item, out var mergeError),
@@ -1568,11 +1571,23 @@ namespace Mmorpg.Client.Ui
             Execute(
                 controller.TryEquip(item, equipmentSlot.SlotId, out var error),
                 error,
-                "Equip submitted.");
+                equipmentSlot.Item != null ? "Swap submitted." : "Equip submitted.");
         }
 
-        // Dropping a compatible stack onto an occupied equipment slot merges into the equipped
-        // stack, such as arrows topping up the ammunition slot.
+        // A stack of the equipped definition tops up the equipped stack, such as arrows in the
+        // ammunition slot. Any other item on an occupied slot swaps with the equipped item.
+        private static bool IsEquippedStackTopUp(
+            InventoryClientState state,
+            InventoryItem item,
+            InventoryEquipmentSlot equipmentSlot)
+        {
+            return equipmentSlot.Item != null
+                && equipmentSlot.Item.ItemInstanceId != item.ItemInstanceId
+                && string.Equals(equipmentSlot.Item.DefinitionId, item.DefinitionId, StringComparison.Ordinal)
+                && state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
+                && definition.MaximumStackSize > 1;
+        }
+
         private static bool CanTopUpEquippedStack(
             InventoryClientState state,
             InventoryItem item,
@@ -1580,21 +1595,6 @@ namespace Mmorpg.Client.Ui
             InventoryEquipmentSlot equipmentSlot,
             out string reason)
         {
-            if (equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId)
-            {
-                reason = "The item is already equipped in this slot.";
-                return false;
-            }
-
-            if (!string.Equals(
-                    equipmentSlot.Item.DefinitionId,
-                    item.DefinitionId,
-                    StringComparison.Ordinal))
-            {
-                reason = "The equipment slot is occupied.";
-                return false;
-            }
-
             return InventoryTargetAdvisor.CanMerge(
                 state,
                 item,

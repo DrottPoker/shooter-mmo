@@ -710,7 +710,12 @@ currency display name and the item-state revision, such as
 interaction layer. Relocation, equip, unequip, split, merge, atomic ordinary
 container-slot swap, and complete Recovery claims start only from a drop. A drop
 onto an occupied slot merges compatible stacks first and otherwise swaps only
-when both items pass the opposite slot rules. Valid and invalid targets provide
+when both items pass the opposite slot rules. On an occupied equipment slot,
+a stack of the equipped definition tops up the equipped stack, and any other
+container item equips with a swap that `InventoryTargetAdvisor.CanEquip`
+checks: the equipped item must fit the slot the new item leaves, a non-empty
+equipped Bag stays, the new item's blocked slots must be empty, and the carry
+cap must hold. Valid and invalid targets provide
 green or red feedback, then revalidate the current state before sending an
 operation. The drag ghost trails below and to the right of the pointer, so it
 never hides the highlighted target.

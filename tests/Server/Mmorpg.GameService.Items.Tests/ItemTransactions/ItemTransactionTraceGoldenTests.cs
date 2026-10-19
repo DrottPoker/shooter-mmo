@@ -689,6 +689,31 @@ public sealed class ItemTransactionTraceGoldenTests
     }
 
     [PostgresIntegrationFact]
+    public async Task EquipSwapMatchesItsGoldenTrace()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        await using var traced = TracedItemTransactions.Create(context);
+        var player = await world.RegisterAsync("golden_equip_swap");
+        var characterId = player.Character.Id;
+        var state = await world.LoadStateAsync(characterId);
+        var inventoryId = state.PermanentInventoryContainerId;
+        var equippedRingId = await world.GrantAsync(characterId, Ring, 1, inventoryId, 0);
+        await world.EquipAsync(characterId, equippedRingId, "ring_1");
+        var newRingId = await world.GrantAsync(characterId, Ring, 1, inventoryId, 4);
+
+        state = await world.LoadStateAsync(characterId);
+        var newRing = await world.LoadItemAsync(newRingId);
+        var swapId = Guid.NewGuid();
+        AssertCommitted(await traced.AssertGoldenAsync("equip.swap", swapId, service => service.ExecuteAsync(
+            new ItemTransactionRequest<EquipItemCommand>(
+                swapId,
+                ItemTransactionActor.ForSystem(),
+                new EquipItemCommand(characterId, state.Revision, newRingId, newRing.Revision, "ring_1")),
+            CancellationToken.None)));
+    }
+
+    [PostgresIntegrationFact]
     public async Task MobCorpseCommandsMatchTheirGoldenTraces()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

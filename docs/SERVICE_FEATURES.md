@@ -813,9 +813,15 @@ concurrent inspection, and authoritative looting:
   the smaller of the slot maximum quantity and the definition stack size. Merge
   accepts an equipped target up to that limit and an equipped source, and split
   accepts an equipped source, so arrows top up and partly leave the ammunition
-  slot. Equipping into a slot that an equipped item blocks, or with an item that
-  would block an occupied slot, is rejected with `equipment_slot_blocked`. A
-  corpse equipment slot keeps the same quantity limit.
+  slot. Equip onto an occupied slot is a swap in the same transaction: it locks
+  both items, checks the new item as for an empty slot apart from the occupant it
+  replaces, and moves the occupant into the new item's source slot under the
+  unequip placement rules, with deferred unique constraints for the exchange.
+  The expected character revision makes sure the swap replaces the occupant the
+  client saw. Equipping into a slot that an equipped item blocks, or with an
+  item that would block an occupied slot, is rejected with
+  `equipment_slot_blocked`. A corpse equipment slot keeps the same quantity
+  limit.
 - Every path into a character's equipment slot, including corpse Bag swaps and
   cross-character Bag aggregate swaps, compares the definition's mirrored
   `required_character_level` with `characters.level` and rejects a lower level

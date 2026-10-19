@@ -99,6 +99,8 @@ namespace Mmorpg.Client.Items
             return true;
         }
 
+        // Equips the item into the slot. On an occupied slot the equipped item swaps into the slot
+        // the new item comes from, so that slot must accept it and the carry cap must hold.
         public static bool CanEquip(
             InventoryClientState state,
             InventoryItem item,
@@ -117,9 +119,9 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (destination.Item != null)
+            if (destination.Item != null
+                && !CanSwapIntoEquipment(state, item, source, destination, out reason))
             {
-                reason = "The equipment slot is occupied.";
                 return false;
             }
 
@@ -139,10 +141,13 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
+            // A swapped-out occupant no longer blocks anything.
+            var blockedSlots = BlockedSlotsByOccupiedSlot(state);
+            blockedSlots.Remove(destination.SlotId);
             var blockingSlotId = ItemEquipmentRules.FindBlockingSlot(
                 definition,
                 destination.SlotId,
-                BlockedSlotsByOccupiedSlot(state));
+                blockedSlots);
             if (blockingSlotId != null)
             {
                 reason = "The item equipped in "
@@ -151,6 +156,82 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
+            return true;
+        }
+
+        private static bool CanSwapIntoEquipment(
+            InventoryClientState state,
+            InventoryItem item,
+            InventoryItemLocation source,
+            InventoryEquipmentSlot destination,
+            out string reason)
+        {
+            var occupant = destination.Item;
+            if (occupant.ItemInstanceId == item.ItemInstanceId)
+            {
+                reason = "The item is already equipped in this slot.";
+                return false;
+            }
+
+            if (source.Kind != InventoryItemLocationKind.Container
+                || !TryResolveContainerSlot(state, source, out var sourceContainer, out var sourceSlot))
+            {
+                reason = "Only an item in a container can swap with an equipped item.";
+                return false;
+            }
+
+            if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
+                || !state.Catalog.TryGetDefinition(occupant.DefinitionId, out var occupantDefinition))
+            {
+                reason = "The item definition is unavailable.";
+                return false;
+            }
+
+            if (occupantDefinition.Bag != null && IsEquippedBagWithContents(state, occupant.ItemInstanceId))
+            {
+                reason = "Empty the equipped Bag before you swap it.";
+                return false;
+            }
+
+            if (!CanOccupySlot(state, occupant, sourceContainer, sourceSlot, out reason))
+            {
+                reason = "The equipped item cannot move into the slot the new item comes from: " + reason;
+                return false;
+            }
+
+            try
+            {
+                var finalWeight = state.FullSnapshot.CarriedWeight;
+                if (ItemContainerTypeIds.IsCarried(sourceContainer.ContainerType))
+                {
+                    finalWeight = checked(
+                        finalWeight
+                        - ItemWeightRules.CalculateStackWeight(definition.UnitWeight, item.Quantity)
+                        + ItemWeightRules.CalculateStackWeight(occupantDefinition.UnitWeight, occupant.Quantity));
+                }
+
+                var finalCapacity = checked(
+                    state.FullSnapshot.CarryCapacity
+                    - (occupantDefinition.Bag?.CarryCapacityBonus ?? 0)
+                    + (definition.Bag?.CarryCapacityBonus ?? 0));
+                if (finalCapacity <= 0
+                    || !EncumbranceRules.IsAllowedVoluntaryTransition(
+                        state.FullSnapshot.CarriedWeight,
+                        state.FullSnapshot.CarryCapacity,
+                        finalWeight,
+                        finalCapacity))
+                {
+                    reason = "The swap would exceed the 140 percent carry cap.";
+                    return false;
+                }
+            }
+            catch (OverflowException)
+            {
+                reason = "The swap weight is invalid.";
+                return false;
+            }
+
+            reason = string.Empty;
             return true;
         }
 
