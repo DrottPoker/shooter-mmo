@@ -145,10 +145,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             if (spawn.Kind != RealtimeEntityKind.Player
-                || !string.Equals(
-                    spawn.ArchetypeId,
-                    RemotePlayerView.SupportedArchetypeId,
-                    System.StringComparison.Ordinal))
+                || !RemotePlayerView.SupportsArchetype(spawn.ArchetypeId))
             {
                 Debug.LogWarning(
                     "WorldSceneContext cannot present unsupported entity archetype '"

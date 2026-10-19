@@ -435,7 +435,9 @@ public sealed class RealtimeSimulationServiceTests
             Assert.Equal(authHandler.CharacterId.ToString("D"), joined.CharacterId);
             Assert.NotEqual(0ul, joined.ControlledEntityId);
             Assert.Equal(joined.ControlledEntityId, spawned.EntityId);
-            Assert.Equal("player.default", spawned.ArchetypeId);
+            Assert.Equal(
+                isSyntheticBot ? RealtimePlayerArchetypeIds.DevelopmentBot : RealtimePlayerArchetypeIds.Player,
+                spawned.ArchetypeId);
             Assert.Equal(staticCollisionWorld.Revision, joined.CollisionRevision);
             Assert.Equal(0, joined.CarryState.ItemStateRevision);
             Assert.Equal(1, carryState.ItemStateRevision);

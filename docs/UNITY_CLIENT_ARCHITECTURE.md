@@ -1009,7 +1009,11 @@ adds one trigger capsule of the movement capsule's size, so the pointer can pick
 the player for combat, and it reports that height for health bars. A trigger
 never blocks movement, the camera, or the pointer. It stores the network entity
 id, persistent character id, display name, and presentation archetype supplied
-by the spawn message. Its `RemoteMovementPresenter`, which moving Mobs share,
+by the spawn message. `WorldSceneContext` presents the archetypes
+`player.default` and `player.development_bot`, and the view colors the prefab's
+`PlayerVisual/Body` renderer through a `MaterialPropertyBlock`: orange for a
+person and blue for a development bot, so neither looks like the purple
+LocalPlayer and the shared body material stays unchanged. Its `RemoteMovementPresenter`, which moving Mobs share,
 buffers server states in `RemoteMovementInterpolation`, advances an adaptive
 monotonic frame-rate `RemoteRenderClock` approximately 100 ms behind the latest
 server tick, `RemoteMovementPresenter.InterpolationDelayTicks`, and applies the
