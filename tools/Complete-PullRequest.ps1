@@ -7,10 +7,11 @@
 # records. Run it again on an already merged pull request to finish a cleanup that failed.
 #
 # Exit codes: 0 merged and cleaned up, 1 not merged, 2 merged but the cleanup is incomplete: the
-# remote branch moved after the merge, the task branch had to stay (uncommitted changes, another
-# worktree, or commits that are not in development), or the local development branch does not
-# match origin/development. The report says why; never discard local work to fix it. Pull
-# requests from main, development, a fork, or an unusual branch name are refused.
+# remote branch moved after the merge, the main checkout could not return to development, the
+# task branch had to stay (uncommitted changes, another worktree, or commits that are not in
+# development), or the local development branch does not match origin/development. The report
+# says why; never discard local work to fix it. Pull requests from main, development, a fork, or
+# an unusual branch name are refused.
 param(
     [Parameter(Mandatory = $true)]
     [int]$Number,
@@ -167,12 +168,19 @@ if ($holder -and (Get-FullPath $holder.Path) -eq $currentRoot) {
     else {
         # The main checkout returns to development, which is fast-forwarded below. A task
         # worktree is detached instead, because development is checked out in the main checkout.
-        $developmentHeld = @($worktrees | Where-Object { $_.Branch -eq "development" }).Count -gt 0
-        if ($currentRoot -eq $mainRoot -and -not $developmentHeld -and (Test-Git switch --quiet development)) {
+        $developmentHolder = $worktrees | Where-Object { $_.Branch -eq "development" } | Select-Object -First 1
+        if ($currentRoot -ne $mainRoot) {
+            Invoke-Git switch --detach --quiet | Out-Null
+        }
+        elseif (-not $developmentHolder -and (Test-Git switch --quiet development)) {
             Write-Output "Switched the main checkout to development"
         }
         else {
+            # The main checkout must not stay detached unnoticed.
             Invoke-Git switch --detach --quiet | Out-Null
+            $reason = if ($developmentHolder) { "development is checked out in $($developmentHolder.Path)" } else { "switching to development failed (see the git message above)" }
+            Write-Output "The main checkout is detached because $reason; switch it to development once that is resolved"
+            $exitCode = 2
         }
         $holder = $null
     }
