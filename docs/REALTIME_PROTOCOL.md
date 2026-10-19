@@ -417,8 +417,8 @@ character had equipped in that slot when the client looked, or no target for
 an empty slot. The hand-written rule rejects a target equal to the looted
 item. GameService tops up an equipped stack of the same definition, equips into
 an empty slot, or swaps the equipped item into the corpse slot the loot left;
-a live Mob corpse accepts only an empty slot and answers anything else with
-`live_mob_corpse_operation_unsupported`. Payloads of every earlier case are
+a live Mob corpse never swaps: it fills an empty slot or tops up the named stack
+of the same item, and GameService rejects any other target. Payloads of every earlier case are
 unchanged.
 
 ## Versioning

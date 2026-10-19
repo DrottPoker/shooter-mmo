@@ -398,7 +398,7 @@ public sealed class ItemOperationCanonicalRequestTests
             ItemOperationKinds.GrantMobLoot,
             Canonical(
                 $$"""{"authority":3,"accountId":"{{session.AccountId}}","requiresOfflineCharacter":false,"simulationSessionId":"{{session.SimulationSessionId}}","characterId":"{{session.CharacterId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1"}""",
-                $$"""{"characterId":"{{looter.Character.Id}}","expectedCharacterRevision":{{looterState.Revision}},"grantId":"{{grantId}}","sourceCorpseId":"{{sourceCorpseId}}","sourceActorDefinitionId":"mob.feral_wolf","definitionId":"fixture.ore","quantity":2,"destinationContainerId":"{{looterState.PermanentInventoryContainerId}}","expectedDestinationContainerRevision":{{inventoryRevision}},"destinationSlotIndex":0,"equipmentSlotId":null}"""),
+                $$"""{"characterId":"{{looter.Character.Id}}","expectedCharacterRevision":{{looterState.Revision}},"grantId":"{{grantId}}","sourceCorpseId":"{{sourceCorpseId}}","sourceActorDefinitionId":"mob.feral_wolf","definitionId":"fixture.ore","quantity":2,"destinationContainerId":"{{looterState.PermanentInventoryContainerId}}","expectedDestinationContainerRevision":{{inventoryRevision}},"destinationSlotIndex":0,"equipmentSlotId":null,"targetItemInstanceId":null,"expectedTargetItemRevision":null}"""),
             looter.Registration.AccountId,
             looter.Character.Id);
 

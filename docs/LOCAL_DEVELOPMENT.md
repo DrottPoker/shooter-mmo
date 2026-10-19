@@ -1707,7 +1707,10 @@ Play the combat loop on the local stack:
    result: after the last item the corpse disappears, and the Corpse context
    shows `The corpse is empty.` in neutral text, not a red error. A corpse left
    alone for 120 seconds closes with `The corpse expired and is no longer
-   available.`, also in neutral text.
+   available.`, also in neutral text. Drag a wolf's Bronze Arrows onto your
+   equipped Bronze Arrows, and its pelt onto a Wolf Pelt stack in the inventory.
+   Expected result: both stacks are topped up, and dropping wolf loot on a
+   different item is rejected because a live corpse cannot take an item back.
 9. Unequip the bow and click a wolf. Expected result: the character does not
    walk, and the status reads `No weapon equipped`. Without arrows it reads `No
    ammunition`, and right after swapping the bow it reads `Equipment changed`

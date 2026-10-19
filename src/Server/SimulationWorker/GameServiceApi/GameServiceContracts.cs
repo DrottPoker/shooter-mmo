@@ -198,7 +198,9 @@ public sealed record SimulationMobLootGrantRequest(
     Guid DestinationContainerId,
     long ExpectedDestinationContainerRevision,
     int DestinationSlotIndex,
-    string? EquipmentSlotId = null);
+    string? EquipmentSlotId = null,
+    Guid? TargetItemInstanceId = null,
+    long? ExpectedTargetItemRevision = null);
 
 public sealed record SimulationItemTransactionResponse(
     Guid OperationId,

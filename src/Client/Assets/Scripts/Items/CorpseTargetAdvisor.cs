@@ -295,7 +295,7 @@ namespace Mmorpg.Client.Items
         // A whole corpse item dropped on an equipment slot equips it. A stack of the equipped
         // definition tops up the equipped stack, and any other equipped item swaps into the
         // corpse slot the loot leaves, as a deposit into that slot would. A live Mob corpse
-        // cannot take an item back, so GameService and the worker accept only an empty slot there.
+        // cannot take an item back, so GameService rejects a swap there; a top-up still works.
         public static bool CanLootIntoEquipment(
             InventoryClientState state,
             CorpseLootItem corpseItem,

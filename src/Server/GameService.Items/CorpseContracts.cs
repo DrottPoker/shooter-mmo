@@ -82,7 +82,9 @@ internal sealed record SimulationMobLootGrantRequest(
     Guid DestinationContainerId,
     long ExpectedDestinationContainerRevision,
     int DestinationSlotIndex,
-    string? EquipmentSlotId = null);
+    string? EquipmentSlotId = null,
+    Guid? TargetItemInstanceId = null,
+    long? ExpectedTargetItemRevision = null);
 
 internal sealed record CorpseRestoreResponse(
     DateTime DatabaseTime,

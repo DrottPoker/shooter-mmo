@@ -61,8 +61,9 @@ public sealed class LiveMobCorpseInteractionService(
                 "Synthetic development sessions cannot interact with live Mob corpses.");
         }
 
-        // Live loot never swaps or merges: the worker holds the corpse in memory and cannot take an
-        // item back, so it claims a whole item into an empty inventory or equipment slot.
+        // Live loot never swaps: the worker holds the corpse in memory and cannot take an item back.
+        // It claims a whole item into an empty inventory or equipment slot, or tops up the stack
+        // the client names there, which GameService accepts only when the two stacks merge.
         var toEquipment = intent.OperationKind == RealtimeCorpseInteractionKind.LootToEquipment;
         if (intent.OperationKind != RealtimeCorpseInteractionKind.LootItem && !toEquipment)
         {
@@ -108,25 +109,16 @@ public sealed class LiveMobCorpseInteractionService(
                 requiresInventoryRefresh: true);
         }
 
-        if (toEquipment && intent.TargetItemInstanceId != Guid.Empty)
-        {
-            return SimulationCorpseInteractionResult.Rejected(
-                intent,
-                "live_mob_corpse_operation_unsupported",
-                "Live Mob loot equips only into an empty equipment slot.");
-        }
-
         if (!toEquipment
             && (intent.DestinationContainerId == Guid.Empty
                 || intent.ExpectedDestinationContainerRevision < 0
                 || intent.DestinationSlotIndex < 0
-                || intent.TargetItemInstanceId != Guid.Empty
                 || intent.Quantity > 0))
         {
             return SimulationCorpseInteractionResult.Rejected(
                 intent,
                 "live_mob_corpse_operation_unsupported",
-                "Live Mob loot must target one empty player inventory slot as a whole item.");
+                "Live Mob loot must target one player inventory slot as a whole item.");
         }
 
         // The session object is the join-time snapshot; carry changes after the join
@@ -161,7 +153,9 @@ public sealed class LiveMobCorpseInteractionService(
                 toEquipment ? Guid.Empty : intent.DestinationContainerId,
                 toEquipment ? 0 : intent.ExpectedDestinationContainerRevision,
                 toEquipment ? -1 : intent.DestinationSlotIndex,
-                toEquipment ? intent.EquipmentSlotId : null),
+                toEquipment ? intent.EquipmentSlotId : null,
+                intent.TargetItemInstanceId == Guid.Empty ? null : intent.TargetItemInstanceId,
+                intent.TargetItemInstanceId == Guid.Empty ? null : intent.ExpectedTargetItemRevision),
             cancellationToken);
         if (!response.Succeeded)
         {
