@@ -16,7 +16,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Subject,
     # Merge commit body. Defaults to "<pull request title> (#<number>)."
-    [string]$Body
+    [string]$Body,
+    # Merge although the Codex bot did not review the head (Wait-PullRequest.ps1 exit code 8).
+    [switch]$AllowMissingCodexReview
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,7 +31,7 @@ function Get-FullPath($path) {
 function Get-Worktrees {
     $worktrees = @()
     $current = $null
-    foreach ($line in (Invoke-Git worktree list --porcelain)) {
+    foreach ($line in @(Invoke-Git worktree list --porcelain)) {
         if ($line.StartsWith("worktree ")) {
             $current = [pscustomobject]@{ Path = $line.Substring(9); Branch = $null }
             $worktrees += $current
@@ -41,17 +43,24 @@ function Get-Worktrees {
     $worktrees
 }
 
-& (Join-Path $PSScriptRoot "Wait-PullRequest.ps1") -Number $Number -NoWait
-if ($LASTEXITCODE -ne 0) {
-    Write-Output "Pull request #$Number is not ready to merge, so nothing was merged."
-    exit 1
-}
-
+# The head is read once and pinned: readiness is judged for this commit, and the merge only
+# succeeds while the pull request head is still this commit.
 $pr = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "title,url,baseRefName,headRefName,headRefOid")
 if ($pr.baseRefName -ne "development") {
     Write-Output "Pull request #$Number targets $($pr.baseRefName), not development, so nothing was merged."
     exit 1
 }
+
+$waitArguments = @{ Number = $Number; HeadCommit = $pr.headRefOid; NoWait = $true }
+if ($AllowMissingCodexReview) {
+    $waitArguments.AllowMissingCodexReview = $true
+}
+& (Join-Path $PSScriptRoot "Wait-PullRequest.ps1") @waitArguments
+if ($LASTEXITCODE -ne 0) {
+    Write-Output "Pull request #$Number is not ready to merge, so nothing was merged."
+    exit 1
+}
+
 if (-not $Body) {
     $Body = "$($pr.title) (#$Number)."
 }
@@ -89,7 +98,7 @@ else {
 }
 
 $currentRoot = Get-FullPath "$(Invoke-Git rev-parse --show-toplevel)"
-$worktrees = Get-Worktrees
+$worktrees = @(Get-Worktrees)
 $mainRoot = Get-FullPath $worktrees[0].Path
 $holder = $worktrees | Where-Object { $_.Branch -eq $head } | Select-Object -First 1
 if ($holder -and (Get-FullPath $holder.Path) -eq $currentRoot) {
@@ -120,7 +129,7 @@ if (Test-Git show-ref --verify --quiet "refs/heads/$head") {
     }
 }
 
-$worktrees = Get-Worktrees
+$worktrees = @(Get-Worktrees)
 $checkedOut = @($worktrees | ForEach-Object { $_.Branch } | Where-Object { $_ })
 foreach ($branch in @(Invoke-Git for-each-ref '--format=%(refname:short)' refs/heads)) {
     if ($branch -in @("main", "development") -or $branch -in $checkedOut) {

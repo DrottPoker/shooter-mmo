@@ -183,16 +183,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Wait-PullRequest.ps1 -
 ```
 
 The script polls GitHub every 30 seconds and returns as soon as there is
-something to act on. Ready means that GitHub reports the local `HEAD` as the
-pull request head, every check passed, including every check that
+something to act on. Ready means that GitHub reports the expected commit as the
+pull request head (the local `HEAD` when the branch is checked out, or
+`-HeadCommit`), every check passed, including every check that
 `.github/rulesets/development-ci-gate.json` requires, the Codex review bot
 (`chatgpt-codex-connector[bot]`) finished a review of the head commit, no
 review thread is unresolved, and GitHub reports the pull request mergeable. The
 Codex state is read from the bot's summary comment. The bot reviews by itself
-only when a pull request opens, so for every later head the script posts one
-`@codex review` comment, marked with the head commit in an HTML comment. When
-the bot posts nothing or does not finish within 20 minutes
-(`-CodexWaitMinutes`), the script continues without it and says so. The bot's
+only when a pull request opens, so for a later head the script posts an
+`@codex review` comment, marked with the head commit in an HTML comment. It
+gives the bot 20 minutes (`-CodexWaitMinutes`) after the pull request opens and
+after each request, and asks at most twice per head. The bot's
 `has_unresolved_findings` flag stays true after its threads are resolved, so
 the review threads decide. `-NoWait` evaluates once and never posts.
 
@@ -206,6 +207,7 @@ the review threads decide. `-NoWait` evaluates once and never posts.
 | 5 | Timed out after 120 minutes (`-TimeoutMinutes`) | Check the self-hosted Unity runner, then wait again |
 | 6 | Not ready yet (only with `-NoWait`) | Wait without `-NoWait` |
 | 7 | GitHub could not be read five times in a row | Check `gh auth status` and the network |
+| 8 | Everything else is ready, but the Codex bot did not review the head after two requests | Merge with `-AllowMissingCodexReview` and say in the task summary that the head has no Codex review |
 
 Merge the ready pull request and clean up:
 
@@ -213,9 +215,11 @@ Merge the ready pull request and clean up:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Complete-PullRequest.ps1 -Number <number> -Subject "Merge the <what the change does>"
 ```
 
-The script checks readiness again and merges into `development` with a merge
-commit only if the pull request head is still the commit it checked. The body
-defaults to `<pull request title> (#<number>).`. It then deletes the branch on
+The script reads the pull request head once, checks readiness for exactly that
+commit, and merges into `development` with a merge commit only while the head
+is still that commit, so a push in between is never merged unchecked. The body
+defaults to `<pull request title> (#<number>).`. `-AllowMissingCodexReview`
+accepts exit code 8 of the readiness check. It then deletes the branch on
 GitHub and locally (when the current checkout has the branch checked out, the
 main checkout switches to `development` and a task worktree detaches first),
 deletes every other local branch that is fully merged into
