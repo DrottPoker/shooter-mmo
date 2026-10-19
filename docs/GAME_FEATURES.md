@@ -323,8 +323,10 @@ Bag onto the other occupied Bag slot submits one atomic aggregate swap when both
 complete Bags satisfy the rules. Drag a whole corpse item onto a compatible
 equipment slot to equip it straight from the corpse: an empty slot equips it,
 equipped arrows of the same type are topped up, and an occupied slot swaps your
-equipped item into the corpse slot the loot came from. A live Mob corpse equips
-only into an empty slot. Bank and Recovery Storage items cannot enter corpse
+equipped item into the corpse slot the loot came from. A live Mob corpse, such
+as a Feral Wolf's, cannot take an item back, so its loot fills an empty slot or
+tops up a stack of the same item in the inventory or the equipment, but never
+swaps. Bank and Recovery Storage items cannot enter corpse
 custody, and an ordinary equipped item enters it only through that swap. The panel never moves either side
 optimistically. Custody-changing transfers refresh character inventory to the
 committed revision, while pure corpse rearrangement updates only corpse state.

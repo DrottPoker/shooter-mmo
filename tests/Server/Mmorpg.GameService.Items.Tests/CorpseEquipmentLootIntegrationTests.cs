@@ -116,37 +116,105 @@ public sealed class CorpseEquipmentLootIntegrationTests
     }
 
     [PostgresIntegrationFact]
-    public async Task LiveMobLootGrantsStraightIntoAnEmptyEquipmentSlotOnly()
+    public async Task LiveMobLootFillsAnEmptySlotOrTopsUpTheNamedStackButNeverSwaps()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
         var player = await world.RegisterAsync("live_equipment_looter");
         var characterId = player.Character.Id;
         var session = await world.JoinAsync(player);
+        var inventoryId = (await world.LoadStateAsync(characterId)).PermanentInventoryContainerId;
 
-        var granted = await GrantLiveLootAsync(world, session, characterId, "fixture.arrow", 8, "ammunition");
-
+        var granted = await GrantLiveLootAsync(world, session, characterId, "fixture.arrow", 8, "ammunition", null);
         ItemScenarioWorld.AssertCommitted(granted);
         var arrows = Assert.Single(granted.ItemRevisions).ItemInstanceId;
         Assert.Equal(arrows, await LoadEquippedItemAsync(world, characterId, "ammunition"));
         Assert.Empty(granted.ContainerRevisions);
 
-        // The worker cannot take live loot back, so an occupied slot never swaps or merges.
-        var occupied = await GrantLiveLootAsync(world, session, characterId, "fixture.arrow", 5, "ammunition");
-        Assert.False(occupied.Succeeded);
-        Assert.Equal(ItemTransactionErrorCodes.EquipmentSlotOccupied, occupied.Error!.Code);
-        Assert.Equal(8, (await world.LoadItemAsync(arrows)).Quantity);
+        // Without a named stack the slot must be empty.
+        var unnamed = await GrantLiveLootAsync(world, session, characterId, "fixture.arrow", 5, "ammunition", null);
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentSlotOccupied, unnamed.Error!.Code);
+
+        // Naming the equipped stack tops it up within the 50 the fixture ammunition slot holds.
+        ItemScenarioWorld.AssertCommitted(
+            await GrantLiveLootAsync(world, session, characterId, "fixture.arrow", 5, "ammunition", arrows));
+        Assert.Equal(13, (await world.LoadItemAsync(arrows)).Quantity);
+        var overLimit = await GrantLiveLootAsync(world, session, characterId, "fixture.arrow", 40, "ammunition", arrows);
+        Assert.Equal(ItemTransactionErrorCodes.ItemStackLimitExceeded, overLimit.Error!.Code);
+
+        // Another item never swaps, because the worker cannot take live loot back.
+        var swap = await GrantLiveLootAsync(world, session, characterId, "fixture.ore", 2, "ammunition", arrows);
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentSlotOccupied, swap.Error!.Code);
+        Assert.Equal(13, (await world.LoadItemAsync(arrows)).Quantity);
+
+        // A stack in a container slot tops up the same way.
+        var ore = await world.GrantAsync(characterId, "fixture.ore", 3, inventoryId, 2);
+        ItemScenarioWorld.AssertCommitted(
+            await GrantLiveLootIntoContainerAsync(world, session, characterId, "fixture.ore", 4, inventoryId, 2, ore));
+        Assert.Equal(7, (await world.LoadItemAsync(ore)).Quantity);
     }
 
-    private static async Task<ItemTransactionResult> GrantLiveLootAsync(
+    private static Task<ItemTransactionResult> GrantLiveLootAsync(
         ItemScenarioWorld world,
         ConsumedSimulationJoinTicketResponse session,
         Guid characterId,
         string definitionId,
         int quantity,
-        string equipmentSlotId)
+        string equipmentSlotId,
+        Guid? targetItemInstanceId)
+    {
+        return GrantAsync(
+            world,
+            session,
+            characterId,
+            definitionId,
+            quantity,
+            Guid.Empty,
+            0,
+            -1,
+            equipmentSlotId,
+            targetItemInstanceId);
+    }
+
+    private static async Task<ItemTransactionResult> GrantLiveLootIntoContainerAsync(
+        ItemScenarioWorld world,
+        ConsumedSimulationJoinTicketResponse session,
+        Guid characterId,
+        string definitionId,
+        int quantity,
+        Guid containerId,
+        int slotIndex,
+        Guid? targetItemInstanceId)
+    {
+        return await GrantAsync(
+            world,
+            session,
+            characterId,
+            definitionId,
+            quantity,
+            containerId,
+            await world.LoadContainerRevisionAsync(containerId),
+            slotIndex,
+            null,
+            targetItemInstanceId);
+    }
+
+    private static async Task<ItemTransactionResult> GrantAsync(
+        ItemScenarioWorld world,
+        ConsumedSimulationJoinTicketResponse session,
+        Guid characterId,
+        string definitionId,
+        int quantity,
+        Guid containerId,
+        long containerRevision,
+        int slotIndex,
+        string? equipmentSlotId,
+        Guid? targetItemInstanceId)
     {
         var state = await world.LoadStateAsync(characterId);
+        long? targetRevision = targetItemInstanceId is Guid targetId
+            ? (await world.LoadItemAsync(targetId)).Revision
+            : null;
         var grantId = Guid.NewGuid();
         return await world.Context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<GrantMobLootCommand>(
@@ -160,13 +228,14 @@ public sealed class CorpseEquipmentLootIntegrationTests
                     "mob.feral_wolf",
                     definitionId,
                     quantity,
-                    Guid.Empty,
-                    0,
-                    -1,
-                    equipmentSlotId)),
+                    containerId,
+                    containerRevision,
+                    slotIndex,
+                    equipmentSlotId,
+                    targetItemInstanceId,
+                    targetRevision)),
             CancellationToken.None);
     }
-
     private sealed record LootScenario(Guid LooterId, Guid CorpseId, Guid BowId, Guid ArrowsId, Guid HelmId);
 
     // A dead character leaves a bow, twenty arrows, and a level 3 helm in a corpse, and a second

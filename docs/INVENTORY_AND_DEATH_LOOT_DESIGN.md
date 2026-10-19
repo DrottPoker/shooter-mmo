@@ -249,8 +249,9 @@ stackable definition, and is rejected when the two cannot merge, equips into an
 empty slot, or swaps any other equipped item into the corpse slot it leaves, as
 a deposit into that slot would. Bags still swap only
 as whole aggregates, and a live Mob corpse, which the worker holds in memory,
-equips only into an empty slot (decided 2026-10-19, replacing the earlier rule
-that corpse loot enters carried storage only).
+never swaps: its loot fills an empty slot or tops up a stack of the same item,
+in carried storage or in the equipment (decided 2026-10-19 and 2026-10-20,
+replacing the earlier rule that corpse loot enters carried storage only).
 
 An equipped item does not occupy a permanent inventory slot. Equipment remains
 normal item ownership plus a mutually exclusive slot assignment. It is not a

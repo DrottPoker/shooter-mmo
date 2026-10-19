@@ -826,9 +826,12 @@ concurrent inspection, and authoritative looting:
   hold the slot, an equipped stack of the same stackable definition only takes a
   top-up and is rejected when the stacks cannot merge, so a full equipped stack
   never lands in the corpse, and any other occupant swaps into the corpse slot the loot left
-  under the deposit placement and policy rules. `grant_mob_loot` accepts an
-  equipment slot instead of a container slot and then grants only into an empty
-  slot, because the worker cannot take live Mob loot back.
+  under the deposit placement and policy rules. `grant_mob_loot` grants into an
+  empty container slot or, with an equipment slot instead, an empty equipment
+  slot under a derived item id, or tops up the stack the worker names in that slot
+  when the two merge within the slot limit. It never swaps, because the worker
+  cannot take live Mob loot back, so a named stack of another item is rejected
+  with `item_slot_occupied` or `equipment_slot_occupied`.
 - Every path into a character's equipment slot, including corpse Bag swaps and
   cross-character Bag aggregate swaps, compares the definition's mirrored
   `required_character_level` with `characters.level` and rejects a lower level

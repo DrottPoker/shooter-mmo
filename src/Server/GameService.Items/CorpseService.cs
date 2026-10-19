@@ -204,7 +204,9 @@ internal sealed partial class CorpseService(
                     request.DestinationContainerId,
                     request.ExpectedDestinationContainerRevision,
                     request.DestinationSlotIndex,
-                    string.IsNullOrWhiteSpace(request.EquipmentSlotId) ? null : request.EquipmentSlotId.Trim())),
+                    string.IsNullOrWhiteSpace(request.EquipmentSlotId) ? null : request.EquipmentSlotId.Trim(),
+                    request.TargetItemInstanceId,
+                    request.ExpectedTargetItemRevision)),
             cancellationToken);
         return MapTransactionResult(
             result,
@@ -813,6 +815,9 @@ internal sealed partial class CorpseService(
             && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
             && Identifiers.IsContentIdentifier(request.DefinitionId)
             && request.Quantity > 0
+            && (request.TargetItemInstanceId is null) == (request.ExpectedTargetItemRevision is null)
+            && request.TargetItemInstanceId != Guid.Empty
+            && (request.ExpectedTargetItemRevision is null or >= 0)
             && (string.IsNullOrWhiteSpace(request.EquipmentSlotId)
                 ? request.DestinationContainerId != Guid.Empty
                     && request.ExpectedDestinationContainerRevision >= 0
