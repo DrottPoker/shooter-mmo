@@ -690,9 +690,10 @@ The run found two client defects, fixed in this step:
 - **Inventory after a death.** The inventory refreshed only after its own
   intents and when it opened, so after a death it showed the moved items until
   the next login. A change that no intent caused, such as a death, reaches the
-  client only as a newer committed carry state, so `InventoryServerRevisionRule`
-  now refreshes the complete state once for each such revision, after the
-  client's own operation and refresh have settled.
+  client only as a newer committed carry state, so
+  `InventoryServerRevisionFollower` now refreshes the complete state to each
+  such revision after the client's own operation and refresh have settled, and
+  retries a failed refresh with a delay that doubles up to 30 s.
 - **Death overlay.** The death overlay was part of the combat HUD canvas, which
   sorts below the world interaction panel and the inventory, so an open
   inventory or corpse view hid it. The overlay is now its own nested canvas that

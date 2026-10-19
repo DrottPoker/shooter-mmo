@@ -63,21 +63,66 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void AWorkerRevisionThatNoIntentCausedRefreshesOnceAfterOwnWork()
+        public void AWorkerRevisionThatNoIntentCausedRefreshesAfterOwnWork()
         {
-            // A death commits a newer revision; the inventory asks for it once.
-            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 7, -1, false, false), Is.True);
-            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 7, 8, false, false), Is.False);
-            Assert.That(InventoryServerRevisionRule.ShouldRefresh(9, 7, 8, false, false), Is.True);
+            var follower = new InventoryServerRevisionFollower();
 
-            // The inventory already knows that revision, or there is no joined session.
-            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 8, -1, false, false), Is.False);
-            Assert.That(InventoryServerRevisionRule.ShouldRefresh(7, 8, -1, false, false), Is.False);
-            Assert.That(InventoryServerRevisionRule.ShouldRefresh(-1, -1, -1, false, false), Is.False);
+            // No joined session, or the inventory already knows the revision.
+            Assert.That(follower.ShouldRefresh(-1, -1, false, false, 0f), Is.False);
+            Assert.That(follower.ShouldRefresh(8, 8, false, false, 0f), Is.False);
+            Assert.That(follower.ShouldRefresh(7, 8, false, false, 0f), Is.False);
 
             // An own operation or refresh in flight settles first.
-            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 7, -1, true, false), Is.False);
-            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 7, -1, false, true), Is.False);
+            Assert.That(follower.ShouldRefresh(8, 7, true, false, 0f), Is.False);
+            Assert.That(follower.ShouldRefresh(8, 7, false, true, 0f), Is.False);
+
+            // A death commits a newer revision; the inventory asks for it at once.
+            Assert.That(follower.ShouldRefresh(8, 7, false, false, 0f), Is.True);
+            Assert.That(follower.ShouldRefresh(8, 7, false, true, 0.5f), Is.False);
+
+            // The refresh reached it, so nothing is asked again.
+            Assert.That(follower.ShouldRefresh(8, 8, false, false, 1f), Is.False);
+
+            // A newer revision is asked for at once again.
+            Assert.That(follower.ShouldRefresh(9, 8, false, false, 2f), Is.True);
+        }
+
+        [Test]
+        public void AFailedWorkerRevisionRefreshRetriesWithADoublingDelay()
+        {
+            var follower = new InventoryServerRevisionFollower();
+            Assert.That(follower.ShouldRefresh(8, 7, false, false, 0f), Is.True);
+            Assert.That(follower.ShouldRefresh(8, 7, false, true, 3f), Is.False);
+
+            // The refresh ended at 10 s without reaching revision 8; the delay starts then.
+            Assert.That(follower.ShouldRefresh(8, 7, false, false, 10f), Is.False);
+            Assert.That(follower.ShouldRefresh(8, 7, false, false, 10.9f), Is.False);
+            Assert.That(follower.ShouldRefresh(8, 7, false, false, 11f), Is.True);
+
+            // Every further failure doubles the delay up to the cap.
+            var now = 11f;
+            var expectedDelay = InventoryServerRevisionFollower.FirstRetryDelaySeconds * 2f;
+            for (var retry = 0; retry < 8; retry++)
+            {
+                Assert.That(follower.ShouldRefresh(8, 7, false, false, now), Is.False);
+                Assert.That(
+                    follower.ShouldRefresh(8, 7, false, false, now + expectedDelay - 0.01f),
+                    Is.False);
+                now += expectedDelay;
+                Assert.That(follower.ShouldRefresh(8, 7, false, false, now), Is.True);
+                expectedDelay = Math.Min(
+                    expectedDelay * 2f,
+                    InventoryServerRevisionFollower.MaximumRetryDelaySeconds);
+            }
+
+            Assert.That(
+                expectedDelay,
+                Is.EqualTo(InventoryServerRevisionFollower.MaximumRetryDelaySeconds));
+
+            // A newer revision starts over without a delay, and so does a new session.
+            Assert.That(follower.ShouldRefresh(9, 7, false, false, now), Is.True);
+            follower.Reset();
+            Assert.That(follower.ShouldRefresh(9, 7, false, false, now), Is.True);
         }
 
         private static InventoryContainer Container(string type)

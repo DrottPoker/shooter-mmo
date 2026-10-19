@@ -110,9 +110,8 @@ namespace Mmorpg.Client.Items
         private bool queuedOperationRefresh;
         private bool initialized;
         private bool observedRealtimeJoin;
-        // The newest worker revision the inventory refreshed for, so a change that no intent
-        // caused is fetched once.
-        private long requestedServerRevision = -1;
+        private readonly InventoryServerRevisionFollower serverRevisionFollower =
+            new InventoryServerRevisionFollower();
         private string observedAccountId = string.Empty;
         private string observedCharacterId = string.Empty;
 
@@ -177,14 +176,13 @@ namespace Mmorpg.Client.Items
                 // the client only as a newer carry state. It is read a frame later, so an
                 // arrow batch that patches its stack in the same packet needs no refresh.
                 var serverRevision = joined ? simulationClient.CarryItemStateRevision : -1;
-                if (InventoryServerRevisionRule.ShouldRefresh(
+                if (serverRevisionFollower.ShouldRefresh(
                         serverRevision,
                         State.KnownItemStateRevision,
-                        requestedServerRevision,
                         operationJournal.Pending != null,
-                        refreshInProgress))
+                        refreshInProgress,
+                        Time.unscaledTime))
                 {
-                    requestedServerRevision = serverRevision;
                     EnsureFullState(serverRevision);
                 }
             }
@@ -605,7 +603,7 @@ namespace Mmorpg.Client.Items
             State.MarkDisconnected(operationJournal.Pending != null);
             operationJournal.Reset();
             observedRealtimeJoin = false;
-            requestedServerRevision = -1;
+            serverRevisionFollower.Reset();
         }
 
         private void BeginRefresh(
@@ -884,6 +882,7 @@ namespace Mmorpg.Client.Items
             observedAccountId = accountId;
             observedCharacterId = characterId;
             operationJournal.Reset();
+            serverRevisionFollower.Reset();
             if (!Guid.TryParse(characterId, out var parsedCharacterId)
                 || parsedCharacterId == Guid.Empty
                 || string.IsNullOrWhiteSpace(accountId))

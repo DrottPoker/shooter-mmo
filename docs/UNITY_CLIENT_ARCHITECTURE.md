@@ -637,11 +637,13 @@ the carried items into the corpse and Recovery Storage, reach the client only as
 a newer carry state in `NetworkMovementSession`, which
 `RealtimeSimulationClient.CarryItemStateRevision` exposes. Every frame,
 `InventoryClientController` compares it with the newest known revision, and
-`InventoryServerRevisionRule` asks for one complete refresh to that revision
-once no own operation is pending and no refresh runs. Each worker revision is
-requested once, so a failed refresh waits for the next revision or for the panel
-to open. The check runs a frame after the carry state arrives, so an arrow batch
-that was already patched in place needs no refresh.
+`InventoryServerRevisionFollower` asks for a complete refresh to that revision
+once no own operation is pending and no refresh runs. A refresh that fails or
+stays behind is retried for the same revision 1 second after it ended, and every
+further failure doubles the delay up to 30 seconds, so a failing GameService is
+never asked every frame; a newer revision or a new session starts over at once.
+The check runs a frame after the carry state arrives, so an arrow batch that was
+already patched in place needs no refresh.
 
 `InventoryOperationJournal` permits one pending mutation, retains its generated
 operation id and rejection refresh scope, and never changes custody locally.
