@@ -193,6 +193,57 @@ namespace Mmorpg.Client.Items
             return Send(intent, "The corpse-loot request could not be sent.", out error);
         }
 
+        // Equips a whole corpse item. The item now in the equipment slot is the equipped target
+        // that GameService tops up or swaps into the corpse; an empty slot sends none.
+        public bool TryLootToEquipment(
+            CorpseLootItem corpseItem,
+            InventoryEquipmentSlot equipmentSlot,
+            out string error)
+        {
+            error = string.Empty;
+            if (!CanBegin(out error)
+                || State.ActiveView == null
+                || corpseItem == null
+                || equipmentSlot == null)
+            {
+                if (string.IsNullOrWhiteSpace(error))
+                {
+                    error = "Current corpse and equipment state are required.";
+                }
+
+                return false;
+            }
+
+            if (!State.ActiveView.TryFindItem(
+                    corpseItem.ItemInstanceId,
+                    out var currentItem,
+                    out _,
+                    out _))
+            {
+                error = "The corpse item is no longer available.";
+                return false;
+            }
+
+            if (currentItem.HasBagContents)
+            {
+                error = "A corpse Bag must be swapped through the occupied Bag equipment slot.";
+                return false;
+            }
+
+            return Send(
+                RealtimeCorpseInteractionIntent.CreateLootToEquipment(
+                    Guid.NewGuid(),
+                    State.ActiveView.CorpseId,
+                    State.ActiveView.Revision,
+                    currentItem.ItemInstanceId,
+                    currentItem.Revision,
+                    equipmentSlot.SlotId,
+                    equipmentSlot.Item?.ItemInstanceId ?? Guid.Empty,
+                    equipmentSlot.Item?.Revision ?? 0),
+                "The corpse-equip request could not be sent.",
+                out error);
+        }
+
         public bool TrySwapBag(CorpseLootItem corpseBag, out string error)
         {
             error = string.Empty;

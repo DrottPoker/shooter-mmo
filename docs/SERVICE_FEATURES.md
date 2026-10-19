@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## Purpose
 
@@ -62,7 +62,7 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
 | `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
 | `POST /api/simulation-sessions/{id}/corpses/{corpseId}/open` | Worker service policy | Read one exact-session, unexpired, same-Shard corpse snapshot after worker proximity validation |
-| `POST /api/simulation-sessions/{id}/corpses/{corpseId}/item-operations` | Worker service policy | Commit bidirectional full or partial corpse transfers and atomic ordinary or Bag aggregate swaps through the durable kernel |
+| `POST /api/simulation-sessions/{id}/corpses/{corpseId}/item-operations` | Worker service policy | Commit bidirectional full or partial corpse transfers, whole-item loot into an equipment slot, and atomic ordinary, equipment, or Bag aggregate swaps through the durable kernel |
 | `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
@@ -821,7 +821,13 @@ concurrent inspection, and authoritative looting:
   client saw. Equipping into a slot that an equipped item blocks, or with an
   item that would block an occupied slot, is rejected with
   `equipment_slot_blocked`. A corpse equipment slot keeps the same quantity
-  limit.
+  limit. `loot_corpse_item_to_equipment` loots a whole corpse item into an
+  equipment slot under the same checks: the occupant the worker names must still
+  hold the slot, an equipped stack of the same definition takes a top-up when the
+  stacks merge, and any other occupant swaps into the corpse slot the loot left
+  under the deposit placement and policy rules. `grant_mob_loot` accepts an
+  equipment slot instead of a container slot and then grants only into an empty
+  slot, because the worker cannot take live Mob loot back.
 - Every path into a character's equipment slot, including corpse Bag swaps and
   cross-character Bag aggregate swaps, compares the definition's mirrored
   `required_character_level` with `characters.level` and rejects a lower level

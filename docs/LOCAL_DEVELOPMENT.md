@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## Requirements
 
@@ -107,7 +107,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports eleven definitions, one base Secure
   Container tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 18 with 34 messages
+- Protocol verification reports realtime protocol version 19 with 34 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -261,9 +261,9 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 18 with 34
+Expected result: both commands report realtime protocol version 19 with 34
 messages and 18 generated files, and the second prints
-`Realtime protocol version 18 verified: 34 messages, 18 generated files.`
+`Realtime protocol version 19 verified: 34 messages, 18 generated files.`
 The first command rewrites only changed files and removes files that the schema
 no longer produces. The second fails and names the file when a generated file
 is stale, missing, or not produced by the schema. Commit the schema,
@@ -1200,6 +1200,12 @@ at the same time:
    Corpse Equipment slot shows its type, such as `Head` or `Body`. A compatible
    item is accepted and an incompatible item is rejected without moving either
    item.
+9a. Drag the corpse bow straight onto your empty Main Hand slot, then drag a
+   corpse weapon onto your occupied Main Hand. Expected result: the first drop
+   equips the bow after the committed refresh, the second puts the corpse weapon
+   in Main Hand and your previous weapon in the corpse slot the new one left,
+   and both viewers see the corpse change. Corpse arrows dropped on equipped
+   arrows of the same type top up the Ammunition slot.
 10. In one client, drag a corpse Bag child. At the same time in the other client,
    drag the corpse Bag root onto the occupied player Bag equipment slot.
    Expected result: only a compatible complete outcome commits. Neither Bag
@@ -1996,7 +2002,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 18, simulation revision,
+`27015`, runtime id, realtime protocol version 19, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same

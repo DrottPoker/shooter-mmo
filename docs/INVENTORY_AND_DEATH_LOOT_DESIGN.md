@@ -1,6 +1,6 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 Status: Decided. Every rule in the sections below is decided and implemented
 unless it says planned. Planned work, proposals, and open questions are collected
@@ -242,7 +242,14 @@ rejected with `equipment_slot_occupied`. Equipping into a blocked slot, or equip
 would block an occupied slot, is rejected with `equipment_slot_blocked`; the
 item a swap replaces no longer blocks anything. At death an equipped stack follows the
 normal death rules and keeps its quantity in the matching corpse equipment slot,
-which applies the same limit. Corpse loot still enters carried storage only.
+which applies the same limit. A whole corpse item can also be looted straight
+into an equipment slot under the same equip rules, including the level
+requirement and blocked slots: it tops up an equipped stack of the same
+definition, equips into an empty slot, or swaps the equipped item into the
+corpse slot it leaves, as a deposit into that slot would. Bags still swap only
+as whole aggregates, and a live Mob corpse, which the worker holds in memory,
+equips only into an empty slot (decided 2026-10-19, replacing the earlier rule
+that corpse loot enters carried storage only).
 
 An equipped item does not occupy a permanent inventory slot. Equipment remains
 normal item ownership plus a mutually exclusive slot assignment. It is not a

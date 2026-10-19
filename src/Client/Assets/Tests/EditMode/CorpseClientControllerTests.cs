@@ -210,6 +210,31 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(controller.State.Error, Is.Null);
         }
 
+        [Test]
+        public void LootToEquipmentNamesTheSlotAndTheEquippedItemItReplaces()
+        {
+            OpenView();
+            var view = controller.State.ActiveView;
+            Assert.That(view.TryFindItem(itemId, out var item, out _, out _), Is.True);
+            var equipped = new InventoryItem(Guid.NewGuid(), "fixture.sword", 1, 4, Array.Empty<InventoryPolicy>());
+
+            Assert.That(
+                controller.TryLootToEquipment(item, new InventoryEquipmentSlot("main_hand", 2, equipped), out var error),
+                Is.True,
+                error);
+
+            var intent = channel.LastSent;
+            Assert.That(intent.OperationKind, Is.EqualTo(RealtimeCorpseInteractionKind.LootToEquipment));
+            Assert.That(intent.CorpseId, Is.EqualTo(corpseId));
+            Assert.That(intent.ExpectedCorpseRevision, Is.EqualTo(ViewRevision));
+            Assert.That(intent.ItemInstanceId, Is.EqualTo(itemId));
+            Assert.That(intent.ExpectedItemRevision, Is.EqualTo(item.Revision));
+            Assert.That(intent.EquipmentSlotId, Is.EqualTo("main_hand"));
+            Assert.That(intent.TargetItemInstanceId, Is.EqualTo(equipped.ItemInstanceId));
+            Assert.That(intent.ExpectedTargetItemRevision, Is.EqualTo(4));
+            Assert.That(controller.State.PendingOperationId, Is.EqualTo(intent.OperationId));
+        }
+
         // Opens the corpse the way the worker answers: presence first, then the open result
         // and its snapshot.
         private void OpenView()
