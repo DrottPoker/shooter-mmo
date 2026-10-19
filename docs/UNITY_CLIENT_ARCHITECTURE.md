@@ -781,6 +781,18 @@ reaches the returned item-state revision, even when the previous full snapshot
 was internally coherent. Pure corpse rearrangement does not request a character
 refresh because its response contains no character revision or carry change.
 
+`CorpseClientState.BeginOperation` records the id, kind, and corpse of the one
+pending operation, and `CorpseClientState.TryComplete` settles it with the
+worker's result. A result whose operation id, kind, or corpse does not match the
+pending operation, or that arrives with nothing pending, is a protocol conflict:
+`TryComplete` returns false and the controller disconnects with
+`corpse_operation_result_mismatch`. The state also remembers the corpse whose
+view it holds or has asked to open. View-state chunks and closures of any other
+corpse return `CorpseStateApplyResult.Ignored` or are dropped, so a refresh or
+open snapshot that the worker sends after the result of an operation whose view
+it already closed never reopens that view. A rejected open forgets its corpse.
+View state that arrives while an operation is pending keeps the state busy.
+
 A view-closure message ends the active view through
 `CorpseClientState.ApplyClosure`, which asks `CorpseViewClosureRule` in
 `Mmorpg.Client.Items` how to present the stable closure code. The viewer's own
@@ -793,8 +805,25 @@ the own close sets no notice. Every other code, including
 becomes a `CorpseClientError`, so a real invalidation is never hidden. `Notice`
 and `Error` are never set together, and a new operation, an error, or a session
 reset clears the notice. The panel shows the error in red and otherwise the
-notice in neutral text. The client's own confirmed close calls `CloseView`,
-which ends the view without a message.
+notice in neutral text. The client's own confirmed close ends the view without a
+message, and the `corpse_view_closed` closure that follows it is ignored because
+no view is held any more.
+
+A closure can arrive while an operation on that view is still in flight: another
+player takes the last item of a live Mob corpse (`corpse_emptied` to every
+viewer), the corpse expires, the viewer dies, or the worker notices an emptied
+corpse before it finalizes the looter's own loot. The worker still sends exactly
+one result for that operation, so the closure ends the view but keeps the
+pending operation id, and the state stays busy. `CanBegin` in the corpse
+controller and `WorldInteractionClientController` therefore keep blocking new
+corpse and world work until the result arrives. The late result, success or
+rejection, only settles the correlation: the closure's notice or error stays,
+so an expected `corpse_not_found` or `combat_character_dead` rejection after an
+emptied, expired, or death closure never replaces the neutral notice with a red
+error. The controller still calls `InventoryClientController.EnsureFullState`
+when the late result reports `RequiresInventoryRefresh`, and it never refreshes
+a closed view; a stale delta noticed before the closure no longer asks for a
+refresh.
 
 `CorpsePresentationController` creates one replaceable generic capsule for every
 nearby presence entry and updates it from server position and presentation key.
@@ -1385,7 +1414,13 @@ typed corpse intent, and corpse drag payload identity. `CorpseViewClosureRuleTes
 pins which closure codes end with a neutral notice and which stay errors,
 including unknown and blank codes, and `CorpseClientStateTests` checks that an
 emptied closure after the last loot leaves a notice, an invalidation an error,
-and an own close no message. Inventory presentation
+and an own close no message. They also check that a closure during a pending
+loot, refresh, deposit, move, open, or close keeps the operation correlated and
+busy until its late result, that a late success or an expected late rejection
+keeps the closure's notice or error, that a snapshot after the closure or after
+a rejected open is ignored, that closures of other corpses are ignored, that a
+result with the wrong id, kind, or corpse, or a second result, is a conflict,
+and that a session reset drops an operation that outlived its view. Inventory presentation
 coverage pins the paper doll positions and the extra rows for unknown slots, the
 carry meter fill, marker, and load levels including a death overflow, blocked
 equipment slots, catalog display names for tags, slots, and the Secure Container

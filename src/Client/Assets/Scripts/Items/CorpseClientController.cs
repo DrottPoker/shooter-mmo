@@ -420,7 +420,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            State.BeginOperation(intent.OperationId);
+            State.BeginOperation(intent.OperationId, intent.OperationKind, intent.CorpseId);
             error = string.Empty;
             return true;
         }
@@ -480,59 +480,45 @@ namespace Mmorpg.Client.Items
 
         private void OnInteractionCompleted(RealtimeCorpseInteractionResult result)
         {
-            if (result == null || State.PendingOperationId != result.OperationId)
+            if (!State.TryComplete(result, out var error))
             {
                 simulationClient.DisconnectForClientFailure(
                     "corpse_operation_result_mismatch",
-                    "The corpse operation result did not match the pending operation.");
+                    error);
                 return;
             }
 
+            // A result that arrives after the worker closed its view still reports committed
+            // custody changes.
             if (result.RequiresInventoryRefresh)
             {
                 inventoryController?.EnsureFullState(result.CarryState.ItemStateRevision);
             }
 
-            if (!result.Succeeded)
+            // A rejection says itself whether the view needs a refresh; a success refreshes a
+            // view whose delta went stale while the operation was pending.
+            if (result.Succeeded ? refreshAfterPending : result.RequiresCorpseRefresh)
             {
-                State.SetError(
-                    result.OperationId,
-                    new CorpseClientError(
-                        result.Error?.Code ?? "corpse_operation_rejected",
-                        result.Error?.Message ?? "The corpse operation was rejected."));
-                if (result.RequiresCorpseRefresh && State.ActiveView != null)
-                {
-                    TryRefresh(out _);
-                }
-
-                return;
+                RefreshOpenView();
             }
+        }
 
-            if (result.OperationKind == RealtimeCorpseInteractionKind.Close)
+        // A closed view is never refreshed, so a stale delta it left behind is dropped.
+        private void RefreshOpenView()
+        {
+            refreshAfterPending = false;
+            if (State.ActiveView != null)
             {
-                State.CloseView();
-            }
-            else
-            {
-                State.CompleteOperation(result.OperationId);
-            }
-
-            if (refreshAfterPending && State.ActiveView != null)
-            {
-                refreshAfterPending = false;
                 TryRefresh(out _);
             }
         }
 
         private void OnViewClosed(RealtimeCorpseViewClosed closed)
         {
-            if (closed == null
-                || (State.ActiveView != null && State.ActiveView.CorpseId != closed.CorpseId))
+            if (closed != null && State.ApplyClosure(closed.CorpseId, closed.Code, closed.Message))
             {
-                return;
+                refreshAfterPending = false;
             }
-
-            State.ApplyClosure(closed.Code, closed.Message);
         }
 
         private void OnSessionEnded(RealtimeClientError error)
