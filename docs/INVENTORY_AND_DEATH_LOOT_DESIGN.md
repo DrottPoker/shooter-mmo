@@ -237,7 +237,8 @@ container slot the new item came from. That slot must accept the equipped item
 as an unequip into it would, so a Secure Container slot refuses an ineligible
 item and a non-empty equipped Bag cannot leave its slot, and the carry cap must
 hold afterwards. A stack of the equipped definition tops up the equipped stack
-instead of swapping. Equipping into a blocked slot, or equipping an item that
+through a merge instead of swapping, and an equip request for such a stack is
+rejected with `equipment_slot_occupied`. Equipping into a blocked slot, or equipping an item that
 would block an occupied slot, is rejected with `equipment_slot_blocked`; the
 item a swap replaces no longer blocks anything. At death an equipped stack follows the
 normal death rules and keeps its quantity in the matching corpse equipment slot,

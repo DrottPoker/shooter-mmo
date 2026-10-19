@@ -52,7 +52,7 @@ internal sealed class ItemEquipmentCommandHandler
             occupantId);
         var occupant = occupantId is null
             ? null
-            : await LoadSwapOccupantAsync(context, command, item, occupantId.Value, cancellationToken);
+            : await LoadSwapOccupantAsync(context, command, item, definition, occupantId.Value, cancellationToken);
         var beforeState = await context.Journal.CaptureItemStateJsonAsync(
             item.ItemInstanceId,
             cancellationToken);
@@ -149,11 +149,13 @@ internal sealed class ItemEquipmentCommandHandler
     }
 
     // The equipped item that a swap moves into the new item's source slot. The slot must accept
-    // it as an unequip into that slot would, apart from the new item that leaves it.
+    // it as an unequip into that slot would, apart from the new item that leaves it. A stack of
+    // the equipped definition tops up the equipped stack through a merge and never swaps.
     private static async Task<LockedItem> LoadSwapOccupantAsync(
         ItemTransactionContext context,
         EquipItemCommand command,
         LockedItem item,
+        ResolvedItemDefinition definition,
         Guid occupantId,
         CancellationToken cancellationToken)
     {
@@ -165,6 +167,14 @@ internal sealed class ItemEquipmentCommandHandler
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemStateConflict,
                 "The equipped item changed before the swap committed.");
+        }
+
+        if (string.Equals(occupant.DefinitionId, item.DefinitionId, StringComparison.Ordinal)
+            && definition.RuntimeDefinition.MaximumStackSize > 1)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.EquipmentSlotOccupied,
+                "A stack of the equipped definition tops up the equipped stack through a merge.");
         }
 
         var source = await context.State.LoadOwnedContainerAsync(
