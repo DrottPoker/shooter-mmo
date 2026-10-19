@@ -8,8 +8,9 @@
 #
 # Exit codes: 0 merged and cleaned up, 1 not merged, 2 merged but the cleanup is incomplete: the
 # remote branch moved after the merge, the task branch had to stay (uncommitted changes, another
-# worktree, or commits that are not in development), or the local development branch could not
-# be fast-forwarded. The report says why; never discard local work to fix it.
+# worktree, or commits that are not in development), or the local development branch does not
+# match origin/development. The report says why; never discard local work to fix it. Pull
+# requests from main or development are refused.
 param(
     [Parameter(Mandatory = $true)]
     [int]$Number,
@@ -50,6 +51,11 @@ function Get-Worktrees {
 $pr = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "title,url,state,baseRefName,headRefName,headRefOid,mergeCommit")
 if ($pr.baseRefName -ne "development") {
     Write-Output "Pull request #$Number targets $($pr.baseRefName), not development, so nothing was merged."
+    exit 1
+}
+# The cleanup deletes the head branch, so a long-lived branch must never be the head.
+if ($pr.headRefName -in @("main", "development")) {
+    Write-Output "Pull request #$Number comes from the long-lived branch $($pr.headRefName). This script only completes task branches, so nothing was merged or deleted."
     exit 1
 }
 
@@ -201,19 +207,23 @@ foreach ($branch in $keptBranches) {
 $developmentTip = "$(Invoke-Git rev-parse --short origin/development)"
 $developmentHolder = $worktrees | Where-Object { $_.Branch -eq "development" } | Select-Object -First 1
 if ($developmentHolder) {
-    if (Test-Git -C $developmentHolder.Path merge --ff-only --quiet origin/development) {
-        Write-Output "Local development fast-forwarded to origin/development ($developmentTip) in $($developmentHolder.Path)"
-    }
-    else {
-        Write-Output "Local development in $($developmentHolder.Path) could NOT be fast-forwarded (see the git message above). Show the user what blocks it with git status and ask before stashing anything."
-        $exitCode = 2
-    }
-}
-elseif (Test-Git fetch origin development:development --quiet) {
-    Write-Output "Local development fast-forwarded to origin/development ($developmentTip), not checked out anywhere"
+    $developmentUpdated = Test-Git -C $developmentHolder.Path merge --ff-only --quiet origin/development
+    $developmentPlace = "in $($developmentHolder.Path)"
 }
 else {
-    Write-Output "Local development could NOT be fast-forwarded (see the git message above)."
+    $developmentUpdated = Test-Git fetch origin development:development --quiet
+    $developmentPlace = "(not checked out anywhere)"
+}
+# A fast-forward to an ancestor succeeds without moving the branch, so compare the tips too.
+if ($developmentUpdated -and "$(Invoke-Git rev-parse development)" -eq "$(Invoke-Git rev-parse origin/development)") {
+    Write-Output "Local development matches origin/development ($developmentTip) $developmentPlace"
+}
+elseif ($developmentUpdated) {
+    Write-Output "Local development $developmentPlace has commits that are not in origin/development. Show the user and ask what to do with them."
+    $exitCode = 2
+}
+else {
+    Write-Output "Local development $developmentPlace could NOT be fast-forwarded (see the git message above). Show the user what blocks it with git status and ask before stashing anything."
     $exitCode = 2
 }
 

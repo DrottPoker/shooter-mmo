@@ -233,8 +233,11 @@ finishes a cleanup that failed halfway. Exit code 0 means merged and cleaned up,
 the remote branch moved after the merge, the task branch had to stay
 (uncommitted changes in the current checkout, another worktree has it checked
 out, or it has commits that are not in `development`), or the local
-`development` could not be fast-forwarded, usually because of uncommitted
-changes in the main checkout. The report says which.
+`development` does not match `origin/development` afterwards, usually because
+uncommitted changes in the main checkout block the fast-forward or local
+commits sit on `development`. The report says which. The script refuses pull
+requests whose head is `main` or `development`, because the cleanup deletes the
+head branch.
 Never discard those changes to get past exit code 2.
 
 Expected result: the pull request shows as merged with a merge commit,
