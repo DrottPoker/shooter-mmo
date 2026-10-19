@@ -3,6 +3,10 @@ using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.SimulationWorker.WorldActors;
 
+// Moves Mobs between the dormant and active tiers on their profile's coarse cadence. A
+// Mob becomes active when a player comes within the activation range and dormant when
+// none is within the larger dormancy range, unless keepActive says it is still busy,
+// such as in combat or on its way home. Loop-confined.
 public sealed class WorldActorActivityScheduler(WorldActorStore actorStore)
 {
     private readonly List<WorldActorRuntimeState> actorBuffer = [];
@@ -14,6 +18,16 @@ public sealed class WorldActorActivityScheduler(WorldActorStore actorStore)
         IReadOnlyList<PlayerSimulationEntity> players,
         uint serverTick,
         int simulationTickRateHz)
+    {
+        ArgumentNullException.ThrowIfNull(players);
+        return Evaluate(PlayerSpatialGrid.From(players), serverTick, simulationTickRateHz);
+    }
+
+    public IReadOnlyList<WorldActorRuntimeState> Evaluate(
+        PlayerSpatialGrid players,
+        uint serverTick,
+        int simulationTickRateHz,
+        Func<WorldActorRuntimeState, bool>? keepActive = null)
     {
         ArgumentNullException.ThrowIfNull(players);
         if (simulationTickRateHz <= 0)
@@ -45,14 +59,8 @@ public sealed class WorldActorActivityScheduler(WorldActorStore actorStore)
                     == WorldActorActivityTierIds.Active
                     ? profile!.DormancyRange
                     : profile!.ActivationRange;
-                var thresholdSquared = threshold * threshold;
-                var shouldBeActive = players.Any(player =>
-                {
-                    var state = player.Movement.State;
-                    var deltaX = state.PositionX - actor.PositionX;
-                    var deltaZ = state.PositionZ - actor.PositionZ;
-                    return (deltaX * deltaX) + (deltaZ * deltaZ) <= thresholdSquared;
-                });
+                var shouldBeActive = players.AnyWithin(actor.PositionX, actor.PositionZ, threshold)
+                    || (keepActive is not null && keepActive(actor));
                 var targetTier = shouldBeActive
                     ? WorldActorActivityTierIds.Active
                     : WorldActorActivityTierIds.Dormant;

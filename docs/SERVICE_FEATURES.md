@@ -561,8 +561,9 @@ catalog and Mob values from the actor catalog.
 - A combatant is in combat until 10 seconds after its last attack or hit. A
   living character out of combat regains 2 percent of its maximum health, at
   least 1 point, every second.
-- Every damageable Mob with a combat profile is a combatant. In this step Mobs
-  stand still and do not attack. A dead Mob rolls its loot profile, where each
+- Every damageable Mob with a combat profile is a combatant, and a Mob with a
+  brain and a locomotion profile also thinks and walks, as
+  [Mob Brains](#mob-brains) describes. A dead Mob rolls its loot profile, where each
   entry drops with its chance in basis points and a quantity between its bounds.
   A non-empty roll becomes the Mob's corpse: a live corpse in worker memory, or
   for a boss a durable corpse in GameService that retries with the same death
@@ -584,6 +585,51 @@ catalog and Mob values from the actor catalog.
 - Synthetic development bots are no combatants, because they have no durable
   character that could die. An attack on one returns
   `combat_target_not_attackable`.
+
+## Mob Brains
+
+A Mob with a brain profile and a locomotion profile runs a brain in
+SimulationWorker. Nothing gets its own task, timer, or thread:
+
+- The activity tiers decide who works. A dormant Mob neither thinks nor moves; a
+  coarse check on the activity profile's dormant rate makes it active when a
+  player comes within the activation range, 48 m for `mob.standard`, and dormant
+  again when none is within the dormancy range, 64 m. A Mob that fights, walks
+  home, or died stays active whoever is near. One grid of player positions per
+  tick answers these checks and detection, instead of comparing every Mob with
+  every player.
+- An active Mob thinks at the activity profile's active rate, 10 per second,
+  staggered by entity id, and a moving Mob steps every tick with the player motor
+  and collision at its locomotion profile's speed and capsule. Mobs do not
+  collide with players or with each other.
+- The brain is a state machine: `Idle` stands at the spawn, `Patrol` walks the
+  spawn's patrol path with its waits, `Chase` walks toward the target, `Attack`
+  stands still and bites on the combat profile's cooldown, `Evade` walks home,
+  and `Dead` waits for the corpse and despawn.
+- An aggressive brain detects the nearest living player within its detection
+  range, 8 m for the wolves and 10 m for the Feral Alpha, with line of sight.
+  Damage starts a fight for every brain. When the target dies or becomes
+  invalid, the Mob takes the attacker with the most damage that is still alive,
+  then the nearest detected player, and evades otherwise.
+- A chasing Mob walks to half its attack range from the target and plans again
+  when the target moved more than 1.5 m from the planned goal. In range with
+  line of sight it stands, faces the target, and combat lets it bite: the bite
+  lands at once, rolls the combat profile's damage, and may kill the character
+  with the Mob as the recorded killer.
+- The leash and the give-up time end a fight. A Mob that is farther than its
+  leash range, 30 m, from where the fight started, or that neither bit nor was
+  hit for its give-up time, 10 seconds, evades: it clears its target, cannot be
+  damaged, walks back, and on arrival has full health and returns to its
+  routine. A Mob that cannot walk home after three routes is placed there.
+- Routes come from the shared `MovementPathPlanner`, one planner per locomotion
+  profile, through one queue that plans at most 8 routes per tick. A Mob has at
+  most one waiting request. Spawn points and patrol points are projected onto
+  the ground under them, and a Mob starts to move only once the collision under
+  it is loaded; walking Mobs keep their collision loaded like players.
+- A moving Mob travels in the unreliable `SimulationSnapshot` like a remote
+  player. The first tick it stands still sends one reliable `WorldActorState`
+  with its rest pose. Movement advances the state revision but never the
+  interaction revision.
 
 ## Server-Authoritative Movement
 
@@ -1126,8 +1172,10 @@ The meter `Mmorpg.SimulationWorker.Combat` exposes attacks, hits, and deaths by
 the `kind` `player` or `mob`, arrow batches by the `outcome` `committed`,
 `retried`, `rejected`, or `session_ended`, dropped shots, player death
 partitions by the `outcome` `committed`, `retried`, `rejected`, or
-`session_ended`, the combat phase duration, active combatants, and shots that
-are not committed yet.
+`session_ended`, the combat phase duration, active combatants, shots that are
+not committed yet, the Mob phase duration, engaged and moving Mobs, Mob routes
+by the `outcome` `reached`, `closest`, or `no_path`, and routes that wait for
+the planning budget.
 
 The meter `Mmorpg.GameService.Items` exposes low-cardinality transaction
 latency and outcome, lock wait, conflict, stale revision, timeout, death
@@ -1429,6 +1477,12 @@ the test connection variable at development or production data.
   arrow, the lethal arrow that alone takes the kill, a wolf without a corpse
   that despawns after its death reached the viewer, and bots that are no
   targets.
+- Mob brain coverage verifies the player grid, the activity tiers with busy
+  Mobs, the planning budget, and over real UDP a wolf that detects, chases, and
+  bites a player while it travels in movement snapshots and comes to rest, a
+  wolf that kills a player as the recorded killer, the leash and the evade home
+  with full health, a defensive wolf that fights only back, and a crowd of 60
+  wolves that all reach their target through the shared planning budget.
 
 ## Not Yet Implemented
 
@@ -1441,9 +1495,9 @@ the test connection variable at development or production data.
 - Consume and use intents.
 - Final inventory visual design, drag-and-drop polish, accessibility, and policy
   detail presentation. The current uGUI is temporary presentation only.
-- Final combat and corpse visuals, Mob attacks, and Mob AI. Unity shows combat
-  with temporary presentation, and Mobs are stationary targets until the Mob AI
-  step of the [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
+- Final combat and corpse visuals, a threat table, Mob abilities beyond one
+  attack, and Mob groups that assist each other. Unity shows combat with
+  temporary presentation.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.

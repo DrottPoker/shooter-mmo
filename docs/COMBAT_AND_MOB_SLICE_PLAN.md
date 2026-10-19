@@ -6,9 +6,10 @@ Status: Decided and in progress. The product owner accepted every
 recommendation on 2026-10-18, including C1. Implementation follows the
 [Implementation Plan](#implementation-plan): step 1, the combat content,
 step 2, the GameService combat boundaries, step 3, the protocol and
-authoritative combat, and step 4, the Unity combat presentation, are
-implemented; steps 5 and 6 are not. Where steps 3 and 4 differ from this plan,
-[Step 3 Notes](#step-3-notes) and [Step 4 Notes](#step-4-notes) say how.
+authoritative combat, step 4, the Unity combat presentation, and step 5, the Mob
+AI, are implemented; step 6 is not. Where steps 3 to 5 differ from this plan,
+[Step 3 Notes](#step-3-notes), [Step 4 Notes](#step-4-notes), and
+[Step 5 Notes](#step-5-notes) say how.
 
 ## Purpose
 
@@ -610,8 +611,45 @@ refinements, described in
   value.
 - **Assemblies.** `Mmorpg.Client.Combat` now references Core, Gameplay, Items,
   and WorldActors as well, and Ui references Combat for the temporary HUD.
-- **Open.** A hover prompt for attacks, a search for a spot with line of sight,
-  and Mob interpolation follow later; Mob interpolation belongs to step 5.
+- **Open.** A hover prompt for attacks and a search for a spot with line of
+  sight follow later. Mob interpolation arrived with step 5.
+
+### Step 5 Notes
+
+Step 5 follows the [Mob AI](#mob-ai) design, described as built in
+[Service Features](SERVICE_FEATURES.md#mob-brains), with these refinements:
+
+- **Protocol.** Moving Mobs travel in `SimulationSnapshot` with their world actor
+  entity ids. The wire format already allowed any entity id and clients skip
+  unknown snapshot entities, so protocol 18 stays.
+- **Home.** The leash and the evade measure from where the fight started, the
+  spawn for an idle Mob and the patrol position for a patrolling one, so a
+  patrolling Mob resumes its patrol after the evade. A Mob that cannot walk
+  home after three routes is placed there.
+- **Chase.** A chasing Mob walks to half its attack range from the target, so
+  it stops in range instead of on the target, and the brain decides at its 10
+  Hz rate when it stands ready; combat checks range, line of sight from the
+  Mob's eye at 80 percent of its capsule height, and the cooldown again before
+  every bite.
+- **Ground.** Spawn and patrol points are projected onto the ground under them
+  by a ray from 20 m above, because authored heights may be off the terrain, and
+  a Mob starts to move once the collision under it is loaded. Walking Mobs are
+  collision streaming anchors.
+- **States.** `Investigate` and `Respawning` are no brain states: a respawned
+  Mob is a new actor, and investigation needs sound or ability content.
+- **Telemetry.** The Mob phase duration, engaged and moving Mobs, and Mob routes
+  by outcome and in the queue are on the `Mmorpg.SimulationWorker.Combat` meter
+  and the playtest dashboard.
+- **Load.** The scheduler scale test still runs 2,000 Mobs on the grid, and a
+  socket-level test sends a crowd of 60 wolves at one player through the shared
+  planning budget.
+- **Unity.** A Mob view interpolates its snapshots through the same
+  `RemoteMovementPresenter` as remote players, starts from its rest pose, and
+  takes a rest `WorldActorState` that arrives while snapshots still play as their
+  final sample, so it stops without a jump; a pose more than 3 m away, such as a
+  Mob placed home, is shown at once. The client has no Mob capsule, so ground
+  correction uses the player capsule, which is within 4 cm for the Feral Alpha
+  on a 30 degree slope.
 
 ## Coordination
 

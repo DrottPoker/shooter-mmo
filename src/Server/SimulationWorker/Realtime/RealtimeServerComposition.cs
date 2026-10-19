@@ -319,6 +319,16 @@ internal static class RealtimeServerComposition
             operationTracker,
             combatRandom,
             logger);
+        var combatLineOfSight = new CombatLineOfSight(dependencies.CollisionWorld);
+        var mobs = new MobSystem(
+            config,
+            clock,
+            dependencies.CollisionWorld,
+            combatants,
+            combatLineOfSight,
+            presence,
+            combatDependencies.WorldActors,
+            combatDependencies.Metrics);
         var combat = new CombatSystem(
             config,
             combatDependencies.Rules,
@@ -335,8 +345,9 @@ internal static class RealtimeServerComposition
             combatReplicator,
             combatAuthority,
             mobDeaths,
+            mobs,
             new CombatItemCatalog(combatDependencies.ItemCatalog, config.MovementSimulation.TickRateHz),
-            new CombatLineOfSight(dependencies.CollisionWorld),
+            combatLineOfSight,
             combatRandom,
             combatDependencies.ShardRules,
             corpseViewers,
@@ -351,6 +362,7 @@ internal static class RealtimeServerComposition
         sessions.PlayerJoined = combat.OnPlayerJoined;
         var snapshots = new SnapshotReplicator(
             config,
+            mobs,
             entityRegistry,
             connectionBindings,
             peers,
@@ -371,7 +383,8 @@ internal static class RealtimeServerComposition
             logger)
         {
             Activated = combat.RegisterWorldActors,
-            RespawnMob = mobDeaths.Respawn
+            RespawnMob = mobDeaths.Respawn,
+            KeepActive = mobs.IsBusy
         };
         var tickLoop = new SimulationTickLoop(
             config,
@@ -381,6 +394,7 @@ internal static class RealtimeServerComposition
             worldActors,
             worldInteractions,
             gathering,
+            mobs,
             combat,
             snapshots,
             corpsePresence,

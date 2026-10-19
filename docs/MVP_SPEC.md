@@ -212,9 +212,10 @@ A third actor kind, the resource node, carries exactly one gathering capability,
 and the vendor capability trades through GameService. Both are described in
 [Economy MVP](#economy-mvp) and [Gathering MVP](#gathering-mvp).
 
-The foundation does not implement quest progression, crafting, combat, complete
-Mob AI, or Mob loot tables. Live and durable Mob corpses are implemented and wait
-for a combat death producer.
+The foundation does not implement quest progression or crafting. The combat
+slice in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) adds
+target-based combat, Mob brains, Mob loot rolls, and the deaths that fill live
+and durable corpses.
 
 ## Mob MVP
 

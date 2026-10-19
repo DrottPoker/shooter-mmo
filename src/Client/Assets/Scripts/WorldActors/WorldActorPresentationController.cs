@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -12,6 +13,8 @@ namespace Mmorpg.Client.WorldActors
     // Addressables: the registry loads when the World scene opens, a prefab loads the first
     // time an actor of its archetype appears, and every handle is released when the World
     // scene closes. An actor whose prefab is still loading is presented once it is ready.
+    // Snapshot entities that name a presented Mob move its view; WorldSceneContext moves the
+    // remote players of the same snapshots.
     [DisallowMultipleComponent]
     public sealed class WorldActorPresentationController : MonoBehaviour
     {
@@ -23,6 +26,8 @@ namespace Mmorpg.Client.WorldActors
             new HashSet<string>(StringComparer.Ordinal);
         private MaterialPropertyBlock materialProperties;
         private WorldActorClientController actorController;
+        private RealtimeSimulationClient simulationClient;
+        private bool snapshotsSubscribed;
         private AsyncOperationHandle<WorldActorPresentationRegistry> registryLoad;
         private WorldActorPresentationRegistry presentationRegistry;
         private bool registryResolved;
@@ -36,15 +41,49 @@ namespace Mmorpg.Client.WorldActors
         }
 
         // Called by the composition root before the component is activated.
-        public void Initialize(WorldActorClientController worldActors)
+        public void Initialize(
+            WorldActorClientController worldActors,
+            RealtimeSimulationClient realtimeClient)
         {
             actorController = worldActors;
+            simulationClient = realtimeClient;
         }
 
         // The presentation of an actor by its network entity id, once its prefab is ready.
         public bool TryGetView(ulong entityId, out WorldActorView view)
         {
             return presentations.TryGetValue(entityId, out view) && view != null;
+        }
+
+        // Hands every snapshot entity that names a presented Mob to its view. Every other id,
+        // such as a player, an NPC, or an entity without a presentation, is ignored. Returns
+        // how many entities it handed on.
+        public static int RouteSnapshot(
+            RealtimeSimulationSnapshot snapshot,
+            IReadOnlyDictionary<ulong, WorldActorView> views)
+        {
+            if (snapshot == null || snapshot.Entities == null || views == null)
+            {
+                return 0;
+            }
+
+            var routed = 0;
+            for (var index = 0; index < snapshot.Entities.Length; index++)
+            {
+                var entity = snapshot.Entities[index];
+                if (entity == null
+                    || !views.TryGetValue(entity.EntityId, out var view)
+                    || !(view is MobView mob)
+                    || mob == null)
+                {
+                    continue;
+                }
+
+                mob.PushSnapshot(snapshot.ServerTick, entity.State);
+                routed++;
+            }
+
+            return routed;
         }
 
         private void Awake()
@@ -80,6 +119,12 @@ namespace Mmorpg.Client.WorldActors
                 actorController.State.Changed += Rebuild;
                 Rebuild();
             }
+
+            if (simulationClient != null)
+            {
+                simulationClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
+                snapshotsSubscribed = true;
+            }
         }
 
         private void OnDestroy()
@@ -87,6 +132,12 @@ namespace Mmorpg.Client.WorldActors
             if (actorController != null)
             {
                 actorController.State.Changed -= Rebuild;
+            }
+
+            if (snapshotsSubscribed)
+            {
+                simulationClient.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
+                snapshotsSubscribed = false;
             }
 
             foreach (var entityId in presentations.Keys.ToArray())
@@ -103,6 +154,11 @@ namespace Mmorpg.Client.WorldActors
             ClientAssets.Release(registryLoad);
             registryLoad = default;
             presentationRegistry = null;
+        }
+
+        private void OnSimulationSnapshotReceived(RealtimeSimulationSnapshot snapshot)
+        {
+            RouteSnapshot(snapshot, presentations);
         }
 
         private void OnRegistryLoaded()
@@ -282,6 +338,11 @@ namespace Mmorpg.Client.WorldActors
                     RealtimeWorldActorKind.ResourceNode => presentation.AddComponent<ResourceNodeView>(),
                     _ => presentation.AddComponent<MobView>()
                 };
+            }
+
+            if (view is MobView mob)
+            {
+                mob.ConfigureMovement(simulationClient != null ? simulationClient.MovementSession : null);
             }
 
             view.Initialize(actor);

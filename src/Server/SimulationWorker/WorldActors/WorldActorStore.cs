@@ -102,6 +102,23 @@ public sealed class WorldActorRuntimeState
         StateRevision++;
     }
 
+    // Moves a walking Mob. The movement snapshots carry the pose, so neither revision
+    // advances; interest, combat range, and the corpse read the current position.
+    internal void SetPose(float positionX, float positionY, float positionZ, float yawDegrees)
+    {
+        PositionX = positionX;
+        PositionY = positionY;
+        PositionZ = positionZ;
+        YawDegrees = yawDegrees;
+    }
+
+    // A Mob came to rest, so its pose becomes a new reliable state. Movement never
+    // advances the interaction revision.
+    internal void PublishRestPose()
+    {
+        StateRevision++;
+    }
+
     // Reserves one charge for a gathering cycle whose grant is in flight. Loop-confined.
     internal bool TryReserveResourceCharge()
     {

@@ -77,7 +77,7 @@ counters, and `_bucket`, `_sum`, and `_count` for histograms, so
 | `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
-| `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat phase duration, active combatants, and shots that are not committed yet. |
+| `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat and Mob phase durations, active combatants, shots that are not committed yet, engaged and moving Mobs, and Mob routes by outcome and in the planning queue. |
 
 The resource node and gathering instruments of `Mmorpg.SimulationWorker.WorldActors`:
 
@@ -103,6 +103,11 @@ The instruments of `Mmorpg.SimulationWorker.Combat`:
 | `simulation_worker.combat.phase.duration` | histogram, ms | Duration of the combat phase of one tick. |
 | `simulation_worker.combat.active_combatants` | gauge | Characters and Mobs that can fight. |
 | `simulation_worker.combat.pending_shots` | gauge | Shots counted against arrow stacks that GameService has not committed yet. |
+| `simulation_worker.combat.mob_phase.duration` | histogram, ms | Duration of the Mob brain and movement phase of one tick, which runs before the combat phase. |
+| `simulation_worker.combat.engaged_mobs` | gauge | Mobs that chase, attack, or walk home. |
+| `simulation_worker.combat.moving_mobs` | gauge | Mobs whose pose changed in the latest tick. |
+| `simulation_worker.combat.mob_path_plans` | counter | Planned Mob routes, labeled `outcome`: `reached`, `closest` when the goal cannot be reached and the route ends at the closest point, or `no_path`. |
+| `simulation_worker.combat.mob_path_queue` | gauge | Mob routes that wait for the planning budget of 8 routes per tick. |
 
 `RealtimeMetricNamesTests` pins every combat instrument name.
 
@@ -215,8 +220,9 @@ to reload the files.
   resynchronizations, backlogs, population, bandwidth including snapshot bytes,
   packets, drops and rejections, joins, worker calls to GameService, world
   actors, interactions, corpses, gathering (active gatherers, depleted nodes,
-  and gathering cycles per minute by outcome), combat (combatants, and attacks,
-  hits, and deaths per minute by kind), arrows and deaths (pending shots, arrow
+  and gathering cycles per minute by outcome), combat (combatants, engaged and
+  moving Mobs, attacks, hits, and deaths per minute by kind, and Mob routes per
+  minute by outcome), arrows and deaths (pending shots, arrow
   batches and player death partitions per minute by outcome, and dropped shots),
   worker CPU, memory, allocation rate, GC, and recent warnings and errors of
   both services.

@@ -608,6 +608,57 @@ public sealed class WorldActorRuntimeTests
     }
 
     [Fact]
+    public void PlayerGridFindsTheNearestAcceptedPlayerAcrossCells()
+    {
+        var registry = new SimulationEntityRegistry();
+        var far = RegisterPlayer(registry, CreateSession(), 40f, 0f);
+        var near = RegisterPlayer(registry, CreateSession(), 17f, 0f);
+        var nearest = RegisterPlayer(registry, CreateSession(), -3f, 4f);
+        var grid = new PlayerSpatialGrid();
+        grid.Rebuild([far, near, nearest]);
+
+        Assert.Equal(3, grid.Count);
+        Assert.Same(nearest, grid.FindNearest(0f, 0f, 20f, null));
+        Assert.Same(near, grid.FindNearest(0f, 0f, 20f, player => player != nearest));
+        Assert.Null(grid.FindNearest(0f, 0f, 4.9f, null));
+        Assert.True(grid.AnyWithin(39f, 0f, 1f));
+        Assert.False(grid.AnyWithin(0f, 30f, 10f));
+    }
+
+    [Fact]
+    public void PlayerGridBreaksDistanceTiesByEntityId()
+    {
+        var registry = new SimulationEntityRegistry();
+        var first = RegisterPlayer(registry, CreateSession(), 5f, 0f);
+        var second = RegisterPlayer(registry, CreateSession(), -5f, 0f);
+        var grid = new PlayerSpatialGrid();
+        grid.Rebuild([second, first]);
+
+        var lower = first.NetworkEntityId < second.NetworkEntityId ? first : second;
+        Assert.Same(lower, grid.FindNearest(0f, 0f, 10f, null));
+    }
+
+    [Fact]
+    public void ABusyMobStaysActiveWithoutPlayersUntilItIsIdleAgain()
+    {
+        var registry = new SimulationEntityRegistry();
+        var actorStore = new WorldActorStore(WorldActorTestData.Compile(), registry);
+        var actors = actorStore.ActivateAssignment("development-world-1", "local-shard-1", "test-runtime");
+        var mob = actors.First(actor => actor.Definition.Kind == WorldActorKindIds.Mob);
+        var scheduler = new WorldActorActivityScheduler(actorStore);
+        var player = RegisterPlayer(registry, CreateSession(), mob.PositionX, mob.PositionZ);
+        var busy = true;
+
+        Assert.Contains(mob, scheduler.Evaluate(PlayerSpatialGrid.From([player]), 60, 30, _ => busy));
+        Assert.DoesNotContain(mob, scheduler.Evaluate(new PlayerSpatialGrid(), 66, 30, _ => busy));
+        Assert.Equal(WorldActorActivityTierIds.Active, mob.ActivityTier);
+
+        busy = false;
+        Assert.Contains(mob, scheduler.Evaluate(new PlayerSpatialGrid(), 69, 30, _ => busy));
+        Assert.Equal(WorldActorActivityTierIds.Dormant, mob.ActivityTier);
+    }
+
+    [Fact]
     public async Task ConcurrentNpcInteractionHotspotKeepsIndependentPlayerLeases()
     {
         const int playerCount = 128;

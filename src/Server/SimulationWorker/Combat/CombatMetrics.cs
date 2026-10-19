@@ -16,8 +16,13 @@ public sealed class CombatMetrics : IDisposable
     private readonly Counter<long> droppedShots;
     private readonly Counter<long> deathPartitions;
     private readonly Histogram<double> phaseDuration;
+    private readonly Histogram<double> mobPhaseDuration;
+    private readonly Counter<long> mobPathPlans;
     private long activeCombatants;
     private long pendingShots;
+    private long engagedMobs;
+    private long movingMobs;
+    private long mobPathQueue;
 
     public CombatMetrics()
     {
@@ -34,6 +39,17 @@ public sealed class CombatMetrics : IDisposable
         meter.CreateObservableGauge(
             "simulation_worker.combat.pending_shots",
             () => Volatile.Read(ref pendingShots));
+        mobPhaseDuration = meter.CreateHistogram<double>("simulation_worker.combat.mob_phase.duration", "ms");
+        mobPathPlans = meter.CreateCounter<long>("simulation_worker.combat.mob_path_plans");
+        meter.CreateObservableGauge(
+            "simulation_worker.combat.engaged_mobs",
+            () => Volatile.Read(ref engagedMobs));
+        meter.CreateObservableGauge(
+            "simulation_worker.combat.moving_mobs",
+            () => Volatile.Read(ref movingMobs));
+        meter.CreateObservableGauge(
+            "simulation_worker.combat.mob_path_queue",
+            () => Volatile.Read(ref mobPathQueue));
     }
 
     internal void RecordAttack(CombatantKind kind)
@@ -84,6 +100,27 @@ public sealed class CombatMetrics : IDisposable
     public void SetPendingShots(long count)
     {
         Interlocked.Exchange(ref pendingShots, count);
+    }
+
+    // The Mob brain and movement phase of one tick.
+    public void RecordMobPhase(TimeSpan duration)
+    {
+        mobPhaseDuration.Record(duration.TotalMilliseconds);
+    }
+
+    // Outcome is reached, closest, or no_path.
+    public void RecordMobPathPlan(string outcome)
+    {
+        mobPathPlans.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
+    }
+
+    // Mobs that chase, attack, or evade; Mobs whose pose changed this tick; and routes
+    // that wait for the planning budget.
+    public void SetMobActivity(long engaged, long moving, long queuedPlans)
+    {
+        Interlocked.Exchange(ref engagedMobs, engaged);
+        Interlocked.Exchange(ref movingMobs, moving);
+        Interlocked.Exchange(ref mobPathQueue, queuedPlans);
     }
 
     public void Dispose()

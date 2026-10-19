@@ -366,6 +366,13 @@ owner item delta, and the Shard rules:
 - `JoinAccepted` ends with `ShardRules`, so the client knows whether a click on
   another character attacks.
 
+Since the Mob brains, a moving Mob travels in `SimulationSnapshot` like a remote
+player: an `EntitySnapshot` with the Mob's world actor entity id, input sequence
+0, and its `PlayerState`, while its pose changes. The first tick it stands still
+sends one reliable `WorldActorState` with its rest pose and a newer state
+revision. The wire format already allowed any entity id, and clients skip
+snapshot entities they do not know, so this needed no new protocol version.
+
 ## Versioning
 
 Client and worker run in lockstep: both must use the same version. Decoders

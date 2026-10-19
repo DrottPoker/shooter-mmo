@@ -3,14 +3,15 @@ using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs due fixed simulation ticks in a stable phase order: collision streaming, carry
-// state and movement per player in entity id order, world actor activity, combat,
-// interaction revalidation, snapshots and corpse presence. At most five ticks catch up per call
-// before the clock resynchronizes. Loop-confined.
+// state and movement per player in entity id order, world actor activity, Mob brains and
+// movement, combat, interaction revalidation, snapshots and corpse presence. At most five
+// ticks catch up per call before the clock resynchronizes. Loop-confined.
 internal sealed class SimulationTickLoop(
     SimulationWorkerConfig config,
     RealtimeSimulationClock clock,
@@ -19,6 +20,7 @@ internal sealed class SimulationTickLoop(
     WorldActorRuntimeDriver worldActors,
     WorldInteractionHandler worldInteractions,
     GatheringHandler gathering,
+    MobSystem mobs,
     CombatSystem combat,
     SnapshotReplicator snapshots,
     CorpsePresenceReplicator corpsePresence,
@@ -28,6 +30,7 @@ internal sealed class SimulationTickLoop(
 {
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<SimulationVector3> collisionAnchorBuffer = [];
+    private readonly PlayerSpatialGrid playerGrid = new();
 
     public void ProcessDueTicks(
         TimeSpan elapsed,
@@ -58,7 +61,9 @@ internal sealed class SimulationTickLoop(
             performanceMetrics.RecordMovementSimulation(
                 Stopwatch.GetElapsedTime(phaseStarted));
 
-            worldActors.EvaluateTick(playerBuffer, clock.ServerTick);
+            playerGrid.Rebuild(playerBuffer);
+            worldActors.EvaluateTick(playerGrid, clock.ServerTick);
+            mobs.ProcessTick(playerGrid);
 
             combat.ProcessTick();
 
@@ -125,6 +130,7 @@ internal sealed class SimulationTickLoop(
             config.MovementSpawn.X,
             config.MovementSpawn.Y,
             config.MovementSpawn.Z));
+        mobs.CopyCollisionAnchorsTo(collisionAnchorBuffer);
         collisionStreamingStore.Refresh(collisionAnchorBuffer);
     }
 }

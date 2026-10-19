@@ -16,6 +16,31 @@ namespace Mmorpg.Client.Gameplay
 
         public long LatestServerTick { get; private set; }
 
+        // The newest server tick as it arrived, before unwrapping.
+        public uint LatestRawServerTick
+        {
+            get { return latestRawServerTick; }
+        }
+
+        public void Clear()
+        {
+            samples.Clear();
+            latestRawServerTick = 0;
+            LatestServerTick = 0;
+        }
+
+        public bool TryGetNewest(out PlayerMovementState state)
+        {
+            if (samples.Count == 0)
+            {
+                state = default;
+                return false;
+            }
+
+            state = samples[samples.Count - 1].State;
+            return true;
+        }
+
         public bool Push(uint serverTick, PlayerMovementState state)
         {
             if (samples.Count == 0)

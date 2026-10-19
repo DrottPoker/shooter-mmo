@@ -21,8 +21,8 @@ Phase 12 in
 
 The foundation is a permanent content, runtime, protocol, client-state, and
 tooling layer. Its Unity presentation is temporary. It does not implement
-quest progression, crafting recipes, complete Mob AI, final actor art, or final
-interaction UI. The vendor and gathering slice in
+quest progression, crafting recipes, final actor art, or final interaction
+UI. The vendor and gathering slice in
 [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) builds the vendor
 capability and resource nodes on it, and the combat slice in
 [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) builds Mob damage,
@@ -45,9 +45,9 @@ The implemented foundation includes:
 - Mob combat, brain, locomotion, and loot profiles in actor format 2, validated
   by the compiler and, for loot, against the compiled item catalog.
   SimulationWorker uses the combat and loot profiles for Mob health, death,
-  and loot, as described in [Mob Death And Respawn](#mob-death-and-respawn).
-  The brain and locomotion profiles wait for the Mob AI step of the
-  [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
+  and loot, as described in [Mob Death And Respawn](#mob-death-and-respawn),
+  and the brain and locomotion profiles for the Mob brains in
+  [Service Features](SERVICE_FEATURES.md#mob-brains).
 - The `resource_node` actor kind, the `gathering` capability kind, the
   capability `profileId`, and resource profiles in actor format 3, and the
   neutral `world` faction for resource nodes. The compiler validates vendor
@@ -90,8 +90,7 @@ normal wolf uses `live` and `120` seconds. The selected alpha boss uses
 `durable` and `600` seconds. Deterministic death-event grant ids protect
 successful live loot claims from duplication, while durable bosses reuse player
 corpse restoration and expiry. Combat damages and kills Mobs, rolls their loot,
-and respawns them; complete Mob AI remains unavailable, so Mobs stand still and
-do not attack yet.
+and respawns them, and Mob brains detect, chase, bite, and evade home.
 
 Load coverage validates this foundation at operational scale without changing
 its ownership. Automated load coverage schedules `2,000` event-driven NPCs and
@@ -410,11 +409,13 @@ active update cadence, and coarse dormant-check cadence within validated global
 limits. The larger deactivation radius provides hysteresis. Content selects a
 profile instead of embedding scheduler constants in a prefab or actor class.
 
-The foundation establishes the tier contract, transition rules, counters, and testable
-scheduler seam. Full combat behavior remains later work. The first complete Mob
-brain is expected to use an explicit state machine with `Idle`, `Patrol`,
-`Investigate`, `Chase`, `Attack`, `Return`, `Dead`, and `Respawning` states, but
-those behaviors are not implemented yet.
+The scheduler answers its range checks from one grid of player positions per
+tick, and a Mob that fights, walks home, or died stays active until it is home
+and idle again. The Mob brain is an explicit state machine with the states
+`Idle`, `Patrol`, `Chase`, `Attack`, `Evade`, and `Dead`, described in
+[Service Features](SERVICE_FEATURES.md#mob-brains). A respawning Mob is a new
+actor, so `Respawning` is no brain state, and an `Investigate` state may follow
+with sound or ability content.
 
 The runtime must not create one `Task`, timer, thread, database session, or HTTP
 poller per actor. Work is performed by bounded stores, spatial queries, event
@@ -868,8 +869,9 @@ resource node respawn on these contracts.
 - Quest progression and turn-in gameplay.
 - Crafting recipes or production.
 - Trainer or profession progression, including Mining experience.
-- Aggro behavior, Mob attacks, or full Mob AI. The combat slice has since added
-  health, damage, combat-driven death events, Mob loot rolls, and Mob respawn.
+- Aggro behavior, Mob attacks, or Mob AI. The combat slice has since added
+  health, damage, combat-driven death events, Mob loot rolls, Mob respawn, and
+  Mob brains.
 - Durable unique boss state.
 - Final NPC, Mob, prompt, dialogue, or interaction-panel art.
 - Zone, Layer, multi-worker Shard, or world-event orchestration.

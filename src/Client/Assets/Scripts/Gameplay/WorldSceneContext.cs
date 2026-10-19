@@ -176,16 +176,14 @@ namespace Mmorpg.Client.Gameplay
             if (!remotePlayers.TryGetValue(spawn.EntityId, out var remotePlayer))
             {
                 remotePlayer = Instantiate(remotePlayerPrefab, entityPresentationRoot);
-                var delayTicks = Mathf.Max(
-                    2,
-                    Mathf.CeilToInt(movementSession.Settings.TickRateHz * 0.1f));
                 remotePlayer.Initialize(
                     spawn.EntityId,
                     spawn.PersistentId,
                     spawn.DisplayName,
                     spawn.ArchetypeId,
                     movementSession.Settings.TickRateHz,
-                    delayTicks,
+                    RemoteMovementPresenter.InterpolationDelayTicks(
+                        movementSession.Settings.TickRateHz),
                     movementSession.CollisionWorld,
                     movementSession.Settings.CharacterCollision);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
@@ -205,6 +203,8 @@ namespace Mmorpg.Client.Gameplay
             Destroy(remotePlayer.gameObject);
         }
 
+        // Moves remote players. The world actor presentation moves the Mobs of the same
+        // snapshot, and every other id is ignored.
         private void OnSimulationSnapshotReceived(RealtimeSimulationSnapshot snapshot)
         {
             var movementSession = simulationClient != null ? simulationClient.MovementSession : null;

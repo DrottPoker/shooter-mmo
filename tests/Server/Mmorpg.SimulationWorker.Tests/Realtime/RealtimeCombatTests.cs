@@ -746,7 +746,7 @@ public sealed class RealtimeCombatTests
         Assert.Equal(0, OwnerStates(archerClient)[^1].AmmunitionQuantity);
     }
 
-    private static async Task<RealtimeWorldActorSpawn> WaitForWolfAsync(
+    internal static async Task<RealtimeWorldActorSpawn> WaitForWolfAsync(
         RealtimeServerHarness harness,
         RealtimeRecordingClient client)
     {
@@ -757,24 +757,24 @@ public sealed class RealtimeCombatTests
         return WolfSpawns(client)[0];
     }
 
-    private static IReadOnlyList<RealtimeWorldActorSpawn> WolfSpawns(RealtimeRecordingClient client)
+    internal static IReadOnlyList<RealtimeWorldActorSpawn> WolfSpawns(RealtimeRecordingClient client)
     {
         return client.Decode<RealtimeWorldActorSpawn>(RealtimeMessageType.WorldActorSpawn, RealtimeProtocol.TryDecodeWorldActorSpawn)
             .Where(value => value.ActorDefinitionId == "mob.feral_wolf")
             .ToArray();
     }
 
-    private static IReadOnlyList<RealtimeCombatantState> States(RealtimeRecordingClient client)
+    internal static IReadOnlyList<RealtimeCombatantState> States(RealtimeRecordingClient client)
     {
         return client.Decode<RealtimeCombatantState>(RealtimeMessageType.CombatantState, RealtimeProtocol.TryDecodeCombatantState);
     }
 
-    private static IReadOnlyList<RealtimeOwnerCombatState> OwnerStates(RealtimeRecordingClient client)
+    internal static IReadOnlyList<RealtimeOwnerCombatState> OwnerStates(RealtimeRecordingClient client)
     {
         return client.Decode<RealtimeOwnerCombatState>(RealtimeMessageType.OwnerCombatState, RealtimeProtocol.TryDecodeOwnerCombatState);
     }
 
-    private static IReadOnlyList<RealtimeCombatEvent> Events(RealtimeRecordingClient client)
+    internal static IReadOnlyList<RealtimeCombatEvent> Events(RealtimeRecordingClient client)
     {
         return client.Decode<RealtimeCombatEventBatch>(RealtimeMessageType.CombatEventBatch, RealtimeProtocol.TryDecodeCombatEventBatch)
             .SelectMany(value => value.Events)
@@ -784,7 +784,7 @@ public sealed class RealtimeCombatTests
     private static readonly Guid BowItemId = Guid.Parse("b0b0b0b0-0000-4000-8000-000000000001");
     private static readonly Guid ArrowItemId = Guid.Parse("a0a0a0a0-0000-4000-8000-000000000002");
 
-    private static IReadOnlyList<SimulationEquippedItem> ArcherEquipment(int arrows)
+    internal static IReadOnlyList<SimulationEquippedItem> ArcherEquipment(int arrows)
     {
         return
         [
@@ -856,7 +856,7 @@ public sealed class RealtimeCombatTests
     }
 
     // One wolf a few metres from the World spawn, with a short respawn.
-    private static WorldActorRuntimeDocument WolfNextToTheSpawn(float respawnSeconds, float x = 4f)
+    internal static WorldActorRuntimeDocument WolfNextToTheSpawn(float respawnSeconds, float x = 4f)
     {
         var document = WorldActorTestData.Compile();
         var wolf = document.SpawnInstances.First(spawn => spawn.ActorId == "mob.feral_wolf");
@@ -874,7 +874,7 @@ public sealed class RealtimeCombatTests
         return document;
     }
 
-    private sealed class LowestRoll : ICombatRandom
+    internal sealed class LowestRoll : ICombatRandom
     {
         public int NextInclusive(int minimum, int maximum)
         {

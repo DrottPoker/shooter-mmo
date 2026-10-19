@@ -45,7 +45,7 @@ layers from the bottom up:
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
-| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, ordered world click handlers, prediction, interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
+| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, ordered world click handlers, prediction, remote player and Mob interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
 | `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
 | `Mmorpg.Client.Ui` | Every panel including the combat HUD, drag and drop, `ClientOperationState` | Every row above it |
@@ -121,8 +121,11 @@ Realtime movement
       +-- shared MovementPathPlanner on a background thread
   +-- ClientMovementPrediction
   +-- shared PlayerMovementSimulation
-  +-- RemoteMovementInterpolation
-  +-- RemotePlayerView
+  +-- RemoteMovementPresenter
+      +-- RemoteMovementInterpolation and RemoteRenderClock
+      +-- grounded presentation
+      +-- RemotePlayerView (routed by WorldSceneContext)
+      +-- RemoteActorMovement in MobView (routed by WorldActorPresentationController)
 
 World pointer input
   +-- WorldPointerFocus, owned by ClientBootstrap
@@ -910,13 +913,18 @@ adds one trigger capsule of the movement capsule's size, so the pointer can pick
 the player for combat, and it reports that height for health bars. A trigger
 never blocks movement, the camera, or the pointer. It stores the network entity
 id, persistent character id, display name, and presentation archetype supplied
-by the spawn message. It buffers server states in
-`RemoteMovementInterpolation` and advances an adaptive monotonic frame-rate
-render clock approximately 100 ms behind the latest server tick. The clock uses
-bounded catch-up and slow-down corrections during normal delivery. After a
-larger network stall it restores the intended buffer delay instead of retaining
-permanent extra latency. A reliable despawn removes the matching view
-immediately. Missing unreliable snapshots never decide entity lifetime.
+by the spawn message. Its `RemoteMovementPresenter`, which moving Mobs share,
+buffers server states in `RemoteMovementInterpolation`, advances an adaptive
+monotonic frame-rate `RemoteRenderClock` approximately 100 ms behind the latest
+server tick, `RemoteMovementPresenter.InterpolationDelayTicks`, and applies the
+grounded presentation described above. The clock uses bounded catch-up and
+slow-down corrections during normal delivery. After a larger network stall it
+restores the intended buffer delay instead of retaining permanent extra
+latency. A reliable despawn removes the matching view immediately. Missing
+unreliable snapshots never decide entity lifetime. `WorldSceneContext` routes
+the snapshot entities of remote players; Mob entities go to the world actor
+presentation, as described in [Mob Movement](#mob-movement), and every other id
+is ignored.
 
 `OrbitCameraController` lives with the Camera on the LocalPlayerCamera child
 owned by the LocalPlayer prefab and orbits the single CameraTarget pivot.
@@ -959,12 +967,13 @@ The client keeps permanent state below replaceable presentation:
   described in [Gathering](#gathering).
 - `WorldActorView` provides presentation identity and target registration.
   `NpcView`, `MobView`, and `ResourceNodeView` add kind-specific presentation
-  hooks without actor authority. An inactive actor, such as a dead Mob, is
-  hidden until it returns. A depleted resource node instead stays visible: an
-  authored prefab switches from its `Available` child to its `Depleted` child,
-  and the fallback primitive shrinks to 35 percent of its height. Its target and
-  interaction collider stay disabled until the node respawns, so it cannot be
-  clicked.
+  hooks without actor authority. A `MobView` follows its snapshots while it
+  moves, as described in [Mob Movement](#mob-movement). An inactive actor, such
+  as a dead Mob, is hidden until it returns. A depleted resource node instead
+  stays visible: an authored prefab switches from its `Available` child to its
+  `Depleted` child, and the fallback primitive shrinks to 35 percent of its
+  height. Its target and interaction collider stay disabled until the node
+  respawns, so it cannot be clicked.
 - A presentation registry maps `presentationArchetypeId` to authored prefabs.
   The asset is `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`
   and maps all five authored archetypes to collider-free placeholder prefabs in
@@ -1089,6 +1098,55 @@ through the fallback presentation without scene edits until it is added to the
 presentation registry asset. A content creator uses the Editor windows only
 when changing definitions, spawn source, or the presentation registry asset.
 
+### Mob Movement
+
+A Mob that moves travels in the unreliable `SimulationSnapshot` like a remote
+player: an entity with its world actor entity id and a `PlayerState`. The
+worker includes it only while its pose changes, walking or turning to face its
+target, and sends one reliable `WorldActorState` with the rest pose when it
+stops. A Mob that never moves keeps its reliable pose as before.
+
+`WorldActorPresentationController` subscribes to the snapshots of its realtime
+client and hands every entity that names a presented `MobView` to that view
+through `RouteSnapshot`. Players, NPCs, resource nodes, and ids without a
+presentation, such as a Mob whose prefab still loads, are ignored. Each
+`MobView` owns a `RemoteActorMovement` in `Mmorpg.Client.Gameplay`, configured
+from the joined `NetworkMovementSession`. It keeps the Mob rules on top of the
+shared `RemoteMovementPresenter`, so a Mob uses exactly the remote player
+interpolation, render clock, and 100 ms delay:
+
+- **Start.** The first snapshot after a rest anchors the reliable pose one
+  render delay before it and restarts the render clock at the anchor, so the
+  Mob stands where it was and then walks into the snapshot instead of jumping
+  ahead.
+- **Settle.** A `WorldActorState` that arrives while snapshots still play
+  becomes their final state, one snapshot interval after the newest snapshot,
+  so the Mob walks onto its rest pose without a jump. A later snapshot that is
+  not newer than that state is ignored. A rest pose equal to the newest
+  snapshot changes nothing.
+- **Jump.** A `WorldActorState` without any snapshot, one after the snapshots
+  played out at another pose, and one more than
+  `RemoteActorMovement.TeleportDistance` (3 m) from the newest state, such as an
+  evading Mob that the worker placed home, place the Mob at once, as before. A
+  snapshot that far away restarts the interpolation at the snapshot.
+- **Restart.** A Mob that settled at its rest pose does no work per frame, and
+  its next snapshot starts again from the rest pose.
+- **Cleanup.** A hidden Mob, such as a dead one, clears its interpolation and
+  ignores snapshots, and it returns at its reliable pose. A despawn destroys the
+  view, and a respawn creates a new view without interpolation.
+
+The presentation controller applies every actor again on each actor change, so
+a `MobView` moves on a reliable state only when its state revision is newer.
+The grounded presentation of a Mob uses the session's character capsule,
+because the protocol does not carry a Mob's locomotion capsule; on walkable
+slopes its slope support offset therefore differs from the worker's by a few
+centimetres for the current profiles. Mob presentation never loads collision
+chunks; outside the resident chunks it shows the replicated height unchanged.
+
+Combat presentation reads the presented `MobView` transform through
+`CombatantViewLocator` every frame, so health bars, damage numbers, the target
+frame, arrows, and the approach follow a moving Mob.
+
 ### Gathering
 
 A click on a resource node walks the player into range and opens it like any
@@ -1119,8 +1177,8 @@ rejected yield, such as a missing tool or a full inventory.
 ## Combat Client
 
 Status: Protocol handling, the combat state mirror, combat targeting and
-approach, and the temporary combat presentation implemented; Mob interpolation
-follows with the Mob AI step of the
+approach, the temporary combat presentation, and Mob interpolation implemented,
+see [Mob Movement](#mob-movement) and the
 [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md#unity-client).
 
 Combat is server-authoritative and never predicted. `RealtimeSimulationClient`
@@ -1221,8 +1279,9 @@ from the spawn. The worker clears the target on death.
 id: the local player from `WorldSceneContext.LocalPlayer`, another player from
 `WorldSceneContext.TryGetRemotePlayer`, and a world actor from
 `WorldActorPresentationController.TryGetView`, with the height for health bars.
-Approach, arrows, health bars, and damage numbers use it; the worker never
-sees these positions.
+Approach, arrows, health bars, and damage numbers use it and read the presented
+position every frame, so they follow a moving Mob; the worker never sees these
+positions.
 
 `CombatServerClock` is the client's best estimate of the worker's current tick
 for presentation: the tick of the newest owner snapshot,
@@ -1344,6 +1403,15 @@ the neutral Actor Studio round trip. Existing corpse protocol and client tests
 continue to cover the shared Mob presentation path, so no scene or prefab
 fixture is added.
 
+`MobMovementPresentationTests` verify that snapshot entities reach only
+presented Mob views and that a despawned or unconfigured view ignores them, the
+shared delay and snapshot interval, a walk that starts at the rest pose and
+settles on the rest state without a frame step of a whole tick, that a late
+older snapshot cannot pull the Mob back, the direct jump without recent
+snapshots and for a teleport, that a settled rest does no per-frame work, the
+restart from a settled rest, and that a Mob view ignores an unchanged state,
+clears its movement while hidden, and returns at its reliable pose.
+
 `ClientAssemblyArchitectureTests` pins the assembly graph described in
 [Assemblies](#assemblies). `ClientAddressablesTests` compares the committed
 Addressables settings with `ClientAddressablesLayout`, resolves every fixed
@@ -1398,6 +1466,9 @@ Manual flows and expected results are documented in
 - Keep authored collision in `WorldData`; never duplicate scene geometry as
   hand-maintained server constants.
 - Keep prediction and reconciliation separate from remote interpolation.
+- Present every remote entity that moves through snapshots with
+  `RemoteMovementPresenter`, so players and Mobs share one render clock, delay,
+  and grounded presentation.
 - Plan routes only through `LocalPlayerNavigator` and the shared planner, and
   route world clicks through `IWorldClickHandler` and `WorldPointerFocus` instead
   of reading the mouse in feature code.

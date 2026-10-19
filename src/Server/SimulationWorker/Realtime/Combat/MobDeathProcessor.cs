@@ -64,6 +64,9 @@ internal sealed class MobDeathProcessor(
     // Hears every Mob that respawned, so combat and presence add it.
     public Action<WorldActorRuntimeState>? Respawned { get; set; }
 
+    // Hears every Mob that left the world, so its brain stops.
+    public Action<ulong>? Despawned { get; set; }
+
     public int PendingDeaths => deaths.Count;
 
     public void Begin(Combatant combatant, SimulationDeathKillerRequest? killer)
@@ -211,6 +214,7 @@ internal sealed class MobDeathProcessor(
     {
         var actor = death.Actor;
         combatants.Remove(actor.NetworkEntityId, out _);
+        Despawned?.Invoke(actor.NetworkEntityId);
         if (worldActorStore is null || !worldActorStore.TryDespawn(actor.NetworkEntityId, out _))
         {
             return;

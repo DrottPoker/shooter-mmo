@@ -1563,15 +1563,15 @@ corpse in Unity, follow [Combat Verification](#combat-verification).
 Protocol 18 adds target-based combat to SimulationWorker: attack targets,
 attack timing, arrows and their batches, damage, player and Mob death, Mob loot
 and respawn, player respawn, regeneration, and the Shard rule. Unity attacks
-with a left click and shows the combat with temporary presentation. Mobs stand
-still and do not attack until the Mob AI step of the
-[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md). The worker's
+with a left click and shows the combat with temporary presentation, and Mobs
+detect, chase, bite, and evade home as
+[Mob Brains](SERVICE_FEATURES.md#mob-brains) describes. The worker's
 socket-level tests cover the authoritative flow:
 
 ```powershell
 dotnet test tests/Server/Mmorpg.SimulationWorker.Tests `
   --configuration Release `
-  --filter "FullyQualifiedName~RealtimeCombatTests|FullyQualifiedName~CombatRulesTests|FullyQualifiedName~CombatMathTests|FullyQualifiedName~CombatLoadoutTests|FullyQualifiedName~CombatGeometryTests|FullyQualifiedName~MobLootRollerTests"
+  --filter "FullyQualifiedName~RealtimeCombatTests|FullyQualifiedName~RealtimeMobAiTests|FullyQualifiedName~MobPathPlanningQueueTests|FullyQualifiedName~CombatRulesTests|FullyQualifiedName~CombatMathTests|FullyQualifiedName~CombatLoadoutTests|FullyQualifiedName~CombatGeometryTests|FullyQualifiedName~MobLootRollerTests"
 ```
 
 Expected result: every selected test passes. Over real UDP against the scripted
@@ -1582,7 +1582,11 @@ character commits its death once and respawns at the spawn, shots commit before
 a leave, after a disconnect, and behind a batch that finished while the worker
 stopped, an equipment change holds attacks for the lockout, only the lethal
 arrow of a volley hits and takes the kill, a wolf without a corpse despawns
-after its death reached the viewer, and a synthetic bot is no target.
+after its death reached the viewer, and a synthetic bot is no target. The Mob
+tests show a wolf that detects, chases, and bites a player and comes to rest
+next to it, a wolf that kills a player as the recorded killer, a wolf that
+evades home past its leash and heals fully, a defensive wolf that fights only
+back, and 60 wolves that all reach their target through the planning budget.
 
 Play the combat loop on the local stack:
 
@@ -1616,16 +1620,22 @@ Play the combat loop on the local stack:
    walk, and the status reads `No weapon equipped`. Without arrows it reads `No
    ammunition`, and right after swapping the bow it reads `Equipment changed`
    for about 1 second.
-10. Join a second client with another character and attack it until it dies,
-    because Mobs do not attack before the Mob AI step. Expected result on the
-    dead client: `You died` with `Respawning in 5 s` counting down, clicks do
-    nothing while dead, and after the respawn the character stands at the World
-    spawn with full health and does not walk on. Its items are in its corpse at
-    the place of death.
-11. With the [Monitoring Stack](#monitoring-stack) running, open the MMORPG
+10. Walk to within about 8 m of a wolf and stand still. Expected result: the
+    wolf runs to the character and bites, the health in the frame drops, and
+    the wolf's health bar shows it in combat. Walk away about 35 m. Expected
+    result: the wolf turns back, the target frame shows `Returning home`, arrows
+    do no damage while it runs, and it arrives at its place with full health.
+11. Let the Feral Alpha at `(-120, 0, -195)` or several wolves kill the
+    character. Expected result: `You died` with `Respawning in 5 s` counting
+    down, clicks do nothing while dead, and after the respawn the character
+    stands at the World spawn with full health and does not walk on. Its items
+    are in its corpse at the place of death, and the wolves walk home. A second
+    client with another character can also be attacked until it dies.
+12. With the [Monitoring Stack](#monitoring-stack) running, open the MMORPG
     Playtest dashboard. Expected result: the `Combat` panel shows the attacks,
-    hits, and deaths, and the `Arrows and deaths` panel shows the committed
-    arrow batches.
+    hits, deaths, engaged and moving Mobs, and Mob routes, the `Tick phases`
+    panel shows the Mob and combat phases, and the `Arrows and deaths` panel
+    shows the committed arrow batches.
 
 No manual Unity Editor steps are required. The combat client adds no scene,
 prefab, Inspector reference, input action, or asset; `ClientBootstrap` creates
