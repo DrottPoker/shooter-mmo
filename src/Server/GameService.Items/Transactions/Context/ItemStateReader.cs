@@ -83,6 +83,24 @@ internal sealed class ItemStateReader(
             cancellationToken: cancellationToken));
     }
 
+    // The item that the character has equipped in the slot, or null when the slot is empty.
+    public Task<Guid?> LoadEquippedItemIdAsync(
+        Guid characterId,
+        string equipmentSlotId,
+        CancellationToken cancellationToken)
+    {
+        return Connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
+            """
+            select id
+            from item_instances
+            where equipped_character_id = @CharacterId
+              and equipment_slot_id = @EquipmentSlotId;
+            """,
+            new { CharacterId = characterId, EquipmentSlotId = equipmentSlotId },
+            Transaction,
+            cancellationToken: cancellationToken));
+    }
+
     public async Task<LockedContainer> LoadOwnedContainerAsync(
         Guid containerId,
         Guid characterId,

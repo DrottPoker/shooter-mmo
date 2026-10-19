@@ -1,6 +1,6 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 Status: Decided. Every rule in the sections below is decided and implemented
 unless it says planned. Planned work, proposals, and open questions are collected
@@ -231,9 +231,16 @@ Equipping moves a whole stack only when it fits the slot limit, which is the
 smaller of the slot maximum quantity and the definition stack size. A compatible
 stack dropped on the equipped stack tops it up to that limit, and a split from
 the equipped stack moves part of it into an empty container slot. An equipped
-stack has zero carried weight like every other equipped item. Equipping into a
-blocked slot, or equipping an item that would block an occupied slot, is
-rejected with `equipment_slot_blocked`. At death an equipped stack follows the
+stack has zero carried weight like every other equipped item. Equipping an item
+onto an occupied slot swaps in one transaction: the equipped item moves into the
+container slot the new item came from. That slot must accept the equipped item
+as an unequip into it would, so a Secure Container slot refuses an ineligible
+item and a non-empty equipped Bag cannot leave its slot, and the carry cap must
+hold afterwards. A stack of the equipped definition tops up the equipped stack
+through a merge instead of swapping, and an equip request for such a stack is
+rejected with `equipment_slot_occupied`. Equipping into a blocked slot, or equipping an item that
+would block an occupied slot, is rejected with `equipment_slot_blocked`; the
+item a swap replaces no longer blocks anything. At death an equipped stack follows the
 normal death rules and keeps its quantity in the matching corpse equipment slot,
 which applies the same limit. Corpse loot still enters carried storage only.
 

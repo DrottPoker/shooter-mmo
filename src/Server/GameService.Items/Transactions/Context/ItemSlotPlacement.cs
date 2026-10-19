@@ -259,14 +259,16 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
     }
 
     // Checks that the item can enter the empty equipment slot with its whole quantity and that
-    // no equipped item blocks the slot or is blocked by the item.
+    // no equipped item blocks the slot or is blocked by the item. A swap names the equipped
+    // item it replaces: that occupant may hold the slot, and the slots it blocks no longer count.
     public async Task EnsureEquipmentDestinationAsync(
         Guid characterId,
         string equipmentSlotId,
         ResolvedItemDefinition definition,
         int quantity,
         bool bagHasContents,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? replacedOccupantItemInstanceId = null)
     {
         var slot = await LoadEquipmentSlotAsync(characterId, equipmentSlotId, cancellationToken);
         if (slot is null
@@ -283,7 +285,8 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
         }
 
         EnsureEquipmentQuantity(slot, definition, quantity);
-        if (slot.OccupantItemInstanceId is not null)
+        if (slot.OccupantItemInstanceId is not null
+            && slot.OccupantItemInstanceId != replacedOccupantItemInstanceId)
         {
             Reject(
                 ItemTransactionErrorCodes.EquipmentSlotOccupied,
@@ -307,6 +310,8 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
                     new { CharacterId = characterId },
                     Transaction,
                     cancellationToken: cancellationToken)))
+            .Where(row => replacedOccupantItemInstanceId is null
+                || !string.Equals(row.EquipmentSlotId, equipmentSlotId, StringComparison.Ordinal))
             .GroupBy(row => row.EquipmentSlotId, StringComparer.Ordinal)
             .ToDictionary(
                 group => group.Key,

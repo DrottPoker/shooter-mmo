@@ -993,7 +993,9 @@ granted, so the character stays empty for the corrected package.
    green with the caption `Weight 1040 / 2500    Load 41.6%    Speed 100%`.
 3. Drag the shortbow, jerkin, pickaxe, or ring from Permanent inventory onto a
    compatible empty equipment slot. Drag the equipped item onto an empty
-   Permanent slot to unequip it. Valid targets highlight green, invalid targets
+   Permanent slot to unequip it. Drag a second compatible item onto an occupied
+   equipment slot: the two swap, and the previously equipped item appears in the
+   slot the new one came from. Valid targets highlight green, invalid targets
    highlight red, the dragged label trails beside the pointer without covering
    the target, and the UI waits for the committed refresh before showing the
    new location. The carry meter drops by the equipped item's own weight and
