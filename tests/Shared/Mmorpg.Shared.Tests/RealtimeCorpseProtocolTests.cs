@@ -93,7 +93,25 @@ public sealed class RealtimeCorpseProtocolTests
                 Guid.NewGuid(),
                 10,
                 Guid.NewGuid(),
-                11)
+                11),
+            RealtimeCorpseInteractionIntent.CreateLootToEquipment(
+                Guid.NewGuid(),
+                corpseId,
+                12,
+                Guid.NewGuid(),
+                3,
+                "main_hand",
+                Guid.NewGuid(),
+                6),
+            RealtimeCorpseInteractionIntent.CreateLootToEquipment(
+                Guid.NewGuid(),
+                corpseId,
+                13,
+                Guid.NewGuid(),
+                4,
+                "ammunition",
+                Guid.Empty,
+                0)
         };
 
         foreach (var expected in intents)
@@ -132,7 +150,25 @@ public sealed class RealtimeCorpseProtocolTests
             Assert.Equal(
                 expected.ExpectedPlayerBagContentsRevision,
                 actual.ExpectedPlayerBagContentsRevision);
+            Assert.Equal(expected.EquipmentSlotId, actual.EquipmentSlotId);
         }
+    }
+
+    [Fact]
+    public void EquipmentLootThatNamesTheLootedItemAsTheEquippedItemIsRejected()
+    {
+        var itemId = Guid.NewGuid();
+        Assert.Throws<ArgumentException>(() =>
+            RealtimeProtocol.EncodeCorpseInteractionIntent(
+                RealtimeCorpseInteractionIntent.CreateLootToEquipment(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    1,
+                    itemId,
+                    1,
+                    "main_hand",
+                    itemId,
+                    1)));
     }
 
     [Fact]

@@ -290,7 +290,8 @@ internal sealed record GrantMobLootCommand(
     int Quantity,
     Guid DestinationContainerId,
     long ExpectedDestinationContainerRevision,
-    int DestinationSlotIndex);
+    int DestinationSlotIndex,
+    string? EquipmentSlotId = null);
 
 internal sealed record ExpireCorpseCommand(Guid CorpseId);
 

@@ -99,10 +99,10 @@ internal sealed class CorpseInteractionHandler(
         authorityScheduler.Enqueue(context, new QueuedCorpseOperation(this, intent));
     }
 
-    // Depositing an equipped item or swapping Bags changes an equipment slot.
+    // Looting into equipment, depositing an equipped item, or swapping Bags changes an equipment slot.
     private bool MayChangeEquipment(ActiveSimulationSession session, RealtimeCorpseInteractionIntent intent)
     {
-        if (intent.OperationKind == RealtimeCorpseInteractionKind.SwapBag)
+        if (intent.OperationKind is RealtimeCorpseInteractionKind.SwapBag or RealtimeCorpseInteractionKind.LootToEquipment)
         {
             return true;
         }

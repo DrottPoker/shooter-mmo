@@ -6,12 +6,20 @@ namespace Mmorpg.GameProtocol
     // messages, and the generator writes their models and codecs.
     public static partial class RealtimeProtocol
     {
-        // A bag swap exchanges two different bags with two different contents containers.
+        // A bag swap exchanges two different bags with two different contents containers, and
+        // a loot into equipment never names the looted item as the equipped item it replaces.
         private static bool SatisfiesRules(RealtimeCorpseInteractionIntent intent)
         {
-            return intent.OperationKind != RealtimeCorpseInteractionKind.SwapBag
-                || (intent.ItemInstanceId != intent.PlayerBagItemInstanceId
-                    && intent.CorpseBagContentsContainerId != intent.PlayerBagContentsContainerId);
+            switch (intent.OperationKind)
+            {
+                case RealtimeCorpseInteractionKind.SwapBag:
+                    return intent.ItemInstanceId != intent.PlayerBagItemInstanceId
+                        && intent.CorpseBagContentsContainerId != intent.PlayerBagContentsContainerId;
+                case RealtimeCorpseInteractionKind.LootToEquipment:
+                    return intent.TargetItemInstanceId != intent.ItemInstanceId;
+                default:
+                    return true;
+            }
         }
 
         // Only a failed operation can leave the corpse view stale.

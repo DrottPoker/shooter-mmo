@@ -1,5 +1,6 @@
 using System.Data;
 using Dapper;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
@@ -202,7 +203,8 @@ internal sealed partial class CorpseService(
                     request.Quantity,
                     request.DestinationContainerId,
                     request.ExpectedDestinationContainerRevision,
-                    request.DestinationSlotIndex)),
+                    request.DestinationSlotIndex,
+                    string.IsNullOrWhiteSpace(request.EquipmentSlotId) ? null : request.EquipmentSlotId.Trim())),
             cancellationToken);
         return MapTransactionResult(
             result,
@@ -811,9 +813,14 @@ internal sealed partial class CorpseService(
             && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
             && Identifiers.IsContentIdentifier(request.DefinitionId)
             && request.Quantity > 0
-            && request.DestinationContainerId != Guid.Empty
-            && request.ExpectedDestinationContainerRevision >= 0
-            && request.DestinationSlotIndex >= 0;
+            && (string.IsNullOrWhiteSpace(request.EquipmentSlotId)
+                ? request.DestinationContainerId != Guid.Empty
+                    && request.ExpectedDestinationContainerRevision >= 0
+                    && request.DestinationSlotIndex >= 0
+                : MobLootRules.NamesEquipmentDestinationOnly(
+                    request.DestinationContainerId,
+                    request.ExpectedDestinationContainerRevision,
+                    request.DestinationSlotIndex));
     }
 
 

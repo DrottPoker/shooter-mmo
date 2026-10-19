@@ -6,7 +6,7 @@ namespace Mmorpg.SharedTests
 {
     public static partial class RealtimeProtocolGolden
     {
-        // Payload bytes after the seven-byte header, pinned from protocol version 18.
+        // Payload bytes after the seven-byte header, pinned from protocol version 19.
         private static readonly Dictionary<string, string> PayloadVectors = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Combat/CombatEventBatch/full"] = "sha256:965:d57dbf86bcfa60cb62322a23e3cfa6fd1b0e9e60ac337a2ce37233bf924110ec",
@@ -98,6 +98,20 @@ namespace Mmorpg.SharedTests
                 "00 05 00 00 00 30 31 32 33 34 35 36 37 38 39 3a " +
                 "3b 3c 3d 3e 3f 09 00 00 00 00 00 00 00 00 00 00 " +
                 "00 00",
+            ["Corpses/CorpseInteractionIntent/loot to equipment"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "0b a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
+                "af 03 00 00 00 00 00 00 00 20 21 22 23 24 25 26 " +
+                "27 28 29 2a 2b 2c 2d 2e 2f 06 00 00 00 00 00 00 " +
+                "00 09 00 6d 61 69 6e 5f 68 61 6e 64 00",
+            ["Corpses/CorpseInteractionIntent/loot to equipment with swap"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "0b a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
+                "af 03 00 00 00 00 00 00 00 20 21 22 23 24 25 26 " +
+                "27 28 29 2a 2b 2c 2d 2e 2f 06 00 00 00 00 00 00 " +
+                "00 09 00 6d 61 69 6e 5f 68 61 6e 64 01 40 41 42 " +
+                "43 44 45 46 47 48 49 4a 4b 4c 4d 4e 4f 08 00 00 " +
+                "00 00 00 00 00",
             ["Corpses/CorpseInteractionIntent/move item"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "09 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +

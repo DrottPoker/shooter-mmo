@@ -176,6 +176,12 @@ namespace Mmorpg.SharedTests
             Vector(
                 "swap bag",
                 () => RealtimeCorpseInteractionIntent.CreateSwapBag(G(1), G(10), 3, G(13), 6, G(14), 7, G(4), 8, G(15), 9));
+            Vector(
+                "loot to equipment",
+                () => RealtimeCorpseInteractionIntent.CreateLootToEquipment(G(1), G(10), 3, G(2), 6, "main_hand", Guid.Empty, 0));
+            Vector(
+                "loot to equipment with swap",
+                () => RealtimeCorpseInteractionIntent.CreateLootToEquipment(G(1), G(10), 3, G(2), 6, "main_hand", G(4), 8));
         }
 
         private static void RegisterCorpsePresenceCases(Registry r)

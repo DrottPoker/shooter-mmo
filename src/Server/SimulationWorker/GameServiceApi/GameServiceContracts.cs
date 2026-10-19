@@ -197,7 +197,8 @@ public sealed record SimulationMobLootGrantRequest(
     int Quantity,
     Guid DestinationContainerId,
     long ExpectedDestinationContainerRevision,
-    int DestinationSlotIndex);
+    int DestinationSlotIndex,
+    string? EquipmentSlotId = null);
 
 public sealed record SimulationItemTransactionResponse(
     Guid OperationId,
@@ -340,7 +341,8 @@ public sealed record SimulationCorpseMutationRequest(
     Guid? PlayerBagItemInstanceId = null,
     long? ExpectedPlayerBagRevision = null,
     Guid? PlayerBagContentsContainerId = null,
-    long? ExpectedPlayerBagContentsRevision = null);
+    long? ExpectedPlayerBagContentsRevision = null,
+    string? EquipmentSlotId = null);
 
 public sealed record CorpseMutationResponse(
     SimulationItemTransactionResponse Transaction,

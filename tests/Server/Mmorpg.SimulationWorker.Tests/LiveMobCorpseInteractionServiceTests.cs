@@ -63,6 +63,63 @@ public sealed class LiveMobCorpseInteractionServiceTests
         Assert.True(result.RequiresCorpseRefresh);
     }
 
+    [Fact]
+    public async Task EquipmentLootClaimsIntoAnEmptySlotAndNeverSwapsLiveLoot()
+    {
+        var handler = new CapturingUnavailableHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://game-service.test")
+        };
+        var corpseStore = new LiveMobCorpseStore(TimeProvider.System);
+        var itemStateStore = new CharacterItemStateStore();
+        var service = new LiveMobCorpseInteractionService(
+            corpseStore,
+            new GameServiceClient(httpClient),
+            itemStateStore);
+        var corpse = corpseStore.CreateOrGet(CreateCorpse());
+        var lootEntry = corpse.Loot.Single();
+        var session = CreateSession(new PlayerCarryState(3, 0, 200));
+        itemStateStore.Register(
+            session.CharacterId,
+            session.SimulationSessionId,
+            CharacterStateTestData.ItemState(session.CarryState),
+            out _);
+
+        var swap = await service.MutateAsync(
+            session,
+            RealtimeCorpseInteractionIntent.CreateLootToEquipment(
+                Guid.NewGuid(),
+                corpse.CorpseId,
+                corpse.Revision,
+                lootEntry.LootEntryId,
+                0,
+                "ammunition",
+                Guid.NewGuid(),
+                2),
+            CancellationToken.None);
+        Assert.Equal("live_mob_corpse_operation_unsupported", swap.Error!.Code);
+        Assert.Empty(handler.Bodies);
+
+        await service.MutateAsync(
+            session,
+            RealtimeCorpseInteractionIntent.CreateLootToEquipment(
+                Guid.NewGuid(),
+                corpse.CorpseId,
+                corpse.Revision,
+                lootEntry.LootEntryId,
+                0,
+                "ammunition",
+                Guid.Empty,
+                0),
+            CancellationToken.None);
+
+        using var request = JsonDocument.Parse(Assert.Single(handler.Bodies));
+        Assert.Equal("ammunition", request.RootElement.GetProperty("equipmentSlotId").GetString());
+        Assert.Equal(Guid.Empty, request.RootElement.GetProperty("destinationContainerId").GetGuid());
+        Assert.Equal(-1, request.RootElement.GetProperty("destinationSlotIndex").GetInt32());
+    }
+
     private static LiveMobCorpseState CreateCorpse()
     {
         var createdAt = DateTime.UtcNow;

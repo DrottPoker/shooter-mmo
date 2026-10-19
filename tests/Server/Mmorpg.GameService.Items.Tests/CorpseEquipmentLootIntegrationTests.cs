@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items.Tests.ItemTransactions;
+using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
@@ -92,6 +93,58 @@ public sealed class CorpseEquipmentLootIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.EquipmentLevelRequirementNotMet, tooLowLevel.Error!.Code);
         Assert.NotNull((await world.LoadItemAsync(scenario.BowId)).ContainerId);
         Assert.NotNull((await world.LoadItemAsync(scenario.HelmId)).ContainerId);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task LiveMobLootGrantsStraightIntoAnEmptyEquipmentSlotOnly()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("live_equipment_looter");
+        var characterId = player.Character.Id;
+        var session = await world.JoinAsync(player);
+
+        var granted = await GrantLiveLootAsync(world, session, characterId, "fixture.arrow", 8, "ammunition");
+
+        ItemScenarioWorld.AssertCommitted(granted);
+        var arrows = Assert.Single(granted.ItemRevisions).ItemInstanceId;
+        Assert.Equal(arrows, await LoadEquippedItemAsync(world, characterId, "ammunition"));
+        Assert.Empty(granted.ContainerRevisions);
+
+        // The worker cannot take live loot back, so an occupied slot never swaps or merges.
+        var occupied = await GrantLiveLootAsync(world, session, characterId, "fixture.arrow", 5, "ammunition");
+        Assert.False(occupied.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentSlotOccupied, occupied.Error!.Code);
+        Assert.Equal(8, (await world.LoadItemAsync(arrows)).Quantity);
+    }
+
+    private static async Task<ItemTransactionResult> GrantLiveLootAsync(
+        ItemScenarioWorld world,
+        ConsumedSimulationJoinTicketResponse session,
+        Guid characterId,
+        string definitionId,
+        int quantity,
+        string equipmentSlotId)
+    {
+        var state = await world.LoadStateAsync(characterId);
+        var grantId = Guid.NewGuid();
+        return await world.Context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<GrantMobLootCommand>(
+                grantId,
+                ItemScenarioWorld.SimulationActor(session),
+                new GrantMobLootCommand(
+                    characterId,
+                    state.Revision,
+                    grantId,
+                    Guid.NewGuid(),
+                    "mob.feral_wolf",
+                    definitionId,
+                    quantity,
+                    Guid.Empty,
+                    0,
+                    -1,
+                    equipmentSlotId)),
+            CancellationToken.None);
     }
 
     private sealed record LootScenario(Guid LooterId, Guid CorpseId, Guid BowId, Guid ArrowsId, Guid HelmId);

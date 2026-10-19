@@ -8,7 +8,7 @@ using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SharedTests
 {
-    // Golden wire cases for realtime protocol version 18. Compiled into both the Unity
+    // Golden wire cases for realtime protocol version 19. Compiled into both the Unity
     // EditMode tests and the .NET backend tests, so both runtimes must produce and accept
     // exactly these bytes. Change a vector only together with an intended protocol change
     // and a protocol version bump.
@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 18;
+        public const ushort PinnedVersion = 19;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -297,7 +297,7 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeCorpseInteractionKind>(
                 failures,
                 "Open=1 Close=2 Refresh=3 LootItem=4 LootPartialStack=5 SwapBag=6 DepositItem=7 DepositPartialStack=8 "
-                + "MoveItem=9 MovePartialStack=10");
+                + "MoveItem=9 MovePartialStack=10 LootToEquipment=11");
             ExpectEnum<RealtimeCorpseViewUpdateKind>(failures, "Snapshot=1 Delta=2");
             ExpectEnum<RealtimeWorldActorKind>(failures, "Npc=1 Mob=2 ResourceNode=3");
             ExpectEnum<RealtimeWorldActorDisposition>(failures, "Friendly=1 Neutral=2 Hostile=3");
@@ -324,7 +324,7 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 12 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 13 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);

@@ -4,7 +4,8 @@ using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
-// Grants live Mob loot to the looting character under a derived item id.
+// Grants live Mob loot to the looting character under a derived item id, into a container slot
+// or straight into an empty equipment slot.
 internal sealed class MobLootGrantCommandHandler
     : IItemCommandHandler<GrantMobLootCommand>
 {
@@ -13,6 +14,7 @@ internal sealed class MobLootGrantCommandHandler
         GrantMobLootCommand command,
         CancellationToken cancellationToken)
     {
+        var toEquipment = command.EquipmentSlotId is not null;
         if (context.Actor.Authority != ItemTransactionAuthority.SimulationWorker
             || command.GrantId == Guid.Empty
             || command.GrantId != context.OperationId
@@ -20,9 +22,15 @@ internal sealed class MobLootGrantCommandHandler
             || !Identifiers.IsContentIdentifier(command.SourceActorDefinitionId)
             || command.CharacterId == Guid.Empty
             || command.ExpectedCharacterRevision < 0
-            || command.DestinationContainerId == Guid.Empty
-            || command.ExpectedDestinationContainerRevision < 0
-            || command.DestinationSlotIndex < 0)
+            || (toEquipment
+                ? string.IsNullOrWhiteSpace(command.EquipmentSlotId)
+                    || !MobLootRules.NamesEquipmentDestinationOnly(
+                        command.DestinationContainerId,
+                        command.ExpectedDestinationContainerRevision,
+                        command.DestinationSlotIndex)
+                : command.DestinationContainerId == Guid.Empty
+                    || command.ExpectedDestinationContainerRevision < 0
+                    || command.DestinationSlotIndex < 0))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.MobLootGrantInvalid,
@@ -34,6 +42,12 @@ internal sealed class MobLootGrantCommandHandler
                 command.CharacterId,
                 command.ExpectedCharacterRevision)],
             cancellationToken);
+        if (toEquipment)
+        {
+            await GrantIntoEquipmentAsync(context, command, cancellationToken);
+            return;
+        }
+
         await context.Locks.LockMutationScopeAsync(
             [],
             [command.DestinationContainerId],
@@ -88,6 +102,64 @@ internal sealed class MobLootGrantCommandHandler
             },
             context.Transaction,
             cancellationToken: cancellationToken));
+        await JournalGrantAsync(context, command, itemInstanceId, cancellationToken);
+        context.Journal.TouchContainer(destination.ContainerId);
+    }
+
+    // Live Mob loot never swaps or merges, because the worker holds the corpse in memory and
+    // cannot take an item back, so the equipment slot must be empty.
+    private static async Task GrantIntoEquipmentAsync(
+        ItemTransactionContext context,
+        GrantMobLootCommand command,
+        CancellationToken cancellationToken)
+    {
+        var definition = await context.State.LoadDefinitionAsync(
+            command.DefinitionId,
+            cancellationToken);
+        MobLootRules.ValidateMobLootDefinition(definition, command.Quantity);
+        var equipmentSlotId = command.EquipmentSlotId!;
+        await context.Placement.EnsureEquipmentDestinationAsync(
+            command.CharacterId,
+            equipmentSlotId,
+            definition,
+            command.Quantity,
+            false,
+            cancellationToken);
+        var itemInstanceId = ScopedGuid.Create("mob-loot-item", command.GrantId);
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            insert into item_instances (
+                id,
+                definition_id,
+                quantity,
+                equipped_character_id,
+                equipment_slot_id)
+            values (
+                @ItemInstanceId,
+                @DefinitionId,
+                @Quantity,
+                @CharacterId,
+                @EquipmentSlotId);
+            """,
+            new
+            {
+                ItemInstanceId = itemInstanceId,
+                DefinitionId = definition.RuntimeDefinition.Id,
+                command.Quantity,
+                command.CharacterId,
+                EquipmentSlotId = equipmentSlotId
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+        await JournalGrantAsync(context, command, itemInstanceId, cancellationToken);
+    }
+
+    private static async Task JournalGrantAsync(
+        ItemTransactionContext context,
+        GrantMobLootCommand command,
+        Guid itemInstanceId,
+        CancellationToken cancellationToken)
+    {
         var afterState = await context.Journal.CaptureItemStateJsonAsync(
             itemInstanceId,
             cancellationToken);
@@ -107,7 +179,6 @@ internal sealed class MobLootGrantCommandHandler
                 command.CharacterId,
                 ItemInstanceId = itemInstanceId
             });
-        context.Journal.TouchContainer(destination.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);
         context.Journal.IncludeResultItem(itemInstanceId);
     }
