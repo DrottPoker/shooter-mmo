@@ -168,6 +168,86 @@ pull requests. Close them and let the next monthly run, or a manual check under
 settings from applying to the project files Unity generates, and those files
 and their NuGet lock file are ignored by Git.
 
+## Pull Request Workflow
+
+Every task reaches `development` through a pull request from its own branch,
+as `AGENTS.md` describes under Branches and Task Workflow. Two scripts carry a
+pull request from opened to merged and cleaned up without anyone watching it.
+Both need the GitHub CLI signed in and run in Windows PowerShell 5.1.
+
+Wait until the pull request is ready or needs work, from the checkout that has
+its branch checked out:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Wait-PullRequest.ps1 -Number <number>
+```
+
+The script polls GitHub every 30 seconds and returns as soon as there is
+something to act on. Ready means that GitHub reports the expected commit as the
+pull request head (the local `HEAD` when the branch is checked out, or
+`-HeadCommit`), every check passed, including every check that
+`.github/rulesets/development-ci-gate.json` requires, the Codex review bot
+(`chatgpt-codex-connector[bot]`) finished a review of the head commit, no
+review thread is unresolved, and GitHub reports the pull request mergeable. The
+Codex state is read from the bot's summary comment. The bot reviews by itself
+only when a pull request opens, so for a later head the script posts an
+`@codex review` comment, marked with the head commit in an HTML comment. It
+gives the bot 20 minutes (`-CodexWaitMinutes`) after the pull request opens and
+after each request, and asks at most twice per head. The bot's
+`has_unresolved_findings` flag stays true after its threads are resolved, so
+the review threads decide. `-NoWait` evaluates once and never posts.
+
+| Exit code | Meaning | Next step |
+| --- | --- | --- |
+| 0 | Ready to merge | Run `Complete-PullRequest.ps1` |
+| 1 | A check failed; the report links each failed run | Read the log with `gh run view <run-id> --log-failed`, fix, push, wait again |
+| 2 | Unresolved review threads; the report links each one | Fix every valid finding, reply, resolve the thread, push, wait again |
+| 3 | Merge conflict with `development` | Merge `origin/development` into the branch, resolve, push, wait again |
+| 4 | The pull request is not open | Nothing to wait for |
+| 5 | Timed out after 120 minutes (`-TimeoutMinutes`) | Check the self-hosted Unity runner, then wait again |
+| 6 | Not ready yet (only with `-NoWait`) | Wait without `-NoWait` |
+| 7 | GitHub could not be read five times in a row | Check `gh auth status` and the network |
+| 8 | Everything else is ready, but the Codex bot did not review the head after two requests | Merge with `-AllowMissingCodexReview` and say in the task summary that the head has no Codex review |
+
+Merge the ready pull request and clean up:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Complete-PullRequest.ps1 -Number <number> -Subject "Merge the <what the change does>"
+```
+
+The script reads the pull request head once, checks readiness for exactly that
+commit, and merges into `development` with a merge commit only while the head
+is still that commit, so a push in between is never merged unchecked. The body
+defaults to `<pull request title> (#<number>).`. `-AllowMissingCodexReview`
+accepts exit code 8 of the readiness check. It then deletes the branch on
+GitHub, but only while it still points to the merged head, and locally (when
+the current checkout has the branch checked out and no uncommitted changes, the
+main checkout switches to `development` and a task worktree detaches first),
+deletes every other local branch that is fully merged into
+`origin/development` and checked out in no worktree, fast-forwards the local
+`development` branch wherever it is checked out, prunes stale worktree records,
+and lists the remaining worktrees. For a pull request that is already merged,
+the script skips the merge and only runs the cleanup, so running it again
+finishes a cleanup that failed halfway, including returning a detached main
+checkout to `development`. Exit code 0 means merged and cleaned up,
+1 means nothing was merged, and 2 means merged but the cleanup is incomplete:
+the remote branch moved after the merge, the main checkout could not return to
+`development` and was left detached, the task branch had to stay
+(uncommitted changes in the current checkout, another worktree has it checked
+out, or it has commits that are not in `development`), or the local
+`development` does not match `origin/development` afterwards, usually because
+uncommitted changes in the main checkout block the fast-forward or local
+commits sit on `development`. The report says which. Because the cleanup
+deletes the head branch on `origin`, the script refuses pull requests whose
+head is `main` or `development`, comes from a fork, or has a branch name with
+characters other than letters, digits, `.`, `_`, `/`, and `-`.
+Never discard those changes to get past exit code 2.
+
+Expected result: the pull request shows as merged with a merge commit,
+`git branch -a` lists only `main`, `development`, and branches that other work
+still has checked out, and `development` in the main checkout matches
+`origin/development`.
+
 ## Realtime Protocol Generation
 
 The realtime protocol is described once in
