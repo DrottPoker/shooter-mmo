@@ -20,7 +20,10 @@ namespace Mmorpg.Client.Items
         Applied,
         Duplicate,
         Stale,
-        Invalid
+        Invalid,
+
+        // View state of a corpse the client neither views nor is opening.
+        Ignored
     }
 
     public sealed class CorpseClientError
@@ -310,6 +313,15 @@ namespace Mmorpg.Client.Items
         private uint presenceSequence;
         private ushort presenceChunkCount;
 
+        // The corpse whose view the client holds or has asked to open. View state and
+        // closures of any other corpse, such as the late state of a closed view, are ignored.
+        private Guid viewCorpseId;
+        private RealtimeCorpseInteractionKind pendingOperationKind;
+        private Guid pendingCorpseId;
+
+        // True when the worker closed the view while the pending operation was in flight.
+        private bool pendingOutlivedView;
+
         public event Action Changed;
 
         public CorpseClientStatus Status { get; private set; } = CorpseClientStatus.Unavailable;
@@ -345,7 +357,10 @@ namespace Mmorpg.Client.Items
             RaiseChanged();
         }
 
-        public void BeginOperation(Guid operationId)
+        public void BeginOperation(
+            Guid operationId,
+            RealtimeCorpseInteractionKind operationKind,
+            Guid corpseId)
         {
             if (operationId == Guid.Empty)
             {
@@ -354,66 +369,118 @@ namespace Mmorpg.Client.Items
                     nameof(operationId));
             }
 
+            if (corpseId == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "A corpse operation requires a corpse id.",
+                    nameof(corpseId));
+            }
+
             PendingOperationId = operationId;
+            pendingOperationKind = operationKind;
+            pendingCorpseId = corpseId;
+            pendingOutlivedView = false;
+            if (operationKind == RealtimeCorpseInteractionKind.Open)
+            {
+                viewCorpseId = corpseId;
+            }
+
             Status = CorpseClientStatus.Busy;
             Error = null;
             Notice = string.Empty;
             RaiseChanged();
         }
 
-        public void CompleteOperation(Guid operationId)
+        // Settles the pending operation with its result. False when the result does not
+        // answer the pending operation, which the caller treats as a protocol conflict.
+        public bool TryComplete(RealtimeCorpseInteractionResult result, out string error)
         {
-            if (PendingOperationId != operationId)
+            if (result == null
+                || PendingOperationId == Guid.Empty
+                || result.OperationId != PendingOperationId
+                || result.OperationKind != pendingOperationKind
+                || result.CorpseId != pendingCorpseId)
             {
-                return;
+                error = "The corpse operation result did not match the pending operation.";
+                return false;
             }
 
-            PendingOperationId = Guid.Empty;
-            Status = CorpseClientStatus.Ready;
-            Error = null;
-            Notice = string.Empty;
-            RaiseChanged();
-        }
-
-        public void SetError(Guid operationId, CorpseClientError error)
-        {
-            if (PendingOperationId != Guid.Empty
-                && operationId != Guid.Empty
-                && PendingOperationId != operationId)
+            error = string.Empty;
+            var outlivedView = pendingOutlivedView;
+            ClearPendingOperation();
+            if (outlivedView)
             {
-                return;
+                // The closure already explains how the view ended, so its notice or error
+                // stays, whatever this late result says.
+                Status = CorpseClientStatus.Ready;
+            }
+            else if (!result.Succeeded)
+            {
+                if (result.OperationKind == RealtimeCorpseInteractionKind.Open
+                    && ActiveView == null)
+                {
+                    viewCorpseId = Guid.Empty;
+                }
+
+                Status = CorpseClientStatus.Error;
+                Error = new CorpseClientError(
+                    result.Error?.Code ?? "corpse_operation_rejected",
+                    result.Error?.Message ?? "The corpse operation was rejected.");
+                Notice = string.Empty;
+            }
+            else if (result.OperationKind == RealtimeCorpseInteractionKind.Close)
+            {
+                // The viewer's own confirmed close ends the view without a message.
+                EndView(null, string.Empty);
+                return true;
+            }
+            else
+            {
+                Status = CorpseClientStatus.Ready;
+                Error = null;
+                Notice = string.Empty;
             }
 
-            PendingOperationId = Guid.Empty;
-            Status = CorpseClientStatus.Error;
-            Error = error;
-            Notice = string.Empty;
             RaiseChanged();
+            return true;
         }
 
-        // Ends the active view once the viewer's own close is confirmed.
-        public void CloseView()
+        // Ends the view for a closure the worker reported, and returns false for a closure
+        // of any other corpse. An intended end, such as an emptied or expired corpse, leaves
+        // a neutral notice instead of an error. A pending operation stays correlated,
+        // because the worker still sends its result.
+        public bool ApplyClosure(Guid corpseId, string code, string message)
         {
-            EndView(null, string.Empty);
-        }
+            if (viewCorpseId == Guid.Empty || corpseId != viewCorpseId)
+            {
+                return false;
+            }
 
-        // Ends the active view for a closure the worker reported. An intended end, such as
-        // an emptied or expired corpse, leaves a neutral notice instead of an error.
-        public void ApplyClosure(string code, string message)
-        {
             var closure = CorpseViewClosureRule.Classify(code, message);
+            pendingOutlivedView = PendingOperationId != Guid.Empty;
             EndView(closure.Error, closure.Notice);
+            return true;
         }
 
         private void EndView(CorpseClientError error, string notice)
         {
             ActiveView = null;
-            PendingOperationId = Guid.Empty;
-            Status = CorpseClientStatus.Ready;
+            viewCorpseId = Guid.Empty;
+            viewAssemblies.Clear();
+            Status = PendingOperationId == Guid.Empty
+                ? CorpseClientStatus.Ready
+                : CorpseClientStatus.Busy;
             Error = error;
             Notice = notice;
-            viewAssemblies.Clear();
             RaiseChanged();
+        }
+
+        private void ClearPendingOperation()
+        {
+            PendingOperationId = Guid.Empty;
+            pendingOperationKind = default;
+            pendingCorpseId = Guid.Empty;
+            pendingOutlivedView = false;
         }
 
         public void Reset()
@@ -425,7 +492,8 @@ namespace Mmorpg.Client.Items
             viewAssemblies.Clear();
             NearbyCorpses = Array.Empty<CorpsePresenceEntry>();
             ActiveView = null;
-            PendingOperationId = Guid.Empty;
+            viewCorpseId = Guid.Empty;
+            ClearPendingOperation();
             Status = CorpseClientStatus.Unavailable;
             Error = null;
             Notice = string.Empty;
@@ -518,6 +586,11 @@ namespace Mmorpg.Client.Items
                 return CorpseStateApplyResult.Invalid;
             }
 
+            if (viewCorpseId == Guid.Empty || chunk.CorpseId != viewCorpseId)
+            {
+                return CorpseStateApplyResult.Ignored;
+            }
+
             if (!viewAssemblies.TryGetValue(chunk.UpdateId, out var assembly))
             {
                 assembly = new ViewAssembly(chunk);
@@ -562,7 +635,9 @@ namespace Mmorpg.Client.Items
             }
 
             ActiveView = next;
-            Status = CorpseClientStatus.Ready;
+            Status = PendingOperationId == Guid.Empty
+                ? CorpseClientStatus.Ready
+                : CorpseClientStatus.Busy;
             Error = null;
             RaiseChanged();
             return CorpseStateApplyResult.Applied;
