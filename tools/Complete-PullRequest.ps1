@@ -6,8 +6,10 @@
 # out in no worktree, fast-forwards the local development branch, and prunes stale worktree
 # records. Run it again on an already merged pull request to finish a cleanup that failed.
 #
-# Exit codes: 0 merged and cleaned up, 1 not merged, 2 merged but the local development branch
-# could not be fast-forwarded. Never discard local work to fix exit code 2; the report says why.
+# Exit codes: 0 merged and cleaned up, 1 not merged, 2 merged but the cleanup is incomplete: the
+# remote branch moved after the merge, the current checkout has uncommitted changes, or the local
+# development branch could not be fast-forwarded. The report says why; never discard local work
+# to fix it.
 param(
     [Parameter(Mandatory = $true)]
     [int]$Number,
@@ -102,36 +104,56 @@ else {
 
 Invoke-Git fetch origin --prune --quiet | Out-Null
 $head = $pr.headRefName
+$mergedHead = "$($pr.headRefOid)"
+$exitCode = 0
 
-if (Test-Git ls-remote --exit-code --heads origin $head) {
-    Invoke-Git push origin --delete --quiet $head | Out-Null
-    Write-Output "Deleted remote branch $head"
+# Delete the remote branch only while it still points to the merged head, so commits pushed to
+# a reused branch name after the merge are never deleted.
+$remoteTip = @(Invoke-Git ls-remote origin "refs/heads/$head")
+if ($remoteTip.Count -eq 0) {
+    Write-Output "Remote branch $head is already gone"
+}
+elseif (($remoteTip[0] -split '\s+')[0] -ne $mergedHead) {
+    Write-Output "Kept remote branch $head because it no longer points to the merged head $($mergedHead.Substring(0, 7))"
+    $exitCode = 2
 }
 else {
-    Write-Output "Remote branch $head is already gone"
+    Invoke-Git push --quiet "--force-with-lease=refs/heads/${head}:$mergedHead" origin --delete $head | Out-Null
+    Write-Output "Deleted remote branch $head"
 }
 
 $currentRoot = Get-FullPath "$(Invoke-Git rev-parse --show-toplevel)"
 $worktrees = @(Get-Worktrees)
 $mainRoot = Get-FullPath $worktrees[0].Path
 $holder = $worktrees | Where-Object { $_.Branch -eq $head } | Select-Object -First 1
+$holderIsDirty = $false
 if ($holder -and (Get-FullPath $holder.Path) -eq $currentRoot) {
-    # The main checkout returns to development, which is fast-forwarded below. A task worktree
-    # is detached instead, because development is checked out in the main checkout.
-    $developmentHeld = @($worktrees | Where-Object { $_.Branch -eq "development" }).Count -gt 0
-    if ($currentRoot -eq $mainRoot -and -not $developmentHeld -and (Test-Git switch --quiet development)) {
-        Write-Output "Switched the main checkout to development"
+    if (@(Invoke-Git status --porcelain).Count -gt 0) {
+        # Leaving uncommitted work on a detached HEAD without its branch would hide it.
+        $holderIsDirty = $true
     }
     else {
-        Invoke-Git switch --detach --quiet | Out-Null
+        # The main checkout returns to development, which is fast-forwarded below. A task
+        # worktree is detached instead, because development is checked out in the main checkout.
+        $developmentHeld = @($worktrees | Where-Object { $_.Branch -eq "development" }).Count -gt 0
+        if ($currentRoot -eq $mainRoot -and -not $developmentHeld -and (Test-Git switch --quiet development)) {
+            Write-Output "Switched the main checkout to development"
+        }
+        else {
+            Invoke-Git switch --detach --quiet | Out-Null
+        }
+        $holder = $null
     }
-    $holder = $null
 }
 
 $deletedBranches = @()
 $keptBranches = @()
 if (Test-Git show-ref --verify --quiet "refs/heads/$head") {
-    if ($holder) {
+    if ($holderIsDirty) {
+        $keptBranches += "$head because this checkout has uncommitted changes; commit or move them, then run this script again"
+        $exitCode = 2
+    }
+    elseif ($holder) {
         $keptBranches += "$head (checked out in $($holder.Path))"
     }
     elseif (Test-Git merge-base --is-ancestor $head origin/development) {
@@ -161,7 +183,6 @@ foreach ($branch in $keptBranches) {
     Write-Output "Kept local branch $branch"
 }
 
-$exitCode = 0
 $developmentTip = "$(Invoke-Git rev-parse --short origin/development)"
 $developmentHolder = $worktrees | Where-Object { $_.Branch -eq "development" } | Select-Object -First 1
 if ($developmentHolder) {
