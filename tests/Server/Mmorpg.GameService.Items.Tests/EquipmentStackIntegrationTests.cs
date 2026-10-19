@@ -138,6 +138,28 @@ public sealed class EquipmentStackIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task EquippingAStackOntoTheSameEquippedDefinitionIsRejectedInsteadOfSwapped()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("arrow_swap_player");
+        var characterId = player.Character.Id;
+        var state = await world.LoadStateAsync(characterId);
+        var inventoryId = state.PermanentInventoryContainerId;
+        var equipped = await world.GrantAsync(characterId, "fixture.arrow", 30, inventoryId, 0);
+        var carried = await world.GrantAsync(characterId, "fixture.arrow", 20, inventoryId, 1);
+        await world.EquipAsync(characterId, equipped, "ammunition");
+
+        var result = await EquipAsync(world, characterId, carried, "ammunition");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentSlotOccupied, result.Error!.Code);
+        Assert.Equal(equipped, await LoadEquippedItemAsync(world, characterId, "ammunition"));
+        Assert.Equal(30, (await world.LoadItemAsync(equipped)).Quantity);
+        Assert.Equal(carried, await world.FindItemAsync(inventoryId, 1));
+    }
+
+    [PostgresIntegrationFact]
     public async Task ASwapStillRejectsASlotThatTheNewItemBlocks()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
