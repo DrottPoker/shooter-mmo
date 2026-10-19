@@ -62,6 +62,24 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(InventoryRefreshScope.Full));
         }
 
+        [Test]
+        public void AWorkerRevisionThatNoIntentCausedRefreshesOnceAfterOwnWork()
+        {
+            // A death commits a newer revision; the inventory asks for it once.
+            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 7, -1, false, false), Is.True);
+            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 7, 8, false, false), Is.False);
+            Assert.That(InventoryServerRevisionRule.ShouldRefresh(9, 7, 8, false, false), Is.True);
+
+            // The inventory already knows that revision, or there is no joined session.
+            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 8, -1, false, false), Is.False);
+            Assert.That(InventoryServerRevisionRule.ShouldRefresh(7, 8, -1, false, false), Is.False);
+            Assert.That(InventoryServerRevisionRule.ShouldRefresh(-1, -1, -1, false, false), Is.False);
+
+            // An own operation or refresh in flight settles first.
+            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 7, -1, true, false), Is.False);
+            Assert.That(InventoryServerRevisionRule.ShouldRefresh(8, 7, -1, false, true), Is.False);
+        }
+
         private static InventoryContainer Container(string type)
         {
             return new InventoryContainer(

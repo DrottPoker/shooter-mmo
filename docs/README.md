@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 This directory is the documentation entry point for MMORPG. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -64,8 +64,8 @@ operations, and future design do not drift into duplicate descriptions.
   click-to-move movement and camera, the combat triangle, damage types and
   resistances, weapons, ammunition, magic, mana, threat, healing, PvP combat,
   and professions. It replaces the earlier modern third-person shooter
-  direction. Its click-to-move movement and orbit camera are implemented; the
-  rest is not implemented yet.
+  direction. Its click-to-move movement, orbit camera, and first combat slice
+  are implemented; the rest is not implemented yet.
 - [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) is the canonical
   source of truth for the implemented scalable world-actor model, NPC and Mob
   distinction, composable NPC capabilities, visual spawn authoring, click
@@ -74,10 +74,12 @@ operations, and future design do not drift into duplicate descriptions.
   product and domain source of truth for items, equipment, slot inventory, Bags,
   the Secure Container, carry weight, death loot, corpses, insurance, and
   Recovery Storage, split into decided, proposed, and open rules.
-- [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) plans the MVP slice
-  for target-based combat and the first Mob: its product decisions, the
-  architecture of combat state, attack timing, ammunition batching, death events,
-  Mob AI, protocol, and client presentation, and the implementation order.
+- [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) records the
+  implemented MVP slice for target-based combat and the first Mob: its product
+  decisions, the architecture of combat state, attack timing, ammunition
+  batching, death events, Mob AI, protocol, and client presentation, the
+  implementation order, where the implementation differs, and the acceptance
+  run.
 - [Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
   records the delivered phases of the item and world-actor foundation. The
   current implementation status is in [Project Overview](PROJECT_OVERVIEW.md).

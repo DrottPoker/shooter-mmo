@@ -1,15 +1,16 @@
 # Combat And Mob Slice Plan
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
-Status: Decided and in progress. The product owner accepted every
-recommendation on 2026-10-18, including C1. Implementation follows the
-[Implementation Plan](#implementation-plan): step 1, the combat content,
-step 2, the GameService combat boundaries, step 3, the protocol and
-authoritative combat, step 4, the Unity combat presentation, and step 5, the Mob
-AI, are implemented; step 6 is not. Where steps 3 to 5 differ from this plan,
-[Step 3 Notes](#step-3-notes), [Step 4 Notes](#step-4-notes), and
-[Step 5 Notes](#step-5-notes) say how.
+Status: Implemented. The product owner accepted every recommendation on
+2026-10-18, including C1. All six steps of the
+[Implementation Plan](#implementation-plan) are done: step 1, the combat
+content, step 2, the GameService combat boundaries, step 3, the protocol and
+authoritative combat, step 4, the Unity combat presentation, step 5, the Mob AI,
+and step 6, the [Manual Acceptance](#manual-acceptance), which passed on
+2026-10-19. Where the steps differ from this plan,
+[Step 3 Notes](#step-3-notes), [Step 4 Notes](#step-4-notes),
+[Step 5 Notes](#step-5-notes), and [Step 6 Notes](#step-6-notes) say how.
 
 ## Purpose
 
@@ -650,6 +651,62 @@ Step 5 follows the [Mob AI](#mob-ai) design, described as built in
   Mob placed home, is shown at once. The client has no Mob capsule, so ground
   correction uses the player capsule, which is within 4 cm for the Feral Alpha
   on a 30 degree slope.
+
+### Step 6 Notes
+
+The full [Manual Acceptance](#manual-acceptance) loop ran on 2026-10-19 on the
+local stack in Development World 2. GameService and SimulationWorker ran from the
+main checkout, the Unity Editor was driven through the Unity CLI with a test
+account, and a headless second client built on `Mmorpg.Tools.SimulationBotClient`
+joined for the PvP step. Every step passed:
+
+1. A wolf noticed the character at about 7 m, ran to it, and bit.
+2. A click on a wolf walked the character into bow range. It shot, every hit
+   showed a white damage number, and the HUD arrow count dropped by one per
+   shot.
+3. A ground click while attacking cleared the target and stopped the shots, and
+   the arrow count stayed.
+4. Four arrows killed a wolf. Its corpse held a Wolf Pelt and three Bronze
+   Arrows, and both were looted.
+5. New wolves appeared at their spawns 30 s later.
+6. Taking the bow off reported `WeaponMissing`, equipping it again reported
+   `EquipmentLockout`, and the character attacked again about 1.0 s later.
+7. With the arrows gone the character kept its target and reported that it had
+   no ammunition. After the arrow batch committed, the inventory and a fresh
+   login showed the same count as the HUD.
+8. Wolves killed the character. The death committed once with killer
+   `mob.feral_wolf`, the corpse lay where the character fell, and 5 s later it
+   respawned at the World spawn with full health and nothing but its Secure
+   Container. The bow was looted back from the corpse.
+9. A wolf pulled past its leash evaded home and had full health there about 7 s
+   later. That an evading Mob takes no damage is covered by the socket-level
+   test; the manual run did not land a hit during the evade.
+10. The Unity archer killed the second client's character. The death partition
+    ran once with killer kind `character` and the archer's character id, and the
+    second client stayed connected through its deaths and left cleanly.
+
+The run found two client defects, fixed in this step:
+
+- **Inventory after a death.** The inventory refreshed only after its own
+  intents and when it opened, so after a death it showed the moved items until
+  the next login. A change that no intent caused, such as a death, reaches the
+  client only as a newer committed carry state, so `InventoryServerRevisionRule`
+  now refreshes the complete state once for each such revision, after the
+  client's own operation and refresh have settled.
+- **Death overlay.** The death overlay was part of the combat HUD canvas, which
+  sorts below the world interaction panel and the inventory, so an open
+  inventory or corpse view hid it. The overlay is now its own nested canvas that
+  sorts above every panel.
+
+These observations are no defects and are left for content tuning and the final
+UI:
+
+- The four Development World 2 wolves share one patrol path and move as a pack.
+  Three or four of them kill a 100 health archer in about 10 s.
+- After an emptied live Mob corpse closes, the client shows
+  `corpse_invalidated` as an error message, although nothing went wrong.
+- Spending the last arrow of the equipped stack starts the 1 s equipment
+  lockout, because the ammunition slot changes. Nothing can be shot then anyway.
 
 ## Coordination
 

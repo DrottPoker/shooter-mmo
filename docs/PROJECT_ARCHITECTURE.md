@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Purpose
 
@@ -29,7 +29,7 @@ The following terms are architectural contracts. Do not use `WorldServer`,
 | Shard | A player-selectable copy of the shared world simulation |
 | World actor | A server-owned runtime entity created from shared World content |
 | NPC | A social or service-oriented world actor assembled from composable capabilities |
-| Mob | A combat-oriented world actor with future AI, aggro, loot, corpse, and respawn behavior |
+| Mob | A combat-oriented world actor with AI, aggro, loot, corpse, and respawn behavior |
 | Zone | A future authoritative spatial partition inside a shard |
 | Layer | A future population copy of a zone or area inside one shard |
 
@@ -709,8 +709,8 @@ share the kernel. SimulationWorker holds only the bounded runtime corpse identit
 and presentation state returned by GameService, never PostgreSQL item rows or an
 alternate custody model. Exact-session corpse reads and mutations cover shared viewers, proximity and lifetime enforcement, committed deltas,
 Unity presence and view state, temporary presentation, bidirectional item
-transfers, ordinary occupied-slot swaps, and atomic corpse Bag swaps. Combat
-death generation remains a later gameplay boundary.
+transfers, ordinary occupied-slot swaps, and atomic corpse Bag swaps.
+SimulationWorker combat produces the deaths that fill them.
 
 The realtime protocol carries corpse presence, interaction, result, chunked
 view-state, and view-closure messages. Corpse chunks are packed by encoded UTF-8
@@ -1093,12 +1093,11 @@ No database transaction remains open across a client network round trip.
 
 ### Authoritative Player Death, Restoration, And Loot
 
-Status: Durable and interactive boundaries implemented, live combat producer
-pending
+Status: Implemented, including the live combat producer
 
-1. The future authoritative combat system produces one unique death event only
-   after its owning SimulationWorker has resolved death. Until that producer
-   exists, the same boundary is exercised by system and PostgreSQL tests.
+1. Authoritative combat produces one unique death event, with its Mob or
+   character killer, only after its owning SimulationWorker has resolved death.
+   System and PostgreSQL tests exercise the same boundary.
 2. SimulationWorker submits the exact account, character, simulation session,
    token, worker id, runtime id, Shard, expected item-state revision, transform,
    and generic corpse presentation key over its authenticated GameService client.

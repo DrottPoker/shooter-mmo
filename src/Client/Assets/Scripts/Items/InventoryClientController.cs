@@ -110,6 +110,9 @@ namespace Mmorpg.Client.Items
         private bool queuedOperationRefresh;
         private bool initialized;
         private bool observedRealtimeJoin;
+        // The newest worker revision the inventory refreshed for, so a change that no intent
+        // caused is fetched once.
+        private long requestedServerRevision = -1;
         private string observedAccountId = string.Empty;
         private string observedCharacterId = string.Empty;
 
@@ -170,6 +173,20 @@ namespace Mmorpg.Client.Items
                 }
 
                 observedRealtimeJoin = joined;
+                // A committed change that no client intent caused, such as a death, reaches
+                // the client only as a newer carry state. It is read a frame later, so an
+                // arrow batch that patches its stack in the same packet needs no refresh.
+                var serverRevision = joined ? simulationClient.CarryItemStateRevision : -1;
+                if (InventoryServerRevisionRule.ShouldRefresh(
+                        serverRevision,
+                        State.KnownItemStateRevision,
+                        requestedServerRevision,
+                        operationJournal.Pending != null,
+                        refreshInProgress))
+                {
+                    requestedServerRevision = serverRevision;
+                    EnsureFullState(serverRevision);
+                }
             }
         }
 
@@ -588,6 +605,7 @@ namespace Mmorpg.Client.Items
             State.MarkDisconnected(operationJournal.Pending != null);
             operationJournal.Reset();
             observedRealtimeJoin = false;
+            requestedServerRevision = -1;
         }
 
         private void BeginRefresh(

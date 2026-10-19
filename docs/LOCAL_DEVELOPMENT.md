@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Requirements
 
@@ -107,7 +107,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports eleven definitions, one base Secure
   Container tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 17 with 28 messages
+- Protocol verification reports realtime protocol version 18 with 34 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -181,9 +181,9 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 17 with 28
-messages and 16 generated files, and the second prints
-`Realtime protocol version 17 verified: 28 messages, 16 generated files.`
+Expected result: both commands report realtime protocol version 18 with 34
+messages and 18 generated files, and the second prints
+`Realtime protocol version 18 verified: 34 messages, 18 generated files.`
 The first command rewrites only changed files and removes files that the schema
 no longer produces. The second fails and names the file when a generated file
 is stale, missing, or not produced by the schema. Commit the schema,
@@ -622,7 +622,7 @@ For a manual default-state and reconnect check:
 1. Start PostgreSQL and Redis with `docker compose up -d --wait`.
 2. Run `dotnet run --project src/Server/GameService` in one terminal.
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm
-   startup reports realtime protocol version `16` and simulation revision
+   startup reports realtime protocol version `18` and simulation revision
    `movement-simulation-v6`.
 4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
@@ -1625,12 +1625,14 @@ Play the combat loop on the local stack:
     the wolf's health bar shows it in combat. Walk away about 35 m. Expected
     result: the wolf turns back, the target frame shows `Returning home`, arrows
     do no damage while it runs, and it arrives at its place with full health.
-11. Let the Feral Alpha at `(-120, 0, -195)` or several wolves kill the
-    character. Expected result: `You died` with `Respawning in 5 s` counting
-    down, clicks do nothing while dead, and after the respawn the character
-    stands at the World spawn with full health and does not walk on. Its items
-    are in its corpse at the place of death, and the wolves walk home. A second
-    client with another character can also be attacked until it dies.
+11. Press `I` to open the inventory and let the Feral Alpha at
+    `(-120, 0, -195)` or several wolves kill the character. Expected result:
+    `You died` with `Respawning in 5 s` counting down above the open inventory,
+    clicks do nothing while dead, and the inventory shows at once that only the
+    Secure Container contents are left. After the respawn the character stands
+    at the World spawn with full health and does not walk on. Its items are in
+    its corpse at the place of death, and the wolves walk home. A second client
+    with another character can also be attacked until it dies.
 12. With the [Monitoring Stack](#monitoring-stack) running, open the MMORPG
     Playtest dashboard. Expected result: the `Combat` panel shows the attacks,
     hits, deaths, engaged and moving Mobs, and Mob routes, the `Tick phases`
@@ -1908,7 +1910,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 17, simulation revision,
+`27015`, runtime id, realtime protocol version 18, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same

@@ -1,6 +1,6 @@
 # MMORPG MVP Spec
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Purpose
 
@@ -175,8 +175,8 @@ earlier third-person projectile shooter direction.
 - The server validates range, target, weapon state, ammunition, mana, cooldown,
   and hit results.
 
-Click-to-move movement is implemented. The first combat implementation should
-add:
+Click-to-move movement is implemented, and the first combat implementation in
+[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) added:
 
 - One simple Ranged weapon with consumed ammunition.
 - Target selection and auto attack.
@@ -193,8 +193,8 @@ The implemented world-actor foundation provides:
 - `NPC` means a social or service actor. Dialogue, vendor, quest, crafting,
   insurance, trainer, bank, and Recovery Storage roles are freely composable
   capabilities.
-- `Mob` means a combat actor with future AI, aggro, combat, loot, corpse, and
-  respawn behavior.
+- `Mob` means a combat actor with AI, aggro, combat, loot, corpse, and respawn
+  behavior.
 - Actor kind is separate from faction and disposition. Guards are NPCs and all
   city NPCs are invulnerable in the first version.
 - NPC and Mob definitions plus spawn content are canonical neutral WorldData.
@@ -213,13 +213,14 @@ and the vendor capability trades through GameService. Both are described in
 [Economy MVP](#economy-mvp) and [Gathering MVP](#gathering-mvp).
 
 The foundation does not implement quest progression or crafting. The combat
-slice in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) adds
+slice in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) added
 target-based combat, Mob brains, Mob loot rolls, and the deaths that fill live
 and durable corpses.
 
 ## Mob MVP
 
-The first Mob needs enough behavior to test combat and loot:
+The first Mob has enough behavior to test combat and loot, as implemented by
+the combat slice:
 
 - Spawn.
 - Idle or patrol.
@@ -309,8 +310,7 @@ Item service split:
 - SimulationWorker owns live world actors, spawn lifecycle, inventory, vendor,
   and corpse interaction validation, resource node charges and gathering cycles,
   proximity, combat, death-event production, active corpse presentation,
-  one-active-interaction enforcement, and authoritative encumbrance. Combat and
-  death-event production are planned.
+  one-active-interaction enforcement, and authoritative encumbrance.
 - While a character is active, SimulationWorker requests durable mutations over
   a service-authenticated GameService boundary fenced to exact session, worker,
   runtime, character, and Shard.
@@ -348,9 +348,9 @@ collide with the delivered item phases in
 | SimulationWorker performance baseline | Complete | Headless stress clients, active bots, visibility and packet reuse, bounded backpressure, and repeatable baselines |
 | Items, inventory, equipment, and carry weight | Complete | Everything in [Items And Inventory](#items-and-inventory), with the temporary Unity inventory UI |
 | Vendor and gathering | Complete | One NPC vendor capability, persistent Gold, one shared resource node type with the starter pickaxe, gathering through the item transaction service, and buying from and selling to the vendor, as decided in [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) |
-| Target-based combat and simple Mob | Planned in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) | One Ranged weapon with consumed ammunition, target selection and auto attack, health and damage, authoritative death events, and one simple Mob with live loot |
+| Target-based combat and simple Mob | Complete | One Ranged weapon with consumed ammunition, target selection and auto attack, health and damage, authoritative death events, and one simple Mob with live loot, as delivered and accepted in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) |
 | Gameplay rule areas and presence lifecycle | Deferred until a larger authored map exists | Content-authored Safe City and Open Risk rule areas without Zones or Layers, instant logout in the Safe City, a five-minute body after disconnect in the Open Risk area, and reconnect to the same body |
-| Death, Recovery, and corpse looting | Foundation complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, and insurance are done. The combat death producer and final corpse presentation remain |
+| Death, Recovery, and corpse looting | Foundation complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, insurance, and the combat death producer are done. The final corpse presentation remains |
 
 ## Deferred Features
 

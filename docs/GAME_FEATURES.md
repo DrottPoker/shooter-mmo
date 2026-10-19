@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Purpose
 
@@ -517,9 +517,11 @@ Combat is target based and server authoritative:
   of range` or `No ammunition`. The target frame shows the target's health,
   damaged combatants get health bars, hits show white damage numbers, and
   arrows fly to their target.
-- A character at 0 health dies: `You died` counts down 5 seconds, the
-  character respawns at the World spawn with full health, and its items follow
-  the [Durable Player Death Foundation](#durable-player-death-foundation).
+- A character at 0 health dies: `You died` counts down 5 seconds above every
+  open window, the character respawns at the World spawn with full health, and
+  its items follow the
+  [Durable Player Death Foundation](#durable-player-death-foundation). The
+  inventory shows the moved items at once, without a new login.
 - Out of combat for 10 seconds, a character regains 2 percent of its health
   every second.
 - Wolves are aggressive: a wolf notices a living character within 8 m that it

@@ -17,6 +17,9 @@ namespace Mmorpg.Client.Ui
     [DisallowMultipleComponent]
     public sealed class TemporaryWorldInteractionPanel : MonoBehaviour
     {
+        // Above the combat HUD and below the inventory.
+        public const int CanvasSortingOrder = 40;
+
         private const float PanelWidth = 460f;
         private static readonly Vector2 PromptPointerOffset = new Vector2(18f, 12f);
         private WorldInteractionClientController interactionController;
@@ -157,7 +160,7 @@ namespace Mmorpg.Client.Ui
             canvasObject.transform.SetParent(transform, false);
             var canvas = canvasObject.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 40;
+            canvas.sortingOrder = CanvasSortingOrder;
             var scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);

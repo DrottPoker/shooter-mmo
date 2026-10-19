@@ -70,6 +70,23 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(combatHud, Is.Not.Null);
             Assert.That(combatHud.GetComponentInChildren<Canvas>(true), Is.Not.Null);
 
+            // The death overlay sorts above every panel, so an open inventory or corpse view
+            // never hides a death and its countdown.
+            var deathOverlayCanvas = combatHud
+                .GetComponentsInChildren<Canvas>(true)
+                .Single(canvas => canvas.name == TemporaryCombatHud.DeathOverlayName);
+            Assert.That(deathOverlayCanvas.overrideSorting, Is.True);
+            var panelCanvases = new[]
+            {
+                Object.FindAnyObjectByType<TemporaryInventoryPanel>().GetComponentInChildren<Canvas>(true),
+                Object.FindAnyObjectByType<TemporaryWorldInteractionPanel>().GetComponentInChildren<Canvas>(true),
+                combatHud.GetComponentInChildren<Canvas>(true),
+            };
+            Assert.That(panelCanvases, Has.None.Null);
+            Assert.That(
+                panelCanvases.Select(canvas => canvas.sortingOrder),
+                Has.All.LessThan(deathOverlayCanvas.sortingOrder));
+
             // Without a joined session the HUD shows nothing and never takes a raycast.
             Assert.That(combatHud.IsOwnerFrameVisible, Is.False);
             Assert.That(combatHud.IsDeathOverlayVisible, Is.False);
