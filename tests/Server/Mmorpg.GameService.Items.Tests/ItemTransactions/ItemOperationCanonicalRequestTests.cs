@@ -185,6 +185,13 @@ public sealed class ItemOperationCanonicalRequestTests
         await AssertStoredAsync(
             context,
             await service.ExecuteAsync(
+                Request(new LootCorpseItemToEquipmentCommand(A, B, C, 1, "main_hand", E, 5)),
+                CancellationToken.None),
+            ItemOperationKinds.LootCorpseItemToEquipment,
+            $$"""{"characterId":"{{A}}","corpseId":"{{B}}","itemInstanceId":"{{C}}","expectedItemRevision":1,"equipmentSlotId":"main_hand","targetItemInstanceId":"{{E}}","expectedTargetItemRevision":5}""");
+        await AssertStoredAsync(
+            context,
+            await service.ExecuteAsync(
                 Request(new DepositCorpseItemCommand(A, B, C, 1, D, 2, 3, null, null)),
                 CancellationToken.None),
             ItemOperationKinds.DepositCorpseItem,

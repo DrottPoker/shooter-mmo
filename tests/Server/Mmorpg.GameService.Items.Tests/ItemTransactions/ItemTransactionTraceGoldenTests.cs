@@ -714,6 +714,40 @@ public sealed class ItemTransactionTraceGoldenTests
     }
 
     [PostgresIntegrationFact]
+    public async Task CorpseLootToEquipmentSwapMatchesItsGoldenTrace()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        await using var traced = TracedItemTransactions.Create(context);
+        var source = await world.RegisterAsync("golden_equipment_corpse");
+        var looter = await world.RegisterAsync("golden_equipment_looter");
+        var sourceInventoryId = (await world.LoadStateAsync(source.Character.Id)).PermanentInventoryContainerId;
+        var corpseRingId = await world.GrantAsync(source.Character.Id, Ring, 1, sourceInventoryId, 0);
+        var corpseId = await world.ProcessDeathAsync(source.Character.Id);
+        var looterId = looter.Character.Id;
+        var looterInventoryId = (await world.LoadStateAsync(looterId)).PermanentInventoryContainerId;
+        var equippedRingId = await world.GrantAsync(looterId, Ring, 1, looterInventoryId, 0);
+        await world.EquipAsync(looterId, equippedRingId, "ring_1");
+
+        var corpseRing = await world.LoadItemAsync(corpseRingId);
+        var equippedRing = await world.LoadItemAsync(equippedRingId);
+        var lootId = Guid.NewGuid();
+        AssertCommitted(await traced.AssertGoldenAsync("loot_corpse_item_to_equipment.swap", lootId, service => service.ExecuteAsync(
+            new ItemTransactionRequest<LootCorpseItemToEquipmentCommand>(
+                lootId,
+                ItemTransactionActor.ForSystem(),
+                new LootCorpseItemToEquipmentCommand(
+                    looterId,
+                    corpseId,
+                    corpseRingId,
+                    corpseRing.Revision,
+                    "ring_1",
+                    equippedRingId,
+                    equippedRing.Revision)),
+            CancellationToken.None)));
+    }
+
+    [PostgresIntegrationFact]
     public async Task MobCorpseCommandsMatchTheirGoldenTraces()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

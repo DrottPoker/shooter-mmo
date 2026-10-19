@@ -208,6 +208,29 @@ internal sealed partial class CorpseService
 
         if (string.Equals(
                 operationKind,
+                CorpseInteractionOperationKinds.LootItemToEquipment,
+                StringComparison.Ordinal)
+            && HasEquipmentLootShape(request))
+        {
+            return TransactionService.ExecuteAsync(
+                new ItemTransactionRequest<LootCorpseItemToEquipmentCommand>(
+                    request.OperationId,
+                    actor,
+                    new LootCorpseItemToEquipmentCommand(
+                        request.CharacterId,
+                        corpseId,
+                        request.ItemInstanceId!.Value,
+                        request.ExpectedItemRevision!.Value,
+                        request.EquipmentSlotId!.Trim(),
+                        NormalizeGuid(request.TargetItemInstanceId),
+                        NormalizeRevision(
+                            request.TargetItemInstanceId,
+                            request.ExpectedTargetItemRevision))),
+                cancellationToken);
+        }
+
+        if (string.Equals(
+                operationKind,
                 CorpseInteractionOperationKinds.DepositItem,
                 StringComparison.Ordinal)
             && HasItemTransferShape(request, requiresPartialQuantity: false))
@@ -660,6 +683,20 @@ internal sealed partial class CorpseService
             && (requiresPartialQuantity
                 ? request.Quantity > 0
                 : request.Quantity is null or 0);
+    }
+
+    // A whole stack into an equipment slot names no container; the target is the equipped item.
+    private static bool HasEquipmentLootShape(SimulationCorpseMutationRequest request)
+    {
+        var hasTarget = NormalizeGuid(request.TargetItemInstanceId) is not null;
+        return request.ItemInstanceId is not null
+            && request.ItemInstanceId != Guid.Empty
+            && request.ExpectedItemRevision >= 0
+            && !string.IsNullOrWhiteSpace(request.EquipmentSlotId)
+            && hasTarget == (request.ExpectedTargetItemRevision >= 0)
+            && (request.Quantity is null or 0)
+            && request.DestinationContainerId is null
+            && request.DestinationSlotIndex is null;
     }
 
     private static bool HasBagSwapShape(SimulationCorpseMutationRequest request)
