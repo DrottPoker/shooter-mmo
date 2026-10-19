@@ -316,6 +316,7 @@ internal sealed class ItemOperationsMetrics : IDisposable
         ItemOperationKinds.ExpireRecoveryDelivery,
         ItemOperationKinds.LootCorpseItem,
         ItemOperationKinds.LootCorpsePartialStack,
+        ItemOperationKinds.LootCorpseItemToEquipment,
         ItemOperationKinds.DepositCorpseItem,
         ItemOperationKinds.DepositCorpsePartialStack,
         ItemOperationKinds.MoveCorpseItem,

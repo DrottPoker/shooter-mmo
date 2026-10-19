@@ -320,6 +320,18 @@ internal sealed class ItemTransactionService
     }
 
     public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<LootCorpseItemToEquipmentCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.LootCorpseItemToEquipment,
+            request.Command.CharacterId,
+            corpseLoot,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
         ItemTransactionRequest<DepositCorpseItemCommand> request,
         CancellationToken cancellationToken)
     {

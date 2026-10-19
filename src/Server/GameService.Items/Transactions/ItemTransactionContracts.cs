@@ -307,6 +307,17 @@ internal sealed record LootCorpseItemCommand(
     Guid? TargetItemInstanceId,
     long? ExpectedTargetItemRevision);
 
+// Loots a whole corpse stack straight into an equipment slot. The target is the item the
+// character had equipped in that slot when the client looked, or null for an empty slot.
+internal sealed record LootCorpseItemToEquipmentCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    Guid ItemInstanceId,
+    long ExpectedItemRevision,
+    string EquipmentSlotId,
+    Guid? TargetItemInstanceId,
+    long? ExpectedTargetItemRevision);
+
 internal sealed record LootCorpsePartialStackCommand(
     Guid CharacterId,
     Guid CorpseId,
@@ -466,6 +477,7 @@ internal static class ItemOperationKinds
     public const string ExpireRecoveryDelivery = "expire_recovery_delivery";
     public const string LootCorpseItem = "loot_corpse_item";
     public const string LootCorpsePartialStack = "loot_corpse_partial_stack";
+    public const string LootCorpseItemToEquipment = "loot_corpse_item_to_equipment";
     public const string DepositCorpseItem = "deposit_corpse_item";
     public const string DepositCorpsePartialStack = "deposit_corpse_partial_stack";
     public const string MoveCorpseItem = "move_corpse_item";
