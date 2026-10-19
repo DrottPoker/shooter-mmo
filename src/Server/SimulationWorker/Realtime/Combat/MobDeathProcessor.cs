@@ -59,6 +59,7 @@ internal sealed class MobDeathProcessor(
     private readonly Dictionary<Guid, MobDeath> deaths = [];
     private readonly Dictionary<Guid, WorldActorRuntimeState> pendingRespawns = [];
     private readonly List<MobDeath> deathBuffer = [];
+    private readonly List<MobDeath> despawnsAfterFlush = [];
 
     // Hears every Mob that respawned, so combat and presence add it.
     public Action<WorldActorRuntimeState>? Respawned { get; set; }
@@ -83,7 +84,8 @@ internal sealed class MobDeathProcessor(
             MobLootRoller.Roll(lootProfile, random));
         if (death.Loot.Count == 0 || corpses is null)
         {
-            Despawn(death);
+            // Viewers receive the lethal hit and the death before the despawn.
+            despawnsAfterFlush.Add(death);
             return;
         }
 
@@ -109,6 +111,18 @@ internal sealed class MobDeathProcessor(
                 Create(death);
             }
         }
+    }
+
+    // Despawns the Mobs without a corpse that died this tick, after the tick's combat
+    // state and events reached their viewers.
+    public void DespawnAfterFlush()
+    {
+        foreach (var death in despawnsAfterFlush)
+        {
+            Despawn(death);
+        }
+
+        despawnsAfterFlush.Clear();
     }
 
     public void Respawn(WorldActorTimer timer)
@@ -159,6 +173,7 @@ internal sealed class MobDeathProcessor(
     public void Clear()
     {
         deaths.Clear();
+        despawnsAfterFlush.Clear();
         pendingRespawns.Clear();
     }
 

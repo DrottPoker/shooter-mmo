@@ -1579,8 +1579,10 @@ GameService, an archer kills a wolf that leaves a corpse and respawns, attacks
 wait for range and report why, attacks on characters follow the Shard rule,
 spent arrows commit in batches while the owner sees the live count, a killed
 character commits its death once and respawns at the spawn, shots commit before
-a leave and after a disconnect, an equipment change holds attacks for the
-lockout, and a synthetic bot is no target.
+a leave, after a disconnect, and behind a batch that finished while the worker
+stopped, an equipment change holds attacks for the lockout, only the lethal
+arrow of a volley hits and takes the kill, a wolf without a corpse despawns
+after its death reached the viewer, and a synthetic bot is no target.
 
 Check the join on the local stack:
 

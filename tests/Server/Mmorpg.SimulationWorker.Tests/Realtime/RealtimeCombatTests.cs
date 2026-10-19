@@ -67,6 +67,91 @@ public sealed class RealtimeCombatTests
             "the respawned wolf's state");
     }
 
+    // Without a corpse the Mob leaves only after its viewers saw it die.
+    [Fact]
+    public async Task AWolfWithoutACorpseDespawnsAfterItsDeathReachedTheViewers()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableWorldActors = true,
+            WorldActorDocument = WolfNextToTheSpawn(respawnSeconds: 30f),
+            ItemCatalog = TestCatalog(minimumDamage: 100, maximumDamage: 100),
+            CombatRules = TestRules(),
+            CombatRandom = new LowestRoll()
+        });
+        var archer = harness.AddCharacter("Tidy Archer") with { Equipment = ArcherEquipment(50) };
+        harness.GameService.AddCharacter(archer);
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(archer);
+        var wolf = await WaitForWolfAsync(harness, client);
+
+        client.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+
+        await harness.PollUntilAsync(
+            () => client.Decode<RealtimeWorldActorDespawn>(RealtimeMessageType.WorldActorDespawn, RealtimeProtocol.TryDecodeWorldActorDespawn)
+                .Any(value => value.EntityId == wolf.EntityId),
+            "the wolf to despawn");
+        var despawn = client.DecodeWithPackets<RealtimeWorldActorDespawn>(
+                RealtimeMessageType.WorldActorDespawn,
+                RealtimeProtocol.TryDecodeWorldActorDespawn)
+            .Single(value => value.Value.EntityId == wolf.EntityId);
+        var death = client.DecodeWithPackets<RealtimeCombatEventBatch>(
+                RealtimeMessageType.CombatEventBatch,
+                RealtimeProtocol.TryDecodeCombatEventBatch)
+            .Single(value => value.Value.Events.Any(item => item.Kind == RealtimeCombatEventKind.Died && item.TargetEntityId == wolf.EntityId));
+        var deadState = client.DecodeWithPackets<RealtimeCombatantState>(
+                RealtimeMessageType.CombatantState,
+                RealtimeProtocol.TryDecodeCombatantState)
+            .Single(value => value.Value.EntityId == wolf.EntityId && value.Value.LifeState == RealtimeCombatLifeState.Dead);
+        Assert.Equal("died", despawn.Value.Reason);
+        Assert.True(death.Packet.Index < despawn.Packet.Index);
+        Assert.True(deadState.Packet.Index < despawn.Packet.Index);
+    }
+
+    // A lethal hit ends the target's life at once, so a second arrow of the same volley
+    // neither hits nor takes the kill.
+    [Fact]
+    public async Task OnlyTheLethalArrowHitsAndTakesTheKill()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = TestCatalog(minimumDamage: 500, maximumDamage: 500),
+            CombatRules = TestRules(respawnSeconds: 30f),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var first = harness.AddCharacter("First Archer") with { Equipment = ArcherEquipment(50) };
+        harness.GameService.AddCharacter(first);
+        var second = harness.AddCharacter("Second Archer") with { Equipment = ArcherEquipment(50) };
+        harness.GameService.AddCharacter(second);
+        var victim = harness.AddCharacter("Volley Victim");
+        await harness.StartAsync();
+        var firstClient = await harness.JoinAsync(first);
+        var secondClient = await harness.JoinAsync(second);
+        var victimClient = await harness.JoinAsync(victim);
+        var victimEntityId = victimClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => States(firstClient).Any(value => value.EntityId == victimEntityId)
+                && States(secondClient).Any(value => value.EntityId == victimEntityId),
+            "the victim to appear");
+
+        firstClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), victimEntityId));
+        secondClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), victimEntityId));
+
+        await harness.PollUntilAsync(
+            () => Events(victimClient).Any(value => value.Kind == RealtimeCombatEventKind.Died),
+            "the victim to die");
+        await harness.PollUntilAsync(
+            () => harness.GameService.PlayerDeaths.Count > 0,
+            "the death partition");
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(500));
+        var hit = Assert.Single(Events(victimClient), value => value.Kind == RealtimeCombatEventKind.Hit);
+        var died = Assert.Single(Events(victimClient), value => value.Kind == RealtimeCombatEventKind.Died);
+        Assert.Equal(hit.SourceEntityId, died.SourceEntityId);
+        var killer = hit.SourceEntityId == firstClient.JoinAccepted!.ControlledEntityId ? first : second;
+        Assert.Equal(killer.CharacterId.ToString("D"), Assert.Single(harness.GameService.PlayerDeaths).Killer!.Id);
+    }
+
     [Fact]
     public async Task AttacksWaitForRangeAndReportWhy()
     {
@@ -301,6 +386,59 @@ public sealed class RealtimeCombatTests
         var batch = Assert.Single(harness.GameService.AmmunitionConsumptions);
         Assert.True(batch.Quantity >= 1);
         Assert.Equal(0, releasesAtConsumption);
+    }
+
+    // A batch that finished while the worker stopped is settled, so the shots fired after
+    // it still commit on top of its revision.
+    [Fact]
+    public async Task AStoppingWorkerCommitsTheShotsBehindABatchThatJustFinished()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = TestCatalog(minimumDamage: 1, maximumDamage: 1),
+            CombatRules = TestRules(batchIntervalSeconds: 0.5f),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var archer = harness.AddCharacter("Last Call Archer") with { Equipment = ArcherEquipment(50) };
+        harness.GameService.AddCharacter(archer);
+        var target = harness.AddCharacter("Last Call Target");
+        var firstBatchGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        harness.GameService.OnAmmunitionConsumption = async (_, request, _) =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                await firstBatchGate.Task;
+            }
+
+            return harness.GameService.DefaultAmmunitionConsumption(request);
+        };
+        await harness.StartAsync();
+        var archerClient = await harness.JoinAsync(archer);
+        var targetClient = await harness.JoinAsync(target);
+        var targetEntityId = targetClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => States(archerClient).Any(value => value.EntityId == targetEntityId),
+            "the target to appear");
+        archerClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId));
+        await harness.PollUntilAsync(
+            () => harness.GameService.AmmunitionConsumptions.Count == 1,
+            "the first batch to be in flight");
+        var firstBatch = harness.GameService.AmmunitionConsumptions[0];
+        await harness.PollUntilAsync(
+            () => Events(archerClient).Count(value => value.Kind == RealtimeCombatEventKind.AttackReleased) >= firstBatch.Quantity + 2,
+            "more shots behind the batch");
+
+        var stopping = harness.StopAsync();
+        firstBatchGate.SetResult();
+        await stopping;
+
+        Assert.Equal(2, harness.GameService.AmmunitionConsumptions.Count);
+        var lastBatch = harness.GameService.AmmunitionConsumptions[1];
+        Assert.Equal(firstBatch.ExpectedCharacterRevision + 1, lastBatch.ExpectedCharacterRevision);
+        Assert.Equal(firstBatch.ExpectedItemRevision + 1, lastBatch.ExpectedItemRevision);
+        Assert.True(lastBatch.Quantity >= 2);
     }
 
     [Fact]

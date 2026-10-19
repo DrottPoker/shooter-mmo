@@ -233,7 +233,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             }
         }
 
-        ProcessDeaths(serverTick);
+        ProcessDeaths();
         foreach (var combatant in combatantBuffer)
         {
             UpdateCombatFlag(combatant, serverTick);
@@ -244,6 +244,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         }
 
         replicator.Flush(serverTick);
+        mobDeaths.DespawnAfterFlush();
         metrics?.RecordPhase(Stopwatch.GetElapsedTime(phaseStarted));
     }
 
@@ -495,13 +496,15 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
 
         target.MarkStateChanged();
         replicator.Hit(attackerEntityId, target.EntityId, damage.Amount, damage.DamageType, target.Health);
-        if (target.Health == 0 && !deaths.Contains(target))
+        if (target.Health == 0)
         {
+            // Dead at once, so a later impact or attack of this tick cannot hit or act.
+            MarkDead(target, serverTick);
             deaths.Add(target);
         }
     }
 
-    private void ProcessDeaths(uint serverTick)
+    private void ProcessDeaths()
     {
         foreach (var dead in deaths)
         {
@@ -509,11 +512,10 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             replicator.Died(dead.LastAttackerEntityId, dead.EntityId);
             if (dead.Kind == CombatantKind.Player)
             {
-                KillPlayer(dead, serverTick);
+                KillPlayer(dead);
             }
             else
             {
-                MarkDead(dead, serverTick);
                 mobDeaths.Begin(dead, KillerOf(dead));
             }
         }
@@ -521,10 +523,9 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         deaths.Clear();
     }
 
-    private void KillPlayer(Combatant dead, uint serverTick)
+    private void KillPlayer(Combatant dead)
     {
         var player = dead.Player!;
-        MarkDead(dead, serverTick);
         player.Movement.Halt();
         if (connectionBindings.TryGetConnectionId(player.NetworkEntityId, out var connectionId)
             && peers.TryGetContext(connectionId, out var context))

@@ -265,7 +265,8 @@ them in batches through one idempotent kernel command per batch:
   after a rejection, its shots are lost and the arrows stay with the player.
 - A worker crash loses the uncommitted shots of at most one interval, which
   then stay with the player. A worker that stops cleanly commits the shots it
-  can still name exactly.
+  can still name exactly, also behind a batch whose answer arrived while it
+  stopped.
 - The owner sees the live count, the committed stack minus the uncommitted
   shots, and a committed batch sends the new stack quantity and item-state
   revision.

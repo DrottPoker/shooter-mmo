@@ -148,7 +148,7 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 quest,
                 vendor ? context.Capability.ProfileId : null),
             operationKind,
-            intent.ExpectedCharacterRevision,
+            context.ExpectedCharacterRevision,
             ItemInstanceId: intent.ItemInstanceId == Guid.Empty
                 ? null
                 : intent.ItemInstanceId,

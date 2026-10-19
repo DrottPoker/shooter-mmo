@@ -544,12 +544,12 @@ catalog and Mob values from the actor catalog.
   An uncertain batch retries with the same operation id up to 8 attempts, with a
   backoff from 0.5 seconds that doubles up to 10 seconds; after that its arrows
   stay with the player. A rejected batch loses its shots, and a rejection that
-  ends the item session disconnects the player. An item intent whose expected
-  revision only arrow batches advanced is sent with the newest revision instead.
-  Corpse operations carry no expected revision, and NPC and vendor actions are
-  not rebased, so a stale one returns its usual conflict and the client
-  refreshes.
-- A hit that brings health to 0 kills. The killed character stops moving, its
+  ends the item session disconnects the player. An item intent or an NPC or
+  vendor action whose expected revision only arrow batches advanced is sent with
+  the newest revision instead. Corpse operations carry no expected revision.
+- A hit that brings health to 0 kills at once, so a later arrow of the same tick
+  neither hits nor takes the kill, and a character killed by an arrow does not
+  shoot in that tick any more. The killed character stops moving, its
   world interaction and corpse view close with `combat_character_dead`, its
   waiting operations are rejected with that code, and so are its new item,
   corpse, world, and combat intents. The death commits through `player-deaths`
@@ -566,14 +566,17 @@ catalog and Mob values from the actor catalog.
   entry drops with its chance in basis points and a quantity between its bounds.
   A non-empty roll becomes the Mob's corpse: a live corpse in worker memory, or
   for a boss a durable corpse in GameService that retries with the same death
-  event id until it commits. The Mob then leaves every view, and its spawn
+  event id until it commits. The Mob then leaves every view, a Mob without a
+  corpse at the end of its death tick, after its death reached the viewers, and
+  its spawn
   instance returns after its respawn profile's delay, 30 seconds for the Feral
   Wolf and 300 seconds for the Feral Alpha, with a new runtime and entity id. An
   empty roll leaves no corpse.
 - A disconnect does not cancel combat work. The session stays until the death
   and the last arrow batch committed and is released afterwards, and a leave
   waits for the same work. A worker that stops commits the uncommitted shots it
-  can still name exactly, as a best effort.
+  can still name exactly, as a best effort, including the shots behind a batch
+  whose answer arrived while it stopped.
 - `CombatantState` follows every spawn of a combatant, and every changed
   combatant reaches its viewers once at the end of the tick. Combat events reach
   every peer that sees the source or the target, and `OwnerCombatState` reaches
@@ -1419,9 +1422,13 @@ the test connection variable at development or production data.
   statuses for range and line of sight, the Shard rule for attacks on
   characters, arrow batches and the owner's arrow count, a player death that
   commits once and respawns at the spawn, shots that commit before a leave and
-  after a disconnect, the equipment lockout, a dead character's rejected
-  operations, revision rebasing after arrow batches, the last arrow, and bots
-  that are no targets.
+  after a disconnect, the shots behind a batch that finished while the worker
+  stopped, the equipment lockout including the first weapon, arrows restocked
+  by an item operation, a dead character's rejected operations, revision
+  rebasing of item intents and vendor actions after arrow batches, the last
+  arrow, the lethal arrow that alone takes the kill, a wolf without a corpse
+  that despawns after its death reached the viewer, and bots that are no
+  targets.
 
 ## Not Yet Implemented
 

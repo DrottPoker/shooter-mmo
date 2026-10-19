@@ -557,17 +557,21 @@ Step 3 follows the architecture above with these refinements:
   percent of the maximum health, at least 1 point, every second out of combat.
 - **Respawn.** A dead character respawns once the respawn delay passed and its
   death committed, so a slow commit delays the respawn instead of racing it.
-- **Rebasing.** Only item intents are rebased onto a revision that arrow batches
-  advanced. Corpse operations carry no expected character revision, and NPC and
-  vendor actions keep their revision, so a stale one fails with its usual
-  conflict and the client refreshes.
+- **Rebasing.** Item intents and NPC and vendor capability actions are rebased
+  onto a revision that only arrow batches advanced, when they start in the lane.
+  Corpse operations carry no expected character revision.
 - **Batch failures.** An uncertain batch retries with backoff up to 8 attempts,
   after which its arrows stay with the player. A rejected batch loses its shots
   and counts them as dropped; the next committed operation or heartbeat brings
   the current stack.
 - **Shutdown.** A stopping worker commits the uncommitted shots it can still
-  name exactly, as a best effort. A batch whose answer never arrived is left
-  alone, and its arrows stay with the player.
+  name exactly, as a best effort. A batch whose answer arrived while the worker
+  stopped is settled first, so the shots behind a committed batch commit on top
+  of it; a batch without a committed answer is left alone, and its arrows stay
+  with the player.
+- **Lethal hits.** The hit that brings health to 0 marks the combatant dead at
+  once, so later impacts and attacks of the same tick see it dead. A Mob without
+  a corpse despawns after the combat phase has sent the tick's state and events.
 - **Synthetic bots.** Development bots have no durable character that could
   die, so they are no combatants and cannot be attacked.
 - **Telemetry.** The Mob brain phase duration and the death partition duration

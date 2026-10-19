@@ -52,6 +52,28 @@ public sealed class VendorAndGatheringCapabilityTests
         Assert.Equal(context.Intent.InteractionSessionId, body.GetProperty("interactionSessionId").GetGuid());
     }
 
+    // Arrow batches that commit ahead of the purchase advance the revision it names.
+    [Fact]
+    public async Task PurchaseSendsTheRebasedCharacterRevision()
+    {
+        var http = new RecordingHandler();
+        var handler = new VendorWorldActorCapabilityHandler(CreateExecutor(http));
+        var context = VendorContext(
+            RealtimeCapabilityActionKind.VendorPurchase,
+            offerDefinitionId: "potion.minor_healing",
+            quantity: 1,
+            expectedPrice: 25) with
+        {
+            RebasedCharacterRevision = 12
+        };
+
+        await handler.ExecuteAsync(context, CancellationToken.None);
+
+        var body = JsonDocument.Parse(Assert.Single(http.Bodies)).RootElement;
+        Assert.Equal(12, body.GetProperty("expectedCharacterRevision").GetInt64());
+        Assert.Equal(0, context.Intent.ExpectedCharacterRevision);
+    }
+
     [Fact]
     public async Task SaleSendsTheItemAndQuantity()
     {

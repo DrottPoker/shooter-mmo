@@ -311,17 +311,36 @@ internal sealed class PlayerCombatAuthority(
         }
     }
 
-    // A worker that stops commits the uncommitted shots it can still name exactly; a batch
-    // whose answer never arrived is left alone, and its arrows stay with the player.
-    public async Task FlushOnShutdownAsync()
+    // A worker that stops commits the uncommitted shots it can still name exactly. A batch
+    // whose answer arrived but was never finalized is settled first, so the shots behind a
+    // committed batch commit on top of its state. A batch without a committed answer is
+    // left alone, and its arrows stay with the player.
+    public async Task FlushOnShutdownAsync(IReadOnlyList<RealtimeOperationResult> unfinalized)
     {
+        ArgumentNullException.ThrowIfNull(unfinalized);
+        var committedStates = new Dictionary<PlayerCombatSession, CharacterItemState>();
+        foreach (var completed in unfinalized.OfType<AmmunitionBatchCompleted>())
+        {
+            var combatSession = completed.CombatSession;
+            if (ReferenceEquals(combatSession.InFlightBatch, completed.Batch)
+                && completed.Result.Succeeded
+                && completed.Result.Value!.CharacterState is { } state)
+            {
+                combatSession.InFlightBatch = null;
+                committedStates[combatSession] = CharacterItemState.From(state);
+            }
+        }
+
         var flushes = new List<Task>();
         foreach (var combatSession in sessions.Values)
         {
             if (combatSession.PendingShots <= 0
                 || combatSession.InFlightBatch is not null
                 || combatSession.Death is not null
-                || !TryCreateBatch(combatSession, out var batch))
+                || !TryCreateBatch(
+                    combatSession,
+                    committedStates.GetValueOrDefault(combatSession),
+                    out var batch))
             {
                 continue;
             }
@@ -384,7 +403,7 @@ internal sealed class PlayerCombatAuthority(
             return;
         }
 
-        if (!TryCreateBatch(combatSession, out var batch))
+        if (!TryCreateBatch(combatSession, null, out var batch))
         {
             DropPendingShots(combatSession, "ammunition_missing");
             ReleaseLane(combatSession);
@@ -407,10 +426,14 @@ internal sealed class PlayerCombatAuthority(
             : combatSession.DetachedItemState;
     }
 
-    private bool TryCreateBatch(PlayerCombatSession combatSession, out AmmunitionBatch? batch)
+    // A batch builds on the given committed state, or on the session's current one.
+    private bool TryCreateBatch(
+        PlayerCombatSession combatSession,
+        CharacterItemState? committedState,
+        out AmmunitionBatch? batch)
     {
         batch = null;
-        var state = ResolveItemState(combatSession);
+        var state = committedState ?? ResolveItemState(combatSession);
         if (state is null)
         {
             return false;
@@ -676,7 +699,7 @@ internal sealed class PlayerCombatAuthority(
 
         if (combatSession.PendingShots > 0)
         {
-            if (TryCreateBatch(combatSession, out var batch))
+            if (TryCreateBatch(combatSession, null, out var batch))
             {
                 context.AuthorityOperationInFlight = true;
                 combatSession.InFlightBatch = batch;

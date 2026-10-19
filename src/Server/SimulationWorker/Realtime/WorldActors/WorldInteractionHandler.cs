@@ -155,11 +155,14 @@ internal sealed class WorldInteractionHandler(
             return;
         }
 
+        // Spent arrows commit ahead of the action, so an action computed on the state before
+        // them carries the revision they advanced to.
         operationTracker.Track(authority.RunAsync(
             this,
             context,
             entity,
-            intent));
+            intent,
+            combatGate?.RebaseExpectedCharacterRevision(context, intent.ExpectedCharacterRevision)));
     }
 
     public void Complete(RealtimeOperationResult completion)

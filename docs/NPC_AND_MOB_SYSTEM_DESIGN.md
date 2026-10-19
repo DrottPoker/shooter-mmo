@@ -731,8 +731,9 @@ deaths:
   durable corpse retries with the same death event id and a backoff from 0.5
   seconds that doubles up to 10 seconds until it commits. When GameService
   answers that the corpse can never be created, the Mob leaves without one.
-- The actor despawns with the reason `died` once its corpse exists, and its
-  respawn profile schedules the respawn on `WorldActorTimerQueue`.
+- The actor despawns with the reason `died` once its corpse exists, or, without
+  a corpse, at the end of the combat phase, after its death reached the
+  viewers. Its respawn profile schedules the respawn on `WorldActorTimerQueue`.
   `WorldActorStore.Respawn` recreates the same compiled spawn instance with a
   fresh runtime id and network entity id, and interest spawns it for nearby
   players. Respawn timers reset on a worker restart.

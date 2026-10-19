@@ -20,6 +20,28 @@ internal sealed class RealtimeCompletionQueue
     {
         return completedOperations.TryDequeue(out completion);
     }
+
+    // Removes the completions of one handler and keeps every other one in order. Only for
+    // shutdown, once every operation finished and nothing posts any more.
+    public List<RealtimeOperationResult> TakeFor(IRealtimeCompletionHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        var taken = new List<RealtimeOperationResult>();
+        var count = completedOperations.Count;
+        for (var index = 0; index < count && completedOperations.TryDequeue(out var completion); index++)
+        {
+            if (ReferenceEquals(completion.Handler, handler))
+            {
+                taken.Add(completion.Operation);
+            }
+            else
+            {
+                completedOperations.Enqueue(completion);
+            }
+        }
+
+        return taken;
+    }
 }
 
 internal readonly record struct RealtimeCompletion(
