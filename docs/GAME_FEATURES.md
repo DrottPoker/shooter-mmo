@@ -324,6 +324,14 @@ items cannot enter corpse custody. The panel never moves either side
 optimistically. Custody-changing transfers refresh character inventory to the
 committed revision, while pure corpse rearrangement updates only corpse state.
 
+A live Mob corpse closes for every viewer once its last item is taken, and any
+corpse closes when it expires. The Corpse context then names the reason in
+neutral text, such as `The corpse is empty.` or `The corpse expired and is no
+longer available.`, and the same applies when the viewer dies. Closing the view
+yourself leaves no message. Only a corpse that ended through an error, such as
+`corpse_invalidated` when its state could no longer be trusted, shows a red
+error.
+
 The implemented inventory presentation keeps character equipment on the left,
 contextual containers such as bank, corpse, Recovery Storage, or world loot in
 the middle, and the character inventory on the right. Permanent inventory,

@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Purpose
 
@@ -1009,7 +1009,13 @@ concurrent inspection, and authoritative looting:
   a new peer that reuses the LiteNetLib peer id; disconnect cleanup releases
   every reservation of the old peer first.
   Expiry, invalidation, and missing-corpse results close affected views with
-  stable codes, while stale item or quantity conflicts trigger refresh.
+  stable codes, while stale item or quantity conflicts trigger refresh. Taking
+  the last item of a live Mob corpse closes every view with `corpse_emptied`
+  instead of `corpse_invalidated`, also when the presence broadcast notices the
+  emptied corpse first. The emptied corpse stays inactive in worker memory until
+  its deadline, so a replayed creation cannot restore its loot.
+  [Corpse View Closures](REALTIME_PROTOCOL.md#corpse-view-closures) lists the
+  codes.
 - Every worker mutation response, from item operations, ammunition batches,
   corpse operations, live Mob loot grants, and player deaths, carries
   `characterState`: the acting character's item-state revision, carry tuple,

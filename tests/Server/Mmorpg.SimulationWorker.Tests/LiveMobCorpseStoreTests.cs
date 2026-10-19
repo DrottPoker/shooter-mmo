@@ -100,6 +100,26 @@ public sealed class LiveMobCorpseStoreTests
         Assert.Empty(store.ListActive());
     }
 
+    [Fact]
+    public void ClaimingTheLastItemLeavesAnEmptiedCorpseUntilItsDeadline()
+    {
+        var start = new DateTimeOffset(2026, 7, 18, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new MutableTimeProvider(start);
+        var store = new LiveMobCorpseStore(timeProvider);
+        var corpse = CreateCorpse(start.UtcDateTime, 120d);
+        store.CreateOrGet(corpse);
+        var loot = Assert.Single(corpse.Loot);
+
+        Assert.False(store.IsEmptied(corpse.CorpseId));
+        Assert.Null(store.CompleteClaim(corpse.CorpseId, loot.LootEntryId, loot.GrantId));
+        Assert.True(store.IsEmptied(corpse.CorpseId));
+        Assert.False(store.Remove(corpse.CorpseId));
+        Assert.True(store.IsEmptied(corpse.CorpseId));
+        timeProvider.Advance(TimeSpan.FromSeconds(120));
+        Assert.False(store.IsEmptied(corpse.CorpseId));
+        Assert.False(store.IsEmptied(Guid.NewGuid()));
+    }
+
     private static LiveMobCorpseState CreateCorpse(DateTime createdAt, double lifetimeSeconds)
     {
         return new LiveMobCorpseState(

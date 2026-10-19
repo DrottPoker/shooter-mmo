@@ -511,6 +511,8 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             Problem(HttpStatusCode.NotFound, "corpse_not_found", "The corpse is not active."));
         OnCorpseMutation = (_, _, _, _) => Task.FromResult(
             Problem(HttpStatusCode.NotFound, "corpse_not_found", "The corpse is not active."));
+        OnMobLootGrant = (_, request, _) => Task.FromResult(
+            CommittedMobLootGrant(request, 1, 1, 200));
         OnAmmunitionConsumption = (_, request, _) => Task.FromResult(DefaultAmmunitionConsumption(request));
         OnPlayerDeath = (_, request, _) => Task.FromResult(DefaultPlayerDeath(request));
     }
@@ -618,6 +620,10 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
 
     public Func<Guid, Guid, SimulationCorpseMutationRequest, CancellationToken, Task<HttpResponseMessage>>
         OnCorpseMutation
+    { get; set; }
+
+    public Func<Guid, SimulationMobLootGrantRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnMobLootGrant
     { get; set; }
 
     public int ConsumeCount => Volatile.Read(ref consumeCount);
@@ -728,6 +734,36 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 carryCapacity)));
     }
 
+    // Grants the whole loot entry into the requested empty destination slot.
+    public static HttpResponseMessage CommittedMobLootGrant(
+        SimulationMobLootGrantRequest request,
+        long revision,
+        long carriedWeight,
+        long carryCapacity)
+    {
+        return Json(new SimulationItemTransactionResponse(
+            request.GrantId,
+            "grant_mob_loot",
+            true,
+            null,
+            [new SimulationItemCharacterRevision(
+                request.CharacterId,
+                revision,
+                carriedWeight,
+                carryCapacity)],
+            [new SimulationItemContainerRevision(
+                request.DestinationContainerId,
+                request.ExpectedDestinationContainerRevision + 1)],
+            [new SimulationItemInstanceRevision(Guid.NewGuid(), 0)],
+            [],
+            null,
+            CharacterStateTestData.Create(
+                request.CharacterId,
+                revision,
+                carriedWeight,
+                carryCapacity)));
+    }
+
     public static HttpResponseMessage Json<T>(T value)
     {
         return new HttpResponseMessage(HttpStatusCode.OK)
@@ -796,6 +832,13 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 }
 
                 return await OnPlayerDeath(simulationSessionId, death!, cancellationToken);
+            }
+
+            if (segments.Length == 4 && segments[3] == "mob-loot-grants")
+            {
+                var grant = await request.Content!
+                    .ReadFromJsonAsync<SimulationMobLootGrantRequest>(cancellationToken);
+                return await OnMobLootGrant(simulationSessionId, grant!, cancellationToken);
             }
 
             if (segments.Length == 4 && segments[3] == "item-operations")

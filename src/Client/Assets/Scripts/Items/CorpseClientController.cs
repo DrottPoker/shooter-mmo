@@ -510,7 +510,7 @@ namespace Mmorpg.Client.Items
 
             if (result.OperationKind == RealtimeCorpseInteractionKind.Close)
             {
-                State.CloseView(string.Empty, string.Empty);
+                State.CloseView();
             }
             else
             {
@@ -532,7 +532,7 @@ namespace Mmorpg.Client.Items
                 return;
             }
 
-            State.CloseView(closed.Code, closed.Message);
+            State.ApplyClosure(closed.Code, closed.Message);
         }
 
         private void OnSessionEnded(RealtimeClientError error)

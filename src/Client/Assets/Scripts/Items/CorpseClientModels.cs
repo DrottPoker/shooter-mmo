@@ -321,6 +321,10 @@ namespace Mmorpg.Client.Items
 
         public CorpseClientError Error { get; private set; }
 
+        // A neutral status line, such as why the last view ended as intended. Empty when
+        // there is nothing to say, and never set together with Error.
+        public string Notice { get; private set; } = string.Empty;
+
         public Guid PendingOperationId { get; private set; }
 
         public bool CanMutate
@@ -337,6 +341,7 @@ namespace Mmorpg.Client.Items
         {
             Status = CorpseClientStatus.Ready;
             Error = null;
+            Notice = string.Empty;
             RaiseChanged();
         }
 
@@ -352,6 +357,7 @@ namespace Mmorpg.Client.Items
             PendingOperationId = operationId;
             Status = CorpseClientStatus.Busy;
             Error = null;
+            Notice = string.Empty;
             RaiseChanged();
         }
 
@@ -365,6 +371,7 @@ namespace Mmorpg.Client.Items
             PendingOperationId = Guid.Empty;
             Status = CorpseClientStatus.Ready;
             Error = null;
+            Notice = string.Empty;
             RaiseChanged();
         }
 
@@ -380,17 +387,31 @@ namespace Mmorpg.Client.Items
             PendingOperationId = Guid.Empty;
             Status = CorpseClientStatus.Error;
             Error = error;
+            Notice = string.Empty;
             RaiseChanged();
         }
 
-        public void CloseView(string code, string message)
+        // Ends the active view once the viewer's own close is confirmed.
+        public void CloseView()
+        {
+            EndView(null, string.Empty);
+        }
+
+        // Ends the active view for a closure the worker reported. An intended end, such as
+        // an emptied or expired corpse, leaves a neutral notice instead of an error.
+        public void ApplyClosure(string code, string message)
+        {
+            var closure = CorpseViewClosureRule.Classify(code, message);
+            EndView(closure.Error, closure.Notice);
+        }
+
+        private void EndView(CorpseClientError error, string notice)
         {
             ActiveView = null;
             PendingOperationId = Guid.Empty;
             Status = CorpseClientStatus.Ready;
-            Error = string.IsNullOrWhiteSpace(code)
-                ? null
-                : new CorpseClientError(code, message);
+            Error = error;
+            Notice = notice;
             viewAssemblies.Clear();
             RaiseChanged();
         }
@@ -407,6 +428,7 @@ namespace Mmorpg.Client.Items
             PendingOperationId = Guid.Empty;
             Status = CorpseClientStatus.Unavailable;
             Error = null;
+            Notice = string.Empty;
             RaiseChanged();
         }
 

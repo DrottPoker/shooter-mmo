@@ -37,11 +37,10 @@ internal sealed class CorpsePresenceReplicator(
         {
             if (!activeCorpseIds.Contains(viewedCorpseId))
             {
-                views.CloseCorpseForAll(
+                views.CloseInactiveCorpseForAll(
                     viewedCorpseId,
-                    "corpse_expired",
-                    "The corpse expired and is no longer available.",
-                    removeFromStore: true);
+                    RealtimeCorpseViewClosureCodes.Expired,
+                    "The corpse expired and is no longer available.");
             }
         }
 

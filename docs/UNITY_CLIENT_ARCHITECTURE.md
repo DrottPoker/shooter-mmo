@@ -781,6 +781,21 @@ reaches the returned item-state revision, even when the previous full snapshot
 was internally coherent. Pure corpse rearrangement does not request a character
 refresh because its response contains no character revision or carry change.
 
+A view-closure message ends the active view through
+`CorpseClientState.ApplyClosure`, which asks `CorpseViewClosureRule` in
+`Mmorpg.Client.Items` how to present the stable closure code. The viewer's own
+close (`corpse_view_closed`), the last item taken from a live Mob corpse
+(`corpse_emptied`), expiry (`corpse_expired`), and death
+(`combat_character_dead`) are intended ends: they set `CorpseClientState.Notice`
+to the worker's message, or a fallback when it is blank, and leave `Error` null;
+the own close sets no notice. Every other code, including
+`corpse_invalidated`, `corpse_not_found`, and any code the client does not know,
+becomes a `CorpseClientError`, so a real invalidation is never hidden. `Notice`
+and `Error` are never set together, and a new operation, an error, or a session
+reset clears the notice. The panel shows the error in red and otherwise the
+notice in neutral text. The client's own confirmed close calls `CloseView`,
+which ends the view without a message.
+
 `CorpsePresentationController` creates one replaceable generic capsule for every
 nearby presence entry and updates it from server position and presentation key.
 It uses a shared renderer property block and never creates per-frame materials.
@@ -1366,7 +1381,11 @@ correlates operation ids, and checks specialized slots, Secure Container rules,
 non-empty Bags, split quantities, the exact hard cap, external corpse swaps, and
 committed-revision refresh eligibility. Corpse coverage verifies presence assembly, duplicate and stale chunks, complete canonical
 three-section views, targeted delta consistency, monotonic revisions, every
-typed corpse intent, and corpse drag payload identity. Inventory presentation
+typed corpse intent, and corpse drag payload identity. `CorpseViewClosureRuleTests`
+pins which closure codes end with a neutral notice and which stay errors,
+including unknown and blank codes, and `CorpseClientStateTests` checks that an
+emptied closure after the last loot leaves a notice, an invalidation an error,
+and an own close no message. Inventory presentation
 coverage pins the paper doll positions and the extra rows for unknown slots, the
 carry meter fill, marker, and load levels including a death overflow, blocked
 equipment slots, catalog display names for tags, slots, and the Secure Container
