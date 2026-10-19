@@ -219,14 +219,14 @@ namespace Mmorpg.Client.Tests.EditMode
             var sphere = new FakeTarget("Sphere");
 
             Assert.That(
-                WorldInteractionTargetingController.SelectCandidate(
-                    new[] { new WorldInteractionTargetCandidate(direct, 5f) },
-                    new[] { new WorldInteractionTargetCandidate(sphere, 1f) }),
+                WorldPointerPicker.SelectCandidate(
+                    new[] { new WorldPointerCandidate(direct, 5f) },
+                    new[] { new WorldPointerCandidate(sphere, 1f) }).Target,
                 Is.SameAs(direct));
             Assert.That(
-                WorldInteractionTargetingController.SelectCandidate(
-                    Array.Empty<WorldInteractionTargetCandidate>(),
-                    new[] { new WorldInteractionTargetCandidate(sphere, 2f) }),
+                WorldPointerPicker.SelectCandidate(
+                    Array.Empty<WorldPointerCandidate>(),
+                    new[] { new WorldPointerCandidate(sphere, 2f) }).Target,
                 Is.SameAs(sphere));
         }
 
@@ -239,9 +239,10 @@ namespace Mmorpg.Client.Tests.EditMode
             try
             {
                 Assert.That(
-                    WorldInteractionTargetingController.FindRegisteredTarget(
+                    WorldPointerPicker.FindRegisteredTarget(
                         unrelatedCollider),
                     Is.Null);
+                Assert.That(WorldPointerPicker.FindCandidate(unrelatedCollider, 1f).IsEmpty, Is.True);
 
                 var view = actorObject.AddComponent<NpcView>();
                 view.Initialize(new WorldActorClientEntry(CreateSpawn()));
@@ -249,9 +250,11 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 Assert.That(actorCollider, Is.Not.Null);
                 Assert.That(
-                    WorldInteractionTargetingController.FindRegisteredTarget(
+                    WorldPointerPicker.FindRegisteredTarget(
                         actorCollider),
                     Is.SameAs(view));
+                Assert.That(WorldPointerPicker.FindCandidate(actorCollider, 1f).Target, Is.SameAs(view));
+                Assert.That(view.TargetHeight, Is.EqualTo(2f));
             }
             finally
             {

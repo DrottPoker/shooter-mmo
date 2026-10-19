@@ -2,8 +2,14 @@
   "name": "Mmorpg.Client.Combat",
   "rootNamespace": "Mmorpg.Client.Combat",
   "references": [
+    "Mmorpg.Client.Core",
     "Mmorpg.Client.Networking",
-    "Mmorpg.GameProtocol"
+    "Mmorpg.Client.Items",
+    "Mmorpg.Client.Gameplay",
+    "Mmorpg.Client.WorldActors",
+    "Mmorpg.GameProtocol",
+    "Mmorpg.GameSimulation",
+    "Mmorpg.WorldData"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

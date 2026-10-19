@@ -4,10 +4,13 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
+    // Presentation of another player. Its only collider is a runtime trigger capsule of the
+    // movement capsule's size, so the pointer can pick the player; it never blocks anything.
     [DisallowMultipleComponent]
     public sealed class RemotePlayerView : MonoBehaviour
     {
         public const string SupportedArchetypeId = "player.default";
+        private const string PointerTargetName = "PointerTargetBounds";
 
         private readonly RemoteMovementInterpolation interpolation =
             new RemoteMovementInterpolation();
@@ -30,6 +33,9 @@ namespace Mmorpg.Client.Gameplay
 
         public string ArchetypeId { get; private set; }
 
+        // The height of the movement capsule above the root, the player's ground point.
+        public float TargetHeight { get; private set; }
+
         public void Initialize(
             ulong networkEntityId,
             string persistentId,
@@ -51,6 +57,7 @@ namespace Mmorpg.Client.Gameplay
             groundedVerticalPresentation.Clear();
             renderClock.Clear();
             name = "RemotePlayer_" + networkEntityId + "_" + displayName;
+            ConfigurePointerTarget(characterCollision);
         }
 
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)
@@ -95,6 +102,35 @@ namespace Mmorpg.Client.Gameplay
                 tickRateHz,
                 interpolation.LatestServerTick,
                 interpolationDelayTicks));
+        }
+
+        private void ConfigurePointerTarget(CharacterCollisionSettings characterCollision)
+        {
+            if (characterCollision == null)
+            {
+                TargetHeight = 0f;
+                return;
+            }
+
+            TargetHeight = characterCollision.Height;
+            var boundsTransform = transform.Find(PointerTargetName);
+            if (boundsTransform == null)
+            {
+                boundsTransform = new GameObject(PointerTargetName).transform;
+                boundsTransform.SetParent(transform, false);
+            }
+
+            var capsule = boundsTransform.GetComponent<CapsuleCollider>();
+            if (capsule == null)
+            {
+                capsule = boundsTransform.gameObject.AddComponent<CapsuleCollider>();
+            }
+
+            capsule.isTrigger = true;
+            capsule.direction = 1;
+            capsule.radius = characterCollision.Radius;
+            capsule.height = characterCollision.Height;
+            capsule.center = new Vector3(0f, characterCollision.Height * 0.5f, 0f);
         }
 
         private void ApplyInterpolatedState(double targetTick)

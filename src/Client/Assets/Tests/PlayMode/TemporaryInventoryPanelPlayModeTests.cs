@@ -3,15 +3,18 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Combat;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Ui;
 using Mmorpg.Client.Worlds;
+using Mmorpg.GameProtocol;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 namespace Mmorpg.Client.Tests.PlayMode
 {
@@ -123,6 +126,131 @@ namespace Mmorpg.Client.Tests.PlayMode
                 ClientSession.Clear();
                 ConfigureGameServiceUrl(previousBaseUrl);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator EquippedArrowSlotFollowsTheLiveCountOfTheOwnerCombatState()
+        {
+            var previousBaseUrl = ClientSession.GameServiceBaseUrl;
+            ConfigureGameServiceUrl(UnreachableGameServiceUrl);
+            ClientSession.Clear();
+            var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
+            yield return worldLoad;
+            Assert.That(worldLoad.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
+            yield return null;
+
+            var controller = UnityEngine.Object.FindAnyObjectByType<InventoryClientController>();
+            var combat = UnityEngine.Object.FindAnyObjectByType<CombatClientController>();
+            var panel = UnityEngine.Object.FindAnyObjectByType<TemporaryInventoryPanel>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(combat, Is.Not.Null);
+            Assert.That(panel, Is.Not.Null);
+            var catalog = controller.State.Catalog;
+            Assert.That(catalog, Is.Not.Null);
+
+            var characterId = Guid.NewGuid();
+            ClientSession.Auth = new AuthResponse { accountId = Guid.NewGuid().ToString() };
+            ClientSession.SelectedCharacter = new CharacterResponse
+            {
+                id = characterId.ToString(),
+                name = "Arrow Probe"
+            };
+            try
+            {
+                yield return null;
+                var snapshot = CreateSnapshot(catalog, characterId, out _, out _);
+                var arrows = catalog.Definitions.First(definition =>
+                    definition.Ammunition != null
+                    && definition.EquipmentSlots != null
+                    && definition.EquipmentSlots.Contains(AmmunitionSlotId));
+                var stack = CreateItem(arrows.Id, 500);
+                snapshot = WithEquipped(snapshot, AmmunitionSlotId, stack);
+                Assert.That(
+                    controller.State.ApplyFull(snapshot),
+                    Is.EqualTo(InventorySnapshotApplyResult.Applied));
+
+                panel.SetOpen(true, InventoryPanelMode.CharacterAndEquipment);
+                yield return null;
+                Assert.That(ArrowSlotQuantity(panel), Is.EqualTo("500"));
+
+                // The worker's live count already subtracts shots that are not committed yet.
+                Assert.That(combat.State.TryApplyOwner(Owner(1, stack.ItemInstanceId, 482), out var error), Is.True, error);
+                Assert.That(ArrowSlotQuantity(panel), Is.EqualTo("482"));
+                Assert.That(combat.State.TryApplyOwner(Owner(2, stack.ItemInstanceId, 0), out error), Is.True, error);
+                Assert.That(ArrowSlotQuantity(panel), Is.EqualTo("0"));
+
+                // A live count of another stack leaves the committed quantity.
+                Assert.That(combat.State.TryApplyOwner(Owner(3, Guid.NewGuid(), 7), out error), Is.True, error);
+                Assert.That(ArrowSlotQuantity(panel), Is.EqualTo("500"));
+
+                // Redrawing keeps the live count.
+                Assert.That(combat.State.TryApplyOwner(Owner(4, stack.ItemInstanceId, 481), out error), Is.True, error);
+                panel.SetOpen(false);
+                panel.SetOpen(true, InventoryPanelMode.CharacterAndEquipment);
+                yield return null;
+                Assert.That(ArrowSlotQuantity(panel), Is.EqualTo("481"));
+            }
+            finally
+            {
+                combat.State.Clear();
+                panel.SetOpen(false);
+                ClientSession.Clear();
+                ConfigureGameServiceUrl(previousBaseUrl);
+            }
+        }
+
+        private const string AmmunitionSlotId = "ammunition";
+
+        private static string ArrowSlotQuantity(TemporaryInventoryPanel panel)
+        {
+            var slot = View(panel.GetComponentsInChildren<InventorySlotView>(), "equipment:" + AmmunitionSlotId);
+            var label = slot.transform.Find("Quantity");
+            Assert.That(label, Is.Not.Null);
+            return label.GetComponent<Text>().text;
+        }
+
+        private static CharacterInventorySnapshot WithEquipped(
+            CharacterInventorySnapshot source,
+            string slotId,
+            InventoryItem item)
+        {
+            return new CharacterInventorySnapshot(
+                source.CharacterId,
+                source.CatalogRevision,
+                source.ItemStateRevision,
+                source.PermanentInventory,
+                source.Equipment
+                    .Select(slot => slot.SlotId == slotId
+                        ? new InventoryEquipmentSlot(slot.SlotId, slot.SortOrder, item)
+                        : slot)
+                    .ToArray(),
+                source.EquippedBag,
+                source.Bank,
+                source.SecureContainer,
+                source.RecoveryStorage,
+                source.CarriedWeight,
+                source.CarryCapacity,
+                source.LoadRatioBasisPoints,
+                source.MovementMultiplierBasisPoints);
+        }
+
+        private static RealtimeOwnerCombatState Owner(long revision, Guid ammunition, int quantity)
+        {
+            return new RealtimeOwnerCombatState(
+                revision,
+                100,
+                100,
+                100,
+                RealtimeCombatLifeState.Alive,
+                0,
+                0,
+                false,
+                0,
+                RealtimeCombatAttackStatus.Idle,
+                0,
+                0,
+                ammunition,
+                quantity);
         }
 
         // Picks items by their rules instead of their ids, so content changes keep the test valid.

@@ -26,6 +26,10 @@ namespace Mmorpg.Client.Combat
 
         public event Action<RealtimeCombatIntentResult> IntentCompleted;
 
+        // Raised when the owner dies. The worker has stopped its movement and cleared its
+        // target; it respawns at the respawn tick.
+        public event Action<RealtimeOwnerCombatState> Died;
+
         // Raised when the owner lives again after a death. The worker has moved the
         // character to the World spawn with full health.
         public event Action<RealtimeOwnerCombatState> Respawned;
@@ -122,7 +126,14 @@ namespace Mmorpg.Client.Combat
 
             Owner = state;
             Changed?.Invoke();
-            if (previous != null
+            if (state.LifeState == RealtimeCombatLifeState.Dead
+                && (previous == null
+                    || previous.LifeState != RealtimeCombatLifeState.Dead
+                    || previous.LifeSequence != state.LifeSequence))
+            {
+                Died?.Invoke(state);
+            }
+            else if (previous != null
                 && state.LifeSequence > previous.LifeSequence
                 && state.LifeState == RealtimeCombatLifeState.Alive)
             {

@@ -249,6 +249,25 @@ namespace Mmorpg.Client.Ui
                 : string.Empty;
         }
 
+        // A live count that differs from the committed quantity always shows, even 0 or 1.
+        public static string LiveQuantityText(int committedQuantity, int liveQuantity)
+        {
+            return liveQuantity != committedQuantity
+                ? Math.Max(0, liveQuantity).ToString(CultureInfo.InvariantCulture)
+                : QuantityText(committedQuantity);
+        }
+
+        public static string LiveQuantityDescription(
+            string description,
+            int committedQuantity,
+            int liveQuantity)
+        {
+            return liveQuantity != committedQuantity
+                ? description + "\n" + Math.Max(0, liveQuantity).ToString(CultureInfo.InvariantCulture)
+                    + " left; spent arrows commit in batches"
+                : description;
+        }
+
         // P marks protection on death and I marks insurance.
         public static string PolicyBadge(InventoryItem item)
         {

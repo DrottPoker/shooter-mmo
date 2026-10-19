@@ -63,11 +63,4 @@ namespace Mmorpg.Client.Gameplay
             return false;
         }
     }
-
-    // A world click that a higher feature can take before it becomes a walk, such as a
-    // click on an NPC or a corpse. Handlers run in registration order.
-    public interface IWorldClickHandler
-    {
-        bool TryHandleWorldClick(Ray ray);
-    }
 }

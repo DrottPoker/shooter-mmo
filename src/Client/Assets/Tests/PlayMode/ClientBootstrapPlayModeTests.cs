@@ -62,6 +62,22 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(Object.FindAnyObjectByType<WorldActorPresentationController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<WorldInteractionTargetingController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<TemporaryWorldInteractionPanel>(), Is.Not.Null);
+            var combatTargeting = Object.FindAnyObjectByType<CombatTargetingController>();
+            Assert.That(combatTargeting, Is.Not.Null);
+            Assert.That(combatTargeting.TargetEntityId, Is.Zero);
+            Assert.That(Object.FindAnyObjectByType<CombatProjectilePresentation>(), Is.Not.Null);
+            var combatHud = Object.FindAnyObjectByType<TemporaryCombatHud>();
+            Assert.That(combatHud, Is.Not.Null);
+            Assert.That(combatHud.GetComponentInChildren<Canvas>(true), Is.Not.Null);
+
+            // Without a joined session the HUD shows nothing and never takes a raycast.
+            Assert.That(combatHud.IsOwnerFrameVisible, Is.False);
+            Assert.That(combatHud.IsDeathOverlayVisible, Is.False);
+            Assert.That(
+                combatHud.GetComponentsInChildren<UnityEngine.UI.Graphic>(true)
+                    .Where(graphic => graphic.raycastTarget)
+                    .Select(graphic => graphic.name),
+                Is.Empty);
             var inventoryPanel = Object.FindAnyObjectByType<TemporaryInventoryPanel>();
             Assert.That(inventoryPanel, Is.Not.Null);
             Assert.That(inventoryPanel.IsOpen, Is.False);

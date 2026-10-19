@@ -244,6 +244,34 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void DeathSignalFiresOnceForEveryDeath()
+        {
+            var state = new CombatClientState();
+            var deaths = new List<long>();
+            state.Died += owner => deaths.Add(owner.StateRevision);
+
+            Apply(state, Owner(1, 0, RealtimeCombatLifeState.Alive));
+            Apply(state, Owner(2, 1, RealtimeCombatLifeState.Dead));
+            Apply(state, Owner(3, 1, RealtimeCombatLifeState.Dead));
+            Assert.That(deaths, Is.EqualTo(new long[] { 2 }));
+
+            Apply(state, Owner(4, 2, RealtimeCombatLifeState.Alive));
+            Apply(state, Owner(5, 3, RealtimeCombatLifeState.Dead));
+            Assert.That(deaths, Is.EqualTo(new long[] { 2, 5 }));
+
+            // A respawn that was never seen still makes the next death a new one.
+            Apply(state, Owner(6, 5, RealtimeCombatLifeState.Dead));
+            Assert.That(deaths, Is.EqualTo(new long[] { 2, 5, 6 }));
+
+            // Joining while dead is a death as well.
+            var joined = new CombatClientState();
+            var joinedDeaths = 0;
+            joined.Died += _ => joinedDeaths++;
+            Apply(joined, Owner(1, 1, RealtimeCombatLifeState.Dead));
+            Assert.That(joinedDeaths, Is.EqualTo(1));
+        }
+
+        [Test]
         public void EventBatchesAreForwardedInSimulationOrder()
         {
             var state = new CombatClientState();

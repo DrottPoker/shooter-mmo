@@ -128,9 +128,10 @@ namespace Mmorpg.Client.Networking
 
         public long RealtimeBytesSent { get; private set; }
 
+        // LiteNetLib's Ping is half the round trip, so the round trip is read directly.
         public int RoundTripTimeMilliseconds
         {
-            get { return serverPeer == null ? 0 : serverPeer.Ping; }
+            get { return serverPeer == null ? 0 : serverPeer.RoundTripTime; }
         }
 
         public float LatestSnapshotAgeSeconds

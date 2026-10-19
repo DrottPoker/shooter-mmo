@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
@@ -21,7 +20,7 @@ namespace Mmorpg.Client.Gameplay
         [SerializeField] private Transform cameraTarget;
         [SerializeField] private OrbitCameraController playerCamera;
 
-        private readonly List<IWorldClickHandler> clickHandlers = new List<IWorldClickHandler>();
+        private readonly WorldClickHandlerList clickHandlers = new WorldClickHandlerList();
         private readonly LocalMovementPresentation movementPresentation =
             new LocalMovementPresentation();
         private readonly CollisionQueryBuffer presentationGroundQuery =
@@ -245,12 +244,10 @@ namespace Mmorpg.Client.Gameplay
             pointerFocus = focus;
         }
 
-        public void AddClickHandler(IWorldClickHandler handler)
+        // Handlers see a click in WorldClickOrder, whichever registered first.
+        public void AddClickHandler(IWorldClickHandler handler, int order)
         {
-            if (handler != null && !clickHandlers.Contains(handler))
-            {
-                clickHandlers.Add(handler);
-            }
+            clickHandlers.Add(handler, order);
         }
 
         public void RemoveClickHandler(IWorldClickHandler handler)
@@ -315,12 +312,9 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            for (var index = 0; index < clickHandlers.Count; index++)
+            if (clickHandlers.TryHandle(ray))
             {
-                if (clickHandlers[index].TryHandleWorldClick(ray))
-                {
-                    return;
-                }
+                return;
             }
 
             // The click raycast uses the same baked collision as the planner and the worker.

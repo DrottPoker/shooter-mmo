@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.GameProtocol;
@@ -8,29 +7,13 @@ using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
 {
-    public readonly struct WorldInteractionTargetCandidate
-    {
-        public WorldInteractionTargetCandidate(
-            IWorldInteractionTarget target,
-            float distance)
-        {
-            Target = target;
-            Distance = distance;
-        }
-
-        public IWorldInteractionTarget Target { get; }
-        public float Distance { get; }
-    }
-
-    // The pointer picks NPCs and corpses. A left click on one walks the player into range
-    // and then asks the worker to open the interaction, and Escape closes it. The worker
-    // still owns range, line of sight, revision, and session validation.
+    // The pointer picks NPCs, resource nodes, and corpses; a Mob belongs to combat. A left
+    // click on one walks the player into range and then asks the worker to open the
+    // interaction, and Escape closes it. The worker still owns range, line of sight,
+    // revision, and session validation.
     [DisallowMultipleComponent]
     public sealed class WorldInteractionTargetingController : MonoBehaviour, IWorldClickHandler
     {
-        private const float PointerRange = WorldInteractionRules.ClientPointerRange;
-        private const float SpherecastRadius = WorldInteractionRules.ClientSpherecastRadius;
-
         // Inside the worker's start range, so the center distance already proves the
         // worker's closest-point distance.
         private const float OpenRange = WorldInteractionRules.AuthoritativeStartRange - 0.25f;
@@ -38,12 +21,7 @@ namespace Mmorpg.Client.WorldActors
         // A walk that ended out of range stops waiting after this long.
         private const float ApproachSettleSeconds = 1.5f;
 
-        private readonly RaycastHit[] directHits = new RaycastHit[32];
-        private readonly RaycastHit[] sphereHits = new RaycastHit[32];
-        private readonly List<WorldInteractionTargetCandidate> directCandidates =
-            new List<WorldInteractionTargetCandidate>();
-        private readonly List<WorldInteractionTargetCandidate> sphereCandidates =
-            new List<WorldInteractionTargetCandidate>();
+        private readonly WorldPointerPicker picker = new WorldPointerPicker();
         private LocalPlayerController localPlayer;
         private WorldInteractionClientController interactionController;
         private WorldActorClientController actorController;
@@ -138,31 +116,20 @@ namespace Mmorpg.Client.WorldActors
             return true;
         }
 
-        public static IWorldInteractionTarget SelectCandidate(
-            IReadOnlyList<WorldInteractionTargetCandidate> direct,
-            IReadOnlyList<WorldInteractionTargetCandidate> spherecast)
+        // Corpses, NPCs, and resource nodes offer an interaction. A Mob does not: a click on
+        // it belongs to combat, and an unknown actor is no target.
+        public static bool OffersInteraction(
+            RealtimeWorldInteractionTargetKind targetKind,
+            RealtimeWorldActorKind? actorKind)
         {
-            var selected = ClosestActive(direct);
-            return selected ?? ClosestActive(spherecast);
-        }
-
-        public static IWorldInteractionTarget FindRegisteredTarget(Collider collider)
-        {
-            if (collider == null)
+            if (targetKind == RealtimeWorldInteractionTargetKind.Corpse)
             {
-                return null;
+                return true;
             }
 
-            var behaviours = collider.GetComponentsInParent<MonoBehaviour>(true);
-            for (var index = 0; index < behaviours.Length; index++)
-            {
-                if (behaviours[index] is IWorldInteractionTarget target)
-                {
-                    return target;
-                }
-            }
-
-            return null;
+            return targetKind == RealtimeWorldInteractionTargetKind.WorldActor
+                && actorKind.HasValue
+                && actorKind.Value != RealtimeWorldActorKind.Mob;
         }
 
         private void UpdateApproach()
@@ -287,92 +254,26 @@ namespace Mmorpg.Client.WorldActors
             SetCurrentTarget(PickTarget(ray));
         }
 
+        // The nearest target under the pointer when it offers an interaction. A nearer Mob or
+        // player hides the target behind it, as it does for combat.
         private IWorldInteractionTarget PickTarget(Ray ray)
         {
-            directCandidates.Clear();
-            sphereCandidates.Clear();
-            var directCount = Physics.RaycastNonAlloc(
-                ray,
-                directHits,
-                PointerRange,
-                Physics.AllLayers,
-                QueryTriggerInteraction.Collide);
-            AddCandidates(directHits, directCount, directCandidates);
-            if (directCandidates.Count == 0)
+            var candidate = picker.Pick(ray, localPlayer != null ? localPlayer.transform : null);
+            var target = candidate.Target;
+            if (target == null)
             {
-                var sphereCount = Physics.SphereCastNonAlloc(
-                    ray,
-                    SpherecastRadius,
-                    sphereHits,
-                    PointerRange,
-                    Physics.AllLayers,
-                    QueryTriggerInteraction.Collide);
-                AddCandidates(sphereHits, sphereCount, sphereCandidates);
+                return null;
             }
 
-            return SelectCandidate(directCandidates, sphereCandidates);
-        }
-
-        private static IWorldInteractionTarget ClosestActive(
-            IReadOnlyList<WorldInteractionTargetCandidate> values)
-        {
-            IWorldInteractionTarget selected = null;
-            var selectedDistance = float.PositiveInfinity;
-            for (var index = 0; index < values.Count; index++)
+            RealtimeWorldActorKind? actorKind = null;
+            if (target.TargetKind == RealtimeWorldInteractionTargetKind.WorldActor
+                && actorController != null
+                && actorController.State.TryGet(target.TargetEntityId, out var actor))
             {
-                var candidate = values[index];
-                if (candidate.Target == null
-                    || !candidate.Target.IsTargetActive
-                    || candidate.Distance < 0f
-                    || candidate.Distance >= selectedDistance)
-                {
-                    continue;
-                }
-
-                selected = candidate.Target;
-                selectedDistance = candidate.Distance;
+                actorKind = actor.Kind;
             }
 
-            return selected;
-        }
-
-        // A target counts only when no solid collider stands between it and the camera.
-        private void AddCandidates(
-            RaycastHit[] hits,
-            int count,
-            ICollection<WorldInteractionTargetCandidate> destination)
-        {
-            var nearestBlockerDistance = float.PositiveInfinity;
-            for (var index = 0; index < count; index++)
-            {
-                var collider = hits[index].collider;
-                if (collider != null
-                    && !collider.isTrigger
-                    && !IsLocalPlayer(collider)
-                    && FindRegisteredTarget(collider) == null)
-                {
-                    nearestBlockerDistance = Mathf.Min(
-                        nearestBlockerDistance,
-                        hits[index].distance);
-                }
-            }
-
-            for (var index = 0; index < count; index++)
-            {
-                var target = FindRegisteredTarget(hits[index].collider);
-                if (target != null
-                    && hits[index].distance <= nearestBlockerDistance + 0.001f)
-                {
-                    destination.Add(new WorldInteractionTargetCandidate(
-                        target,
-                        hits[index].distance));
-                }
-            }
-        }
-
-        private bool IsLocalPlayer(Collider collider)
-        {
-            return localPlayer != null && collider.transform.IsChildOf(localPlayer.transform);
+            return OffersInteraction(target.TargetKind, actorKind) ? target : null;
         }
 
         private void SetCurrentTarget(IWorldInteractionTarget target)
@@ -396,7 +297,7 @@ namespace Mmorpg.Client.WorldActors
             localPlayer = FindAnyObjectByType<LocalPlayerController>();
             if (localPlayer != null)
             {
-                localPlayer.AddClickHandler(this);
+                localPlayer.AddClickHandler(this, WorldClickOrder.WorldInteraction);
             }
         }
 

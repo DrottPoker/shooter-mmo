@@ -715,7 +715,9 @@ unclaimed corpses never require PostgreSQL cleanup.
 
 SimulationWorker's combat system, described in
 [Service Features](SERVICE_FEATURES.md#target-based-combat), produces Mob
-deaths:
+deaths. In Unity a click on a Mob is always an attack, never an interaction, as
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#combat-client)
+describes:
 
 - Every damageable Mob with a combat profile is a combatant with the profile's
   maximum health. A Mob lost in a worker restart returns with full health, like

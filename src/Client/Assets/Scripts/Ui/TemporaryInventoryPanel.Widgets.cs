@@ -16,6 +16,7 @@ namespace Mmorpg.Client.Ui
         private static readonly Color SlotBorderColor = new Color(0.25f, 0.29f, 0.35f, 1f);
         private static readonly Color SlotEmptyBorderColor = new Color(0.20f, 0.225f, 0.27f, 1f);
         private static readonly Color QuantityColor = new Color(1f, 0.90f, 0.62f, 1f);
+        private const string QuantityLabelName = "Quantity";
 
         private void DrawCarryMeter(Transform parent, CarryLoadPresentation load)
         {
@@ -265,7 +266,7 @@ namespace Mmorpg.Client.Ui
             return gridObject.GetComponent<RectTransform>();
         }
 
-        private void CreateSlot(Transform parent, SlotSpec spec)
+        private GameObject CreateSlot(Transform parent, SlotSpec spec)
         {
             var catalog = controller?.State.Catalog;
             var item = spec.Item;
@@ -312,7 +313,7 @@ namespace Mmorpg.Client.Ui
                 var displayName = catalog != null
                     ? catalog.GetDisplayName(item.DefinitionId)
                     : item.DefinitionId;
-                var quantity = InventorySlotPresentation.QuantityText(item.Quantity);
+                var quantity = spec.QuantityText ?? InventorySlotPresentation.QuantityText(item.Quantity);
                 dragLabel = displayName + (quantity.Length > 0 ? "  x" + quantity : string.Empty);
                 var strip = CreateUiObject("Category", slotObject.transform).AddComponent<Image>();
                 strip.color = CategoryColor(InventorySlotPresentation.CategoryId(catalog, item.DefinitionId));
@@ -349,10 +350,11 @@ namespace Mmorpg.Client.Ui
                 nameText.resizeTextMinSize = 10;
                 nameText.resizeTextMaxSize = 14;
                 Stretch(nameText.rectTransform, Vector2.zero, Vector2.one, new Vector2(nameLeft, 15f), new Vector2(-6f, -15f));
-                if (quantity.Length > 0)
+                // A replaced quantity, such as a live count, keeps its label to update.
+                if (quantity.Length > 0 || spec.QuantityText != null)
                 {
                     var quantityText = TemporaryUiKit.AddText(
-                        CreateUiObject("Quantity", slotObject.transform),
+                        CreateUiObject(QuantityLabelName, slotObject.transform),
                         quantity,
                         14,
                         FontStyle.Bold,
@@ -424,6 +426,8 @@ namespace Mmorpg.Client.Ui
             {
                 slotObject.AddComponent<InventoryTooltipTrigger>().Configure(tooltip, spec.Tooltip);
             }
+
+            return slotObject;
         }
 
         private void CreateSubheader(Transform parent, string title, string detail)
@@ -488,6 +492,9 @@ namespace Mmorpg.Client.Ui
         {
             public string Key = string.Empty;
             public InventoryItem Item;
+
+            // Replaces the committed quantity, such as the live arrow count; null keeps it.
+            public string QuantityText;
             public string CornerLabel = string.Empty;
             public string EmptyLabel = string.Empty;
             public bool Blocked;
@@ -499,6 +506,16 @@ namespace Mmorpg.Client.Ui
             public InventoryDropValidator DropValidator;
             public Action<InventoryDragPayload> OnDrop;
             public string Tooltip = string.Empty;
+        }
+
+        // The drawn equipped ammunition slot, whose count follows every shot.
+        private sealed class LiveAmmunitionSlot
+        {
+            public InventoryItem Item;
+            public string Description = string.Empty;
+            public int DrawnQuantity;
+            public Text QuantityText;
+            public InventoryTooltipTrigger Tooltip;
         }
     }
 }

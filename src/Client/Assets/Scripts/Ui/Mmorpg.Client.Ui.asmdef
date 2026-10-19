@@ -9,6 +9,7 @@
     "Mmorpg.Client.Items",
     "Mmorpg.Client.Gameplay",
     "Mmorpg.Client.WorldActors",
+    "Mmorpg.Client.Combat",
     "Unity.InputSystem",
     "UnityEngine.UI",
     "Mmorpg.GameProtocol",

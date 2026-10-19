@@ -41,6 +41,12 @@ namespace Mmorpg.Client.WorldActors
             actorController = worldActors;
         }
 
+        // The presentation of an actor by its network entity id, once its prefab is ready.
+        public bool TryGetView(ulong entityId, out WorldActorView view)
+        {
+            return presentations.TryGetValue(entityId, out view) && view != null;
+        }
+
         private void Awake()
         {
             materialProperties = new MaterialPropertyBlock();

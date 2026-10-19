@@ -1441,9 +1441,9 @@ the test connection variable at development or production data.
 - Consume and use intents.
 - Final inventory visual design, drag-and-drop polish, accessibility, and policy
   detail presentation. The current uGUI is temporary presentation only.
-- Combat presentation in Unity, final corpse visuals, Mob attacks, and Mob AI.
-  Mobs are stationary targets until the Mob AI step of the
-  [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
+- Final combat and corpse visuals, Mob attacks, and Mob AI. Unity shows combat
+  with temporary presentation, and Mobs are stationary targets until the Mob AI
+  step of the [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
 - Production scheduler or fleet autoscaler.
