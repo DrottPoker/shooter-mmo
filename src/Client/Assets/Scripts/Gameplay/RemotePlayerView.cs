@@ -6,11 +6,18 @@ namespace Mmorpg.Client.Gameplay
 {
     // Presentation of another player. Its only collider is a runtime trigger capsule of the
     // movement capsule's size, so the pointer can pick the player; it never blocks anything.
+    // The body is orange for a person and blue for a development bot, so neither can be taken
+    // for the purple local player.
     [DisallowMultipleComponent]
     public sealed class RemotePlayerView : MonoBehaviour
     {
-        public const string SupportedArchetypeId = "player.default";
+        public static readonly Color PlayerBodyColor = new Color(1f, 0.55f, 0.15f, 1f);
+        public static readonly Color DevelopmentBotBodyColor = new Color(0.29f, 0.70f, 1f, 1f);
+
         private const string PointerTargetName = "PointerTargetBounds";
+        private const string BodyPath = "PlayerVisual/Body";
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static readonly int ColorId = Shader.PropertyToID("_Color");
 
         private readonly RemoteMovementPresenter movement = new RemoteMovementPresenter();
 
@@ -24,6 +31,19 @@ namespace Mmorpg.Client.Gameplay
 
         // The height of the movement capsule above the root, the player's ground point.
         public float TargetHeight { get; private set; }
+
+        public static bool SupportsArchetype(string archetypeId)
+        {
+            return string.Equals(archetypeId, RealtimePlayerArchetypeIds.Player, System.StringComparison.Ordinal)
+                || string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal);
+        }
+
+        public static Color BodyColorFor(string archetypeId)
+        {
+            return string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal)
+                ? DevelopmentBotBodyColor
+                : PlayerBodyColor;
+        }
 
         public void Initialize(
             ulong networkEntityId,
@@ -42,6 +62,7 @@ namespace Mmorpg.Client.Gameplay
             movement.Configure(simulationTickRateHz, delayTicks, worldCollision, characterCollision);
             name = "RemotePlayer_" + networkEntityId + "_" + displayName;
             ConfigurePointerTarget(characterCollision);
+            ApplyBodyColor();
         }
 
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)
@@ -93,6 +114,24 @@ namespace Mmorpg.Client.Gameplay
             capsule.radius = characterCollision.Radius;
             capsule.height = characterCollision.Height;
             capsule.center = new Vector3(0f, characterCollision.Height * 0.5f, 0f);
+        }
+
+        // A property block keeps the shared body material unchanged for every other instance.
+        private void ApplyBodyColor()
+        {
+            var body = transform.Find(BodyPath);
+            var bodyRenderer = body != null ? body.GetComponent<Renderer>() : null;
+            if (bodyRenderer == null)
+            {
+                return;
+            }
+
+            var color = BodyColorFor(ArchetypeId);
+            var properties = new MaterialPropertyBlock();
+            bodyRenderer.GetPropertyBlock(properties);
+            properties.SetColor(BaseColorId, color);
+            properties.SetColor(ColorId, color);
+            bodyRenderer.SetPropertyBlock(properties);
         }
 
         private void ApplyPresentedPose()

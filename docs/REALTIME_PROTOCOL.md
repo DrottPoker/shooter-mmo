@@ -260,6 +260,21 @@ table from the descriptors, the Unity client recognizes snapshots by their
 unreliable delivery, and `RealtimeReplicationContractTests` checks that every
 packet the worker sends travels as its descriptor says.
 
+## Player Archetypes
+
+`EntitySpawn.ArchetypeId` names how the client presents a player entity. It is
+free text on the wire, and the hand-written `RealtimePlayerArchetypeIds` in the
+Replication family holds the values both sides use, so adding one changes
+neither the wire format nor the protocol version:
+
+| Archetype | Meaning |
+| --- | --- |
+| `player.default` | A character that a person plays. |
+| `player.development_bot` | A synthetic development bot from `tools/ActiveSimulationBots`. |
+
+The Unity client presents a spawn with any other archetype as nothing and logs
+a warning.
+
 ## Movement Input And Paths
 
 Protocol version 15 added click-to-move. Every `MovementInput` names the path

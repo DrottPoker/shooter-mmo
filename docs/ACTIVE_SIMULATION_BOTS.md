@@ -1,6 +1,6 @@
 # Active Simulation Bots
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Purpose
 
@@ -198,8 +198,11 @@ required.
 7. Keep the Unity Console visible for protocol, collision revision, or
    disconnect errors.
 
-Expected result: the local player uses the normal authenticated flow, remote
-`Active Bot N` instances appear only after reliable spawn messages, movement is
+Expected result: the local player uses the normal authenticated flow and is
+purple. SimulationWorker spawns every bot with the presentation archetype
+`player.development_bot`, so remote `Active Bot N` instances are blue, while a
+second Unity client's character is orange. Bots appear only after reliable
+spawn messages, movement is
 interpolated from SimulationWorker snapshots, and graceful bot logout removes
 the matching remote instance through a reliable despawn. The small current map
 keeps these clients within the same interest area, so it is useful as a dense
