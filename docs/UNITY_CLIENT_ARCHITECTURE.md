@@ -43,7 +43,7 @@ layers from the bottom up:
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
 | `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets` | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
-| `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
+| `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
 | `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, ordered world click handlers, prediction, remote player and Mob interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
@@ -760,8 +760,10 @@ refreshes the inventory to the returned item-state revision.
 
 ### Corpse Client State And Presentation
 
-`CorpseClientController` is a persistent bootstrap-owned adapter over
-`RealtimeSimulationClient`. It owns immutable nearby-presence and active-view
+`CorpseClientController` is a persistent bootstrap-owned adapter over the corpse
+messages of `RealtimeSimulationClient`, which it reaches through
+`IRealtimeCorpseChannel` in `Mmorpg.Client.Networking` so EditMode tests can drive
+it with a fake channel. It owns immutable nearby-presence and active-view
 state, assembles complete multi-packet snapshots, applies only monotonic
 targeted deltas, correlates one pending corpse operation, and requests a refresh
 when a stale base or concurrency result requires it. It never writes inventory
@@ -803,10 +805,27 @@ on an open view without `RequiresCorpseRefresh`, for example
 `corpse_out_of_range`, no view state follows, so `TryComplete` returns the state
 to `Ready` and reports the rejection only in `Error`. `CanMutate` stays true and
 the panel keeps every corpse slot draggable while it shows the error in red. The
-error stays until the next operation, a closure, or a session reset; view state
-caused by other viewers does not clear it. A rejection that does require a
-corpse refresh makes the controller start a refresh at once, which clears the
-error like any new operation.
+error stays until the player's next operation, a closure, or a session reset;
+view state caused by other viewers does not clear it.
+
+The controller also refreshes the open view on its own. A rejection with
+`RequiresCorpseRefresh`, which the worker sets for `item_already_looted`,
+`item_quantity_changed`, `bag_state_changed`, `item_state_conflict`,
+`item_slot_occupied`, and uncertain GameService outcomes, starts a refresh at
+once. A targeted delta that goes stale starts one at once when nothing is
+pending, and otherwise after the pending operation's result, success or
+rejection. Such an automatic refresh begins through
+`CorpseClientState.BeginAutomaticRefresh` instead of `BeginOperation`, and
+`IsAutomaticRefreshPending` stays true until its result. It keeps the state
+busy but tells the player nothing new, so `Error` and `Notice` stay while it
+runs, when it succeeds, and when its snapshot arrives after the result: the
+rejection that asked for the refresh stays in red next to the refreshed view. A
+refresh the player asks for, through the Refresh button or the context refresh,
+goes through `TryRefresh` and `BeginOperation` and clears the error like any
+player operation. A rejected automatic refresh reports its own error, and the
+controller starts no further refresh for it, so an unavailable GameService
+cannot cause a refresh loop; the player can refresh by hand, and the next stale
+delta refreshes again.
 
 A view-closure message ends the active view through
 `CorpseClientState.ApplyClosure`, which asks `CorpseViewClosureRule` in
@@ -1435,7 +1454,16 @@ busy until its late result, that a late success or an expected late rejection
 keeps the closure's notice or error, that a snapshot after the closure or after
 a rejected open is ignored, that closures of other corpses are ignored, that a
 result with the wrong id, kind, or corpse, or a second result, is a conflict,
-and that a session reset drops an operation that outlived its view. Inventory presentation
+and that a session reset drops an operation that outlived its view. They pin
+that an automatic refresh keeps the rejection that asked for it through its
+success and snapshot until the player's next operation, that its own rejection
+replaces the error, and that a closure or session reset still ends it.
+`CorpseClientControllerTests` drive the controller through a fake
+`IRealtimeCorpseChannel`: a rejection that requires a refresh stays visible
+through the automatic refresh until the player refreshes, a rejected automatic
+refresh starts no other, a stale delta refreshes without clearing an earlier
+rejection, also when it went stale during a rejected operation, and a closure
+or session end stops the refresh. Inventory presentation
 coverage pins the paper doll positions and the extra rows for unknown slots, the
 carry meter fill, marker, and load levels including a death overflow, blocked
 equipment slots, catalog display names for tags, slots, and the Secure Container

@@ -9,7 +9,7 @@ namespace Mmorpg.Client.Items
     [DisallowMultipleComponent]
     public sealed class CorpseClientController : MonoBehaviour
     {
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeCorpseChannel simulationClient;
         private InventoryClientController inventoryController;
         private bool initialized;
         private bool refreshAfterPending;
@@ -17,7 +17,7 @@ namespace Mmorpg.Client.Items
         public CorpseClientState State { get; } = new CorpseClientState();
 
         public void Initialize(
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeCorpseChannel realtimeClient,
             InventoryClientController inventory)
         {
             if (realtimeClient == null)
@@ -94,6 +94,8 @@ namespace Mmorpg.Client.Items
                 out error);
         }
 
+        // The player's own refresh. It clears the last outcome like any player operation;
+        // the controller's automatic refresh keeps it.
         public bool TryRefresh(out string error)
         {
             error = string.Empty;
@@ -469,7 +471,7 @@ namespace Mmorpg.Client.Items
             {
                 if (State.PendingOperationId == Guid.Empty)
                 {
-                    TryRefresh(out _);
+                    RefreshOpenView();
                 }
                 else
                 {
@@ -480,6 +482,7 @@ namespace Mmorpg.Client.Items
 
         private void OnInteractionCompleted(RealtimeCorpseInteractionResult result)
         {
+            var completesAutomaticRefresh = State.IsAutomaticRefreshPending;
             if (!State.TryComplete(result, out var error))
             {
                 simulationClient.DisconnectForClientFailure(
@@ -495,21 +498,35 @@ namespace Mmorpg.Client.Items
                 inventoryController?.EnsureFullState(result.CarryState.ItemStateRevision);
             }
 
-            // A rejection says itself whether the view needs a refresh; a success refreshes a
-            // view whose delta went stale while the operation was pending.
-            if (result.Succeeded ? refreshAfterPending : result.RequiresCorpseRefresh)
+            // A view whose delta went stale while the operation was pending needs a refresh
+            // whatever the result says, and a rejection may ask for one itself. A rejected
+            // automatic refresh does not ask again, so an unavailable GameService cannot
+            // start a refresh loop; the player can still refresh by hand.
+            if (refreshAfterPending
+                || (result.RequiresCorpseRefresh && !completesAutomaticRefresh))
             {
                 RefreshOpenView();
             }
         }
 
-        // A closed view is never refreshed, so a stale delta it left behind is dropped.
+        // Refreshes the open view on the controller's own initiative, which keeps the
+        // outcome the player last saw. A closed view is never refreshed, so a stale delta it
+        // left behind is dropped.
         private void RefreshOpenView()
         {
             refreshAfterPending = false;
-            if (State.ActiveView != null)
+            if (State.ActiveView == null || !CanBegin(out _))
             {
-                TryRefresh(out _);
+                return;
+            }
+
+            var intent = RealtimeCorpseInteractionIntent.CreateRefresh(
+                Guid.NewGuid(),
+                State.ActiveView.CorpseId,
+                State.ActiveView.Revision);
+            if (simulationClient.TrySendCorpseInteraction(intent))
+            {
+                State.BeginAutomaticRefresh(intent.OperationId, intent.CorpseId);
             }
         }
 
