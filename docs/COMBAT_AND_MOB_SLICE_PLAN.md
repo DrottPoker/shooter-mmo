@@ -422,8 +422,8 @@ blocked. Mobs do not collide with players or with each other.
 
 Replication: a moving Mob travels in the unreliable snapshots exactly like a
 remote player and is interpolated the same way. When it stops, one reliable
-`WorldActorState` carries its rest position. Movement advances the state
-revision but never the interaction revision.
+`WorldActorState` carries its rest position. The snapshots change no revision;
+the rest pose advances the state revision but never the interaction revision.
 
 ### Realtime Protocol
 

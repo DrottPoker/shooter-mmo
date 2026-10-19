@@ -627,8 +627,9 @@ SimulationWorker. Nothing gets its own task, timer, or thread:
   the ground under them, and a Mob starts to move only once the collision under
   it is loaded; walking Mobs keep their collision loaded like players.
 - A moving Mob travels in the unreliable `SimulationSnapshot` like a remote
-  player. The first tick it stands still sends one reliable `WorldActorState`
-  with its rest pose. Movement advances the state revision but never the
+  player, and the snapshots change neither the state nor the interaction
+  revision. The first tick it stands still sends one reliable `WorldActorState`
+  with its rest pose, which advances the state revision but never the
   interaction revision.
 
 ## Server-Authoritative Movement
