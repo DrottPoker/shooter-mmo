@@ -225,7 +225,9 @@ main checkout switches to `development` and a task worktree detaches first),
 deletes every other local branch that is fully merged into
 `origin/development` and checked out in no worktree, fast-forwards the local
 `development` branch wherever it is checked out, prunes stale worktree records,
-and lists the remaining worktrees. Exit code 0 means merged and cleaned up,
+and lists the remaining worktrees. For a pull request that is already merged,
+the script skips the merge and only runs the cleanup, so running it again
+finishes a cleanup that failed halfway. Exit code 0 means merged and cleaned up,
 1 means nothing was merged, and 2 means merged but the local `development`
 could not be fast-forwarded, usually because of uncommitted changes in the main
 checkout. Never discard those changes to get past exit code 2.

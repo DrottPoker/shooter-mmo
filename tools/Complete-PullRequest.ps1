@@ -4,7 +4,7 @@
 # the main checkout to development, or detaching a task worktree, when it has the branch checked
 # out), deletes every other local branch that is fully merged into origin/development and checked
 # out in no worktree, fast-forwards the local development branch, and prunes stale worktree
-# records.
+# records. Run it again on an already merged pull request to finish a cleanup that failed.
 #
 # Exit codes: 0 merged and cleaned up, 1 not merged, 2 merged but the local development branch
 # could not be fast-forwarded. Never discard local work to fix exit code 2; the report says why.
@@ -12,8 +12,7 @@ param(
     [Parameter(Mandatory = $true)]
     [int]$Number,
     # Merge commit subject in the repository style, for example
-    # "Merge the neutral corpse closure notice".
-    [Parameter(Mandatory = $true)]
+    # "Merge the neutral corpse closure notice". Required unless the pull request is merged.
     [string]$Subject,
     # Merge commit body. Defaults to "<pull request title> (#<number>)."
     [string]$Body,
@@ -44,47 +43,62 @@ function Get-Worktrees {
 }
 
 # The head is read once and pinned: readiness is judged for this commit, and the merge only
-# succeeds while the pull request head is still this commit.
-$pr = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "title,url,baseRefName,headRefName,headRefOid")
+# succeeds while the pull request head is still this commit. A pull request that is already
+# merged goes straight to the cleanup, so a rerun finishes a cleanup that failed halfway.
+$pr = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "title,url,state,baseRefName,headRefName,headRefOid,mergeCommit")
 if ($pr.baseRefName -ne "development") {
     Write-Output "Pull request #$Number targets $($pr.baseRefName), not development, so nothing was merged."
     exit 1
 }
 
-$waitArguments = @{ Number = $Number; HeadCommit = $pr.headRefOid; NoWait = $true }
-if ($AllowMissingCodexReview) {
-    $waitArguments.AllowMissingCodexReview = $true
+if ($pr.state -eq "MERGED") {
+    $mergeCommit = "$($pr.mergeCommit.oid)".Substring(0, 7)
+    Write-Output "Pull request #$Number is already merged into development as $mergeCommit; finishing the cleanup"
 }
-& (Join-Path $PSScriptRoot "Wait-PullRequest.ps1") @waitArguments
-if ($LASTEXITCODE -ne 0) {
-    Write-Output "Pull request #$Number is not ready to merge, so nothing was merged."
+elseif ($pr.state -ne "OPEN") {
+    Write-Output "Pull request #$Number is $($pr.state.ToLowerInvariant()), so nothing was merged."
     exit 1
 }
+else {
+    if (-not $Subject) {
+        Write-Output "A merge commit subject (-Subject) is required to merge pull request #$Number."
+        exit 1
+    }
+    $waitArguments = @{ Number = $Number; HeadCommit = $pr.headRefOid; NoWait = $true }
+    if ($AllowMissingCodexReview) {
+        $waitArguments.AllowMissingCodexReview = $true
+    }
+    & (Join-Path $PSScriptRoot "Wait-PullRequest.ps1") @waitArguments
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output "Pull request #$Number is not ready to merge, so nothing was merged."
+        exit 1
+    }
 
-if (-not $Body) {
-    $Body = "$($pr.title) (#$Number)."
-}
+    if (-not $Body) {
+        $Body = "$($pr.title) (#$Number)."
+    }
 
-# The body goes through a file because native arguments cannot carry double quotes here.
-$bodyFile = Join-Path ([IO.Path]::GetTempPath()) "merge-body-$Number-$PID.txt"
-[IO.File]::WriteAllText($bodyFile, $Body, (New-Object Text.UTF8Encoding $false))
-try {
-    $merge = Invoke-NativeCommand -FilePath "gh" -ArgumentList @(
-        "pr", "merge", "$Number", "--merge",
-        "--subject", $Subject,
-        "--body-file", $bodyFile,
-        "--match-head-commit", $pr.headRefOid)
+    # The body goes through a file because native arguments cannot carry double quotes here.
+    $bodyFile = Join-Path ([IO.Path]::GetTempPath()) "merge-body-$Number-$PID.txt"
+    [IO.File]::WriteAllText($bodyFile, $Body, (New-Object Text.UTF8Encoding $false))
+    try {
+        $merge = Invoke-NativeCommand -FilePath "gh" -ArgumentList @(
+            "pr", "merge", "$Number", "--merge",
+            "--subject", $Subject,
+            "--body-file", $bodyFile,
+            "--match-head-commit", $pr.headRefOid)
+    }
+    finally {
+        Remove-Item -LiteralPath $bodyFile -ErrorAction SilentlyContinue
+    }
+    $merged = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "state,mergeCommit")
+    if ($merge.ExitCode -ne 0 -or $merged.state -ne "MERGED") {
+        Write-Output "Merging pull request #$Number failed (gh exit code $($merge.ExitCode), state $($merged.state)), so nothing was cleaned up."
+        exit 1
+    }
+    $mergeCommit = "$($merged.mergeCommit.oid)".Substring(0, 7)
+    Write-Output "Merged pull request #$Number into development as ${mergeCommit}: $($pr.url)"
 }
-finally {
-    Remove-Item -LiteralPath $bodyFile -ErrorAction SilentlyContinue
-}
-$merged = Invoke-GitHubJson -ArgumentList @("pr", "view", "$Number", "--json", "state,mergeCommit")
-if ($merge.ExitCode -ne 0 -or $merged.state -ne "MERGED") {
-    Write-Output "Merging pull request #$Number failed (gh exit code $($merge.ExitCode), state $($merged.state)), so nothing was cleaned up."
-    exit 1
-}
-$mergeCommit = "$($merged.mergeCommit.oid)".Substring(0, 7)
-Write-Output "Merged pull request #$Number into development as ${mergeCommit}: $($pr.url)"
 
 Invoke-Git fetch origin --prune --quiet | Out-Null
 $head = $pr.headRefName
@@ -148,10 +162,11 @@ foreach ($branch in $keptBranches) {
 }
 
 $exitCode = 0
+$developmentTip = "$(Invoke-Git rev-parse --short origin/development)"
 $developmentHolder = $worktrees | Where-Object { $_.Branch -eq "development" } | Select-Object -First 1
 if ($developmentHolder) {
     if (Test-Git -C $developmentHolder.Path merge --ff-only --quiet origin/development) {
-        Write-Output "Local development fast-forwarded to $mergeCommit in $($developmentHolder.Path)"
+        Write-Output "Local development fast-forwarded to origin/development ($developmentTip) in $($developmentHolder.Path)"
     }
     else {
         Write-Output "Local development in $($developmentHolder.Path) could NOT be fast-forwarded (see the git message above). Show the user what blocks it with git status and ask before stashing anything."
@@ -159,7 +174,7 @@ if ($developmentHolder) {
     }
 }
 elseif (Test-Git fetch origin development:development --quiet) {
-    Write-Output "Local development fast-forwarded to $mergeCommit (not checked out anywhere)"
+    Write-Output "Local development fast-forwarded to origin/development ($developmentTip), not checked out anywhere"
 }
 else {
     Write-Output "Local development could NOT be fast-forwarded (see the git message above)."
