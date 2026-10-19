@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
@@ -13,6 +14,8 @@ using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing.Content;
+using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
@@ -35,6 +38,21 @@ internal sealed class RealtimeServerHarnessOptions
     public IReadOnlyList<TimeSpan>? DetachedReleaseRetryDelays { get; init; }
 
     public bool ProvideMetrics { get; init; } = true;
+
+    // Combat runs with these rules, items, and Shard rule; without them it uses the defaults.
+    public CombatRules? CombatRules { get; init; }
+
+    public ItemCatalogRuntimeDocument? ItemCatalog { get; init; }
+
+    public bool PlayerVersusPlayer { get; init; }
+
+    public ICombatRandom? CombatRandom { get; init; }
+
+    // Replaces the compiled actor runtime of the development World.
+    public WorldActorRuntimeDocument? WorldActorDocument { get; init; }
+
+    // Mobs that die leave corpses through the real lifecycle service.
+    public bool EnableMobCorpses { get; init; }
 }
 
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
@@ -56,6 +74,8 @@ internal sealed record RealtimeTestCharacter(string Ticket, string Name)
     public long CarryCapacity { get; init; } = 200;
 
     public long SessionLeaseDurationMilliseconds { get; init; } = 30_000;
+
+    public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
 }
 
 // Owns one realtime service with every collaborator exposed, a scripted GameService and
@@ -96,9 +116,10 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             PerformanceMetrics = Track(new RealtimePerformanceMetrics());
         }
 
+        WorldActorDocument = options.WorldActorDocument ?? (options.EnableWorldActors ? WorldActorTestData.Compile() : null);
         if (options.EnableWorldActors)
         {
-            WorldActors = new WorldActorStore(WorldActorTestData.Compile(), EntityRegistry);
+            WorldActors = new WorldActorStore(WorldActorDocument!, EntityRegistry);
             WorldActorScheduler = new WorldActorActivityScheduler(WorldActors);
             WorldInteractionLeases = new WorldInteractionLeaseRegistry();
             WorldActorMetrics = Track(new WorldActorMetrics());
@@ -114,31 +135,44 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 WorldActorMetrics);
         }
 
-        if (options.EnableLiveMobCorpses)
+        if (options.EnableLiveMobCorpses || options.EnableMobCorpses)
         {
             LiveMobCorpseStore = new LiveMobCorpseStore(TimeProvider.System);
             LiveMobCorpseInteraction = new LiveMobCorpseInteractionService(
                 LiveMobCorpseStore,
                 GameServiceClient,
-                CarryStateStore);
+                CharacterItemStateStore);
             CorpseRuntimeMetrics = Track(new CorpseRuntimeMetrics());
         }
+
+        ShardRules.Set(new ShardRuleSet("test", options.PlayerVersusPlayer));
+        CombatMetrics = Track(new CombatMetrics());
+        var mobCorpses = options.EnableMobCorpses && WorldActors is not null
+            ? new MobCorpseLifecycleService(
+                WorldActors,
+                LiveMobCorpseStore!,
+                CorpseStore,
+                GameServiceClient,
+                Config,
+                Identity,
+                TimeProvider.System)
+            : null;
 
         Service = new RealtimeSimulationService(
             Config,
             new SimulationJoinService(
                 GameServiceClient,
                 SessionStore,
-                CarryStateStore,
+                CharacterItemStateStore,
                 Config,
                 Identity),
             new SimulationSessionReleaseService(
                 GameServiceClient,
                 SessionStore,
-                CarryStateStore,
+                CharacterItemStateStore,
                 options.DetachedReleaseRetryDelays),
             SessionStore,
-            CarryStateStore,
+            CharacterItemStateStore,
             new SimulationItemInteractionService(GameServiceClient),
             new SimulationCorpseInteractionService(GameServiceClient),
             CorpseStore,
@@ -160,8 +194,21 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             workerIdentity: options.EnableWorldActors ? Identity : null,
             providedLiveMobCorpseStore: LiveMobCorpseStore,
             providedLiveMobCorpseInteractionService: LiveMobCorpseInteraction,
-            providedCorpseRuntimeMetrics: CorpseRuntimeMetrics);
+            providedCorpseRuntimeMetrics: CorpseRuntimeMetrics,
+            itemCatalog: options.ItemCatalog,
+            combatRules: options.CombatRules,
+            shardRules: ShardRules,
+            worldActorRuntime: WorldActorDocument,
+            gameServiceClient: GameServiceClient,
+            mobCorpses: mobCorpses,
+            combatMetrics: CombatMetrics);
     }
+
+    public WorldActorRuntimeDocument? WorldActorDocument { get; }
+
+    public SimulationShardRules ShardRules { get; } = new();
+
+    public CombatMetrics CombatMetrics { get; }
 
     public RealtimeServerHarnessOptions Options { get; }
 
@@ -181,7 +228,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
 
     public ActiveSimulationSessionStore SessionStore { get; } = new();
 
-    public CarryStateStore CarryStateStore { get; } = new();
+    public CharacterItemStateStore CharacterItemStateStore { get; } = new();
 
     public DurableCorpseStore CorpseStore { get; } = new(TimeProvider.System);
 
@@ -464,6 +511,93 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             Problem(HttpStatusCode.NotFound, "corpse_not_found", "The corpse is not active."));
         OnCorpseMutation = (_, _, _, _) => Task.FromResult(
             Problem(HttpStatusCode.NotFound, "corpse_not_found", "The corpse is not active."));
+        OnAmmunitionConsumption = (_, request, _) => Task.FromResult(DefaultAmmunitionConsumption(request));
+        OnPlayerDeath = (_, request, _) => Task.FromResult(DefaultPlayerDeath(request));
+    }
+
+    public Func<Guid, SimulationAmmunitionConsumptionRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnAmmunitionConsumption
+    { get; set; }
+
+    public Func<Guid, SimulationPlayerDeathRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnPlayerDeath
+    { get; set; }
+
+    private readonly Dictionary<Guid, SimulationEquippedItem[]> equipmentByCharacter = [];
+
+    public List<SimulationAmmunitionConsumptionRequest> AmmunitionConsumptions { get; } = [];
+
+    public List<SimulationPlayerDeathRequest> PlayerDeaths { get; } = [];
+
+    // Commits a batch against the character's equipment as the join ticket named it.
+    public HttpResponseMessage DefaultAmmunitionConsumption(SimulationAmmunitionConsumptionRequest request)
+    {
+        SimulationEquippedItem[] equipment;
+        lock (sync)
+        {
+            if (!equipmentByCharacter.TryGetValue(request.CharacterId, out var current))
+            {
+                current = charactersBySession.Values
+                    .FirstOrDefault(value => value.CharacterId == request.CharacterId)?.Equipment.ToArray() ?? [];
+            }
+
+            equipment = current
+                .Select(item => item.ItemInstanceId == request.ItemInstanceId
+                    ? item with { Quantity = item.Quantity - request.Quantity, Revision = request.ExpectedItemRevision + 1 }
+                    : item)
+                .Where(item => item.Quantity > 0)
+                .ToArray();
+            equipmentByCharacter[request.CharacterId] = equipment;
+        }
+
+        var revision = request.ExpectedCharacterRevision + 1;
+        var remaining = equipment.FirstOrDefault(item => item.ItemInstanceId == request.ItemInstanceId);
+        return Json(new SimulationItemTransactionResponse(
+            request.OperationId,
+            "consume_equipped_ammunition",
+            true,
+            null,
+            [new SimulationItemCharacterRevision(request.CharacterId, revision, 0, 200)],
+            [],
+            remaining is null ? [] : [new SimulationItemInstanceRevision(remaining.ItemInstanceId, remaining.Revision)],
+            [],
+            null,
+            CharacterStateTestData.Create(request.CharacterId, revision, equipment: equipment)));
+    }
+
+    // Partitions every item to a corpse at the place of death.
+    public static HttpResponseMessage DefaultPlayerDeath(SimulationPlayerDeathRequest request)
+    {
+        var now = DateTime.UtcNow;
+        var revision = request.ExpectedCharacterRevision + 1;
+        return Json(new PlayerDeathPartitionResponse(
+            request.OperationId,
+            request.DeathEventId,
+            new DurableCorpseResponse(
+                Guid.NewGuid(),
+                request.CharacterId,
+                "Fallen Hero",
+                request.ShardId,
+                request.PositionX,
+                request.PositionY,
+                request.PositionZ,
+                request.RotationX,
+                request.RotationY,
+                request.RotationZ,
+                request.RotationW,
+                request.PresentationKey,
+                1,
+                now,
+                now.AddMinutes(5),
+                true,
+                [
+                    new CorpseSectionResponse("general_inventory", Guid.NewGuid(), 0, 0),
+                    new CorpseSectionResponse("equipment", Guid.NewGuid(), 0, 0),
+                    new CorpseSectionResponse("bag", Guid.NewGuid(), 0, 0)
+                ]),
+            new SimulationItemCharacterRevision(request.CharacterId, revision, 0, 200),
+            [],
+            CharacterStateTestData.Create(request.CharacterId, revision)));
     }
 
     public Func<ConsumeSimulationJoinTicketRequest, CancellationToken, Task<HttpResponseMessage>>
@@ -538,7 +672,8 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             false)
         {
             SessionLeaseDurationMilliseconds = character.SessionLeaseDurationMilliseconds,
-            IsSyntheticBot = character.IsSyntheticBot
+            IsSyntheticBot = character.IsSyntheticBot,
+            Equipment = character.Equipment
         });
     }
 
@@ -637,6 +772,30 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 var release = await request.Content!
                     .ReadFromJsonAsync<SimulationSessionCredentialRequest>(cancellationToken);
                 return await OnRelease(simulationSessionId, release!, cancellationToken);
+            }
+
+            if (segments.Length == 4 && segments[3] == "ammunition-consumptions")
+            {
+                var consumption = await request.Content!
+                    .ReadFromJsonAsync<SimulationAmmunitionConsumptionRequest>(cancellationToken);
+                lock (sync)
+                {
+                    AmmunitionConsumptions.Add(consumption!);
+                }
+
+                return await OnAmmunitionConsumption(simulationSessionId, consumption!, cancellationToken);
+            }
+
+            if (segments.Length == 4 && segments[3] == "player-deaths")
+            {
+                var death = await request.Content!
+                    .ReadFromJsonAsync<SimulationPlayerDeathRequest>(cancellationToken);
+                lock (sync)
+                {
+                    PlayerDeaths.Add(death!);
+                }
+
+                return await OnPlayerDeath(simulationSessionId, death!, cancellationToken);
             }
 
             if (segments.Length == 4 && segments[3] == "item-operations")

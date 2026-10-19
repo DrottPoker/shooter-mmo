@@ -8,6 +8,7 @@
     "Mmorpg.Client.Items",
     "Mmorpg.Client.Gameplay",
     "Mmorpg.Client.WorldActors",
+    "Mmorpg.Client.Combat",
     "Mmorpg.Client.Ui",
     "Mmorpg.Client.App",
     "Mmorpg.Client.Worlds",

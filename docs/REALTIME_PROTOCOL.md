@@ -1,6 +1,6 @@
 # Realtime Protocol
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 The realtime protocol is the binary contract between SimulationWorker and the
 Unity client over LiteNetLib. Its single source is the local Unity package
@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 17 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 18 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -247,6 +247,12 @@ of every message type, generated from the schema:
 | 26 | `WorldInteractionClosed` | WorldActors | Server to client | Control | Reliable ordered |
 | 27 | `OwnerSimulationSnapshot` | Movement | Server to client | Unreliable receive | Unreliable |
 | 28 | `GatheringState` | WorldActors | Server to client | Control | Reliable ordered |
+| 29 | `CombatIntent` | Combat | Client to server | Control | Reliable ordered |
+| 30 | `CombatIntentResult` | Combat | Server to client | Control | Reliable ordered |
+| 31 | `CombatantState` | Combat | Server to client | Control | Reliable ordered |
+| 32 | `CombatEventBatch` | Combat | Server to client | Control | Reliable ordered |
+| 33 | `OwnerCombatState` | Combat | Server to client | Control | Reliable ordered |
+| 34 | `OwnerItemQuantityChanged` | Items | Server to client | Control | Reliable ordered |
 
 The control channel is 0, the movement input channel is 1, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
@@ -318,6 +324,47 @@ interaction closed, and a `Yielded` even after `Stopped`, because a cycle that
 was already in flight still completes. The worker always sends the `Yielded` of
 a committed cycle, so the client learns the item-state revision that holds the
 yield.
+
+## Combat
+
+Protocol version 18 added target-based combat, a `Combat` message family, an
+owner item delta, and the Shard rules:
+
+- `CombatIntent` selects the attack target with `AttackTarget` and a target
+  entity id of at least 1, or clears it with `ClearTarget` and no target.
+  `CombatIntentResult` answers it with the target afterwards and, on failure,
+  one of the stable codes in `RealtimeCombatErrorCodes`:
+  `combat_target_not_found`, `combat_target_not_attackable`,
+  `combat_target_dead`, `combat_target_self`,
+  `combat_player_versus_player_disabled`, `combat_character_dead`, and
+  `combat_intent_invalid`. Combat intents share a per-peer budget of 8 per second
+  with a burst of 12; more return `combat_intent_rate_limited`.
+- `CombatantState` carries the health, maximum health, life state, combat flag,
+  and attack target of a visible combatant with a revision that only grows. It
+  follows every `EntitySpawn` and `WorldActorSpawn` of a combatant, so a client
+  never shows a combatant without health. A dead combatant has 0 health and no
+  target, and nobody targets itself.
+- `CombatEventBatch` carries the events of one server tick that involve a
+  combatant the recipient sees or controls, in simulation order: `AttackReleased`
+  with the impact tick, `Hit` with the damage, damage type, and health afterwards,
+  and `Died` with the killer, or 0 when none is known. Unused fields are 0. More
+  than `MaximumCombatEventsPerBatch` (32) events split into several batches.
+- `OwnerCombatState` goes to the owner only: its health, life state, a
+  `LifeSequence` that grows with every death and respawn, the respawn tick while
+  dead, the target, the attack status, the next attack tick, the end of the
+  equipment lockout, and the equipped arrow stack with the live arrow count,
+  which already subtracts shots that are not committed yet. Conditions that
+  change every tick are attack statuses (`Moving`, `OutOfRange`,
+  `LineOfSightBlocked`, `EquipmentLockout`, `WeaponMissing`, `AmmunitionMissing`,
+  `AmmunitionIncompatible`), not errors.
+- `OwnerItemQuantityChanged`, in the Items family, tells the owner that a
+  committed operation it did not ask for changed an item's quantity, today only
+  spent arrows: the item-state revision it applies to, the new carry state, the
+  item, and its new quantity and revision, both 0 when the stack was used up.
+  The client patches its inventory when its known revision matches and refreshes
+  it otherwise.
+- `JoinAccepted` ends with `ShardRules`, so the client knows whether a click on
+  another character attacks.
 
 ## Versioning
 

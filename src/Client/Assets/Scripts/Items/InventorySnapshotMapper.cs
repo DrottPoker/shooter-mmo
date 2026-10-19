@@ -494,7 +494,7 @@ namespace Mmorpg.Client.Items
             return true;
         }
 
-        private static int CalculateLoadRatioBasisPoints(long carriedWeight, long capacity)
+        internal static int CalculateLoadRatioBasisPoints(long carriedWeight, long capacity)
         {
             var scaled = ((System.Numerics.BigInteger)carriedWeight * 10_000) / capacity;
             return scaled > int.MaxValue ? int.MaxValue : (int)scaled;

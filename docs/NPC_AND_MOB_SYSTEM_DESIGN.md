@@ -21,10 +21,12 @@ Phase 12 in
 
 The foundation is a permanent content, runtime, protocol, client-state, and
 tooling layer. Its Unity presentation is temporary. It does not implement
-quest progression, crafting recipes, combat damage, complete Mob AI, Mob loot
-generation, final actor art, or final interaction UI. The vendor and gathering
-slice in [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) builds the
-vendor capability and resource nodes on it.
+quest progression, crafting recipes, complete Mob AI, final actor art, or final
+interaction UI. The vendor and gathering slice in
+[Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) builds the vendor
+capability and resource nodes on it, and the combat slice in
+[Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) builds Mob damage,
+death, loot, and respawn on it.
 
 ## Implementation Status
 
@@ -41,9 +43,11 @@ The implemented foundation includes:
   one Iron Vein, and prepared `development-world-2` content with twelve
   deterministic instances, including one Feral Alpha and four Iron Veins.
 - Mob combat, brain, locomotion, and loot profiles in actor format 2, validated
-  by the compiler and, for loot, against the compiled item catalog. The
-  combat slice in [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md)
-  consumes them in SimulationWorker.
+  by the compiler and, for loot, against the compiled item catalog.
+  SimulationWorker uses the combat and loot profiles for Mob health, death,
+  and loot, as described in [Mob Death And Respawn](#mob-death-and-respawn).
+  The brain and locomotion profiles wait for the Mob AI step of the
+  [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md).
 - The `resource_node` actor kind, the `gathering` capability kind, the
   capability `profileId`, and resource profiles in actor format 3, and the
   neutral `world` faction for resource nodes. The compiler validates vendor
@@ -54,7 +58,7 @@ The implemented foundation includes:
 - A bounded worker-runtime actor store, fresh runtime and network identities,
   restart reconstruction, event-driven NPCs and resource nodes, central Mob
   schedule buckets, and the central `WorldActorTimerQueue` for delayed actor
-  work such as resource node respawn.
+  work such as resource node and Mob respawn.
 - A typed capability-handler registry. Insurance, quest offer, quest
   completion, Character Bank, Recovery Storage, vendor, and gathering have
   handlers; every other kind has an explicit deferred server handler until its
@@ -81,13 +85,13 @@ the capability: item operations gain Bank or Recovery access while the player
 holds an open interaction with an actor that offers them, as described in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 
-The Mob corpse lifecycle boundary exists without combat. Mob
-content selects live or durable corpse custody and an exact lifetime. The normal
-wolf uses `live` and `120` seconds. The selected alpha boss uses `durable` and
-`600` seconds. Deterministic death-event grant ids protect successful live loot
-claims from duplication, while durable bosses reuse player corpse restoration
-and expiry. Damage, death detection, loot-table generation, respawn, and complete
-Mob AI remain unavailable.
+Mob content selects live or durable corpse custody and an exact lifetime. The
+normal wolf uses `live` and `120` seconds. The selected alpha boss uses
+`durable` and `600` seconds. Deterministic death-event grant ids protect
+successful live loot claims from duplication, while durable bosses reuse player
+corpse restoration and expiry. Combat damages and kills Mobs, rolls their loot,
+and respawns them; complete Mob AI remains unavailable, so Mobs stand still and
+do not attack yet.
 
 Load coverage validates this foundation at operational scale without changing
 its ownership. Automated load coverage schedules `2,000` event-driven NPCs and
@@ -387,8 +391,8 @@ SimulationWorker owns these implemented responsibilities:
 - `WorldActorActivityScheduler` for central bounded dormant and active Mob
   buckets.
 - `WorldActorTimerQueue`, one min-heap of actor timers ordered by due tick,
-  which `WorldActorRuntimeDriver` drains every tick. Resource node respawn uses
-  it, and Mob respawn can reuse it.
+  which `WorldActorRuntimeDriver` drains every tick. Resource node respawn and
+  Mob respawn use it.
 - `GatheringHandler`, the central gathering pass of the realtime loop.
 
 NPCs and resource nodes do not tick merely because they exist. They react to
@@ -687,8 +691,8 @@ the complete reputation or criminal system.
 NPC damage policy is `invulnerable` in the first version. Unity may show feedback
 for an invalid attack, but SimulationWorker owns the rejection. Guards use the
 same NPC invulnerability rule. Resource nodes are invulnerable too and use the
-neutral `world` faction. Mobs reserve damageable combat state for the later
-combat phase.
+neutral `world` faction. A damageable Mob with a combat profile is a combatant
+of the worker's combat system.
 
 ## Mob Loot And Corpse Boundary
 
@@ -706,6 +710,33 @@ Successful live loot materialization into player custody uses the deterministic
 grant id as the item operation identity. Normal actor scalability is preserved:
 there is still no durable per-instance Mob custody before death, and ordinary
 unclaimed corpses never require PostgreSQL cleanup.
+
+### Mob Death And Respawn
+
+SimulationWorker's combat system, described in
+[Service Features](SERVICE_FEATURES.md#target-based-combat), produces Mob
+deaths:
+
+- Every damageable Mob with a combat profile is a combatant with the profile's
+  maximum health. A Mob lost in a worker restart returns with full health, like
+  every other actor.
+- At 0 health the Mob dies: it can no longer be targeted, every attacker's
+  target on it clears, and its death event id is
+  `ScopedGuid("mob-death", runtimeActorId)`. Each Mob life has its own runtime
+  id, so the id is stable for retries and unique per death.
+- The worker rolls the loot profile in entry order. Each entry drops with its
+  chance in basis points and a quantity between its bounds. An empty roll
+  leaves no corpse.
+- `MobCorpseLifecycleService` creates the corpse with the rolled loot seeds. A
+  durable corpse retries with the same death event id and a backoff from 0.5
+  seconds that doubles up to 10 seconds until it commits. When GameService
+  answers that the corpse can never be created, the Mob leaves without one.
+- The actor despawns with the reason `died` once its corpse exists, or, without
+  a corpse, at the end of the combat phase, after its death reached the
+  viewers. Its respawn profile schedules the respawn on `WorldActorTimerQueue`.
+  `WorldActorStore.Respawn` recreates the same compiled spawn instance with a
+  fresh runtime id and network entity id, and interest spawns it for nearby
+  players. Respawn timers reset on a worker restart.
 
 ## Stable Error Contract
 
@@ -835,9 +866,8 @@ resource node respawn on these contracts.
 - Quest progression and turn-in gameplay.
 - Crafting recipes or production.
 - Trainer or profession progression, including Mining experience.
-- Combat, health, damage, aggro behavior, or full Mob AI.
-- Combat-driven death events, Mob loot-table generation, or Mob respawn
-  execution.
+- Aggro behavior, Mob attacks, or full Mob AI. The combat slice has since added
+  health, damage, combat-driven death events, Mob loot rolls, and Mob respawn.
 - Durable unique boss state.
 - Final NPC, Mob, prompt, dialogue, or interaction-panel art.
 - Zone, Layer, multi-worker Shard, or world-event orchestration.

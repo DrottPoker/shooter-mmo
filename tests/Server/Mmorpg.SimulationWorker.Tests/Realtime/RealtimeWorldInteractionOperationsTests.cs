@@ -44,7 +44,8 @@ public sealed class RealtimeWorldInteractionOperationsTests
                 actor.InteractionRevision,
                 dialogue.Id,
                 dialogue.Kind,
-                dialogue.Revision));
+                dialogue.Revision),
+            null);
         Assert.True(gate.HasEntered);
         Assert.False(run.IsCompleted);
 

@@ -14,11 +14,11 @@ public sealed class SimulationSessionHeartbeatService(
     GameServiceClient gameServiceClient,
     SimulationSessionReleaseService releaseService,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     SimulationWorkerConfig config,
     ILogger<SimulationSessionHeartbeatService> logger) : BackgroundService
 {
-    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+    private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -110,12 +110,14 @@ public sealed class SimulationSessionHeartbeatService(
                     return;
                 }
 
-                var carryState = new PlayerCarryState(
-                    result.Value.ItemStateRevision,
-                    result.Value.CarriedWeight,
-                    result.Value.CarryCapacity);
-                var carryResult = carryApplier.Apply(session, carryState, out _);
-                if (carryResult == CarryStateApplyResult.Conflict)
+                var itemState = CharacterItemState.Create(
+                    new PlayerCarryState(
+                        result.Value.ItemStateRevision,
+                        result.Value.CarriedWeight,
+                        result.Value.CarryCapacity),
+                    result.Value.Equipment);
+                var carryResult = carryApplier.Apply(session, itemState, out _);
+                if (carryResult == ItemStateApplyResult.Conflict)
                 {
                     var invalidated = sessionStore.Invalidate(
                         session.CharacterId,
@@ -125,7 +127,7 @@ public sealed class SimulationSessionHeartbeatService(
                         "GameService returned conflicting carry state for one item-state revision.");
                     if (invalidated)
                     {
-                        carryStateStore.Remove(
+                        itemStateStore.Remove(
                             session.CharacterId,
                             session.SimulationSessionId);
                     }
@@ -133,7 +135,7 @@ public sealed class SimulationSessionHeartbeatService(
                     logger.LogError(
                         "Invalidated simulation session {SimulationSessionId} because GameService returned conflicting carry state revision {ItemStateRevision}.",
                         session.SimulationSessionId,
-                        carryState.ItemStateRevision);
+                        itemState.ItemStateRevision);
                 }
 
                 return;
@@ -160,7 +162,7 @@ public sealed class SimulationSessionHeartbeatService(
                     message);
                 if (invalidated)
                 {
-                    carryStateStore.Remove(
+                    itemStateStore.Remove(
                         session.CharacterId,
                         session.SimulationSessionId);
                 }

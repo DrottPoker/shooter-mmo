@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Items;
@@ -18,7 +19,7 @@ internal sealed class RealtimeSessionHandler(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     SimulationEntityRegistry entityRegistry,
     ConnectionEntityBindingRegistry connectionBindings,
     ChunkedStaticCollisionWorld staticCollisionWorld,
@@ -31,8 +32,13 @@ internal sealed class RealtimeSessionHandler(
     SimulationWorkerRegistrationLease? registrationLease,
     RealtimeNetworkMetrics networkMetrics,
     RealtimePerformanceMetrics performanceMetrics,
-    ILogger logger) : IRealtimeCompletionHandler
+    ILogger logger,
+    SimulationShardRules? shardRules = null,
+    PlayerCombatAuthority? combatAuthority = null) : IRealtimeCompletionHandler
 {
+    // Hears every character that joined, after its accept was sent; set by the composition.
+    public Action<RealtimePeerContext, PlayerSimulationEntity>? PlayerJoined { get; set; }
+
     public void HandleJoinRequest(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;
@@ -90,7 +96,18 @@ internal sealed class RealtimeSessionHandler(
         }
 
         context.LeaveStarted = true;
-        operationTracker.Track(sessionOperations.RunLeaveAsync(this, context, context.Session));
+        // Spent arrows and a death that did not commit yet commit before the session ends.
+        if (combatAuthority?.TryDeferLeave(context, context.Session) == true)
+        {
+            return;
+        }
+
+        StartLeave(context, context.Session);
+    }
+
+    public void StartLeave(RealtimePeerContext context, ActiveSimulationSession session)
+    {
+        operationTracker.Track(sessionOperations.RunLeaveAsync(this, context, session));
     }
 
     public void Complete(RealtimeOperationResult operation)
@@ -172,7 +189,7 @@ internal sealed class RealtimeSessionHandler(
             return;
         }
 
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 session.CharacterId,
                 session.SimulationSessionId,
                 out var currentCarryState))
@@ -246,7 +263,9 @@ internal sealed class RealtimeSessionHandler(
                 response.IsReconnect,
                 RealtimeStateMapper.ToRealtimeCarryState(entity.Movement.CarryState),
                 RealtimeStateMapper.ToRealtimeMovementSettings(config),
-                RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State))));
+                RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State),
+                new RealtimeShardRules(shardRules?.Current.PlayerVersusPlayer ?? false))));
+        PlayerJoined?.Invoke(completed.Context, entity);
         presence.SendEntityBaseline(peer, joiningInterest.Visible);
         presence.SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
         networkMetrics.RecordJoinAccepted();

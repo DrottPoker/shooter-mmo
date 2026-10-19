@@ -8,14 +8,14 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // when it changed. Other services commit carry state from any thread, so the loop polls
 // the store through this class every tick. Loop-confined.
 internal sealed class CarryStateSynchronizer(
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     ConnectionEntityBindingRegistry connectionBindings,
     RealtimePeerRegistry peers,
     RealtimePeerSender sender)
 {
     public void ApplyLatest(PlayerSimulationEntity entity)
     {
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 entity.Session.CharacterId,
                 entity.Session.SimulationSessionId,
                 out var carryState)

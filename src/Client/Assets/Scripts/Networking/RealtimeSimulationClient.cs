@@ -48,6 +48,10 @@ namespace Mmorpg.Client.Networking
 
         public event Action<RealtimeClientError> UnexpectedlyDisconnected;
 
+        // Raised when the worker accepts a join, before any later message of that session
+        // is handled, so session-scoped client state starts empty.
+        public event Action SessionJoined;
+
         // Raised once whenever a joined session ends for any reason, including a graceful
         // leave, so session-scoped client state can reset. The error is null for a leave.
         public event Action<RealtimeClientError> SessionEnded;
@@ -86,7 +90,21 @@ namespace Mmorpg.Client.Networking
 
         public event Action<RealtimeGatheringState> GatheringStateReceived;
 
+        public event Action<RealtimeCombatIntentResult> CombatIntentCompleted;
+
+        public event Action<RealtimeCombatantState> CombatantStateReceived;
+
+        public event Action<RealtimeCombatEventBatch> CombatEventBatchReceived;
+
+        public event Action<RealtimeOwnerCombatState> OwnerCombatStateReceived;
+
+        // Raised after the carry state of the change has advanced the movement session.
+        public event Action<RealtimeOwnerItemQuantityChanged> OwnerItemQuantityChanged;
+
         public RealtimeConnectionState State { get; private set; }
+
+        // The gameplay rules of the joined Shard, or null outside a joined session.
+        public RealtimeShardRules ShardRules { get; private set; }
 
         public string ConnectedHost { get; private set; } = string.Empty;
 
@@ -551,6 +569,35 @@ namespace Mmorpg.Client.Networking
             }
         }
 
+        public bool TrySendCombatIntent(RealtimeCombatIntent intent)
+        {
+            if (State != RealtimeConnectionState.Joined
+                || serverPeer == null
+                || intent == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var packet = RealtimeProtocol.EncodeCombatIntent(intent);
+                serverPeer.Send(
+                    packet,
+                    RealtimeProtocol.ControlChannel,
+                    DeliveryMethod.ReliableOrdered);
+                RecordSentPacket(packet.Length);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException || exception is InvalidOperationException)
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Client,
+                    "Combat intent could not be encoded: " + exception.Message);
+                return false;
+            }
+        }
+
         public void Abort()
         {
             var endedJoinedSession = sessionJoined;
@@ -561,6 +608,7 @@ namespace Mmorpg.Client.Networking
             joinedSession = null;
             pendingPlacement = null;
             MovementSession = null;
+            ShardRules = null;
             ResetRealtimeDiagnostics();
             ClearSpawnedEntities("client_aborted");
             operationError = null;
@@ -606,6 +654,7 @@ namespace Mmorpg.Client.Networking
             operationError = operationError ?? error;
             State = RealtimeConnectionState.Disconnected;
             MovementSession = null;
+            ShardRules = null;
             ResetRealtimeDiagnostics();
             ClearSpawnedEntities("connection_lost");
             stopTransportAfterPoll = true;
@@ -755,6 +804,21 @@ namespace Mmorpg.Client.Networking
                     case RealtimeMessageType.GatheringState:
                         HandleGatheringState(packet);
                         break;
+                    case RealtimeMessageType.CombatIntentResult:
+                        HandleCombatIntentResult(packet);
+                        break;
+                    case RealtimeMessageType.CombatantState:
+                        HandleCombatantState(packet);
+                        break;
+                    case RealtimeMessageType.CombatEventBatch:
+                        HandleCombatEventBatch(packet);
+                        break;
+                    case RealtimeMessageType.OwnerCombatState:
+                        HandleOwnerCombatState(packet);
+                        break;
+                    case RealtimeMessageType.OwnerItemQuantityChanged:
+                        HandleOwnerItemQuantityChanged(packet);
+                        break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
                         break;
@@ -771,8 +835,9 @@ namespace Mmorpg.Client.Networking
             return state != RealtimeConnectionState.Joined;
         }
 
-        // The worker keeps sending presence and operation results until it has released the
-        // session, so these in-flight messages are expected while a leave is pending.
+        // The worker keeps sending presence, combat, and operation results until it has
+        // released the session, so these in-flight messages are expected while a leave is
+        // pending.
         internal static bool ShouldIgnoreWhileLeaving(RealtimeMessageType messageType)
         {
             switch (messageType)
@@ -791,6 +856,11 @@ namespace Mmorpg.Client.Networking
                 case RealtimeMessageType.WorldInteractionResult:
                 case RealtimeMessageType.WorldInteractionClosed:
                 case RealtimeMessageType.GatheringState:
+                case RealtimeMessageType.CombatIntentResult:
+                case RealtimeMessageType.CombatantState:
+                case RealtimeMessageType.CombatEventBatch:
+                case RealtimeMessageType.OwnerCombatState:
+                case RealtimeMessageType.OwnerItemQuantityChanged:
                     return true;
                 default:
                     return false;
@@ -858,6 +928,7 @@ namespace Mmorpg.Client.Networking
             pendingPlacement = null;
             operationError = null;
             MovementSession = movementSession;
+            ShardRules = session.ShardRules;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Joined;
             sessionJoined = true;
@@ -873,7 +944,9 @@ namespace Mmorpg.Client.Networking
                 ClientLogCategory.Client,
                 "Server-authoritative movement is active at " + movementSession.Settings.TickRateHz
                 + " ticks per second with " + movementSession.SnapshotRateHz
-                + " snapshots per second.");
+                + " snapshots per second. Player versus player is "
+                + (ShardRules.PlayerVersusPlayer ? "allowed" : "disabled") + " on this Shard.");
+            SessionJoined?.Invoke();
         }
 
         private void HandleJoinRejected(byte[] packet)
@@ -1327,6 +1400,136 @@ namespace Mmorpg.Client.Networking
             GatheringStateReceived?.Invoke(state);
         }
 
+        private void HandleCombatIntentResult(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_combat_intent_result",
+                    "A combat intent result arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCombatIntentResult(
+                    packet,
+                    out var result,
+                    out var error))
+            {
+                FailProtocol("invalid_combat_intent_result", error);
+                return;
+            }
+
+            CombatIntentCompleted?.Invoke(result);
+        }
+
+        private void HandleCombatantState(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined || MovementSession == null)
+            {
+                FailProtocol(
+                    "unexpected_combatant_state",
+                    "Combatant state arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCombatantState(
+                    packet,
+                    out var state,
+                    out var error))
+            {
+                FailProtocol("invalid_combatant_state", error);
+                return;
+            }
+
+            // The worker sends a combatant's state only after its reliable presence.
+            if (!spawnedEntities.ContainsKey(state.EntityId)
+                && !spawnedWorldActors.ContainsKey(state.EntityId)
+                && state.EntityId != MovementSession.ControlledEntityId)
+            {
+                FailProtocol(
+                    "combatant_state_without_spawn",
+                    "Combatant state arrived before reliable entity presence.");
+                return;
+            }
+
+            CombatantStateReceived?.Invoke(state);
+        }
+
+        private void HandleCombatEventBatch(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_combat_event_batch",
+                    "Combat events arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeCombatEventBatch(
+                    packet,
+                    out var batch,
+                    out var error))
+            {
+                FailProtocol("invalid_combat_event_batch", error);
+                return;
+            }
+
+            CombatEventBatchReceived?.Invoke(batch);
+        }
+
+        private void HandleOwnerCombatState(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_owner_combat_state",
+                    "Owner combat state arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeOwnerCombatState(
+                    packet,
+                    out var state,
+                    out var error))
+            {
+                FailProtocol("invalid_owner_combat_state", error);
+                return;
+            }
+
+            OwnerCombatStateReceived?.Invoke(state);
+        }
+
+        private void HandleOwnerItemQuantityChanged(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined || MovementSession == null)
+            {
+                FailProtocol(
+                    "unexpected_owner_item_quantity_changed",
+                    "An item quantity change arrived without an active movement session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeOwnerItemQuantityChanged(
+                    packet,
+                    out var change,
+                    out var error)
+                || !MovementSession.TryApplyCarryState(
+                    change.CarryState,
+                    out var carryChanged,
+                    out error))
+            {
+                FailProtocol("invalid_owner_item_quantity_changed", error);
+                return;
+            }
+
+            if (carryChanged)
+            {
+                CarryStateChanged?.Invoke(MovementSession.CarryState);
+            }
+
+            OwnerItemQuantityChanged?.Invoke(change);
+        }
+
         private void HandleEntitySpawn(byte[] packet)
         {
             if (State != RealtimeConnectionState.Joined)
@@ -1437,6 +1640,7 @@ namespace Mmorpg.Client.Networking
             ClearSpawnedEntities("left_shard");
             joinedSession = null;
             MovementSession = null;
+            ShardRules = null;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
@@ -1482,6 +1686,7 @@ namespace Mmorpg.Client.Networking
             ClearSpawnedEntities(reason.Code);
             joinedSession = null;
             MovementSession = null;
+            ShardRules = null;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
@@ -1518,6 +1723,7 @@ namespace Mmorpg.Client.Networking
             ClearSpawnedEntities(error.Code);
             joinedSession = null;
             MovementSession = null;
+            ShardRules = null;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
@@ -1548,6 +1754,7 @@ namespace Mmorpg.Client.Networking
             ClearSpawnedEntities("session_reset");
             joinedSession = null;
             MovementSession = null;
+            ShardRules = null;
             ResetRealtimeDiagnostics();
             leaveAccepted = false;
             stopTransportAfterPoll = false;

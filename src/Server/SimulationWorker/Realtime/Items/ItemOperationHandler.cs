@@ -13,16 +13,17 @@ internal sealed class ItemOperationHandler(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     SimulationEntityRegistry entityRegistry,
     CarryStateSynchronizer carrySync,
     RealtimeSessionTeardown teardown,
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
     ItemInteractionAccessService accessService,
-    ItemAuthorityOperations authority) : IRealtimeCompletionHandler
+    ItemAuthorityOperations authority,
+    ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
 {
-    private readonly CommittedCarryApplier carryApplier = new(carryStateStore, sessionStore);
+    private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
 
     public void HandleIntent(in RealtimeInboundMessage message)
     {
@@ -39,7 +40,7 @@ internal sealed class ItemOperationHandler(
             return;
         }
 
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 playerEntity.Session.CharacterId,
                 playerEntity.Session.SimulationSessionId,
                 out _))
@@ -65,6 +66,17 @@ internal sealed class ItemOperationHandler(
             return;
         }
 
+        if (combatGate is not null && combatGate.IsCharacterDead(context))
+        {
+            SendItemOperationRejection(
+                peer,
+                playerEntity.Session,
+                intent,
+                RealtimeCombatErrorCodes.CharacterDead,
+                "The character is dead.");
+            return;
+        }
+
         if (context.AuthorityOperationQueue.Count
             >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
         {
@@ -77,6 +89,8 @@ internal sealed class ItemOperationHandler(
             return;
         }
 
+        // Spent arrows commit first, so the operation sees the arrow stack GameService has.
+        combatGate?.BeforeClientOperation(context);
         authorityScheduler.Enqueue(context, new QueuedItemOperation(this, intent));
     }
 
@@ -85,6 +99,7 @@ internal sealed class ItemOperationHandler(
         ActiveSimulationSession session,
         RealtimeItemOperationIntent intent)
     {
+        combatGate?.ClientOperationStarting(context, MayChangeEquipment(session, intent));
         // Access is evaluated on the loop when the operation starts, while the interaction
         // that grants it is still known to be open.
         operationTracker.Track(authority.RunAsync(
@@ -92,7 +107,32 @@ internal sealed class ItemOperationHandler(
             context,
             session,
             intent,
-            accessService.Evaluate(context.PeerId, session)));
+            accessService.Evaluate(context.PeerId, session),
+            combatGate?.RebaseExpectedCharacterRevision(context, intent.ExpectedCharacterRevision)
+                ?? intent.ExpectedCharacterRevision));
+    }
+
+    // An operation that may change which item sits in an equipment slot holds attacks
+    // until it finishes. Splitting or topping up the equipped stack keeps its item.
+    private bool MayChangeEquipment(ActiveSimulationSession session, RealtimeItemOperationIntent intent)
+    {
+        switch (intent.OperationKind)
+        {
+            case RealtimeItemOperationKind.Equip:
+            case RealtimeItemOperationKind.Unequip:
+                return true;
+            case RealtimeItemOperationKind.Relocate:
+            case RealtimeItemOperationKind.Destroy:
+            case RealtimeItemOperationKind.MergeStacks:
+            case RealtimeItemOperationKind.SwapContainerItems:
+                return itemStateStore.TryGetItemState(session.CharacterId, session.SimulationSessionId, out var state)
+                    && state!.Equipment.Any(item =>
+                        item.ItemInstanceId == intent.ItemInstanceId
+                        || (intent.OperationKind == RealtimeItemOperationKind.SwapContainerItems
+                            && item.ItemInstanceId == intent.TargetItemInstanceId));
+            default:
+                return false;
+        }
     }
 
     public void Complete(RealtimeOperationResult completion)
@@ -106,6 +146,7 @@ internal sealed class ItemOperationHandler(
     private void FinalizeOperation(ItemOperationCompleted completed)
     {
         completed.Context.AuthorityOperationInFlight = false;
+        combatGate?.ClientOperationFinished(completed.Context);
         if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
             || completed.Context.Session is null
             || completed.Context.Session.SimulationSessionId
@@ -118,7 +159,7 @@ internal sealed class ItemOperationHandler(
             return;
         }
 
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 completed.Session.CharacterId,
                 completed.Session.SimulationSessionId,
                 out _))
@@ -153,20 +194,20 @@ internal sealed class ItemOperationHandler(
         {
             // Matches the corpse path: an unexpected revision set ends the session instead
             // of failing the completion with internal_error.
-            if (!CommittedCarryApplier.TryGetCommittedCarry(
+            if (!CommittedCarryApplier.TryGetCommittedState(
                     completed.Result.Transaction!,
-                    out var committedCarry))
+                    out var committedState))
             {
                 teardown.TerminateForAuthorityFailure(
                     peer,
                     completed.Context,
                     completed.Session,
                     "item_state_diverged",
-                    "The item transaction returned an invalid character revision set.");
+                    "The item transaction returned no committed character state.");
                 return;
             }
 
-            var carryResult = carryApplier.Apply(completed.Session, committedCarry, out _);
+            var carryResult = carryApplier.Apply(completed.Session, committedState, out _);
             if (CommittedCarryApplier.IsDiverged(carryResult))
             {
                 teardown.TerminateForAuthorityFailure(
@@ -178,7 +219,7 @@ internal sealed class ItemOperationHandler(
                 return;
             }
 
-            requiresRefresh |= carryResult == CarryStateApplyResult.Stale;
+            requiresRefresh |= carryResult == ItemStateApplyResult.Stale;
             if (entityRegistry.TryGetPlayerByCharacterId(
                     completed.Session.CharacterId,
                     out var entity))
@@ -201,7 +242,7 @@ internal sealed class ItemOperationHandler(
         SimulationItemInteractionResult result,
         bool requiresInventoryRefresh)
     {
-        if (!carryStateStore.TryGet(
+        if (!itemStateStore.TryGet(
                 session.CharacterId,
                 session.SimulationSessionId,
                 out var carryState))
@@ -239,6 +280,18 @@ internal sealed class ItemOperationHandler(
         sender.SendControl(peer, RealtimeProtocol.EncodeItemOperationResult(packetResult));
     }
 
+    private void Cancel(
+        RealtimePeerContext context,
+        RealtimeItemOperationIntent intent,
+        string code,
+        string message)
+    {
+        if (context.Session is not null && peers.TryGetCurrentPeer(context, out var peer))
+        {
+            SendItemOperationRejection(peer, context.Session, intent, code, message);
+        }
+    }
+
     private void SendItemOperationRejection(
         IRealtimePeerConnection peer,
         ActiveSimulationSession session,
@@ -263,6 +316,11 @@ internal sealed class ItemOperationHandler(
             PlayerMovementState state)
         {
             Owner.Start(context, context.Session!, Intent);
+        }
+
+        public void Cancel(RealtimePeerContext context, string code, string message)
+        {
+            Owner.Cancel(context, Intent, code, message);
         }
     }
 }

@@ -36,6 +36,39 @@ public sealed class AuthoritativePlayerMovement(
 
     public MovementPath? CurrentPath => latestInput.Path;
 
+    // No path remains to follow and no horizontal velocity is left after this tick's
+    // movement, which every attack requires.
+    public bool IsStandingStill
+    {
+        get
+        {
+            var path = latestInput.Path;
+            var following = path is not null
+                && !(State.PathProgress.PathId == path.Id
+                    && State.PathProgress.NextWaypointIndex >= path.Count);
+            return !following
+                && (State.VelocityX * State.VelocityX) + (State.VelocityZ * State.VelocityZ) < 0.0001f;
+        }
+    }
+
+    // Stops following the current path. Progress at its end keeps later inputs that still
+    // name the path valid while the character stands.
+    public void Halt()
+    {
+        if (latestInput.Path is { } path)
+        {
+            State = State.WithPathProgress(new MovementPathProgress(path.Id, path.Count, 0));
+        }
+    }
+
+    // Moves the character to a new state, such as its respawn point, standing still.
+    public void Teleport(PlayerMovementState state)
+    {
+        State = latestInput.Path is { } path
+            ? state.WithPathProgress(new MovementPathProgress(path.Id, path.Count, 0))
+            : state.WithPathProgress(MovementPathProgress.None);
+    }
+
     public bool ApplyCarryState(PlayerCarryState carryState)
     {
         ArgumentNullException.ThrowIfNull(carryState);

@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing;
@@ -128,6 +129,43 @@ public sealed class RealtimeMetricNamesTests
             published);
     }
 
+    // Monitoring documents every combat instrument.
+    [Fact]
+    public void CombatMeterPublishesTheDocumentedInstrumentNames()
+    {
+        var published = new SortedSet<string>(StringComparer.Ordinal);
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, _) =>
+            {
+                if (instrument.Meter.Name == CombatMetrics.MeterName)
+                {
+                    lock (published)
+                    {
+                        published.Add(instrument.Name);
+                    }
+                }
+            }
+        };
+        listener.Start();
+
+        using var metrics = new CombatMetrics();
+
+        Assert.Equal(
+            [
+                "simulation_worker.combat.active_combatants",
+                "simulation_worker.combat.ammunition_batches",
+                "simulation_worker.combat.attacks",
+                "simulation_worker.combat.death_partitions",
+                "simulation_worker.combat.deaths",
+                "simulation_worker.combat.dropped_shots",
+                "simulation_worker.combat.hits",
+                "simulation_worker.combat.pending_shots",
+                "simulation_worker.combat.phase.duration"
+            ],
+            published);
+    }
+
     [Fact]
     public void ServiceFeaturesDocumentNamesTheRealtimeMeters()
     {
@@ -141,5 +179,6 @@ public sealed class RealtimeMetricNamesTests
             $"`{RealtimePerformanceMetrics.MeterName}`",
             document,
             StringComparison.Ordinal);
+        Assert.Contains($"`{CombatMetrics.MeterName}`", document, StringComparison.Ordinal);
     }
 }

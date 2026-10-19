@@ -86,6 +86,14 @@ namespace Mmorpg.SharedTests
                 JoinAcceptedWire(isReconnect: 2),
                 JoinAcceptedWire(isReconnect: 1));
             r.Accepts("Session/JoinAccepted/not a reconnect", JoinAcceptedWire(isReconnect: 0));
+            r.Accepts("Session/JoinAccepted/without player versus player", JoinAcceptedWire(playerVersusPlayer: 0));
+            r.AcceptsAs(
+                "Session/JoinAccepted/player versus player byte 3 reads as true",
+                JoinAcceptedWire(playerVersusPlayer: 3),
+                JoinAcceptedWire());
+            r.Rejects(
+                "Session/JoinAccepted/without shard rules",
+                JoinAcceptedWire(includeShardRules: false));
             r.Rejects("Session/JoinAccepted/empty session id", JoinAcceptedWire(simulationSessionId: ""));
             r.Accepts("Session/JoinAccepted/128 character session id", JoinAcceptedWire(simulationSessionId: Repeat("s", 128)));
             r.Rejects("Session/JoinAccepted/129 character session id", JoinAcceptedWire(simulationSessionId: Repeat("s", 129)));
@@ -165,7 +173,8 @@ namespace Mmorpg.SharedTests
             bool isReconnect = true,
             Optional<RealtimeCarryState> carryState = default,
             Optional<RealtimeMovementSettings> movementSettings = default,
-            Optional<RealtimePlayerState> initialPlayerState = default)
+            Optional<RealtimePlayerState> initialPlayerState = default,
+            bool playerVersusPlayer = true)
         {
             return new RealtimeJoinAccepted(
                 simulationSessionId: simulationSessionId,
@@ -182,7 +191,8 @@ namespace Mmorpg.SharedTests
                 isReconnect: isReconnect,
                 carryState: carryState.Or(CarryStateModel()),
                 movementSettings: movementSettings.Or(MovementSettingsModel()),
-                initialPlayerState: initialPlayerState.Or(PlayerStateModel()));
+                initialPlayerState: initialPlayerState.Or(PlayerStateModel()),
+                shardRules: new RealtimeShardRules(playerVersusPlayer));
         }
 
         private static RealtimeJoinAccepted JoinAcceptedBoundaryModel()
@@ -202,7 +212,8 @@ namespace Mmorpg.SharedTests
                 isReconnect: false,
                 carryState: new RealtimeCarryState(itemStateRevision: 0, carriedWeight: 0, carryCapacity: 1),
                 movementSettings: MovementSettingsBoundaryModel(),
-                initialPlayerState: PlayerStateBoundaryModel());
+                initialPlayerState: PlayerStateBoundaryModel(),
+                playerVersusPlayer: false);
         }
 
         private static Wire JoinRequestWire(WireText ticket)
@@ -228,9 +239,11 @@ namespace Mmorpg.SharedTests
             byte isReconnect = 1,
             Wire carryState = null,
             Wire movementSettings = null,
-            Wire playerState = null)
+            Wire playerState = null,
+            byte playerVersusPlayer = 1,
+            bool includeShardRules = true)
         {
-            return Wire.Message(RealtimeMessageType.JoinAccepted)
+            var wire = Wire.Message(RealtimeMessageType.JoinAccepted)
                 .Text(simulationSessionId ?? "session-0001")
                 .Text("account-0002")
                 .Text("character-0003")
@@ -246,6 +259,7 @@ namespace Mmorpg.SharedTests
                 .Append(carryState ?? CarryStateWire())
                 .Append(movementSettings ?? MovementSettingsWire())
                 .Append(playerState ?? PlayerStateWire());
+            return includeShardRules ? wire.U8(playerVersusPlayer) : wire;
         }
 
         private static Optional<T> Null<T>()

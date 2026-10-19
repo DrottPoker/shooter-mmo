@@ -55,11 +55,15 @@ public sealed record SimulationWorkerConfig(
     public ItemInteractionConfig ItemInteraction { get; init; } = ItemInteractionConfig.Empty;
 
     public const string DefaultItemCatalogPath = "WorldData/Items/core.item-catalog.json";
+    public const string DefaultCombatRulesPath = "WorldData/Combat/combat-rules.json";
 
     public string ActorDataPath { get; init; } = string.Empty;
 
     // The compiled item catalog that combat data and Mob loot come from.
     public string ItemCatalogPath { get; init; } = string.Empty;
+
+    // The player combat rules and the meaning of every Shard rule set.
+    public string CombatRulesPath { get; init; } = string.Empty;
 
     public static SimulationWorkerConfig FromConfiguration(IConfiguration configuration)
     {
@@ -583,14 +587,16 @@ public sealed record SimulationWorkerConfig(
             ActorDataPath = WorldManifestFileStore.ResolveActorRuntimePath(
                 worldDataPath!,
                 worldId!),
-            ItemCatalogPath = ResolveItemCatalogPath(section["ItemCatalogPath"])
+            ItemCatalogPath = ResolveOutputPath(section["ItemCatalogPath"], DefaultItemCatalogPath),
+            CombatRulesPath = ResolveOutputPath(section["CombatRulesPath"], DefaultCombatRulesPath)
         };
     }
 
-    private static string ResolveItemCatalogPath(string? configuredPath)
+    // A relative path is below the worker's output, where the build copies the content.
+    private static string ResolveOutputPath(string? configuredPath, string defaultPath)
     {
         var path = string.IsNullOrWhiteSpace(configuredPath)
-            ? DefaultItemCatalogPath
+            ? defaultPath
             : configuredPath.Trim();
         return Path.GetFullPath(Path.IsPathRooted(path)
             ? path

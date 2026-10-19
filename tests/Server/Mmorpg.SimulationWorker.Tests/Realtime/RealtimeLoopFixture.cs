@@ -56,13 +56,13 @@ internal sealed class RealtimeLoopFixture : IDisposable
             new SimulationInterestManager(Config.InterestManagement),
             Metrics,
             Clock);
-        CarrySync = new CarryStateSynchronizer(CarryStateStore, Bindings, Registry, Sender);
+        CarrySync = new CarryStateSynchronizer(CharacterItemStateStore, Bindings, Registry, Sender);
         Teardown = new RealtimeSessionTeardown(
             Registry,
             Sender,
             Presence,
             SessionStore,
-            CarryStateStore,
+            CharacterItemStateStore,
             CorpseViewers,
             Leases,
             Bindings,
@@ -85,7 +85,7 @@ internal sealed class RealtimeLoopFixture : IDisposable
 
     public ActiveSimulationSessionStore SessionStore { get; } = new();
 
-    public CarryStateStore CarryStateStore { get; } = new();
+    public CharacterItemStateStore CharacterItemStateStore { get; } = new();
 
     public SimulationEntityRegistry Entities { get; } = new();
 
@@ -124,10 +124,10 @@ internal sealed class RealtimeLoopFixture : IDisposable
     {
         var session = RealtimeTestSessions.Create(name);
         Assert.Equal(ActiveSimulationSessionRegistration.Joined, SessionStore.Register(session));
-        CarryStateStore.Register(
+        CharacterItemStateStore.Register(
             session.CharacterId,
             session.SimulationSessionId,
-            session.CarryState,
+            CharacterStateTestData.ItemState(session.CarryState),
             out _);
         var initialState = PlayerMovementSimulation.CreateInitialState(
             Config.MovementSimulation,
@@ -163,7 +163,7 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Registry,
             Sender,
             SessionStore,
-            CarryStateStore,
+            CharacterItemStateStore,
             Entities,
             CarrySync,
             Teardown,
@@ -203,7 +203,7 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Timers,
             Presence,
             SessionStore,
-            CarryStateStore,
+            CharacterItemStateStore,
             Entities,
             CarrySync,
             Teardown,

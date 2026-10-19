@@ -21,24 +21,24 @@ public sealed class LiveMobCorpseInteractionServiceTests
             BaseAddress = new Uri("http://game-service.test")
         };
         var corpseStore = new LiveMobCorpseStore(TimeProvider.System);
-        var carryStateStore = new CarryStateStore();
+        var itemStateStore = new CharacterItemStateStore();
         var service = new LiveMobCorpseInteractionService(
             corpseStore,
             new GameServiceClient(httpClient),
-            carryStateStore);
+            itemStateStore);
         var corpse = corpseStore.CreateOrGet(CreateCorpse());
         var lootEntry = corpse.Loot.Single();
         var session = CreateSession(new PlayerCarryState(3, 0, 200));
-        carryStateStore.Register(
+        itemStateStore.Register(
             session.CharacterId,
             session.SimulationSessionId,
-            session.CarryState,
+            CharacterStateTestData.ItemState(session.CarryState),
             out _);
         // An item operation after the join advanced the committed revision.
-        carryStateStore.ApplyCommitted(
+        itemStateStore.ApplyCommitted(
             session.CharacterId,
             session.SimulationSessionId,
-            new PlayerCarryState(7, 10, 200),
+            CharacterStateTestData.ItemState(new PlayerCarryState(7, 10, 200)),
             out _);
 
         var result = await service.MutateAsync(

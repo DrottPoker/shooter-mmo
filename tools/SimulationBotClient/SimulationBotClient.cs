@@ -298,6 +298,24 @@ public sealed class SimulationBotClient : IDisposable
                 case RealtimeMessageType.LeaveRejected:
                     HandleLeaveRejected(packet);
                     break;
+                case RealtimeMessageType.GatheringState:
+                    HandleControlMessage<RealtimeGatheringState>(packet, channel, deliveryMethod, "invalid_gathering_state", RealtimeProtocol.TryDecodeGatheringState);
+                    break;
+                case RealtimeMessageType.CombatIntentResult:
+                    HandleControlMessage<RealtimeCombatIntentResult>(packet, channel, deliveryMethod, "invalid_combat_intent_result", RealtimeProtocol.TryDecodeCombatIntentResult);
+                    break;
+                case RealtimeMessageType.CombatantState:
+                    HandleControlMessage<RealtimeCombatantState>(packet, channel, deliveryMethod, "invalid_combatant_state", RealtimeProtocol.TryDecodeCombatantState);
+                    break;
+                case RealtimeMessageType.CombatEventBatch:
+                    HandleControlMessage<RealtimeCombatEventBatch>(packet, channel, deliveryMethod, "invalid_combat_event_batch", RealtimeProtocol.TryDecodeCombatEventBatch);
+                    break;
+                case RealtimeMessageType.OwnerCombatState:
+                    HandleControlMessage<RealtimeOwnerCombatState>(packet, channel, deliveryMethod, "invalid_owner_combat_state", RealtimeProtocol.TryDecodeOwnerCombatState);
+                    break;
+                case RealtimeMessageType.OwnerItemQuantityChanged:
+                    HandleControlMessage<RealtimeOwnerItemQuantityChanged>(packet, channel, deliveryMethod, "invalid_owner_item_quantity", RealtimeProtocol.TryDecodeOwnerItemQuantityChanged);
+                    break;
                 default:
                     Fail(
                         "unexpected_message",
@@ -517,6 +535,29 @@ public sealed class SimulationBotClient : IDisposable
         }
 
         spawnPackets++;
+    }
+
+    private delegate bool ControlDecoder<T>(byte[] packet, out T value, out string error);
+
+    // Bots do not act on combat or gathering state, but every message must still arrive on
+    // the control channel and decode, like a real client requires.
+    private void HandleControlMessage<T>(
+        byte[] packet,
+        byte channel,
+        DeliveryMethod deliveryMethod,
+        string code,
+        ControlDecoder<T> decode)
+    {
+        if (!IsValidJoinedControlDelivery(channel, deliveryMethod))
+        {
+            Fail(code, "The control message delivery is invalid.");
+            return;
+        }
+
+        if (!decode(packet, out _, out var error))
+        {
+            Fail(code, error);
+        }
     }
 
     private void HandleWorldActorState(

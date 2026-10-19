@@ -13,6 +13,8 @@ content/
                                     equipment slots, tiers, retired ids
     definitions/<definition-id>.json one item definition per file
     vendors/<vendor-id>.json        one vendor profile per file
+  combat/
+    combat-rules.json               player combat rules, arrow batching, and Shard rule sets
   development/
     item-packages.json              item states for the development item tool
   actors/
@@ -112,6 +114,30 @@ compiled item catalog:
   provides it.
 - Every yield exists, is not a quest item, a Bag, or an item with default
   policies, and its quantity fits one stack.
+
+## Combat Rules
+
+`combat/combat-rules.json` holds the combat values that belong to no item or
+actor. It has no compiler: the SimulationWorker build copies it to
+`WorldData/Combat/combat-rules.json` in its output, and the worker validates it
+strictly at startup, with the same parser rules as the compilers. Edit it by
+hand and restart the worker.
+
+| Field | Shipped value | Allowed |
+| --- | --- | --- |
+| `formatVersion` | 1 | 1 |
+| `player.maximumHealth` | 100 | 1 to 1,000,000 |
+| `player.respawnDelaySeconds` | 5 | 0 to 300 |
+| `player.combatTimeoutSeconds` | 10, the time after the last attack or hit until a combatant leaves combat and starts to regenerate | 0 to 600 |
+| `player.regenerationPercentPerSecond` | 2 | 0 to 100 |
+| `player.equipmentLockoutSeconds` | 1 | 0 to 30 |
+| `ammunition.batchIntervalSeconds` | 5, the time after the first uncommitted shot until the worker commits the spent arrows | 0.5 to 60 |
+| `ruleSets` | `mvp-open-risk` with `playerVersusPlayer` `true` | 1 to 64 rule sets with unique, lowercase, sorted ids |
+
+Every Shard in the GameService topology names a rule set, and the worker stops
+when its Shard names one that this file does not define.
+`EveryConfiguredShardRuleSetIsDefined` keeps the checked-in topology and
+this file in step.
 
 ## Generated Data
 

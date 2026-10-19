@@ -18,7 +18,8 @@ internal sealed class WorldInteractionAuthorityOperations(
         IRealtimeCompletionHandler completionHandler,
         RealtimePeerContext context,
         PlayerSimulationEntity entity,
-        RealtimeWorldInteractionIntent intent)
+        RealtimeWorldInteractionIntent intent,
+        long? rebasedCharacterRevision)
     {
         // The loop may refresh the entity's session during capability dispatch, so the
         // session is read here, on the loop, before the first await.
@@ -30,7 +31,8 @@ internal sealed class WorldInteractionAuthorityOperations(
                 context.PeerId,
                 entity,
                 intent,
-                CancellationToken.None);
+                CancellationToken.None,
+                rebasedCharacterRevision);
         }
         catch (Exception exception)
         {

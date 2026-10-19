@@ -33,6 +33,10 @@
              Link="WorldData\Items\core.item-catalog.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\..\content\combat\combat-rules.json"
+             Link="WorldData\Combat\combat-rules.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\Shared\WorldData\Generated\Worlds\**\world-actors.json"
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"

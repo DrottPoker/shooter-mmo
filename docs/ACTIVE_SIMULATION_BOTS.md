@@ -1,6 +1,6 @@
 # Active Simulation Bots
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Purpose
 
@@ -13,6 +13,8 @@ session heartbeat, and graceful leave flow.
 
 Use this tool to inspect a populated test map, remote interpolation, reliable
 spawn and despawn, interest behavior, collision, movement, and connection churn.
+Bots are not combatants, because they have no durable character that could die,
+so a Unity player cannot attack them.
 It is not a capacity benchmark. Use
 [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only or
 full-stack ramp, soak, resource, and latency measurements.

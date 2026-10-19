@@ -148,6 +148,7 @@ namespace Mmorpg.Client.Items
             }
 
             simulationClient.ItemOperationCompleted += OnItemOperationCompleted;
+            simulationClient.OwnerItemQuantityChanged += OnOwnerItemQuantityChanged;
             simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
             observedRealtimeJoin = simulationClient.IsJoined;
@@ -177,6 +178,7 @@ namespace Mmorpg.Client.Items
             if (simulationClient != null)
             {
                 simulationClient.ItemOperationCompleted -= OnItemOperationCompleted;
+                simulationClient.OwnerItemQuantityChanged -= OnOwnerItemQuantityChanged;
                 simulationClient.SessionEnded -= OnSessionEnded;
             }
 
@@ -569,6 +571,16 @@ namespace Mmorpg.Client.Items
                 InventoryRefreshScope.Full,
                 true,
                 result.CarryState.ItemStateRevision);
+        }
+
+        // Spent arrows commit without a client intent. A snapshot at exactly the revision the
+        // change applies to is patched in place; any other snapshot is refreshed.
+        private void OnOwnerItemQuantityChanged(RealtimeOwnerItemQuantityChanged change)
+        {
+            if (!State.TryApplyEquippedQuantityChange(change))
+            {
+                EnsureFullState(change.CarryState.ItemStateRevision);
+            }
         }
 
         private void OnSessionEnded(RealtimeClientError error)

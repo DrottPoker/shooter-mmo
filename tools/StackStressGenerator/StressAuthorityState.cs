@@ -6,6 +6,9 @@ namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed class StressAuthorityState
 {
+    // The rule set of the development Shard, which the worker's combat rules define.
+    public const string ShardRuleSet = "mvp-open-risk";
+
     private const long SyntheticCarryCapacity = 200;
     private static readonly TimeSpan WorkerLeaseDuration = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TicketLifetime = TimeSpan.FromSeconds(30);
@@ -379,6 +382,7 @@ public sealed class StressAuthorityState
             registration.NodeId,
             registration.ShardId,
             registration.WorldId,
+            ShardRuleSet,
             registration.Host,
             registration.UdpPort,
             registration.MaxConnections,

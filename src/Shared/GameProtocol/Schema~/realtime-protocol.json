@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 17,
+    "version": 18,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -188,6 +188,12 @@
       "value": 512,
       "visibility": "public",
       "description": "Slots in one corpse view section."
+    },
+    {
+      "name": "MaximumCombatEventsPerBatch",
+      "value": 32,
+      "visibility": "public",
+      "description": "Combat events in one event batch; more events split into several batches."
     }
   ],
   "enums": [
@@ -306,6 +312,59 @@
       "family": "WorldActors",
       "description": "A change of a character's gathering at a resource node.",
       "values": [ { "name": "Started", "value": 1 }, { "name": "Yielded", "value": 2 }, { "name": "Stopped", "value": 3 } ]
+    },
+    {
+      "name": "CombatIntentKind",
+      "family": "Combat",
+      "description": "What a combat intent asks for.",
+      "values": [ { "name": "AttackTarget", "value": 1 }, { "name": "ClearTarget", "value": 2 } ]
+    },
+    {
+      "name": "CombatLifeState",
+      "family": "Combat",
+      "description": "Whether a combatant lives, is dead, or is a Mob walking home.",
+      "values": [ { "name": "Alive", "value": 1 }, { "name": "Dead", "value": 2 }, { "name": "Evading", "value": 3 } ]
+    },
+    {
+      "name": "CombatAttackStatus",
+      "family": "Combat",
+      "description": "Why the owner's attack releases or waits. It changes every tick, so it is a status and not an error.",
+      "values": [
+        { "name": "Idle", "value": 1 },
+        { "name": "Attacking", "value": 2 },
+        { "name": "Moving", "value": 3 },
+        { "name": "OutOfRange", "value": 4 },
+        { "name": "LineOfSightBlocked", "value": 5 },
+        { "name": "EquipmentLockout", "value": 6 },
+        { "name": "WeaponMissing", "value": 7 },
+        { "name": "AmmunitionMissing", "value": 8 },
+        { "name": "AmmunitionIncompatible", "value": 9 },
+        { "name": "Dead", "value": 10 }
+      ]
+    },
+    {
+      "name": "CombatEventKind",
+      "family": "Combat",
+      "description": "The kind of a combat event.",
+      "values": [ { "name": "AttackReleased", "value": 1 }, { "name": "Hit", "value": 2 }, { "name": "Died", "value": 3 } ]
+    },
+    {
+      "name": "CombatDamageType",
+      "family": "Combat",
+      "description": "The damage type of a hit, which selects its presentation color.",
+      "values": [
+        { "name": "Normal", "value": 1 },
+        { "name": "Fire", "value": 2 },
+        { "name": "Cold", "value": 3 },
+        { "name": "Nature", "value": 4 },
+        { "name": "Shadow", "value": 5 }
+      ]
+    },
+    {
+      "name": "ItemQuantityChangeReason",
+      "family": "Items",
+      "description": "Why the worker changed an item quantity without a client intent.",
+      "values": [ { "name": "AmmunitionConsumed", "value": 1 } ]
     }
   ],
   "structs": [
@@ -698,6 +757,41 @@
         },
         { "name": "Item", "type": "CorpseItem", "optional": true, "description": "The item in the slot, or null." }
       ]
+    },
+    {
+      "name": "ShardRules",
+      "family": "Session",
+      "description": "The gameplay rules of the Shard that hosts the session.",
+      "fields": [
+        {
+          "name": "PlayerVersusPlayer",
+          "type": "bool",
+          "description": "Whether characters may attack other characters."
+        }
+      ]
+    },
+    {
+      "name": "CombatEvent",
+      "family": "Combat",
+      "description": "One combat event. Fields that the kind does not use are 0.",
+      "rules": true,
+      "fields": [
+        { "name": "Kind", "type": "CombatEventKind", "description": "What happened." },
+        {
+          "name": "SourceEntityId",
+          "type": "u64",
+          "description": "The attacker or killer, or 0 when none is known."
+        },
+        { "name": "TargetEntityId", "type": "u64", "minimum": 1, "description": "The combatant the event is about." },
+        {
+          "name": "ImpactTick",
+          "type": "u32",
+          "description": "For a released attack, the server tick at which it hits."
+        },
+        { "name": "Damage", "type": "i32", "minimum": 0, "description": "For a hit, the damage dealt." },
+        { "name": "DamageType", "type": "CombatDamageType", "description": "For a hit, the damage type; Normal otherwise." },
+        { "name": "HealthAfter", "type": "i32", "minimum": 0, "description": "For a hit, the target's health afterwards." }
+      ]
     }
   ],
   "messages": [
@@ -819,7 +913,8 @@
           "name": "InitialPlayerState",
           "type": "PlayerState",
           "description": "The authoritative state of the controlled entity at join."
-        }
+        },
+        { "name": "ShardRules", "type": "ShardRules", "description": "The gameplay rules of the Shard." }
       ]
     },
     {
@@ -2121,6 +2216,161 @@
           }
         ]
       }
+    },
+    {
+      "name": "CombatIntent",
+      "id": 29,
+      "family": "Combat",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Selects or clears the character's attack target.",
+      "parameter": "intent",
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "Correlates the result." },
+        { "name": "Kind", "type": "CombatIntentKind", "description": "What the intent asks for." }
+      ],
+      "variants": {
+        "discriminator": "Kind",
+        "fields": [
+          {
+            "name": "TargetEntityId",
+            "type": "u64",
+            "absent": 0,
+            "description": "The network entity to attack."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [ { "kind": "AttackTarget", "factory": "CreateAttackTarget" } ],
+            "fields": [ { "field": "TargetEntityId", "minimum": 1 } ]
+          },
+          { "kinds": [ { "kind": "ClearTarget", "factory": "CreateClearTarget" } ], "fields": [] }
+        ]
+      }
+    },
+    {
+      "name": "CombatIntentResult",
+      "id": 30,
+      "family": "Combat",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The outcome of a combat intent.",
+      "parameter": "result",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "The intent this answers." },
+        { "name": "Kind", "type": "CombatIntentKind", "description": "What the intent asked for." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the worker accepted the intent." },
+        { "name": "TargetEntityId", "type": "u64", "description": "The attack target afterwards, or 0 for none." },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the intent failed." }
+      ]
+    },
+    {
+      "name": "CombatantState",
+      "id": 31,
+      "family": "Combat",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A newer health and life state of a visible combatant. It follows every spawn of a combatant.",
+      "parameter": "state",
+      "rules": true,
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the combatant." },
+        { "name": "StateRevision", "type": "i64", "minimum": 1, "description": "Increases with every combat state change." },
+        { "name": "Health", "type": "i32", "minimum": 0, "description": "The current health." },
+        { "name": "MaximumHealth", "type": "i32", "minimum": 1, "description": "The maximum health." },
+        { "name": "LifeState", "type": "CombatLifeState", "description": "Whether the combatant lives." },
+        { "name": "InCombat", "type": "bool", "description": "Whether the combatant fought recently." },
+        { "name": "TargetEntityId", "type": "u64", "description": "The combatant's attack target, or 0 for none." }
+      ]
+    },
+    {
+      "name": "CombatEventBatch",
+      "id": 32,
+      "family": "Combat",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Combat events of one server tick that involve a combatant the recipient sees.",
+      "parameter": "batch",
+      "fields": [
+        { "name": "ServerTick", "type": "u32", "description": "The server tick of the events." },
+        {
+          "name": "Events",
+          "type": "array",
+          "items": "CombatEvent",
+          "minCount": 1,
+          "maxCount": "MaximumCombatEventsPerBatch",
+          "description": "The events in their simulation order."
+        }
+      ]
+    },
+    {
+      "name": "OwnerCombatState",
+      "id": 33,
+      "family": "Combat",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The owner's combat state: life, target, attack status and timing, and equipped ammunition.",
+      "parameter": "state",
+      "rules": true,
+      "fields": [
+        { "name": "StateRevision", "type": "i64", "minimum": 1, "description": "Increases with every owner combat state change." },
+        { "name": "ServerTick", "type": "u32", "description": "The server tick at which the state holds." },
+        { "name": "Health", "type": "i32", "minimum": 0, "description": "The current health." },
+        { "name": "MaximumHealth", "type": "i32", "minimum": 1, "description": "The maximum health." },
+        { "name": "LifeState", "type": "CombatLifeState", "description": "Whether the character lives." },
+        {
+          "name": "LifeSequence",
+          "type": "u32",
+          "description": "Increases with every death and respawn, so the client resets its prediction after a respawn."
+        },
+        { "name": "RespawnTick", "type": "u32", "description": "While dead, the server tick of the respawn; 0 otherwise." },
+        { "name": "InCombat", "type": "bool", "description": "Whether the character fought recently." },
+        { "name": "TargetEntityId", "type": "u64", "description": "The attack target, or 0 for none." },
+        { "name": "AttackStatus", "type": "CombatAttackStatus", "description": "Why the attack releases or waits." },
+        { "name": "NextAttackTick", "type": "u32", "description": "The first server tick at which the next attack may release." },
+        { "name": "LockoutEndTick", "type": "u32", "description": "The server tick at which the equipment lockout ends, or 0." },
+        {
+          "name": "AmmunitionItemInstanceId",
+          "type": "guid",
+          "description": "The equipped ammunition stack, or empty for none."
+        },
+        {
+          "name": "AmmunitionQuantity",
+          "type": "i32",
+          "minimum": 0,
+          "description": "The live arrow count, including shots not yet committed."
+        }
+      ]
+    },
+    {
+      "name": "OwnerItemQuantityChanged",
+      "id": 34,
+      "family": "Items",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A committed quantity change of one of the owner's items that no client intent caused, such as spent arrows.",
+      "parameter": "change",
+      "rules": true,
+      "fields": [
+        { "name": "Reason", "type": "ItemQuantityChangeReason", "description": "Why the quantity changed." },
+        {
+          "name": "PreviousItemStateRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The item-state revision the change applies to."
+        },
+        { "name": "CarryState", "type": "CarryState", "description": "The committed carry state after the change." },
+        { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The changed item." },
+        { "name": "Quantity", "type": "i32", "minimum": 0, "description": "The new quantity; 0 when the item was used up." },
+        { "name": "ItemRevision", "type": "i64", "minimum": 0, "description": "The item revision after the change; 0 when it was used up." }
+      ]
     }
   ]
 }

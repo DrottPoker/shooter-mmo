@@ -4,9 +4,10 @@ Last updated: 2026-10-18
 
 Status: Decided and in progress. The product owner accepted every
 recommendation on 2026-10-18, including C1. Implementation follows the
-[Implementation Plan](#implementation-plan): step 1, the combat content, and
-step 2, the GameService combat boundaries, are implemented; steps 3 to 6 are
-not.
+[Implementation Plan](#implementation-plan): step 1, the combat content,
+step 2, the GameService combat boundaries, and step 3, the protocol and
+authoritative combat, are implemented; steps 4 to 6 are not. Where step 3
+differs from this plan, [Step 3 Notes](#step-3-notes) says how.
 
 ## Purpose
 
@@ -150,10 +151,11 @@ GameService stores only the level requirement, which its equip rule needs.
 - Every Mob references a combat, brain, and locomotion profile and may reference
   a loot profile. NPCs stay invulnerable and leave every Mob profile empty.
 
-**Combat rules.** The player rules arrive with their consumer in step 3: a small
-strictly validated content file holds the player maximum health, the respawn
-delay, the out-of-combat delay and regeneration rate, the in-combat duration,
-and the equipment lockout, and the worker copies it into its output like
+**Combat rules.** `content/combat/combat-rules.json`, implemented in step 3 and
+described in [Content](../content/README.md), holds the player maximum health,
+the respawn delay, the combat timeout that also ends the out-of-combat delay, the
+regeneration rate, the equipment lockout, the arrow batch interval, and the
+Shard rule sets. The worker loads it strictly and copies it into its output like
 `world.json`.
 
 The Unity Item Catalog editor and Actor Studio edit and preserve every new
@@ -481,7 +483,8 @@ needed:
 
 ### Telemetry
 
-A `Mmorpg.SimulationWorker.Combat` meter with low-cardinality instruments:
+A `Mmorpg.SimulationWorker.Combat` meter, implemented in step 3 and listed in
+[Monitoring](MONITORING.md), with low-cardinality instruments:
 attacks, hits, and deaths by combatant kind, active combatants, Mob brain and
 combat phase durations, consumption batches by outcome, pending and dropped
 arrows, and death partition duration. GameService counts the new consumption
@@ -540,6 +543,44 @@ Unity gate, and updates its documents in the same change.
 6. **Acceptance.** The full manual loop below on the local stack, the slice
    marked complete in [MVP Specification](MVP_SPEC.md), and the planned combat
    items moved to implemented in the design documents.
+
+### Step 3 Notes
+
+Step 3 follows the architecture above with these refinements:
+
+- **Shard rules.** GameService returns the Shard's `rule_set` in every worker
+  heartbeat response. The combat rules file defines the rule sets, today only
+  `mvp-open-risk` with attacks on characters allowed, and a worker stops with
+  `shard_rule_set_unknown` when its Shard names another one.
+- **Combat timeout.** One value, 10 seconds after the last attack or hit, ends
+  both the in-combat state and the out-of-combat delay. Regeneration gives 2
+  percent of the maximum health, at least 1 point, every second out of combat.
+- **Respawn.** A dead character respawns once the respawn delay passed and its
+  death committed, so a slow commit delays the respawn instead of racing it.
+- **Rebasing.** Item intents and NPC and vendor capability actions are rebased
+  onto a revision that only arrow batches advanced, when they start in the lane.
+  Corpse operations carry no expected character revision.
+- **Batch failures.** An uncertain batch retries with backoff up to 8 attempts,
+  after which its arrows stay with the player. A rejected batch loses its shots
+  and counts them as dropped; the next committed operation or heartbeat brings
+  the current stack.
+- **Shutdown.** A stopping worker commits the uncommitted shots it can still
+  name exactly, as a best effort. A batch whose answer arrived while the worker
+  stopped is settled first, so the shots behind a committed batch commit on top
+  of it; a batch without a committed answer is left alone, and its arrows stay
+  with the player.
+- **Lethal hits.** The hit that brings health to 0 marks the combatant dead at
+  once, so later impacts and attacks of the same tick see it dead. A Mob without
+  a corpse despawns after the combat phase has sent the tick's state and events.
+- **Synthetic bots.** Development bots have no durable character that could
+  die, so they are no combatants and cannot be attacked.
+- **Telemetry.** The Mob brain phase duration and the death partition duration
+  wait for step 5. Step 3 records player death partitions by outcome instead.
+- **Hand-over to step 4.** The owner's prediction already snaps to the spawn,
+  because a respawn is a hard reconciliation correction. A path planned while
+  the character is dead would still run from the spawn after the respawn, so
+  step 4 blocks world clicks while dead and stops the navigator on death and on
+  `CombatClientState.Respawned`.
 
 ## Coordination
 

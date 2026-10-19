@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
@@ -20,6 +21,8 @@ public sealed class SimulationWorkerHeartbeatService(
     RealtimeTransportReadiness transportReadiness,
     ChunkedStaticCollisionWorld collisionWorld,
     ItemCatalogRuntimeDocument itemCatalog,
+    CombatRules combatRules,
+    SimulationShardRules shardRules,
     ILogger<SimulationWorkerHeartbeatService> logger,
     SimulationWorkerRegistrationLease? registrationLease = null,
     IHostApplicationLifetime? applicationLifetime = null) : BackgroundService
@@ -133,6 +136,18 @@ public sealed class SimulationWorkerHeartbeatService(
             return;
         }
 
+        // The worker can only enforce a rule set its combat rules define.
+        if (!combatRules.TryGetRuleSet(result.Value.RuleSet, out var ruleSet))
+        {
+            logger.LogError(
+                "Simulation worker registry assigned Shard {ShardId} the rule set {RuleSet}, which the combat rules do not define.",
+                result.Value.ShardId,
+                result.Value.RuleSet);
+            StopForLostAuthority("shard_rule_set_unknown");
+            return;
+        }
+
+        shardRules.Set(ruleSet);
         if (renewalStart is not null)
         {
             registrationLease!.Renew(

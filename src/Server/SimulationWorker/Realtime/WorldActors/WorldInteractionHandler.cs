@@ -18,7 +18,9 @@ internal sealed class WorldInteractionHandler(
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
     WorldInteractionAuthorityOperations authority,
-    GatheringHandler gathering) : IRealtimeCompletionHandler
+    GatheringHandler gathering,
+    WorldInteractionLeaseRegistry? leases = null,
+    ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
 {
     public bool IsActive => worldInteractionAuthority is not null;
 
@@ -72,6 +74,14 @@ internal sealed class WorldInteractionHandler(
             return;
         }
 
+        if (combatGate is not null
+            && intent.OperationKind != RealtimeWorldInteractionOperationKind.Close
+            && combatGate.IsCharacterDead(context))
+        {
+            Reject(peer, intent, RealtimeCombatErrorCodes.CharacterDead, "The character is dead.");
+            return;
+        }
+
         if (context.AuthorityOperationQueue.Count
             >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
         {
@@ -94,9 +104,40 @@ internal sealed class WorldInteractionHandler(
             return;
         }
 
+        combatGate?.BeforeClientOperation(context);
         authorityScheduler.Enqueue(
             context,
             new QueuedWorldInteractionOperation(this, intent));
+    }
+
+    private void Reject(
+        IRealtimePeerConnection peer,
+        RealtimeWorldInteractionIntent intent,
+        string code,
+        string message)
+    {
+        SendWorldInteractionResult(
+            peer,
+            new WorldInteractionAuthorityResult(
+                null,
+                new RealtimeWorldInteractionResult(
+                    intent.OperationId,
+                    intent.InteractionSessionId,
+                    intent.OperationKind,
+                    false,
+                    0,
+                    itemStateRevision: 0,
+                    message: string.Empty,
+                    error: new RealtimeError(code, message)),
+                null));
+    }
+
+    private void Cancel(RealtimePeerContext context, RealtimeWorldInteractionIntent intent, string code, string message)
+    {
+        if (peers.TryGetCurrentPeer(context, out var peer))
+        {
+            Reject(peer, intent, code, message);
+        }
     }
 
     private void Start(
@@ -114,11 +155,14 @@ internal sealed class WorldInteractionHandler(
             return;
         }
 
+        // Spent arrows commit ahead of the action, so an action computed on the state before
+        // them carries the revision they advanced to.
         operationTracker.Track(authority.RunAsync(
             this,
             context,
             entity,
-            intent));
+            intent,
+            combatGate?.RebaseExpectedCharacterRevision(context, intent.ExpectedCharacterRevision)));
     }
 
     public void Complete(RealtimeOperationResult completion)
@@ -204,6 +248,28 @@ internal sealed class WorldInteractionHandler(
         }
     }
 
+    // Closes the peer's world actor interaction, such as when its character died, and
+    // tells the peer why. Gathering at the actor stops with the interaction.
+    public void CloseForPeer(RealtimePeerContext context, string code, string message)
+    {
+        if (leases is null
+            || !leases.TryGet(context.PeerId, out var lease)
+            || lease!.TargetKind != RealtimeWorldInteractionTargetKind.WorldActor
+            || !leases.ReleaseWorldActor(context.PeerId, lease.InteractionSessionId)
+            || !peers.TryGetCurrentPeer(context, out var peer))
+        {
+            return;
+        }
+
+        sender.SendControl(peer, RealtimeProtocol.EncodeWorldInteractionClosed(new RealtimeWorldInteractionClosed(
+            lease.InteractionSessionId,
+            lease.TargetKind,
+            lease.TargetEntityId,
+            lease.TargetRuntimeId,
+            code,
+            message)));
+    }
+
     // Closes world actor interactions whose player, session, target, range or line of
     // sight no longer holds, and tells each affected peer.
     public void RevalidateLeases()
@@ -237,6 +303,11 @@ internal sealed class WorldInteractionHandler(
                 context,
                 entity,
                 Intent);
+        }
+
+        public void Cancel(RealtimePeerContext context, string code, string message)
+        {
+            Owner.Cancel(context, Intent, code, message);
         }
     }
 }

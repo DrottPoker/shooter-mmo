@@ -8,8 +8,8 @@ using Mmorpg.SimulationWorker.WorldCollision;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs due fixed simulation ticks in a stable phase order: collision streaming, carry
-// state and movement per player in entity id order, world actor activity, interaction
-// revalidation, snapshots and corpse presence. At most five ticks catch up per call
+// state and movement per player in entity id order, world actor activity, combat,
+// interaction revalidation, snapshots and corpse presence. At most five ticks catch up per call
 // before the clock resynchronizes. Loop-confined.
 internal sealed class SimulationTickLoop(
     SimulationWorkerConfig config,
@@ -19,6 +19,7 @@ internal sealed class SimulationTickLoop(
     WorldActorRuntimeDriver worldActors,
     WorldInteractionHandler worldInteractions,
     GatheringHandler gathering,
+    CombatSystem combat,
     SnapshotReplicator snapshots,
     CorpsePresenceReplicator corpsePresence,
     WorldCollisionStreamingStore? collisionStreamingStore,
@@ -58,6 +59,8 @@ internal sealed class SimulationTickLoop(
                 Stopwatch.GetElapsedTime(phaseStarted));
 
             worldActors.EvaluateTick(playerBuffer, clock.ServerTick);
+
+            combat.ProcessTick();
 
             var interactionValidationIntervalTicks = Math.Max(
                 1,

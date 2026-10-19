@@ -124,6 +124,11 @@ internal sealed class RealtimeRecordingClient : IDisposable
         Send(RealtimeProtocol.EncodeCorpseInteractionIntent(intent));
     }
 
+    public void SendCombatIntent(RealtimeCombatIntent intent)
+    {
+        Send(RealtimeProtocol.EncodeCombatIntent(intent));
+    }
+
     public void SendWorldIntent(RealtimeWorldInteractionIntent intent)
     {
         Send(RealtimeProtocol.EncodeWorldInteractionIntent(intent));

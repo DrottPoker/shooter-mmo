@@ -11,4 +11,10 @@ internal interface IRealtimeAuthorityOperation
         RealtimePeerContext context,
         PlayerSimulationEntity entity,
         PlayerMovementState state);
+
+    // Rejects a client operation that never started, such as one waiting behind a death.
+    // System operations are never cancelled this way.
+    void Cancel(RealtimePeerContext context, string code, string message)
+    {
+    }
 }

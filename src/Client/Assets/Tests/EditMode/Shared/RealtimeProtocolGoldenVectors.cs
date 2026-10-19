@@ -6,9 +6,52 @@ namespace Mmorpg.SharedTests
 {
     public static partial class RealtimeProtocolGolden
     {
-        // Payload bytes after the seven-byte header, pinned from protocol version 17.
+        // Payload bytes after the seven-byte header, pinned from protocol version 18.
         private static readonly Dictionary<string, string> PayloadVectors = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["Combat/CombatEventBatch/full"] = "sha256:965:d57dbf86bcfa60cb62322a23e3cfa6fd1b0e9e60ac337a2ce37233bf924110ec",
+            ["Combat/CombatEventBatch/release hit death"] =
+                "04 03 02 01 03 01 38 37 36 35 34 33 32 31 48 47 " +
+                "46 45 44 43 42 41 10 03 02 01 00 00 00 00 01 00 " +
+                "00 00 00 02 38 37 36 35 34 33 32 31 48 47 46 45 " +
+                "44 43 42 41 00 00 00 00 11 00 00 00 02 21 00 00 " +
+                "00 03 38 37 36 35 34 33 32 31 48 47 46 45 44 43 " +
+                "42 41 00 00 00 00 00 00 00 00 01 00 00 00 00",
+            ["Combat/CombatIntent/attack target"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "01 48 47 46 45 44 43 42 41",
+            ["Combat/CombatIntent/clear target"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "02",
+            ["Combat/CombatIntentResult/accepted"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "01 01 48 47 46 45 44 43 42 41",
+            ["Combat/CombatIntentResult/rejected"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "01 00 00 00 00 00 00 00 00 00 12 00 63 6f 6d 62 " +
+                "61 74 5f 74 61 72 67 65 74 5f 64 65 61 64 1a 00 " +
+                "4d c3 a5 6c 65 74 20 c3 a4 72 20 72 65 64 61 6e " +
+                "20 64 c3 b6 74 74 20 e2 9c 93",
+            ["Combat/CombatantState/alive"] =
+                "38 37 36 35 34 33 32 31 07 00 00 00 00 00 00 00 " +
+                "25 00 00 00 32 00 00 00 01 01 48 47 46 45 44 43 " +
+                "42 41",
+            ["Combat/CombatantState/dead"] =
+                "38 37 36 35 34 33 32 31 ff ff ff ff ff ff ff 7f " +
+                "00 00 00 00 32 00 00 00 02 00 00 00 00 00 00 00 " +
+                "00 00",
+            ["Combat/OwnerCombatState/attacking"] =
+                "0b 00 00 00 00 00 00 00 04 03 02 01 40 00 00 00 " +
+                "64 00 00 00 01 02 00 00 00 00 00 00 00 01 48 47 " +
+                "46 45 44 43 42 41 02 40 03 02 01 20 03 02 01 50 " +
+                "51 52 53 54 55 56 57 58 59 5a 5b 5c 5d 5e 5f e5 " +
+                "03 00 00",
+            ["Combat/OwnerCombatState/dead"] =
+                "0b 00 00 00 00 00 00 00 04 03 02 01 00 00 00 00 " +
+                "64 00 00 00 02 ff ff ff ff 0d 0c 0b 0a 01 00 00 " +
+                "00 00 00 00 00 00 0a 40 03 02 01 20 03 02 01 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 00",
             ["Corpses/CorpseInteractionIntent/close"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "02 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
@@ -219,6 +262,16 @@ namespace Mmorpg.SharedTests
                 "33 34 35 36 37 38 39 3a 3b 3c 3d 3e 3f 09 00 00 " +
                 "00 00 00 00 00 01 50 51 52 53 54 55 56 57 58 59 " +
                 "5a 5b 5c 5d 5e 5f",
+            ["Items/OwnerItemQuantityChanged/arrows spent"] =
+                "01 0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 " +
+                "00 d2 00 00 00 00 00 00 00 c8 00 00 00 00 00 00 " +
+                "00 50 51 52 53 54 55 56 57 58 59 5a 5b 5c 5d 5e " +
+                "5f e3 03 00 00 29 00 00 00 00 00 00 00",
+            ["Items/OwnerItemQuantityChanged/last arrows spent"] =
+                "01 0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 " +
+                "00 d2 00 00 00 00 00 00 00 c8 00 00 00 00 00 00 " +
+                "00 50 51 52 53 54 55 56 57 58 59 5a 5b 5c 5d 5e " +
+                "5f 00 00 00 00 00 00 00 00 00 00 00 00",
             ["Movement/MovementInputBatch/four"] =
                 "04 01 00 00 00 e9 03 00 00 00 00 00 00 ff ff ff " +
                 "ff 00 00 00 00 00 00 00 00 03 00 00 00 04 03 02 " +
@@ -265,8 +318,8 @@ namespace Mmorpg.SharedTests
                 "00 00 00 00 00 33 00 00 00 00 00 48 41 00 00 50 " +
                 "c0 00 18 80 44 00 00 00 3f 00 00 1c c1 00 00 08 " +
                 "40 00 40 87 43 01",
-            ["Session/JoinAccepted/boundary"] = "sha256:606:9717fe20c5bcd633afada11ef49bc07a460201cbb9f29bc8b4c42239268a60dd",
-            ["Session/JoinAccepted/typical"] = "sha256:332:ecfaa5a4472c9e20cdc304b02defaf2376120c7b2fe92c474de4a1874b79b568",
+            ["Session/JoinAccepted/boundary"] = "sha256:607:773adc23ef8f616e6adf1c171805784310ce29db06b67d39820182429104111f",
+            ["Session/JoinAccepted/typical"] = "sha256:333:a5ee8c9fd1d7558bcbd8de505961b74cc476ffd44c1495a01a94304700a92241",
             ["Session/JoinRejected/basic"] =
                 "13 00 6a 6f 69 6e 5f 74 69 63 6b 65 74 5f 65 78 " +
                 "70 69 72 65 64 18 00 54 68 65 20 6a 6f 69 6e 20 " +

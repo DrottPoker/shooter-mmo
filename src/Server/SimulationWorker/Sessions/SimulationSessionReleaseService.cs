@@ -7,7 +7,7 @@ namespace Mmorpg.SimulationWorker.Sessions;
 public sealed class SimulationSessionReleaseService(
     GameServiceClient gameServiceClient,
     ActiveSimulationSessionStore sessionStore,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null)
 {
     private static readonly TimeSpan[] DefaultDetachedReleaseRetryDelays =
@@ -31,7 +31,7 @@ public sealed class SimulationSessionReleaseService(
                 session.SimulationSessionId,
                 session.SimulationSessionToken))
         {
-            carryStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+            itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
         }
 
         var result = await ReleaseAsync(session, cancellationToken);
@@ -65,7 +65,7 @@ public sealed class SimulationSessionReleaseService(
                 session.SimulationSessionToken);
             if (removed)
             {
-                carryStateStore.Remove(
+                itemStateStore.Remove(
                     session.CharacterId,
                     session.SimulationSessionId);
             }

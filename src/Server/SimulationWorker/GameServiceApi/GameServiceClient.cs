@@ -77,6 +77,8 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 && string.Equals(response.NodeId, request.NodeId, StringComparison.Ordinal)
                 && string.Equals(response.ShardId, request.ShardId, StringComparison.Ordinal)
                 && !string.IsNullOrWhiteSpace(response.WorldId)
+                && !string.IsNullOrWhiteSpace(response.RuleSet)
+                && response.RuleSet.Length <= 128
                 && string.Equals(response.Host, request.Host, StringComparison.OrdinalIgnoreCase)
                 && response.UdpPort == request.UdpPort
                 && response.MaxConnections == request.MaxConnections

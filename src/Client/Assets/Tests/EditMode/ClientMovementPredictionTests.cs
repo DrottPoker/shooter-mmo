@@ -439,7 +439,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     -2f,
                     0f,
                     0f,
-                    true));
+                    true),
+                new RealtimeShardRules(false));
         }
 
         private static void WaitForPlan(

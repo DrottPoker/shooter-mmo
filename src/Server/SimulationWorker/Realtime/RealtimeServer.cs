@@ -25,12 +25,14 @@ internal sealed class RealtimeServer(
     SimulationTickLoop tickLoop,
     RealtimePeerSupervisor supervisor,
     WorldActorRuntimeDriver worldActors,
+    CombatSystem combat,
+    PlayerCombatAuthority combatAuthority,
     RealtimeTransportReadiness transportReadiness,
     RealtimePeerRegistry peers,
     EntityPresenceReplicator presence,
     ConnectionEntityBindingRegistry connectionBindings,
     SimulationEntityRegistry entityRegistry,
-    CarryStateStore carryStateStore,
+    CharacterItemStateStore itemStateStore,
     CorpseViewerRegistry corpseViewers,
     WorldInteractionLeaseRegistry? worldInteractionLeases,
     WorldActorStore? worldActorStore,
@@ -120,16 +122,18 @@ internal sealed class RealtimeServer(
     // The order is part of the shutdown contract: the transport stops first, so no event
     // can register state, and in-flight operations finish before the stores are cleared,
     // so a late join or release cannot register state after the clear. Their completions
-    // are never finalized.
+    // are never finalized; only the combat flush reads its own arrow batch results.
     private async Task ShutdownAsync()
     {
         transport.Stop();
         await operationTracker.WaitForAllAsync();
+        await combatAuthority.FlushOnShutdownAsync(completions.TakeFor(combatAuthority));
+        combat.Clear();
         peers.Clear();
         presence.Clear();
         connectionBindings.Clear();
         entityRegistry.Clear();
-        carryStateStore.Clear();
+        itemStateStore.Clear();
         corpseViewers.Clear();
         worldInteractionLeases?.Clear();
         worldActorStore?.Clear();

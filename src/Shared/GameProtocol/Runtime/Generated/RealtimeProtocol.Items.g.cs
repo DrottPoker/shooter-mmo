@@ -22,6 +22,14 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
+    /// Why the worker changed an item quantity without a client intent.
+    /// </summary>
+    public enum RealtimeItemQuantityChangeReason : byte
+    {
+        AmmunitionConsumed = 1
+    }
+
+    /// <summary>
     /// The committed carry weight of a character. Weight above the capacity is valid: death can leave an involuntary overflow.
     /// </summary>
     public sealed partial class RealtimeCarryState
@@ -501,6 +509,58 @@ namespace Mmorpg.GameProtocol
         /// The Recovery deliveries the operation changed; empty when the operation failed.
         /// </summary>
         public Guid[] RecoveryDeliveryIds { get; }
+    }
+
+    /// <summary>
+    /// A committed quantity change of one of the owner's items that no client intent caused, such as spent arrows.
+    /// </summary>
+    public sealed partial class RealtimeOwnerItemQuantityChanged
+    {
+        public RealtimeOwnerItemQuantityChanged(
+            RealtimeItemQuantityChangeReason reason,
+            long previousItemStateRevision,
+            RealtimeCarryState carryState,
+            Guid itemInstanceId,
+            int quantity,
+            long itemRevision)
+        {
+            Reason = reason;
+            PreviousItemStateRevision = previousItemStateRevision;
+            CarryState = carryState;
+            ItemInstanceId = itemInstanceId;
+            Quantity = quantity;
+            ItemRevision = itemRevision;
+        }
+
+        /// <summary>
+        /// Why the quantity changed.
+        /// </summary>
+        public RealtimeItemQuantityChangeReason Reason { get; }
+
+        /// <summary>
+        /// The item-state revision the change applies to.
+        /// </summary>
+        public long PreviousItemStateRevision { get; }
+
+        /// <summary>
+        /// The committed carry state after the change.
+        /// </summary>
+        public RealtimeCarryState CarryState { get; }
+
+        /// <summary>
+        /// The changed item.
+        /// </summary>
+        public Guid ItemInstanceId { get; }
+
+        /// <summary>
+        /// The new quantity; 0 when the item was used up.
+        /// </summary>
+        public int Quantity { get; }
+
+        /// <summary>
+        /// The item revision after the change; 0 when it was used up.
+        /// </summary>
+        public long ItemRevision { get; }
     }
 
     // Encoding, decoding, and validation of the Items family.
@@ -1296,6 +1356,106 @@ namespace Mmorpg.GameProtocol
             return SatisfiesRules(value);
         }
 
+        /// <summary>
+        /// A committed quantity change of one of the owner's items that no client intent caused, such as spent arrows.
+        /// </summary>
+        public static byte[] EncodeOwnerItemQuantityChanged(RealtimeOwnerItemQuantityChanged change)
+        {
+            if (!IsValidOwnerItemQuantityChanged(change))
+            {
+                throw new ArgumentException("Owner item quantity changed is invalid.", nameof(change));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.OwnerItemQuantityChanged, 61);
+            WriteOwnerItemQuantityChanged(ref writer, change);
+            return writer.Finish();
+        }
+
+        public static bool TryDecodeOwnerItemQuantityChanged(byte[] data, out RealtimeOwnerItemQuantityChanged change, out string error)
+        {
+            change = null;
+            if (!TryStartPacket(data, RealtimeMessageType.OwnerItemQuantityChanged, out var reader, out error)
+                || !TryReadOwnerItemQuantityChanged(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidOwnerItemQuantityChanged(decoded))
+            {
+                error = "Owner item quantity changed is invalid.";
+                return false;
+            }
+
+            change = decoded;
+            return true;
+        }
+
+        private static void WriteOwnerItemQuantityChanged(ref PacketWriter writer, RealtimeOwnerItemQuantityChanged value)
+        {
+            writer.WriteByte((byte)value.Reason);
+            writer.WriteInt64(value.PreviousItemStateRevision);
+            WriteCarryState(ref writer, value.CarryState);
+            writer.WriteGuid(value.ItemInstanceId);
+            writer.WriteInt32(value.Quantity);
+            writer.WriteInt64(value.ItemRevision);
+        }
+
+        private static bool TryReadOwnerItemQuantityChanged(ref PacketReader reader, out RealtimeOwnerItemQuantityChanged value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadByte(out var reasonByte, out error))
+            {
+                return false;
+            }
+
+            var reason = (RealtimeItemQuantityChangeReason)reasonByte;
+
+            if (!reader.TryReadInt64(out var previousItemStateRevision, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadCarryState(ref reader, out var carryState, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadGuid(out var itemInstanceId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt32(out var quantity, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt64(out var itemRevision, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeOwnerItemQuantityChanged(reason, previousItemStateRevision, carryState, itemInstanceId, quantity, itemRevision);
+            return true;
+        }
+
+        private static bool IsValidOwnerItemQuantityChanged(RealtimeOwnerItemQuantityChanged value)
+        {
+            if (value == null
+                || !IsDefined(value.Reason)
+                || value.PreviousItemStateRevision < 0
+                || !IsValidCarryState(value.CarryState)
+                || value.ItemInstanceId == Guid.Empty
+                || value.Quantity < 0
+                || value.ItemRevision < 0)
+            {
+                return false;
+            }
+
+            return SatisfiesRules(value);
+        }
+
         private static void WriteCarryState(ref PacketWriter writer, RealtimeCarryState value)
         {
             writer.WriteInt64(value.ItemStateRevision);
@@ -1446,6 +1606,11 @@ namespace Mmorpg.GameProtocol
         private static bool IsDefined(RealtimeItemOperationKind value)
         {
             return (byte)value >= 1 && (byte)value <= 8;
+        }
+
+        private static bool IsDefined(RealtimeItemQuantityChangeReason value)
+        {
+            return (byte)value >= 1 && (byte)value <= 1;
         }
     }
 }

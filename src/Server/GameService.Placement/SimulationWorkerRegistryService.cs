@@ -150,6 +150,7 @@ internal sealed class SimulationWorkerRegistryService(
             normalizedNodeId,
             normalizedShardId,
             normalizedWorldId,
+            topology.RuleSet,
             request,
             normalizedRuntimeId,
             cancellationToken);
@@ -256,6 +257,7 @@ internal sealed class SimulationWorkerRegistryService(
         string nodeId,
         string shardId,
         string worldId,
+        string ruleSet,
         SimulationWorkerHeartbeatRequest request,
         string runtimeId,
         CancellationToken cancellationToken)
@@ -326,6 +328,7 @@ internal sealed class SimulationWorkerRegistryService(
                       node_id as "NodeId",
                       @ShardId as "ShardId",
                       @WorldId as "WorldId",
+                      @RuleSet as "RuleSet",
                       host as "Host",
                       udp_port as "UdpPort",
                       max_connections as "MaxConnections",
@@ -358,6 +361,7 @@ internal sealed class SimulationWorkerRegistryService(
                     FleetId = request.FleetId!.Trim(),
                     ShardId = shardId,
                     WorldId = worldId,
+                    RuleSet = ruleSet,
                     HeartbeatTimeoutSeconds = (int)options.WorkerHeartbeatTimeout.TotalSeconds
                 },
                 transaction,
@@ -400,6 +404,7 @@ internal sealed class SimulationWorkerRegistryService(
             select node.fleet_id as "NodeFleetId",
                    shard.fleet_id as "ShardFleetId",
                    shard.world_id as "CurrentWorldId",
+                   shard.rule_set as "RuleSet",
                    exists (
                        select 1
                        from world_definitions world
@@ -709,6 +714,7 @@ internal sealed class SimulationWorkerRegistryService(
         string NodeFleetId,
         string ShardFleetId,
         string? CurrentWorldId,
+        string RuleSet,
         bool WorldExists);
 
     private sealed record AssignedWorkerRow(string WorkerId, string? RuntimeId, bool IsHealthy);

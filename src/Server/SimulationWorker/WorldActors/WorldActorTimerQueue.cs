@@ -2,7 +2,19 @@ namespace Mmorpg.SimulationWorker.WorldActors;
 
 // One due world actor timer, such as the respawn of a depleted resource node. The
 // generation makes a timer from an older cycle of the actor a no-op.
-public readonly record struct WorldActorTimer(Guid RuntimeActorId, long Generation);
+public enum WorldActorTimerKind
+{
+    // A depleted resource node returns with full charges.
+    ResourceReplenish,
+
+    // A dead Mob's spawn instance spawns a new Mob.
+    MobRespawn
+}
+
+public readonly record struct WorldActorTimer(
+    Guid RuntimeActorId,
+    long Generation,
+    WorldActorTimerKind Kind = WorldActorTimerKind.ResourceReplenish);
 
 // The central due-tick queue for world actor timers. No actor owns a task or timer; the
 // tick loop drains whatever is due. Each actor has at most one pending timer per cycle,
@@ -14,14 +26,18 @@ public sealed class WorldActorTimerQueue
 
     public int Count => timers.Count;
 
-    public void Schedule(uint dueTick, Guid runtimeActorId, long generation)
+    public void Schedule(
+        uint dueTick,
+        Guid runtimeActorId,
+        long generation,
+        WorldActorTimerKind kind = WorldActorTimerKind.ResourceReplenish)
     {
         if (runtimeActorId == Guid.Empty)
         {
             throw new ArgumentOutOfRangeException(nameof(runtimeActorId));
         }
 
-        timers.Enqueue(new WorldActorTimer(runtimeActorId, generation), (dueTick, sequence++));
+        timers.Enqueue(new WorldActorTimer(runtimeActorId, generation, kind), (dueTick, sequence++));
     }
 
     // Moves every timer due at or before the tick into the buffer, in due order.

@@ -17,7 +17,8 @@ internal sealed class ItemAuthorityOperations(
         RealtimePeerContext context,
         ActiveSimulationSession session,
         RealtimeItemOperationIntent intent,
-        ItemInteractionAccess access)
+        ItemInteractionAccess access,
+        long expectedCharacterRevision)
     {
         try
         {
@@ -25,7 +26,8 @@ internal sealed class ItemAuthorityOperations(
                 session,
                 intent,
                 access,
-                CancellationToken.None);
+                CancellationToken.None,
+                expectedCharacterRevision);
             completions.Post(completionHandler, new ItemOperationCompleted(
                 context,
                 session,

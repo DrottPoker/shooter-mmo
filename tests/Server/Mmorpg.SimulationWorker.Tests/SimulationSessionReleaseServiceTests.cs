@@ -17,11 +17,11 @@ public sealed class SimulationSessionReleaseServiceTests
             BaseAddress = new Uri("http://game-service.test")
         };
         var sessionStore = new ActiveSimulationSessionStore();
-        var carryStateStore = new CarryStateStore();
+        var itemStateStore = new CharacterItemStateStore();
         var service = new SimulationSessionReleaseService(
             new GameServiceClient(httpClient),
             sessionStore,
-            carryStateStore);
+            itemStateStore);
         var characterId = Guid.NewGuid();
         var simulationSessionId = Guid.NewGuid();
         var stale = CreateSession(
@@ -36,18 +36,18 @@ public sealed class SimulationSessionReleaseServiceTests
             "current-session-token",
             currentCarryState);
         Assert.Equal(ActiveSimulationSessionRegistration.Joined, sessionStore.Register(stale));
-        carryStateStore.Register(
+        itemStateStore.Register(
             characterId,
             simulationSessionId,
-            stale.CarryState,
+            CharacterStateTestData.ItemState(stale.CarryState),
             out _);
         Assert.Equal(
             ActiveSimulationSessionRegistration.Reconnected,
             sessionStore.Register(current));
-        carryStateStore.Register(
+        itemStateStore.Register(
             characterId,
             simulationSessionId,
-            currentCarryState,
+            CharacterStateTestData.ItemState(currentCarryState),
             out _);
 
         var staleRelease = await service.ReleaseAsync(stale, CancellationToken.None);
@@ -55,7 +55,7 @@ public sealed class SimulationSessionReleaseServiceTests
         Assert.True(staleRelease.Succeeded);
         Assert.True(sessionStore.TryGet(characterId, out var preservedSession));
         Assert.Equal(current.SimulationSessionToken, preservedSession!.SimulationSessionToken);
-        Assert.True(carryStateStore.TryGet(
+        Assert.True(itemStateStore.TryGet(
             characterId,
             simulationSessionId,
             out var preservedCarryState));
@@ -65,7 +65,7 @@ public sealed class SimulationSessionReleaseServiceTests
 
         Assert.True(currentRelease.Succeeded);
         Assert.False(sessionStore.TryGet(characterId, out _));
-        Assert.False(carryStateStore.TryGet(characterId, simulationSessionId, out _));
+        Assert.False(itemStateStore.TryGet(characterId, simulationSessionId, out _));
     }
 
     [Fact]

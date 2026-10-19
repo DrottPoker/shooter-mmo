@@ -256,6 +256,14 @@ public sealed class RealtimeMessageDispatcherTests
                 : "handle:world";
         }
 
+        if (messageType == RealtimeMessageType.CombatIntent)
+        {
+            return channel != RealtimeProtocol.ControlChannel
+                || delivery != DeliveryMethod.ReliableOrdered
+                ? "reject:invalid_combat_delivery"
+                : "handle:combat";
+        }
+
         if (messageType != RealtimeMessageType.LeaveRequest
             || channel != RealtimeProtocol.ControlChannel
             || delivery != DeliveryMethod.ReliableOrdered
@@ -331,7 +339,8 @@ public sealed class RealtimeMessageDispatcherTests
                     Record("item"),
                     Record("corpse"),
                     Record("world"),
-                    Record("leave")));
+                    Record("leave"),
+                    Record("combat")));
         }
 
         public RealtimeNetworkMetrics Metrics { get; } = new();

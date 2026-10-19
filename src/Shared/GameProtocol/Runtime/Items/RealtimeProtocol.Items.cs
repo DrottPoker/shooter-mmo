@@ -20,5 +20,12 @@ namespace Mmorpg.GameProtocol
                     && result.ContainerRevisions.Length == 0
                     && result.RecoveryDeliveryIds.Length == 0);
         }
+
+        // The change advances the item-state revision, and a used-up item has no revision.
+        private static bool SatisfiesRules(RealtimeOwnerItemQuantityChanged change)
+        {
+            return change.CarryState.ItemStateRevision > change.PreviousItemStateRevision
+                && (change.Quantity > 0 || change.ItemRevision == 0);
+        }
     }
 }

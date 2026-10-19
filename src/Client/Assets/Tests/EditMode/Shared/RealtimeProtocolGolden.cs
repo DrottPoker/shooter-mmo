@@ -8,7 +8,7 @@ using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SharedTests
 {
-    // Golden wire cases for realtime protocol version 16. Compiled into both the Unity
+    // Golden wire cases for realtime protocol version 18. Compiled into both the Unity
     // EditMode tests and the .NET backend tests, so both runtimes must produce and accept
     // exactly these bytes. Change a vector only together with an intended protocol change
     // and a protocol version bump.
@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 17;
+        public const ushort PinnedVersion = 18;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -278,6 +278,7 @@ namespace Mmorpg.SharedTests
             Expect(failures, "Limits.MaximumMovementPathWaypoints", RealtimeProtocolLimits.MaximumMovementPathWaypoints, 32);
             Expect(failures, "Limits.MaximumCorpsePresentationKeyLength", RealtimeProtocolLimits.MaximumCorpsePresentationKeyLength, 128);
             Expect(failures, "Limits.MaximumCorpseSectionSlotCapacity", RealtimeProtocolLimits.MaximumCorpseSectionSlotCapacity, 512);
+            Expect(failures, "Limits.MaximumCombatEventsPerBatch", RealtimeProtocolLimits.MaximumCombatEventsPerBatch, 32);
 
             ExpectEnum<RealtimeMessageType>(
                 failures,
@@ -287,7 +288,8 @@ namespace Mmorpg.SharedTests
                 + "CorpseInteractionIntent=16 CorpseInteractionResult=17 CorpseViewStateChunk=18 CorpseViewClosed=19 "
                 + "WorldActorSpawn=20 WorldActorState=21 WorldActorDespawn=22 WorldInteractionIntent=23 "
                 + "WorldInteractionOpened=24 WorldInteractionResult=25 WorldInteractionClosed=26 OwnerSimulationSnapshot=27 "
-                + "GatheringState=28");
+                + "GatheringState=28 CombatIntent=29 CombatIntentResult=30 CombatantState=31 CombatEventBatch=32 "
+                + "OwnerCombatState=33 OwnerItemQuantityChanged=34");
             ExpectEnum<RealtimeEntityKind>(failures, "Player=1");
             ExpectEnum<RealtimeItemOperationKind>(
                 failures,
@@ -311,17 +313,27 @@ namespace Mmorpg.SharedTests
                 "None=0 ApplyInsurance=1 RemoveInsurance=2 AcceptQuest=3 AbandonQuest=4 VendorPurchase=5 VendorSale=6 "
                 + "StartGathering=7");
             ExpectEnum<RealtimeGatheringStateKind>(failures, "Started=1 Yielded=2 Stopped=3");
+            ExpectEnum<RealtimeCombatIntentKind>(failures, "AttackTarget=1 ClearTarget=2");
+            ExpectEnum<RealtimeCombatLifeState>(failures, "Alive=1 Dead=2 Evading=3");
+            ExpectEnum<RealtimeCombatAttackStatus>(
+                failures,
+                "Idle=1 Attacking=2 Moving=3 OutOfRange=4 LineOfSightBlocked=5 EquipmentLockout=6 WeaponMissing=7 "
+                + "AmmunitionMissing=8 AmmunitionIncompatible=9 Dead=10");
+            ExpectEnum<RealtimeCombatEventKind>(failures, "AttackReleased=1 Hit=2 Died=3");
+            ExpectEnum<RealtimeCombatDamageType>(failures, "Normal=1 Fire=2 Cold=3 Nature=4 Shadow=5");
+            ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 11 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 12 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);
             ExpectTypeReader(failures, "type 0", Wire.Header(0).ToArray(), false, default);
-            ExpectTypeReader(failures, "type 29", Wire.Header(29).ToArray(), false, default);
+            ExpectTypeReader(failures, "type 35", Wire.Header(35).ToArray(), false, default);
             ExpectTypeReader(failures, "type 255", Wire.Header(255).ToArray(), false, default);
             ExpectTypeReader(failures, "type 27", Wire.Header(27).ToArray(), true, RealtimeMessageType.OwnerSimulationSnapshot);
             ExpectTypeReader(failures, "type 28", Wire.Header(28).ToArray(), true, RealtimeMessageType.GatheringState);
+            ExpectTypeReader(failures, "type 34", Wire.Header(34).ToArray(), true, RealtimeMessageType.OwnerItemQuantityChanged);
 
             // The type reader looks at the header only, so any payload length is fine.
             ExpectTypeReader(
@@ -376,6 +388,7 @@ namespace Mmorpg.SharedTests
             RegisterItems(registry);
             RegisterWorldActors(registry);
             RegisterCorpses(registry);
+            RegisterCombat(registry);
             return registry;
         }
 

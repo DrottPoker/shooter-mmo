@@ -50,7 +50,8 @@ public sealed class WorldInteractionAuthorityService(
         int peerId,
         PlayerSimulationEntity player,
         RealtimeWorldInteractionIntent intent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long? rebasedCharacterRevision = null)
     {
         ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(intent);
@@ -86,6 +87,7 @@ public sealed class WorldInteractionAuthorityService(
                 player,
                 intent,
                 actor,
+                rebasedCharacterRevision,
                 cancellationToken);
         }
 
@@ -170,6 +172,7 @@ public sealed class WorldInteractionAuthorityService(
         PlayerSimulationEntity player,
         RealtimeWorldInteractionIntent intent,
         WorldActorRuntimeState actor,
+        long? rebasedCharacterRevision,
         CancellationToken cancellationToken)
     {
         if (!MatchesAssignment(player.Session, actor))
@@ -281,7 +284,8 @@ public sealed class WorldInteractionAuthorityService(
             actor,
             definition,
             intent,
-            cancellationToken);
+            cancellationToken,
+            rebasedCharacterRevision);
         return new WorldInteractionAuthorityResult(
             null,
             new RealtimeWorldInteractionResult(

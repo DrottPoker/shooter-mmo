@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Mmorpg.Server.Telemetry;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Realtime;
@@ -26,7 +27,8 @@ public static class SimulationWorkerTelemetry
         RealtimeNetworkMetrics.MeterName,
         RealtimePerformanceMetrics.MeterName,
         WorldActorMetrics.MeterName,
-        CorpseRuntimeMetrics.MeterName
+        CorpseRuntimeMetrics.MeterName,
+        CombatMetrics.MeterName
     ];
 
     public static TelemetryResource CreateResource(

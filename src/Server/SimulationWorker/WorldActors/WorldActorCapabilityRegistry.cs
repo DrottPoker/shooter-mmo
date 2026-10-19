@@ -31,11 +31,17 @@ public sealed record WorldActorCapabilitySummary(
     long Revision,
     RealtimeWorldActorCapability[] Capabilities);
 
+// A rebased revision replaces the intent's when only the worker's own arrow batches
+// advanced the character's item state after the client computed the intent.
 public sealed record WorldActorCapabilityOperationContext(
     ActiveSimulationSession Session,
     WorldActorRuntimeState Actor,
     WorldActorCapabilityDefinition Capability,
-    RealtimeWorldInteractionIntent Intent);
+    RealtimeWorldInteractionIntent Intent,
+    long? RebasedCharacterRevision = null)
+{
+    public long ExpectedCharacterRevision => RebasedCharacterRevision ?? Intent.ExpectedCharacterRevision;
+}
 
 // GatheringNode names the resource node whose gathering the realtime loop starts once the
 // interaction result is final.
@@ -146,7 +152,8 @@ public sealed class WorldActorCapabilityRegistry
         WorldActorRuntimeState actor,
         WorldActorCapabilityDefinition capability,
         RealtimeWorldInteractionIntent intent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long? rebasedCharacterRevision = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(actor);
@@ -164,7 +171,8 @@ public sealed class WorldActorCapabilityRegistry
             session,
             actor,
             capability,
-            intent), cancellationToken);
+            intent,
+            rebasedCharacterRevision), cancellationToken);
     }
 
     private static long ComputeSummaryRevision(
