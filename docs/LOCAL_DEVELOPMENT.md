@@ -228,7 +228,8 @@ deletes every other local branch that is fully merged into
 `development` branch wherever it is checked out, prunes stale worktree records,
 and lists the remaining worktrees. For a pull request that is already merged,
 the script skips the merge and only runs the cleanup, so running it again
-finishes a cleanup that failed halfway. Exit code 0 means merged and cleaned up,
+finishes a cleanup that failed halfway, including returning a detached main
+checkout to `development`. Exit code 0 means merged and cleaned up,
 1 means nothing was merged, and 2 means merged but the cleanup is incomplete:
 the remote branch moved after the merge, the main checkout could not return to
 `development` and was left detached, the task branch had to stay

@@ -166,22 +166,9 @@ if ($holder -and (Get-FullPath $holder.Path) -eq $currentRoot) {
         $holderIsDirty = $true
     }
     else {
-        # The main checkout returns to development, which is fast-forwarded below. A task
-        # worktree is detached instead, because development is checked out in the main checkout.
-        $developmentHolder = $worktrees | Where-Object { $_.Branch -eq "development" } | Select-Object -First 1
-        if ($currentRoot -ne $mainRoot) {
-            Invoke-Git switch --detach --quiet | Out-Null
-        }
-        elseif (-not $developmentHolder -and (Test-Git switch --quiet development)) {
-            Write-Output "Switched the main checkout to development"
-        }
-        else {
-            # The main checkout must not stay detached unnoticed.
-            Invoke-Git switch --detach --quiet | Out-Null
-            $reason = if ($developmentHolder) { "development is checked out in $($developmentHolder.Path)" } else { "switching to development failed (see the git message above)" }
-            Write-Output "The main checkout is detached because $reason; switch it to development once that is resolved"
-            $exitCode = 2
-        }
+        # Detach so the merged branch can be deleted. The main checkout returns to development
+        # right after the branch cleanup.
+        Invoke-Git switch --detach --quiet | Out-Null
         $holder = $null
     }
 }
@@ -206,6 +193,23 @@ if (Test-Git show-ref --verify --quiet "refs/heads/$head") {
 # Any task branch that stays behind means the cleanup is not finished.
 if ($keptBranches.Count -gt 0) {
     $exitCode = 2
+}
+
+# The main checkout belongs on development. When this run or an earlier one detached it, return
+# it as soon as nothing blocks that, and report the cleanup as incomplete until then.
+if ($currentRoot -eq $mainRoot -and -not (Test-Git symbolic-ref --quiet HEAD)) {
+    $developmentElsewhere = @(Get-Worktrees) | Where-Object { $_.Branch -eq "development" } | Select-Object -First 1
+    $mainIsDirty = @(Invoke-Git status --porcelain).Count -gt 0
+    if (-not $developmentElsewhere -and -not $mainIsDirty -and (Test-Git switch --quiet development)) {
+        Write-Output "Switched the main checkout to development"
+    }
+    else {
+        $reason = if ($developmentElsewhere) { "development is checked out in $($developmentElsewhere.Path)" }
+            elseif ($mainIsDirty) { "it has uncommitted changes" }
+            else { "switching to development failed (see the git message above)" }
+        Write-Output "The main checkout is detached because $reason; resolve that and run this script again"
+        $exitCode = 2
+    }
 }
 
 $worktrees = @(Get-Worktrees)
