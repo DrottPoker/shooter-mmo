@@ -37,11 +37,6 @@ internal sealed class SnapshotPacketCache
         snapshotsByEntityId.Add(snapshot.EntityId, snapshot);
     }
 
-    public bool TryGetSnapshot(ulong entityId, out RealtimeEntitySnapshot? snapshot)
-    {
-        return snapshotsByEntityId.TryGetValue(entityId, out snapshot);
-    }
-
     public SnapshotPacketBatch GetOrCreate(
         IReadOnlyList<ulong> orderedVisibleEntityIds,
         uint snapshotSequence,
