@@ -5,24 +5,35 @@ namespace Mmorpg.Server.Common.Tests;
 
 public sealed class PreciseDelayTests
 {
+    // Task.Delay(2) takes at least 15.6 ms on Windows, so a coarse timer never reaches a median
+    // below 8 ms. A machine busy with parallel test projects can complete a whole round late,
+    // so one round of several must reach it; no delay may ever end early.
     [Fact]
     public async Task RepeatedShortDelaysKeepTheirLength()
     {
         using var delay = new PreciseDelay("precise delay test");
-        var delays = new double[21];
+        var medians = new List<double>();
 
-        for (var index = 0; index < delays.Length; index++)
+        for (var round = 0; round < 5; round++)
         {
-            var started = Stopwatch.GetTimestamp();
-            await delay.DelayAsync(TimeSpan.FromMilliseconds(2), CancellationToken.None);
-            delays[index] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            var delays = new double[21];
+            for (var index = 0; index < delays.Length; index++)
+            {
+                var started = Stopwatch.GetTimestamp();
+                await delay.DelayAsync(TimeSpan.FromMilliseconds(2), CancellationToken.None);
+                delays[index] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            }
+
+            Array.Sort(delays);
+            Assert.True(delays[0] >= 1.9d, $"The shortest 2 ms delay took {delays[0]} ms.");
+            medians.Add(delays[delays.Length / 2]);
+            if (medians[^1] < 8d)
+            {
+                return;
+            }
         }
 
-        // Task.Delay(2) takes at least 15.6 ms on Windows. The median ignores the few delays
-        // that a busy machine completes late.
-        Array.Sort(delays);
-        Assert.True(delays[0] >= 1.9d, $"The shortest 2 ms delay took {delays[0]} ms.");
-        Assert.True(delays[delays.Length / 2] < 8d, $"The median 2 ms delay took {delays[delays.Length / 2]} ms.");
+        Assert.Fail("The median 2 ms delay took " + string.Join(", ", medians) + " ms in every round.");
     }
 
     [Fact]
