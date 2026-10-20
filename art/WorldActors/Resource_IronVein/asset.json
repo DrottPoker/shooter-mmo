@@ -1,0 +1,34 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx",
+    "rootObjects": [
+        "Available",
+        "Depleted"
+    ],
+    "triangleBudget": 1500,
+    "approvals": {
+        "model": {
+            "date": "2026-10-20",
+            "sourceSha256": "6201bca3d1f3053df8cd325fc3707b291c1cdc42e7193a3ba447e3de3c33843a"
+        }
+    },
+    "export": {
+        "sourceSha256": "6201bca3d1f3053df8cd325fc3707b291c1cdc42e7193a3ba447e3de3c33843a",
+        "targetSha256": "9c6db133abd97cf11e6ae4e99028c625d460e15d08fbe043daf5b8e4773051c1",
+        "materials": [
+            {
+                "name": "M_Resource_IronVeinOre",
+                "baseColor": "#D16B26",
+                "metallic": 0.0,
+                "smoothness": 0.45
+            },
+            {
+                "name": "M_Resource_IronVeinRock",
+                "baseColor": "#736E6B",
+                "metallic": 0.0,
+                "smoothness": 0.15
+            }
+        ]
+    }
+}

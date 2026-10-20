@@ -19,3 +19,6 @@
 *.bytes binary
 *.so binary
 *.dylib binary
+
+# Blender sources live in Git LFS; CI reads their SHA-256 from the pointer files.
+*.blend filter=lfs diff=lfs merge=lfs -text

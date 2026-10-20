@@ -495,6 +495,54 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void EveryResourceNodePrefabHasAvailableAndDepletedModels()
+        {
+            var registry = AssetDatabase.LoadAssetAtPath<WorldActorPresentationRegistry>(
+                ClientAddresses.ContentRoot + ClientAddresses.WorldActorPresentationRegistry);
+            var workspace = new WorldActorEditorService(WorldActorEditorPaths.CreateDefault()).Load();
+            var resourceNodes = WorldActorCompiler.Compile(
+                    workspace.Catalog.ToDomain(),
+                    workspace.Spawns.ToDomain())
+                .Actors
+                .Where(actor => actor.Kind == WorldActorKindIds.ResourceNode)
+                .ToArray();
+
+            Assert.That(resourceNodes, Is.Not.Empty);
+            foreach (var actor in resourceNodes)
+            {
+                Assert.That(registry.TryResolve(actor.PresentationArchetypeId, out var reference), Is.True);
+                var prefab = reference.editorAsset;
+                // ResourceNodeView switches these direct children when the node depletes.
+                foreach (var childName in new[]
+                         {
+                             ResourceNodeView.AvailableModelName,
+                             ResourceNodeView.DepletedModelName
+                         })
+                {
+                    var child = prefab.transform.Find(childName);
+                    Assert.That(child, Is.Not.Null, actor.PresentationArchetypeId + " " + childName);
+                    Assert.That(
+                        child.GetComponentsInChildren<Renderer>(true),
+                        Is.Not.Empty,
+                        actor.PresentationArchetypeId + " " + childName);
+                }
+            }
+        }
+
+        [Test]
+        public void IronVeinPresentationIsAVariantOfTheExportedModel()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                ClientAddressablesLayout.WorldActorPrefabFolder + "/Resource_IronVein.prefab");
+
+            Assert.That(prefab, Is.Not.Null);
+            Assert.That(PrefabUtility.GetPrefabAssetType(prefab), Is.EqualTo(PrefabAssetType.Variant));
+            Assert.That(
+                AssetDatabase.GetAssetPath(PrefabUtility.GetCorrespondingObjectFromOriginalSource(prefab)),
+                Is.EqualTo(ArtModelImportRules.ModelFolder + "/WorldActors/Resource_IronVein.fbx"));
+        }
+
+        [Test]
         public void EveryProjectMaterialUsesTheUrpLitShader()
         {
             Assert.That(

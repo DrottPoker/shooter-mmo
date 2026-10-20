@@ -491,6 +491,10 @@ Status: MVP implemented with temporary presentation
 
 - Iron Veins are resource nodes. Development World 2 has four on the southeast
   expansion pad, and Development World 1 has one west of the spawn.
+- An Iron Vein is the game's first authored 3D model: grey faceted rocks with
+  chunky rust-orange iron ore that shows from every camera angle. A depleted
+  vein keeps its rocks, now with broken flat tops and rubble around them, but
+  without ore.
 - Equip a gathering tool, such as the Starter Pickaxe, in the `Tool` slot and
   click a vein. The character walks into range, the interaction opens, and
   mining starts. Without a gathering tool the panel asks the player to equip one.

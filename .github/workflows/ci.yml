@@ -41,6 +41,10 @@ jobs:
         shell: pwsh
         run: ./tools/Verify-DependencyPolicy.ps1
 
+      - name: Verify art assets
+        shell: pwsh
+        run: ./tools/Verify-ArtAssets.ps1
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:

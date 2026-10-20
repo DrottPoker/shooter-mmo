@@ -44,5 +44,10 @@ src/Client/*.VC.db
 .DS_Store
 Thumbs.db
 
+# Blender backups and Python caches
+*.blend[0-9]
+*.blend[0-9][0-9]
+__pycache__/
+
 # Claude Code agent worktrees
 .claude/worktrees/
