@@ -225,8 +225,56 @@ namespace Mmorpg.Client.Tests.EditMode
 
             clock.Advance(1f / 60f, 30, 130, 4);
 
-            Assert.That(clock.CurrentTick, Is.EqualTo(126d));
-            Assert.That(130d - clock.CurrentTick, Is.EqualTo(4d));
+            // The estimate kept running through the frame, so the clock lands about one delay
+            // behind the newest tick.
+            Assert.That(clock.CurrentTick, Is.EqualTo(126d).Within(0.5d));
+            Assert.That(130d - clock.CurrentTick, Is.EqualTo(4d).Within(0.5d));
+        }
+
+        [Test]
+        public void RemoteRenderClockPlaysJitteredSnapshotsAtAnEvenSpeed()
+        {
+            const int tickRateHz = 30;
+            const int snapshotIntervalTicks = 2;
+            const float frameSeconds = 1f / 60f;
+            var clock = new RemoteRenderClock();
+            var nextSnapshot = 0;
+            long latestTick = -1;
+            var previousTick = 0d;
+            for (var frame = 1; frame <= 600; frame++)
+            {
+                var now = frame * frameSeconds;
+                while (true)
+                {
+                    // Every snapshot takes 50 ms plus up to 10 ms of jitter either way.
+                    var jitterSeconds = (((nextSnapshot * 7919) % 21) - 10) / 1000d;
+                    var arrival = (nextSnapshot * snapshotIntervalTicks / (double)tickRateHz) + 0.05d + jitterSeconds;
+                    if (arrival > now)
+                    {
+                        break;
+                    }
+
+                    latestTick = nextSnapshot * snapshotIntervalTicks;
+                    nextSnapshot++;
+                }
+
+                if (latestTick < 0)
+                {
+                    continue;
+                }
+
+                var current = clock.Advance(frameSeconds, tickRateHz, latestTick, 4);
+                if (frame > 120)
+                {
+                    // Measured against the newest received tick, the speed swung by about
+                    // 30 percent either way with every snapshot.
+                    var speed = (current - previousTick) / (frameSeconds * tickRateHz);
+                    Assert.That(speed, Is.InRange(0.85d, 1.15d), "Frame " + frame);
+                    Assert.That(latestTick - current, Is.GreaterThan(0d), "Frame " + frame);
+                }
+
+                previousTick = current;
+            }
         }
 
         [Test]

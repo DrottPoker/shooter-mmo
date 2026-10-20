@@ -7,7 +7,8 @@ namespace Mmorpg.Client.Gameplay
     // Presentation of another player. Its only collider is a runtime trigger capsule of the
     // movement capsule's size, so the pointer can pick the player; it never blocks anything.
     // The body is orange for a person and blue for a development bot, so neither can be taken
-    // for the purple local player.
+    // for the purple local player. The color comes from a shared tinted material, which keeps
+    // a crowd of bodies in the SRP Batcher.
     [DisallowMultipleComponent]
     public sealed class RemotePlayerView : MonoBehaviour
     {
@@ -16,8 +17,6 @@ namespace Mmorpg.Client.Gameplay
 
         private const string PointerTargetName = "PointerTargetBounds";
         private const string BodyPath = "PlayerVisual/Body";
-        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
-        private static readonly int ColorId = Shader.PropertyToID("_Color");
 
         private readonly RemoteMovementPresenter movement = new RemoteMovementPresenter();
 
@@ -53,7 +52,8 @@ namespace Mmorpg.Client.Gameplay
             int simulationTickRateHz,
             int delayTicks,
             ICollisionWorld worldCollision,
-            CharacterCollisionSettings characterCollision)
+            CharacterCollisionSettings characterCollision,
+            RemotePlayerBodyMaterials bodyMaterials)
         {
             NetworkEntityId = networkEntityId;
             PersistentId = persistentId;
@@ -62,7 +62,7 @@ namespace Mmorpg.Client.Gameplay
             movement.Configure(simulationTickRateHz, delayTicks, worldCollision, characterCollision);
             name = "RemotePlayer_" + networkEntityId + "_" + displayName;
             ConfigurePointerTarget(characterCollision);
-            ApplyBodyColor();
+            ApplyBodyColor(bodyMaterials);
         }
 
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)
@@ -116,22 +116,18 @@ namespace Mmorpg.Client.Gameplay
             capsule.center = new Vector3(0f, characterCollision.Height * 0.5f, 0f);
         }
 
-        // A property block keeps the shared body material unchanged for every other instance.
-        private void ApplyBodyColor()
+        private void ApplyBodyColor(RemotePlayerBodyMaterials bodyMaterials)
         {
             var body = transform.Find(BodyPath);
             var bodyRenderer = body != null ? body.GetComponent<Renderer>() : null;
-            if (bodyRenderer == null)
+            if (bodyRenderer == null || bodyRenderer.sharedMaterial == null || bodyMaterials == null)
             {
                 return;
             }
 
-            var color = BodyColorFor(ArchetypeId);
-            var properties = new MaterialPropertyBlock();
-            bodyRenderer.GetPropertyBlock(properties);
-            properties.SetColor(BaseColorId, color);
-            properties.SetColor(ColorId, color);
-            bodyRenderer.SetPropertyBlock(properties);
+            bodyRenderer.sharedMaterial = bodyMaterials.For(
+                bodyRenderer.sharedMaterial,
+                BodyColorFor(ArchetypeId));
         }
 
         private void ApplyPresentedPose()

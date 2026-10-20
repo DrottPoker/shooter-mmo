@@ -4,15 +4,19 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // Presents a remote entity from its buffered server states: an adaptive render clock
-    // about 100 ms behind the newest state, interpolation between the states around it, and
+    // Presents a remote entity from its buffered server states: an adaptive render clock two
+    // snapshot intervals behind the server, interpolation between the states around it, and
     // the grounded presentation that removes the slope support offset and blends small steps.
     // Remote players and moving Mobs share it. Presentation only; nothing feeds back into
     // prediction or the worker.
     public sealed class RemoteMovementPresenter
     {
-        public const float InterpolationDelaySeconds = 0.1f;
+        public const float MinimumInterpolationDelaySeconds = 0.1f;
         private const int MinimumInterpolationDelayTicks = 2;
+
+        // One snapshot interval covers the wait for the next snapshot, and the second absorbs
+        // a snapshot that arrives up to one interval late.
+        private const int InterpolationDelaySnapshotIntervals = 2;
 
         private readonly RemoteMovementInterpolation interpolation =
             new RemoteMovementInterpolation();
@@ -71,12 +75,17 @@ namespace Mmorpg.Client.Gameplay
             get { return Quaternion.Euler(0f, YawDegrees, 0f); }
         }
 
-        // The render delay in ticks behind the newest server state, about 100 ms.
-        public static int InterpolationDelayTicks(int tickRateHz)
+        // The render delay in ticks behind the server: two snapshot intervals, and at least
+        // 100 ms. At 30 ticks and 15 snapshots per second that is four ticks, about 133 ms.
+        public static int InterpolationDelayTicks(int tickRateHz, int snapshotRateHz)
         {
+            var ticks = Mathf.Max(1, tickRateHz);
+            var snapshotIntervalTicks = Mathf.Max(
+                1,
+                Mathf.RoundToInt(ticks / (float)Mathf.Clamp(snapshotRateHz, 1, ticks)));
             return Mathf.Max(
-                MinimumInterpolationDelayTicks,
-                Mathf.CeilToInt(tickRateHz * InterpolationDelaySeconds));
+                Mathf.Max(MinimumInterpolationDelayTicks, Mathf.CeilToInt(ticks * MinimumInterpolationDelaySeconds)),
+                snapshotIntervalTicks * InterpolationDelaySnapshotIntervals);
         }
 
         public static PlayerMovementState ToMovementState(RealtimePlayerState state)

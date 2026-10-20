@@ -22,19 +22,21 @@ namespace Mmorpg.Client.Tests.EditMode
 
         // A Mob walks 4.5 m/s, 0.15 m per tick. One frame at 60 Hz covers at most three quarters
         // of a tick at the clock's catch-up speed, so no frame moves it a whole tick, while a
-        // jump onto the rest pose would cover the three ticks of the render delay.
+        // jump onto the rest pose would cover the four ticks of the render delay.
         private const float MetresPerTick = 0.15f;
         private const float MaximumFrameStep = MetresPerTick;
 
         [Test]
         public void MobsShareTheRemotePlayerDelayAndTheSnapshotInterval()
         {
-            Assert.That(RemoteMovementPresenter.InterpolationDelayTicks(30), Is.EqualTo(3));
-            Assert.That(RemoteMovementPresenter.InterpolationDelayTicks(20), Is.EqualTo(2));
-            Assert.That(RemoteMovementPresenter.InterpolationDelayTicks(60), Is.EqualTo(6));
+            // Two snapshot intervals, and at least 100 ms.
+            Assert.That(RemoteMovementPresenter.InterpolationDelayTicks(30, 15), Is.EqualTo(4));
+            Assert.That(RemoteMovementPresenter.InterpolationDelayTicks(20, 20), Is.EqualTo(2));
+            Assert.That(RemoteMovementPresenter.InterpolationDelayTicks(60, 15), Is.EqualTo(8));
+            Assert.That(RemoteMovementPresenter.InterpolationDelayTicks(60, 60), Is.EqualTo(6));
 
             var movement = Movement();
-            Assert.That(movement.DelayTicks, Is.EqualTo(3));
+            Assert.That(movement.DelayTicks, Is.EqualTo(4));
             Assert.That(movement.SnapshotIntervalTicks, Is.EqualTo(2));
             Assert.That(movement.IsDriven, Is.False);
         }
