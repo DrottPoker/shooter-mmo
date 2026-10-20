@@ -53,6 +53,9 @@ def _activate_export_collection() -> None:
 
 
 def export_fbx(kind: str, target: str) -> None:
+    if kind not in OBJECT_TYPES:
+        # The export gate stops a skinned asset before this; its export comes with the rig stage.
+        raise ArtPipelineError(f'Assets of kind "{kind}" cannot be exported yet.')
     _activate_export_collection()
     os.makedirs(os.path.dirname(target), exist_ok=True)
     # Blender's own axes go into the file unchanged and the Unity importer bakes the axis

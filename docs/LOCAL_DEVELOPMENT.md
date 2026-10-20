@@ -104,9 +104,10 @@ Expected result:
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, and the absence of tracked
   client builds.
-- Art asset verification reports `Verified 1 art asset(s).`: every asset below
-  `art/` is approved for its current `.blend` file, and every model below
-  `src/Client/Assets/Art/Models` is the recorded export of one of them. It needs
+- Art asset verification reports `Verified 3 art asset(s).`: every asset below
+  `art/` is approved for its current `.blend` file, every model below
+  `src/Client/Assets/Art/Models` is the recorded export of one of them, and an
+  asset in review, such as a character before its rig, has no model yet. It needs
   no Blender and reads the `.blend` hashes from Git LFS pointers when the files
   are not downloaded. See [Art Pipeline With Blender](#art-pipeline-with-blender).
 - Format reports no files that need changes.
@@ -2722,7 +2723,7 @@ When the reviewer approves the model, record the approval and export:
 Expected result: `Approved the 'model' stage of Resource_IronVein
 (triangles=878).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified 1 art asset(s).` Unity imports the model the
+(triangles=878).`, and `Verified 3 art asset(s).` Unity imports the model the
 next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
 its `.meta` file together.
 
@@ -2773,6 +2774,80 @@ Prefab Variant, and the registry entry are committed.
    visible from every camera angle, and a click on the rocks opens the vein.
 3. Mine a vein until it depletes. Expected result: it switches to the depleted
    model and returns with ore about 30 seconds later.
+
+### Rebuild The Human Base Characters
+
+[Human Base Characters](ART_PIPELINE.md#human-base-characters) describes the two
+characters and how the build makes them. Rebuild them after a change to
+`tools/blender/human_base`:
+
+1. Download `human-base-meshes-bundle-v1.4.1.zip` from Blender's
+   [asset bundles](https://www.blender.org/download/demo-files/) page (Human Base
+   Meshes, 49 MB, CC0) into a new folder of its own outside the repository, and
+   extract it there.
+2. Run the build with the path of the extracted `human_base_meshes_bundle.blend`:
+
+   ```powershell
+   .\tools\Build-HumanBase.ps1 -ReferenceBundle D:\Downloads\human-base-meshes\human_base_meshes_bundle.blend
+   ```
+
+   Expected result after about seven minutes: one line per step with its time,
+   then the paths of `artifacts\human-base\Human_Base.blend` (both characters
+   side by side), the review sheets in `artifacts\human-base\review`, and
+   `artifacts\human-base\report.txt`, and for each asset either
+   `Human_Male: unchanged, the committed file is kept; its approval covers the
+   file.` or `Human_Male: rebuilt with changes; Human_Male.blend changed after
+   the 'model' approval.` A step that finds a broken rule stops the build and
+   names the rule and the step's log. Another bundle stops it with
+   `... is not human_base_meshes_bundle.blend of Human Base Meshes v1.4.1`.
+3. Review the sheets and the review file, which opens in Material Preview:
+
+   ```powershell
+   & $env:BLENDER_PATH artifacts\human-base\Human_Base.blend
+   ```
+
+4. When the reviewer approves the changed characters, record the approvals and
+   verify:
+
+   ```powershell
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Characters/Human_Male -Stage model
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Characters/Human_Female -Stage model
+   .\tools\Verify-ArtAssets.ps1
+   ```
+
+   Expected result: `Approved the 'model' stage of Human_Male
+   (triangles=9202).`, the same for `Human_Female`, and `Verified 3 art
+   asset(s).` Commit both `.blend` files and their `asset.json` together.
+   `Export-ArtAsset.ps1` refuses the characters until their `rig` and
+   `animation` stages exist.
+
+### Manual Test Of The Human Base Characters
+
+No manual Unity Editor steps are required: the characters are not exported to
+Unity before their rig.
+
+1. Open a character:
+
+   ```powershell
+   & $env:BLENDER_PATH art\Characters\Human_Male\Human_Male.blend
+   ```
+
+   Expected result: the viewport shows the male in Material Preview, and the
+   Outliner holds `Export > Male` with the root `Male` and its children: ten
+   body parts from `Male_Head` to `Male_Feet`, `Male_Eye_L`, `Male_Eye_R`,
+   `Male_Teeth_Upper`, `Male_Teeth_Lower`, and `Male_Tongue`.
+2. Hide `Male_Torso` with its eye icon. Expected result: the torso disappears
+   and the neck, arms, and pelvis stay, with open edges where the torso was.
+3. In the `Shading` workspace, select `Male_Head`, choose the `M_Face_Male`
+   material, and switch its Image Texture from `T_Face_Male_Stubble` to
+   `T_Face_Male_Scarred`. Expected result: the face shows the scarred variant.
+   Revert the file without saving.
+4. Run `.\tools\Approve-ArtAsset.ps1 -Asset art/Characters/Human_Male -Stage
+   rig`. Expected result: `The 'rig' stage of a skinned asset cannot be checked
+   yet, so it cannot be approved.`
+5. Run `.\tools\Export-ArtAsset.ps1 -Asset art/Characters/Human_Male`.
+   Expected result: `Human_Male cannot be exported: the 'rig' review stage is
+   not approved.`
 
 ## One-Time Unity World Scene Authoring
 
