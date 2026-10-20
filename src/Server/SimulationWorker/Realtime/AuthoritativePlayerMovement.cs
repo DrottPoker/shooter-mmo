@@ -55,7 +55,7 @@ public sealed class AuthoritativePlayerMovement
     private readonly MovementSimulationSettings settings;
     private readonly ICollisionWorld collisionWorld;
     private readonly CollisionQueryBuffer collisionQueryBuffer = new();
-    private readonly Queue<QueuedInput> queuedInputs = new();
+    private readonly Queue<PlayerMovementInput> queuedInputs = new();
     private readonly PlayerMovementState[] runAheadStates = new PlayerMovementState[MaximumRunAheadInputs];
     private readonly RealtimeMovementInput[] orderedBatch =
         new RealtimeMovementInput[RealtimeProtocol.MaximumInputBatchSize];
@@ -196,9 +196,10 @@ public sealed class AuthoritativePlayerMovement
             return MovementInputAcceptance.UnknownPath;
         }
 
+        // The path is checked again when it applies, where a broken one is adopted as ended;
+        // this check only reports it.
         var acceptance = MovementInputAcceptance.Accepted;
         MovementPath? wirePath = null;
-        var wirePathRejected = false;
         if (batch.Path is { } candidate
             && candidate.PathId != newestInput.PathId
             && candidate.PathId != currentInput.PathId)
@@ -206,9 +207,6 @@ public sealed class AuthoritativePlayerMovement
             wirePath = ToSimulationPath(candidate);
             if (!MovementPathRules.IsValid(wirePath, State.Position, settings, out _))
             {
-                // Adopted as already ended when it applies, so client and worker agree that
-                // the character stands, and later inputs that name it stay valid.
-                wirePathRejected = true;
                 acceptance = MovementInputAcceptance.PathRejected;
             }
         }
@@ -216,7 +214,6 @@ public sealed class AuthoritativePlayerMovement
         for (var index = 0; index < count; index++)
         {
             var input = orderedBatch[index];
-            var rejected = false;
             MovementPath? path;
             if (input.PathId == 0)
             {
@@ -233,7 +230,6 @@ public sealed class AuthoritativePlayerMovement
             else if (wirePath is not null && input.PathId == wirePath.Id)
             {
                 path = wirePath;
-                rejected = wirePathRejected;
             }
             else
             {
@@ -242,9 +238,7 @@ public sealed class AuthoritativePlayerMovement
                 path = newestInput.Path;
             }
 
-            Receive(new QueuedInput(
-                new PlayerMovementInput(input.InputSequence, input.ClientTick, path),
-                rejected));
+            Receive(new PlayerMovementInput(input.InputSequence, input.ClientTick, path));
         }
 
         holdingUntilNextInput = false;
@@ -274,7 +268,7 @@ public sealed class AuthoritativePlayerMovement
                 Apply(queued);
                 Step(currentInput);
                 ConfirmedState = State;
-                LastProcessedInputSequence = queued.Input.InputSequence;
+                LastProcessedInputSequence = queued.InputSequence;
                 stepBudgetUnits -= BudgetUnitsPerStep;
                 steps++;
             }
@@ -294,9 +288,9 @@ public sealed class AuthoritativePlayerMovement
     }
 
     // Receives one input newer than every received one, in sequence order.
-    private void Receive(QueuedInput queued)
+    private void Receive(PlayerMovementInput input)
     {
-        var sequence = queued.Input.InputSequence;
+        var sequence = input.InputSequence;
         if (!hasReceivedInput)
         {
             hasReceivedInput = true;
@@ -317,24 +311,22 @@ public sealed class AuthoritativePlayerMovement
             {
                 for (var missing = 1u; missing <= gap; missing++)
                 {
-                    Process(new QueuedInput(
-                        new PlayerMovementInput(
-                            unchecked(LastReceivedInputSequence + missing),
-                            unchecked(newestInput.ClientTick + missing),
-                            newestInput.Path),
-                        false));
+                    Process(new PlayerMovementInput(
+                        unchecked(LastReceivedInputSequence + missing),
+                        unchecked(newestInput.ClientTick + missing),
+                        newestInput.Path));
                 }
             }
         }
 
-        Process(queued);
+        Process(input);
         LastReceivedInputSequence = sequence;
-        newestInput = queued.Input;
+        newestInput = input;
     }
 
     // The input after LastProcessedInputSequence either takes over the oldest step taken
     // ahead for it or waits in the queue.
-    private void Process(QueuedInput queued)
+    private void Process(PlayerMovementInput input)
     {
         if (runAheadInputs == 0)
         {
@@ -343,12 +335,12 @@ public sealed class AuthoritativePlayerMovement
                 queuedInputs.Dequeue();
             }
 
-            queuedInputs.Enqueue(queued);
+            queuedInputs.Enqueue(input);
             return;
         }
 
-        LastProcessedInputSequence = queued.Input.InputSequence;
-        if (queued.Input.PathId == currentInput.PathId)
+        LastProcessedInputSequence = input.InputSequence;
+        if (input.PathId == currentInput.PathId)
         {
             // The step taken ahead followed this input's path, so it stands as it is.
             ConfirmedState = runAheadStates[0];
@@ -360,7 +352,7 @@ public sealed class AuthoritativePlayerMovement
         // The late input changed the path: the steps taken ahead are taken again with it.
         var stepsAhead = runAheadInputs;
         State = ConfirmedState;
-        Apply(queued);
+        Apply(input);
         Step(currentInput);
         ConfirmedState = State;
         runAheadInputs = 0;
@@ -372,16 +364,20 @@ public sealed class AuthoritativePlayerMovement
         }
     }
 
-    private void Apply(QueuedInput queued)
+    // A path that starts here must keep the worker's limits from where the character stands;
+    // one that breaks them is adopted as already ended, so client and worker agree that the
+    // character stands, and later inputs that name it stay valid. Checking it here and not
+    // only on arrival means no input can follow it, wherever it waited.
+    private void Apply(PlayerMovementInput input)
     {
-        if (queued.PathRejected
-            && queued.Input.Path is { } path
-            && path.Id != currentInput.PathId)
+        if (input.Path is { } path
+            && path.Id != currentInput.PathId
+            && !MovementPathRules.IsValid(path, State.Position, settings, out _))
         {
             State = State.WithPathProgress(new MovementPathProgress(path.Id, path.Count, 0));
         }
 
-        currentInput = queued.Input;
+        currentInput = input;
     }
 
     private void Step(PlayerMovementInput input)
@@ -410,9 +406,7 @@ public sealed class AuthoritativePlayerMovement
     {
         foreach (var queued in queuedInputs)
         {
-            if (!queued.PathRejected
-                && queued.Input.PathId != currentInput.PathId
-                && IsFollowing(queued.Input.Path))
+            if (queued.PathId != currentInput.PathId && IsFollowing(queued.Path))
             {
                 return true;
             }
@@ -475,5 +469,4 @@ public sealed class AuthoritativePlayerMovement
         return new MovementPath(wirePath.PathId, waypoints);
     }
 
-    private readonly record struct QueuedInput(PlayerMovementInput Input, bool PathRejected);
 }

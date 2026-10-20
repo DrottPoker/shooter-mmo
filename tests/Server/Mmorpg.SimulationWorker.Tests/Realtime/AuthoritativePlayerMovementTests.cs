@@ -96,6 +96,29 @@ public sealed class AuthoritativePlayerMovementTests
     }
 
     [Fact]
+    public void ABrokenPathStaysEndedEvenWhenItsFirstInputLeavesAFullQueue()
+    {
+        var movement = CreateMovement();
+        var broken = Path(2, (0f, 5f), (20f, 5f));
+        Assert.Equal(
+            MovementInputAcceptance.PathRejected,
+            movement.AcceptInputs(Batch(broken, Input(1, 2))));
+
+        // A flood pushes input 1 out of the queue before any tick applies it.
+        for (uint sequence = 2; sequence <= 20; sequence++)
+        {
+            movement.AcceptInputs(Batch(broken, RedundantInputs(sequence, 2)));
+        }
+
+        Assert.Equal(AuthoritativePlayerMovement.MaximumQueuedInputs, movement.QueuedInputCount);
+        movement.SimulateTick();
+
+        Assert.Equal(new MovementPathProgress(2, 2, 0), movement.State.PathProgress);
+        Assert.Equal(0f, movement.State.PositionX, 4);
+        Assert.Equal(-1f, movement.State.PositionZ, 4);
+    }
+
+    [Fact]
     public void UnevenArrivalNeverMovesTheWorkerAwayFromThePrediction()
     {
         var movement = CreateMovement();
