@@ -182,6 +182,16 @@ definition lives in `Assets/Scripts/Core`. It currently contains:
 - Account-session validation interval in seconds.
 - A direct TextAsset reference to the gameplay runtime item catalog supplied by
   the local WorldData package.
+- `RuntimePrimitiveMaterial`, the `M_RuntimePrimitive` URP Lit material for the
+  primitives that runtime presentation creates itself: the destination marker,
+  arrows, corpse capsules, and fallback world actor models. The reference puts
+  the material and its shader into the Client Content bundle. The bootstrap
+  passes it to those components, which create their primitives through
+  `RuntimePrimitives.Create`. A player build has no default material for URP, so
+  a bare `GameObject.CreatePrimitive` falls back to the built-in Standard shader,
+  which URP draws with its pink error shader; only the Editor hides that.
+  `RuntimePresentationTests` fails on a missing material and on any other
+  `GameObject.CreatePrimitive` call in the runtime scripts.
 
 SimulationWorker host, runtime, and UDP port come from GameService's short-lived
 shard placement response. They are not part of the public shard list and are not
@@ -299,7 +309,13 @@ snapshot delivery:
   them by the unreliable delivery in their generated message descriptor, see
   [Realtime Protocol](REALTIME_PROTOCOL.md#message-descriptors).
 - The owner snapshot is the only source for local input acknowledgement,
-  prediction reconciliation, and collision-streaming anchors. Remote chunks
+  prediction reconciliation, and collision-streaming anchors. It carries the
+  worker's state after the acknowledged input, and the worker steps once per
+  input like the prediction, so a replay of the later inputs lands where the
+  prediction stands.
+- `RealtimeSimulationClient.TrySendMovementInputs` wakes LiteNetLib's update
+  thread after each batch, so the input leaves at once instead of on the
+  transport's next 15 ms update. Remote chunks
   update admitted remote entities and may arrive at a lower fair cadence under
   dense worker-wide byte pressure.
 - Correctly delivered snapshots that overtake join acceptance or remain in
@@ -353,7 +369,13 @@ that uses the package default post-processing data. Graphics settings and the
 `Mobile` quality level uses `Mobile_RPAsset` (no MSAA, no HDR, 40 m shadow
 distance). Every project material uses `Universal Render Pipeline/Lit`. The
 runtime fallback presentation sets both `_BaseColor` and `_Color`, so it stays
-correct in any pipeline. There is no post-processing Volume and no baked lighting yet.
+correct in any pipeline. There is no post-processing Volume in the scenes and no
+baked lighting yet. The URP global settings reference `Assets/DefaultVolumeProfile.asset`
+as the default volume profile, with the neutral values URP creates. Its earlier
+reference pointed at an asset that never existed, so every fresh Library created
+a new profile. The shader prefiltering data in `PC_RPAsset` and the runtime
+settings list of the global settings are committed as the last Windows
+development build wrote them, so the next build has nothing to change.
 
 The manifest lists only packages the client uses. The unused template packages
 AI Navigation, Collab Proxy, Multiplayer Center, Timeline, and Visual Scripting
@@ -866,7 +888,8 @@ refresh.
 
 `CorpsePresentationController` creates one replaceable generic capsule for every
 nearby presence entry and updates it from server position and presentation key.
-It uses a shared renderer property block and never creates per-frame materials.
+It uses a shared renderer property block on the runtime primitive material and
+never creates per-frame materials.
 A click on a corpse walks the player into range and opens it through the shared
 pointer targeting described below.
 No authored scene or prefab object is required for the temporary presentation.
@@ -1016,16 +1039,27 @@ never blocks movement, the camera, or the pointer. It stores the network entity
 id, persistent character id, display name, and presentation archetype supplied
 by the spawn message. `WorldSceneContext` presents the archetypes
 `player.default` and `player.development_bot`, and the view colors the prefab's
-`PlayerVisual/Body` renderer through a `MaterialPropertyBlock`: orange for a
-person and blue for a development bot, so neither looks like the purple
-LocalPlayer and the shared body material stays unchanged. Its `RemoteMovementPresenter`, which moving Mobs share,
-buffers server states in `RemoteMovementInterpolation`, advances an adaptive
-monotonic frame-rate `RemoteRenderClock` approximately 100 ms behind the latest
-server tick, `RemoteMovementPresenter.InterpolationDelayTicks`, and applies the
-grounded presentation described above. The clock uses bounded catch-up and
-slow-down corrections during normal delivery. After a larger network stall it
-restores the intended buffer delay instead of retaining permanent extra
-latency. A reliable despawn removes the matching view immediately. Missing
+`PlayerVisual/Body` renderer: orange for a person and blue for a development
+bot, so neither looks like the purple LocalPlayer. The color comes from a tinted
+copy of the body material that `RemotePlayerBodyMaterials` in `WorldSceneContext`
+creates once per color and shares between every body of that color, so a crowd
+of remote players stays in the SRP Batcher; a property block per body kept every
+body out of it. `WorldSceneContext` destroys the copies with the scene. Its
+`RemoteMovementPresenter`, which moving Mobs share, buffers server states in
+`RemoteMovementInterpolation`, advances an adaptive monotonic frame-rate
+`RemoteRenderClock` two snapshot intervals behind the server, four ticks or
+about 133 ms at 30 ticks and 15 snapshots per second,
+`RemoteMovementPresenter.InterpolationDelayTicks`, and applies the grounded
+presentation described above. One interval covers the wait for the next
+snapshot and the second a snapshot that arrives up to one interval late. The
+clock measures that delay against an estimate of the server tick that advances
+with real time between snapshots, rises with any snapshot that arrives earlier
+than it expects, and moves 5 percent of the way toward a later one. Measured
+against the newest received tick instead, the delay shrank between snapshots
+and grew at each one, so remote characters sped up and slowed down by about 30
+percent at the snapshot rate. The clock uses bounded catch-up and slow-down
+corrections during normal delivery. After a larger network stall it restores
+the intended buffer delay instead of retaining permanent extra latency. A reliable despawn removes the matching view immediately. Missing
 unreliable snapshots never decide entity lifetime. `WorldSceneContext` routes
 the snapshot entities of remote players; Mob entities go to the world actor
 presentation, as described in [Mob Movement](#mob-movement), and every other id
@@ -1042,6 +1076,13 @@ behind the player, with a 55 degree field of view. A non-allocating spherecast
 from the pivot pulls the camera in front of obstructions at once and eases it
 back out, and it filters the local player hierarchy. Scrolling over interface
 does not zoom. The cursor is never locked or hidden.
+
+`PresentationExecutionOrder` fixes the late presentation order of a frame.
+Characters move in `Update`, `OrbitCameraController` follows them in
+`LateUpdate` at order 100, and `TemporaryCombatHud` places health bars and
+damage numbers at order 200. Without a fixed order Unity could place them with
+the previous frame's camera, and a bar trailed the head it belongs to and
+jittered with the frame time.
 
 `MovementDestinationMarker` is replaceable presentation that the bootstrap adds
 to every World scene. It shows a flat, collider-free disc at the destination of

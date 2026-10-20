@@ -1,6 +1,6 @@
 # Project Architecture
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## Purpose
 
@@ -342,7 +342,8 @@ The current protocol version includes:
   of the newest input until the worker confirms it.
 - A dedicated fixed-rate owner snapshot with server tick, snapshot sequence,
   input acknowledgement, and authoritative reconciliation state including path
-  progress.
+  progress. The worker steps once per input, like the client prediction, and
+  the owner state is the state after the acknowledged input.
 - Chunked remote simulation snapshots whose visible entity updates rotate
   fairly when the worker-wide byte budget cannot carry the full dense set.
 - Movement, simulation revision, and collision revision metadata.

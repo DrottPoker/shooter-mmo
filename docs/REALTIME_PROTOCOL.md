@@ -286,6 +286,15 @@ name it and can never arrive after them. The client keeps sending the path until
 an owner snapshot reports that path id. A batch whose newest input names a path
 the worker never received is a protocol error, `unknown_movement_path`.
 
+`OwnerSimulationSnapshot.LastProcessedInputSequence` names the newest input the
+worker processed, and the state in the same snapshot is the state right after
+it. SimulationWorker steps once per input, in sequence order, and may take a few
+steps ahead of a late input along the current path; those steps never appear in
+the owner snapshot until their input arrived. The client therefore replays
+exactly the inputs after the acknowledged one. Remote `SimulationSnapshot`
+records carry the current state, including such steps. This needed no wire
+change.
+
 `OwnerSimulationSnapshot` ends with `MovementPathProgress`: the followed path id,
 the next waypoint index, at most 32, which equals the waypoint count once the
 path ended, and the consecutive ticks in which collision blocked the path.

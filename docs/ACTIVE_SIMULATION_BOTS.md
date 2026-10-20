@@ -1,6 +1,6 @@
 # Active Simulation Bots
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## Purpose
 
@@ -13,6 +13,9 @@ session heartbeat, and graceful leave flow.
 
 Use this tool to inspect a populated test map, remote interpolation, reliable
 spawn and despawn, interest behavior, collision, movement, and connection churn.
+The bots behave like Unity clients on the wire: each one sends one movement
+input per simulation tick, plans its walks with the same planner and collision as
+the client, and decodes every message a client receives.
 Bots are not combatants, because they have no durable character that could die,
 so a Unity player cannot attack them.
 It is not a capacity benchmark. Use
@@ -81,11 +84,11 @@ Population and behavior controls live in
 | `AuthorityUrl` | `http://127.0.0.1:5000` | Real local GameService URL, loopback only |
 | `AuthoritySecret` | empty | Optional local override; prefer the ignored `.env` value |
 | `ShardId` | `local-shard-1` | Shard requested for every bot |
-| `MinimumActiveBots` | `5` | Lower bound for randomly selected population targets |
-| `MaximumActiveBots` | `15` | Upper bound and number of stable bot slots |
-| `StartupBotsPerSecond` | `3` | Maximum ticket and connection ramp rate |
-| `PopulationChangeIntervalSeconds` | `20` | Interval between random target changes |
-| `MinimumOnlineSeconds`, `MaximumOnlineSeconds` | `45`, `120` | Random joined lifetime before graceful logout |
+| `MinimumActiveBots` | `300` | Lower bound for randomly selected population targets |
+| `MaximumActiveBots` | `400` | Upper bound and number of stable bot slots |
+| `StartupBotsPerSecond` | `20` | Maximum ticket and connection ramp rate |
+| `PopulationChangeIntervalSeconds` | `30` | Interval between random target changes |
+| `MinimumOnlineSeconds`, `MaximumOnlineSeconds` | `120`, `240` | Random joined lifetime before graceful logout |
 | `MinimumOfflineSeconds`, `MaximumOfflineSeconds` | `5`, `25` | Random rest before the same slot may log in again |
 | `MinimumBehaviorSeconds`, `MaximumBehaviorSeconds` | `2`, `6` | Random behavior duration; a walk heads for a destination about that many seconds of walking away |
 | `IdleChance` | `0.15` | Chance that a new behavior interval is idle |
@@ -158,12 +161,24 @@ Expected result:
   time waiting for the simulation loop from finalization work. A healthy ramp
   returns the backlog to zero instead of allowing joins to wait behind growing
   lifecycle work.
-- Bots send movement input at the tick rate returned by SimulationWorker. A
-  walking bot follows a straight one-waypoint path to a random destination
-  inside the World bounds and at most 200 meters away. It does not plan around
-  obstacles, so collision stops it, and the worker ends a blocked path after
-  half a second. The path travels with the input batches until an owner
-  snapshot confirms it, exactly as from the Unity client.
+- Bots send one movement input per tick at the tick rate returned by
+  SimulationWorker. The tool polls every bot every 3 ms with a high-resolution
+  timer, and a bot sends a due input in the same poll, so inputs reach the
+  worker about as evenly as from a Unity client. `Task.Delay` used to wait a
+  whole 15.6 ms Windows timer tick, and the input left only on the next poll, so
+  bots sent their inputs in bursts.
+- A walking bot heads for a random destination inside the World bounds, about
+  one behavior interval of walking and at most 60 meters away. The tool loads
+  the World's compiled collision, which the build copies to its output below
+  `WorldData/Worlds`, and plans the walk around obstacles with the shared
+  `MovementPathPlanner` on up to four background threads, as the Unity client
+  plans a click. The bot keeps its previous path until the plan arrives, and it
+  stands when no route exists or the planners are busy. When the collision
+  cannot be loaded, or the worker reports another collision revision, a walk is
+  a straight one-waypoint line of at most 200 meters that the worker's collision
+  stops. The startup log says which applies. The path travels with the input
+  batches until an owner snapshot confirms it, exactly as from the Unity
+  client.
 - The target population changes within the configured range.
 - Individual bots issue a normal reliable leave, disappear, wait for a random
   offline interval, request a fresh one-time ticket, and rejoin.

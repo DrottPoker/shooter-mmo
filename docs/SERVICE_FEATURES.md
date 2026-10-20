@@ -293,6 +293,21 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - New peers must send one reliable ordered join request before the handshake
   timeout.
 - Join ticket consumption is asynchronous and does not block the UDP poll loop.
+- The realtime loop runs on its own thread and sleeps until the next tick or the
+  next transport poll, `NetworkPollIntervalMilliseconds`, whichever comes first.
+  On Windows it waits with a high-resolution waitable timer, because ordinary
+  waits round up to the 15.6 ms timer tick and started ticks up to a whole tick
+  late; ticks now start within about a millisecond of their schedule.
+- At the end of every loop iteration the worker wakes LiteNetLib's update thread
+  so the packets it queued leave at once. Before, they waited for the
+  transport's own 15 ms update, which delayed every snapshot by a random part of
+  that period.
+- LiteNetLib's packet pool holds one packet per allowed connection plus one per
+  512 bytes of the aggregate snapshot budget of one broadcast, between 1,000 and
+  65,536, about 6,200 with the default settings, because one snapshot broadcast
+  queues an owner packet for every connection and the remote chunks the budget
+  allows before they are sent. With the default pool of 1,000 every further
+  packet was a new allocation that survived into the older GC generations.
 - Control messages use reliable ordered delivery.
 - Movement input uses sequenced delivery.
 - Simulation snapshots use unreliable delivery.
@@ -352,11 +367,18 @@ set:
 - Visibility changes emit reliable spawn or despawn.
 - Snapshots contain only visible entity ids.
 - Ordered visibility remains cached until the set changes.
+- Each connection's visibility set is recomputed every
+  `RefreshIntervalSnapshots` snapshots, 3 by default, the connections in turn,
+  so a 15 Hz snapshot rate refreshes a third of them per snapshot. The band
+  between the enter and exit radius keeps an entity visible while its viewer
+  waits for its turn, and joins and leaves still update visibility at once.
+- The spatial cells store the entity positions, so the visibility test reads
+  them without a dictionary lookup per candidate.
 - Equal ordered visibility sets share one encoded snapshot packet batch per
   broadcast.
 - The maximum unreliable packet is `1023` bytes, so a remote snapshot chunk
   contains at most 24 current entity records.
-- Cell size and radii are worker-owned config values.
+- Cell size, radii, and the refresh interval are worker-owned config values.
 
 This is process-local interest management for one complete shard. Cross-worker
 zone interest is deferred until zones exist.
@@ -643,16 +665,33 @@ SimulationWorker. Nothing gets its own task, timer, or thread:
   through every waypoint; a path that breaks the limits is adopted as already
   ended, so client and worker agree that the character stands. An input that
   names a path the worker never received is a protocol error.
-- The worker follows the same waypoints as the client prediction and keeps
-  following a path when input packets are briefly lost, because every path
-  ends. A path that collision blocks for half a second ends.
+- The worker steps the character exactly once per input, in sequence order, as
+  the client prediction does. Inputs wait in a short queue that absorbs uneven
+  packet timing; a tick applies the oldest one, and a second one while more than
+  one still waits. Stepping once per tick with the newest input instead made
+  the worker take more or fewer steps than the client whenever packets arrived
+  unevenly, and the local player was corrected back and forth by whole steps.
+- When the next input is late, the tick still steps along the current path, at
+  most three times in a row, about 100 ms. The late input then takes over that
+  step, or the steps are taken again with it when it names another path. A
+  longer gap pauses the character on the worker until the inputs arrive, and the
+  queue then catches up at two steps per tick. Inputs lost from every batch are
+  filled with the path before them, up to 15; a longer gap skips to the newest
+  input.
+- A step budget keeps the average at one step per tick, with 1/64 of slack for a
+  client clock that runs slightly fast, so a client cannot move faster by
+  sending more inputs. A client may have at most 16 inputs waiting.
+- A path that collision blocks for half a second ends.
 - New planar control is ignored while airborne.
 - Collision, slopes, steps, ground support, and bounds are server-owned.
 - Each authoritative entity owns one reusable collision-query workspace, so
   fixed ticks reuse broadphase list and stable-id set capacity instead of
   allocating them again for every movement step.
 - Owner snapshots are sent at 15 Hz by default with input acknowledgement,
-  authoritative reconciliation state, and path progress.
+  authoritative reconciliation state, and path progress. They carry the state
+  after the last processed input, without the steps taken ahead of late inputs,
+  so the client replays exactly the inputs after the acknowledged one. Remote
+  snapshots, combat, and interest use the current state.
 - Remote snapshots use the remaining fair byte budget. Their cadence degrades
   explicitly under dense overload instead of starving owner reconciliation.
 - Unity predicts with the same source, reconciles only from owner snapshots,
