@@ -104,15 +104,19 @@ public sealed class SimulationWorkerConfigurationValidationTests
             .Build();
 
         var config = SimulationWorkerConfig.FromConfiguration(configuration);
+        var manifest = WorldManifestFileStore.Load(WorldDataRootPath(), "development-world-2");
 
         Assert.Equal(
             WorldManifestFileStore.ResolveActorRuntimePath(
                 WorldDataRootPath(),
                 "development-world-2"),
             config.ActorDataPath);
-        Assert.Equal(-254f, config.MovementSimulation.MinimumX);
-        Assert.Equal(254f, config.MovementSimulation.MaximumX);
-        Assert.Equal(-16f, config.MovementSpawn.Z);
+        Assert.Equal(manifest.bounds.minimumX, config.MovementSimulation.MinimumX);
+        Assert.Equal(manifest.bounds.maximumX, config.MovementSimulation.MaximumX);
+        Assert.Equal(manifest.spawn.z, config.MovementSpawn.Z);
+        Assert.NotEqual(
+            WorldManifestFileStore.Load(WorldDataRootPath(), "development-world-1").bounds.maximumX,
+            config.MovementSimulation.MaximumX);
     }
 
     [Fact]

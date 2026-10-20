@@ -34,9 +34,10 @@ public sealed class ResourceNodeContentTests
         var items = ItemCatalogTestData.Compile();
 
         WorldActorItemReferences.Validate(WorldActorTestData.Compile(), items);
-        WorldActorItemReferences.Validate(
-            WorldActorTestData.Compile("development-world-2"),
-            items);
+        foreach (var worldId in WorldActorTestData.CheckedInWorldIds())
+        {
+            WorldActorItemReferences.Validate(WorldActorTestData.CompileWorld(worldId), items);
+        }
     }
 
     [Fact]
