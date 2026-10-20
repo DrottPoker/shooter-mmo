@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
@@ -54,6 +55,7 @@ namespace Mmorpg.Client.Combat
         private CombatClientController combatController;
         private RealtimeSimulationClient realtimeClient;
         private CombatantViewLocator views;
+        private Material primitiveMaterial;
         private Material arrowMaterial;
         private bool subscribed;
 
@@ -66,11 +68,13 @@ namespace Mmorpg.Client.Combat
         public void Initialize(
             CombatClientController combat,
             RealtimeSimulationClient realtime,
-            CombatantViewLocator combatantViews)
+            CombatantViewLocator combatantViews,
+            Material runtimePrimitiveMaterial)
         {
             combatController = combat;
             realtimeClient = realtime;
             views = combatantViews;
+            primitiveMaterial = runtimePrimitiveMaterial;
         }
 
         private void OnEnable()
@@ -209,7 +213,7 @@ namespace Mmorpg.Client.Combat
 
         private GameObject CreateArrow()
         {
-            var arrow = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var arrow = RuntimePrimitives.Create(PrimitiveType.Cube, primitiveMaterial);
             arrow.name = "CombatArrow";
             arrow.transform.SetParent(transform, false);
             arrow.transform.localScale = ArrowScale;

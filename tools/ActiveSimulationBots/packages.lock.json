@@ -10,6 +10,12 @@
       "mmorpg.gameprotocol": {
         "type": "Project"
       },
+      "mmorpg.gamesimulation": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
       "mmorpg.server.common": {
         "type": "Project",
         "dependencies": {

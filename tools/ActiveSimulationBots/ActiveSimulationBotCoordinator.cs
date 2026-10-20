@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Mmorpg.Server.Common.Timing;
 using Mmorpg.Tools.SimulationBotClient;
 using HeadlessSimulationBotClient = Mmorpg.Tools.SimulationBotClient.SimulationBotClient;
 
@@ -8,6 +9,13 @@ public sealed class ActiveSimulationBotCoordinator(
     ActiveSimulationBotOptions options,
     ActiveSimulationBotAuthorityClient authorityClient)
 {
+    // Bots poll and send due inputs this often, about the frame time of a 300 FPS client.
+    // Task.Delay waited a whole 15.6 ms Windows timer tick, so bots sent inputs in bursts.
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(3);
+
+    // The build copies the compiled World collision below the tool's output.
+    private const string WorldDataPath = "WorldData/Worlds";
+
     private readonly List<ActiveBotSlot> slots = Enumerable
         .Range(1, options.MaximumActiveBots)
         .Select(index => new ActiveBotSlot(index, Guid.NewGuid()))
@@ -22,9 +30,12 @@ public sealed class ActiveSimulationBotCoordinator(
     private long lifetimePacketsReceived;
     private long lifetimeBytesSent;
     private long lifetimeBytesReceived;
+    private readonly Dictionary<string, ActiveSimulationBotNavigation?> navigations =
+        new(StringComparer.Ordinal);
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        using var pollDelay = new PreciseDelay("ActiveSimulationBots poll loop");
         var now = Stopwatch.GetTimestamp();
         var nextPopulationChange = AddDuration(now, options.PopulationChangeInterval);
         var nextStatus = now;
@@ -77,7 +88,7 @@ public sealed class ActiveSimulationBotCoordinator(
 
                 try
                 {
-                    await Task.Delay(5, cancellationToken);
+                    await pollDelay.DelayAsync(PollInterval, cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -87,7 +98,11 @@ public sealed class ActiveSimulationBotCoordinator(
         }
         finally
         {
-            await ShutdownAsync();
+            await ShutdownAsync(pollDelay);
+            foreach (var navigation in navigations.Values)
+            {
+                navigation?.Dispose();
+            }
         }
     }
 
@@ -140,12 +155,48 @@ public sealed class ActiveSimulationBotCoordinator(
                     ticket.JoinTicket,
                     ticket.ShardId,
                     ticket.WorldId),
-                new ActiveSimulationBotInputSource(options, slot.Index));
+                new ActiveSimulationBotInputSource(
+                    options,
+                    slot.Index,
+                    NavigationFor(ticket.WorldId)));
             slot.Client = client;
             slot.JoinObserved = false;
             slot.LeaveRequested = false;
             client.Start();
         }
+    }
+
+    // Loads a World's collision for planned walks once; bots of every World keep theirs until
+    // the tool stops. Bots walk straight lines when it cannot be loaded.
+    private ActiveSimulationBotNavigation? NavigationFor(string worldId)
+    {
+        if (navigations.TryGetValue(worldId, out var loaded))
+        {
+            return loaded;
+        }
+
+        ActiveSimulationBotNavigation? navigation = null;
+        try
+        {
+            navigation = ActiveSimulationBotNavigation.Load(
+                WorldDataPath,
+                worldId,
+                Math.Clamp(Environment.ProcessorCount / 4, 1, 4));
+            Console.WriteLine(
+                $"Bots plan their walks on the collision of World {worldId}, revision {navigation.CollisionWorld.Revision}.");
+        }
+        catch (Exception exception) when (exception is IOException
+            or InvalidDataException
+            or ArgumentException
+            or UnauthorizedAccessException
+            or System.Text.Json.JsonException)
+        {
+            Console.WriteLine(
+                $"Bots walk straight lines, because the collision of World {worldId} could not be loaded: {exception.Message}");
+        }
+
+        navigations.Add(worldId, navigation);
+        return navigation;
     }
 
     private void ProcessClientTransitions(long nowTimestamp)
@@ -341,7 +392,7 @@ public sealed class ActiveSimulationBotCoordinator(
             $"Status: target {targetPopulation}, joined {joined}, joining {joining}, leaving {leaving}, ticket requests {pendingTickets}; lifetime logins {successfulLogins}, clean logouts {gracefulLogouts}, session failures {botSessionFailures}, ticket rejections {ticketRejections}; traffic sent {packetsSent} packets/{bytesSent} bytes, received {packetsReceived} packets/{bytesReceived} bytes.");
     }
 
-    private async Task ShutdownAsync()
+    private async Task ShutdownAsync(PreciseDelay pollDelay)
     {
         Console.WriteLine("Stopping ActiveSimulationBots and requesting graceful logout.");
         var now = Stopwatch.GetTimestamp();
@@ -365,7 +416,7 @@ public sealed class ActiveSimulationBotCoordinator(
             now = Stopwatch.GetTimestamp();
             PollClients(now);
             ProcessClientTransitions(now);
-            await Task.Delay(5);
+            await pollDelay.DelayAsync(PollInterval, CancellationToken.None);
         }
 
         foreach (var slot in slots)

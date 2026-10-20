@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Mmorpg.Server.Common.Timing;
 
 namespace Mmorpg.Tools.StackStressGenerator;
 
@@ -14,7 +15,11 @@ public sealed class StressRunCoordinator(
         new(options.Seed);
     private readonly StressLatencyAccumulator intervalInputAcknowledgementLatencies =
         new(unchecked(options.Seed + 1));
+    // Bots poll and send due inputs this often, about the frame time of a 300 FPS client.
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(3);
+
     private readonly StressGameplayMetrics gameplayMetrics = new(options.Seed);
+    private PreciseDelay? pollDelay;
     private int launchedBots;
 
     public async Task<StressRunReport> RunAsync(CancellationToken cancellationToken)
@@ -28,6 +33,10 @@ public sealed class StressRunCoordinator(
             $"Stress target shard {target.ShardId}, World {target.WorldId}, capacity {target.Capacity} is ready.");
         await admissionProvider.PrepareAsync(cancellationToken);
         await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        // Task.Delay(1) waited a whole 15.6 ms Windows timer tick, so bots sent their inputs
+        // in bursts instead of once per tick like a real client.
+        using var precisePollDelay = new PreciseDelay("StackStressGenerator poll loop");
+        pollDelay = precisePollDelay;
         using var processSampler = target.Worker is not null
             ? StressProcessSampler.TryAttach(target.Worker.StartedAt)
             : StressProcessSampler.TryAttach("Mmorpg.SimulationWorker");
@@ -100,7 +109,7 @@ public sealed class StressRunCoordinator(
                     nextProcessSampleTimestamp = AddDuration(now, TimeSpan.FromSeconds(1));
                 }
 
-                await Task.Delay(1, cancellationToken);
+                await WaitForNextPollAsync(cancellationToken);
             }
 
             WriteProgress();
@@ -210,6 +219,11 @@ public sealed class StressRunCoordinator(
         }
     }
 
+    private Task WaitForNextPollAsync(CancellationToken cancellationToken)
+    {
+        return pollDelay!.DelayAsync(PollInterval, cancellationToken);
+    }
+
     private void PollBots(long nowTimestamp, CancellationToken cancellationToken)
     {
         foreach (var bot in bots)
@@ -238,7 +252,7 @@ public sealed class StressRunCoordinator(
                 break;
             }
 
-            await Task.Delay(1, cancellationToken);
+            await WaitForNextPollAsync(cancellationToken);
         }
 
         PollBots(Stopwatch.GetTimestamp(), cancellationToken);
@@ -266,7 +280,7 @@ public sealed class StressRunCoordinator(
                 return;
             }
 
-            await Task.Delay(1, cancellationToken);
+            await WaitForNextPollAsync(cancellationToken);
         }
 
         PollBots(Stopwatch.GetTimestamp(), cancellationToken);

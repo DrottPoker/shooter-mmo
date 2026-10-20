@@ -16,12 +16,21 @@
       "mmorpg.gameprotocol": {
         "type": "Project"
       },
+      "mmorpg.server.common": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
       "mmorpg.tools.simulationbotclient": {
         "type": "Project",
         "dependencies": {
           "LiteNetLib": "[2.1.4, )",
           "Mmorpg.GameProtocol": "[1.0.0, )"
         }
+      },
+      "mmorpg.worlddata": {
+        "type": "Project"
       }
     }
   }

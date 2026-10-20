@@ -131,12 +131,18 @@ Status: Server-authoritative click-to-move implemented
   teleports, and large corrections bypass this blend.
 - Authoritative snapshots acknowledge processed input sequences and route
   progress. The client replays remaining input and smooths small corrections.
-- Remote players advance on an adaptive frame-rate render clock through a
-  snapshot buffer approximately 100 ms behind server time. Bounded clock
-  correction restores that delay after a network stall instead of accumulating
-  permanent latency.
-- A route continues on SimulationWorker when input packets are briefly lost,
-  because every route has an end.
+- Remote players advance on an adaptive frame-rate render clock two snapshot
+  intervals, about 133 ms, behind an estimate of server time that advances
+  smoothly between snapshots. They walk at an even speed instead of speeding up
+  and slowing down with every snapshot. Bounded clock correction restores that
+  delay after a network stall instead of accumulating permanent latency.
+- SimulationWorker moves the character exactly one step per input, like the
+  prediction, so uneven packet timing no longer corrects the local player back
+  and forth. A route continues for about 100 ms when inputs are late; after a
+  longer gap the character waits on the worker until the inputs arrive and then
+  catches up.
+- Health bars and damage numbers are placed after the camera followed the
+  player, so they stay over the heads they belong to.
 
 Gamepad bindings and player-configurable rebinding are not implemented yet.
 

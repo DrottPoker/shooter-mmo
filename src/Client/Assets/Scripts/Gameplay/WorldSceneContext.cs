@@ -19,6 +19,7 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly Dictionary<ulong, RemotePlayerView> remotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
+        private readonly RemotePlayerBodyMaterials bodyMaterials = new RemotePlayerBodyMaterials();
         private RealtimeSimulationClient simulationClient;
         private WorldPointerFocus pointerFocus;
         private LocalPlayerController localPlayer;
@@ -132,6 +133,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             remotePlayers.Clear();
+            bodyMaterials.Dispose();
 
             DestroyLocalPlayer();
         }
@@ -180,9 +182,11 @@ namespace Mmorpg.Client.Gameplay
                     spawn.ArchetypeId,
                     movementSession.Settings.TickRateHz,
                     RemoteMovementPresenter.InterpolationDelayTicks(
-                        movementSession.Settings.TickRateHz),
+                        movementSession.Settings.TickRateHz,
+                        movementSession.SnapshotRateHz),
                     movementSession.CollisionWorld,
-                    movementSession.Settings.CharacterCollision);
+                    movementSession.Settings.CharacterCollision,
+                    bodyMaterials);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
             }
 

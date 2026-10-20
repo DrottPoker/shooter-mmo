@@ -95,7 +95,7 @@ namespace Mmorpg.Client.Gameplay
                 Mathf.RoundToInt(ticks / (float)Mathf.Max(1, snapshotRateHz)));
             presenter.Configure(
                 ticks,
-                RemoteMovementPresenter.InterpolationDelayTicks(ticks),
+                RemoteMovementPresenter.InterpolationDelayTicks(ticks, snapshotRateHz),
                 collisionWorld,
                 collisionSettings);
             resting = false;

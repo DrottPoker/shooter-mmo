@@ -25,7 +25,7 @@ internal sealed class SnapshotReplicator(
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
     private readonly List<RealtimeEntitySnapshot> mobSnapshotBuffer = [];
     private readonly SnapshotPacketCache snapshotPacketCache = new();
-    private readonly Dictionary<ulong, RealtimeMovementPathProgress> ownerPathProgress = [];
+    private readonly Dictionary<ulong, OwnerState> ownerStates = [];
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
     private readonly TokenBucket aggregateSnapshotBytes = new(
         config.UdpQuotas.AggregateSnapshotBytesPerSecond,
@@ -41,7 +41,7 @@ internal sealed class SnapshotReplicator(
         try
         {
             snapshotPacketCache.Reset();
-            ownerPathProgress.Clear();
+            ownerStates.Clear();
             entityRegistry.CopyPlayersTo(playerBuffer);
             foreach (var entity in playerBuffer)
             {
@@ -50,13 +50,19 @@ internal sealed class SnapshotReplicator(
                     continue;
                 }
 
+                // Other players see where the character is now; its owner gets the state after
+                // the last processed input, which its reconciliation replays from.
                 snapshotPacketCache.Add(new RealtimeEntitySnapshot(
                     entity.NetworkEntityId,
                     entity.Movement.LastProcessedInputSequence,
                     RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State)));
-                ownerPathProgress.Add(
+                var confirmed = entity.Movement.ConfirmedState;
+                ownerStates.Add(
                     entity.NetworkEntityId,
-                    RealtimeStateMapper.ToRealtimePathProgress(entity.Movement.State.PathProgress));
+                    new OwnerState(
+                        entity.Movement.LastProcessedInputSequence,
+                        RealtimeStateMapper.ToRealtimePlayerState(confirmed),
+                        RealtimeStateMapper.ToRealtimePathProgress(confirmed.PathProgress)));
             }
 
             if (snapshotPacketCache.EntitySnapshotCount == 0)
@@ -115,12 +121,7 @@ internal sealed class SnapshotReplicator(
 
             foreach (var recipient in snapshotRecipientBuffer)
             {
-                if (!snapshotPacketCache.TryGetSnapshot(
-                        recipient.ControlledEntityId,
-                        out var controlledSnapshot)
-                    || !ownerPathProgress.TryGetValue(
-                        recipient.ControlledEntityId,
-                        out var controlledPathProgress))
+                if (!ownerStates.TryGetValue(recipient.ControlledEntityId, out var owner))
                 {
                     continue;
                 }
@@ -129,9 +130,9 @@ internal sealed class SnapshotReplicator(
                     new RealtimeOwnerSimulationSnapshot(
                         snapshotSequence,
                         clock.ServerTick,
-                        controlledSnapshot!.LastProcessedInputSequence,
-                        controlledSnapshot.State,
-                        controlledPathProgress));
+                        owner.LastProcessedInputSequence,
+                        owner.State,
+                        owner.PathProgress));
                 encodedOwnerPacketCount++;
                 if (!aggregateSnapshotBytes.TryConsume(ownerPacket.Length))
                 {
@@ -214,4 +215,9 @@ internal sealed class SnapshotReplicator(
                 Stopwatch.GetElapsedTime(broadcastStarted));
         }
     }
+
+    private readonly record struct OwnerState(
+        uint LastProcessedInputSequence,
+        RealtimePlayerState State,
+        RealtimeMovementPathProgress PathProgress);
 }

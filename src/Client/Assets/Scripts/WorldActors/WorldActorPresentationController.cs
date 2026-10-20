@@ -27,6 +27,7 @@ namespace Mmorpg.Client.WorldActors
         private MaterialPropertyBlock materialProperties;
         private WorldActorClientController actorController;
         private RealtimeSimulationClient simulationClient;
+        private Material primitiveMaterial;
         private bool snapshotsSubscribed;
         private AsyncOperationHandle<WorldActorPresentationRegistry> registryLoad;
         private WorldActorPresentationRegistry presentationRegistry;
@@ -43,10 +44,12 @@ namespace Mmorpg.Client.WorldActors
         // Called by the composition root before the component is activated.
         public void Initialize(
             WorldActorClientController worldActors,
-            RealtimeSimulationClient realtimeClient)
+            RealtimeSimulationClient realtimeClient,
+            Material runtimePrimitiveMaterial)
         {
             actorController = worldActors;
             simulationClient = realtimeClient;
+            primitiveMaterial = runtimePrimitiveMaterial;
         }
 
         // The presentation of an actor by its network entity id, once its prefab is ready.
@@ -309,13 +312,14 @@ namespace Mmorpg.Client.WorldActors
             }
             else
             {
-                presentation = GameObject.CreatePrimitive(
+                presentation = RuntimePrimitives.Create(
                     actor.Kind switch
                     {
                         RealtimeWorldActorKind.Npc => PrimitiveType.Capsule,
                         RealtimeWorldActorKind.ResourceNode => PrimitiveType.Sphere,
                         _ => PrimitiveType.Cube
-                    });
+                    },
+                    primitiveMaterial);
                 presentation.transform.SetParent(presentationRoot, false);
                 var existingCollider = presentation.GetComponent<Collider>();
                 if (existingCollider != null)

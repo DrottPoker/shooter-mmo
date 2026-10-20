@@ -19,8 +19,10 @@ public sealed class SimulationInterestManager
     private readonly float exitRadiusSquared;
     private readonly int cellRadius;
     private readonly Dictionary<ulong, SimulationInterestEntity> entities = [];
-    private readonly Dictionary<long, List<ulong>> entityIdsByCell = [];
-    private readonly Stack<List<ulong>> cellListPool = [];
+    // Cells hold the entities themselves, so the visibility test reads positions without a
+    // dictionary lookup per candidate.
+    private readonly Dictionary<long, List<SimulationInterestEntity>> entitiesByCell = [];
+    private readonly Stack<List<SimulationInterestEntity>> cellListPool = [];
     private readonly Dictionary<int, ConnectionInterestState> interestsByConnection = [];
     private readonly Dictionary<ulong, int> connectionIdsByControlledEntityId = [];
 
@@ -39,22 +41,26 @@ public sealed class SimulationInterestManager
         }
 
         cellSize = config.CellSize;
+        RefreshIntervalSnapshots = Math.Max(1, config.RefreshIntervalSnapshots);
         enterRadiusSquared = config.EnterRadius * config.EnterRadius;
         exitRadiusSquared = config.ExitRadius * config.ExitRadius;
         cellRadius = (int)Math.Ceiling(config.ExitRadius / config.CellSize);
     }
 
+    // Each connection's visible set is refreshed every this many snapshots.
+    public int RefreshIntervalSnapshots { get; }
+
     public void Rebuild(IEnumerable<SimulationInterestEntity> currentEntities)
     {
         ArgumentNullException.ThrowIfNull(currentEntities);
         entities.Clear();
-        foreach (var cellEntities in entityIdsByCell.Values)
+        foreach (var cellEntities in entitiesByCell.Values)
         {
             cellEntities.Clear();
             cellListPool.Push(cellEntities);
         }
 
-        entityIdsByCell.Clear();
+        entitiesByCell.Clear();
         foreach (var entity in currentEntities)
         {
             ValidateEntity(entity, nameof(currentEntities));
@@ -73,15 +79,15 @@ public sealed class SimulationInterestManager
 
         AddToSpatialIndex(entity);
         var enteredConnections = new List<int>();
-        VisitNearbyEntityIds(entity, candidateEntityId =>
+        VisitNearbyEntities(entity, candidate =>
         {
-            if (candidateEntityId == entity.EntityId
+            if (candidate.EntityId == entity.EntityId
                 || !connectionIdsByControlledEntityId.TryGetValue(
-                    candidateEntityId,
+                    candidate.EntityId,
                     out var connectionId)
                 || !interestsByConnection.TryGetValue(connectionId, out var state)
                 || !IsWithinRadius(
-                    entities[candidateEntityId],
+                    candidate,
                     entity,
                     enterRadiusSquared)
                 || !state.Visible.Add(entity.EntityId))
@@ -107,12 +113,8 @@ public sealed class SimulationInterestManager
 
         var previousCell = CellKey(ToCell(previous.X), ToCell(previous.Z));
         var nextCell = CellKey(ToCell(entity.X), ToCell(entity.Z));
-        if (previousCell != nextCell)
-        {
-            RemoveFromCell(previousCell, entity.EntityId);
-            AddToCell(nextCell, entity.EntityId);
-        }
-
+        RemoveFromCell(previousCell, entity.EntityId);
+        AddToCell(nextCell, entity);
         entities[entity.EntityId] = entity;
     }
 
@@ -254,13 +256,13 @@ public sealed class SimulationInterestManager
     public void Clear()
     {
         entities.Clear();
-        foreach (var cellEntities in entityIdsByCell.Values)
+        foreach (var cellEntities in entitiesByCell.Values)
         {
             cellEntities.Clear();
             cellListPool.Push(cellEntities);
         }
 
-        entityIdsByCell.Clear();
+        entitiesByCell.Clear();
         interestsByConnection.Clear();
         connectionIdsByControlledEntityId.Clear();
     }
@@ -300,38 +302,48 @@ public sealed class SimulationInterestManager
     private void AddToSpatialIndex(SimulationInterestEntity entity)
     {
         entities.Add(entity.EntityId, entity);
-        AddToCell(CellKey(ToCell(entity.X), ToCell(entity.Z)), entity.EntityId);
+        AddToCell(CellKey(ToCell(entity.X), ToCell(entity.Z)), entity);
     }
 
-    private void AddToCell(long cellKey, ulong entityId)
+    private void AddToCell(long cellKey, SimulationInterestEntity entity)
     {
-        if (!entityIdsByCell.TryGetValue(cellKey, out var cellEntities))
+        if (!entitiesByCell.TryGetValue(cellKey, out var cellEntities))
         {
             cellEntities = cellListPool.TryPop(out var pooled) ? pooled : [];
-            entityIdsByCell.Add(cellKey, cellEntities);
+            entitiesByCell.Add(cellKey, cellEntities);
         }
 
-        cellEntities.Add(entityId);
+        cellEntities.Add(entity);
     }
 
     private void RemoveFromCell(long cellKey, ulong entityId)
     {
-        if (!entityIdsByCell.TryGetValue(cellKey, out var cellEntities))
+        if (!entitiesByCell.TryGetValue(cellKey, out var cellEntities))
         {
             return;
         }
 
-        cellEntities.Remove(entityId);
+        for (var index = 0; index < cellEntities.Count; index++)
+        {
+            if (cellEntities[index].EntityId == entityId)
+            {
+                // The order inside a cell does not matter, so the last entry fills the gap.
+                cellEntities[index] = cellEntities[^1];
+                cellEntities.RemoveAt(cellEntities.Count - 1);
+                break;
+            }
+        }
+
         if (cellEntities.Count == 0)
         {
-            entityIdsByCell.Remove(cellKey);
+            entitiesByCell.Remove(cellKey);
             cellListPool.Push(cellEntities);
         }
     }
 
-    private void VisitNearbyEntityIds(
+    private void VisitNearbyEntities(
         SimulationInterestEntity observer,
-        Action<ulong> visitor)
+        Action<SimulationInterestEntity> visitor)
     {
         var observerCellX = ToCell(observer.X);
         var observerCellZ = ToCell(observer.Z);
@@ -339,14 +351,14 @@ public sealed class SimulationInterestManager
         {
             for (var x = observerCellX - cellRadius; x <= observerCellX + cellRadius; x++)
             {
-                if (!entityIdsByCell.TryGetValue(CellKey(x, z), out var candidates))
+                if (!entitiesByCell.TryGetValue(CellKey(x, z), out var candidates))
                 {
                     continue;
                 }
 
-                foreach (var entityId in candidates)
+                foreach (var candidate in candidates)
                 {
-                    visitor(entityId);
+                    visitor(candidate);
                 }
             }
         }
@@ -385,8 +397,8 @@ public sealed class SimulationInterestManager
 
     private void AddNearbyEntities(
         SimulationInterestEntity observer,
-        IReadOnlySet<ulong> previous,
-        ISet<ulong> next)
+        HashSet<ulong> previous,
+        HashSet<ulong> next)
     {
         var observerCellX = ToCell(observer.X);
         var observerCellZ = ToCell(observer.Z);
@@ -394,23 +406,23 @@ public sealed class SimulationInterestManager
         {
             for (var x = observerCellX - cellRadius; x <= observerCellX + cellRadius; x++)
             {
-                if (!entityIdsByCell.TryGetValue(CellKey(x, z), out var candidates))
+                if (!entitiesByCell.TryGetValue(CellKey(x, z), out var candidates))
                 {
                     continue;
                 }
 
-                foreach (var entityId in candidates)
+                foreach (var candidate in candidates)
                 {
-                    var candidate = entities[entityId];
                     var deltaX = candidate.X - observer.X;
                     var deltaZ = candidate.Z - observer.Z;
                     var distanceSquared = (deltaX * deltaX) + (deltaZ * deltaZ);
-                    var allowedRadiusSquared = previous.Contains(entityId)
-                        ? exitRadiusSquared
-                        : enterRadiusSquared;
-                    if (distanceSquared <= allowedRadiusSquared)
+                    // Within the enter radius the entity is visible either way, so only the
+                    // band up to the exit radius needs the previous set.
+                    if (distanceSquared <= enterRadiusSquared
+                        || (distanceSquared <= exitRadiusSquared
+                            && previous.Contains(candidate.EntityId)))
                     {
-                        next.Add(entityId);
+                        next.Add(candidate.EntityId);
                     }
                 }
             }

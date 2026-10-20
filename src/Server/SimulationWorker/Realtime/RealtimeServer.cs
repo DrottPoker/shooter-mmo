@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
+using Mmorpg.Server.Common.Timing;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
@@ -9,10 +10,12 @@ using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// Owns the realtime loop strand. Each iteration polls the transport, drains completed
-// operations within a budget, runs due simulation ticks and supervises peers, in that
-// order. Every component except the completion queue and the operation tracker is
-// confined to this loop, so none of them needs a lock.
+// Owns the realtime loop thread. Each iteration polls the transport, drains completed
+// operations within a budget, runs due simulation ticks, supervises peers and hands the
+// queued packets to the transport, in that order. The loop then sleeps precisely until the
+// next tick or poll is due, so ticks and snapshots keep an even rhythm. Every component
+// except the completion queue and the operation tracker is confined to this thread, so none
+// of them needs a lock.
 internal sealed class RealtimeServer(
     SimulationWorkerConfig config,
     LiteNetLibRealtimeTransport transport,
@@ -59,30 +62,66 @@ internal sealed class RealtimeServer(
             config.MovementSimulation.TickRateHz,
             config.SnapshotRateHz);
 
+        // A dedicated thread keeps the loop off the thread pool, whose scheduling delays
+        // would shift ticks, and lets it block in a precise timer wait.
+        var loopCompleted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var loopThread = new Thread(() =>
+        {
+            try
+            {
+                RunLoop(stoppingToken);
+                loopCompleted.SetResult();
+            }
+            catch (Exception exception)
+            {
+                loopCompleted.SetException(exception);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "SimulationWorker realtime loop"
+        };
+        try
+        {
+            loopThread.Start();
+            await loopCompleted.Task;
+        }
+        finally
+        {
+            await ShutdownAsync();
+        }
+    }
+
+    private void RunLoop(CancellationToken stoppingToken)
+    {
+        using var loopTimer = new PreciseLoopTimer();
+        if (!loopTimer.IsHighResolution)
+        {
+            logger.LogWarning(
+                "[SIMULATION] No high-resolution timer is available, so loop waits round up to the system timer tick and ticks run late.");
+        }
+
         var simulationClock = Stopwatch.StartNew();
         var simulationInterval = TimeSpan.FromSeconds(
             1d / config.MovementSimulation.TickRateHz);
         var completedOperationBudget = TimeSpan.FromTicks(
             Math.Max(1, simulationInterval.Ticks / 8));
         var nextSimulationTick = simulationClock.Elapsed + simulationInterval;
-        try
+        while (!stoppingToken.IsCancellationRequested)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            RunIteration(
+                simulationClock,
+                simulationInterval,
+                completedOperationBudget,
+                ref nextSimulationTick);
+            var now = simulationClock.Elapsed;
+            var nextPoll = now + config.NetworkPollInterval;
+            var wakeAt = nextSimulationTick < nextPoll ? nextSimulationTick : nextPoll;
+            if (!loopTimer.Wait(wakeAt - now, stoppingToken))
             {
-                RunIteration(
-                    simulationClock,
-                    simulationInterval,
-                    completedOperationBudget,
-                    ref nextSimulationTick);
-                await Task.Delay(config.NetworkPollInterval, stoppingToken);
+                return;
             }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            await ShutdownAsync();
         }
     }
 
@@ -117,6 +156,10 @@ internal sealed class RealtimeServer(
             ref nextSimulationTick);
         supervisor.EnforcePeerState();
         supervisor.ReleaseOrphanedSessions();
+
+        // The transport otherwise sends queued packets only on its own 15 ms update, which
+        // delayed every snapshot by a random part of that period.
+        transport.FlushSends();
     }
 
     // The order is part of the shutdown contract: the transport stops first, so no event

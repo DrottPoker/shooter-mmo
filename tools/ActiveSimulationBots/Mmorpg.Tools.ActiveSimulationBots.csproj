@@ -8,10 +8,17 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Server\Common\Mmorpg.Server.Common.csproj" />
+    <ProjectReference Include="..\..\src\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
     <ProjectReference Include="..\SimulationBotClient\Mmorpg.Tools.SimulationBotClient.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The same compiled collision the worker loads, for planned bot walks. -->
+    <Content Include="..\..\src\Shared\WorldData\Generated\WorldCollision\**\*"
+             Exclude="..\..\src\Shared\WorldData\Generated\WorldCollision\**\*.meta"
+             Link="WorldData\Worlds\%(RecursiveDir)Collision\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

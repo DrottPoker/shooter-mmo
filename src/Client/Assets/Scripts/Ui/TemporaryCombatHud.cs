@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Mmorpg.Client.Combat;
+using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
@@ -13,8 +14,10 @@ namespace Mmorpg.Client.Ui
     // and attack status, a frame for the attack target, health bars over damaged
     // combatants in view, floating damage numbers, and a death overlay with the respawn
     // countdown. It reads the combat state and never decides range, damage, or death.
-    // Nothing on it takes a raycast, so it never blocks a world click.
+    // Nothing on it takes a raycast, so it never blocks a world click. It places health bars
+    // and damage numbers after the camera moved, so they stay on the heads they belong to.
     [DisallowMultipleComponent]
+    [DefaultExecutionOrder(PresentationExecutionOrder.ScreenAnchoredInterface)]
     public sealed class TemporaryCombatHud : MonoBehaviour
     {
         public const string OwnerFrameName = "CombatOwnerFrame";

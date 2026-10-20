@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using UnityEngine;
 
@@ -13,14 +14,16 @@ namespace Mmorpg.Client.WorldActors
             new Dictionary<Guid, GameObject>();
         private MaterialPropertyBlock colorProperties;
         private CorpseClientController controller;
+        private Material primitiveMaterial;
 
         [SerializeField]
         private GameObject corpsePrefab;
 
         // Called by the composition root before the component is activated.
-        public void Initialize(CorpseClientController corpses)
+        public void Initialize(CorpseClientController corpses, Material runtimePrimitiveMaterial)
         {
             controller = corpses;
+            primitiveMaterial = runtimePrimitiveMaterial;
         }
 
         private void Awake()
@@ -109,7 +112,7 @@ namespace Mmorpg.Client.WorldActors
             }
             else
             {
-                presentation = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                presentation = RuntimePrimitives.Create(PrimitiveType.Capsule, primitiveMaterial);
                 presentation.transform.SetParent(transform, false);
                 presentation.transform.localScale = new Vector3(0.65f, 0.22f, 1.15f);
                 presentation.transform.rotation = Quaternion.Euler(0f, 0f, 90f);

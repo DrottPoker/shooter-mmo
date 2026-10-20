@@ -7,6 +7,7 @@ namespace Mmorpg.Client.Gameplay
     // cursor always stays free for click-to-move.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Camera))]
+    [DefaultExecutionOrder(PresentationExecutionOrder.Camera)]
     public sealed class OrbitCameraController : MonoBehaviour
     {
         private const int CollisionHitCapacity = 16;

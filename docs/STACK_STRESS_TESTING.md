@@ -1,6 +1,6 @@
 # Stack Stress Testing
 
-Last updated: 2026-10-18
+Last updated: 2026-10-20
 
 ## Purpose
 
@@ -637,6 +637,69 @@ tick and snapshot broadcast times stayed within run-to-run noise, and the
 maximum working set varied between 170 and 213 MiB across all six runs. Codec
 work is a small share of a tick, so the gain comes mostly from fewer
 allocations.
+
+### Loop Timing, Interest, And Packet Pool, 2026-10-20
+
+These runs used the same machine with the Unity Editor open, seed `1337`, ramp
+steps of 50 or 100 bots five seconds apart, and a 60-second steady interval
+unless noted. Development `3c325da` is the comparison baseline.
+
+| Run | Bots | Tick lag avg / max | Simulation tick avg | Interest avg | Snapshot broadcast avg | Allocated per 10 s | Gen0 / gen1 per 10 s | Input ack p50 / p95 / p99 | Worker average single-core CPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Development `3c325da` | 200 | 9.1 / 29.1 ms | 2.2 ms | 1.6 ms | 2.7 ms | 255 MiB | 18 / 17 | 95.2 / 131.1 / 147.1 ms | 53.4% |
+| All changes | 200 | 0.3 / 1.2 ms | 1.2 ms | 0.3 ms | 1.2 ms | 29 MiB | 1 / 0 | 57.9 / 90.4 / 105.2 ms | 44.1% |
+| Development `3c325da` | 500 | 15.3 / 57.0 ms | 8.0 ms | 8.1 ms | 11.9 ms | 569 MiB | 37 / 34 | 115.9 / 175.4 / 201.7 ms | 97.5% |
+| Worker changes only | 500 | 0.5 / 2.6 ms | 4.5 ms | 2.0 ms | 5.0 ms | 75 MiB | 5 / 0 | 113.1 / 163.8 / 187.2 ms | 89.5% |
+| All changes | 500 | 0.5 / 2.0 ms | 4.3 ms | 1.9 ms | 4.7 ms | 70 MiB | 4 / 0 | 78.6 / 119.7 / 140.3 ms | 87.8% |
+
+Every run joined and left every bot cleanly with zero snapshot gaps and drops.
+The metrics are the interval log of one steady interval; the latencies and CPU
+are the generator's run summary. The worker changes are:
+
+- The realtime loop sleeps with a high-resolution timer on its own thread
+  instead of `Task.Delay`, which waited a whole 15.6 ms Windows timer tick and
+  started ticks up to a full tick late. That tick lag delayed snapshots
+  unevenly: the Unity client saw owner snapshots 67 ms apart at the median but
+  up to 128 ms apart, and remote players ran ahead and fell behind.
+- The loop wakes LiteNetLib's update thread at the end of every iteration, so
+  queued packets leave at once instead of after up to 15 ms.
+- LiteNetLib's packet pool covers one broadcast instead of 1,000 packets: one
+  owner packet per allowed connection plus the remote chunks the aggregate
+  snapshot budget allows. A broadcast queues them all first, so every packet
+  beyond the pool was a new allocation, and gen1 collections almost matched
+  gen0.
+- Each connection's visibility set is refreshed every third snapshot, the
+  connections in turn, and the spatial cells store positions. At 500 bots the
+  interest phase fell from 8.1 to 2.0 ms.
+- The worker steps each character once per input through a short queue instead
+  of once per tick with the newest input, as described in
+  [Service Features](SERVICE_FEATURES.md#server-authoritative-movement). In the
+  Unity client with 200 bots the reconciliation corrections fell from 0.17 m at
+  p95 and 0.50 m at most to none, and remote walking speed, 5 m/s, stopped
+  swinging up to 7.5 m/s.
+- The packet pool size above was first eight packets per connection; the
+  "Worker changes only" row used it.
+
+The bot changes poll every bot every 3 ms with a high-resolution timer and send
+a due input in the same poll, so inputs reach the worker once per tick like a
+Unity client's instead of in bursts. Most of the remaining input
+acknowledgement latency is structural: an input waits for the next tick, and
+its acknowledgement for the next owner snapshot, which goes out every second
+tick.
+
+An intermediate pool of eight packets per connection covered 500 bots but not
+200, whose 2,000 packets per broadcast exceeded its 1,600: gen1 collections still
+matched gen0, and the managed heap grew to 122 MiB before a full collection. A
+heap dump showed 13 MiB of live objects, so that growth was uncollected garbage,
+not a leak. Sizing the pool from the snapshot budget removed it. Single runs on a
+shared machine still vary; one 200-bot run measured an input acknowledgement p99
+of 188 ms.
+
+At 500 bots most of the remaining worker CPU is LiteNetLib's update thread
+sending about 45,000 packets per second. Its experimental `UseNativeSockets`
+option raised the worker to 96% of a core in the same run, so it stays off.
+Fewer and smaller remote records, through quantization or larger chunks, are
+the next lever and need a protocol change.
 
 The 250- and 400-bot results are short runs. A 30 to 60 minute soak is still
 required before declaring a supported production tier.
