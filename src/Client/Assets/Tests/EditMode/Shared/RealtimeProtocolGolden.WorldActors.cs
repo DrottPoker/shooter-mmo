@@ -28,7 +28,9 @@ namespace Mmorpg.SharedTests
                     disposition: RealtimeWorldActorDisposition.Hostile,
                     stateRevision: long.MaxValue,
                     isActive: false,
-                    activityTier: RealtimeWorldActorActivityTier.Active)));
+                    activityTier: RealtimeWorldActorActivityTier.Active,
+                    examineText: "Ylar.",
+                    menuOptions: new RealtimeWorldActorMenuOption[0])));
             r.Vector(
                 "WorldActors/WorldActorState/typical",
                 state,
@@ -369,6 +371,26 @@ namespace Mmorpg.SharedTests
                 "WorldActors/WorldActorSpawn/active byte 2 reads as true",
                 WorldActorSpawnWire(payload: ActorStatePayloadWire(isActive: 2)),
                 WorldActorSpawnWire());
+            r.Rejects("WorldActors/WorldActorSpawn/whitespace examine text", WorldActorSpawnWire(examineText: " "));
+            r.Accepts("WorldActors/WorldActorSpawn/200 character examine text", WorldActorSpawnWire(examineText: Repeat("e", 200)));
+            r.Rejects("WorldActors/WorldActorSpawn/201 character examine text", WorldActorSpawnWire(examineText: Repeat("e", 201)));
+            r.Accepts("WorldActors/WorldActorSpawn/no menu options", WorldActorSpawnWire(menuOptions: new Wire[0]));
+            r.Accepts(
+                "WorldActors/WorldActorSpawn/16 menu options",
+                WorldActorSpawnWire(menuOptions: Enumerable.Range(0, 16).Select(index => MenuOptionWire(capabilityId: "c" + index)).ToArray()));
+            r.Rejects(
+                "WorldActors/WorldActorSpawn/17 menu options",
+                WorldActorSpawnWire(menuOptions: Enumerable.Range(0, 17).Select(index => MenuOptionWire(capabilityId: "c" + index)).ToArray()));
+            r.Rejects(
+                "WorldActors/WorldActorSpawn/duplicate menu option capability",
+                WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(), MenuOptionWire(label: "Chat") }));
+            r.Rejects("WorldActors/WorldActorSpawn/whitespace menu option capability", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(capabilityId: " ") }));
+            r.Rejects("WorldActors/WorldActorSpawn/menu option kind 0", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 0) }));
+            r.Accepts("WorldActors/WorldActorSpawn/gathering menu option", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 10, label: "Mine") }));
+            r.Rejects("WorldActors/WorldActorSpawn/menu option kind 11", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 11) }));
+            r.Rejects("WorldActors/WorldActorSpawn/whitespace menu option label", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(label: "\t") }));
+            r.Accepts("WorldActors/WorldActorSpawn/32 character menu option label", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(label: Repeat("m", 32)) }));
+            r.Rejects("WorldActors/WorldActorSpawn/33 character menu option label", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(label: Repeat("m", 33)) }));
 
             r.Accepts("WorldActors/WorldActorState/baseline", WorldActorStateWire());
             r.Rejects("WorldActors/WorldActorState/entity zero", WorldActorStateWire(entityId: 0));
@@ -939,7 +961,9 @@ namespace Mmorpg.SharedTests
             long stateRevision = 3,
             bool isActive = true,
             float boundsSizeX = 0.8f,
-            RealtimeWorldActorActivityTier activityTier = RealtimeWorldActorActivityTier.EventDriven)
+            RealtimeWorldActorActivityTier activityTier = RealtimeWorldActorActivityTier.EventDriven,
+            string examineText = "Sotig smed.",
+            RealtimeWorldActorMenuOption[] menuOptions = null)
         {
             return new RealtimeWorldActorSpawn(
                 entityId: entityId,
@@ -964,7 +988,13 @@ namespace Mmorpg.SharedTests
                 boundsSizeX: boundsSizeX,
                 boundsSizeY: 2f,
                 boundsSizeZ: 0.75f,
-                activityTier: activityTier);
+                activityTier: activityTier,
+                examineText: examineText,
+                menuOptions: menuOptions ?? new[]
+                {
+                    new RealtimeWorldActorMenuOption("smith.talk", RealtimeWorldActorCapabilityKind.Dialogue, "Talk-to"),
+                    new RealtimeWorldActorMenuOption("smith.trade", RealtimeWorldActorCapabilityKind.Vendor, "Trade")
+                });
         }
 
         private static RealtimeWorldInteractionResult InteractionResultModel(
@@ -1033,9 +1063,16 @@ namespace Mmorpg.SharedTests
             uint? boundsCenterXBits = null,
             float boundsSizeX = 0.8f,
             float boundsSizeY = 2f,
-            uint? boundsSizeZBits = null)
+            uint? boundsSizeZBits = null,
+            WireText examineText = null,
+            Wire[] menuOptions = null)
         {
-            return Wire.Message(RealtimeMessageType.WorldActorSpawn)
+            var options = menuOptions ?? new[]
+            {
+                MenuOptionWire(),
+                MenuOptionWire(capabilityId: "smith.trade", kind: 2, label: "Trade")
+            };
+            var wire = Wire.Message(RealtimeMessageType.WorldActorSpawn)
                 .U64(entityId)
                 .Guid(runtimeActorId ?? G(6))
                 .Text(actorDefinitionId ?? "npc.blacksmith")
@@ -1051,7 +1088,26 @@ namespace Mmorpg.SharedTests
                 .F32(-20.75f)
                 .F32(boundsSizeX)
                 .F32(boundsSizeY)
-                .F32Or(0.75f, boundsSizeZBits);
+                .F32Or(0.75f, boundsSizeZBits)
+                .Text(examineText ?? "Sotig smed.")
+                .U8((byte)options.Length);
+            foreach (var option in options)
+            {
+                wire.Append(option);
+            }
+
+            return wire;
+        }
+
+        private static Wire MenuOptionWire(
+            WireText capabilityId = null,
+            byte kind = 1,
+            WireText label = null)
+        {
+            return Wire.Fragment()
+                .Text(capabilityId ?? "smith.talk")
+                .U8(kind)
+                .Text(label ?? "Talk-to");
         }
 
         private static Wire WorldActorStateWire(ulong entityId = ActorEntityId, Wire payload = null)

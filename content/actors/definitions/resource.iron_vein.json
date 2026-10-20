@@ -1,6 +1,7 @@
 {
     "id": "resource.iron_vein",
     "displayName": "Iron Vein",
+    "examineText": "A seam of iron ore runs through the rock. A pickaxe would free it.",
     "kind": "resource_node",
     "factionId": "world",
     "disposition": "neutral",
@@ -23,6 +24,7 @@
             "id": "resource.mine",
             "kind": "gathering",
             "displayName": "Mine",
+            "menuOption": "Mine",
             "profileId": "resource.iron_vein"
         }
     ],

@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // Click-to-move for the local player. A left click on the ground plans a path around
+    // Click-to-move for the local player. The world menu's Walk here plans a path around
     // obstacles, the prediction starts walking it at once, and the worker follows the same
     // waypoints with authoritative collision. Owner snapshots reconcile the prediction.
     [DisallowMultipleComponent]
@@ -20,7 +20,6 @@ namespace Mmorpg.Client.Gameplay
         [SerializeField] private Transform cameraTarget;
         [SerializeField] private OrbitCameraController playerCamera;
 
-        private readonly WorldClickHandlerList clickHandlers = new WorldClickHandlerList();
         private readonly LocalMovementPresentation movementPresentation =
             new LocalMovementPresentation();
         private readonly CollisionQueryBuffer presentationGroundQuery =
@@ -178,7 +177,6 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            HandlePointerInput();
             navigator.Update(movementPrediction.State);
             UpdateNetworkMovement();
         }
@@ -244,17 +242,6 @@ namespace Mmorpg.Client.Gameplay
             pointerFocus = focus;
         }
 
-        // Handlers see a click in WorldClickOrder, whichever registered first.
-        public void AddClickHandler(IWorldClickHandler handler, int order)
-        {
-            clickHandlers.Add(handler, order);
-        }
-
-        public void RemoveClickHandler(IWorldClickHandler handler)
-        {
-            clickHandlers.Remove(handler);
-        }
-
         // Walks to the destination, or as close to it as the World allows. Planning runs in
         // the background, so this returns the intent id that LatestNavigationResult reports on.
         public int MoveTo(Vector3 destination)
@@ -305,21 +292,15 @@ namespace Mmorpg.Client.Gameplay
             DisableServerAuthoritativeMovement();
         }
 
-        private void HandlePointerInput()
+        // Where a ray meets walkable ground. The raycast uses the same baked collision as the
+        // planner and the worker, so world actors and their trigger bounds never stop it.
+        public bool TryFindGroundPoint(Ray ray, out Vector3 point)
         {
-            if (!playerInput.SelectPressedThisFrame || !TryGetPointerRay(out var ray))
-            {
-                return;
-            }
-
-            if (clickHandlers.TryHandle(ray))
-            {
-                return;
-            }
-
-            // The click raycast uses the same baked collision as the planner and the worker.
-            if (CollisionRaycast.TryRaycast(
-                    realtimeClient.MovementSession.CollisionWorld,
+            point = default(Vector3);
+            var movementSession = realtimeClient != null ? realtimeClient.MovementSession : null;
+            if (movementSession == null
+                || !CollisionRaycast.TryRaycast(
+                    movementSession.CollisionWorld,
                     new SimulationVector3(ray.origin.x, ray.origin.y, ray.origin.z),
                     new SimulationVector3(ray.direction.x, ray.direction.y, ray.direction.z),
                     MaximumClickDistance,
@@ -327,8 +308,11 @@ namespace Mmorpg.Client.Gameplay
                     clickQuery,
                     out var hit))
             {
-                MoveTo(new Vector3(hit.Point.X, hit.Point.Y, hit.Point.Z));
+                return false;
             }
+
+            point = new Vector3(hit.Point.X, hit.Point.Y, hit.Point.Z);
+            return true;
         }
 
         private int Navigate(Vector3 destination, float range)

@@ -45,8 +45,8 @@ layers from the bottom up:
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
-| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, ordered world click handlers, prediction, remote player and Mob interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
-| `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
+| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
+| `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, the world menu and its providers, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
 | `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
 | `Mmorpg.Client.Ui` | Every panel including the combat HUD, drag and drop, `ClientOperationState` | Every row above it |
 | `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | Every row above it |
@@ -131,10 +131,14 @@ Realtime movement
 
 World pointer input
   +-- WorldPointerFocus, owned by ClientBootstrap
-  +-- WorldClickHandlerList in LocalPlayerController, sorted by WorldClickOrder
-      +-- CombatTargetingController (Combat, first)
-      +-- WorldInteractionTargetingController (WorldInteraction)
-  +-- WorldPointerPicker, one per handler, the same picking rules
+  +-- WorldMenuController, providers sorted by WorldMenuOrder
+      +-- WorldPointerPicker, every target under the pointer, nearest first
+      +-- CombatTargetingController (Combat, first: Attack)
+      +-- WorldInteractionTargetingController (WorldInteraction: capabilities, Loot)
+      +-- itself (WalkAndExamine: Walk here, Examine)
+  +-- TemporaryWorldContextMenu (replaceable runtime uGUI)
+  +-- GameMessageLog, owned by ClientBootstrap
+      +-- TemporaryGameMessagePanel (replaceable runtime uGUI)
   +-- MovementDestinationMarker
 
 Combat (World scene, created at runtime by ClientBootstrap)
@@ -530,9 +534,10 @@ separate from that presentation hierarchy and is destroyed with the active
 World scene.
 
 `LocalPlayerInput` reads the `PlayerInput` instance owned by the LocalPlayer
-prefab. The referenced Input Actions asset defines the select click, pointer
-position, middle-button camera orbit and its mouse delta, arrow-key camera
-rotation, scroll zoom, cancel, inventory, and debug panel bindings. This keeps
+prefab. The referenced Input Actions asset defines the left select click, the
+right context menu click, pointer position, middle-button camera orbit and its
+mouse delta, arrow-key camera rotation, scroll zoom, cancel, inventory, and
+debug panel bindings. This keeps
 device bindings out of gameplay and UI code and allows future rebinding and
 control-scheme work without changing those systems. The cursor is never locked.
 
@@ -563,14 +568,11 @@ this extra blend. Presentation never feeds back into prediction, reconciliation,
 input packets, or SimulationWorker state.
 
 `LocalPlayerController` moves the player only in an authenticated World-scene
-session; the prefab has no offline movement mode. A left click goes through the
-registered `IWorldClickHandler` instances first. `WorldClickHandlerList` sorts
-them by their `WorldClickOrder`, so the order never depends on which feature
-registered first: combat sees every click before world interaction. A click on
-a Mob or an attackable player therefore belongs to combat, and a click on an
-NPC, a resource node, or a corpse belongs to world interaction. Otherwise a ray
-through the pointer is cast against the same baked collision world that
-prediction uses, and the hit point becomes the destination.
+session; the prefab has no offline movement mode. It reads no clicks itself:
+the [World Menu](#world-menu) does, and its Walk here casts the pointer ray
+through `TryFindGroundPoint` against the same baked collision world that
+prediction uses, so world actors and their trigger bounds never stop it, and
+the hit point becomes the destination.
 `LocalPlayerNavigator` plans the route with the shared `MovementPathPlanner` on
 a background thread. The collision world is lock-protected, and only one plan
 runs at a time, so a long search never stalls a frame while chunk streaming
@@ -892,8 +894,8 @@ refresh.
 nearby presence entry and updates it from server position and presentation key.
 It uses a shared renderer property block on the runtime primitive material and
 never creates per-frame materials.
-A click on a corpse walks the player into range and opens it through the shared
-pointer targeting described below.
+Loot in a corpse's world menu, also its left-click option, walks the player
+into range and opens it through the shared [World Menu](#world-menu).
 No authored scene or prefab object is required for the temporary presentation.
 
 The Context module switches to Corpse when an open snapshot arrives. It renders
@@ -1109,8 +1111,11 @@ The client keeps permanent state below replaceable presentation:
 - `WorldInteractionClientController` owns correlated operations, the active
   authoritative interaction session, capability summaries, server closure, and
   uncertain-state cleanup.
-- `WorldInteractionTargetingController` owns advisory pointer targeting
-  against registered NPC, resource node, corpse, and future world-object views.
+- `WorldMenuController` owns the right-click world menu and the left-click
+  default option, described in [World Menu](#world-menu).
+- `WorldInteractionTargetingController` offers the menu options of registered
+  NPC, resource node, corpse, and future world-object views, approaches a
+  chosen target, and opens it.
 - `GatheringClientState`, owned by `WorldInteractionClientController`, mirrors
   the worker's gathering state for the one node the player gathers from, as
   described in [Gathering](#gathering).
@@ -1145,8 +1150,9 @@ The client keeps permanent state below replaceable presentation:
   permanent controller and capability contracts. It grows with its content,
   labels Character Bank and Recovery Storage capabilities as `Open ...` because
   they open the inventory, shows a vendor capability such as `Trade` by its
-  name, draws the gathering progress described below, and shares its colors and
-  buttons with the inventory panel through `TemporaryUiKit`.
+  name, says `Walking to <name>...` while the player approaches a target, draws
+  the gathering progress described below, and shares its colors and buttons
+  with the inventory panel through `TemporaryUiKit`.
 
 The persistent realtime client decodes the actor, interaction, and gathering
 messages through the shared GameProtocol source and keeps the explicit mismatch
@@ -1165,26 +1171,81 @@ and durable player or boss corpses. The same client view, pointer target,
 operation journal, canonical three-section snapshot, committed delta, inventory
 refresh, and reconnect cleanup paths remain authoritative.
 
-The pointer selects targets through `WorldPointerPicker`, which combat uses as
-well: a direct ray through the cursor first, then a `0.15` metre spherecast
-tolerance, among registered targets and remote players within `100` metres of
-the camera that no solid collider hides. The nearest candidate decides, so a
-click never reaches past an NPC to a Mob behind it or the other way around. A
-Mob is no interaction target: `OffersInteraction` accepts corpses, NPCs, and
-resource nodes by the authoritative actor kind, so hovering a Mob shows no
-interaction prompt and a click on it belongs to combat. The targeting
-controller is an `IWorldClickHandler` of the local player at
-`WorldClickOrder.WorldInteraction`, so a left click on a target never becomes a
-walk to the ground behind it. The click instead approaches the target:
-the player walks until it is within `2.75` metres, inside the worker's start
-range, and the controller sends the open intent once the authoritative owner
-position is that close. A newer click or stop cancels the approach. A target
-without a route gives up at once with a message, and an approach that ends out
-of range gives up after 1.5 seconds. Clicking another
-target first closes the active interaction, and the cancel action, Escape,
-closes it. The result only chooses an intent. SimulationWorker independently owns
-the `3.0` metre start range, `3.5` metre maintain range, closest-point bounds
-distance, line of sight, target revision, capability, and session validation.
+### World Menu
+
+Every world click goes through `WorldMenuController`, a runtime scene component
+that `ClientBootstrap` creates and passes to its providers. Each frame in which
+the pointer is over the world it builds the menu for the pointer ray:
+
+- `WorldPointerPicker.PickAll` lists every registered target and remote player
+  under the cursor within `100` metres of the camera that no solid collider
+  hides, nearest first and each once: a direct ray through the cursor first,
+  then a `0.15` metre spherecast tolerance when the ray found nothing active.
+- Each `IWorldMenuProvider` adds `WorldMenuOption` values in `WorldMenuOrder`,
+  whichever registered first: `CombatTargetingController` (Combat, first),
+  `WorldInteractionTargetingController` (WorldInteraction), and the controller
+  itself (WalkAndExamine). A provider may block the whole menu, as combat does
+  while the character is dead.
+- `WorldMenuBuilder.Finish` sorts the options stably: the target options by
+  target, nearest first, then Walk here, then Examine for each target, so
+  provider order decides between options of the same target.
+
+A left click runs the top option at once, and a right click copies the options
+into the open menu at the pointer. While the menu is open the controller takes
+no world action: a press in the world, Escape, or the pointer leaving the menu
+closes it, and a press over interface may choose a row. The controller runs
+before the features, at execution order -50, so combat, world interaction, and
+the inventory panel ignore an Escape whose frame reports
+`CancelConsumedThisFrame`, the Escape that closed the menu. `RunDefault` and
+`OpenMenu` run a left or right click for a given ray, for tools and harnesses. Options are plain values
+with their provider, an action code, the pointer candidate, an entity id, an
+argument such as a capability id, and the ray, so building the menu every frame
+allocates nothing. A provider runs its own option and checks that the target
+still exists, because an open menu can outlive its target. After an option runs
+the controller raises `OptionExecuted`; combat clears its target on every
+option except its own and Examine.
+
+- Walk here casts the stored ray at the ground through
+  `LocalPlayerController.TryFindGroundPoint` and walks there.
+- Examine posts the actor's `ExamineText` from its spawn, or "The remains of
+  <name>." for a corpse, to the `GameMessageLog` that `ClientBootstrap` owns.
+- `WorldInteractionTargetingController` adds one option per
+  `WorldActorClientEntry.MenuOptions` entry of an NPC or resource node, in the
+  authored order the spawn carries, and Loot for a corpse. A Mob is no
+  interaction target: `OffersInteraction` accepts corpses, NPCs, and resource
+  nodes by the authoritative actor kind. Choosing an option approaches the
+  target: the player walks to `2.5` metres, and the controller sends the open
+  intent with the chosen capability id once the authoritative owner position is
+  within `2.75` metres, inside the worker's start range. The walk aims closer
+  than the open check because a route ends within its range plus the waypoint
+  arrival tolerance. When the
+  interaction opens, `WorldInteractionClientController.ActivateCapability`
+  starts that capability as its panel button would: gathering starts after the
+  advisory tool check, dialogue, insurance, and quest offers only open, and every
+  other kind executes. A rejected open drops the follow-up. When the target's
+  interaction is already open, the capability starts without a walk. A newer
+  option or stop cancels the approach. A target without a route gives up at once,
+  and an approach that ends out of range gives up after 1.5 seconds, both with a
+  game message. Choosing another target first closes the active interaction, and
+  the cancel action, Escape, closes it.
+- `CombatTargetingController` adds Attack for a target that
+  `CombatClickRules.CanAttack` accepts, described in
+  [Combat Targeting And Approach](#combat-targeting-and-approach).
+
+`TemporaryWorldContextMenu` is the replaceable uGUI over the controller. It shows
+the left-click option and the number of other options next to the pointer,
+except over bare ground, and the open menu as a `Choose Option` header, one row
+per option, and `Cancel`. Its canvas sorts above every panel and below the death
+overlay. Target names are colored by `WorldMenuTargetStyle`: NPCs and Mobs
+yellow, objects cyan, corpses orange, and players white. It closes the menu when
+the pointer moves 24 reference pixels outside it. `TemporaryGameMessagePanel`
+shows the newest five game messages in the bottom left corner without taking
+raycasts and fades each out after 12 seconds.
+
+The menu only chooses an intent. SimulationWorker independently owns the `3.0`
+metre start range, `3.5` metre maintain range, closest-point bounds distance,
+line of sight, target revision, capability availability, and session
+validation.
 
 Actor prefabs are presentation-only. There is no authoritative
 `VendorMonoBehaviour`, `QuestGiverMonoBehaviour`, crafting component, insurance
@@ -1301,12 +1362,12 @@ frame, arrows, and the approach follow a moving Mob.
 
 ### Gathering
 
-A click on a resource node walks the player into range and opens it like any
-other target. When the open interaction belongs to a resource node,
-`WorldInteractionClientController` starts gathering at once through its
-gathering capability. It first checks that an item with a tool kind is equipped
-in the Tool slot; otherwise the panel says to equip a gathering tool. The check
-is advisory and passes while the inventory is still loading, because GameService
+Mine, a resource node's first and left-click option, walks the player into
+range and opens it like any other target, and `WorldInteractionClientController`
+then starts gathering through the chosen gathering capability. It first checks
+that an item with a tool kind is equipped in the Tool slot; otherwise the panel
+says to equip a gathering tool. Mine again while that node already gathers does
+nothing. The check is advisory and passes while the inventory is still loading, because GameService
 checks the required tool kind on every yield.
 
 `GatheringClientState` applies the worker's `GatheringState` messages. `Started`
@@ -1382,22 +1443,22 @@ like any small correction.
 
 ### Combat Targeting And Approach
 
-`CombatTargetingController` is the permanent click handler of combat, created
-by the bootstrap in every World scene and registered with the local player at
-`WorldClickOrder.Combat`, before world interaction. Its decisions live in pure
-classes that EditMode tests cover:
+`CombatTargetingController` is the permanent world menu provider of combat,
+created by the bootstrap in every World scene and registered with the
+[World Menu](#world-menu) at `WorldMenuOrder.Combat`, before world interaction.
+Its decisions live in pure classes that EditMode tests cover:
 
-- `CombatClickRules.Describe` turns the nearest `WorldPointerPicker` candidate
-  into a Mob, a player, another target, or nothing, by the authoritative actor
-  kind. `Classify` then decides: while the owner state says dead, every world
-  click is ignored, so it neither walks, attacks, nor interacts. A living Mob
-  is attacked. A Mob that cannot be attacked now, such as one walking home,
-  takes the click without action. A living player is attacked only when the
-  joined Shard's `ShardRules.PlayerVersusPlayer` allows it; otherwise the click
-  passes on and walks. A player without combat state, such as a development
-  bot, is never a target. Every click that combat passes on, a ground click, an
-  NPC, a resource node, or a corpse, sends `ClearTarget` when there is a
-  target, and so does Escape.
+- `CombatClickRules.Describe` turns each `WorldPointerPicker` candidate into a
+  Mob, a player, another target, or nothing, by the authoritative actor kind.
+  While the owner state says dead, combat blocks the whole menu, so a click
+  neither walks, attacks, nor interacts. Otherwise `CanAttack` decides which
+  targets offer `Attack`: a living Mob, and a living player only when the
+  joined Shard's `ShardRules.PlayerVersusPlayer` allows it. A Mob that cannot
+  be attacked now, such as one walking home, offers no Attack, so a left click
+  on it walks there. A player without combat state, such as a development bot,
+  is never a target. Choosing Attack checks again that the character lives.
+  Every other option except Examine, such as Walk here, Talk-to, or Mine, sends
+  `ClearTarget` when there is a target, and so does Escape.
 - `CombatTargetSelection` names the target the client acts on. The worker owns
   the target, so it is the owner state's target, except while a request is on
   its way, when it is the requested target. A confirmed request keeps its target
@@ -1421,7 +1482,7 @@ classes that EditMode tests cover:
   reports `LineOfSightBlocked`. It never walks while the worker reports
   `Attacking`, and it starts at most one approach per second by itself. Losing
   the target stops only the planner's own approach, never a walk that a newer
-  click started.
+  option started.
 
 On `Died` the controller drops its requests and stops the navigator, and on
 `Respawned` it stops it again, so a path planned before the death never runs
@@ -1536,13 +1597,20 @@ id and kind, the pending intent bound, reconnect cleanup, the respawn signal,
 the death signal once per death, event forwarding, and that every combat
 message, and every other reliable worker message outside the session
 lifecycle, is ignored while leaving.
-`CombatTargetingTests` verify that combat sees every click before world
-interaction whatever registered first, that a dead character ignores every
-click, the Mob and player classification and the player versus player rule,
-that world interaction no longer accepts Mobs, the nearest-candidate rule, the
-remote player trigger, target selection with confirmed, rejected, cleared, and
-stale requests, and the approach distance, re-approach, line-of-sight, retry,
-and stop rules. `CombatPresentationTests` verify the weapon range from the
+`WorldMenuTests` verify the menu order of target options, Walk here, and
+Examine, a blocked menu, the capability options of NPCs and resource nodes in
+authored order and Loot for corpses, Walk here and Examine with their game
+messages, the activation of each capability kind, the game message log, the
+colored labels, and the message fade. `WorldActorClientFoundationTests` also
+verify that a spawn keeps its examine text and menu options and that a changed
+list conflicts without a despawn.
+`CombatTargetingTests` verify that combat adds its menu options before world
+interaction whatever registered first, that a dead character attacks nothing,
+the Mob and player Attack rule and the player versus player rule, that world
+interaction no longer accepts Mobs, the nearest-first and once-per-target
+candidate list, the remote player trigger, target selection with confirmed,
+rejected, cleared, and stale requests, and the approach distance, re-approach,
+line-of-sight, retry, and stop rules. `CombatPresentationTests` verify the weapon range from the
 main hand item, the live arrow count and its slot label, the server clock with
 tick wrap, the respawn countdown, a distinct label for every attack status,
 health bar visibility, and projectile timing. A PlayMode test draws the
@@ -1598,9 +1666,11 @@ bootstrap, realtime, inventory, corpse, actor, interaction, combat, targeting,
 and presentation controllers plus the runtime login panel. World-scene coverage
 loads `DevelopmentWorld1` through Addressables, opens and closes the runtime uGUI
 inventory root, and finds the runtime corpse and actor presentation controllers,
-the combat targeting controller without a target, the projectile presentation,
-and the combat HUD, which shows nothing without a joined session and has no
-raycast target.
+the combat targeting controller without a target, the world menu without an
+open menu or hover options, the context menu and game message panels with
+nothing visible, the projectile presentation, and the combat HUD, which shows
+nothing without a joined session and has no raycast target. Every panel canvas,
+the context menu's included, sorts below the death overlay.
 An inventory panel test applies a committed snapshot without a GameService and
 checks that the complete view draws one slot per catalog equipment slot, the
 blocked slot of a two-handed item, one shared slot size in every module, the
@@ -1644,18 +1714,18 @@ Manual flows and expected results are documented in
   `RemoteMovementPresenter`, so players and Mobs share one render clock, delay,
   and grounded presentation.
 - Plan routes only through `LocalPlayerNavigator` and the shared planner, and
-  route world clicks through `IWorldClickHandler` and `WorldPointerFocus` instead
-  of reading the mouse in feature code.
-- Register a world click handler with a `WorldClickOrder` value and never rely
-  on registration order. Pick pointer targets through `WorldPointerPicker`, so
-  the nearest target decides for every feature.
+  offer world actions as `IWorldMenuProvider` options of `WorldMenuController`
+  instead of reading the mouse in feature code.
+- Register a world menu provider with a `WorldMenuOrder` value and never rely
+  on registration order. Read pointer targets from the menu builder, which
+  picks them once through `WorldPointerPicker` for every feature.
 - Keep persistent cross-scene session state in `ClientSession` and
   item and corpse state in their bootstrap-owned controllers, not scene panels.
 - Keep planned actor and world-interaction state in bootstrap-owned controllers,
   not actor prefabs or the temporary interaction panel.
 - Keep combat state in `CombatClientController`. Presentation reads its state
   and never decides range, damage, or death.
-- Keep combat decisions, such as click classification, target selection, and
+- Keep combat decisions, such as the Attack rule, target selection, and
   the approach, in the pure classes of `Mmorpg.Client.Combat`, and keep its
   MonoBehaviours thin. Find combatant presentations through
   `CombatantViewLocator` instead of searching the scene.

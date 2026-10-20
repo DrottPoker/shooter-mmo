@@ -46,6 +46,7 @@ namespace Mmorpg.Client.Ui
         private CorpseClientController corpseController;
         private WorldInteractionClientController worldInteractionController;
         private CombatClientController combatController;
+        private WorldMenuController worldMenu;
         private LocalPlayerInput localPlayerInput;
         private GameObject canvasObject;
         private GameObject rootObject;
@@ -108,12 +109,14 @@ namespace Mmorpg.Client.Ui
             InventoryClientController inventory,
             CorpseClientController corpses,
             WorldInteractionClientController worldInteraction,
-            CombatClientController combat)
+            CombatClientController combat,
+            WorldMenuController menu)
         {
             controller = inventory;
             corpseController = corpses;
             worldInteractionController = worldInteraction;
             combatController = combat;
+            worldMenu = menu;
         }
 
         private void Start()
@@ -165,9 +168,12 @@ namespace Mmorpg.Client.Ui
                 {
                     ToggleMode(InventoryPanelMode.Complete);
                 }
-                else if (isOpen && localPlayerInput.CancelPressedThisFrame)
+                else if (isOpen
+                    && localPlayerInput.CancelPressedThisFrame
+                    && (worldMenu == null || !worldMenu.CancelConsumedThisFrame))
                 {
-                    // The targeting controller closes the interaction on Cancel.
+                    // The targeting controller closes the interaction on Cancel. An Escape
+                    // that only closed the world menu leaves the panel open.
                     Hide(false);
                 }
             }

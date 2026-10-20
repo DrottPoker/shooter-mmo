@@ -1,6 +1,7 @@
 {
     "id": "mob.feral_wolf",
     "displayName": "Feral Wolf",
+    "examineText": "A lean, hungry wolf. It eyes you like a meal.",
     "kind": "mob",
     "factionId": "wild",
     "disposition": "hostile",

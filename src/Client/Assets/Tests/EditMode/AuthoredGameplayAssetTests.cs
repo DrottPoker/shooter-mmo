@@ -44,6 +44,7 @@ namespace Mmorpg.Client.Tests.EditMode
             foreach (var actionName in new[]
             {
                 "Select",
+                "ContextMenu",
                 "PointerPosition",
                 "CameraOrbit",
                 "CameraOrbitDelta",
@@ -71,6 +72,8 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(actions.FindAction("Select").bindings.Select(binding => binding.path),
                 Does.Contain("<Mouse>/leftButton"));
+            Assert.That(actions.FindAction("ContextMenu").bindings.Select(binding => binding.path),
+                Does.Contain("<Mouse>/rightButton"));
             Assert.That(actions.FindAction("PointerPosition").bindings.Select(binding => binding.path),
                 Does.Contain("<Pointer>/position"));
             Assert.That(actions.FindAction("CameraOrbit").bindings.Select(binding => binding.path),

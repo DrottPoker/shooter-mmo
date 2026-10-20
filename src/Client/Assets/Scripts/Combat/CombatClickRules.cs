@@ -30,19 +30,7 @@ namespace Mmorpg.Client.Combat
         public ulong EntityId { get; }
     }
 
-    public enum CombatClickAction
-    {
-        // The click goes on to world interaction or becomes a walk, and ends the attack.
-        Pass,
-
-        // The click ends here without any action, such as every click while dead.
-        Ignore,
-
-        // The click selects the target and attacks it.
-        Attack
-    }
-
-    // Decides what a world click means for combat. The worker validates every attack again;
+    // Decides what combat offers in the world menu. The worker validates every attack again;
     // these rules only choose the intent and keep a dead character from acting.
     public static class CombatClickRules
     {
@@ -51,8 +39,8 @@ namespace Mmorpg.Client.Combat
             return owner != null && owner.LifeState == RealtimeCombatLifeState.Dead;
         }
 
-        // The nearest candidate decides, so a click never reaches past an NPC to a Mob
-        // behind it. A Mob is only ever an attack target, never an interaction.
+        // What a pointer candidate is to combat. A Mob is only ever an attack target, never an
+        // interaction.
         public static CombatClickTarget Describe(
             WorldPointerCandidate candidate,
             WorldActorClientState actors)
@@ -83,11 +71,11 @@ namespace Mmorpg.Client.Combat
             return new CombatClickTarget(CombatClickTargetKind.Other, 0);
         }
 
-        // A dead character ignores every click. A living Mob is attacked, and so is a living
-        // player when the Shard allows player versus player. A Mob that cannot be attacked
-        // now, such as one walking home, takes the click without action; a player that
-        // cannot be attacked lets it pass, so the click walks.
-        public static CombatClickAction Classify(
+        // Whether the menu offers Attack: on a living Mob, and on a living player when the
+        // Shard allows player versus player, never while the character is dead. A Mob that
+        // cannot be attacked now, such as one walking home, offers no Attack, so a left click
+        // on it walks there instead.
+        public static bool CanAttack(
             CombatClickTarget target,
             RealtimeOwnerCombatState owner,
             bool playerVersusPlayer,
@@ -95,7 +83,7 @@ namespace Mmorpg.Client.Combat
         {
             if (IsDead(owner))
             {
-                return CombatClickAction.Ignore;
+                return false;
             }
 
             var alive = targetState != null
@@ -104,13 +92,11 @@ namespace Mmorpg.Client.Combat
             switch (target.Kind)
             {
                 case CombatClickTargetKind.Mob:
-                    return alive ? CombatClickAction.Attack : CombatClickAction.Ignore;
+                    return alive;
                 case CombatClickTargetKind.Player:
-                    return alive && playerVersusPlayer
-                        ? CombatClickAction.Attack
-                        : CombatClickAction.Pass;
+                    return alive && playerVersusPlayer;
                 default:
-                    return CombatClickAction.Pass;
+                    return false;
             }
         }
     }

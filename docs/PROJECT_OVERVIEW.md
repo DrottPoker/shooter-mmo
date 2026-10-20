@@ -179,7 +179,10 @@ The repository currently supports:
   SimulationWorker follows the same waypoints with authoritative collision. An
   orbit camera turns with the middle mouse button or arrow keys and zooms from 3
   to 30 meters.
-- Deterministic NPC, Mob, and resource node definitions, factions, presentation
+- A RuneScape-style world menu: a right click lists every option for every
+  target under the cursor, such as Attack, Trade, Mine, Loot, Walk here, and
+  Examine, and a left click runs the top option. NPC services and examine texts
+  come from actor content through the actor spawn.- Deterministic NPC, Mob, and resource node definitions, factions, presentation
   references, activity, respawn, and resource profiles, spawn points, groups,
   areas, and patrol paths with one shared command-line and Unity Editor compiler
   path.
@@ -232,7 +235,8 @@ serves every world actor:
   instead of receiving one PostgreSQL row per instance.
 - NPCs are event-driven. Mobs use centrally scheduled dormant and active tiers
   without per-actor asynchronous loops.
-- Players click an actor and walk into range before the client asks to open it.
+- Players choose an actor's option in the world menu and walk into range before
+  the client asks to open it.
   SimulationWorker validates exact session, target, Shard, revision, range, line of sight, active
   state, and capability before opening one interaction session.
 - One player may hold one active interaction, including a corpse view, while

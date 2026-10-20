@@ -1,6 +1,6 @@
 # Combat And Mob Slice Plan
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 Status: Implemented. The product owner accepted every recommendation on
 2026-10-18, including C1. All six steps of the
@@ -71,8 +71,9 @@ Out of scope, each waiting for its own slice:
   level of 1 arrive here, as decided in C11.
 - Gameplay rule areas and the presence lifecycle, including the five-minute
   body after a disconnect in the Open Risk area. See C17.
-- The right-click context menu, Examine, final combat art, animations, and the
-  final HUD.
+- The right-click context menu and Examine, since implemented as the world
+  menu in [Game Features](GAME_FEATURES.md#world-menu), final combat art,
+  animations, and the final HUD.
 
 ## Product Decisions
 

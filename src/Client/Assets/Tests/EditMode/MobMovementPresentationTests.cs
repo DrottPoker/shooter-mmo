@@ -331,7 +331,11 @@ namespace Mmorpg.Client.Tests.EditMode
                 0f,
                 0.8f,
                 1f,
-                1.4f);
+                1.4f,
+                mob ? "A lean, hungry wolf." : "She keeps the city's stores.",
+                mob
+                    ? new RealtimeWorldActorMenuOption[0]
+                    : new[] { new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue, "Talk-to") });
         }
 
         // Plays a Mob that started walking along +x at tick 100 at 60 frames per second, with

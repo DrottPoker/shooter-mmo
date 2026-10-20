@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
-    // Combat click priority and classification, the PvP rule, dead-state click blocking,
+    // Combat menu order and Attack rules, the PvP rule, dead-state blocking, pointer candidates,
     // target selection, and the approach to weapon range.
     public sealed class CombatTargetingTests
     {
@@ -19,41 +19,39 @@ namespace Mmorpg.Client.Tests.EditMode
         private const ulong PlayerId = 21;
 
         [Test]
-        public void CombatSeesEveryClickBeforeWorldInteractionWhateverRegisteredFirst()
+        public void CombatAddsMenuOptionsBeforeWorldInteractionWhateverRegisteredFirst()
         {
             var calls = new List<string>();
-            var handlers = new WorldClickHandlerList();
-            var interaction = new RecordingHandler("interaction", calls, false);
-            var combat = new RecordingHandler("combat", calls, false);
-            var otherInteraction = new RecordingHandler("other", calls, false);
+            var menuObject = new GameObject("WorldMenu");
+            try
+            {
+                var menu = menuObject.AddComponent<WorldMenuController>();
+                var interaction = new RecordingProvider("interaction", calls);
+                var combat = new RecordingProvider("combat", calls);
+                var other = new RecordingProvider("other", calls);
+                menu.AddProvider(interaction, WorldMenuOrder.WorldInteraction);
+                menu.AddProvider(combat, WorldMenuOrder.Combat);
+                menu.AddProvider(other, WorldMenuOrder.WorldInteraction);
+                var builder = new WorldMenuBuilder();
 
-            handlers.Add(interaction, WorldClickOrder.WorldInteraction);
-            handlers.Add(combat, WorldClickOrder.Combat);
-            handlers.Add(otherInteraction, WorldClickOrder.WorldInteraction);
+                menu.BuildMenu(new Ray(new Vector3(0f, 1000f, 0f), Vector3.up), builder);
+                Assert.That(calls, Is.EqualTo(new[] { "combat", "interaction", "other" }));
 
-            Assert.That(handlers.TryHandle(default(Ray)), Is.False);
-            Assert.That(calls, Is.EqualTo(new[] { "combat", "interaction", "other" }));
-
-            // The first handler that takes the click ends it.
-            calls.Clear();
-            combat.Handles = true;
-            Assert.That(handlers.TryHandle(default(Ray)), Is.True);
-            Assert.That(calls, Is.EqualTo(new[] { "combat" }));
-
-            // Adding a handler again moves it, and a removed handler sees nothing.
-            handlers.Add(combat, WorldClickOrder.WorldInteraction + 1);
-            Assert.That(handlers.Count, Is.EqualTo(3));
-            Assert.That(handlers.HandlerAt(2), Is.SameAs(combat));
-            Assert.That(handlers.Remove(interaction), Is.True);
-            Assert.That(handlers.Remove(interaction), Is.False);
-            calls.Clear();
-            combat.Handles = false;
-            handlers.TryHandle(default(Ray));
-            Assert.That(calls, Is.EqualTo(new[] { "other", "combat" }));
+                // Adding a provider again moves it, and a removed provider sees nothing.
+                calls.Clear();
+                menu.AddProvider(combat, WorldMenuOrder.WorldInteraction + 1);
+                menu.RemoveProvider(interaction);
+                menu.BuildMenu(new Ray(new Vector3(0f, 1000f, 0f), Vector3.up), builder);
+                Assert.That(calls, Is.EqualTo(new[] { "other", "combat" }));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(menuObject);
+            }
         }
 
         [Test]
-        public void DeadCharacterIgnoresEveryClick()
+        public void DeadCharacterAttacksNothing()
         {
             var dead = Owner(2, RealtimeCombatLifeState.Dead);
             var targets = new[]
@@ -67,8 +65,8 @@ namespace Mmorpg.Client.Tests.EditMode
             foreach (var target in targets)
             {
                 Assert.That(
-                    CombatClickRules.Classify(target, dead, true, Combatant(target.EntityId)),
-                    Is.EqualTo(CombatClickAction.Ignore),
+                    CombatClickRules.CanAttack(target, dead, true, Combatant(target.EntityId)),
+                    Is.False,
                     target.Kind.ToString());
             }
 
@@ -78,66 +76,52 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void LivingMobIsAttackedAndAMobThatCannotBeAttackedTakesTheClick()
+        public void OnlyALivingMobOffersAttack()
         {
             var owner = Owner(1, RealtimeCombatLifeState.Alive);
             var mob = new CombatClickTarget(CombatClickTargetKind.Mob, MobId);
 
+            Assert.That(CombatClickRules.CanAttack(mob, owner, false, Combatant(MobId)), Is.True);
+            Assert.That(CombatClickRules.CanAttack(mob, null, false, Combatant(MobId)), Is.True);
             Assert.That(
-                CombatClickRules.Classify(mob, owner, false, Combatant(MobId)),
-                Is.EqualTo(CombatClickAction.Attack));
+                CombatClickRules.CanAttack(mob, owner, false, Combatant(MobId, RealtimeCombatLifeState.Evading)),
+                Is.False);
             Assert.That(
-                CombatClickRules.Classify(mob, null, false, Combatant(MobId)),
-                Is.EqualTo(CombatClickAction.Attack));
-            Assert.That(
-                CombatClickRules.Classify(mob, owner, false, Combatant(MobId, RealtimeCombatLifeState.Evading)),
-                Is.EqualTo(CombatClickAction.Ignore));
-            Assert.That(
-                CombatClickRules.Classify(mob, owner, false, Combatant(MobId, RealtimeCombatLifeState.Dead)),
-                Is.EqualTo(CombatClickAction.Ignore));
-            Assert.That(
-                CombatClickRules.Classify(mob, owner, false, null),
-                Is.EqualTo(CombatClickAction.Ignore));
+                CombatClickRules.CanAttack(mob, owner, false, Combatant(MobId, RealtimeCombatLifeState.Dead)),
+                Is.False);
+            Assert.That(CombatClickRules.CanAttack(mob, owner, false, null), Is.False);
 
             // The state of another combatant says nothing about this one.
-            Assert.That(
-                CombatClickRules.Classify(mob, owner, false, Combatant(MobId + 1)),
-                Is.EqualTo(CombatClickAction.Ignore));
+            Assert.That(CombatClickRules.CanAttack(mob, owner, false, Combatant(MobId + 1)), Is.False);
         }
 
         [Test]
-        public void PlayerIsAttackedOnlyWhenTheShardAllowsPlayerVersusPlayer()
+        public void PlayerOffersAttackOnlyWhenTheShardAllowsPlayerVersusPlayer()
         {
             var owner = Owner(1, RealtimeCombatLifeState.Alive);
             var player = new CombatClickTarget(CombatClickTargetKind.Player, PlayerId);
 
+            Assert.That(CombatClickRules.CanAttack(player, owner, true, Combatant(PlayerId)), Is.True);
+            Assert.That(CombatClickRules.CanAttack(player, owner, false, Combatant(PlayerId)), Is.False);
             Assert.That(
-                CombatClickRules.Classify(player, owner, true, Combatant(PlayerId)),
-                Is.EqualTo(CombatClickAction.Attack));
-            Assert.That(
-                CombatClickRules.Classify(player, owner, false, Combatant(PlayerId)),
-                Is.EqualTo(CombatClickAction.Pass));
-            Assert.That(
-                CombatClickRules.Classify(player, owner, true, Combatant(PlayerId, RealtimeCombatLifeState.Dead)),
-                Is.EqualTo(CombatClickAction.Pass));
+                CombatClickRules.CanAttack(player, owner, true, Combatant(PlayerId, RealtimeCombatLifeState.Dead)),
+                Is.False);
 
             // A player without combat state, such as a development bot, is no target.
-            Assert.That(
-                CombatClickRules.Classify(player, owner, true, null),
-                Is.EqualTo(CombatClickAction.Pass));
+            Assert.That(CombatClickRules.CanAttack(player, owner, true, null), Is.False);
         }
 
         [Test]
-        public void GroundAndOtherTargetsPassTheClickOn()
+        public void GroundAndOtherTargetsOfferNoAttack()
         {
             var owner = Owner(1, RealtimeCombatLifeState.Alive);
 
             Assert.That(
-                CombatClickRules.Classify(new CombatClickTarget(CombatClickTargetKind.None, 0), owner, true, null),
-                Is.EqualTo(CombatClickAction.Pass));
+                CombatClickRules.CanAttack(new CombatClickTarget(CombatClickTargetKind.None, 0), owner, true, null),
+                Is.False);
             Assert.That(
-                CombatClickRules.Classify(new CombatClickTarget(CombatClickTargetKind.Other, NpcId), owner, true, Combatant(0)),
-                Is.EqualTo(CombatClickAction.Pass));
+                CombatClickRules.CanAttack(new CombatClickTarget(CombatClickTargetKind.Other, NpcId), owner, true, Combatant(0)),
+                Is.False);
             Assert.That(new CombatClickTarget(CombatClickTargetKind.Other, NpcId).EntityId, Is.Zero);
         }
 
@@ -243,7 +227,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void TheNearestPointerCandidateWinsWhateverItsKind()
+        public void PointerCandidatesAreListedNearestFirstOnceWhateverTheirKind()
         {
             var playerObject = new GameObject("Player");
             try
@@ -251,26 +235,38 @@ namespace Mmorpg.Client.Tests.EditMode
                 var player = playerObject.AddComponent<RemotePlayerView>();
                 var npc = new FakeTarget(true);
                 var inactive = new FakeTarget(false);
+                var results = new List<WorldPointerCandidate>();
 
-                var selected = WorldPointerPicker.SelectCandidate(
+                // A target hit by two colliders appears once, at its nearest distance, and an
+                // inactive target never appears.
+                WorldPointerPicker.SelectCandidates(
                     new[]
                     {
                         new WorldPointerCandidate(npc, 6f),
                         new WorldPointerCandidate(player, 5f),
-                        new WorldPointerCandidate(inactive, 1f)
+                        new WorldPointerCandidate(inactive, 1f),
+                        new WorldPointerCandidate(npc, 4.5f)
                     },
-                    Array.Empty<WorldPointerCandidate>());
-                Assert.That(selected.Player, Is.SameAs(player));
+                    Array.Empty<WorldPointerCandidate>(),
+                    results);
+                Assert.That(results.Count, Is.EqualTo(2));
+                Assert.That(results[0].Target, Is.SameAs(npc));
+                Assert.That(results[0].Distance, Is.EqualTo(4.5f));
+                Assert.That(results[1].Player, Is.SameAs(player));
 
-                selected = WorldPointerPicker.SelectCandidate(
+                // Only inactive direct hits fall back to the spherecast.
+                WorldPointerPicker.SelectCandidates(
                     new[] { new WorldPointerCandidate(inactive, 1f) },
-                    new[] { new WorldPointerCandidate(npc, 2f) });
-                Assert.That(selected.Target, Is.SameAs(npc));
-                Assert.That(
-                    WorldPointerPicker.SelectCandidate(
-                        Array.Empty<WorldPointerCandidate>(),
-                        Array.Empty<WorldPointerCandidate>()).IsEmpty,
-                    Is.True);
+                    new[] { new WorldPointerCandidate(npc, 2f) },
+                    results);
+                Assert.That(results.Count, Is.EqualTo(1));
+                Assert.That(results[0].Target, Is.SameAs(npc));
+
+                WorldPointerPicker.SelectCandidates(
+                    Array.Empty<WorldPointerCandidate>(),
+                    Array.Empty<WorldPointerCandidate>(),
+                    results);
+                Assert.That(results, Is.Empty);
             }
             finally
             {
@@ -605,27 +601,31 @@ namespace Mmorpg.Client.Tests.EditMode
                 0f,
                 0.8f,
                 1f,
-                1.4f);
+                1.4f,
+                mob ? "A lean, hungry wolf." : "She keeps the city's stores.",
+                mob
+                    ? new RealtimeWorldActorMenuOption[0]
+                    : new[] { new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue, "Talk-to") });
         }
 
-        private sealed class RecordingHandler : IWorldClickHandler
+        private sealed class RecordingProvider : IWorldMenuProvider
         {
             private readonly string name;
             private readonly List<string> calls;
 
-            public RecordingHandler(string name, List<string> calls, bool handles)
+            public RecordingProvider(string name, List<string> calls)
             {
                 this.name = name;
                 this.calls = calls;
-                Handles = handles;
             }
 
-            public bool Handles { get; set; }
-
-            public bool TryHandleWorldClick(Ray ray)
+            public void AddWorldMenuOptions(WorldMenuBuilder menu)
             {
                 calls.Add(name);
-                return Handles;
+            }
+
+            public void ExecuteWorldMenuOption(WorldMenuOption option)
+            {
             }
         }
 

@@ -577,6 +577,7 @@ namespace Mmorpg.WorldData.Actors
             foreach (var value in values)
             {
                 ValidateDisplayName(value.DisplayName, "runtime actor displayName", errors);
+                ValidateExamineText(value.ExamineText, "runtime actor examineText", errors);
                 ValidateSupported(value.Kind, SupportedActorKinds, "runtime actor kind", errors);
                 ValidateReference(value.FactionId, factionIds, "runtime actor factionId", errors);
                 ValidateSupported(
@@ -774,16 +775,10 @@ namespace Mmorpg.WorldData.Actors
                         capability.DisplayName,
                         "runtime capability displayName",
                         errors);
-                    if (capabilityIndex > 0
-                        && value.Capabilities[capabilityIndex - 1] != null
-                        && string.CompareOrdinal(
-                            value.Capabilities[capabilityIndex - 1].Id,
-                            capability.Id) >= 0)
-                    {
-                        errors.Add("runtime actor " + value.Id
-                            + " capabilities must be strictly ordered.");
-                    }
-
+                    ValidateMenuOption(
+                        capability.MenuOption,
+                        "runtime capability menuOption",
+                        errors);
                     ValidateSupported(
                         capability.Kind,
                         SupportedCapabilityKinds,

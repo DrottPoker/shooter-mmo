@@ -231,6 +231,17 @@ public sealed class SharedSimulationHardeningTests
     }
 
     [Fact]
+    public void WorldActorTextLimitsFitTheRealtimeProtocolLimits()
+    {
+        Assert.True(
+            Mmorpg.WorldData.Actors.WorldActorTextRules.MaximumExamineTextLength
+            <= RealtimeProtocolLimits.MaximumWorldActorExamineTextLength);
+        Assert.True(
+            Mmorpg.WorldData.Actors.WorldActorTextRules.MaximumMenuOptionLength
+            <= RealtimeProtocolLimits.MaximumWorldActorMenuOptionLength);
+    }
+
+    [Fact]
     public void ItemCatalogRejectsTagsAndEquipmentSlotIdsLongerThanTheProtocolAllows()
     {
         var longId = "a" + new string('b', ItemCatalogFormat.MaximumTagLength);

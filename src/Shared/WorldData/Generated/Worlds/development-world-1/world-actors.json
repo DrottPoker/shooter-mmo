@@ -1,8 +1,8 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "catalogId": "core",
   "worldId": "development-world-1",
-  "revision": "69af19babbc642584545811744ceee51c8f9727c592b2249f41fcf7855567767",
+  "revision": "104f31dfdce84f53f82da6148ffa0f6f9e57a8a7551f5a8dbfcee65e4f1100e6",
   "factions": [
     {
       "id": "city",
@@ -191,6 +191,7 @@
     {
       "id": "mob.feral_alpha",
       "displayName": "Feral Alpha",
+      "examineText": "The leader of the pack, scarred and heavy. The other wolves follow its lead.",
       "kind": "mob",
       "factionId": "wild",
       "disposition": "hostile",
@@ -218,11 +219,12 @@
       "brainProfileId": "mob.aggressive_boss",
       "locomotionProfileId": "mob.large_quadruped",
       "lootProfileId": "mob.feral_alpha",
-      "structuralFingerprint": "d7a25ea683c3386c4bd4ad6baec637eada5f152dd72f85d9692fbb924759464a"
+      "structuralFingerprint": "4b7d319ad272f75b15ec3ea6753db39837afa67e2c97912fe71a5913bf4c627d"
     },
     {
       "id": "mob.feral_wolf",
       "displayName": "Feral Wolf",
+      "examineText": "A lean, hungry wolf. It eyes you like a meal.",
       "kind": "mob",
       "factionId": "wild",
       "disposition": "hostile",
@@ -249,11 +251,12 @@
       "brainProfileId": "mob.aggressive",
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
-      "structuralFingerprint": "418239ea0c4404cbc91bec4319ee53854471efca092cc03c4eed4a851c8e3e78"
+      "structuralFingerprint": "a50ee8b7da3c2e060774134c28affed8a0cc064a5cbe0f4fbcc0abe01cb81dad"
     },
     {
       "id": "npc.city_guard",
       "displayName": "City Guard",
+      "examineText": "A guard of the city watch. Bored, but watching.",
       "kind": "npc",
       "factionId": "city",
       "disposition": "friendly",
@@ -276,15 +279,17 @@
           "id": "guard.dialogue",
           "kind": "dialogue",
           "displayName": "Talk",
+          "menuOption": "Talk-to",
           "profileId": "",
-          "structuralFingerprint": "69e2d027b4e0adf1ce00e05a2d7fd6f3827387f6eea35cc15a9ea4debcf29538"
+          "structuralFingerprint": "630a69c5ec1e9a51b736d982931b406fd9f806ed422d3b54c5c8ee293d80c42f"
         },
         {
           "id": "guard.trainer",
           "kind": "trainer",
           "displayName": "Training",
+          "menuOption": "Train",
           "profileId": "",
-          "structuralFingerprint": "70bc5df4274d0822703e650ae800e5b37517f4efa569b6710661e66b0f21e0e6"
+          "structuralFingerprint": "a201f552b9016562b62788aa404abaeb905dbb94ca4a540c2cbc1286248d8f31"
         }
       ],
       "activityProfileId": "",
@@ -295,11 +300,12 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "1b1bb146918e40963a27f867f2791ce706718cf1e7b5cc7385561d61d19611da"
+      "structuralFingerprint": "26f15f3df9069740934c1a0d95b4d8c332a9ebbe3038ea7be6838fc937f0f9f1"
     },
     {
       "id": "npc.city_services",
       "displayName": "Mira the Quartermaster",
+      "examineText": "She keeps the city\u0027s stores, its accounts, and whatever the dead leave behind.",
       "kind": "npc",
       "factionId": "city",
       "disposition": "friendly",
@@ -319,60 +325,68 @@
       },
       "capabilities": [
         {
-          "id": "services.bank",
-          "kind": "bank",
-          "displayName": "Character Bank",
-          "profileId": "",
-          "structuralFingerprint": "a6b376f6fe7ecf2e250e71792d3c5fe7a45dfce4faa1a00d3ff93f143c7e5104"
-        },
-        {
-          "id": "services.crafting",
-          "kind": "crafting",
-          "displayName": "Crafting",
-          "profileId": "",
-          "structuralFingerprint": "6003502468254732729e48c8497c8cd5de7133505eab0fda5f5b2971ed648c3a"
-        },
-        {
           "id": "services.dialogue",
           "kind": "dialogue",
           "displayName": "Talk",
+          "menuOption": "Talk-to",
           "profileId": "",
-          "structuralFingerprint": "59dd200f25d5f4ae403c5d15bb47151f3a38e1a219ea076631328fce4406a7ba"
-        },
-        {
-          "id": "services.insurance",
-          "kind": "insurance",
-          "displayName": "Insurance",
-          "profileId": "",
-          "structuralFingerprint": "3529705acd0fa8417e2e4421dc867545ee9e23ed25d3151bc9d52ce63e75a61e"
-        },
-        {
-          "id": "services.quest_offer",
-          "kind": "quest_offer",
-          "displayName": "Available Quests",
-          "profileId": "",
-          "structuralFingerprint": "da69ed900c231f76c7376f273ac3541bd466191b3557061f8afc008827215720"
-        },
-        {
-          "id": "services.quest_turn_in",
-          "kind": "quest_turn_in",
-          "displayName": "Complete Quest",
-          "profileId": "",
-          "structuralFingerprint": "84b28bf94284695f594f95d4220875420a83ac99f69e99577d67107caad93947"
-        },
-        {
-          "id": "services.recovery",
-          "kind": "recovery_storage",
-          "displayName": "Recovery Storage",
-          "profileId": "",
-          "structuralFingerprint": "e959bf6e71ab370140a0a524f317d64d65a8a75c07681e31ea8f724ab69e36d2"
+          "structuralFingerprint": "5b1fbcf97cb6081d064e30ff2545356dc6d882aa53984b6a5771b8a7efec5951"
         },
         {
           "id": "services.vendor",
           "kind": "vendor",
           "displayName": "Trade",
+          "menuOption": "Trade",
           "profileId": "vendor.city_general_store",
-          "structuralFingerprint": "3893d9a29b7ee39c02343f6c96c4384699a590c424b26866f25ea2b1cfc2bfb3"
+          "structuralFingerprint": "f873c3bed8f55d643cfb0182737ee561b1d2bf2cade6565953d7041428bb121a"
+        },
+        {
+          "id": "services.bank",
+          "kind": "bank",
+          "displayName": "Character Bank",
+          "menuOption": "Bank",
+          "profileId": "",
+          "structuralFingerprint": "d9ef9120e94e45c00341747255f56137e367eefe4a944a53cb26433b2535384e"
+        },
+        {
+          "id": "services.recovery",
+          "kind": "recovery_storage",
+          "displayName": "Recovery Storage",
+          "menuOption": "Recover",
+          "profileId": "",
+          "structuralFingerprint": "91aa4c39a391bfbf33869a8dc03078858c1e3ba913a8e78a74e58b9862ee557b"
+        },
+        {
+          "id": "services.insurance",
+          "kind": "insurance",
+          "displayName": "Insurance",
+          "menuOption": "Insure",
+          "profileId": "",
+          "structuralFingerprint": "a9915ccf506ff7b11cf9da749fa0c5be00354fc9e04e25f232fbe1dfb2236e6b"
+        },
+        {
+          "id": "services.quest_offer",
+          "kind": "quest_offer",
+          "displayName": "Available Quests",
+          "menuOption": "Quests",
+          "profileId": "",
+          "structuralFingerprint": "efef12736a4c0f47d2968593e914f2b88d7736485433788ccc7be1bb7c0b6f0b"
+        },
+        {
+          "id": "services.quest_turn_in",
+          "kind": "quest_turn_in",
+          "displayName": "Complete Quest",
+          "menuOption": "Turn-in",
+          "profileId": "",
+          "structuralFingerprint": "cb2611e8f2990d3393248117616b411f69a5e7f2a7c2257fbc92858973e73b2f"
+        },
+        {
+          "id": "services.crafting",
+          "kind": "crafting",
+          "displayName": "Crafting",
+          "menuOption": "Craft",
+          "profileId": "",
+          "structuralFingerprint": "e8558b6836eefa3000c1a8fb8d713936077f887d3c968d6d6f4176e007643a2f"
         }
       ],
       "activityProfileId": "",
@@ -383,11 +397,12 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "5eefe9694d51a4016721bffc54f7d68933d2a3829d51e229f15d8b2d5279c0f4"
+      "structuralFingerprint": "3aa0cead6ec5810e374da855260741e449a902d3f8e953c4dbfdd814f2533d30"
     },
     {
       "id": "resource.iron_vein",
       "displayName": "Iron Vein",
+      "examineText": "A seam of iron ore runs through the rock. A pickaxe would free it.",
       "kind": "resource_node",
       "factionId": "world",
       "disposition": "neutral",
@@ -410,8 +425,9 @@
           "id": "resource.mine",
           "kind": "gathering",
           "displayName": "Mine",
+          "menuOption": "Mine",
           "profileId": "resource.iron_vein",
-          "structuralFingerprint": "fb098712ca399b04f57d85a88ceb5f2baedfdbadb973ee97dd926c0432877701"
+          "structuralFingerprint": "81539f460583987ee875e2ff29ef9ef85da1673808900ffb7fe7d38a090ffe98"
         }
       ],
       "activityProfileId": "",
@@ -422,7 +438,7 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "f86074ac239ac07badbb48747f343882f009f3360f373b6c295fa0a622a5e639"
+      "structuralFingerprint": "2d5e3decaa7907d53d2a8f86e539e443979a84296609553d3afa00e2282c0763"
     }
   ],
   "spawnSources": [

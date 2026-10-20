@@ -126,6 +126,19 @@ namespace Mmorpg.Client.WorldActors
         }
     }
 
+    // What choosing a capability in the world menu does once its interaction is open. It
+    // mirrors the interaction panel: a capability that needs a choice there only opens.
+    public enum WorldCapabilityActivation
+    {
+        // Dialogue, insurance, and quest offers: the panel presents the choices.
+        OpenOnly,
+
+        // Vendor, bank, Recovery Storage, and the other services run at once.
+        Execute,
+
+        StartGathering
+    }
+
     [DisallowMultipleComponent]
     public sealed class WorldInteractionClientController : MonoBehaviour
     {
@@ -137,6 +150,8 @@ namespace Mmorpg.Client.WorldActors
         private Guid pendingCapabilityOperationId;
         private RealtimeWorldActorCapability pendingCapability;
         private RealtimeCapabilityActionKind pendingCapabilityAction;
+        private Guid pendingOpenOperationId;
+        private string pendingOpenCapabilityId = string.Empty;
 
         // Raised when the server confirms an opened Character Bank, Recovery Storage, or
         // Vendor capability. The inventory presents it while the interaction stays open.
@@ -190,6 +205,7 @@ namespace Mmorpg.Client.WorldActors
             initialized = true;
             State.Clear();
             Gathering.Clear();
+            ClearPendingOpen();
         }
 
         private void OnDestroy()
@@ -197,7 +213,9 @@ namespace Mmorpg.Client.WorldActors
             Unsubscribe();
         }
 
-        public bool TryOpenActor(WorldActorClientEntry actor, out string error)
+        // Opens the actor's interaction and, once it is open, activates the capability, when
+        // one is named.
+        public bool TryOpenActor(WorldActorClientEntry actor, string capabilityId, out string error)
         {
             error = string.Empty;
             if (actor == null || !actor.IsActive)
@@ -235,7 +253,81 @@ namespace Mmorpg.Client.WorldActors
             }
 
             State.Begin(operationId);
+            pendingOpenOperationId = operationId;
+            pendingOpenCapabilityId = capabilityId ?? string.Empty;
             return true;
+        }
+
+        public static WorldCapabilityActivation ActivationFor(RealtimeWorldActorCapabilityKind kind)
+        {
+            switch (kind)
+            {
+                case RealtimeWorldActorCapabilityKind.Gathering:
+                    return WorldCapabilityActivation.StartGathering;
+                case RealtimeWorldActorCapabilityKind.Dialogue:
+                case RealtimeWorldActorCapabilityKind.Insurance:
+                case RealtimeWorldActorCapabilityKind.QuestOffer:
+                    return WorldCapabilityActivation.OpenOnly;
+                default:
+                    return WorldCapabilityActivation.Execute;
+            }
+        }
+
+        // Starts a capability of the open interaction, as its panel button would. Failures
+        // show in the interaction panel.
+        public void ActivateCapability(string capabilityId)
+        {
+            var active = State.ActiveInteraction;
+            if (active == null || string.IsNullOrEmpty(capabilityId))
+            {
+                return;
+            }
+
+            var capability = Array.Find(
+                active.Capabilities,
+                value => string.Equals(value.Id, capabilityId, StringComparison.Ordinal));
+            if (capability == null)
+            {
+                State.SetLocalError(
+                    "world_interaction_capability_missing",
+                    active.DisplayName + " does not offer that right now.");
+                return;
+            }
+
+            string error;
+            switch (ActivationFor(capability.Kind))
+            {
+                case WorldCapabilityActivation.OpenOnly:
+                    return;
+                case WorldCapabilityActivation.StartGathering:
+                    if (Gathering.InteractionSessionId == active.InteractionSessionId
+                        && Gathering.Status == GatheringClientStatus.Gathering)
+                    {
+                        return;
+                    }
+
+                    if (!HasEquippedGatheringTool(inventoryController.State))
+                    {
+                        State.SetLocalError(
+                            "gathering_tool_required",
+                            "Equip a gathering tool, such as a pickaxe, to gather here.");
+                        return;
+                    }
+
+                    if (!TryStartGathering(capability.Id, out error))
+                    {
+                        State.SetLocalError("world_interaction_client_rejected", error);
+                    }
+
+                    return;
+                default:
+                    if (!TryExecuteCapability(capability.Id, out error))
+                    {
+                        State.SetLocalError("world_interaction_client_rejected", error);
+                    }
+
+                    return;
+            }
         }
 
         public bool TryOpenCorpse(Guid corpseId, out string error)
@@ -485,33 +577,6 @@ namespace Mmorpg.Client.WorldActors
             return false;
         }
 
-        // A resource node opens for gathering, so the click that walked the player there
-        // starts it. The tool check is advisory: GameService checks the equipped tool on
-        // every yield.
-        private void StartGatheringAtOpenedNode(RealtimeWorldInteractionOpened opened)
-        {
-            var capability = Array.Find(
-                opened.Capabilities,
-                value => value.Kind == RealtimeWorldActorCapabilityKind.Gathering);
-            if (capability == null || !capability.IsAvailable)
-            {
-                return;
-            }
-
-            if (!HasEquippedGatheringTool(inventoryController.State))
-            {
-                State.SetLocalError(
-                    "gathering_tool_required",
-                    "Equip a gathering tool, such as a pickaxe, to gather here.");
-                return;
-            }
-
-            if (!TryStartGathering(capability.Id, out var error))
-            {
-                State.SetLocalError("world_interaction_client_rejected", error);
-            }
-        }
-
         private bool CanBeginWorldOperation(out string error)
         {
             error = string.Empty;
@@ -545,6 +610,10 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
+            var capabilityId = opened.OperationId == pendingOpenOperationId
+                ? pendingOpenCapabilityId
+                : string.Empty;
+            ClearPendingOpen();
             if (!State.TryOpen(opened, out var error))
             {
                 simulationClient.DisconnectForClientFailure(
@@ -553,14 +622,19 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
-            if (actor.Kind == RealtimeWorldActorKind.ResourceNode)
-            {
-                StartGatheringAtOpenedNode(opened);
-            }
+            // The tool check before gathering is advisory: GameService checks the equipped
+            // tool on every yield.
+            ActivateCapability(capabilityId);
         }
 
         private void OnCompleted(RealtimeWorldInteractionResult result)
         {
+            // A rejected open never opens, so its follow-up capability is dropped.
+            if (result != null && result.OperationId == pendingOpenOperationId)
+            {
+                ClearPendingOpen();
+            }
+
             if (!State.TryComplete(result, out var error))
             {
                 simulationClient.DisconnectForClientFailure(
@@ -592,6 +666,12 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
+        private void ClearPendingOpen()
+        {
+            pendingOpenOperationId = Guid.Empty;
+            pendingOpenCapabilityId = string.Empty;
+        }
+
         private void OnClosed(RealtimeWorldInteractionClosed closed)
         {
             State.Close(closed);
@@ -619,6 +699,7 @@ namespace Mmorpg.Client.WorldActors
         {
             State.Clear();
             Gathering.Clear();
+            ClearPendingOpen();
         }
 
         private void Unsubscribe()

@@ -278,6 +278,7 @@ namespace Mmorpg.WorldData.Editor.Actors
     {
         public string id;
         public string displayName;
+        public string examineText;
         public string kind;
         public string factionId;
         public string disposition;
@@ -301,6 +302,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             {
                 Id = id,
                 DisplayName = displayName,
+                ExamineText = examineText,
                 Kind = kind,
                 FactionId = factionId,
                 Disposition = disposition,
@@ -354,6 +356,9 @@ namespace Mmorpg.WorldData.Editor.Actors
         public string kind;
         public string displayName;
 
+        // The verb of the right-click menu, such as "Trade" or "Mine".
+        public string menuOption;
+
         // A vendor names an item catalog vendor profile and a gathering capability a resource
         // profile; every other kind leaves it empty.
         public string profileId;
@@ -365,6 +370,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 Id = id,
                 Kind = kind,
                 DisplayName = displayName,
+                MenuOption = menuOption,
                 ProfileId = profileId ?? string.Empty
             };
         }

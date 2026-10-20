@@ -266,6 +266,16 @@ namespace Mmorpg.GameProtocol
         public const int MaximumMovementPathWaypoints = 32;
 
         /// <summary>
+        /// Characters in the examine text of a world actor.
+        /// </summary>
+        public const int MaximumWorldActorExamineTextLength = 200;
+
+        /// <summary>
+        /// Characters in the right-click menu option of a world actor capability.
+        /// </summary>
+        public const int MaximumWorldActorMenuOptionLength = 32;
+
+        /// <summary>
         /// Chunks in one corpse presence snapshot or corpse view update.
         /// </summary>
         public const int MaximumCorpseChunkCount = 256;
@@ -292,7 +302,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 19;
+        public const ushort Version = 20;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -347,6 +357,8 @@ namespace Mmorpg.GameProtocol
         private const int MaximumSlotTags = RealtimeProtocolLimits.MaximumSlotTags;
         private const int MaximumDefinitionIdLength = RealtimeProtocolLimits.MaximumDefinitionIdLength;
         private const int MaximumMovementPathWaypoints = RealtimeProtocolLimits.MaximumMovementPathWaypoints;
+        private const int MaximumWorldActorExamineTextLength = RealtimeProtocolLimits.MaximumWorldActorExamineTextLength;
+        private const int MaximumWorldActorMenuOptionLength = RealtimeProtocolLimits.MaximumWorldActorMenuOptionLength;
         private const int MaximumCorpseChunkCount = RealtimeProtocolLimits.MaximumCorpseChunkCount;
         private const int MaximumCorpsePresentationKeyLength = RealtimeProtocolLimits.MaximumCorpsePresentationKeyLength;
         private const int MaximumCorpseSectionSlotCapacity = RealtimeProtocolLimits.MaximumCorpseSectionSlotCapacity;

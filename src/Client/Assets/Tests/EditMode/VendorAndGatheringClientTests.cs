@@ -364,7 +364,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 0f,
                 1.6f,
                 1.2f,
-                1.6f);
+                1.6f,
+                "A seam of iron ore runs through the rock.",
+                new[] { new RealtimeWorldActorMenuOption("resource.mine", RealtimeWorldActorCapabilityKind.Gathering, "Mine") });
         }
     }
 }

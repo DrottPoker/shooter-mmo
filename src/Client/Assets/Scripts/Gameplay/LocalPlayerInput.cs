@@ -9,6 +9,7 @@ namespace Mmorpg.Client.Gameplay
     public sealed class LocalPlayerInput : MonoBehaviour
     {
         private const string SelectActionName = "Select";
+        private const string ContextMenuActionName = "ContextMenu";
         private const string PointerPositionActionName = "PointerPosition";
         private const string CameraOrbitActionName = "CameraOrbit";
         private const string CameraOrbitDeltaActionName = "CameraOrbitDelta";
@@ -22,6 +23,7 @@ namespace Mmorpg.Client.Gameplay
 
         private PlayerInput playerInput;
         private InputAction selectAction;
+        private InputAction contextMenuAction;
         private InputAction pointerPositionAction;
         private InputAction cameraOrbitAction;
         private InputAction cameraOrbitDeltaAction;
@@ -35,10 +37,16 @@ namespace Mmorpg.Client.Gameplay
 
         public bool IsConfigured { get; private set; }
 
-        // Left click: walk to the ground under the pointer or act on the target there.
+        // Left click: run the top option of the world menu for what is under the pointer.
         public bool SelectPressedThisFrame
         {
             get { return IsConfigured && selectAction.WasPressedThisFrame(); }
+        }
+
+        // Right click: open the world menu with every option for what is under the pointer.
+        public bool ContextMenuPressedThisFrame
+        {
+            get { return IsConfigured && contextMenuAction.WasPressedThisFrame(); }
         }
 
         public Vector2 PointerPosition
@@ -111,7 +119,7 @@ namespace Mmorpg.Client.Gameplay
 
             Debug.LogError(
                 "LocalPlayerInput requires a PlayerInput actions asset containing "
-                + "Select, PointerPosition, CameraOrbit, CameraOrbitDelta, CameraRotate, "
+                + "Select, ContextMenu, PointerPosition, CameraOrbit, CameraOrbitDelta, CameraRotate, "
                 + "CameraZoom, Cancel, ToggleWorldDebug, ToggleInventory, "
                 + "ToggleCharacterInventory, and ToggleEquipmentInventory actions.",
                 this);
@@ -142,6 +150,7 @@ namespace Mmorpg.Client.Gameplay
 
             var actions = playerInput.actions;
             selectAction = actions.FindAction(SelectActionName, false);
+            contextMenuAction = actions.FindAction(ContextMenuActionName, false);
             pointerPositionAction = actions.FindAction(PointerPositionActionName, false);
             cameraOrbitAction = actions.FindAction(CameraOrbitActionName, false);
             cameraOrbitDeltaAction = actions.FindAction(CameraOrbitDeltaActionName, false);
@@ -158,6 +167,7 @@ namespace Mmorpg.Client.Gameplay
                 false);
 
             return selectAction != null
+                && contextMenuAction != null
                 && pointerPositionAction != null
                 && cameraOrbitAction != null
                 && cameraOrbitDeltaAction != null

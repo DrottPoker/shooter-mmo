@@ -422,7 +422,8 @@ namespace Mmorpg.WorldData.Editor.Actors
                         {
                             id = CreateUniqueCapabilityId(actor, actor.id + ".capability_" + (count + 1)),
                             kind = WorldActorCapabilityKindIds.Dialogue,
-                            displayName = "Talk"
+                            displayName = "Talk",
+                            menuOption = "Talk-to"
                         }
                     })
                     .ToArray();
@@ -536,7 +537,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             {
                 definition.Add(ContentToolStyles.CreateHint(
                     selection.Count + " actors selected. Changes apply to every selected actor. "
-                        + "Id, display name, and capabilities are edited one actor at a time."));
+                        + "Id, display name, examine text, and capabilities are edited one actor at a time."));
             }
 
             definition.Add(form.Choice("Kind", "kind", () => Kinds, actor => actor.kind, SetKind));
@@ -573,6 +574,10 @@ namespace Mmorpg.WorldData.Editor.Actors
             form.Register("id", idField);
             section.Add(idField);
             section.Add(form.Text("Display Name", "displayName", actor => actor.displayName, (actor, value) => actor.displayName = value));
+            var examine = form.Text("Examine Text", "examineText", actor => actor.examineText, (actor, value) => actor.examineText = value);
+            examine.tooltip = "What Examine in the right-click menu shows: one line of up to "
+                + WorldActorTextRules.MaximumExamineTextLength + " characters.";
+            section.Add(examine);
         }
 
         private VisualElement BuildPresentationSection(bool single)
@@ -746,6 +751,9 @@ namespace Mmorpg.WorldData.Editor.Actors
             box.Add(form.Text("Stable Capability Id", path + ".id", actor => CapabilityAt(actor, position)?.id, (actor, value) => EditCapability(actor, position, capability => capability.id = value)));
             box.Add(form.Choice("Kind", path + ".kind", () => CapabilityKinds, actor => CapabilityAt(actor, position)?.kind, (actor, value) => EditCapability(actor, position, capability => SetCapabilityKind(capability, value))));
             box.Add(form.Text("Display Name", path + ".displayName", actor => CapabilityAt(actor, position)?.displayName, (actor, value) => EditCapability(actor, position, capability => capability.displayName = value)));
+            var menuOption = form.Text("Menu Option", path + ".menuOption", actor => CapabilityAt(actor, position)?.menuOption, (actor, value) => EditCapability(actor, position, capability => capability.menuOption = value));
+            menuOption.tooltip = "The verb the right-click menu shows before the actor's name, such as Trade or Mine. The first capability is the left-click action.";
+            box.Add(menuOption);
             var profile = form.Choice(
                 "Profile",
                 path + ".profileId",
@@ -938,6 +946,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             {
                 id = CreateUniqueActorId((npc ? "npc.new_actor_" : "mob.new_actor_") + index),
                 displayName = npc ? "New NPC" : "New Mob",
+                examineText = npc ? "A new NPC." : "A new Mob.",
                 kind = kind,
                 factionId = workspace.Catalog.factions?.FirstOrDefault()?.id ?? string.Empty,
                 disposition = npc ? WorldActorDispositionIds.Friendly : WorldActorDispositionIds.Hostile,
@@ -965,6 +974,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             {
                 id = CreateUniqueActorId("resource.new_node_" + index),
                 displayName = "New Resource Node",
+                examineText = "A new resource node.",
                 kind = WorldActorKindIds.ResourceNode,
                 factionId = (workspace.Catalog.factions?.FirstOrDefault(faction =>
                         faction?.defaultDisposition == WorldActorDispositionIds.Neutral)
@@ -1003,6 +1013,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 id = CreateUniqueCapabilityId(actor, actor.id + ".gather"),
                 kind = WorldActorCapabilityKindIds.Gathering,
                 displayName = "Gather",
+                menuOption = "Gather",
                 profileId = workspace.Catalog.resourceProfiles?.FirstOrDefault()?.id ?? string.Empty
             };
         }
@@ -1150,7 +1161,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             return string.Join(" ", (actor.tags ?? Array.Empty<string>())
                 .Concat((actor.capabilities ?? Array.Empty<WorldActorEditorCapability>())
                     .Where(capability => capability != null)
-                    .SelectMany(capability => new[] { capability.kind, capability.displayName })));
+                    .SelectMany(capability => new[] { capability.kind, capability.displayName, capability.menuOption })));
         }
 
         private IEnumerable<(string Value, string Label)> FactionOptions()

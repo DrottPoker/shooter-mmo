@@ -250,7 +250,8 @@ public sealed class WorldActorRuntimeTests
             {
                 Id = "services.oversized_" + index.ToString("D2"),
                 Kind = WorldActorCapabilityKindIds.Dialogue,
-                DisplayName = new string('\u00e5', 128)
+                DisplayName = new string('\u00e5', 128),
+                MenuOption = "Talk-to"
             })
             .ToArray();
         var runtime = WorldActorCompiler.Compile(
@@ -266,6 +267,40 @@ public sealed class WorldActorRuntimeTests
             () => WorldActorProtocolCompatibility.Validate(actors));
 
         Assert.Contains("realtime protocol", exception.Message, StringComparison.Ordinal);
+    }
+
+    // The spawn names every capability in authored order, so the client can offer the
+    // right-click menu before the interaction opens.
+    [Fact]
+    public void ActorSpawnCarriesExamineTextAndMenuOptionsInAuthoredOrder()
+    {
+        var store = new WorldActorStore(WorldActorTestData.Compile(), new SimulationEntityRegistry());
+        var actors = store.ActivateAssignment(
+            "development-world-1",
+            "local-shard-1",
+            "test-runtime");
+        var mira = actors.First(value => value.Definition.Id == "npc.city_services");
+        var wolf = actors.First(value => value.Definition.Id == "mob.feral_wolf");
+
+        var miraSpawn = WorldActorProtocolMapper.ToSpawn(mira);
+        var wolfSpawn = WorldActorProtocolMapper.ToSpawn(wolf);
+
+        Assert.Equal(mira.Definition.ExamineText, miraSpawn.ExamineText);
+        Assert.Equal(
+            [
+                "services.dialogue:Dialogue:Talk-to",
+                "services.vendor:Vendor:Trade",
+                "services.bank:Bank:Bank",
+                "services.recovery:RecoveryStorage:Recover",
+                "services.insurance:Insurance:Insure",
+                "services.quest_offer:QuestOffer:Quests",
+                "services.quest_turn_in:QuestTurnIn:Turn-in",
+                "services.crafting:Crafting:Craft"
+            ],
+            miraSpawn.MenuOptions.Select(option => option.CapabilityId + ":" + option.Kind + ":" + option.Label));
+        Assert.Equal("A lean, hungry wolf. It eyes you like a meal.", wolfSpawn.ExamineText);
+        Assert.Empty(wolfSpawn.MenuOptions);
+        WorldActorProtocolCompatibility.Validate(actors);
     }
 
     [Fact]

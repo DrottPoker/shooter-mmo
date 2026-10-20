@@ -31,6 +31,7 @@ namespace Mmorpg.Client.App
         private CombatClientController combatController;
         private Material runtimePrimitiveMaterial;
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
+        private readonly GameMessageLog gameMessages = new GameMessageLog();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -276,12 +277,15 @@ namespace Mmorpg.Client.App
                 panel => panel.Initialize(simulationClient, pointerFocus));
             AddSceneComponentIfMissing<MovementDestinationMarker>(
                 marker => marker.Initialize(runtimePrimitiveMaterial));
+            var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(
+                menu => menu.Initialize(worldActorController, gameMessages));
             AddSceneComponentIfMissing<TemporaryInventoryPanel>(
                 panel => panel.Initialize(
                     inventoryController,
                     corpseController,
                     worldInteractionController,
-                    combatController));
+                    combatController,
+                    worldMenu));
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(corpseController, runtimePrimitiveMaterial));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
@@ -292,9 +296,15 @@ namespace Mmorpg.Client.App
             AddSceneComponentIfMissing<WorldInteractionTargetingController>(
                 targeting => targeting.Initialize(
                     worldInteractionController,
-                    worldActorController));
+                    worldActorController,
+                    worldMenu,
+                    gameMessages));
             AddSceneComponentIfMissing<TemporaryWorldInteractionPanel>(
                 panel => panel.Initialize(worldInteractionController, inventoryController));
+            AddSceneComponentIfMissing<TemporaryWorldContextMenu>(
+                menu => menu.Initialize(worldMenu));
+            AddSceneComponentIfMissing<TemporaryGameMessagePanel>(
+                panel => panel.Initialize(gameMessages));
 
             var combatantViews = new CombatantViewLocator(
                 simulationClient,
@@ -306,7 +316,8 @@ namespace Mmorpg.Client.App
                     simulationClient,
                     worldActorController,
                     inventoryController,
-                    combatantViews));
+                    combatantViews,
+                    worldMenu));
             AddSceneComponentIfMissing<CombatProjectilePresentation>(
                 presentation => presentation.Initialize(
                     combatController,

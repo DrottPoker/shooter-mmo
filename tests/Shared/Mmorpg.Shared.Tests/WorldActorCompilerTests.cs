@@ -59,7 +59,6 @@ public sealed class WorldActorCompilerTests
         Array.Reverse(actors.Actors);
         foreach (var actor in actors.Actors)
         {
-            Array.Reverse(actor.Capabilities);
             Array.Reverse(actor.Tags);
         }
 
@@ -73,6 +72,76 @@ public sealed class WorldActorCompilerTests
         Assert.Equal(
             WorldActorJson.SerializeRuntime(expected),
             WorldActorJson.SerializeRuntime(reordered));
+    }
+
+    // The authored capability order is the right-click menu order, so it is content.
+    [Fact]
+    public void CapabilitiesKeepTheirAuthoredMenuOrder()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        var spawns = WorldActorTestData.LoadSpawns();
+        var expected = WorldActorCompiler.Compile(actors, spawns);
+        var mira = expected.Actors.Single(value => value.Id == "npc.city_services");
+
+        Assert.Equal(
+            ["Talk-to", "Trade", "Bank", "Recover", "Insure", "Quests", "Turn-in", "Craft"],
+            mira.Capabilities.Select(value => value.MenuOption));
+
+        Array.Reverse(actors.Actors.Single(value => value.Id == "npc.city_services").Capabilities);
+        var reordered = WorldActorCompiler.Compile(actors, spawns);
+
+        Assert.NotEqual(expected.Revision, reordered.Revision);
+        Assert.Equal(
+            mira.Capabilities.Select(value => value.Id).Reverse(),
+            reordered.Actors.Single(value => value.Id == "npc.city_services")
+                .Capabilities.Select(value => value.Id));
+        WorldActorCompiler.ValidateRuntime(reordered);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" A wolf.")]
+    [InlineData("A wolf.\nIt howls.")]
+    public void ExamineTextMustBeOneTrimmedLine(string? examineText)
+    {
+        var actors = WorldActorTestData.LoadActors();
+        actors.Actors[0].ExamineText = examineText!;
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns()));
+
+        Assert.Contains(exception.Errors, value => value.Contains("examineText", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ExamineTextAndMenuOptionsHaveLengthLimits()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        var npc = actors.Actors.First(value => value.Capabilities.Length > 0);
+        npc.ExamineText = new string('e', WorldActorTextRules.MaximumExamineTextLength);
+        npc.Capabilities[0].MenuOption = new string('m', WorldActorTextRules.MaximumMenuOptionLength);
+        _ = WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns());
+
+        npc.ExamineText += "e";
+        npc.Capabilities[0].MenuOption += "m";
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns()));
+
+        Assert.Contains(exception.Errors, value => value.Contains("examineText", StringComparison.Ordinal));
+        Assert.Contains(exception.Errors, value => value.Contains("menuOption", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void EveryCapabilityNeedsAMenuOption()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        actors.Actors.First(value => value.Capabilities.Length > 0).Capabilities[0].MenuOption = " ";
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns()));
+
+        Assert.Contains(exception.Errors, value => value.Contains("menuOption", StringComparison.Ordinal));
     }
 
     [Fact]

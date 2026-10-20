@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 19 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 20 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -429,6 +429,19 @@ an empty slot, or swaps the equipped item into the corpse slot the loot left;
 a live Mob corpse never swaps: it fills an empty slot or tops up the named stack
 of the same item, and GameService rejects any other target. Payloads of every earlier case are
 unchanged.
+
+## World Menu Options
+
+Protocol version 20 appended two fields to `WorldActorSpawn` for the client's
+right-click world menu: `ExamineText`, up to
+`MaximumWorldActorExamineTextLength` (200) characters, and `MenuOptions`, up to
+`MaximumWorldActorCapabilities` (16) `WorldActorMenuOption` structs with
+distinct `CapabilityId` values. Each option names a capability, its
+`WorldActorCapabilityKind`, and its `Label`, the menu verb of up to
+`MaximumWorldActorMenuOptionLength` (32) characters, in the actor's authored
+capability order. The spawn carries no availability, revision, or profile: those
+stay in the player-specific capability summary of `WorldInteractionOpened`. Both
+limits are public, and `WorldActorTextRules` in WorldData must fit them.
 
 ## Versioning
 
