@@ -478,6 +478,9 @@ namespace Mmorpg.Client.Networking
                     movementPacket,
                     RealtimeProtocol.MovementInputChannel,
                     DeliveryMethod.Sequenced);
+                // The transport otherwise sends on its own 15 ms update, which made inputs reach
+                // the worker unevenly.
+                client.TriggerUpdate();
                 RecordSentPacket(movementPacket.Length);
                 return true;
             }
