@@ -1,0 +1,16 @@
+{
+    "schemaVersion": 1,
+    "kind": "skinned",
+    "target": "src/Client/Assets/Art/Models/Characters/Human_Male.fbx",
+    "rootObjects": [
+        "Male"
+    ],
+    "triangleBudget": 10000,
+    "approvals": {
+        "model": {
+            "date": "2026-10-21",
+            "sourceSha256": "6b53b0929902d679ef08bd944f037b87e47f943595a330c171a1dbccfcd4f1d1"
+        }
+    },
+    "export": null
+}

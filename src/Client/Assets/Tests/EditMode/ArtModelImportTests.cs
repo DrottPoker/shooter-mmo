@@ -88,12 +88,17 @@ namespace Mmorpg.Client.Tests.EditMode
             foreach (var manifestPath in manifests)
             {
                 var manifest = JsonUtility.FromJson<ArtAssetManifest>(File.ReadAllText(manifestPath));
-                Assert.That(manifest.export?.materials, Is.Not.Null.And.Not.Empty, manifestPath);
-
-                // Every material the model renders with has an approved record, and no record is stale.
                 Assert.That(manifest.target, Does.StartWith(ClientProjectPrefix), manifestPath);
                 var model = AssetDatabase.LoadAssetAtPath<GameObject>(
                     manifest.target.Substring(ClientProjectPrefix.Length));
+                if (manifest.export?.materials == null || manifest.export.materials.Length == 0)
+                {
+                    // An asset in review, such as a skinned model before its rig, is not exported yet.
+                    Assert.That(model, Is.Null, manifestPath + " has a model but no export record");
+                    continue;
+                }
+
+                // Every material the model renders with has an approved record, and no record is stale.
                 Assert.That(model, Is.Not.Null, manifestPath);
                 Assert.That(
                     model.GetComponentsInChildren<Renderer>(true)

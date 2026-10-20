@@ -1,7 +1,9 @@
 # Checks every art asset without Blender, for CI: each asset.json is valid, every review stage
 # is approved for the current .blend file, the committed FBX is the recorded export of that
 # approved file, and every model below src/Client/Assets/Art/Models comes from exactly one
-# asset. Git LFS pointers are read directly, so the .blend files need not be downloaded.
+# asset. An asset in review, such as a skinned model before its rig, has its latest approval on
+# the current .blend file and no export yet. Git LFS pointers are read directly, so the .blend
+# files need not be downloaded.
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "ArtPipelineCommon.ps1")
 
@@ -24,6 +26,23 @@ foreach ($directory in $directories) {
 
     $targets[$manifest.Target] = $where
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
+    if (Test-ArtAssetInReview $manifest) {
+        $reviewProblem = Get-ArtReviewProblem $manifest $sourceSha256
+        if ($null -ne $reviewProblem) {
+            $problems.Add("${where}: $reviewProblem.")
+        }
+
+        if ($null -ne $manifest.Export) {
+            $problems.Add("${where}: an asset in review has no export; export it after its last review stage.")
+        }
+
+        if (Test-Path -LiteralPath $manifest.TargetPath) {
+            $problems.Add("${where}: $($manifest.Target) exists although the asset is still in review.")
+        }
+
+        continue
+    }
+
     $gateProblem = Get-ArtExportGateProblem $manifest $sourceSha256
     if ($null -ne $gateProblem) {
         $problems.Add("${where}: $gateProblem.")

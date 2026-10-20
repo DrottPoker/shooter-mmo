@@ -11,6 +11,14 @@ $script:ArtBlenderCli = Join-Path $PSScriptRoot "blender/art_pipeline_cli.py"
 # The review stages each asset kind passes in order. The last stage is the export gate.
 $script:ArtReviewStages = @{
     static = @("model")
+    skinned = @("model", "rig", "animation")
+}
+
+# The stages whose rules Blender can check, and so can be approved. A skinned asset stops at
+# its model until the rig and animation stages exist.
+$script:ArtImplementedStages = @{
+    static = @("model")
+    skinned = @("model")
 }
 
 $script:ArtNamePattern = '^[A-Za-z][A-Za-z0-9_]*$'
@@ -167,6 +175,14 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
         }
     }
 
+    # Stages are approved in order, so the approvals are always the first stages of the kind.
+    if ($null -ne $stages) {
+        $approvedPrefix = @($stages | Select-Object -First $approvals.Count)
+        if (@($approvals.Keys | Where-Object { $approvedPrefix -notcontains $_ }).Count -gt 0) {
+            $problems.Add("approvals must cover the first review stages in order: $($stages -join ', ')")
+        }
+    }
+
     $export = $null
     if ($null -ne $json.export) {
         $materials = ConvertTo-ArtMaterialRecords $json.export.materials
@@ -203,6 +219,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
         SourcePath = $sourcePath
         Kind = [string]$json.kind
         Stages = $stages
+        ImplementedStages = $script:ArtImplementedStages[[string]$json.kind]
         Target = $target
         TargetPath = Join-Path $script:ArtRepositoryRoot $target
         RootObjects = [string[]]$roots
@@ -283,6 +300,28 @@ function Get-ArtExportGateProblem($Manifest, [string]$SourceSha256) {
     $finalStage = $Manifest.Stages[-1]
     if ($Manifest.Approvals[$finalStage].sourceSha256 -ne $SourceSha256) {
         return "$($Manifest.Name).blend changed after the '$finalStage' approval"
+    }
+
+    return $null
+}
+
+function Test-ArtAssetInReview($Manifest) {
+    # An asset is in review while a later stage still waits, such as a skinned model before
+    # its rig. It has no export yet.
+    return @($Manifest.Stages | Where-Object { -not $Manifest.Approvals.Contains($_) }).Count -gt 0
+}
+
+function Get-ArtReviewProblem($Manifest, [string]$SourceSha256) {
+    # Returns $null when an asset in review has its latest approval on the current source file,
+    # so the repository only holds approved states, otherwise the reason it does not.
+    $approved = @($Manifest.Stages | Where-Object { $Manifest.Approvals.Contains($_) })
+    if ($approved.Count -eq 0) {
+        return "no review stage is approved; approve the '$($Manifest.Stages[0])' stage with tools/Approve-ArtAsset.ps1"
+    }
+
+    $latest = $approved[-1]
+    if ($Manifest.Approvals[$latest].sourceSha256 -ne $SourceSha256) {
+        return "$($Manifest.Name).blend changed after the '$latest' approval"
     }
 
     return $null

@@ -5,7 +5,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
-    # Review stages of a static asset: model.
+    # Review stages of a static asset: model. Of a skinned asset: model, rig, animation.
     [string]$Stage = "model",
     [string]$BlenderPath
 )
@@ -17,6 +17,10 @@ $manifest = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Asset)
 $stageIndex = [array]::IndexOf($manifest.Stages, $Stage)
 if ($stageIndex -lt 0) {
     throw "A $($manifest.Kind) asset has the review stages: $($manifest.Stages -join ', ')."
+}
+
+if ($manifest.ImplementedStages -notcontains $Stage) {
+    throw "The '$Stage' stage of a $($manifest.Kind) asset cannot be checked yet, so it cannot be approved."
 }
 
 for ($i = 0; $i -lt $stageIndex; $i++) {

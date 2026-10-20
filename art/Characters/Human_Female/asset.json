@@ -1,0 +1,16 @@
+{
+    "schemaVersion": 1,
+    "kind": "skinned",
+    "target": "src/Client/Assets/Art/Models/Characters/Human_Female.fbx",
+    "rootObjects": [
+        "Female"
+    ],
+    "triangleBudget": 10000,
+    "approvals": {
+        "model": {
+            "date": "2026-10-21",
+            "sourceSha256": "47ddf8ca305d408158f86f029f280f4197d7ca41c125f949f79e8c7ae50f810c"
+        }
+    },
+    "export": null
+}
