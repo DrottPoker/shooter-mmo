@@ -292,12 +292,18 @@ def _snapshot(path):
                          attributes=sorted(a.name for a in me.attributes))
         data["object " + o.name] = entry
     for m in bpy.data.materials:
-        nodes = []
-        for n in (m.node_tree.nodes if m.node_tree else []):
-            values = tuple((s.name, repr(tuple(s.default_value) if hasattr(s.default_value, "__len__") else s.default_value))
-                           for s in n.inputs if hasattr(s, "default_value") and not s.is_linked)
-            nodes.append((n.type, getattr(getattr(n, "image", None), "name", None), values))
-        data["material " + m.name] = sorted(nodes)
+        nodes, links = [], []
+        if m.node_tree is not None:
+            for n in m.node_tree.nodes:
+                values = tuple((s.identifier, repr(tuple(s.default_value) if hasattr(s.default_value, "__len__") else s.default_value))
+                               for s in n.inputs if hasattr(s, "default_value") and not s.is_linked)
+                settings = tuple((p, repr(getattr(n, p))) for p in ("interpolation", "extension", "projection",
+                                                                    "distribution", "subsurface_method", "target")
+                                 if hasattr(n, p))
+                nodes.append((n.name, n.bl_idname, getattr(getattr(n, "image", None), "name", None), values, settings))
+            links = [(link.from_node.name, link.from_socket.identifier, link.to_node.name, link.to_socket.identifier)
+                     for link in m.node_tree.links]
+        data["material " + m.name] = (sorted(nodes), sorted(links))
     for i in bpy.data.images:
         w, h = i.size
         px = np.empty(w * h * 4, np.float32)

@@ -108,8 +108,9 @@ asset that breaks one of these rules:
   or unused.
 - Material names start with `M_` and match the Unity material they map to, such
   as `M_Resource_IronVeinRock`.
-- Every material is one Principled BSDF with a flat Base Color, Metallic, and
-  Roughness, without textures or other nodes feeding them. Textures for static
+- Every material is one Principled BSDF, connected straight to the Surface of
+  its one Material Output, with a flat Base Color, Metallic, and Roughness,
+  without textures or other nodes feeding them. Textures for static
   assets come with the planned palette texture. A `skinned` asset may feed the
   Base Color straight from one Image Texture whose image is packed into the
   `.blend` file, such as a painted body, read with the default UV map.
@@ -274,8 +275,10 @@ Each file holds one character in the `Export` collection:
    normals between the parts, and a report of the color difference across the UV
    seams.
 5. `characters`, `asset`, `compare`, and `review`: the split into parts, one
-   asset file per character, the content comparison with the committed asset, a
-   review file with both characters side by side, and the review sheets.
+   asset file per character, the content comparison with the committed asset
+   (objects, meshes, UVs, normals, edge flags, materials with their node links,
+   textures, and custom properties), a review file with both characters side by
+   side, and the review sheets.
 
 The build is deterministic: the same bundle and scripts give the same geometry,
 UVs, normals, and texture pixels. Blender's files still differ in their bytes

@@ -26,16 +26,33 @@ def principled_inputs(material: bpy.types.Material) -> dict[str, bpy.types.NodeS
     return None if any(socket.is_linked for socket in inputs.values()) else inputs
 
 
-def textured_principled_problem(material: bpy.types.Material) -> str | None:
-    """None when the material is one Principled BSDF with flat Metallic and Roughness and a
-    Base Color that is flat or comes straight from one Image Texture packed into the file."""
+def surface_problem(material: bpy.types.Material) -> str | None:
+    """None when the material's only Principled BSDF feeds the Surface of its only Material
+    Output, so the approved look is what renders."""
     if material.node_tree is None:
         return "has no nodes"
     nodes = material.node_tree.nodes
     bsdfs = [n for n in nodes if n.type == "BSDF_PRINCIPLED"]
+    outputs = [n for n in nodes if n.type == "OUTPUT_MATERIAL"]
+    if len(bsdfs) != 1 or len(outputs) != 1:
+        return "must hold one Principled BSDF and one Material Output"
+    links = outputs[0].inputs["Surface"].links
+    if len(links) != 1 or links[0].from_node != bsdfs[0] or links[0].from_socket.name != "BSDF":
+        return "must connect its Principled BSDF straight to the Surface of the Material Output"
+    return None
+
+
+def textured_principled_problem(material: bpy.types.Material) -> str | None:
+    """None when the material is one Principled BSDF with flat Metallic and Roughness and a
+    Base Color that is flat or comes straight from one Image Texture packed into the file."""
+    problem = surface_problem(material)
+    if problem is not None:
+        return problem
+    nodes = material.node_tree.nodes
+    bsdfs = [n for n in nodes if n.type == "BSDF_PRINCIPLED"]
     images = [n for n in nodes if n.type == "TEX_IMAGE"]
     others = [n for n in nodes if n.type not in ("BSDF_PRINCIPLED", "TEX_IMAGE", "OUTPUT_MATERIAL")]
-    if len(bsdfs) != 1 or len(images) > 1 or others:
+    if len(images) > 1 or others:
         return "must hold one Principled BSDF, at most one Image Texture, and the output, nothing else"
     bsdf = bsdfs[0]
     if bsdf.inputs["Metallic"].is_linked or bsdf.inputs["Roughness"].is_linked:
@@ -136,6 +153,8 @@ def _mesh_errors(obj: bpy.types.Object, kind: str) -> list[str]:
         elif principled_inputs(slot.material) is None:
             errors.append(f'Material "{slot.material.name}" must be one Principled BSDF with a flat Base Color, '
                           "Metallic, and Roughness, without textures or other nodes feeding them.")
+        elif (problem := surface_problem(slot.material)) is not None:
+            errors.append(f'Material "{slot.material.name}" {problem}.')
         if index not in used:
             errors.append(f'Mesh "{obj.name}" has an unused material slot {index}; remove it.')
     return errors
