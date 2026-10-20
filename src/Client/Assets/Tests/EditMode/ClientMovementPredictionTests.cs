@@ -27,7 +27,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var first = Input(1, Path(1, 0f, 3f));
             var second = Input(2, Path(2, 3f, -1f));
-            var world = LoadCollisionWorld();
+            var world = FixtureCollisionWorld.Create();
             var initial = PlayerMovementSimulation.CreateInitialState(
                 Settings,
                 world,
@@ -65,7 +65,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void RedundantBatchCarriesTheNewestPathUntilTheWorkerConfirmsIt()
         {
-            var world = LoadCollisionWorld();
+            var world = FixtureCollisionWorld.Create();
             var initial = PlayerMovementSimulation.CreateInitialState(
                 Settings,
                 world,
@@ -106,7 +106,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void NavigatorPlansInTheBackgroundIssuesPathIdsAndStopsWithinRange()
         {
-            var world = LoadCollisionWorld();
+            var world = FixtureCollisionWorld.Create();
             var navigator = new LocalPlayerNavigator(
                 world,
                 Settings,
@@ -175,7 +175,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void PredictionAppliesCarryRevisionToMovementSpeed()
         {
-            var world = LoadCollisionWorld();
+            var world = FixtureCollisionWorld.Create();
             var initial = PlayerMovementSimulation.CreateInitialState(
                 Settings,
                 world,
@@ -337,7 +337,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void GroundedPresentationRemovesSlopeSupportOffsetFromVisualHeight()
         {
-            var world = LoadCollisionWorld();
+            var world = FixtureCollisionWorld.Create();
             var state = PlayerMovementSimulation.CreateInitialState(
                 Settings,
                 world,
@@ -423,7 +423,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var accepted = CreateJoinAccepted(
                 "different-simulation-revision",
-                LoadCollisionWorld().Revision);
+                LoadBakedCollisionRevision());
 
             var created = NetworkMovementSession.TryCreate(accepted, out _, out var error);
 
@@ -436,7 +436,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var accepted = CreateJoinAccepted(
                 GameSimulationCompatibility.Revision,
-                LoadCollisionWorld().Revision);
+                LoadBakedCollisionRevision());
             Assert.That(
                 NetworkMovementSession.TryCreate(accepted, out var session, out var createError),
                 Is.True,
@@ -550,7 +550,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 true);
         }
 
-        private static ChunkedStaticCollisionWorld LoadCollisionWorld()
+        // A network session streams the baked collision of the joined World, so join tests
+        // must announce that revision.
+        private static string LoadBakedCollisionRevision()
         {
             Assert.That(
                 UnityWorldCollisionLoader.TryLoad(
@@ -559,7 +561,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     out var error),
                 Is.True,
                 error);
-            return collisionWorld;
+            return collisionWorld.Revision;
         }
     }
 }
