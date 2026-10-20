@@ -267,29 +267,43 @@ def parts(path):
 
 # ---------------------------------------------------------------------------------- compare
 
+def _mesh_snapshot(me):
+    arrays = {}
+    for name, collection, attr, width in (("co", me.vertices, "co", 3),
+                                          ("uv", me.uv_layers.active.data if me.uv_layers.active else [], "uv", 2),
+                                          ("normals", me.corner_normals, "vector", 3)):
+        values = np.empty(len(collection) * width, np.float64)
+        if len(collection):
+            collection.foreach_get(attr, values)
+        arrays[name] = values.tobytes()
+    return dict(arrays, faces=[tuple(p.vertices) for p in me.polygons],
+                face_flags=[(p.material_index, p.use_smooth) for p in me.polygons],
+                edge_flags=[(tuple(e.vertices), e.use_seam, e.use_edge_sharp) for e in me.edges],
+                uv_maps=[(u.name, u.active, u.active_render) for u in me.uv_layers],
+                attributes=sorted(a.name for a in me.attributes))
+
+
 def _snapshot(path):
     """Everything of a character file that shows or that later stages read, by name."""
     bpy.ops.wm.open_mainfile(filepath=path)
     data = {"collections": {c.name: (sorted(o.name for o in c.objects), sorted(k.name for k in c.children))
                             for c in bpy.data.collections}}
+    depsgraph = bpy.context.evaluated_depsgraph_get()
     for o in bpy.data.objects:
         entry = {"type": o.type, "parent": o.parent.name if o.parent else None,
-                 "matrix": np.array(o.matrix_world).tobytes(),
+                 "matrix": np.array(o.evaluated_get(depsgraph).matrix_world).tobytes(),
+                 "constraints": [(c.type, c.name, c.enabled) for c in o.constraints],
+                 "visibility": (o.hide_viewport, o.hide_render, o.hide_get()),
+                 "modifiers": [(m.type, m.name, m.show_viewport, m.show_render) for m in o.modifiers],
                  "props": {k: repr(o[k].to_list() if hasattr(o[k], "to_list") else o[k]) for k in o.keys()}}
         if o.type == "MESH":
-            me = o.data
-            arrays = {}
-            for name, collection, attr, width in (("co", me.vertices, "co", 3), ("uv", me.uv_layers.active.data if me.uv_layers else [], "uv", 2),
-                                                  ("normals", me.corner_normals, "vector", 3)):
-                values = np.empty(len(collection) * width, np.float64)
-                if len(collection):
-                    collection.foreach_get(attr, values)
-                arrays[name] = values.tobytes()
-            entry.update(arrays, faces=[tuple(p.vertices) for p in me.polygons],
-                         face_flags=[(p.material_index, p.use_smooth) for p in me.polygons],
-                         edge_flags=[(tuple(e.vertices), e.use_seam, e.use_edge_sharp) for e in me.edges],
-                         materials=[s.material.name if s.material else None for s in o.material_slots],
-                         attributes=sorted(a.name for a in me.attributes))
+            # The evaluated mesh, with modifiers and shape keys applied, as validation and export see it.
+            evaluated = o.evaluated_get(depsgraph)
+            me = evaluated.to_mesh()
+            try:
+                entry.update(_mesh_snapshot(me), materials=[s.material.name if s.material else None for s in o.material_slots])
+            finally:
+                evaluated.to_mesh_clear()
         data["object " + o.name] = entry
     for m in bpy.data.materials:
         nodes, links = [], []

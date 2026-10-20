@@ -277,7 +277,8 @@ Each file holds one character in the `Export` collection:
    seams.
 5. `characters`, `asset`, `compare`, and `review`: the split into parts, one
    asset file per character, the content comparison with the committed asset
-   (objects, meshes, UVs, normals, edge flags, materials with their node links,
+   (objects with their modifiers, constraints, and visibility, the evaluated
+   meshes with UVs, normals, and edge flags, materials with their node links,
    textures with whether they are packed, and custom properties), a review file
    with both characters side by side, and the review sheets.
 
