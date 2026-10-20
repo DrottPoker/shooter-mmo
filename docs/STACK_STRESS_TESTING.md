@@ -774,6 +774,54 @@ geographically separate corpse hotspots need a future workload to verify that
 the per-corpse coordinator preserves parallel throughput. The clean result is a
 short stability run, not a production capacity declaration.
 
+### Logged-in Clients After The Timing Changes, 2026-10-20
+
+These `mixed-gameplay` runs repeat the profiles above on development `1eeebca`,
+which contains the worker loop, movement, interest, and bot changes described in
+[Loop Timing, Interest, And Packet Pool](#loop-timing-interest-and-packet-pool-2026-10-20).
+The 100-client run used 32-way HTTP admission, four 25-client ramp steps ten
+seconds apart, and a 120-second steady interval; the 250-client runs used the
+64-way profile of the table above with a 60-second steady interval. All runs
+used three-second inventory and four-second corpse operations. The comparison
+run repeated the 250-client profile on development `3c325da`, before those
+changes, right after the 250-client run on `1eeebca` and under the same
+conditions.
+
+The local development stack ran next to the disposable stress stack with 300
+`ActiveSimulationBots`, about one core of the 16 logical processors. Because two
+GameService and two SimulationWorker processes ran, the generator could not
+attribute process CPU; the worker CPU below comes from the stress worker's own
+interval log, and the GameService process metrics are missing.
+
+| Run | Clients | Complete lifecycle | Join failures | Input ack p50 / p95 / p99 | Login p50 / p95 | Join ticket p50 / p95 | PostgreSQL max connections / active waits | Rollbacks | Expired unreleased sessions | Corpse refresh p95 | Worker average single-core CPU |
+| --- | ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Development `1eeebca` | 100 | 100/100 | 0 | 47.2 / 78.2 / 85.2 ms | 0.57 / 0.84 s | 0.28 / 0.58 s | 67 / 12 | 0 | 0 | 50 ms | about 30% |
+| Development `1eeebca` | 250 | 250/250 | 0 | 73.2 / 114.4 / 139.2 ms | 1.03 / 1.38 s | 2.23 / 4.15 s | 66 / 60 | 0 | 0 | 115 ms | about 90% |
+| Development `3c325da` | 250 | 210/250 | 40 | 116.3 / 210.0 / 333.4 ms | 1.06 / 1.64 s | 3.37 / 6.35 s | 67 / 57 | 38 | 3 | 215 ms | about 73% with 210 joined |
+
+Every run had zero deadlocks, zero unexpected gameplay rejections, zero
+operation timeouts, and exact item quantity, slot, custody, and operation
+invariants. The 100-client run completed 4,369 inventory relocations, 541
+corpse deposits, and 497 partial loots; its deposit p95 was 352 ms. The
+250-client run on `1eeebca` completed 3,729 relocations and 1,679 corpse
+refreshes.
+
+The 40 failed joins on `3c325da` were all `auth_service_timeout`: during the
+admission wave the worker's ticket consumption call to GameService exceeded its
+five-second timeout. On `1eeebca` every client joined, and input
+acknowledgement p99 fell from 333 to 139 ms. The likely reason is that the
+realtime loop no longer runs on the thread pool, which the worker's GameService
+calls share, but this run does not isolate it.
+
+The shared corpse was saturated in both versions: deposit p95 was 8.5 seconds on
+`1eeebca` and 7.8 seconds on `3c325da`, against 3.44 seconds in the July run
+above, and almost every deposit and loot was a stale-revision conflict. With 250
+clients the demand exceeds what one serialized corpse aggregate can commit, so
+the queue in front of it, up to 142 waiting mutations, sets the latency, and on
+this day's busier machine each database transaction took longer. Because both
+versions show the same hotspot under the same conditions, it is the database
+environment and not the timing changes.
+
 ## Scope Boundary
 
 Full-stack mode measures account registration, character creation, login, shard
