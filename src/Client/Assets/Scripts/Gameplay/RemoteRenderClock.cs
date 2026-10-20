@@ -16,7 +16,8 @@ namespace Mmorpg.Client.Gameplay
 
         // An arrival behind the estimate pulls it this share of the way back, so one unusually
         // early packet, or ticks the server skipped, cannot hold it ahead of the others for
-        // long, while ordinary jitter barely moves it.
+        // long, while ordinary jitter barely moves it. An arrival later than the whole render
+        // delay means the connection's latency changed, and the estimate moves to it at once.
         private const double LateArrivalSmoothing = 0.05d;
 
         private double estimatedServerTick;
@@ -66,10 +67,10 @@ namespace Mmorpg.Client.Gameplay
             if (latestServerTick > observedLatestServerTick)
             {
                 observedLatestServerTick = latestServerTick;
-                estimatedServerTick = latestServerTick > estimatedServerTick
+                var lateTicks = estimatedServerTick - latestServerTick;
+                estimatedServerTick = lateTicks <= 0d || lateTicks > interpolationDelayTicks
                     ? latestServerTick
-                    : estimatedServerTick
-                        + ((latestServerTick - estimatedServerTick) * LateArrivalSmoothing);
+                    : estimatedServerTick - (lateTicks * LateArrivalSmoothing);
             }
 
             var desiredTick = Math.Max(0d, estimatedServerTick - interpolationDelayTicks);

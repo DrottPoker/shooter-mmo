@@ -232,6 +232,26 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void RemoteRenderClockFollowsALatencyIncreaseAtOnce()
+        {
+            var clock = new RemoteRenderClock();
+            clock.Reset(100, 4);
+            clock.Advance(1f / 60f, 30, 100, 4);
+
+            // Half a second without snapshots, then tick 102 arrives: the latency grew by
+            // about 13 ticks, far more than the render delay.
+            for (var frame = 0; frame < 30; frame++)
+            {
+                clock.Advance(1f / 60f, 30, 100, 4);
+            }
+
+            clock.Advance(1f / 60f, 30, 102, 4);
+
+            Assert.That(clock.EstimatedServerTick, Is.EqualTo(102d));
+            Assert.That(clock.CurrentTick, Is.LessThanOrEqualTo(102d));
+        }
+
+        [Test]
         public void RemoteRenderClockPlaysJitteredSnapshotsAtAnEvenSpeed()
         {
             const int tickRateHz = 30;

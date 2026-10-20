@@ -1054,7 +1054,8 @@ presentation described above. One interval covers the wait for the next
 snapshot and the second a snapshot that arrives up to one interval late. The
 clock measures that delay against an estimate of the server tick that advances
 with real time between snapshots, rises with any snapshot that arrives earlier
-than it expects, and moves 5 percent of the way toward a later one. Measured
+than it expects, and moves 5 percent of the way toward a later one, or all the way
+when it arrives later than the whole render delay, because the latency changed. Measured
 against the newest received tick instead, the delay shrank between snapshots
 and grew at each one, so remote characters sped up and slowed down by about 30
 percent at the snapshot rate. The clock uses bounded catch-up and slow-down
