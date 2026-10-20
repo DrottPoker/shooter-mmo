@@ -1,0 +1,13 @@
+namespace Mmorpg.Client.Gameplay
+{
+    // The fixed order of a frame's late presentation. Characters move in Update, the camera
+    // follows them in LateUpdate, and whatever is placed on screen at a world position, such as
+    // a health bar over a head, is placed after the camera moved. Without a fixed order Unity
+    // may place it with the previous frame's camera, and it trails the character.
+    public static class PresentationExecutionOrder
+    {
+        public const int Camera = 100;
+
+        public const int ScreenAnchoredInterface = 200;
+    }
+}
