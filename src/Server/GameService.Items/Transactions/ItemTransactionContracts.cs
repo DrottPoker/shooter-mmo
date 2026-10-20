@@ -434,17 +434,34 @@ internal sealed record ItemTransactionResult(
     IReadOnlyList<ItemTransactionContainerRevision> ContainerRevisions,
     IReadOnlyList<ItemTransactionItemRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
-    long? SecureContainerEntitlementRevision);
+    long? SecureContainerEntitlementRevision,
+    IReadOnlyList<ItemTransactionItemChange>? ItemChanges = null);
 
 internal sealed record ItemTransactionError(
     string Code,
     string Message);
 
+// Currency is the balance after the commit; results stored before it existed have none.
 internal sealed record ItemTransactionCharacterRevision(
     Guid CharacterId,
     long Revision,
     long CarriedWeight,
-    long CarryCapacity);
+    long CarryCapacity,
+    long? Currency = null);
+
+// The final state of one item the transaction changed. A removed item has no definition,
+// and an equipped item no container. Policies are the active ones, as snapshots show them.
+internal sealed record ItemTransactionItemChange(
+    Guid ItemInstanceId,
+    bool Removed,
+    string? DefinitionId,
+    int Quantity,
+    long Revision,
+    Guid? ContainerId,
+    int? ContainerSlotIndex,
+    Guid? EquippedCharacterId,
+    string? EquipmentSlotId,
+    IReadOnlyList<ItemPolicySummaryResponse> Policies);
 
 internal sealed record ItemTransactionItemRevision(
     Guid ItemInstanceId,

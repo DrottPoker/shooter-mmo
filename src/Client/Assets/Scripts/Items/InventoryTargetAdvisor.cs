@@ -8,7 +8,7 @@ namespace Mmorpg.Client.Items
     public static class InventoryTargetAdvisor
     {
         public static bool CanPlaceInContainer(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem item,
             InventoryItemLocation source,
             InventoryContainer destination,
@@ -26,7 +26,7 @@ namespace Mmorpg.Client.Items
         }
 
         public static bool CanPlaceInContainer(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem item,
             InventoryItemLocation source,
             InventoryContainer destination,
@@ -102,7 +102,7 @@ namespace Mmorpg.Client.Items
         // Equips the item into the slot. On an occupied slot the equipped item swaps into the slot
         // the new item comes from, so that slot must accept it and the carry cap must hold.
         public static bool CanEquip(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem item,
             InventoryItemLocation source,
             InventoryEquipmentSlot destination,
@@ -131,7 +131,7 @@ namespace Mmorpg.Client.Items
         // The equip rules of the slot itself: compatibility, the quantity limit, and blocked slots.
         // An item in the slot is the one an equip replaces, so it no longer blocks anything.
         public static bool CanEquipIntoSlot(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem item,
             InventoryEquipmentSlot destination,
             out string reason)
@@ -193,7 +193,7 @@ namespace Mmorpg.Client.Items
         }
 
         private static bool CanSwapIntoEquipment(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem item,
             InventoryItemLocation source,
             InventoryEquipmentSlot destination,
@@ -269,7 +269,7 @@ namespace Mmorpg.Client.Items
         }
 
         public static bool CanUnequip(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem item,
             InventoryContainer destination,
             InventorySlot destinationSlot,
@@ -323,7 +323,7 @@ namespace Mmorpg.Client.Items
         }
 
         public static bool CanSwap(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem firstItem,
             InventoryItemLocation firstLocation,
             InventoryItem secondItem,
@@ -406,7 +406,7 @@ namespace Mmorpg.Client.Items
         }
 
         public static bool CanSwapWithExternalContainer(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem carriedItem,
             InventoryItemLocation carriedLocation,
             InventoryItem externalItem,
@@ -511,7 +511,7 @@ namespace Mmorpg.Client.Items
         }
 
         public static bool CanMerge(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem source,
             InventoryItemLocation sourceLocation,
             InventoryItem target,
@@ -557,7 +557,7 @@ namespace Mmorpg.Client.Items
         }
 
         public static bool CanClaimRecovery(
-            InventoryClientState state,
+            IInventoryView state,
             RecoveryDelivery delivery,
             InventoryContainer destination,
             out string reason)
@@ -669,7 +669,7 @@ namespace Mmorpg.Client.Items
         }
 
         private static bool CanPlaceBag(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem item,
             InventoryContainer destination,
             InventorySlot destinationSlot,
@@ -701,7 +701,7 @@ namespace Mmorpg.Client.Items
         }
 
         private static bool IsEquippedBagWithContents(
-            InventoryClientState state,
+            IInventoryView state,
             Guid itemInstanceId)
         {
             return state.FullSnapshot.EquippedBag != null
@@ -767,7 +767,7 @@ namespace Mmorpg.Client.Items
         }
 
         private static bool CanOccupySlot(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItem item,
             InventoryContainer destination,
             InventorySlot destinationSlot,
@@ -812,7 +812,7 @@ namespace Mmorpg.Client.Items
         }
 
         private static long ApplyContainerWeightDelta(
-            InventoryClientState state,
+            IInventoryView state,
             long currentWeight,
             InventoryItem item,
             string sourceContainerType,
@@ -839,7 +839,7 @@ namespace Mmorpg.Client.Items
         }
 
         private static bool TryResolveContainerSlot(
-            InventoryClientState state,
+            IInventoryView state,
             InventoryItemLocation location,
             out InventoryContainer container,
             out InventorySlot slot)
@@ -866,7 +866,7 @@ namespace Mmorpg.Client.Items
         }
 
         private static Dictionary<string, string[]> BlockedSlotsByOccupiedSlot(
-            InventoryClientState state)
+            IInventoryView state)
         {
             var blockedSlots = new Dictionary<string, string[]>(StringComparer.Ordinal);
             foreach (var equipmentSlot in state.FullSnapshot.Equipment)

@@ -115,6 +115,9 @@ namespace Mmorpg.SharedTests
                 [RealtimeMessageType.OwnerItemQuantityChanged] = Typed<RealtimeOwnerItemQuantityChanged>(
                     RealtimeProtocol.TryDecodeOwnerItemQuantityChanged,
                     RealtimeProtocol.EncodeOwnerItemQuantityChanged),
+                [RealtimeMessageType.OwnerItemStateChanged] = Typed<RealtimeOwnerItemStateChanged>(
+                    RealtimeProtocol.TryDecodeOwnerItemStateChanged,
+                    RealtimeProtocol.EncodeOwnerItemStateChanged),
                 [RealtimeMessageType.GatheringState] = Typed<RealtimeGatheringState>(
                     RealtimeProtocol.TryDecodeGatheringState,
                     RealtimeProtocol.EncodeGatheringState)

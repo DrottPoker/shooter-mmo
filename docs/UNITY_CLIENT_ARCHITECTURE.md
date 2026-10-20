@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 ## Purpose
 
@@ -76,8 +76,9 @@ ClientBootstrap (Mmorpg.Client.App composition root)
   +-- RealtimeSimulationClient
   +-- InventoryClientController
       +-- ClientItemCatalog
-      +-- InventoryClientState
-      +-- InventoryOperationJournal
+      +-- InventoryClientState (confirmed and shown state, pending operations)
+      +-- InventoryOperationPredictor
+      +-- InventoryItemStateChangePatch
   +-- CombatClientController
       +-- CombatClientState
   +-- ClientConfig
@@ -94,7 +95,7 @@ TemporaryInventoryPanel
   +-- InventoryPresentation (pure layout, label, and tooltip helpers)
   +-- InventoryTooltipView and InventorySlotView
   +-- persistent InventoryClientController state
-  +-- no item custody or optimistic mutation
+  +-- shows predicted item operations, never owns item custody
 
 WorldSceneContext
   +-- scene-authored LocalPlayer prefab reference
@@ -671,13 +672,61 @@ never asked every frame; a newer revision or a new session starts over at once.
 The check runs a frame after the carry state arrives, so an arrow batch that was
 already patched in place needs no refresh.
 
-`InventoryOperationJournal` permits one pending mutation, retains its generated
-operation id and rejection refresh scope, and never changes custody locally.
-Successful results always cause a complete refresh to the committed revision.
-Stale and concurrency rejections first refresh their focused slice where safe,
-then restore complete coherence. A disconnect with a pending operation marks
-the local result uncertain, clears the journal, and relies on reconnect refresh
-to resolve the committed outcome.
+Every committed transaction of the owner that the worker can describe whole
+reaches the client as `OwnerItemStateChanged`: the client operation that caused
+it, if any, the revision it applies to, the new carry state and balance, the new
+revision of every touched container, and the final state of every changed item,
+where a removed item carries only its id. The worker sends it before the carry
+state and the operation result, for item operations, corpse loot and deposits,
+NPC services such as vendor trades, and gathering yields.
+`InventoryItemStateChangePatch` applies it to the coherent confirmed snapshot it
+follows: every changed item leaves its slot, then takes its new place, an item
+that moved into a container the snapshot does not show, such as a corpse, leaves
+the view, and every changed container must have its new revision. The patched
+snapshot equals what `GET /api/characters/{characterId}/item-state` returns for
+the new revision, so no reload follows. A change the patch cannot describe, such
+as one that touches the equipped Bag, whose contents only a reload shows, or
+Recovery Storage, or one that does not follow the known revision, calls
+`EnsureFullState` with the new revision instead.
+
+`InventoryClientState` keeps the confirmed snapshot and shows it with every
+pending item operation applied in order. `FullSnapshot`, `Bank`,
+`RecoveryStorage`, and `TryFindItem` return the shown state that the panel and
+the target rules use; `ConfirmedSnapshot` and `TryFindConfirmedItem` return the
+state the server confirmed. A drop creates an `InventoryPredictedOperation` that
+names items and destinations only. `InventoryOperationPredictor` checks it with
+the same `InventoryTargetAdvisor` rules as the drop targets and applies it the
+way GameService commits it: a relocation, unequip, split, merge, container swap,
+equip with its swap into the source slot, or destroy, with the carried weight
+adjusted for items that enter or leave carried storage. A split shows its new
+stack under a temporary id that nothing may act on until the server confirms
+it. Up to `MaximumPendingOperations` (8) operations may wait, so a player can
+drag item after item without waiting.
+
+`InventoryClientController` sends the first pending operation once the
+confirmed state is current, with the revisions the confirmed state expects, and
+sends the next only after the previous one committed. A later operation thus
+always builds on the committed result of the one before it. The committed change
+of the sent operation names its operation id, so the client stops applying that
+prediction at once and never applies a swap twice. When the result arrives first
+and no change patched the state, the operation stays shown until a reload
+reaches its revision.
+
+A rejection undoes every pending operation, because the others were shown on top
+of the rejected one, sets the server's error, and raises `PredictionRolledBack`
+with the items involved; a rejection that `RequiresInventoryRefresh` then
+reloads its scope. A newer confirmed state that no longer fits a pending
+operation, such as a gathered stack that lands in the target slot, undoes that
+operation and every one after it with `item_move_superseded`; an operation
+already sent stays pending without a prediction, because the server still
+answers it. An operation the client cannot show ahead, a Recovery claim or a Bag
+that moves with its contents, waits alone with the old busy status and blocks
+later operations until it completes. Corpse loot, vendor trades, and other
+operations that need the confirmed state wait until no item operation is pending,
+which `CanMutate` reports; `CanPredict` reports whether another item operation
+may be shown. A disconnect with a pending operation marks the local result
+uncertain, discards every prediction, and relies on the reconnect refresh to
+resolve the committed outcome.
 
 ### Inventory UI
 
@@ -743,8 +792,14 @@ checks: the equipped item must fit the slot the new item leaves, a non-empty
 equipped Bag stays, the new item's blocked slots must be empty, and the carry
 cap must hold. Valid and invalid targets provide
 green or red feedback, then revalidate the current state before sending an
-operation. The drag ghost trails below and to the right of the pointer, so it
-never hides the highlighted target.
+operation. A valid drop shows its result at once, and the player may drag the
+next item while earlier moves wait for the server. A state change during a drag
+redraws the panel only when the drag ends, so a confirmation never cancels the
+drag, and drops always judge the current slot instead of the one drawn. An
+undone move puts the items back, outlines them in red for 1.5 seconds, and the
+status line says `Item move undone:` with the server's reason. The drag ghost
+trails below and to the right of the pointer, so it never hides the highlighted
+target.
 Item clicks only select action controls for split or allowed destruction. A
 Recovery item represents its complete delivery during a drag because the durable
 claim remains atomic.
@@ -752,8 +807,10 @@ claim remains atomic.
 The panel displays authoritative weight, capacity, load, movement multiplier,
 and item-state revision. A UI-only target advisor reuses pure
 WorldData equipment, stack, Bag, Secure Container, slot-tag, weight, and hard-cap
-rules to disable obvious invalid targets. Server authority always revalidates any
-submitted action, and the client never applies an optimistic custody change.
+rules to disable obvious invalid targets and to predict item operations. Server
+authority always revalidates any submitted action, and a prediction only shows
+what the confirmed state will become: the committed change or a reload always
+replaces it.
 
 World-loot retains a reserved context identity without inventing snapshots or
 operations. Corpse context is active through the corpse state described below.
@@ -786,8 +843,10 @@ balance and its upper limit, the 140 percent hard cap, a carried location, a
 category the vendor buys, protection and insurance policies, and quest items.
 These checks are advisory. GameService recomputes every price, rejects a
 different one with `vendor_price_changed`, and owns every final rule. The
-worker's result or rejection appears in the vendor tab, and a committed trade
-refreshes the inventory to the returned item-state revision.
+worker's result or rejection appears in the vendor tab. The committed change of
+a trade, which arrives before the result, already patched the inventory and the
+balance, so `EnsureFullState` with the returned item-state revision reloads only
+when no change patched it.
 
 ### Corpse Client State And Presentation
 
@@ -1628,6 +1687,18 @@ owner state's live count without a redraw.
 a pending operation that stays busy, and the refresh fallback for a missed or
 skipped revision, an unknown or wrongly placed stack, a growing quantity, and an
 incoherent snapshot.
+`InventoryPredictionTests` verify that a committed change patches the snapshot
+to exactly what a reload returns, that a change that does not follow the known
+revision, lacks a container revision, touches the equipped Bag or Recovery
+Storage, or meets an occupied slot needs a reload, and that an item moving into
+an unseen container leaves the view. They also pin that a predicted move shows
+at once and its committed change confirms it, that the change of the sent
+operation is not applied twice, so a swap never swaps back, that later moves
+build on earlier predictions, that a rejection undoes every pending move and
+names their items, that a newer state that no longer fits undoes a pending move
+but keeps a sent one waiting, the split stack's temporary id, merge, swap, and
+equip with its swap and weight, invalid moves, an unpredicted operation that
+waits alone, and the bound of eight pending moves.
 
 World actor coverage verifies monotonic actor presence and state,
 reconnect cleanup, operation correlation, authoritative capability summaries,

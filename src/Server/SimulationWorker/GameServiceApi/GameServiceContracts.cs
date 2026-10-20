@@ -212,7 +212,27 @@ public sealed record SimulationItemTransactionResponse(
     IReadOnlyList<SimulationItemInstanceRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     long? SecureContainerEntitlementRevision,
-    SimulationCharacterState? CharacterState = null);
+    SimulationCharacterState? CharacterState = null,
+    IReadOnlyList<SimulationItemChange>? ItemChanges = null);
+
+// The final state of one item a transaction changed. GameService leaves the list out when
+// the transaction changed too many items, and a removed item has no definition.
+public sealed record SimulationItemChange(
+    Guid ItemInstanceId,
+    bool Removed,
+    string? DefinitionId,
+    int Quantity,
+    long Revision,
+    Guid? ContainerId,
+    int? ContainerSlotIndex,
+    Guid? EquippedCharacterId,
+    string? EquipmentSlotId,
+    IReadOnlyList<SimulationItemPolicySummary>? Policies);
+
+public sealed record SimulationItemPolicySummary(
+    string PolicyKind,
+    string Status,
+    string ProtectionSource);
 
 public sealed record SimulationItemTransactionError(string Code, string Message);
 
@@ -231,11 +251,13 @@ public sealed record SimulationAmmunitionConsumptionRequest(
     long ExpectedItemRevision,
     int Quantity);
 
+// Currency is the balance after the commit, or null in a result stored before it existed.
 public sealed record SimulationItemCharacterRevision(
     Guid CharacterId,
     long Revision,
     long CarriedWeight,
-    long CarryCapacity);
+    long CarryCapacity,
+    long? Currency = null);
 
 public sealed record SimulationItemContainerRevision(Guid ContainerId, long Revision);
 

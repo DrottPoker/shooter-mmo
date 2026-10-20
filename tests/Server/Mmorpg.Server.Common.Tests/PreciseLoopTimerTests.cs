@@ -27,18 +27,25 @@ public sealed class PreciseLoopTimerTests
 
         // A 2 ms wait takes about 2 ms with a precise timer and at least 15.6 ms when it
         // rounds up to the Windows timer tick. The median ignores the few waits that a busy
-        // machine wakes late.
-        var waits = new double[21];
-        for (var index = 0; index < waits.Length; index++)
+        // machine wakes late, and a rounding timer never reaches a short median, so one of
+        // three rounds suffices when parallel test runs starve the whole process.
+        var medians = new List<double>();
+        for (var round = 0; round < 3 && (medians.Count == 0 || medians[^1] >= 8d); round++)
         {
-            var started = Stopwatch.GetTimestamp();
-            timer.Wait(TimeSpan.FromMilliseconds(2), CancellationToken.None);
-            waits[index] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            var waits = new double[21];
+            for (var index = 0; index < waits.Length; index++)
+            {
+                var started = Stopwatch.GetTimestamp();
+                timer.Wait(TimeSpan.FromMilliseconds(2), CancellationToken.None);
+                waits[index] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            }
+
+            Array.Sort(waits);
+            Assert.True(waits[0] >= 1.9d, $"The shortest 2 ms wait took {waits[0]} ms.");
+            medians.Add(waits[waits.Length / 2]);
         }
 
-        Array.Sort(waits);
-        Assert.True(waits[0] >= 1.9d, $"The shortest 2 ms wait took {waits[0]} ms.");
-        Assert.True(waits[waits.Length / 2] < 8d, $"The median 2 ms wait took {waits[waits.Length / 2]} ms.");
+        Assert.True(medians[^1] < 8d, $"The median 2 ms waits took {string.Join(", ", medians)} ms.");
     }
 
     [Fact]

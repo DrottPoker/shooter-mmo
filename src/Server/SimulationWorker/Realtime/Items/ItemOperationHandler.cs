@@ -220,6 +220,19 @@ internal sealed class ItemOperationHandler(
             }
 
             requiresRefresh |= carryResult == ItemStateApplyResult.Stale;
+            // The change goes before the carry state and the result, so the client has
+            // patched its inventory when it sees the new revision and needs no refresh.
+            var change = carryResult == ItemStateApplyResult.Applied
+                ? OwnerItemStateChangeMapper.TryCreate(
+                    completed.Result.Intent.OperationId,
+                    completed.Session.CharacterId,
+                    completed.Result.Transaction!)
+                : null;
+            if (change is not null)
+            {
+                sender.SendControl(peer, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
+            }
+
             if (entityRegistry.TryGetPlayerByCharacterId(
                     completed.Session.CharacterId,
                     out var entity))

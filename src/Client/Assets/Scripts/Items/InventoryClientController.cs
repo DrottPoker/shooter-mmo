@@ -1,103 +1,23 @@
 using System;
 using System.Collections;
+using System.Linq;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
-using Mmorpg.WorldData.Items;
 using UnityEngine;
 
 namespace Mmorpg.Client.Items
 {
-    public sealed class InventoryPendingOperation
-    {
-        public InventoryPendingOperation(
-            RealtimeItemOperationIntent intent,
-            InventoryRefreshScope rejectionRefreshScope)
-        {
-            Intent = intent;
-            RejectionRefreshScope = rejectionRefreshScope;
-        }
-
-        public RealtimeItemOperationIntent Intent { get; }
-
-        public InventoryRefreshScope RejectionRefreshScope { get; }
-
-        public bool AwaitingRefresh { get; private set; }
-
-        public void MarkAwaitingRefresh()
-        {
-            AwaitingRefresh = true;
-        }
-    }
-
-    public sealed class InventoryOperationJournal
-    {
-        private Guid lastCompletedOperationId;
-        private RealtimeItemOperationKind lastCompletedOperationKind;
-
-        public InventoryPendingOperation Pending { get; private set; }
-
-        public bool TryBegin(
-            RealtimeItemOperationIntent intent,
-            InventoryRefreshScope rejectionRefreshScope)
-        {
-            if (Pending != null || intent == null || intent.OperationId == Guid.Empty)
-            {
-                return false;
-            }
-
-            Pending = new InventoryPendingOperation(intent, rejectionRefreshScope);
-            return true;
-        }
-
-        public bool Matches(RealtimeItemOperationResult result)
-        {
-            return Pending != null
-                && result != null
-                && Pending.Intent.OperationId == result.OperationId
-                && Pending.Intent.OperationKind == result.OperationKind;
-        }
-
-        public bool IsDuplicateCompletion(RealtimeItemOperationResult result)
-        {
-            return result != null
-                && result.OperationId == lastCompletedOperationId
-                && result.OperationKind == lastCompletedOperationKind;
-        }
-
-        public void MarkAwaitingRefresh()
-        {
-            Pending?.MarkAwaitingRefresh();
-        }
-
-        public void Complete()
-        {
-            if (Pending != null)
-            {
-                lastCompletedOperationId = Pending.Intent.OperationId;
-                lastCompletedOperationKind = Pending.Intent.OperationKind;
-            }
-
-            Pending = null;
-        }
-
-        public void Reset()
-        {
-            Pending = null;
-            lastCompletedOperationId = Guid.Empty;
-            lastCompletedOperationKind = default;
-        }
-    }
-
+    // Shows every item operation at once and sends the pending operations one at a time. Each
+    // intent expects the revisions of the confirmed state when it is sent, so a later operation
+    // builds on the committed result of the one before it. A rejection undoes every pending
+    // operation; a committed change patches the confirmed state, or a reload replaces it.
     [DisallowMultipleComponent]
     public sealed class InventoryClientController : MonoBehaviour
     {
         private const int MaximumRefreshAttempts = 3;
         private const float RefreshRetryDelaySeconds = 0.1f;
-
-        private readonly InventoryOperationJournal operationJournal =
-            new InventoryOperationJournal();
 
         private ApiClient apiClient;
         private RealtimeSimulationClient simulationClient;
@@ -114,13 +34,13 @@ namespace Mmorpg.Client.Items
             new InventoryServerRevisionFollower();
         private string observedAccountId = string.Empty;
         private string observedCharacterId = string.Empty;
+        // The operation awaiting its result, which outlives its prediction when an error
+        // discarded the pending operations.
+        private Guid sentOperationId;
+        private Guid lastCompletedOperationId;
+        private RealtimeItemOperationKind lastCompletedOperationKind;
 
         public InventoryClientState State { get; } = new InventoryClientState();
-
-        public InventoryOperationJournal OperationJournal
-        {
-            get { return operationJournal; }
-        }
 
         public bool IsInitialized
         {
@@ -151,6 +71,7 @@ namespace Mmorpg.Client.Items
 
             simulationClient.ItemOperationCompleted += OnItemOperationCompleted;
             simulationClient.OwnerItemQuantityChanged += OnOwnerItemQuantityChanged;
+            simulationClient.OwnerItemStateChanged += OnOwnerItemStateChanged;
             simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
             observedRealtimeJoin = simulationClient.IsJoined;
@@ -179,12 +100,14 @@ namespace Mmorpg.Client.Items
                 if (serverRevisionFollower.ShouldRefresh(
                         serverRevision,
                         State.KnownItemStateRevision,
-                        operationJournal.Pending != null,
+                        State.HasPendingOperations || sentOperationId != Guid.Empty,
                         refreshInProgress,
                         Time.unscaledTime))
                 {
                     EnsureFullState(serverRevision);
                 }
+
+                SendNextPendingOperation();
             }
         }
 
@@ -194,6 +117,7 @@ namespace Mmorpg.Client.Items
             {
                 simulationClient.ItemOperationCompleted -= OnItemOperationCompleted;
                 simulationClient.OwnerItemQuantityChanged -= OnOwnerItemQuantityChanged;
+                simulationClient.OwnerItemStateChanged -= OnOwnerItemStateChanged;
                 simulationClient.SessionEnded -= OnSessionEnded;
             }
 
@@ -258,22 +182,13 @@ namespace Mmorpg.Client.Items
             int destinationSlotIndex,
             out string error)
         {
-            if (!TryPrepareItemOperation(item, out var source, out error))
-            {
-                return false;
-            }
-
-            var intent = RealtimeItemOperationIntent.CreateRelocate(
-                Guid.NewGuid(),
-                State.KnownItemStateRevision,
-                item.ItemInstanceId,
-                item.Revision,
-                destinationContainerId,
-                destinationSlotIndex);
-            return TrySubmit(
-                intent,
-                InventoryRefreshScopes.ForMove(State, source, destinationContainerId),
-                out error);
+            return TryPrepareItemOperation(item, out _, out error)
+                && TryQueue(
+                    InventoryPredictedOperation.Relocate(
+                        item.ItemInstanceId,
+                        destinationContainerId,
+                        destinationSlotIndex),
+                    out error);
         }
 
         public bool TryEquip(
@@ -281,18 +196,8 @@ namespace Mmorpg.Client.Items
             string equipmentSlotId,
             out string error)
         {
-            if (!TryPrepareItemOperation(item, out _, out error))
-            {
-                return false;
-            }
-
-            var intent = RealtimeItemOperationIntent.CreateEquip(
-                Guid.NewGuid(),
-                State.KnownItemStateRevision,
-                item.ItemInstanceId,
-                item.Revision,
-                equipmentSlotId);
-            return TrySubmit(intent, InventoryRefreshScope.Full, out error);
+            return TryPrepareItemOperation(item, out _, out error)
+                && TryQueue(InventoryPredictedOperation.Equip(item.ItemInstanceId, equipmentSlotId), out error);
         }
 
         public bool TryUnequip(
@@ -301,19 +206,13 @@ namespace Mmorpg.Client.Items
             int destinationSlotIndex,
             out string error)
         {
-            if (!TryPrepareItemOperation(item, out _, out error))
-            {
-                return false;
-            }
-
-            var intent = RealtimeItemOperationIntent.CreateUnequip(
-                Guid.NewGuid(),
-                State.KnownItemStateRevision,
-                item.ItemInstanceId,
-                item.Revision,
-                destinationContainerId,
-                destinationSlotIndex);
-            return TrySubmit(intent, InventoryRefreshScope.Full, out error);
+            return TryPrepareItemOperation(item, out _, out error)
+                && TryQueue(
+                    InventoryPredictedOperation.Unequip(
+                        item.ItemInstanceId,
+                        destinationContainerId,
+                        destinationSlotIndex),
+                    out error);
         }
 
         public bool TrySplit(
@@ -323,24 +222,15 @@ namespace Mmorpg.Client.Items
             int destinationSlotIndex,
             out string error)
         {
-            if (!TryPrepareItemOperation(item, out var source, out error)
-                || !InventoryTargetAdvisor.CanSplit(State.Catalog, item, quantity, out error))
-            {
-                return false;
-            }
-
-            var intent = RealtimeItemOperationIntent.CreateSplitStack(
-                Guid.NewGuid(),
-                State.KnownItemStateRevision,
-                item.ItemInstanceId,
-                item.Revision,
-                quantity,
-                destinationContainerId,
-                destinationSlotIndex);
-            return TrySubmit(
-                intent,
-                InventoryRefreshScopes.ForMove(State, source, destinationContainerId),
-                out error);
+            return TryPrepareItemOperation(item, out _, out error)
+                && InventoryTargetAdvisor.CanSplit(State.Catalog, item, quantity, out error)
+                && TryQueue(
+                    InventoryPredictedOperation.Split(
+                        item.ItemInstanceId,
+                        quantity,
+                        destinationContainerId,
+                        destinationSlotIndex),
+                    out error);
         }
 
         public bool TryMerge(
@@ -349,13 +239,12 @@ namespace Mmorpg.Client.Items
             out string error)
         {
             if (!TryPrepareItemOperation(sourceItem, out var source, out error)
-                || !State.TryFindItem(targetItem.ItemInstanceId, out var currentTarget, out var target)
-                || currentTarget.Revision != targetItem.Revision
+                || !TryPrepareItemOperation(targetItem, out var target, out error)
                 || !InventoryTargetAdvisor.CanMerge(
                     State,
                     sourceItem,
                     source,
-                    currentTarget,
+                    targetItem,
                     target,
                     out error))
             {
@@ -367,16 +256,8 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            var intent = RealtimeItemOperationIntent.CreateMergeStacks(
-                Guid.NewGuid(),
-                State.KnownItemStateRevision,
-                sourceItem.ItemInstanceId,
-                sourceItem.Revision,
-                targetItem.ItemInstanceId,
-                targetItem.Revision);
-            return TrySubmit(
-                intent,
-                InventoryRefreshScopes.ForLocations(State, source, target),
+            return TryQueue(
+                InventoryPredictedOperation.Merge(sourceItem.ItemInstanceId, targetItem.ItemInstanceId),
                 out error);
         }
 
@@ -386,16 +267,12 @@ namespace Mmorpg.Client.Items
             out string error)
         {
             if (!TryPrepareItemOperation(firstItem, out var firstLocation, out error)
-                || !State.TryFindItem(
-                    secondItem.ItemInstanceId,
-                    out var currentSecondItem,
-                    out var secondLocation)
-                || currentSecondItem.Revision != secondItem.Revision
+                || !TryPrepareItemOperation(secondItem, out var secondLocation, out error)
                 || !InventoryTargetAdvisor.CanSwap(
                     State,
                     firstItem,
                     firstLocation,
-                    currentSecondItem,
+                    secondItem,
                     secondLocation,
                     out error))
             {
@@ -407,36 +284,16 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            var intent = RealtimeItemOperationIntent.CreateSwapContainerItems(
-                Guid.NewGuid(),
-                State.KnownItemStateRevision,
-                firstItem.ItemInstanceId,
-                firstItem.Revision,
-                currentSecondItem.ItemInstanceId,
-                currentSecondItem.Revision);
-            return TrySubmit(
-                intent,
-                InventoryRefreshScopes.ForLocations(State, firstLocation, secondLocation),
+            return TryQueue(
+                InventoryPredictedOperation.Swap(firstItem.ItemInstanceId, secondItem.ItemInstanceId),
                 out error);
         }
 
         public bool TryDestroy(InventoryItem item, out string error)
         {
-            if (!TryPrepareItemOperation(item, out var source, out error)
-                || !InventoryTargetAdvisor.CanDestroy(State.Catalog, item, out error))
-            {
-                return false;
-            }
-
-            var intent = RealtimeItemOperationIntent.CreateDestroy(
-                Guid.NewGuid(),
-                State.KnownItemStateRevision,
-                item.ItemInstanceId,
-                item.Revision);
-            return TrySubmit(
-                intent,
-                InventoryRefreshScopes.ForLocations(State, source),
-                out error);
+            return TryPrepareItemOperation(item, out _, out error)
+                && InventoryTargetAdvisor.CanDestroy(State.Catalog, item, out error)
+                && TryQueue(InventoryPredictedOperation.Destroy(item.ItemInstanceId), out error);
         }
 
         public bool TryClaimRecovery(
@@ -444,7 +301,6 @@ namespace Mmorpg.Client.Items
             Guid destinationContainerId,
             out string error)
         {
-            error = string.Empty;
             if (!CanStartOperation(out error) || delivery == null || delivery.Items.Count == 0)
             {
                 if (string.IsNullOrWhiteSpace(error))
@@ -455,24 +311,13 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            var expectations = new RealtimeItemRevisionExpectation[delivery.Items.Count];
-            for (var index = 0; index < delivery.Items.Count; index++)
-            {
-                expectations[index] = new RealtimeItemRevisionExpectation(
-                    delivery.Items[index].Item.ItemInstanceId,
-                    delivery.Items[index].Item.Revision);
-            }
-
-            var intent = RealtimeItemOperationIntent.CreateClaimRecoveryDelivery(
-                Guid.NewGuid(),
-                State.KnownItemStateRevision,
-                delivery.DeliveryId,
-                delivery.Revision,
-                destinationContainerId,
-                expectations);
-            return TrySubmit(intent, InventoryRefreshScope.Full, out error);
+            return TryQueue(
+                InventoryPredictedOperation.ClaimRecovery(delivery, destinationContainerId),
+                out error);
         }
 
+        // The item must be the one the player sees, and a stack a pending split shows has no
+        // server id to act on yet.
         private bool TryPrepareItemOperation(
             InventoryItem item,
             out InventoryItemLocation location,
@@ -481,12 +326,15 @@ namespace Mmorpg.Client.Items
             location = null;
             if (!CanStartOperation(out error)
                 || item == null
+                || State.IsPredictedItem(item.ItemInstanceId)
                 || !State.TryFindItem(item.ItemInstanceId, out var current, out location)
                 || current.Revision != item.Revision)
             {
                 if (string.IsNullOrWhiteSpace(error))
                 {
-                    error = "The selected item is stale or unavailable.";
+                    error = item != null && State.IsPredictedItem(item.ItemInstanceId)
+                        ? "Wait a moment until the split stack is confirmed."
+                        : "The selected item is stale or unavailable.";
                 }
 
                 return false;
@@ -500,56 +348,230 @@ namespace Mmorpg.Client.Items
             error = string.Empty;
             if (!initialized
                 || State.Catalog == null
-                || !State.CanMutate
+                || !(State.CanPredict || State.CanMutate)
                 || simulationClient == null
                 || !simulationClient.IsJoined)
             {
-                error = "Inventory must finish loading in an active simulation session.";
-                return false;
-            }
-
-            if (operationJournal.Pending != null)
-            {
-                error = "Another item operation is still pending.";
+                error = State.PendingOperations.Count >= InventoryClientState.MaximumPendingOperations
+                    ? "Too many item moves are waiting for the server."
+                    : "Inventory must finish loading in an active simulation session.";
                 return false;
             }
 
             return true;
         }
 
-        private bool TrySubmit(
-            RealtimeItemOperationIntent intent,
-            InventoryRefreshScope rejectionRefreshScope,
-            out string error)
+        private bool TryQueue(InventoryPredictedOperation operation, out string error)
         {
-            error = string.Empty;
-            if (!operationJournal.TryBegin(intent, rejectionRefreshScope))
+            if (!State.TryPredict(operation, out error))
             {
-                error = "Another item operation is still pending.";
                 return false;
+            }
+
+            SendNextPendingOperation();
+            return true;
+        }
+
+        // Sends the first pending operation once the confirmed state it builds on is current.
+        private void SendNextPendingOperation()
+        {
+            if (!initialized
+                || refreshInProgress
+                || sentOperationId != Guid.Empty
+                || simulationClient == null
+                || !simulationClient.IsJoined
+                || State.PendingOperations.Count == 0
+                || State.Status != InventoryClientStatus.Ready
+                || !State.HasCoherentFullSnapshot)
+            {
+                return;
+            }
+
+            var operation = State.PendingOperations[0];
+            if (operation.IsSent)
+            {
+                return;
+            }
+
+            if (!TryCreateIntent(operation, out var intent, out var rejectionScope, out var error))
+            {
+                State.RollBackPredictions(new InventoryClientError("item_move_stale", error));
+                return;
             }
 
             if (!simulationClient.TrySendItemOperation(intent))
             {
-                operationJournal.Reset();
-                error = "The item operation could not be sent to SimulationWorker.";
+                State.RollBackPredictions(new InventoryClientError(
+                    "item_move_unsent",
+                    "The item operation could not be sent to SimulationWorker."));
+                return;
+            }
+
+            operation.OperationId = intent.OperationId;
+            operation.RejectionRefreshScope = rejectionScope;
+            sentOperationId = intent.OperationId;
+            if (!operation.IsPredicted)
+            {
+                // Nothing is shown ahead, so the panel shows that the operation is waiting.
+                State.BeginLoading(true);
+            }
+        }
+
+        private bool TryCreateIntent(
+            InventoryPredictedOperation operation,
+            out RealtimeItemOperationIntent intent,
+            out InventoryRefreshScope rejectionScope,
+            out string error)
+        {
+            intent = null;
+            rejectionScope = InventoryRefreshScope.Full;
+            error = "The item changed before the operation could be sent.";
+            var operationId = Guid.NewGuid();
+            var revision = State.KnownItemStateRevision;
+            if (operation.Kind == RealtimeItemOperationKind.ClaimRecoveryDelivery)
+            {
+                var delivery = State.ConfirmedRecoveryStorage?.Deliveries.FirstOrDefault(candidate =>
+                    candidate.DeliveryId == operation.RecoveryDelivery.DeliveryId);
+                if (delivery == null || delivery.Items.Count == 0)
+                {
+                    error = "The Recovery delivery is empty or unavailable.";
+                    return false;
+                }
+
+                intent = RealtimeItemOperationIntent.CreateClaimRecoveryDelivery(
+                    operationId,
+                    revision,
+                    delivery.DeliveryId,
+                    delivery.Revision,
+                    operation.DestinationContainerId,
+                    delivery.Items
+                        .Select(item => new RealtimeItemRevisionExpectation(
+                            item.Item.ItemInstanceId,
+                            item.Item.Revision))
+                        .ToArray());
+                return true;
+            }
+
+            if (!State.TryFindConfirmedItem(operation.ItemInstanceId, out var item, out var location))
+            {
                 return false;
             }
 
-            State.BeginLoading(true);
-            return true;
+            InventoryItem target = null;
+            InventoryItemLocation targetLocation = null;
+            if (operation.Kind is RealtimeItemOperationKind.MergeStacks or RealtimeItemOperationKind.SwapContainerItems
+                && !State.TryFindConfirmedItem(operation.TargetItemInstanceId, out target, out targetLocation))
+            {
+                return false;
+            }
+
+            switch (operation.Kind)
+            {
+                case RealtimeItemOperationKind.Relocate:
+                    intent = RealtimeItemOperationIntent.CreateRelocate(
+                        operationId,
+                        revision,
+                        item.ItemInstanceId,
+                        item.Revision,
+                        operation.DestinationContainerId,
+                        operation.DestinationSlotIndex);
+                    rejectionScope = InventoryRefreshScopes.ForMove(State, location, operation.DestinationContainerId);
+                    return true;
+                case RealtimeItemOperationKind.Unequip:
+                    intent = RealtimeItemOperationIntent.CreateUnequip(
+                        operationId,
+                        revision,
+                        item.ItemInstanceId,
+                        item.Revision,
+                        operation.DestinationContainerId,
+                        operation.DestinationSlotIndex);
+                    return true;
+                case RealtimeItemOperationKind.Equip:
+                    intent = RealtimeItemOperationIntent.CreateEquip(
+                        operationId,
+                        revision,
+                        item.ItemInstanceId,
+                        item.Revision,
+                        operation.EquipmentSlotId);
+                    return true;
+                case RealtimeItemOperationKind.SplitStack:
+                    intent = RealtimeItemOperationIntent.CreateSplitStack(
+                        operationId,
+                        revision,
+                        item.ItemInstanceId,
+                        item.Revision,
+                        operation.Quantity,
+                        operation.DestinationContainerId,
+                        operation.DestinationSlotIndex);
+                    rejectionScope = InventoryRefreshScopes.ForMove(State, location, operation.DestinationContainerId);
+                    return true;
+                case RealtimeItemOperationKind.MergeStacks:
+                    intent = RealtimeItemOperationIntent.CreateMergeStacks(
+                        operationId,
+                        revision,
+                        item.ItemInstanceId,
+                        item.Revision,
+                        target.ItemInstanceId,
+                        target.Revision);
+                    rejectionScope = InventoryRefreshScopes.ForLocations(State, location, targetLocation);
+                    return true;
+                case RealtimeItemOperationKind.SwapContainerItems:
+                    intent = RealtimeItemOperationIntent.CreateSwapContainerItems(
+                        operationId,
+                        revision,
+                        item.ItemInstanceId,
+                        item.Revision,
+                        target.ItemInstanceId,
+                        target.Revision);
+                    rejectionScope = InventoryRefreshScopes.ForLocations(State, location, targetLocation);
+                    return true;
+                case RealtimeItemOperationKind.Destroy:
+                    intent = RealtimeItemOperationIntent.CreateDestroy(
+                        operationId,
+                        revision,
+                        item.ItemInstanceId,
+                        item.Revision);
+                    rejectionScope = InventoryRefreshScopes.ForLocations(State, location);
+                    return true;
+                default:
+                    error = "The item operation is not supported.";
+                    return false;
+            }
         }
 
         private void OnItemOperationCompleted(RealtimeItemOperationResult result)
         {
-            if (!operationJournal.Matches(result))
+            var operation = State.PendingOperations.FirstOrDefault();
+            var matches = operation != null
+                && operation.IsSent
+                && operation.OperationId == result.OperationId
+                && operation.Kind == result.OperationKind;
+            if (!matches)
             {
-                if (operationJournal.IsDuplicateCompletion(result))
+                if (result.OperationId == sentOperationId)
+                {
+                    // Its committed change already confirmed the operation, or an error discarded
+                    // its prediction while the server worked on it. A reload runs only when the
+                    // confirmed state has not reached the result.
+                    sentOperationId = Guid.Empty;
+                    RememberCompleted(result);
+                    if (!refreshInProgress)
+                    {
+                        State.EndOperationWait();
+                    }
+
+                    EnsureFullState(result.CarryState.ItemStateRevision);
+                    SendNextPendingOperation();
+                    return;
+                }
+
+                if (result.OperationId == lastCompletedOperationId
+                    && result.OperationKind == lastCompletedOperationKind)
                 {
                     return;
                 }
 
-                operationJournal.Reset();
+                sentOperationId = Guid.Empty;
                 State.SetError(
                     new InventoryClientError(
                         "inventory_operation_result_mismatch",
@@ -559,33 +581,50 @@ namespace Mmorpg.Client.Items
                 return;
             }
 
-            var pending = operationJournal.Pending;
+            sentOperationId = Guid.Empty;
+            RememberCompleted(result);
             if (!result.Succeeded)
             {
-                var error = new InventoryClientError(
+                State.RollBackPredictions(new InventoryClientError(
                     result.Error?.Code ?? "item_operation_rejected",
-                    result.Error?.Message ?? "The server rejected the item operation.");
-                if (!result.RequiresInventoryRefresh)
+                    result.Error?.Message ?? "The server rejected the item operation."));
+                if (result.RequiresInventoryRefresh)
                 {
-                    operationJournal.Complete();
-                    State.SetServerRejection(error);
-                    return;
+                    BeginRefresh(
+                        operation.RejectionRefreshScope,
+                        true,
+                        result.CarryState.ItemStateRevision);
                 }
 
-                State.SetError(error, false);
-                operationJournal.MarkAwaitingRefresh();
-                BeginRefresh(
-                    pending.RejectionRefreshScope,
-                    true,
-                    result.CarryState.ItemStateRevision);
                 return;
             }
 
-            operationJournal.MarkAwaitingRefresh();
+            // The committed change arrived before the result and already patched the state.
+            if (State.HasCoherentFullSnapshotAtLeast(result.CarryState.ItemStateRevision))
+            {
+                State.CompletePendingHead(!refreshInProgress);
+                SendNextPendingOperation();
+                return;
+            }
+
+            State.MarkPendingHeadCommitted(result.CarryState.ItemStateRevision);
             BeginRefresh(
                 InventoryRefreshScope.Full,
                 true,
                 result.CarryState.ItemStateRevision);
+        }
+
+        // A committed transaction of the owner. A change the snapshot follows patches it;
+        // any other change needs a reload unless a reload already reached it.
+        private void OnOwnerItemStateChanged(RealtimeOwnerItemStateChanged change)
+        {
+            if (State.TryApplyItemStateChange(change)
+                || State.HasCoherentFullSnapshotAtLeast(change.CarryState.ItemStateRevision))
+            {
+                return;
+            }
+
+            EnsureFullState(change.CarryState.ItemStateRevision);
         }
 
         // Spent arrows commit without a client intent. A snapshot at exactly the revision the
@@ -600,10 +639,16 @@ namespace Mmorpg.Client.Items
 
         private void OnSessionEnded(RealtimeClientError error)
         {
-            State.MarkDisconnected(operationJournal.Pending != null);
-            operationJournal.Reset();
+            State.MarkDisconnected(State.HasPendingOperations || sentOperationId != Guid.Empty);
+            sentOperationId = Guid.Empty;
             observedRealtimeJoin = false;
             serverRevisionFollower.Reset();
+        }
+
+        private void RememberCompleted(RealtimeItemOperationResult result)
+        {
+            lastCompletedOperationId = result.OperationId;
+            lastCompletedOperationKind = result.OperationKind;
         }
 
         private void BeginRefresh(
@@ -796,12 +841,6 @@ namespace Mmorpg.Client.Items
                     true);
             }
 
-            if (operationJournal.Pending != null
-                && operationJournal.Pending.AwaitingRefresh)
-            {
-                operationJournal.Complete();
-            }
-
             refreshCoroutine = null;
             refreshInProgress = false;
             if (succeeded
@@ -816,6 +855,7 @@ namespace Mmorpg.Client.Items
             }
 
             StartQueuedRefresh();
+            SendNextPendingOperation();
         }
 
         private bool TryMapFull(
@@ -881,7 +921,9 @@ namespace Mmorpg.Client.Items
 
             observedAccountId = accountId;
             observedCharacterId = characterId;
-            operationJournal.Reset();
+            sentOperationId = Guid.Empty;
+            lastCompletedOperationId = Guid.Empty;
+            lastCompletedOperationKind = default;
             serverRevisionFollower.Reset();
             if (!Guid.TryParse(characterId, out var parsedCharacterId)
                 || parsedCharacterId == Guid.Empty

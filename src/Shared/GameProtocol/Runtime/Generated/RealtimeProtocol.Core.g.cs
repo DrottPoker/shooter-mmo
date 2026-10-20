@@ -178,7 +178,12 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// A committed quantity change of one of the owner's items that no client intent caused, such as spent arrows.
         /// </summary>
-        OwnerItemQuantityChanged = 34
+        OwnerItemQuantityChanged = 34,
+
+        /// <summary>
+        /// Every item change of one committed transaction of the owner, so the client patches its inventory without a refresh. The worker sends it before the result of the operation that caused it, and only when it lists the whole change.
+        /// </summary>
+        OwnerItemStateChanged = 35
     }
 
     /// <summary>
@@ -302,7 +307,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 20;
+        public const ushort Version = 21;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -370,6 +375,9 @@ namespace Mmorpg.GameProtocol
         private const int MaximumItemOperationItems = 24;
         private const int MaximumItemResultItemRevisions = 32;
         private const int MaximumItemResultContainerRevisions = 8;
+        private const int MaximumItemStateChanges = 8;
+        private const int MaximumItemPolicies = 8;
+        private const int MaximumItemPolicyTextLength = 64;
         private const int MaximumItemResultRecoveryDeliveries = 8;
         private const int MaximumWorldActorCapabilities = 16;
         private const int MaximumWorldActorCapabilityIdLength = 128;
@@ -418,7 +426,8 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.CombatantState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.CombatEventBatch, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.OwnerCombatState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemQuantityChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemQuantityChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>

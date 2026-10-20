@@ -177,6 +177,97 @@ public sealed class RealtimeItemOperationTests
     }
 
     [Fact]
+    public async Task CommittedItemChangesReachTheClientBeforeTheCarryStateAndTheResult()
+    {
+        await using var harness = RealtimeServerHarness.Create();
+        var character = harness.AddCharacter("Delta Hero");
+        var containerId = Guid.NewGuid();
+        var movedItemId = Guid.NewGuid();
+        var removedItemId = Guid.NewGuid();
+        harness.GameService.OnItemOperation = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.Json(new SimulationItemTransactionResponse(
+                request.OperationId,
+                request.OperationKind,
+                true,
+                null,
+                [new SimulationItemCharacterRevision(request.CharacterId, 1, 40, 200, 125)],
+                [new SimulationItemContainerRevision(containerId, 4)],
+                [],
+                [],
+                null,
+                CharacterStateTestData.Create(request.CharacterId, 1, 40, 200),
+                [
+                    new SimulationItemChange(
+                        movedItemId,
+                        false,
+                        "potion",
+                        3,
+                        8,
+                        containerId,
+                        2,
+                        null,
+                        null,
+                        [new SimulationItemPolicySummary("insured", "active", "insurance_npc")]),
+                    new SimulationItemChange(removedItemId, true, null, 0, 0, null, null, null, null, [])
+                ])));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+        var intent = RealtimeProtocolRejectionTests.CreateItemIntent();
+
+        client.SendItemIntent(intent);
+        await harness.PollUntilAsync(() => client.ItemResults.Count == 1, "the item result");
+
+        var reliable = client.ReliablePackets.Select(packet => packet.Type).ToList();
+        var changeIndex = reliable.IndexOf(RealtimeMessageType.OwnerItemStateChanged);
+        Assert.True(changeIndex >= 0, "No item state change was sent.");
+        Assert.True(changeIndex < reliable.LastIndexOf(RealtimeMessageType.CarryStateChanged));
+        Assert.True(changeIndex < reliable.IndexOf(RealtimeMessageType.ItemOperationResult));
+        Assert.True(RealtimeProtocol.TryDecodeOwnerItemStateChanged(
+            client.ReliablePackets[changeIndex].Data,
+            out var change,
+            out var error), error);
+        Assert.Equal(intent.OperationId, change.OperationId);
+        Assert.Equal(0, change.PreviousItemStateRevision);
+        Assert.Equal(1, change.CarryState.ItemStateRevision);
+        Assert.Equal(125, change.Currency);
+        Assert.Equal(containerId, Assert.Single(change.ContainerRevisions).ContainerId);
+        Assert.Collection(
+            change.Items,
+            moved =>
+            {
+                Assert.Equal(movedItemId, moved.ItemInstanceId);
+                Assert.Equal(RealtimeItemStateLocationKind.Container, moved.Location);
+                Assert.Equal(2, moved.SlotIndex);
+                Assert.Equal("insurance_npc", Assert.Single(moved.Policies).ProtectionSource);
+            },
+            removed =>
+            {
+                Assert.Equal(removedItemId, removed.ItemInstanceId);
+                Assert.Equal(RealtimeItemStateLocationKind.Removed, removed.Location);
+            });
+        Assert.False(Assert.Single(client.ItemResults).RequiresInventoryRefresh);
+    }
+
+    [Fact]
+    public async Task ATransactionWithoutItemChangesSendsNoItemStateChange()
+    {
+        await using var harness = RealtimeServerHarness.Create();
+        var character = harness.AddCharacter("No Delta Hero");
+        harness.GameService.OnItemOperation = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.CommittedItemOperation(request, 1, 0, 200));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        client.SendItemIntent(RealtimeProtocolRejectionTests.CreateItemIntent());
+        await harness.PollUntilAsync(() => client.ItemResults.Count == 1, "the item result");
+
+        Assert.DoesNotContain(
+            client.ReliablePackets,
+            packet => packet.Type == RealtimeMessageType.OwnerItemStateChanged);
+        Assert.True(Assert.Single(client.ItemResults).Succeeded);
+    }
+
+    [Fact]
     public async Task CarryStateLostDuringTheOperationDisconnectsThePeer()
     {
         await using var harness = RealtimeServerHarness.Create();

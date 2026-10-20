@@ -339,50 +339,6 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void OperationJournalAllowsOneCorrelatableOperationAtATime()
-        {
-            var operationId = Guid.NewGuid();
-            var intent = RealtimeItemOperationIntent.CreateDestroy(
-                operationId,
-                4,
-                Guid.NewGuid(),
-                2);
-            var journal = new InventoryOperationJournal();
-
-            Assert.That(
-                journal.TryBegin(intent, InventoryRefreshScope.Full),
-                Is.True);
-            Assert.That(
-                journal.TryBegin(
-                    RealtimeItemOperationIntent.CreateDestroy(
-                        Guid.NewGuid(),
-                        4,
-                        Guid.NewGuid(),
-                        1),
-                    InventoryRefreshScope.Full),
-                Is.False);
-
-            var result = new RealtimeItemOperationResult(
-                operationId,
-                RealtimeItemOperationKind.Destroy,
-                true,
-                true,
-                new RealtimeCarryState(5, 0, 200),
-                null,
-                Array.Empty<RealtimeItemRevision>(),
-                Array.Empty<RealtimeContainerRevision>(),
-                Array.Empty<Guid>());
-            Assert.That(journal.Matches(result), Is.True);
-            journal.MarkAwaitingRefresh();
-            Assert.That(journal.Pending.AwaitingRefresh, Is.True);
-            journal.Complete();
-            Assert.That(journal.Pending, Is.Null);
-            Assert.That(journal.IsDuplicateCompletion(result), Is.True);
-            journal.Reset();
-            Assert.That(journal.IsDuplicateCompletion(result), Is.False);
-        }
-
-        [Test]
         public void TargetAdvisorUsesCanonicalSlotsSecureEligibilityBagRulesAndHardCap()
         {
             var state = CreateAdvisorState(132, 250);

@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 ## Requirements
 
@@ -114,7 +114,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports eleven definitions, one base Secure
   Container tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 20 with 34 messages
+- Protocol verification reports realtime protocol version 21 with 35 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -268,9 +268,9 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 20 with 34
+Expected result: both commands report realtime protocol version 21 with 35
 messages and 18 generated files, and the second prints
-`Realtime protocol version 20 verified: 34 messages, 18 generated files.`
+`Realtime protocol version 21 verified: 35 messages, 18 generated files.`
 The first command rewrites only changed files and removes files that the schema
 no longer produces. The second fails and names the file when a generated file
 is stale, missing, or not produced by the schema. Commit the schema,
@@ -1607,8 +1607,8 @@ instead.
 ## World Menu Verification
 
 The right-click world menu, described in
-[Game Features](GAME_FEATURES.md#world-menu), needs protocol version 20 on both
-the worker and the client, and the actor content of format version 4. No manual
+[Game Features](GAME_FEATURES.md#world-menu), needs protocol version 20 or later
+on both the worker and the client, and the actor content of format version 4. No manual
 Unity Editor setup steps are required: the `ContextMenu` input action and its
 right mouse button binding are committed in `Assets/Input/PlayerControls.inputactions`,
 and the menu and message panels are created at runtime.
@@ -2089,7 +2089,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 20, simulation revision,
+`27015`, runtime id, realtime protocol version 21, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same

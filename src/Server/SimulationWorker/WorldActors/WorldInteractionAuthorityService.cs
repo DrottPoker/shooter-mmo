@@ -12,7 +12,8 @@ public sealed record WorldInteractionAuthorityResult(
     RealtimeWorldInteractionResult? Result,
     RealtimeWorldInteractionClosed? Closed,
     bool ShouldDisconnect = false,
-    GatheringStart? GatheringStart = null)
+    GatheringStart? GatheringStart = null,
+    RealtimeOwnerItemStateChanged? ItemStateChange = null)
 {
     public bool Succeeded => Opened is not null || Result?.Succeeded == true;
 }
@@ -303,7 +304,8 @@ public sealed class WorldInteractionAuthorityService(
             dispatch.ShouldDisconnect,
             dispatch.Succeeded && dispatch.GatheringNode is not null
                 ? new GatheringStart(intent.InteractionSessionId, intent.CapabilityId, dispatch.GatheringNode)
-                : null);
+                : null,
+            dispatch.Succeeded ? dispatch.ItemStateChange : null);
     }
 
     private WorldInteractionAuthorityResult Open(

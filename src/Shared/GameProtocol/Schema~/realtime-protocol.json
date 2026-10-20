@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 20,
+    "version": 21,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -110,6 +110,24 @@
       "value": 8,
       "visibility": "private",
       "description": "Committed container revisions in one item operation result."
+    },
+    {
+      "name": "MaximumItemStateChanges",
+      "value": 8,
+      "visibility": "private",
+      "description": "Changed items in one owner item state change; a larger transaction needs a refresh."
+    },
+    {
+      "name": "MaximumItemPolicies",
+      "value": 8,
+      "visibility": "private",
+      "description": "Active policies of one changed item."
+    },
+    {
+      "name": "MaximumItemPolicyTextLength",
+      "value": 64,
+      "visibility": "private",
+      "description": "Characters in a policy kind, status, or protection source."
     },
     {
       "name": "MaximumItemResultRecoveryDeliveries",
@@ -378,6 +396,12 @@
       "family": "Items",
       "description": "Why the worker changed an item quantity without a client intent.",
       "values": [ { "name": "AmmunitionConsumed", "value": 1 } ]
+    },
+    {
+      "name": "ItemStateLocationKind",
+      "family": "Items",
+      "description": "Where a changed item is after its transaction.",
+      "values": [ { "name": "Removed", "value": 1 }, { "name": "Container", "value": 2 }, { "name": "Equipment", "value": 3 } ]
     }
   ],
   "structs": [
@@ -644,6 +668,74 @@
       "fields": [
         { "name": "ContainerId", "type": "guid", "nonEmpty": true, "description": "The container." },
         { "name": "Revision", "type": "i64", "minimum": 0, "description": "The committed container revision." }
+      ]
+    },
+    {
+      "name": "ItemPolicySummary",
+      "family": "Items",
+      "description": "An active policy of an item, as the inventory snapshot shows it.",
+      "fields": [
+        {
+          "name": "Kind",
+          "type": "string",
+          "maxLength": "MaximumItemPolicyTextLength",
+          "description": "The policy kind."
+        },
+        {
+          "name": "Status",
+          "type": "string",
+          "maxLength": "MaximumItemPolicyTextLength",
+          "description": "The policy status."
+        },
+        {
+          "name": "ProtectionSource",
+          "type": "string",
+          "maxLength": "MaximumItemPolicyTextLength",
+          "description": "Where the protection came from."
+        }
+      ]
+    },
+    {
+      "name": "ItemStateChange",
+      "family": "Items",
+      "description": "One item after a committed transaction. A removed item carries only its id; an item in a container carries no equipment slot, and an equipped item no container.",
+      "rules": true,
+      "fields": [
+        { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The item." },
+        { "name": "Location", "type": "ItemStateLocationKind", "description": "Where the item is now." },
+        {
+          "name": "DefinitionId",
+          "type": "string",
+          "maxLength": "MaximumDefinitionIdLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The item definition, or empty for a removed item."
+        },
+        { "name": "Quantity", "type": "i32", "minimum": 0, "description": "The stack quantity, or 0 for a removed item." },
+        { "name": "Revision", "type": "i64", "minimum": 0, "description": "The item revision, or 0 for a removed item." },
+        { "name": "ContainerId", "type": "guid", "description": "The container of a contained item, or empty." },
+        {
+          "name": "SlotIndex",
+          "type": "i32",
+          "minimum": -1,
+          "description": "The container slot of a contained item, or -1."
+        },
+        {
+          "name": "EquipmentSlotId",
+          "type": "string",
+          "maxLength": "MaximumEquipmentSlotIdLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The equipment slot of an equipped item, or empty."
+        },
+        {
+          "name": "Policies",
+          "type": "array",
+          "items": "ItemPolicySummary",
+          "maxCount": "MaximumItemPolicies",
+          "nullAsEmpty": true,
+          "description": "The active policies of the item; empty for a removed item."
+        }
       ]
     },
     {
@@ -2437,6 +2529,51 @@
         { "name": "ItemInstanceId", "type": "guid", "nonEmpty": true, "description": "The changed item." },
         { "name": "Quantity", "type": "i32", "minimum": 0, "description": "The new quantity; 0 when the item was used up." },
         { "name": "ItemRevision", "type": "i64", "minimum": 0, "description": "The item revision after the change; 0 when it was used up." }
+      ]
+    },
+    {
+      "name": "OwnerItemStateChanged",
+      "id": 35,
+      "family": "Items",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Every item change of one committed transaction of the owner, so the client patches its inventory without a refresh. The worker sends it before the result of the operation that caused it, and only when it lists the whole change.",
+      "parameter": "change",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "description": "The client operation that committed the change, or empty when no client intent caused it."
+        },
+        {
+          "name": "PreviousItemStateRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The item-state revision the change applies to; the carry state holds the next one."
+        },
+        { "name": "CarryState", "type": "CarryState", "description": "The committed carry state after the change." },
+        { "name": "Currency", "type": "i64", "minimum": 0, "description": "The character's balance after the change." },
+        {
+          "name": "ContainerRevisions",
+          "type": "array",
+          "items": "ContainerRevision",
+          "maxCount": "MaximumItemResultContainerRevisions",
+          "distinctBy": "ContainerId",
+          "nullAsEmpty": true,
+          "description": "The committed revisions of every container the transaction touched."
+        },
+        {
+          "name": "Items",
+          "type": "array",
+          "items": "ItemStateChange",
+          "maxCount": "MaximumItemStateChanges",
+          "distinctBy": "ItemInstanceId",
+          "nullAsEmpty": true,
+          "description": "The state after the change of every item the transaction changed."
+        }
       ]
     }
   ]

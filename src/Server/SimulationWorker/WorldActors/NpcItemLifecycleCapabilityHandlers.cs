@@ -182,7 +182,7 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 GameServiceOutcome.EndsItemSession(result.Error.Code));
         }
 
-        var itemStateRevision = ApplyCommittedCarry(session, result.Value!);
+        var itemStateRevision = ApplyCommittedCarry(session, result.Value!, out var applied);
         if (itemStateRevision < 0)
         {
             return new WorldActorCapabilityDispatchResult(
@@ -197,20 +197,30 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
             true,
             string.Empty,
             SuccessMessage(intent.CapabilityAction),
-            itemStateRevision);
+            itemStateRevision,
+            ItemStateChange: applied
+                ? OwnerItemStateChangeMapper.TryCreate(intent.OperationId, session.CharacterId, result.Value!)
+                : null);
     }
 
     private long ApplyCommittedCarry(
         ActiveSimulationSession session,
-        SimulationItemTransactionResponse transaction)
+        SimulationItemTransactionResponse transaction,
+        out bool applied)
     {
-        if (!CommittedCarryApplier.TryGetCommittedState(transaction, out var committed)
-            || CommittedCarryApplier.IsDiverged(
-                carryApplier.Apply(session, committed, out var currentCarry)))
+        applied = false;
+        if (!CommittedCarryApplier.TryGetCommittedState(transaction, out var committed))
         {
             return -1;
         }
 
+        var result = carryApplier.Apply(session, committed, out var currentCarry);
+        if (CommittedCarryApplier.IsDiverged(result))
+        {
+            return -1;
+        }
+
+        applied = result == ItemStateApplyResult.Applied;
         return currentCarry.ItemStateRevision;
     }
 

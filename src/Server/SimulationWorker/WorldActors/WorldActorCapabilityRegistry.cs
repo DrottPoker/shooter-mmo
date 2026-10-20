@@ -44,14 +44,16 @@ public sealed record WorldActorCapabilityOperationContext(
 }
 
 // GatheringNode names the resource node whose gathering the realtime loop starts once the
-// interaction result is final.
+// interaction result is final. ItemStateChange is the committed item change the client patches
+// its inventory with, when the transaction describes all of it.
 public sealed record WorldActorCapabilityDispatchResult(
     bool Succeeded,
     string Code,
     string Message,
     long ItemStateRevision = 0,
     bool ShouldDisconnect = false,
-    WorldActorRuntimeState? GatheringNode = null);
+    WorldActorRuntimeState? GatheringNode = null,
+    RealtimeOwnerItemStateChanged? ItemStateChange = null);
 
 public interface IWorldActorCapabilityHandler
 {
