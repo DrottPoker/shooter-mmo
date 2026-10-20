@@ -279,8 +279,7 @@ Each file holds one character in the `Export` collection:
    asset file per character, the content comparison with the committed asset
    (objects, meshes, UVs, normals, edge flags, materials with their node links,
    textures with whether they are packed, and custom properties), a review file
-   with both characters side by
-   side, and the review sheets.
+   with both characters side by side, and the review sheets.
 
 The build is deterministic: the same bundle and scripts give the same geometry,
 UVs, normals, and texture pixels. Blender's files still differ in their bytes
