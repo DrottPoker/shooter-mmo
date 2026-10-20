@@ -1,3 +1,4 @@
+using Mmorpg.Client.Core;
 using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
@@ -13,8 +14,15 @@ namespace Mmorpg.Client.Gameplay
         private static readonly Color MarkerColor = new Color(1f, 0.85f, 0.2f, 1f);
 
         private LocalPlayerController localPlayer;
+        private Material primitiveMaterial;
         private GameObject marker;
         private Material markerMaterial;
+
+        // Called by the composition root before the component is activated.
+        public void Initialize(Material runtimePrimitiveMaterial)
+        {
+            primitiveMaterial = runtimePrimitiveMaterial;
+        }
 
         private void LateUpdate()
         {
@@ -61,7 +69,7 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            marker = RuntimePrimitives.Create(PrimitiveType.Cylinder, primitiveMaterial);
             marker.name = "MovementDestinationMarker";
             marker.transform.SetParent(transform, false);
             marker.transform.localScale = new Vector3(MarkerDiameter, MarkerThickness, MarkerDiameter);

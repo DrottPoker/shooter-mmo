@@ -12,6 +12,10 @@ namespace Mmorpg.Client.Core
         [SerializeField] private int sessionValidationIntervalSeconds = 5;
         [SerializeField] private TextAsset itemGameplayCatalog;
 
+        // The material of primitives that runtime presentation creates itself. Referencing it
+        // here puts it and its URP shader into the client content.
+        [SerializeField] private Material runtimePrimitiveMaterial;
+
         public string GameServiceBaseUrl
         {
             get { return NormalizeUrl(gameServiceBaseUrl, "http://localhost:5000"); }
@@ -35,6 +39,11 @@ namespace Mmorpg.Client.Core
         public TextAsset ItemGameplayCatalog
         {
             get { return itemGameplayCatalog; }
+        }
+
+        public Material RuntimePrimitiveMaterial
+        {
+            get { return runtimePrimitiveMaterial; }
         }
 
         // The handle keeps the configuration and the catalog it references loaded. The owner

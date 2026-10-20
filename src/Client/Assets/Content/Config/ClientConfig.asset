@@ -17,3 +17,4 @@ MonoBehaviour:
   realtimeTimeoutSeconds: 10
   sessionValidationIntervalSeconds: 5
   itemGameplayCatalog: {fileID: 4900000, guid: b9e39606ce95458cbda2929358919150, type: 3}
+  runtimePrimitiveMaterial: {fileID: 2100000, guid: 286ed17e91773e3438e71482a4bf1c5f, type: 2}

@@ -29,6 +29,7 @@ namespace Mmorpg.Client.App
         private WorldActorClientController worldActorController;
         private WorldInteractionClientController worldInteractionController;
         private CombatClientController combatController;
+        private Material runtimePrimitiveMaterial;
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -48,6 +49,13 @@ namespace Mmorpg.Client.App
         {
             var config = ClientConfig.Load(out configHandle);
             ClientSession.Configure(config);
+            runtimePrimitiveMaterial = config.RuntimePrimitiveMaterial;
+            if (runtimePrimitiveMaterial == null)
+            {
+                ClientLog.Warning(
+                    ClientLogCategory.Client,
+                    "The client configuration has no runtime primitive material, so markers, arrows, and fallback models render with the error shader in a player build.");
+            }
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
 
@@ -266,7 +274,8 @@ namespace Mmorpg.Client.App
 
             AddSceneComponentIfMissing<WorldScenePanel>(
                 panel => panel.Initialize(simulationClient, pointerFocus));
-            AddSceneComponentIfMissing<MovementDestinationMarker>(null);
+            AddSceneComponentIfMissing<MovementDestinationMarker>(
+                marker => marker.Initialize(runtimePrimitiveMaterial));
             AddSceneComponentIfMissing<TemporaryInventoryPanel>(
                 panel => panel.Initialize(
                     inventoryController,
@@ -274,9 +283,12 @@ namespace Mmorpg.Client.App
                     worldInteractionController,
                     combatController));
             AddSceneComponentIfMissing<CorpsePresentationController>(
-                presentation => presentation.Initialize(corpseController));
+                presentation => presentation.Initialize(corpseController, runtimePrimitiveMaterial));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
-                presentation => presentation.Initialize(worldActorController, simulationClient));
+                presentation => presentation.Initialize(
+                    worldActorController,
+                    simulationClient,
+                    runtimePrimitiveMaterial));
             AddSceneComponentIfMissing<WorldInteractionTargetingController>(
                 targeting => targeting.Initialize(
                     worldInteractionController,
@@ -299,7 +311,8 @@ namespace Mmorpg.Client.App
                 presentation => presentation.Initialize(
                     combatController,
                     simulationClient,
-                    combatantViews));
+                    combatantViews,
+                    runtimePrimitiveMaterial));
             AddSceneComponentIfMissing<TemporaryCombatHud>(
                 hud => hud.Initialize(
                     combatController,
