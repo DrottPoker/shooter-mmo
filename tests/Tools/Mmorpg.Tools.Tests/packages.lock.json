@@ -210,6 +210,7 @@
       "mmorpg.tools.activesimulationbots": {
         "type": "Project",
         "dependencies": {
+          "Mmorpg.GameSimulation": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Mmorpg.Tools.SimulationBotClient": "[1.0.0, )"
         }
@@ -241,6 +242,7 @@
         "type": "Project",
         "dependencies": {
           "Mmorpg.GameProtocol": "[1.0.0, )",
+          "Mmorpg.Server.Common": "[1.0.0, )",
           "Mmorpg.Tools.SimulationBotClient": "[1.0.0, )",
           "Npgsql": "[10.0.3, )"
         }

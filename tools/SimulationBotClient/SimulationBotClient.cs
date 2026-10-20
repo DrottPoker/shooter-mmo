@@ -107,15 +107,12 @@ public sealed class SimulationBotClient : IDisposable
         }
     }
 
+    // Receives, sends the inputs that are due, then lets the transport send everything queued,
+    // so an input leaves in the same poll instead of waiting for the next one.
     public void Poll(long nowTimestamp)
     {
         ThrowIfDisposed();
         client.PollEvents();
-        client.ManualUpdate(
-            (float)Math.Max(
-                0d,
-                Stopwatch.GetElapsedTime(lastPollTimestamp, nowTimestamp).TotalMilliseconds));
-        lastPollTimestamp = nowTimestamp;
 
         if (State is SimulationBotClientState.Connecting or SimulationBotClientState.Joining
             && nowTimestamp >= joinDeadlineTimestamp)
@@ -123,10 +120,8 @@ public sealed class SimulationBotClient : IDisposable
             Fail(
                 "join_timeout",
                 "SimulationWorker did not accept the simulation bot before the join timeout.");
-            return;
         }
-
-        if (State == SimulationBotClientState.Joined)
+        else if (State == SimulationBotClientState.Joined)
         {
             SendDueInputs(nowTimestamp);
         }
@@ -137,6 +132,12 @@ public sealed class SimulationBotClient : IDisposable
                 "leave_timeout",
                 "SimulationWorker did not acknowledge the simulation bot leave request.");
         }
+
+        client.ManualUpdate(
+            (float)Math.Max(
+                0d,
+                Stopwatch.GetElapsedTime(lastPollTimestamp, nowTimestamp).TotalMilliseconds));
+        lastPollTimestamp = nowTimestamp;
     }
 
     public void BeginLeave(long nowTimestamp)
