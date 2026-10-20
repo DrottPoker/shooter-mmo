@@ -1197,13 +1197,15 @@ closes it, and a press over interface may choose a row. The controller runs
 before the features, at execution order -50, so combat, world interaction, and
 the inventory panel ignore an Escape whose frame reports
 `CancelConsumedThisFrame`, the Escape that closed the menu. `RunDefault` and
-`OpenMenu` run a left or right click for a given ray, for tools and harnesses. Options are plain values
-with their provider, an action code, the pointer candidate, an entity id, an
-argument such as a capability id, and the ray, so building the menu every frame
-allocates nothing. A provider runs its own option and checks that the target
-still exists, because an open menu can outlive its target. After an option runs
-the controller raises `OptionExecuted`; combat clears its target on every
-option except its own and Examine.
+`OpenMenu` run a left or right click for a given ray, for tools and harnesses.
+Options are plain values with their provider, an action code, the pointer
+candidate, an entity id, an argument such as a capability id, and the ray, so
+building the menu every frame allocates nothing. A provider runs its own
+option, checks that the target still exists, because an open menu can outlive
+its target, and reports whether it acted. Only after an option acted does the
+controller raise `OptionExecuted`; combat clears its target on every such
+option except its own and Examine, so a stale option that did nothing ends
+nothing either.
 
 - Walk here casts the stored ray at the ground through
   `LocalPlayerController.TryFindGroundPoint` and walks there.
@@ -1368,8 +1370,8 @@ range and opens it like any other target, and `WorldInteractionClientController`
 then starts gathering through the chosen gathering capability. It first checks
 that an item with a tool kind is equipped in the Tool slot; otherwise the panel
 says to equip a gathering tool. Mine again while that node already gathers does
-nothing. The check is advisory and passes while the inventory is still loading, because GameService
-checks the required tool kind on every yield.
+nothing. The check is advisory and passes while the inventory is still loading,
+because GameService checks the required tool kind on every yield.
 
 `GatheringClientState` applies the worker's `GatheringState` messages. `Started`
 must belong to the open interaction and starts a cycle timer. `Yielded` adds the
@@ -1457,7 +1459,9 @@ Its decisions live in pure classes that EditMode tests cover:
   joined Shard's `ShardRules.PlayerVersusPlayer` allows it. A Mob that cannot
   be attacked now, such as one walking home, offers no Attack, so a left click
   on it walks there. A player without combat state, such as a development bot,
-  is never a target. Choosing Attack checks again that the character lives.
+  is never a target. `AttackableTarget` makes this decision for one candidate,
+  and choosing a stored Attack asks it again, so a target that died or left, or
+  a character that died, while the menu stayed open sends no attack.
   Every other option except Examine, such as Walk here, Talk-to, or Mine, sends
   `ClearTarget` when there is a target, and so does Escape.
 - `CombatTargetSelection` names the target the client acts on. The worker owns
@@ -1599,24 +1603,27 @@ the death signal once per death, event forwarding, and that every combat
 message, and every other reliable worker message outside the session
 lifecycle, is ignored while leaving.
 `WorldMenuTests` verify the menu order of target options, Walk here, and
-Examine, a blocked menu, the capability options of NPCs and resource nodes in
-authored order and Loot for corpses, Walk here and Examine with their game
-messages, the activation of each capability kind, the game message log, the
-colored labels, and the message fade. `WorldActorClientFoundationTests` also
+Examine, that only an option that acted is announced, a blocked menu, the
+capability options of NPCs and resource nodes in authored order and Loot for
+corpses, that stale options do nothing, Walk here and Examine with their game
+messages, the walk distance inside the open check, the activation of each
+capability kind, the game message log, the colored labels and hover hint, and
+the message fade. `WorldActorClientFoundationTests` also
 verify that a spawn keeps its examine text and menu options and that a changed
 list conflicts without a despawn.
 `CombatTargetingTests` verify that combat adds its menu options before world
 interaction whatever registered first, that a dead character attacks nothing,
+that a stored Attack targets only what can be attacked when it is chosen,
 the Mob and player Attack rule and the player versus player rule, that world
 interaction no longer accepts Mobs, the nearest-first and once-per-target
 candidate list, the remote player trigger, target selection with confirmed,
 rejected, cleared, and stale requests, and the approach distance, re-approach,
-line-of-sight, retry, and stop rules. `CombatPresentationTests` verify the weapon range from the
-main hand item, the live arrow count and its slot label, the server clock with
-tick wrap, the respawn countdown, a distinct label for every attack status,
-health bar visibility, and projectile timing. A PlayMode test draws the
-equipped arrow slot of the real inventory panel and follows the owner state's
-live count without a redraw.
+line-of-sight, retry, and stop rules. `CombatPresentationTests` verify the
+weapon range from the main hand item, the live arrow count and its slot label,
+the server clock with tick wrap, the respawn countdown, a distinct label for
+every attack status, health bar visibility, and projectile timing. A PlayMode
+test draws the equipped arrow slot of the real inventory panel and follows the
+owner state's live count without a redraw.
 `InventoryQuantityChangeTests` cover the in-place arrow patch, a used-up stack,
 a pending operation that stays busy, and the refresh fallback for a missed or
 skipped revision, an unknown or wrongly placed stack, a growing quantity, and an

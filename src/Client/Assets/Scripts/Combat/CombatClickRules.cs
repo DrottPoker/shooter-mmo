@@ -71,6 +71,32 @@ namespace Mmorpg.Client.Combat
             return new CombatClickTarget(CombatClickTargetKind.Other, 0);
         }
 
+        // The entity that Attack on this candidate targets, or 0 when the candidate offers no
+        // Attack now. The menu asks when it is built and again when a stored Attack is chosen,
+        // because the target may have died or left in between.
+        public static ulong AttackableTarget(
+            WorldPointerCandidate candidate,
+            WorldActorClientState actors,
+            CombatClientState combat,
+            bool playerVersusPlayer)
+        {
+            if (combat == null)
+            {
+                return 0;
+            }
+
+            var target = Describe(candidate, actors);
+            if (target.EntityId == 0)
+            {
+                return 0;
+            }
+
+            combat.TryGetCombatant(target.EntityId, out var targetState);
+            return CanAttack(target, combat.Owner, playerVersusPlayer, targetState)
+                ? target.EntityId
+                : 0;
+        }
+
         // Whether the menu offers Attack: on a living Mob, and on a living player when the
         // Shard allows player versus player, never while the character is dead. A Mob that
         // cannot be attacked now, such as one walking home, offers no Attack, so a left click

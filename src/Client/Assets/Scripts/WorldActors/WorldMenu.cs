@@ -40,9 +40,10 @@ namespace Mmorpg.Client.WorldActors
         // block the whole menu, as combat does while the character is dead.
         void AddWorldMenuOptions(WorldMenuBuilder menu);
 
-        // Runs an option this provider added. The option may be old: the menu stays open while
-        // the world moves on, so the provider checks that its target is still valid.
-        void ExecuteWorldMenuOption(WorldMenuOption option);
+        // Runs an option this provider added and reports whether it acted. The option may be
+        // old: the menu stays open while the world moves on, so the provider checks that its
+        // target is still valid, and a stale option does nothing and returns false.
+        bool ExecuteWorldMenuOption(WorldMenuOption option);
     }
 
     // One row of the world menu: a verb, an optional target name, and what its provider needs to

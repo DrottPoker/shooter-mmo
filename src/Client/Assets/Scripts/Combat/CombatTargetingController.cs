@@ -148,22 +148,12 @@ namespace Mmorpg.Client.Combat
                 return;
             }
 
-            var playerVersusPlayer = realtimeClient != null
-                && realtimeClient.ShardRules != null
-                && realtimeClient.ShardRules.PlayerVersusPlayer;
-            var actors = actorController != null ? actorController.State : null;
             var candidates = worldMenu.Candidates;
             for (var index = 0; index < candidates.Count; index++)
             {
                 var candidate = candidates[index];
-                var target = CombatClickRules.Describe(candidate, actors);
-                if (target.EntityId == 0)
-                {
-                    continue;
-                }
-
-                combatController.State.TryGetCombatant(target.EntityId, out var targetState);
-                if (!CombatClickRules.CanAttack(target, owner, playerVersusPlayer, targetState))
+                var targetEntityId = AttackableTarget(candidate);
+                if (targetEntityId == 0)
                 {
                     continue;
                 }
@@ -175,22 +165,37 @@ namespace Mmorpg.Client.Combat
                     candidate,
                     "Attack",
                     candidate.DisplayName,
-                    target.Kind == CombatClickTargetKind.Player
-                        ? WorldMenuTargetStyle.Player
-                        : WorldMenuTargetStyle.Mob,
-                    entityId: target.EntityId));
+                    candidate.Player != null ? WorldMenuTargetStyle.Player : WorldMenuTargetStyle.Mob,
+                    entityId: targetEntityId));
             }
         }
 
-        // The menu may have stayed open, so a character that died since never attacks.
-        public void ExecuteWorldMenuOption(WorldMenuOption option)
+        // The menu may have stayed open, so the target and the character are checked again:
+        // a target that died or left, or a character that died, never attacks.
+        public bool ExecuteWorldMenuOption(WorldMenuOption option)
         {
-            if (option.Action == AttackAction
-                && combatController != null
-                && !CombatClickRules.IsDead(combatController.State.Owner))
+            if (option.Action != AttackAction
+                || option.EntityId == 0
+                || combatController == null
+                || AttackableTarget(option.Candidate) != option.EntityId)
             {
-                Attack(option.EntityId);
+                return false;
             }
+
+            Attack(option.EntityId);
+            return true;
+        }
+
+        private ulong AttackableTarget(WorldPointerCandidate candidate)
+        {
+            var playerVersusPlayer = realtimeClient != null
+                && realtimeClient.ShardRules != null
+                && realtimeClient.ShardRules.PlayerVersusPlayer;
+            return CombatClickRules.AttackableTarget(
+                candidate,
+                actorController != null ? actorController.State : null,
+                combatController.State,
+                playerVersusPlayer);
         }
 
         // Walking away, talking, or gathering ends the attack; Examine does not.

@@ -32,7 +32,8 @@ namespace Mmorpg.Client.WorldActors
         // Raised when the menu opens or closes.
         public event Action MenuChanged;
 
-        // Raised after an option ran, so other features can end what they were doing.
+        // Raised after an option acted, so other features can end what they were doing. A
+        // stale option that did nothing raises nothing.
         public event Action<WorldMenuOption> OptionExecuted;
 
         public bool IsMenuOpen { get; private set; }
@@ -160,25 +161,29 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
-        public void ExecuteWorldMenuOption(WorldMenuOption option)
+        public bool ExecuteWorldMenuOption(WorldMenuOption option)
         {
             switch (option.Action)
             {
                 case WalkAction:
-                    if (localPlayer != null && localPlayer.TryFindGroundPoint(option.Ray, out var point))
+                    if (localPlayer == null || !localPlayer.TryFindGroundPoint(option.Ray, out var point))
                     {
-                        localPlayer.MoveTo(point);
+                        return false;
                     }
 
-                    break;
+                    localPlayer.MoveTo(point);
+                    return true;
                 case ExamineAction:
                     // A target that left while the menu stayed open is not described.
-                    if (option.Candidate.IsActive)
+                    if (messages == null || !option.Candidate.IsActive)
                     {
-                        messages?.Add(option.Argument, Time.unscaledTime);
+                        return false;
                     }
 
-                    break;
+                    messages.Add(option.Argument, Time.unscaledTime);
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -268,8 +273,10 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
-            option.Provider.ExecuteWorldMenuOption(option);
-            OptionExecuted?.Invoke(option);
+            if (option.Provider.ExecuteWorldMenuOption(option))
+            {
+                OptionExecuted?.Invoke(option);
+            }
         }
 
         private void AddExamine(WorldMenuBuilder menu, int index, WorldPointerCandidate candidate)

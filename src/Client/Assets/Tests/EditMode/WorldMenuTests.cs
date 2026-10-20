@@ -69,6 +69,40 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(menu.Options[4].IsPassive, Is.True);
         }
 
+        // A stale option that did nothing must not end what other features do, such as an
+        // attack, so only an option that acted is announced.
+        [Test]
+        public void OnlyAnOptionThatActedTellsTheOtherFeatures()
+        {
+            var worldMenu = Create<WorldMenuController>("WorldMenu");
+            var provider = new FakeProvider { AddsOption = true, Acts = false };
+            worldMenu.AddProvider(provider, WorldMenuOrder.WorldInteraction);
+            var announced = new List<string>();
+            worldMenu.OptionExecuted += option => announced.Add(option.Label);
+            var ray = new Ray(new Vector3(0f, 1000f, 0f), Vector3.up);
+
+            worldMenu.OpenMenu(ray, new Vector2(10f, 20f));
+            Assert.That(worldMenu.IsMenuOpen, Is.True);
+            Assert.That(worldMenu.MenuScreenPosition, Is.EqualTo(new Vector2(10f, 20f)));
+            Assert.That(worldMenu.MenuOptions.Select(option => option.Label), Is.EqualTo(new[] { "Talk-to Mira" }));
+            worldMenu.Choose(0);
+            Assert.That(provider.Executed, Is.EqualTo(1));
+            Assert.That(worldMenu.IsMenuOpen, Is.False);
+            Assert.That(announced, Is.Empty);
+
+            provider.Acts = true;
+            worldMenu.RunDefault(ray);
+            Assert.That(provider.Executed, Is.EqualTo(2));
+            Assert.That(announced, Is.EqualTo(new[] { "Talk-to Mira" }));
+
+            // A provider that left while its menu stayed open runs nothing.
+            worldMenu.OpenMenu(ray, Vector2.zero);
+            worldMenu.RemoveProvider(provider);
+            worldMenu.Choose(0);
+            Assert.That(provider.Executed, Is.EqualTo(2));
+            Assert.That(worldMenu.IsMenuOpen, Is.False);
+        }
+
         [Test]
         public void BlockedMenuHasNoOptionsAtAll()
         {
@@ -128,6 +162,12 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(menu.Options[3].Style, Is.EqualTo(WorldMenuTargetStyle.Object));
             Assert.That(menu.Options[3].TargetIndex, Is.EqualTo(2));
             Assert.That(menu.Options[4].Style, Is.EqualTo(WorldMenuTargetStyle.Corpse));
+
+            // Without a joined player nothing happens, and an option whose target left does
+            // nothing either; both report that they did not act.
+            Assert.That(targeting.ExecuteWorldMenuOption(menu.Options[0]), Is.False);
+            UnityEngine.Object.DestroyImmediate(((Component)menu.Options[4].Candidate.Target).gameObject);
+            Assert.That(targeting.ExecuteWorldMenuOption(menu.Options[4]), Is.False);
         }
 
         [Test]
@@ -389,14 +429,27 @@ namespace Mmorpg.Client.Tests.EditMode
                 menuOptions);
         }
 
+        // Adds one Talk-to option for the first target when asked and acts when told to.
         private sealed class FakeProvider : IWorldMenuProvider
         {
+            public bool AddsOption { get; set; }
+
+            public bool Acts { get; set; }
+
+            public int Executed { get; private set; }
+
             public void AddWorldMenuOptions(WorldMenuBuilder menu)
             {
+                if (AddsOption)
+                {
+                    menu.Add(WorldMenuOption.ForTarget(this, 1, 0, default(WorldPointerCandidate), "Talk-to", "Mira", WorldMenuTargetStyle.Npc));
+                }
             }
 
-            public void ExecuteWorldMenuOption(WorldMenuOption option)
+            public bool ExecuteWorldMenuOption(WorldMenuOption option)
             {
+                Executed++;
+                return Acts;
             }
         }
 

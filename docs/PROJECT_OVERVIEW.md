@@ -182,7 +182,8 @@ The repository currently supports:
 - A RuneScape-style world menu: a right click lists every option for every
   target under the cursor, such as Attack, Trade, Mine, Loot, Walk here, and
   Examine, and a left click runs the top option. NPC services and examine texts
-  come from actor content through the actor spawn.- Deterministic NPC, Mob, and resource node definitions, factions, presentation
+  come from actor content through the actor spawn.
+- Deterministic NPC, Mob, and resource node definitions, factions, presentation
   references, activity, respawn, and resource profiles, spawn points, groups,
   areas, and patrol paths with one shared command-line and Unity Editor compiler
   path.

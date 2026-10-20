@@ -127,8 +127,10 @@ Every world action goes through one menu, as in RuneScape:
 - The menu closes when an option or `Cancel` is chosen, on a click elsewhere in
   the world, on `Escape`, or when the pointer moves more than a short distance
   away from it. An `Escape` that closes the menu does nothing else: the attack,
-  the open interaction, and the inventory stay as they are. Options run against the world as it is when they are chosen, so
-  an option for a target that left in the meantime does nothing.
+  the open interaction, and the inventory stay as they are.
+- Options run against the world as it is when they are chosen, so an option for
+  a target that left or died in the meantime does nothing and ends nothing
+  else, such as an attack.
 - While the character is dead the menu offers nothing.
 - Every option except `Examine` ends an attack, as walking away does.
 
@@ -471,9 +473,10 @@ interactables is implemented:
   spherecast tolerance, up to `100` metres from the camera and never through
   solid geometry. The [World Menu](#world-menu) offers their options.
 - Choosing an option of a target walks the player to `2.5` metres and asks
-  SimulationWorker to open the interaction once it is within `2.75` metres, and the interaction panel says
-  `Walking to <name>...` meanwhile. A new option elsewhere cancels the walk, and
-  `Escape` closes the active NPC or corpse interaction.
+  SimulationWorker to open the interaction once it is within `2.75` metres, and
+  the interaction panel says `Walking to <name>...` meanwhile. A new option
+  elsewhere cancels the walk, and `Escape` closes the active NPC or corpse
+  interaction.
 - SimulationWorker opens an interaction only within the authoritative `3.0`
   metre start range after validating session, Shard, target identity and
   revision, active state, line of sight, capability, and request limits.
@@ -516,8 +519,8 @@ Status: MVP implemented with temporary presentation
   character on death.
 - Mira the Quartermaster offers `Trade`, in her right-click menu and in her
   interaction panel. Choosing it opens the complete inventory view on the
-  `Vendor` tab with the General Store and the current balance. Trading works only while the interaction stays open; walking out of
-  range closes it.
+  `Vendor` tab with the General Store and the current balance. Trading works
+  only while the interaction stays open; walking out of range closes it.
 - The General Store sells Bronze Arrow for `1`, Minor Healing Potion for `25`,
   Cooked Trout for `10`, and Starter Pickaxe for `50` Gold, at 100 percent of
   each item's value, with unlimited stock. Each offer has a quantity field and a

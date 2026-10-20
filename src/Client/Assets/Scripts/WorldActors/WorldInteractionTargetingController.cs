@@ -146,15 +146,15 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
-        public void ExecuteWorldMenuOption(WorldMenuOption option)
+        public bool ExecuteWorldMenuOption(WorldMenuOption option)
         {
             var target = option.Candidate.Target;
             if (target == null || !target.IsTargetActive || IsDestroyed(target))
             {
-                return;
+                return false;
             }
 
-            Interact(
+            return Interact(
                 target,
                 option.Action == OpenCapabilityAction ? option.Argument : string.Empty);
         }
@@ -175,11 +175,13 @@ namespace Mmorpg.Client.WorldActors
                 && actorKind.Value != RealtimeWorldActorKind.Mob;
         }
 
-        private void Interact(IWorldInteractionTarget target, string capabilityId)
+        // Approaches the target, or starts the capability when its interaction is open.
+        // Returns whether anything happened.
+        private bool Interact(IWorldInteractionTarget target, string capabilityId)
         {
             if (interactionController == null || localPlayer == null)
             {
-                return;
+                return false;
             }
 
             if (interactionController.HasActiveLease)
@@ -189,7 +191,7 @@ namespace Mmorpg.Client.WorldActors
                 {
                     CancelApproach();
                     interactionController.ActivateCapability(capabilityId);
-                    return;
+                    return true;
                 }
 
                 // Opening another target first closes the current interaction.
@@ -200,7 +202,7 @@ namespace Mmorpg.Client.WorldActors
             if (intentId == 0)
             {
                 CancelApproach();
-                return;
+                return false;
             }
 
             approachTarget = target;
@@ -208,6 +210,7 @@ namespace Mmorpg.Client.WorldActors
             approachIntentId = intentId;
             approachEndedAt = -1f;
             Changed?.Invoke();
+            return true;
         }
 
         private void UpdateApproach()

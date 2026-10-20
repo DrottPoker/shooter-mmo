@@ -125,6 +125,49 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(new CombatClickTarget(CombatClickTargetKind.Other, NpcId).EntityId, Is.Zero);
         }
 
+        // The menu asks again when a stored Attack is chosen, because the target or the
+        // character may have died, or the target left, while the menu stayed open.
+        [Test]
+        public void AttackTargetsOnlyWhatCanBeAttackedNow()
+        {
+            var actors = new WorldActorClientState();
+            Assert.That(actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob), out var error), Is.True, error);
+            Assert.That(actors.TryGet(MobId, out var mobEntry), Is.True);
+            var combat = new CombatClientState();
+            Assert.That(combat.TryApplyOwner(Owner(1, RealtimeCombatLifeState.Alive), out error), Is.True, error);
+            Assert.That(combat.TryApplyCombatant(Combatant(MobId), out error), Is.True, error);
+            var mobObject = new GameObject("Mob");
+            try
+            {
+                var mob = mobObject.AddComponent<MobView>();
+                mob.Initialize(mobEntry);
+                var candidate = new WorldPointerCandidate(mob, 4f);
+                Assert.That(CombatClickRules.AttackableTarget(candidate, actors, combat, false), Is.EqualTo(MobId));
+                Assert.That(CombatClickRules.AttackableTarget(candidate, actors, null, false), Is.Zero);
+
+                combat.RemoveCombatant(MobId);
+                Assert.That(combat.TryApplyCombatant(Combatant(MobId, RealtimeCombatLifeState.Dead), out error), Is.True, error);
+                Assert.That(CombatClickRules.AttackableTarget(candidate, actors, combat, false), Is.Zero);
+
+                combat.RemoveCombatant(MobId);
+                Assert.That(combat.TryApplyCombatant(Combatant(MobId), out error), Is.True, error);
+                Assert.That(combat.TryApplyOwner(Owner(2, RealtimeCombatLifeState.Dead), out error), Is.True, error);
+                Assert.That(CombatClickRules.AttackableTarget(candidate, actors, combat, false), Is.Zero);
+
+                Assert.That(combat.TryApplyOwner(Owner(3, RealtimeCombatLifeState.Alive), out error), Is.True, error);
+                Assert.That(CombatClickRules.AttackableTarget(candidate, actors, combat, false), Is.EqualTo(MobId));
+                UnityEngine.Object.DestroyImmediate(mobObject);
+                Assert.That(CombatClickRules.AttackableTarget(candidate, actors, combat, false), Is.Zero);
+            }
+            finally
+            {
+                if (mobObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(mobObject);
+                }
+            }
+        }
+
         [Test]
         public void ClickTargetsAreDescribedByTheirAuthoritativeKind()
         {
@@ -624,8 +667,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 calls.Add(name);
             }
 
-            public void ExecuteWorldMenuOption(WorldMenuOption option)
+            public bool ExecuteWorldMenuOption(WorldMenuOption option)
             {
+                return false;
             }
         }
 
