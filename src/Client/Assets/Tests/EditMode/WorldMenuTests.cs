@@ -26,7 +26,10 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             foreach (var value in objects)
             {
-                UnityEngine.Object.DestroyImmediate(value);
+                if (value != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(value);
+                }
             }
 
             objects.Clear();
@@ -168,6 +171,25 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 messages.Messages.Select(message => message.Text),
                 Is.EqualTo(new[] { "Feral Wolf examine text.", "The remains of Ada." }));
+
+            // The menu can outlive its targets: a target that left is no longer described.
+            UnityEngine.Object.DestroyImmediate(((Component)menu.Options[3].Candidate.Target).gameObject);
+            Assert.That(
+                actors.State.TryApplyState(
+                    new RealtimeWorldActorState(MobId, 2, 1, false, MobId, 0f, 0f, 0f, RealtimeWorldActorActivityTier.EventDriven),
+                    out var error),
+                Is.True,
+                error);
+            ((WorldActorView)menu.Options[1].Candidate.Target).Apply(LookUp(actors.State, MobId));
+            worldMenu.ExecuteWorldMenuOption(menu.Options[1]);
+            worldMenu.ExecuteWorldMenuOption(menu.Options[3]);
+            Assert.That(messages.Messages.Count, Is.EqualTo(2));
+        }
+
+        private static WorldActorClientEntry LookUp(WorldActorClientState actors, ulong entityId)
+        {
+            Assert.That(actors.TryGet(entityId, out var actor), Is.True);
+            return actor;
         }
 
         // A route ends within its range plus the arrival tolerance, so the walk must aim

@@ -172,7 +172,12 @@ namespace Mmorpg.Client.WorldActors
 
                     break;
                 case ExamineAction:
-                    messages?.Add(option.Argument, Time.unscaledTime);
+                    // A target that left while the menu stayed open is not described.
+                    if (option.Candidate.IsActive)
+                    {
+                        messages?.Add(option.Argument, Time.unscaledTime);
+                    }
+
                     break;
             }
         }

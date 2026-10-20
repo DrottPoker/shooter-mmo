@@ -1208,7 +1208,8 @@ option except its own and Examine.
 - Walk here casts the stored ray at the ground through
   `LocalPlayerController.TryFindGroundPoint` and walks there.
 - Examine posts the actor's `ExamineText` from its spawn, or "The remains of
-  <name>." for a corpse, to the `GameMessageLog` that `ClientBootstrap` owns.
+  <name>." for a corpse, to the `GameMessageLog` that `ClientBootstrap` owns,
+  while the target is still active.
 - `WorldInteractionTargetingController` adds one option per
   `WorldActorClientEntry.MenuOptions` entry of an NPC or resource node, in the
   authored order the spawn carries, and Loot for a corpse. A Mob is no
