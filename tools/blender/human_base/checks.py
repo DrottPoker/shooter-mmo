@@ -308,7 +308,9 @@ def _snapshot(path):
         w, h = i.size
         px = np.empty(w * h * 4, np.float32)
         i.pixels.foreach_get(px)
-        data["image " + i.name] = (tuple(i.size), i.colorspace_settings.name, px.tobytes())
+        # Packed or not matters: the art pipeline only accepts packed textures.
+        data["image " + i.name] = (tuple(i.size), i.colorspace_settings.name, i.source, i.packed_file is not None,
+                                   px.tobytes())
     return data
 
 

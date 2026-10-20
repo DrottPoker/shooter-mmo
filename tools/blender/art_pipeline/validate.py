@@ -150,6 +150,9 @@ def _mesh_errors(obj: bpy.types.Object, kind: str) -> list[str]:
             problem = textured_principled_problem(slot.material)
             if problem is not None:
                 errors.append(f'Material "{slot.material.name}" {problem}.')
+            elif any(n.type == "TEX_IMAGE" for n in slot.material.node_tree.nodes) and mesh.uv_layers.active is None:
+                # The Image Texture reads the active UV map.
+                errors.append(f'Mesh "{obj.name}" uses the texture of "{slot.material.name}" but has no UV map.')
         elif principled_inputs(slot.material) is None:
             errors.append(f'Material "{slot.material.name}" must be one Principled BSDF with a flat Base Color, '
                           "Metallic, and Roughness, without textures or other nodes feeding them.")

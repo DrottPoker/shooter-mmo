@@ -113,7 +113,8 @@ asset that breaks one of these rules:
   without textures or other nodes feeding them. Textures for static
   assets come with the planned palette texture. A `skinned` asset may feed the
   Base Color straight from one Image Texture whose image is packed into the
-  `.blend` file, such as a painted body, read with the default UV map.
+  `.blend` file, such as a painted body, read through the mesh's active UV map,
+  which every mesh with that material must have.
 - The exported triangles stay within `triangleBudget`.
 
 Modeling conventions: one Blender unit is one meter, Z is up, and the ground is
@@ -277,7 +278,8 @@ Each file holds one character in the `Export` collection:
 5. `characters`, `asset`, `compare`, and `review`: the split into parts, one
    asset file per character, the content comparison with the committed asset
    (objects, meshes, UVs, normals, edge flags, materials with their node links,
-   textures, and custom properties), a review file with both characters side by
+   textures with whether they are packed, and custom properties), a review file
+   with both characters side by
    side, and the review sheets.
 
 The build is deterministic: the same bundle and scripts give the same geometry,
