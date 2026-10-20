@@ -100,15 +100,14 @@ public sealed class AuthoritativePlayerMovement
     // The path the character follows now.
     public MovementPath? CurrentPath => currentInput.Path;
 
-    // No path remains to follow, none waits to start, and no horizontal velocity is left
-    // after this tick's movement, which every attack requires.
+    // No path remains to follow, no waiting input starts one, and no horizontal velocity is
+    // left after this tick's movement, which every attack requires.
     public bool IsStandingStill
     {
         get
         {
-            var following = IsFollowing(currentInput.Path)
-                || (newestInput.PathId != currentInput.PathId && IsFollowing(newestInput.Path));
-            return !following
+            return !IsFollowing(currentInput.Path)
+                && !HasWaitingMovement()
                 && (State.VelocityX * State.VelocityX) + (State.VelocityZ * State.VelocityZ) < 0.0001f;
         }
     }
@@ -404,6 +403,22 @@ public sealed class AuthoritativePlayerMovement
         currentInput = newestInput;
         LastProcessedInputSequence = LastReceivedInputSequence;
         holdingUntilNextInput = true;
+    }
+
+    // Any waiting input may switch to another path, even when a later one stops again.
+    private bool HasWaitingMovement()
+    {
+        foreach (var queued in queuedInputs)
+        {
+            if (!queued.PathRejected
+                && queued.Input.PathId != currentInput.PathId
+                && IsFollowing(queued.Input.Path))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool IsFollowing(MovementPath? path)

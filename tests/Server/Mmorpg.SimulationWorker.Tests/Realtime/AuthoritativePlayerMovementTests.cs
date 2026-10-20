@@ -275,6 +275,24 @@ public sealed class AuthoritativePlayerMovementTests
     }
 
     [Fact]
+    public void AWaitingPathKeepsTheCharacterFromStandingStillEvenWhenALaterInputStops()
+    {
+        var movement = CreateMovement();
+        var path = Path(5, (0f, 8f));
+        movement.AcceptInputs(Batch(path, Input(1, 0), Input(2, 0), Input(3, 5)));
+        movement.AcceptInputs(Batch(null, Input(1, 0), Input(2, 0), Input(3, 5), Input(4, 0)));
+
+        // The tick drains the two standing inputs; the path of input 3 still waits.
+        movement.SimulateTick();
+        Assert.Equal(2u, movement.LastProcessedInputSequence);
+        Assert.False(movement.IsStandingStill);
+
+        movement.SimulateTick();
+        Assert.Equal(3u, movement.LastProcessedInputSequence);
+        Assert.False(movement.IsStandingStill);
+    }
+
+    [Fact]
     public void HaltDiscardsWaitingInputsAndKeepsThePhysics()
     {
         var movement = CreateMovement();
