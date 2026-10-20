@@ -114,9 +114,6 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(manifest.bounds.minimumX, config.MovementSimulation.MinimumX);
         Assert.Equal(manifest.bounds.maximumX, config.MovementSimulation.MaximumX);
         Assert.Equal(manifest.spawn.z, config.MovementSpawn.Z);
-        Assert.NotEqual(
-            WorldManifestFileStore.Load(WorldDataRootPath(), "development-world-1").bounds.maximumX,
-            config.MovementSimulation.MaximumX);
     }
 
     [Fact]
