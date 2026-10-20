@@ -210,6 +210,7 @@ Run from the repository root:
 ```powershell
 dotnet restore Mmorpg.slnx --locked-mode
 & ./tools/Verify-DependencyPolicy.ps1
+& ./tools/Verify-ArtAssets.ps1
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
 dotnet test Mmorpg.slnx --configuration Release --no-build
@@ -289,8 +290,9 @@ waited for, merged, and cleaned up with the two scripts in
 | `src/Shared/WorldData` | Local Unity package with shared domain rules and compilers, the Unity content tools, and the deterministic `Generated` data compiled from `content` |
 | `src/Shared/DotNet` | .NET projects that compile the shared Unity package sources for the server |
 | `src/Client` | Unity project and Unity tests |
+| `art` | Blender sources of the 3D models, one folder per asset with its `.blend` file in Git LFS and its `asset.json` review and export record. See [Art Pipeline](docs/ART_PIPELINE.md) |
 | `observability` | Local monitoring stack configuration: OpenTelemetry Collector, Prometheus with alert rules and their tests, Loki, Tempo, and the Grafana data sources and dashboards |
-| `tools` | Verification, content compilers and their shared pipeline library, the realtime protocol generator, stress benchmark, shared headless bot client, active bot population, and the pull request wait and merge scripts |
+| `tools` | Verification, content compilers and their shared pipeline library, the realtime protocol generator, the Blender art pipeline scripts, stress benchmark, shared headless bot client, active bot population, and the pull request wait and merge scripts |
 | `tests` | Backend tests: one test project per server module, shared runtime and tool tests, cross-module integration tests, and shared test infrastructure. See [Backend Tests](tests/README.md) |
 | `docs` | Architecture, implemented features, setup, and product references |
 

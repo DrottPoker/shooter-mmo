@@ -57,7 +57,9 @@ inventory's live arrow count read its state. Each namespace
 equals its assembly name. Areas that read `ClientSession` reference Api as
 well, because the session caches Api contracts. The Editor-only
 `Mmorpg.Client.Editor` assembly references Core and Worlds plus the shared
-WorldData editor and the Addressables editor assemblies.
+WorldData editor and the Addressables editor assemblies. It also holds
+`ArtModelImportRules`, the import rules for every model the art pipeline
+exports to `Assets/Art/Models`, described in [Art Pipeline](ART_PIPELINE.md).
 
 `ClientAssemblyArchitectureTests` pins the exact declared references of every
 client assembly, including shared and package assemblies, the layer order, and
@@ -1081,10 +1083,13 @@ The client keeps permanent state below replaceable presentation:
   respawns, so it cannot be clicked.
 - A presentation registry maps `presentationArchetypeId` to authored prefabs.
   The asset is `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`
-  and maps all five authored archetypes to collider-free placeholder prefabs in
+  and maps all five authored archetypes to collider-free prefabs in
   `Assets/Prefabs/WorldActors` with URP materials in
-  `Assets/Art/Materials/WorldActors`. `resource.iron_vein` maps to
-  `Resource_IronVein.prefab`, a rock with ore cubes below `Available` and rubble
+  `Assets/Art/Materials/WorldActors`. The NPC and Mob prefabs are placeholders
+  built from primitives. `resource.iron_vein` maps to `Resource_IronVein.prefab`,
+  a Prefab Variant of the Blender model
+  `Assets/Art/Models/WorldActors/Resource_IronVein.fbx` from the art pipeline:
+  faceted rocks with iron ore below `Available`, and the broken rocks with rubble
   below `Depleted`, with the URP Lit materials `M_Resource_IronVeinRock` and
   `M_Resource_IronVeinOre`. Each entry is an Addressables
   `AssetReferenceGameObject`. The registry loads when a World scene opens, a

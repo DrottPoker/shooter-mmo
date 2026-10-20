@@ -86,6 +86,7 @@ Restore locked dependencies and run the standard backend quality gate:
 ```powershell
 dotnet restore Mmorpg.slnx --locked-mode
 & .\tools\Verify-DependencyPolicy.ps1
+& .\tools\Verify-ArtAssets.ps1
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
 dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
@@ -103,6 +104,11 @@ Expected result:
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, and the absence of tracked
   client builds.
+- Art asset verification reports `Verified 1 art asset(s).`: every asset below
+  `art/` is approved for its current `.blend` file, and every model below
+  `src/Client/Assets/Art/Models` is the recorded export of one of them. It needs
+  no Blender and reads the `.blend` hashes from Git LFS pointers when the files
+  are not downloaded. See [Art Pipeline With Blender](#art-pipeline-with-blender).
 - Format reports no files that need changes.
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports eleven definitions, one base Secure
@@ -1265,7 +1271,8 @@ Editor compiler integration.
 
 Existing canonical content requires no scene, prefab, Inspector, package, or
 build-setting change. The committed presentation registry already maps every
-authored archetype to a placeholder prefab. A new archetype uses the tinted
+authored archetype to a prefab: the Iron Vein to its exported model, the NPCs
+and Mobs to placeholder prefabs. A new archetype uses the tinted
 fallback, with one warning, until a prefab is added to
 `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`.
 Use these exact Unity Editor steps to exercise the authoring tools and
@@ -1466,8 +1473,9 @@ vein returns after 30 seconds. The content places them here:
 - Development World 1: Mira at `(2.5, 0, -1)` and one Iron Vein at `(-8, 0, 1)`,
   west of the spawn.
 
-No manual Unity Editor setup steps are required. The placeholder prefab
-`Assets/Prefabs/WorldActors/Resource_IronVein.prefab`, its entry for
+No manual Unity Editor setup steps are required. The prefab
+`Assets/Prefabs/WorldActors/Resource_IronVein.prefab`, a Prefab Variant of the
+exported Iron Vein model, its entry for
 `resource.iron_vein` in the world actor presentation registry, and the baked
 presentation catalog are committed.
 
@@ -2551,6 +2559,145 @@ ten minutes.
   `GitHub Actions Unity runner`, run
   `& C:\actions-runner\config.cmd remove --token (gh api -X POST repos/DrottPoker/shooter-mmo/actions/runners/remove-token --jq .token)`
   and delete `C:\actions-runner` and `C:\actions-runner-hooks`.
+
+## Art Pipeline With Blender
+
+[Art Pipeline](ART_PIPELINE.md) describes the file layout, the review stages,
+and the rules these commands enforce. Run the commands from the repository root.
+
+### Set Up Blender
+
+1. Install Blender 5.2 LTS and Git LFS. Run `git lfs install` once per machine;
+   a clone or `git lfs pull` then fetches the `.blend` files below `art/`.
+2. Tell the scripts where Blender is. Replace the path with your own:
+
+   ```powershell
+   [Environment]::SetEnvironmentVariable("BLENDER_PATH", "D:\Program\Blender\blender.exe", "User")
+   ```
+
+   Expected result: in a new terminal, `& $env:BLENDER_PATH --version` prints
+   `Blender 5.2.2 LTS` or a later 5.2 release. Programs that were already
+   running, such as the Claude desktop app, see the variable after a restart.
+   Without it the scripts look for `blender` on `PATH` and stop with
+   `Blender 5.2 was not found. Set BLENDER_PATH to blender.exe.`
+
+### Set Up The Blender MCP Server
+
+Only live work in Blender from Claude Code needs this; the scripts below do not.
+
+1. Close Blender, download `mcp-1.0.3.zip` from the
+   [v1.0.3 release](https://projects.blender.org/lab/blender_mcp/releases/tag/v1.0.3)
+   of Blender Lab, and install it:
+
+   ```powershell
+   & $env:BLENDER_PATH -c extension install-file -r user_default -e .\mcp-1.0.3.zip
+   ```
+
+   Expected result: `STATUS Installed "mcp"`.
+2. Start Blender, open `Edit > Preferences > System`, and enable
+   `Allow Online Access`. The add-on refuses to start without it because it
+   opens a network port, although it listens on `localhost:9876` only. Under
+   `Add-ons > MCP`, keep `Auto Start` on, then save the preferences and restart
+   Blender. Expected result: the `MCP` add-on preferences show
+   `Server is running`.
+3. Install [uv](https://docs.astral.sh/uv/), which provides `uvx`. The
+   repository's `.mcp.json` starts the `blender` server; Claude Code asks once
+   to approve it. The first start downloads and builds the server in about three
+   minutes; later starts take seconds. Expected result: a new Claude Code
+   session in this repository lists the `blender` server with 26 tools, and
+   `get_objects_summary` returns the collections of the file open in Blender.
+
+The add-on runs every Python request it receives inside Blender. Keep it on a
+machine where only you run Claude Code, and save your work before a live
+session.
+
+### Review, Approve, And Export An Asset
+
+Render the review sheet:
+
+```powershell
+.\tools\Render-ArtPreview.ps1 -Asset art/WorldActors/Resource_IronVein
+```
+
+Expected result: `Review sheet for Resource_IronVein:` followed by
+`artifacts\art-previews\Resource_IronVein.png`. The sheet has one row per root
+object, `Available` and then `Depleted`, each seen from four sides at the game
+camera pitch and once next to a 1.8 m mannequin, on a ground in the
+DevelopmentWorld2 ground color.
+
+To look around freely, open the source in Blender:
+
+```powershell
+& $env:BLENDER_PATH art\WorldActors\Resource_IronVein\Resource_IronVein.blend
+```
+
+Hold the middle mouse button to turn the view, scroll to zoom, and use the eye
+icons in the Outliner to switch between `Available` and `Depleted`. The
+`Reference` collection holds a 1.8 m mannequin and a wireframe of the vein's
+interaction bounds; it is never exported.
+
+When the reviewer approves the model, record the approval and export:
+
+```powershell
+.\tools\Approve-ArtAsset.ps1 -Asset art/WorldActors/Resource_IronVein -Stage model
+.\tools\Export-ArtAsset.ps1 -Asset art/WorldActors/Resource_IronVein
+.\tools\Verify-ArtAssets.ps1
+```
+
+Expected result: `Approved the 'model' stage of Resource_IronVein
+(triangles=878).`, `Exported Resource_IronVein to
+src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
+(triangles=878).`, and `Verified 1 art asset(s).` Unity imports the model the
+next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
+its `.meta` file together.
+
+Save the `.blend` file again, without changing anything, and export once more.
+Expected result: the export stops with `Resource_IronVein cannot be exported:
+Resource_IronVein.blend changed after the 'model' approval.`, and
+`Verify-ArtAssets.ps1` reports the same problem. Restore the file with
+`git checkout -- art/WorldActors/Resource_IronVein/Resource_IronVein.blend`.
+
+### Add A New Asset
+
+1. Create `art/<Category>/<Name>/` and save `<Name>.blend` in it. Put everything
+   that goes to Unity in a collection named `Export`, give the top-level objects
+   the names the game code expects, and face the front toward Blender's +Y.
+2. Give every Blender material a name that starts with `M_` and one Principled
+   BSDF with a flat Base Color, Metallic, and Roughness. Create a URP Lit
+   material with exactly the same name below `src/Client/Assets/Art/Materials`.
+3. Write `asset.json` with `schemaVersion`, `kind`, `target`, `rootObjects`, and
+   `triangleBudget` as described in
+   [Asset Manifest](ART_PIPELINE.md#asset-manifest), `"approvals": {}`, and
+   `"export": null`.
+4. Render the review sheet, review, approve, export, and verify as above. Then
+   set each Unity material's `Base Map` color, `Metallic`, and `Smoothness` to
+   the `baseColor`, `metallic`, and `smoothness` that the export recorded under
+   `export.materials` in `asset.json`.
+5. In Unity, select the imported model in `Assets/Art/Models/<Category>`, choose
+   `Assets > Create > Prefab Variant`, move the variant to its prefab folder, and
+   reference it from the presentation registry. To replace an existing
+   placeholder prefab and keep its GUID and registry entry, save an instance of
+   the model over the old prefab path with `PrefabUtility.SaveAsPrefabAsset`
+   through `unity command run_script`. Expected result: `ArtModelImportTests`
+   and `AuthoredGameplayAssetTests` pass.
+
+### Manual Test Of The Iron Vein Model
+
+No manual Unity Editor steps are required: the model, its import settings, the
+Prefab Variant, and the registry entry are committed.
+
+1. In Unity, open `Assets/Prefabs/WorldActors/Resource_IronVein.prefab`.
+   Expected result: the Inspector names it a Prefab Variant of
+   `Resource_IronVein`, with the children `Available` and `Depleted`, both
+   enabled in the prefab. `Available` shows grey faceted rocks with orange ore,
+   `Depleted` the same rocks with broken flat tops, rubble, and no ore.
+2. Start the local stack and join `local-shard-1` as described in
+   [Vendor And Gathering Verification](#vendor-and-gathering-verification), then
+   walk to the four Iron Veins around `(96, 0, -124)`. Expected result: each
+   vein shows the new model, about 1.5 m wide and 1 m high, with rust-orange ore
+   visible from every camera angle, and a click on the rocks opens the vein.
+3. Mine a vein until it depletes. Expected result: it switches to the depleted
+   model and returns with ore about 30 seconds later.
 
 ## One-Time Unity World Scene Authoring
 

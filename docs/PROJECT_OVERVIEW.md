@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## What MMORPG Is
 
@@ -170,6 +170,10 @@ The repository currently supports:
 - Shared Iron Vein resource nodes with live Shard charges, continuous mining
   with a pickaxe in the `Tool` slot, depletion for every player, and respawn
   through a central timer queue.
+- An art pipeline for 3D models: Blender sources in Git LFS, a review sheet and
+  live review in Blender through the Blender Lab MCP server, recorded approvals
+  that gate the FBX export, fixed Unity import rules, and a CI check of the whole
+  chain. The Iron Vein is its first model, see [Art Pipeline](ART_PIPELINE.md).
 - RuneScape-style click-to-move: the client plans a route around obstacles on
   a fine internal grid in the background, predicts it at once, and
   SimulationWorker follows the same waypoints with authoritative collision. An

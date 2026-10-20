@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 This directory is the documentation entry point for MMORPG. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -42,6 +42,9 @@ operations, and future design do not drift into duplicate descriptions.
 14. [Backend Tests](../tests/README.md) for the backend test projects, where a new
     test goes, test traits, per-test databases, CI jobs, golden files, and test
     access to internals.
+15. [Art Pipeline](ART_PIPELINE.md) for 3D models from Blender to Unity: the
+    asset layout, the review stages and approvals, the export and import rules,
+    the modeling conventions, and the Blender MCP server for live work.
 
 ## Foundation Hardening
 
