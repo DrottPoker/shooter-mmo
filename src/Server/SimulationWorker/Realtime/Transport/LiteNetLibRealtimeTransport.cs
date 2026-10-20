@@ -23,7 +23,10 @@ internal sealed class LiteNetLibRealtimeTransport(
         server = new NetManager(listener)
         {
             DisconnectTimeout = (int)config.JoinHandshakeTimeout.TotalMilliseconds,
-            ChannelsCount = RealtimeProtocol.ChannelCount
+            ChannelsCount = RealtimeProtocol.ChannelCount,
+            PacketPoolSize = PacketPoolSizeFor(
+                config.MaxConnections,
+                config.UdpQuotas.AggregateSnapshotBytesPerSecond / config.SnapshotRateHz)
         };
 
         listener.ConnectionRequestEvent += request =>
@@ -74,6 +77,23 @@ internal sealed class LiteNetLibRealtimeTransport(
     public void PollEvents()
     {
         server!.PollEvents();
+    }
+
+    // Wakes the transport's update thread, so the packets queued since the last call leave
+    // now instead of on its next periodic update.
+    public void FlushSends()
+    {
+        server!.TriggerUpdate();
+    }
+
+    // A snapshot broadcast queues an owner packet for every connection plus the remote chunks
+    // that the aggregate snapshot budget allows before the update thread sends and recycles
+    // them. The pool covers that at half the 1 KB chunk size. The default pool of 1000 packets
+    // made every packet beyond it a new allocation that survived into the older GC generations.
+    internal static int PacketPoolSizeFor(int maxConnections, int aggregateSnapshotBytesPerBroadcast)
+    {
+        var packets = (long)maxConnections + (aggregateSnapshotBytesPerBroadcast / 512L);
+        return (int)Math.Clamp(packets, 1_000L, 65_536L);
     }
 
     // Undelivered events are dropped; nothing resolves peers after this.
