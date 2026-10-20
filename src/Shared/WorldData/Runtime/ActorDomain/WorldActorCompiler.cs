@@ -927,6 +927,7 @@ namespace Mmorpg.WorldData.Actors
 
                 ValidateIdentifier(actor.Id, path + ".id", errors);
                 ValidateDisplayName(actor.DisplayName, path + ".displayName", errors);
+                ValidateExamineText(actor.ExamineText, path + ".examineText", errors);
                 ValidateSupported(actor.Kind, SupportedActorKinds, path + ".kind", errors);
                 ValidateReference(actor.FactionId, factionIds, path + ".factionId", errors);
                 ValidateSupported(actor.Disposition, SupportedDispositions, path + ".disposition", errors);
@@ -1115,6 +1116,7 @@ namespace Mmorpg.WorldData.Actors
                 AddIdentifier(ids, value.Id, capabilityPath + ".id", errors);
                 ValidateSupported(value.Kind, SupportedCapabilityKinds, capabilityPath + ".kind", errors);
                 ValidateDisplayName(value.DisplayName, capabilityPath + ".displayName", errors);
+                ValidateMenuOption(value.MenuOption, capabilityPath + ".menuOption", errors);
             }
         }
 
@@ -1475,7 +1477,7 @@ namespace Mmorpg.WorldData.Actors
 
         private static string CapabilityFingerprint(WorldActorCapabilityDefinition value)
         {
-            return Fingerprint(value.Id, value.Kind, value.DisplayName, value.ProfileId);
+            return Fingerprint(value.Id, value.Kind, value.DisplayName, value.MenuOption, value.ProfileId);
         }
 
         private static WorldActorCombatProfileDefinition CompileCombatProfile(
@@ -1592,6 +1594,7 @@ namespace Mmorpg.WorldData.Actors
                     entry.ChanceBasisPoints.ToString(CultureInfo.InvariantCulture)))));
         }
 
+        // Capabilities keep their authored order, which is the order of the right-click menu.
         private static WorldActorDefinition CompileActor(WorldActorAuthoringEntry value)
         {
             var capabilities = value.Capabilities
@@ -1602,12 +1605,12 @@ namespace Mmorpg.WorldData.Actors
                         Id = capability.Id,
                         Kind = capability.Kind,
                         DisplayName = capability.DisplayName,
+                        MenuOption = capability.MenuOption,
                         ProfileId = capability.ProfileId ?? string.Empty
                     };
                     compiledCapability.StructuralFingerprint = CapabilityFingerprint(compiledCapability);
                     return compiledCapability;
                 })
-                .OrderBy(capability => capability.Id, StringComparer.Ordinal)
                 .ToArray();
             var bounds = new WorldActorBoundsDefinition
             {
@@ -1622,6 +1625,7 @@ namespace Mmorpg.WorldData.Actors
             {
                 Id = value.Id,
                 DisplayName = value.DisplayName,
+                ExamineText = value.ExamineText,
                 Kind = value.Kind,
                 FactionId = value.FactionId,
                 Disposition = value.Disposition,
@@ -1653,6 +1657,7 @@ namespace Mmorpg.WorldData.Actors
             return Fingerprint(
                 value.Id,
                 value.DisplayName,
+                value.ExamineText,
                 value.Kind,
                 value.FactionId,
                 value.Disposition,
@@ -2117,6 +2122,39 @@ namespace Mmorpg.WorldData.Actors
             {
                 errors.Add(path + " must be trimmed and between 1 and "
                     + MaximumDisplayNameLength + " characters.");
+            }
+        }
+
+        private static void ValidateExamineText(
+            string value,
+            string path,
+            ICollection<string> errors)
+        {
+            ValidatePlayerText(value, WorldActorTextRules.MaximumExamineTextLength, path, errors);
+        }
+
+        private static void ValidateMenuOption(
+            string value,
+            string path,
+            ICollection<string> errors)
+        {
+            ValidatePlayerText(value, WorldActorTextRules.MaximumMenuOptionLength, path, errors);
+        }
+
+        // One trimmed line of text without control characters.
+        private static void ValidatePlayerText(
+            string value,
+            int maximumLength,
+            string path,
+            ICollection<string> errors)
+        {
+            if (string.IsNullOrWhiteSpace(value)
+                || value.Length > maximumLength
+                || !string.Equals(value, value.Trim(), StringComparison.Ordinal)
+                || value.Any(char.IsControl))
+            {
+                errors.Add(path + " must be one trimmed line of 1 to "
+                    + maximumLength + " characters.");
             }
         }
 

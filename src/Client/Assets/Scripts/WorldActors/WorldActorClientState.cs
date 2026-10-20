@@ -37,6 +37,8 @@ namespace Mmorpg.Client.WorldActors
             BoundsSizeX = spawn.BoundsSizeX;
             BoundsSizeY = spawn.BoundsSizeY;
             BoundsSizeZ = spawn.BoundsSizeZ;
+            ExamineText = spawn.ExamineText;
+            MenuOptions = spawn.MenuOptions;
             ApplyValues(
                 spawn.StateRevision,
                 spawn.InteractionRevision,
@@ -63,6 +65,14 @@ namespace Mmorpg.Client.WorldActors
         public float BoundsSizeX { get; }
         public float BoundsSizeY { get; }
         public float BoundsSizeZ { get; }
+
+        // What Examine shows.
+        public string ExamineText { get; }
+
+        // The actor's capabilities in menu order; the first is the left-click action.
+        // Availability is only known once the interaction opens.
+        public IReadOnlyList<RealtimeWorldActorMenuOption> MenuOptions { get; }
+
         public long StateRevision { get; private set; }
         public long InteractionRevision { get; private set; }
         public bool IsActive { get; private set; }
@@ -106,6 +116,28 @@ namespace Mmorpg.Client.WorldActors
                 state.YawDegrees,
                 state.ActivityTier);
             return WorldActorStateApplyResult.Applied;
+        }
+
+        internal bool HasMenuOptions(IReadOnlyList<RealtimeWorldActorMenuOption> options)
+        {
+            if (options == null || options.Count != MenuOptions.Count)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < options.Count; index++)
+            {
+                var current = MenuOptions[index];
+                var other = options[index];
+                if (!string.Equals(current.CapabilityId, other.CapabilityId, StringComparison.Ordinal)
+                    || current.Kind != other.Kind
+                    || !string.Equals(current.Label, other.Label, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private bool HasSameValues(RealtimeWorldActorState state)
@@ -198,7 +230,12 @@ namespace Mmorpg.Client.WorldActors
                     || !existing.BoundsCenterZ.Equals(spawn.BoundsCenterZ)
                     || !existing.BoundsSizeX.Equals(spawn.BoundsSizeX)
                     || !existing.BoundsSizeY.Equals(spawn.BoundsSizeY)
-                    || !existing.BoundsSizeZ.Equals(spawn.BoundsSizeZ))
+                    || !existing.BoundsSizeZ.Equals(spawn.BoundsSizeZ)
+                    || !string.Equals(
+                        existing.ExamineText,
+                        spawn.ExamineText,
+                        StringComparison.Ordinal)
+                    || !existing.HasMenuOptions(spawn.MenuOptions))
                 {
                     error = "World actor entity identity changed without a despawn.";
                     return false;

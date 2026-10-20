@@ -113,7 +113,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports eleven definitions, one base Secure
   Container tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 19 with 34 messages
+- Protocol verification reports realtime protocol version 20 with 34 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -267,9 +267,9 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 19 with 34
+Expected result: both commands report realtime protocol version 20 with 34
 messages and 18 generated files, and the second prints
-`Realtime protocol version 19 verified: 34 messages, 18 generated files.`
+`Realtime protocol version 20 verified: 34 messages, 18 generated files.`
 The first command rewrites only changed files and removes files that the schema
 no longer produces. The second fails and names the file when a generated file
 is stale, missing, or not produced by the schema. Commit the schema,
@@ -1284,14 +1284,18 @@ presentation mapping:
    insurance, bank, and Recovery Storage capabilities, a note that NPCs are
    always invulnerable instead of Mob settings, authoritative interaction
    bounds with a front-view preview, and `No problems found.` below the editor.
-   The vendor capability `Trade` shows `Profile` `vendor.city_general_store`.
+   `Examine Text` shows her description, the capabilities start with the
+   dialogue capability whose `Menu Option` is `Talk-to`, and the vendor
+   capability `Trade` shows `Profile` `vendor.city_general_store`.
    Select `Iron Vein`. Expected result: a `Resource Node` with one `Gathering`
-   capability, `Mine`, whose `Profile` is `resource.iron_vein`.
+   capability, `Mine`, whose `Menu Option` is `Mine` and whose `Profile` is
+   `resource.iron_vein`.
 2. Click `Duplicate`. Expected result: the copy `npc.city_services.copy` is
    added and selected. Use `Add Capability`, `Move Up`, `Move Down`, and
-   `Remove` on it, then enter `-1` as the Y value of `Size`. Expected result:
-   `Size` turns red, the list marks the copy, and the problems panel reports
-   `interactionBounds.sizeY`. Clicking the problem selects the copy and
+   `Remove` on it, then enter `-1` as the Y value of `Size` and clear its
+   `Examine Text`. Expected result: `Size` and `Examine Text` turn red, the list
+   marks the copy, and the problems panel reports `interactionBounds.sizeY` and
+   `examineText`. Clicking the problem selects the copy and
    focuses the field.
 3. Click the actor list so no text field has keyboard focus and press `Ctrl+Z`
    repeatedly. Expected result: every edit is undone in order, the copy
@@ -1358,7 +1362,7 @@ presentation mapping:
     Mira. Expected result: actor instances appear and disappear through normal
     interest presence. For the default `development-world-2`, the worker
     startup log reports `Activated 12 world actors from revision <revision>`.
-13. Left-click Mira. Expected result: the player walks to about `2.75` metres
+13. Left-click Mira. Expected result: the player walks to about `2.5` metres
     from her, and temporary uGUI opens only after the server accepts and lists
     the player-specific authoritative capability summary. Clicking a
     capability that is not implemented yet, such as `Talk` or `Crafting`,
@@ -1575,7 +1579,7 @@ dotnet test Mmorpg.slnx `
 ```
 
 Expected result: every selected test passes. The shared tests cover catalog
-format 5 and actor format 3 content, vendor and resource profiles, the rule that
+format 5 and actor format 4 content, vendor and resource profiles, the rule that
 buying and selling back never gains currency, and pricing rounding and
 overflow. The SimulationWorker tests cover vendor access, resource node charges,
 gathering cycles, movement and closed-interaction stops, rejected and uncertain
@@ -1598,6 +1602,77 @@ the Item Catalog vendor mode and Actor Studio resource node coverage. With the
 Editor open, use the live Editor test commands in
 [Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli)
 instead.
+
+## World Menu Verification
+
+The right-click world menu, described in
+[Game Features](GAME_FEATURES.md#world-menu), needs protocol version 20 on both
+the worker and the client, and the actor content of format version 4. No manual
+Unity Editor setup steps are required: the `ContextMenu` input action and its
+right mouse button binding are committed in `Assets/Input/PlayerControls.inputactions`,
+and the menu and message panels are created at runtime.
+
+Start the local stack as in [Vendor And Gathering Verification](#vendor-and-gathering-verification),
+open LoginMenu, enter Play Mode, log in, and join `local-shard-1` with a
+character. Development World 2 has Mira at `(8, 0, 4)`, four Iron Veins around
+`(96, 0, -124)`, and the wolves in the southwest wilderness, X and Z between
+`-190` and `-130`.
+
+1. Move the pointer over Mira without clicking. Expected result: next to the
+   pointer, `Talk-to Mira the Quartermaster / 9 more options` appears with her
+   name in yellow. Over bare ground nothing appears.
+2. Right-click Mira. Expected result: a menu headed `Choose Option` opens at the
+   pointer with `Talk-to`, `Trade`, `Bank`, `Recover`, `Insure`, `Quests`,
+   `Turn-in`, and `Craft Mira the Quartermaster`, then `Walk here`,
+   `Examine Mira the Quartermaster`, and `Cancel`.
+3. Choose `Examine Mira the Quartermaster`. Expected result: the menu closes,
+   the character does not move, and the bottom left corner shows "She keeps the
+   city's stores, its accounts, and whatever the dead leave behind." The
+   message fades out after about 12 seconds.
+4. Right-click Mira from a distance and choose `Trade`. Expected result: the
+   interaction panel says `Walking to Mira the Quartermaster...`, the character
+   walks to her, the interaction opens, and the inventory opens on the `Vendor`
+   tab without a click in the panel. Right-click Mira again and choose `Bank`.
+   Expected result: the Character Bank opens at once, without walking.
+5. Walk away, then left-click Mira. Expected result: the character walks to her
+   and the interaction panel opens with her capabilities, the same as
+   `Talk-to`.
+6. Right-click the ground. Expected result: the menu offers only `Walk here`
+   and `Cancel`. Move the pointer well away from the menu. Expected result: the
+   menu closes. Right-click again, then press `Escape` or left-click the
+   ground. Expected result: the menu closes and the character does not walk.
+7. With a pickaxe in the `Tool` slot, right-click an Iron Vein. Expected
+   result: `Mine Iron Vein` in cyan, `Walk here`, `Examine Iron Vein`, and
+   `Cancel`. Choose `Mine Iron Vein`. Expected result: the character walks to
+   the vein and starts mining.
+8. Walk to the wolves, then right-click a wolf. Expected result: `Attack Feral
+   Wolf`, `Walk here`, `Examine Feral Wolf`, and `Cancel`. When another
+   target, such as a second wolf, stands behind it, its options follow in
+   distance order. Choose `Examine Feral Wolf` while attacking. Expected
+   result: the attack goes on and the message "A lean, hungry wolf. It eyes
+   you like a meal." appears. Right-click the ground and press `Escape`.
+   Expected result: the menu closes and the attack goes on. Choose `Walk here`.
+   Expected result: the attack ends and the character walks.
+9. Kill a wolf and right-click its corpse. Expected result: `Loot Corpse of
+   Feral Wolf` in orange, `Walk here`, `Examine Corpse of Feral Wolf`, and
+   `Cancel`. Left-click the corpse. Expected result: the character walks to it
+   and the corpse opens.
+10. Let a wolf kill the character. Expected result: while `You died` counts
+    down, neither click opens a menu or moves the character.
+
+Run the focused automated coverage:
+
+```powershell
+dotnet test Mmorpg.slnx `
+  --configuration Release `
+  --filter "FullyQualifiedName~WorldActor|FullyQualifiedName~RealtimeProtocolGolden"
+unity command run_tests --mode editor --async_tests
+```
+
+Expected result: every selected backend test passes, including the content
+rules for examine text and menu options, the authored menu order, and the spawn
+that carries them. Poll `unity command test_status` until `status` is
+`completed`; every EditMode test passes, including `WorldMenuTests`.
 
 ## Mob Corpse Verification
 
@@ -2013,7 +2088,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 19, simulation revision,
+`27015`, runtime id, realtime protocol version 20, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
@@ -2716,6 +2791,7 @@ orbit camera.
 3. Open it and create an action map named `Player`.
 4. Add these actions and bindings:
    - `Select`: Button. Bind `<Mouse>/leftButton`.
+   - `ContextMenu`: Button. Bind `<Mouse>/rightButton`.
    - `PointerPosition`: Value, Vector2. Bind `<Pointer>/position`.
    - `CameraOrbit`: Button. Bind `<Mouse>/middleButton`.
    - `CameraOrbitDelta`: Value, Vector2. Bind `<Mouse>/delta`.
@@ -2730,7 +2806,7 @@ orbit camera.
 5. Click `Save Asset`.
 
 Expected result: `PlayerControls.inputactions` contains one `Player` map and the
-eleven actions with no missing bindings.
+twelve actions with no missing bindings.
 
 ### Create The LocalPlayer Prefab
 
@@ -3257,12 +3333,13 @@ Expected result:
   afterwards.
 - Step 9: clicks and scrolling on the panel neither move the player nor zoom
   the camera.
-- Step 10: the prompt reads `Click to interact with Mira the Quartermaster`. The
-  player walks to about 2.75 meters from Mira and stops, and her capability
-  panel opens.
+- Step 10: next to the pointer, `Talk-to Mira the Quartermaster / 9 more
+  options` appears. The player walks to about 2.5 meters from Mira and stops,
+  and her capability panel opens.
 - Step 11: Escape closes the interaction.
-- The cursor stays visible and free throughout. WASD, Shift, Space, the right
-  mouse button, F1, and E do nothing.
+- The cursor stays visible and free throughout. WASD, Shift, Space, F1, and E
+  do nothing. The right mouse button opens the world menu, described in
+  [World Menu Verification](#world-menu-verification).
 - World Debug reports no hard snaps, and the latest position correction stays
   near zero while the player walks.
 - The SimulationWorker terminal shows no `unknown_movement_path` or

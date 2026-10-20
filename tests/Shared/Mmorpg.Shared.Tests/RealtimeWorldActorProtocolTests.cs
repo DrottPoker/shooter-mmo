@@ -4,8 +4,10 @@ namespace Mmorpg.Shared.Tests;
 
 public sealed class RealtimeWorldActorProtocolTests
 {
+    // Presence carries the static menu options, but no availability, revision, or profile:
+    // those belong to the player-specific summary of an opened interaction.
     [Fact]
-    public void ActorPresenceAndStateRoundTripWithoutCapabilities()
+    public void ActorPresenceAndStateRoundTripWithMenuOptionsOnly()
     {
         var runtimeActorId = Guid.NewGuid();
         var spawn = CreateSpawn(runtimeActorId);
@@ -20,8 +22,12 @@ public sealed class RealtimeWorldActorProtocolTests
         Assert.Equal("local.city_services", decoded.SpawnDefinitionId);
         Assert.Equal(RealtimeWorldActorKind.Npc, decoded.Kind);
         Assert.Equal(RealtimeWorldActorActivityTier.EventDriven, decoded.ActivityTier);
+        Assert.Equal("She keeps the city's stores.", decoded.ExamineText);
+        Assert.Equal(
+            ["services.dialogue:Dialogue:Talk-to", "services.vendor:Vendor:Trade"],
+            decoded.MenuOptions.Select(option => option.CapabilityId + ":" + option.Kind + ":" + option.Label));
         Assert.DoesNotContain(
-            "services.vendor",
+            "vendor.city_general_store",
             System.Text.Encoding.UTF8.GetString(packet),
             StringComparison.Ordinal);
         Assert.True(packet.Length <= RealtimeProtocol.MaximumPacketSize);
@@ -306,6 +312,17 @@ public sealed class RealtimeWorldActorProtocolTests
             0f,
             0.8f,
             2f,
-            0.8f);
+            0.8f,
+            "She keeps the city's stores.",
+            [
+                new RealtimeWorldActorMenuOption(
+                    "services.dialogue",
+                    RealtimeWorldActorCapabilityKind.Dialogue,
+                    "Talk-to"),
+                new RealtimeWorldActorMenuOption(
+                    "services.vendor",
+                    RealtimeWorldActorCapabilityKind.Vendor,
+                    "Trade")
+            ]);
     }
 }

@@ -47,12 +47,31 @@ namespace Mmorpg.Client.WorldActors
                 return Player != null && Player.gameObject.activeInHierarchy;
             }
         }
+
+        public bool IsSameTarget(WorldPointerCandidate other)
+        {
+            return ReferenceEquals(Target, other.Target) && ReferenceEquals(Player, other.Player);
+        }
+
+        // The name the world shows, or an empty string.
+        public string DisplayName
+        {
+            get
+            {
+                if (Target != null)
+                {
+                    return Target.TargetDisplayName ?? string.Empty;
+                }
+
+                return Player != null ? Player.DisplayName ?? string.Empty : string.Empty;
+            }
+        }
     }
 
     // Picks what the pointer points at, the same way for every feature: a direct ray first,
     // then a small spherecast tolerance, among registered targets within the pointer range
-    // that no solid collider hides. The nearest active candidate wins, so a feature that
-    // does not handle it never reaches past it to a target behind.
+    // that no solid collider hides. The world menu lists every such target, nearest first,
+    // and its left-click option belongs to the nearest one.
     public sealed class WorldPointerPicker
     {
         public const float PointerRange = WorldInteractionRules.ClientPointerRange;
@@ -65,9 +84,9 @@ namespace Mmorpg.Client.WorldActors
         private readonly List<WorldPointerCandidate> sphereCandidates =
             new List<WorldPointerCandidate>();
 
-        // The nearest candidate under the pointer, or an empty one. Colliders below the
-        // ignored root, the local player, neither count nor hide anything.
-        public WorldPointerCandidate Pick(Ray ray, Transform ignoredRoot)
+        // Every active target under the pointer, nearest first, each once. Colliders below
+        // the ignored root, the local player, neither count nor hide anything.
+        public void PickAll(Ray ray, Transform ignoredRoot, List<WorldPointerCandidate> results)
         {
             directCandidates.Clear();
             sphereCandidates.Clear();
@@ -78,7 +97,7 @@ namespace Mmorpg.Client.WorldActors
                 Physics.AllLayers,
                 QueryTriggerInteraction.Collide);
             AddCandidates(directHits, directCount, ignoredRoot, directCandidates);
-            if (directCandidates.Count == 0)
+            if (!HasActive(directCandidates))
             {
                 var sphereCount = Physics.SphereCastNonAlloc(
                     ray,
@@ -90,16 +109,51 @@ namespace Mmorpg.Client.WorldActors
                 AddCandidates(sphereHits, sphereCount, ignoredRoot, sphereCandidates);
             }
 
-            return SelectCandidate(directCandidates, sphereCandidates);
+            SelectCandidates(directCandidates, sphereCandidates, results);
         }
 
-        // The nearest active direct candidate, else the nearest active spherecast candidate.
-        public static WorldPointerCandidate SelectCandidate(
+        // The active direct candidates, or the active spherecast candidates when the direct
+        // ray found none, nearest first. A target hit by several colliders appears once, at
+        // its nearest distance.
+        public static void SelectCandidates(
             IReadOnlyList<WorldPointerCandidate> direct,
-            IReadOnlyList<WorldPointerCandidate> spherecast)
+            IReadOnlyList<WorldPointerCandidate> spherecast,
+            List<WorldPointerCandidate> results)
         {
-            var selected = ClosestActive(direct);
-            return selected.IsEmpty ? ClosestActive(spherecast) : selected;
+            results.Clear();
+            var source = HasActive(direct) ? direct : spherecast;
+            for (var index = 0; index < source.Count; index++)
+            {
+                var candidate = source[index];
+                if (candidate.IsEmpty || !candidate.IsActive || candidate.Distance < 0f)
+                {
+                    continue;
+                }
+
+                var existing = IndexOfSameTarget(results, candidate);
+                if (existing < 0)
+                {
+                    results.Add(candidate);
+                }
+                else if (candidate.Distance < results[existing].Distance)
+                {
+                    results[existing] = candidate;
+                }
+            }
+
+            // Insertion sort keeps equal distances in hit order.
+            for (var index = 1; index < results.Count; index++)
+            {
+                var candidate = results[index];
+                var position = index;
+                while (position > 0 && results[position - 1].Distance > candidate.Distance)
+                {
+                    results[position] = results[position - 1];
+                    position--;
+                }
+
+                results[position] = candidate;
+            }
         }
 
         public static IWorldInteractionTarget FindRegisteredTarget(Collider collider)
@@ -137,27 +191,33 @@ namespace Mmorpg.Client.WorldActors
                 : default(WorldPointerCandidate);
         }
 
-        private static WorldPointerCandidate ClosestActive(
-            IReadOnlyList<WorldPointerCandidate> values)
+        private static bool HasActive(IReadOnlyList<WorldPointerCandidate> values)
         {
-            var selected = default(WorldPointerCandidate);
-            var selectedDistance = float.PositiveInfinity;
             for (var index = 0; index < values.Count; index++)
             {
                 var candidate = values[index];
-                if (candidate.IsEmpty
-                    || !candidate.IsActive
-                    || candidate.Distance < 0f
-                    || candidate.Distance >= selectedDistance)
+                if (!candidate.IsEmpty && candidate.IsActive && candidate.Distance >= 0f)
                 {
-                    continue;
+                    return true;
                 }
-
-                selected = candidate;
-                selectedDistance = candidate.Distance;
             }
 
-            return selected;
+            return false;
+        }
+
+        private static int IndexOfSameTarget(
+            List<WorldPointerCandidate> values,
+            WorldPointerCandidate candidate)
+        {
+            for (var index = 0; index < values.Count; index++)
+            {
+                if (values[index].IsSameTarget(candidate))
+                {
+                    return index;
+                }
+            }
+
+            return -1;
         }
 
         // A candidate counts only when no solid collider stands between it and the camera.

@@ -62,6 +62,16 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(Object.FindAnyObjectByType<WorldActorPresentationController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<WorldInteractionTargetingController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<TemporaryWorldInteractionPanel>(), Is.Not.Null);
+            var worldMenu = Object.FindAnyObjectByType<WorldMenuController>();
+            Assert.That(worldMenu, Is.Not.Null);
+            Assert.That(worldMenu.IsMenuOpen, Is.False);
+            Assert.That(worldMenu.HoverOptions, Is.Empty);
+            var contextMenu = Object.FindAnyObjectByType<TemporaryWorldContextMenu>();
+            Assert.That(contextMenu, Is.Not.Null);
+            Assert.That(contextMenu.IsMenuVisible, Is.False);
+            var messagePanel = Object.FindAnyObjectByType<TemporaryGameMessagePanel>();
+            Assert.That(messagePanel, Is.Not.Null);
+            Assert.That(messagePanel.VisibleTexts(), Is.Empty);
             var combatTargeting = Object.FindAnyObjectByType<CombatTargetingController>();
             Assert.That(combatTargeting, Is.Not.Null);
             Assert.That(combatTargeting.TargetEntityId, Is.Zero);
@@ -81,6 +91,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                 Object.FindAnyObjectByType<TemporaryInventoryPanel>().GetComponentInChildren<Canvas>(true),
                 Object.FindAnyObjectByType<TemporaryWorldInteractionPanel>().GetComponentInChildren<Canvas>(true),
                 combatHud.GetComponentInChildren<Canvas>(true),
+                contextMenu.GetComponentInChildren<Canvas>(true),
+                messagePanel.GetComponentInChildren<Canvas>(true),
             };
             Assert.That(panelCanvases, Has.None.Null);
             Assert.That(

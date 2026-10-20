@@ -4,7 +4,15 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 3;
+        public const int Version = 4;
+    }
+
+    // Player-facing text of an actor: the Examine description and the right-click menu option
+    // of each capability, such as "Trade" or "Mine". Both fit the realtime actor spawn.
+    public static class WorldActorTextRules
+    {
+        public const int MaximumExamineTextLength = 200;
+        public const int MaximumMenuOptionLength = 32;
     }
 
     public static class WorldActorKindIds
@@ -279,6 +287,7 @@ namespace Mmorpg.WorldData.Actors
     {
         public string Id;
         public string DisplayName;
+        public string ExamineText;
         public string Kind;
         public string FactionId;
         public string Disposition;
@@ -308,14 +317,17 @@ namespace Mmorpg.WorldData.Actors
         public float SizeZ;
     }
 
-    // ProfileId names the vendor profile of a vendor capability or the resource profile of a
-    // gathering capability, and is empty for every other kind.
+    // MenuOption is the verb the right-click menu shows before the actor's name, such as
+    // "Trade". ProfileId names the vendor profile of a vendor capability or the resource
+    // profile of a gathering capability, and is empty for every other kind. The authored order
+    // is the menu order, and the first capability is the left-click action.
     [Serializable]
     public sealed class WorldActorCapabilityAuthoringEntry
     {
         public string Id;
         public string Kind;
         public string DisplayName;
+        public string MenuOption;
         public string ProfileId;
     }
 
@@ -508,6 +520,7 @@ namespace Mmorpg.WorldData.Actors
     {
         public string Id;
         public string DisplayName;
+        public string ExamineText;
         public string Kind;
         public string FactionId;
         public string Disposition;
@@ -544,6 +557,7 @@ namespace Mmorpg.WorldData.Actors
         public string Id;
         public string Kind;
         public string DisplayName;
+        public string MenuOption;
         public string ProfileId;
         public string StructuralFingerprint;
     }

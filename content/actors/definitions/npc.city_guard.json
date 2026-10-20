@@ -1,6 +1,7 @@
 {
     "id": "npc.city_guard",
     "displayName": "City Guard",
+    "examineText": "A guard of the city watch. Bored, but watching.",
     "kind": "npc",
     "factionId": "city",
     "disposition": "friendly",
@@ -23,12 +24,14 @@
             "id": "guard.dialogue",
             "kind": "dialogue",
             "displayName": "Talk",
+            "menuOption": "Talk-to",
             "profileId": ""
         },
         {
             "id": "guard.trainer",
             "kind": "trainer",
             "displayName": "Training",
+            "menuOption": "Train",
             "profileId": ""
         }
     ],

@@ -2,11 +2,11 @@
 
 Last updated: 2026-10-20
 
-Status: Agreed design direction. Click-to-move movement and the orbit camera are
-implemented, as recorded in [Movement And Camera](#movement-and-camera), and so
-is the first combat slice, as recorded in
-[Implemented First Combat Slice](#implemented-first-combat-slice); the rest of
-this document is not implemented yet. It replaces the earlier modern
+Status: Agreed design direction. Click-to-move movement, the orbit camera, and
+the right-click world menu are implemented, as recorded in
+[Movement And Camera](#movement-and-camera), and so is the first combat slice,
+as recorded in [Implemented First Combat Slice](#implemented-first-combat-slice);
+the rest of this document is not implemented yet. It replaces the earlier modern
 third-person shooter combat direction.
 
 ## Purpose
@@ -182,12 +182,7 @@ RuneScape-like combat and movement instead, with a smooth modern presentation.
 
 ### Proposed
 
-- Left click performs the default action for what is under the cursor: walk on
-  the ground, attack a Mob, talk to an NPC, or loot a corpse.
-- Right click opens a context menu with every available action, as in
-  RuneScape.
-- The context menu includes **Examine**, which shows a short description and,
-  for Mobs, any elemental weakness.
+- Examine also shows a Mob's elemental weakness once resistances exist.
 - Pathfinding may use a navigation mesh or a fine internal grid, but the player
   never sees or feels tiles.
 - Running uses run energy that drains faster with higher carried weight, which
@@ -213,9 +208,16 @@ direction with these decisions:
   worker can plan routes for world actors with the same results later.
 - There is one walking speed, scaled by carry weight. Sprint, jump, and aim were
   removed. Running with run energy remains a later decision.
-- A left click on an NPC or a corpse walks into interaction range and then opens
-  it, and Escape closes it. The right click context menu and Examine are not
-  implemented yet.
+- The world menu, implemented in October 2026 and described in
+  [Game Features](GAME_FEATURES.md#world-menu), works as in RuneScape. A right
+  click opens a menu with every option for every target under the cursor,
+  nearest first, then Walk here and Examine for each target, and a left click
+  runs its top option at once: walk on the ground, attack a Mob, talk to an
+  NPC, mine a vein, or loot a corpse. An NPC or resource node offers one option
+  per capability with a verb from its content, such as Trade or Mine, and
+  choosing one walks into interaction range, opens it, and starts that
+  service. Escape closes the interaction. Examine shows a short description
+  from the actor content; Mob weaknesses follow with resistances.
 - The camera orbits the player. The middle mouse button and the arrow keys turn
   and tilt it between 10 and 80 degrees, and the scroll wheel zooms from 3 to 30
   meters. Geometry pulls the camera in front of walls; hiding roofs and
@@ -731,8 +733,7 @@ Expected to change:
 - The third-person shooter camera is replaced by an orbit camera with zoom.
   Implemented.
 - Crosshair interaction targeting is replaced by cursor picking with a left
-  click default action and a right click context menu. The left click is
-  implemented; the context menu remains.
+  click default action and a right click context menu. Implemented.
 - The projectile and fire-intent combat direction in the
   [MVP Specification](MVP_SPEC.md) is replaced by target-based combat where the
   server resolves hits. Shooter-style lag compensation is not needed.

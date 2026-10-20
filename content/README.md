@@ -43,7 +43,7 @@ change different definitions without merge conflicts in one large file.
   omit the directory.
 - Item content uses catalog format version 5, set by `formatVersion` in
   `items/catalog.json`. The actor catalog and every `actor-spawns.json` use
-  format version 3. The compilers reject any other version.
+  format version 4. The compilers reject any other version.
 - Every directory below `worlds/` except hidden ones is a World and must contain
   `world.json`, `actor-spawns.json`, and `collision.json`. Both World compilers
   fail on an incomplete World instead of skipping it, because the
@@ -69,6 +69,23 @@ change different definitions without merge conflicts in one large file.
 The item authoring contract is described in [items/README.md](items/README.md).
 The actor and spawn contract is described in
 [../docs/NPC_AND_MOB_SYSTEM_DESIGN.md](../docs/NPC_AND_MOB_SYSTEM_DESIGN.md).
+
+## Examine Text And Menu Options
+
+Actor format version 4 added the player-facing text of the right-click world
+menu, described in [Game Features](../docs/GAME_FEATURES.md#world-menu):
+
+- Every actor has an `examineText`, one trimmed line of 1 to 200 characters
+  without control characters, which Examine shows, such as "A lean, hungry
+  wolf. It eyes you like a meal."
+- Every capability has a `menuOption`, one trimmed line of 1 to 32 characters,
+  the verb the menu shows before the actor's name, such as `Talk-to`, `Trade`,
+  or `Mine`. `displayName` still names the service in the interaction panel.
+- Capabilities keep their authored order, which is the menu order: the first
+  capability is the left-click action. Put a dialogue capability first for a
+  `Talk-to` default. Actor Studio's `Move Up` and `Move Down` change the order.
+
+Both limits fit the realtime protocol limits that `WorldActorSpawn` carries.
 
 ## Resource Nodes And Item References
 

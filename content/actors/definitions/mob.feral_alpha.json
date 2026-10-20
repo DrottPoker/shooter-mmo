@@ -1,6 +1,7 @@
 {
     "id": "mob.feral_alpha",
     "displayName": "Feral Alpha",
+    "examineText": "The leader of the pack, scarred and heavy. The other wolves follow its lead.",
     "kind": "mob",
     "factionId": "wild",
     "disposition": "hostile",

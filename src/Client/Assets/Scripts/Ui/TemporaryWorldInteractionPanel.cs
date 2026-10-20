@@ -8,7 +8,6 @@ using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
@@ -21,13 +20,10 @@ namespace Mmorpg.Client.Ui
         public const int CanvasSortingOrder = 40;
 
         private const float PanelWidth = 460f;
-        private static readonly Vector2 PromptPointerOffset = new Vector2(18f, 12f);
         private WorldInteractionClientController interactionController;
         private WorldInteractionTargetingController targetingController;
         private RectTransform panel;
         private RectTransform content;
-        private RectTransform promptRect;
-        private Text prompt;
         private RectTransform gatheringProgressFill;
         private Guid requestedInventorySessionId;
         private InventoryClientController inventoryController;
@@ -76,7 +72,6 @@ namespace Mmorpg.Client.Ui
                 }
             }
 
-            FollowPointer();
             UpdateGatheringProgress();
         }
 
@@ -109,24 +104,6 @@ namespace Mmorpg.Client.Ui
             }
 
             Rebuild();
-        }
-
-        private void FollowPointer()
-        {
-            if (promptRect == null || !prompt.gameObject.activeSelf || Mouse.current == null)
-            {
-                return;
-            }
-
-            var canvasRect = (RectTransform)promptRect.parent;
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    canvasRect,
-                    Mouse.current.position.ReadValue(),
-                    null,
-                    out var localPoint))
-            {
-                promptRect.anchoredPosition = localPoint + PromptPointerOffset;
-            }
         }
 
         private void OnDestroy()
@@ -165,23 +142,6 @@ namespace Mmorpg.Client.Ui
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
 
-            var promptObject = TemporaryUiKit.CreateUiObject("InteractionPrompt", canvasObject.transform);
-            promptRect = promptObject.GetComponent<RectTransform>();
-            promptRect.anchorMin = new Vector2(0.5f, 0.5f);
-            promptRect.anchorMax = new Vector2(0.5f, 0.5f);
-            promptRect.pivot = new Vector2(0f, 0f);
-            promptRect.sizeDelta = new Vector2(600f, 32f);
-            prompt = TemporaryUiKit.AddText(
-                promptObject,
-                string.Empty,
-                19,
-                FontStyle.Bold,
-                TextAnchor.MiddleLeft,
-                TemporaryUiKit.TextPrimary);
-            var promptShadow = promptObject.AddComponent<Shadow>();
-            promptShadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
-            promptShadow.effectDistance = new Vector2(1.5f, -1.5f);
-
             var panelObject = TemporaryUiKit.CreateUiObject("InteractionPanel", canvasObject.transform);
             panel = panelObject.GetComponent<RectTransform>();
             panel.anchorMin = new Vector2(0.5f, 0f);
@@ -212,14 +172,6 @@ namespace Mmorpg.Client.Ui
             }
 
             var approaching = targetingController?.ApproachTarget;
-            var target = targetingController?.CurrentTarget;
-            prompt.text = approaching != null
-                ? "Walking to " + approaching.TargetDisplayName
-                : target != null && target.IsTargetActive
-                    ? "Click to interact with " + target.TargetDisplayName
-                    : string.Empty;
-            prompt.gameObject.SetActive(!string.IsNullOrWhiteSpace(prompt.text));
-
             gatheringProgressFill = null;
 
             // Hidden children leave the fitted layout at once; destruction waits for frame end.
@@ -233,12 +185,22 @@ namespace Mmorpg.Client.Ui
             var state = interactionController.State;
             var active = state.ActiveInteraction;
             var showPanel = active != null
+                || approaching != null
                 || state.PendingOperationId != Guid.Empty
                 || !string.IsNullOrWhiteSpace(state.LastMessage);
             panel.gameObject.SetActive(showPanel);
             if (!showPanel)
             {
                 return;
+            }
+
+            if (approaching != null)
+            {
+                AddText(
+                    "Walking to " + approaching.TargetDisplayName + "...",
+                    16,
+                    FontStyle.Normal,
+                    TemporaryUiKit.TextSecondary);
             }
 
             if (active != null)

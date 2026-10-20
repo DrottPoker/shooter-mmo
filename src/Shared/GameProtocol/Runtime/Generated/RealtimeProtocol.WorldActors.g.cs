@@ -150,6 +150,37 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
+    /// A capability of a world actor as the right-click menu offers it before the interaction opens.
+    /// </summary>
+    public sealed partial class RealtimeWorldActorMenuOption
+    {
+        public RealtimeWorldActorMenuOption(
+            string capabilityId,
+            RealtimeWorldActorCapabilityKind kind,
+            string label)
+        {
+            CapabilityId = capabilityId;
+            Kind = kind;
+            Label = label;
+        }
+
+        /// <summary>
+        /// The capability the option opens.
+        /// </summary>
+        public string CapabilityId { get; }
+
+        /// <summary>
+        /// The kind of service.
+        /// </summary>
+        public RealtimeWorldActorCapabilityKind Kind { get; }
+
+        /// <summary>
+        /// The verb the menu shows before the actor's name, such as Trade.
+        /// </summary>
+        public string Label { get; }
+    }
+
+    /// <summary>
     /// A world actor entered the recipient's interest.
     /// </summary>
     public sealed partial class RealtimeWorldActorSpawn
@@ -177,7 +208,9 @@ namespace Mmorpg.GameProtocol
             float boundsCenterZ,
             float boundsSizeX,
             float boundsSizeY,
-            float boundsSizeZ)
+            float boundsSizeZ,
+            string examineText,
+            RealtimeWorldActorMenuOption[] menuOptions)
         {
             EntityId = entityId;
             RuntimeActorId = runtimeActorId;
@@ -202,6 +235,8 @@ namespace Mmorpg.GameProtocol
             BoundsSizeX = boundsSizeX;
             BoundsSizeY = boundsSizeY;
             BoundsSizeZ = boundsSizeZ;
+            ExamineText = examineText;
+            MenuOptions = menuOptions ?? Array.Empty<RealtimeWorldActorMenuOption>();
         }
 
         /// <summary>
@@ -318,6 +353,16 @@ namespace Mmorpg.GameProtocol
         /// The size of the interaction bounds on the z axis.
         /// </summary>
         public float BoundsSizeZ { get; }
+
+        /// <summary>
+        /// What Examine shows for the actor.
+        /// </summary>
+        public string ExamineText { get; }
+
+        /// <summary>
+        /// The actor's capabilities in menu order; the first is the left-click action.
+        /// </summary>
+        public RealtimeWorldActorMenuOption[] MenuOptions { get; }
     }
 
     /// <summary>
@@ -1076,6 +1121,12 @@ namespace Mmorpg.GameProtocol
             writer.WriteSingle(value.BoundsSizeX);
             writer.WriteSingle(value.BoundsSizeY);
             writer.WriteSingle(value.BoundsSizeZ);
+            writer.WriteString(value.ExamineText);
+            writer.WriteByte((byte)value.MenuOptions.Length);
+            foreach (var item in value.MenuOptions)
+            {
+                WriteWorldActorMenuOption(ref writer, item);
+            }
         }
 
         private static int SizeOfWorldActorSpawn(RealtimeWorldActorSpawn value)
@@ -1086,6 +1137,13 @@ namespace Mmorpg.GameProtocol
             size += StringSize(value.DisplayName);
             size += StringSize(value.FactionId);
             size += StringSize(value.PresentationArchetypeId);
+            size += StringSize(value.ExamineText);
+            size += 1;
+            foreach (var item in value.MenuOptions)
+            {
+                size += SizeOfWorldActorMenuOption(item);
+            }
+
             return size;
         }
 
@@ -1213,7 +1271,34 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeWorldActorSpawn(entityId, runtimeActorId, actorDefinitionId, spawnDefinitionId, displayName, kind, factionId, disposition, presentationArchetypeId, stateRevision, interactionRevision, isActive, positionX, positionY, positionZ, yawDegrees, activityTier, boundsCenterX, boundsCenterY, boundsCenterZ, boundsSizeX, boundsSizeY, boundsSizeZ);
+            if (!reader.TryReadString(MaximumWorldActorExamineTextLength, out var examineText, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var menuOptionsCount, out error))
+            {
+                return false;
+            }
+
+            if (menuOptionsCount > MaximumWorldActorCapabilities)
+            {
+                error = "World actor spawn menu options count is invalid.";
+                return false;
+            }
+
+            var menuOptions = new RealtimeWorldActorMenuOption[menuOptionsCount];
+            for (var index = 0; index < menuOptions.Length; index++)
+            {
+                if (!TryReadWorldActorMenuOption(ref reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                menuOptions[index] = element;
+            }
+
+            value = new RealtimeWorldActorSpawn(entityId, runtimeActorId, actorDefinitionId, spawnDefinitionId, displayName, kind, factionId, disposition, presentationArchetypeId, stateRevision, interactionRevision, isActive, positionX, positionY, positionZ, yawDegrees, activityTier, boundsCenterX, boundsCenterY, boundsCenterZ, boundsSizeX, boundsSizeY, boundsSizeZ, examineText, menuOptions);
             return true;
         }
 
@@ -1249,9 +1334,32 @@ namespace Mmorpg.GameProtocol
                 || !IsFinite(value.BoundsSizeY)
                 || value.BoundsSizeY <= 0f
                 || !IsFinite(value.BoundsSizeZ)
-                || value.BoundsSizeZ <= 0f)
+                || value.BoundsSizeZ <= 0f
+                || string.IsNullOrWhiteSpace(value.ExamineText)
+                || value.ExamineText.Length > MaximumWorldActorExamineTextLength
+                || value.MenuOptions == null
+                || value.MenuOptions.Length > MaximumWorldActorCapabilities)
             {
                 return false;
+            }
+
+            foreach (var item in value.MenuOptions)
+            {
+                if (!IsValidWorldActorMenuOption(item))
+                {
+                    return false;
+                }
+            }
+
+            for (var first = 0; first < value.MenuOptions.Length; first++)
+            {
+                for (var second = first + 1; second < value.MenuOptions.Length; second++)
+                {
+                    if (value.MenuOptions[first].CapabilityId == value.MenuOptions[second].CapabilityId)
+                    {
+                        return false;
+                    }
+                }
             }
 
             return true;
@@ -2525,6 +2633,60 @@ namespace Mmorpg.GameProtocol
                 || value.ProfileId == null
                 || value.ProfileId.Length > MaximumIdentifierLength
                 || value.Revision < 1)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WriteWorldActorMenuOption(ref PacketWriter writer, RealtimeWorldActorMenuOption value)
+        {
+            writer.WriteString(value.CapabilityId);
+            writer.WriteByte((byte)value.Kind);
+            writer.WriteString(value.Label);
+        }
+
+        private static int SizeOfWorldActorMenuOption(RealtimeWorldActorMenuOption value)
+        {
+            var size = 1;
+            size += StringSize(value.CapabilityId);
+            size += StringSize(value.Label);
+            return size;
+        }
+
+        private static bool TryReadWorldActorMenuOption(ref PacketReader reader, out RealtimeWorldActorMenuOption value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadString(MaximumWorldActorCapabilityIdLength, out var capabilityId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var kindByte, out error))
+            {
+                return false;
+            }
+
+            var kind = (RealtimeWorldActorCapabilityKind)kindByte;
+
+            if (!reader.TryReadString(MaximumWorldActorMenuOptionLength, out var label, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeWorldActorMenuOption(capabilityId, kind, label);
+            return true;
+        }
+
+        private static bool IsValidWorldActorMenuOption(RealtimeWorldActorMenuOption value)
+        {
+            if (value == null
+                || string.IsNullOrWhiteSpace(value.CapabilityId)
+                || value.CapabilityId.Length > MaximumWorldActorCapabilityIdLength
+                || !IsDefined(value.Kind)
+                || string.IsNullOrWhiteSpace(value.Label)
+                || value.Label.Length > MaximumWorldActorMenuOptionLength)
             {
                 return false;
             }

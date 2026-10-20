@@ -86,11 +86,65 @@ SimulationWorker uses distance-based interest management, so distant entities ar
 removed reliably and recreated reliably when they enter the configured area of
 interest. Snapshot loss never decides whether a remote player exists.
 
+## World Menu
+
+Status: Implemented with temporary presentation
+
+Every world action goes through one menu, as in RuneScape:
+
+- A right click opens a menu with every option for what is under the pointer,
+  headed `Choose Option` and ending with `Cancel`. A left click runs the top
+  option at once, without opening the menu.
+- The menu lists every target under the pointer, nearest first, and never
+  targets hidden behind solid geometry. Each target's actions come first, then
+  `Walk here`, then `Examine` for each target. A wolf in front of an Iron Vein
+  gives `Attack Feral Wolf`, `Mine Iron Vein`, `Walk here`, `Examine Feral
+  Wolf`, `Examine Iron Vein`, and `Cancel`.
+- An NPC or resource node offers one option per capability, in the order its
+  content lists them, with the verb from the content, such as `Talk-to`,
+  `Trade`, `Bank`, `Recover`, `Insure`, `Quests`, `Turn-in`, and `Craft` for Mira
+  the Quartermaster or `Mine` for an Iron Vein. The first is the left-click
+  action. Choosing one walks into range, opens the interaction, and starts that
+  service: `Trade` opens the vendor, `Bank` the Character Bank, `Recover`
+  Recovery Storage, and `Mine` starts mining. `Talk-to`, `Insure`, and `Quests`
+  open the interaction panel, where their choices are. When the interaction is
+  already open, the service starts without walking.
+- A living Mob offers `Attack`, and so does another character when the Shard
+  allows player versus player. A Mob walking home after a fight offers no
+  `Attack`, so a left click on it walks there.
+- A corpse offers `Loot Corpse of <name>`.
+- `Walk here` is always offered and walks to the ground under the pointer.
+- `Examine` shows the target's short description from the actor content in the
+  message area in the bottom left corner, such as "A lean, hungry wolf. It eyes
+  you like a meal." A corpse shows "The remains of <name>." Messages fade out
+  after 12 seconds. A target the player cannot reach also leaves a message
+  there.
+- Target names are colored by kind: NPCs and Mobs yellow, objects such as
+  resource nodes cyan, corpses orange, and other characters white.
+- Next to the pointer, the left-click option is shown with the number of other
+  options, such as `Attack Feral Wolf / 3 more options`. Bare ground shows
+  nothing.
+- The menu closes when an option or `Cancel` is chosen, on a click elsewhere in
+  the world, on `Escape`, or when the pointer moves more than a short distance
+  away from it. An `Escape` that closes the menu does nothing else: the attack,
+  the open interaction, and the inventory stay as they are.
+- Options run against the world as it is when they are chosen, so an option for
+  a target that left or died in the meantime does nothing and ends nothing
+  else, such as an attack.
+- While the character is dead the menu offers nothing.
+- Every option except `Examine` ends an attack, as walking away does.
+
+Capability availability is not known before an interaction opens, so the menu
+lists every capability, and a capability that is not available reports that in
+the interaction panel. SimulationWorker still validates range, line of sight,
+revision, session, and availability for every request.
+
 ## Player Movement
 
 Status: Server-authoritative click-to-move implemented
 
-- Left-click the ground to walk there. The client plans a route around walls,
+- Left-click the ground, or choose `Walk here` in the [World Menu](#world-menu),
+  to walk there. The client plans a route around walls,
   buildings, and cover on a fine internal grid that the player never sees, and
   the character starts walking on the next simulation tick.
 - A click on a spot that cannot be reached, such as a wall face or a roof, walks
@@ -410,17 +464,19 @@ interactables is implemented:
 
 - `NPC` identifies a social or service actor with freely composable dialogue,
   vendor, quest, crafting, insurance, trainer, bank, and Recovery capabilities.
-- `Mob` identifies a combat actor. A click on a Mob attacks it, an aggressive
-  Mob attacks characters it notices, and a dead Mob leaves loot in its corpse
-  and respawns.
+- `Mob` identifies a combat actor. A left click on a Mob attacks it, an
+  aggressive Mob attacks characters it notices, and a dead Mob leaves loot in
+  its corpse and respawns.
 - A resource node identifies a gatherable world object, such as an Iron Vein,
   with exactly one gathering capability. See [Gathering](#gathering).
-- The pointer picks a registered target with a direct ray and a `0.15` metre
+- The pointer picks registered targets with a direct ray and a `0.15` metre
   spherecast tolerance, up to `100` metres from the camera and never through
-  solid geometry. A prompt names the target under the pointer.
-- A left click on the target walks the player to `2.75` metres and then asks
-  SimulationWorker to open the interaction. A new click elsewhere cancels the
-  walk, and `Escape` closes the active NPC or corpse interaction.
+  solid geometry. The [World Menu](#world-menu) offers their options.
+- Choosing an option of a target walks the player to `2.5` metres and asks
+  SimulationWorker to open the interaction once it is within `2.75` metres, and
+  the interaction panel says `Walking to <name>...` meanwhile. A new option
+  elsewhere cancels the walk, and `Escape` closes the active NPC or corpse
+  interaction.
 - SimulationWorker opens an interaction only within the authoritative `3.0`
   metre start range after validating session, Shard, target identity and
   revision, active state, line of sight, capability, and request limits.
@@ -439,7 +495,8 @@ All city NPCs, including guards, and all resource nodes are invulnerable in the
 first version. Faction and disposition own friendly or hostile behavior
 independently from actor kind. The checked-in actor catalog contains one
 composable service NPC, one guard NPC, two Mob definitions, and the Iron Vein
-resource node. Development World 1 places six deterministic actor instances and
+resource node, each with an examine text and a menu option per capability.
+Development World 1 places six deterministic actor instances and
 Development World 2 twelve. The Character Bank and Recovery Storage buttons open
 the inventory with that storage, and `Trade` opens it with the vendor; each stays
 usable while the interaction is open. The insurance and quest offer
@@ -460,10 +517,10 @@ Status: MVP implemented with temporary presentation
   revision.
 - Currency is not an item. It takes no slot and no weight, and it stays with the
   character on death.
-- Mira the Quartermaster offers `Trade`. Choosing it opens the complete
-  inventory view on the `Vendor` tab with the General Store and the current
-  balance. Trading works only while the interaction stays open; walking out of
-  range closes it.
+- Mira the Quartermaster offers `Trade`, in her right-click menu and in her
+  interaction panel. Choosing it opens the complete inventory view on the
+  `Vendor` tab with the General Store and the current balance. Trading works
+  only while the interaction stays open; walking out of range closes it.
 - The General Store sells Bronze Arrow for `1`, Minor Healing Potion for `25`,
   Cooked Trout for `10`, and Starter Pickaxe for `50` Gold, at 100 percent of
   each item's value, with unlimited stock. Each offer has a quantity field and a
@@ -502,8 +559,9 @@ Status: MVP implemented with temporary presentation
   vein keeps its rocks, now with broken flat tops and rubble around them, but
   without ore.
 - Equip a gathering tool, such as the Starter Pickaxe, in the `Tool` slot and
-  click a vein. The character walks into range, the interaction opens, and
-  mining starts. Without a gathering tool the panel asks the player to equip one.
+  left-click a vein, or choose `Mine Iron Vein` in its right-click menu. The
+  character walks into range, the interaction opens, and mining starts. Without
+  a gathering tool the panel asks the player to equip one.
 - One click mines continuously: one Iron Ore every 3 seconds, shown as `Mine...`
   with a progress bar and the gathered count. The ore enters carried storage by
   the same rule as a purchase.
@@ -530,11 +588,12 @@ Status: Implemented with temporary presentation
 Combat is target based and server authoritative:
 
 - A left click on a living Mob, or on another character when the Shard allows
-  player versus player, selects it as the target. The character walks into the
-  range of its equipped weapon, about 9 m for the Training Shortbow, and attacks
-  on the weapon's cooldown, every 2.4 seconds for the shortbow, while it stands
-  still. Moving between shots is allowed.
-- A click anywhere else or `Escape` ends the attack.
+  player versus player, or `Attack` in its right-click menu, selects it as the
+  target. The character walks into the range of its equipped weapon, about 9 m
+  for the Training Shortbow, and attacks on the weapon's cooldown, every 2.4
+  seconds for the shortbow, while it stands still. Moving between shots is
+  allowed.
+- Any other world option except `Examine`, or `Escape`, ends the attack.
 - A bow needs arrows of its family in the Ammunition slot. Every shot spends one
   arrow, even when it flies at a target that died, and the inventory shows the
   live arrow count. An equipment change holds attacks for 1 second.

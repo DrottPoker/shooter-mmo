@@ -33,7 +33,27 @@ internal static class WorldActorProtocolMapper
             bounds.CenterZ,
             bounds.SizeX,
             bounds.SizeY,
-            bounds.SizeZ);
+            bounds.SizeZ,
+            actor.Definition.ExamineText,
+            ToMenuOptions(actor.Definition.Capabilities));
+    }
+
+    // The static capability list in authored order, so the client can offer a menu before
+    // the interaction opens. Availability is still checked when the interaction opens.
+    private static RealtimeWorldActorMenuOption[] ToMenuOptions(
+        IReadOnlyList<WorldActorCapabilityDefinition> capabilities)
+    {
+        var options = new RealtimeWorldActorMenuOption[capabilities.Count];
+        for (var index = 0; index < options.Length; index++)
+        {
+            var capability = capabilities[index];
+            options[index] = new RealtimeWorldActorMenuOption(
+                capability.Id,
+                WorldActorCapabilityRegistry.ToProtocolKind(capability.Kind),
+                capability.MenuOption);
+        }
+
+        return options;
     }
 
     public static RealtimeWorldActorState ToState(WorldActorRuntimeState actor)

@@ -16,6 +16,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "ContextMenu",
+                    "type": "Button",
+                    "id": "2840ebd6-7e91-4ee8-bbc7-b5be0b93e439",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "PointerPosition",
                     "type": "Value",
                     "id": "9caa5ae7-f7d0-4ca7-85b0-c3e232b99dd5",
@@ -115,6 +124,17 @@
                     "processors": "",
                     "groups": "",
                     "action": "Select",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "a574edbb-bb82-4160-9f9b-3ac9e441fae3",
+                    "path": "<Mouse>/rightButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "ContextMenu",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

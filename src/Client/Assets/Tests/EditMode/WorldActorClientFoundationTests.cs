@@ -213,21 +213,62 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void DirectPointerCandidateWinsAndSphereToleranceIsFallback()
+        public void DirectPointerCandidatesWinAndSphereToleranceIsFallback()
         {
             var direct = new FakeTarget("Direct");
             var sphere = new FakeTarget("Sphere");
+            var results = new System.Collections.Generic.List<WorldPointerCandidate>();
+
+            WorldPointerPicker.SelectCandidates(
+                new[] { new WorldPointerCandidate(direct, 5f) },
+                new[] { new WorldPointerCandidate(sphere, 1f) },
+                results);
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Target, Is.SameAs(direct));
+
+            WorldPointerPicker.SelectCandidates(
+                Array.Empty<WorldPointerCandidate>(),
+                new[] { new WorldPointerCandidate(sphere, 2f) },
+                results);
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Target, Is.SameAs(sphere));
+        }
+
+        [Test]
+        public void SpawnCarriesExamineTextAndMenuOptionsThatCannotChangeWithoutADespawn()
+        {
+            var state = new WorldActorClientState();
+            var spawn = CreateSpawn();
+            Assert.That(state.TryApplySpawn(spawn, out var error), Is.True, error);
+            Assert.That(state.TryGet(spawn.EntityId, out var actor), Is.True);
+            Assert.That(actor.ExamineText, Is.EqualTo("She keeps the city's stores."));
+            Assert.That(actor.MenuOptions.Count, Is.EqualTo(2));
+            Assert.That(actor.MenuOptions[0].Label, Is.EqualTo("Talk-to"));
+            Assert.That(actor.MenuOptions[1].CapabilityId, Is.EqualTo("services.vendor"));
+
+            // The same presence again is fine.
+            Assert.That(state.TryApplySpawn(CreateSpawn(spawn.RuntimeActorId), out error), Is.True, error);
 
             Assert.That(
-                WorldPointerPicker.SelectCandidate(
-                    new[] { new WorldPointerCandidate(direct, 5f) },
-                    new[] { new WorldPointerCandidate(sphere, 1f) }).Target,
-                Is.SameAs(direct));
+                state.TryApplySpawn(
+                    CreateSpawn(spawn.RuntimeActorId, examineText: "Someone else."),
+                    out error),
+                Is.False);
+            Assert.That(error, Does.Contain("identity"));
             Assert.That(
-                WorldPointerPicker.SelectCandidate(
-                    Array.Empty<WorldPointerCandidate>(),
-                    new[] { new WorldPointerCandidate(sphere, 2f) }).Target,
-                Is.SameAs(sphere));
+                state.TryApplySpawn(
+                    CreateSpawn(
+                        spawn.RuntimeActorId,
+                        menuOptions: new[]
+                        {
+                            new RealtimeWorldActorMenuOption(
+                                "services.vendor",
+                                RealtimeWorldActorCapabilityKind.Vendor,
+                                "Trade")
+                        }),
+                    out error),
+                Is.False);
+            Assert.That(error, Does.Contain("identity"));
         }
 
         [Test]
@@ -318,7 +359,9 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private static RealtimeWorldActorSpawn CreateSpawn(
             Guid? runtimeActorId = null,
-            string displayName = "Mira")
+            string displayName = "Mira",
+            string examineText = "She keeps the city's stores.",
+            RealtimeWorldActorMenuOption[] menuOptions = null)
         {
             return new RealtimeWorldActorSpawn(
                 7,
@@ -343,7 +386,13 @@ namespace Mmorpg.Client.Tests.EditMode
                 0f,
                 0.8f,
                 2f,
-                0.8f);
+                0.8f,
+                examineText,
+                menuOptions ?? new[]
+                {
+                    new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue, "Talk-to"),
+                    new RealtimeWorldActorMenuOption("services.vendor", RealtimeWorldActorCapabilityKind.Vendor, "Trade")
+                });
         }
 
         private sealed class FakeTarget : IWorldInteractionTarget

@@ -9,17 +9,18 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Combat
 {
-    // Combat's world click handler, which sees every click before world interaction. A left
-    // click on a living Mob, or on another player when the Shard allows player versus
-    // player, makes it the attack target, and the character walks into weapon range. Any
-    // other world click and Escape clear the target. While the character is dead every
-    // world click ends here, and the navigator stops on death and on respawn, so a path
-    // planned before death never runs from the spawn. The decisions live in
+    // Combat's part of the world menu, whose options come before world interaction's. A
+    // living Mob, or another player when the Shard allows player versus player, offers
+    // Attack, which makes it the attack target, and the character walks into weapon range.
+    // Any other option except Examine, and Escape, clear the target. While the character is
+    // dead combat blocks the whole menu, and the navigator stops on death and on respawn, so
+    // a path planned before death never runs from the spawn. The decisions live in
     // CombatClickRules, CombatTargetSelection, and CombatApproachPlanner.
     [DisallowMultipleComponent]
-    public sealed class CombatTargetingController : MonoBehaviour, IWorldClickHandler
+    public sealed class CombatTargetingController : MonoBehaviour, IWorldMenuProvider
     {
-        private readonly WorldPointerPicker picker = new WorldPointerPicker();
+        private const int AttackAction = 1;
+
         private readonly CombatTargetSelection selection = new CombatTargetSelection();
         private readonly CombatApproachPlanner approach = new CombatApproachPlanner();
         private CombatClientController combatController;
@@ -27,6 +28,7 @@ namespace Mmorpg.Client.Combat
         private WorldActorClientController actorController;
         private InventoryClientController inventoryController;
         private CombatantViewLocator views;
+        private WorldMenuController menu;
         private LocalPlayerController localPlayer;
         private int approachIntentId;
         private ulong notifiedTarget;
@@ -58,13 +60,15 @@ namespace Mmorpg.Client.Combat
             RealtimeSimulationClient realtime,
             WorldActorClientController worldActors,
             InventoryClientController inventory,
-            CombatantViewLocator combatantViews)
+            CombatantViewLocator combatantViews,
+            WorldMenuController worldMenu)
         {
             combatController = combat;
             realtimeClient = realtime;
             actorController = worldActors;
             inventoryController = inventory;
             views = combatantViews;
+            menu = worldMenu;
         }
 
         private void OnEnable()
@@ -77,6 +81,12 @@ namespace Mmorpg.Client.Combat
             combatController.State.IntentCompleted += OnIntentCompleted;
             combatController.State.Died += OnDied;
             combatController.State.Respawned += OnRespawned;
+            if (menu != null)
+            {
+                menu.AddProvider(this, WorldMenuOrder.Combat);
+                menu.OptionExecuted += OnMenuOptionExecuted;
+            }
+
             subscribed = true;
         }
 
@@ -89,15 +99,13 @@ namespace Mmorpg.Client.Combat
                 combatController.State.Respawned -= OnRespawned;
             }
 
-            subscribed = false;
-        }
-
-        private void OnDestroy()
-        {
-            if (localPlayer != null)
+            if (subscribed && menu != null)
             {
-                localPlayer.RemoveClickHandler(this);
+                menu.RemoveProvider(this);
+                menu.OptionExecuted -= OnMenuOptionExecuted;
             }
+
+            subscribed = false;
         }
 
         private void Update()
@@ -115,7 +123,9 @@ namespace Mmorpg.Client.Combat
                 selection.Reset();
             }
 
-            if (localPlayer.PlayerInput != null && localPlayer.PlayerInput.CancelPressedThisFrame)
+            if (localPlayer.PlayerInput != null
+                && localPlayer.PlayerInput.CancelPressedThisFrame
+                && (menu == null || !menu.CancelConsumedThisFrame))
             {
                 ClearTarget();
             }
@@ -124,35 +134,79 @@ namespace Mmorpg.Client.Combat
             NotifyIfTargetChanged();
         }
 
-        public bool TryHandleWorldClick(Ray ray)
+        public void AddWorldMenuOptions(WorldMenuBuilder worldMenu)
         {
             if (combatController == null)
+            {
+                return;
+            }
+
+            var owner = combatController.State.Owner;
+            if (CombatClickRules.IsDead(owner))
+            {
+                worldMenu.Block();
+                return;
+            }
+
+            var candidates = worldMenu.Candidates;
+            for (var index = 0; index < candidates.Count; index++)
+            {
+                var candidate = candidates[index];
+                var targetEntityId = AttackableTarget(candidate);
+                if (targetEntityId == 0)
+                {
+                    continue;
+                }
+
+                worldMenu.Add(WorldMenuOption.ForTarget(
+                    this,
+                    AttackAction,
+                    index,
+                    candidate,
+                    "Attack",
+                    candidate.DisplayName,
+                    candidate.Player != null ? WorldMenuTargetStyle.Player : WorldMenuTargetStyle.Mob,
+                    entityId: targetEntityId));
+            }
+        }
+
+        // The menu may have stayed open, so the target and the character are checked again:
+        // a target that died or left, or a character that died, never attacks.
+        public bool ExecuteWorldMenuOption(WorldMenuOption option)
+        {
+            if (option.Action != AttackAction
+                || option.EntityId == 0
+                || combatController == null
+                || AttackableTarget(option.Candidate) != option.EntityId)
             {
                 return false;
             }
 
-            var target = CombatClickRules.Describe(
-                picker.Pick(ray, localPlayer != null ? localPlayer.transform : null),
-                actorController != null ? actorController.State : null);
-            combatController.State.TryGetCombatant(target.EntityId, out var targetState);
+            Attack(option.EntityId);
+            return true;
+        }
+
+        private ulong AttackableTarget(WorldPointerCandidate candidate)
+        {
             var playerVersusPlayer = realtimeClient != null
                 && realtimeClient.ShardRules != null
                 && realtimeClient.ShardRules.PlayerVersusPlayer;
-            switch (CombatClickRules.Classify(
-                target,
-                combatController.State.Owner,
-                playerVersusPlayer,
-                targetState))
+            return CombatClickRules.AttackableTarget(
+                candidate,
+                actorController != null ? actorController.State : null,
+                combatController.State,
+                playerVersusPlayer);
+        }
+
+        // Walking away, talking, or gathering ends the attack; Examine does not.
+        private void OnMenuOptionExecuted(WorldMenuOption option)
+        {
+            if (ReferenceEquals(option.Provider, this) || option.IsPassive || combatController == null)
             {
-                case CombatClickAction.Attack:
-                    Attack(target.EntityId);
-                    return true;
-                case CombatClickAction.Ignore:
-                    return true;
-                default:
-                    ClearTarget();
-                    return false;
+                return;
             }
+
+            ClearTarget();
         }
 
         private void Attack(ulong targetEntityId)
@@ -313,18 +367,9 @@ namespace Mmorpg.Client.Combat
                 return;
             }
 
-            if (localPlayer != null)
-            {
-                localPlayer.RemoveClickHandler(this);
-            }
-
             localPlayer = player;
             approach.Reset();
             approachIntentId = 0;
-            if (localPlayer != null)
-            {
-                localPlayer.AddClickHandler(this, WorldClickOrder.Combat);
-            }
         }
 
         private static void LogNotSent(string error)

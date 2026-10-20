@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 19,
+    "version": 20,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -134,6 +134,18 @@
       "value": 128,
       "visibility": "private",
       "description": "Characters in a world actor capability display name."
+    },
+    {
+      "name": "MaximumWorldActorExamineTextLength",
+      "value": 200,
+      "visibility": "public",
+      "description": "Characters in the examine text of a world actor."
+    },
+    {
+      "name": "MaximumWorldActorMenuOptionLength",
+      "value": 32,
+      "visibility": "public",
+      "description": "Characters in the right-click menu option of a world actor capability."
     },
     {
       "name": "MaximumWorldInteractionMessageLength",
@@ -670,6 +682,26 @@
           "type": "i64",
           "minimum": 1,
           "description": "The capability revision an action must expect."
+        }
+      ]
+    },
+    {
+      "name": "WorldActorMenuOption",
+      "family": "WorldActors",
+      "description": "A capability of a world actor as the right-click menu offers it before the interaction opens.",
+      "fields": [
+        {
+          "name": "CapabilityId",
+          "type": "string",
+          "maxLength": "MaximumWorldActorCapabilityIdLength",
+          "description": "The capability the option opens."
+        },
+        { "name": "Kind", "type": "WorldActorCapabilityKind", "description": "The kind of service." },
+        {
+          "name": "Label",
+          "type": "string",
+          "maxLength": "MaximumWorldActorMenuOptionLength",
+          "description": "The verb the menu shows before the actor's name, such as Trade."
         }
       ]
     },
@@ -1764,6 +1796,21 @@
           "type": "f32",
           "exclusiveMinimum": 0,
           "description": "The size of the interaction bounds on the z axis."
+        },
+        {
+          "name": "ExamineText",
+          "type": "string",
+          "maxLength": "MaximumWorldActorExamineTextLength",
+          "description": "What Examine shows for the actor."
+        },
+        {
+          "name": "MenuOptions",
+          "type": "array",
+          "items": "WorldActorMenuOption",
+          "maxCount": "MaximumWorldActorCapabilities",
+          "nullAsEmpty": true,
+          "distinctBy": "CapabilityId",
+          "description": "The actor's capabilities in menu order; the first is the left-click action."
         }
       ]
     },

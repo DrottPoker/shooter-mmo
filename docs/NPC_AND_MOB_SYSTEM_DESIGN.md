@@ -1,6 +1,6 @@
 # NPC And Mob System Design
 
-Last updated: 2026-10-18
+Last updated: 2026-10-20
 
 Status: Canonical design, foundation implemented
 
@@ -227,6 +227,8 @@ Every actor definition contains at least:
 - Stable actor definition id.
 - Actor kind: `npc`, `mob`, or `resource_node`.
 - Display name or localization key.
+- Examine text: one trimmed line of up to 200 characters that the right-click
+  menu's Examine shows.
 - Presentation archetype id.
 - Faction id.
 - Interaction bounds and targeting anchor.
@@ -291,10 +293,14 @@ registry. Initial capability kinds are reserved for:
 - Recovery Storage.
 - Gathering, which only a resource node may have.
 
-An NPC may contain any valid combination of the NPC kinds. Capability ordering in
-the compiled definition is deterministic and may provide presentation order
-without changing authority. Each capability has a stable capability id, kind,
-`profileId`, availability metadata, and revisioned server state when required.
+An NPC may contain any valid combination of the NPC kinds. The compiled
+definition keeps the authored capability order, which is the order of the
+right-click menu, so the first capability is the left-click action; the order
+never changes authority. Each capability has a stable capability id, kind,
+display name, `menuOption`, `profileId`, availability metadata, and revisioned
+server state when required. `menuOption` is the verb the menu shows before the
+actor's name, one trimmed line of up to 32 characters, such as `Talk-to`,
+`Trade`, or `Mine`.
 A `vendor` capability's `profileId` names a vendor profile of the item catalog,
 such as `vendor.city_general_store` on Mira the Quartermaster's Trade
 capability, a `gathering` capability's names a resource profile, and every other
@@ -305,8 +311,11 @@ message.
 The opened capability summary is player-specific. SimulationWorker filters it
 through current disposition, actor state, capability state, and future
 progression or access rules. A summary returned to one player must never be
-reused as authority for another player. Static capability identity may be shared
-internally, but availability and its expected revision remain session-scoped.
+reused as authority for another player. Static capability identity is shared:
+the actor spawn carries every capability's id, kind, and menu option, so the
+client can offer the right-click menu before the interaction opens. Availability
+and its expected revision remain session-scoped and arrive only with the opened
+summary.
 
 The foundation proves composition and discovery. The insurance, quest, and
 vendor item-lifecycle handlers bridge the already validated interaction
@@ -463,10 +472,14 @@ character's equipment, and it checks both in one transaction.
 
 ## Interaction Targeting And Input
 
-The player's interaction action is a left click on the target under the
-pointer, which walks the player into range before it asks the worker to open the
-interaction. Escape closes it. Target selection is advisory because a client
-cannot be trusted as a security boundary.
+The player chooses an interaction in the right-click world menu, or with a left
+click on its top option. The menu lists every capability of every target under
+the pointer, nearest first. Choosing one walks the player into range, asks the
+worker to open the interaction, and then starts that capability: a vendor,
+bank, Recovery Storage, quest turn-in, crafting, or trainer capability runs at
+once, gathering starts, and dialogue, insurance, and quest offers leave the
+interaction panel open for their choices. Escape closes it. Target selection
+is advisory because a client cannot be trusted as a security boundary.
 
 One reusable client target system serves:
 
@@ -488,17 +501,19 @@ The initial shared interaction values are:
 | Rule | Value |
 | --- | --- |
 | Client pointer range from the camera | `100` metres |
-| Client approach distance | `2.75` metres |
+| Client approach distance | `2.5` metres |
+| Client open distance | `2.75` metres |
 | Authoritative start range | `3.0` metres |
 | Authoritative maintain range | `3.5` metres |
 | Client spherecast tolerance | `0.15` metres |
 
 The client checks a ray through the pointer first and may use a small spherecast
-to make thin or animated presentation targets practical. It ranks only
-registered interactable views and provides a prompt for the best unobstructed
-candidate. A click walks the player to the approach distance, inside the start
-range, and sends the open intent once the authoritative owner position is that
-close. The pointer range does not grant authority to open an interaction.
+to make thin or animated presentation targets practical. It lists only
+registered interactable views that no solid geometry hides, nearest first, and
+shows the left-click option next to the pointer. An option walks the player to
+the approach distance and sends the open intent once the authoritative owner
+position is within the open distance, inside the start range. The pointer range
+does not grant authority to open an interaction.
 
 The start range is the player's base interaction range. The maintain range adds
 small hysteresis so movement and reconciliation near the boundary do not flicker
@@ -553,7 +568,9 @@ misreading a packet.
 
 The protocol separates actor visibility from interaction state:
 
-- Reliable actor spawn and despawn identity.
+- Reliable actor spawn and despawn identity. Since protocol version 20 the
+  spawn also carries the examine text and every capability's id, kind, and menu
+  option in authored order, but no availability, revision, or profile.
 - Bounded actor state updates only when replicated state changes. A resource
   node's available or depleted state reuses `IsActive`.
 - World interaction open, close, and capability-action intents. The
@@ -591,8 +608,12 @@ The Unity foundation separates permanent state from replaceable presentation:
 - `WorldInteractionClientController` owns target observation, operation
   correlation, the active authoritative interaction session, closure, and
   reconnect cleanup.
-- `WorldInteractionTargetingController` performs advisory pointer targeting
-  against registered presentation targets and approaches a clicked target.
+- `WorldMenuController` collects the right-click world menu for the registered
+  presentation targets under the pointer from its providers, runs the top
+  option on a left click, and offers Walk here and Examine itself.
+- `WorldInteractionTargetingController` adds the capability and Loot options,
+  approaches a chosen target, and starts the chosen capability once the
+  interaction opens.
 - `WorldActorView` is the presentation base for actor identity and target bounds.
 - `NpcView`, `MobView`, and `ResourceNodeView` provide kind-specific
   presentation hooks without owning authority. `ResourceNodeView` keeps a
@@ -615,9 +636,9 @@ registered capability adapter. The client may present capabilities whose busines
 handler is intentionally deferred, but it must label that state clearly and
 must not fake a successful transaction.
 
-Pointer targeting remains advisory. Target highlighting and prompt color are
-presentation only. The cursor is always free, so opening or closing the panel
-never changes camera or pointer behavior.
+Pointer targeting remains advisory. Target highlighting, menu colors, and the
+left-click hint are presentation only. The cursor is always free, so opening or
+closing the panel or the menu never changes camera or pointer behavior.
 
 ## Unity Editor Authoring UX
 
@@ -716,7 +737,7 @@ unclaimed corpses never require PostgreSQL cleanup.
 
 SimulationWorker's combat system, described in
 [Service Features](SERVICE_FEATURES.md#target-based-combat), produces Mob
-deaths. In Unity a click on a Mob is always an attack, never an interaction, as
+deaths. In Unity a Mob offers only Attack and Examine, never an interaction, as
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#combat-client)
 describes:
 
@@ -843,8 +864,8 @@ The manual acceptance gate must prove:
    canonical change, and compile successfully.
 3. Create and place one Mob definition through the same tools.
 4. Restart SimulationWorker and verify both actors reconstruct from WorldData.
-5. Join with Unity and left-click the NPC. The player walks into range before the
-   interaction opens.
+5. Join with Unity and left-click the NPC, or right-click it and choose one of its
+   capabilities. The player walks into range before the interaction opens.
 6. Verify the temporary uGUI lists the authoritative capability summary.
 7. Try from outside start range and through blocking collision and observe the
    stable rejection without opening local state.

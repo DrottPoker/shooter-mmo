@@ -1,6 +1,7 @@
 {
     "id": "npc.city_services",
     "displayName": "Mira the Quartermaster",
+    "examineText": "She keeps the city's stores, its accounts, and whatever the dead leave behind.",
     "kind": "npc",
     "factionId": "city",
     "disposition": "friendly",
@@ -20,52 +21,60 @@
     },
     "capabilities": [
         {
-            "id": "services.bank",
-            "kind": "bank",
-            "displayName": "Character Bank",
-            "profileId": ""
-        },
-        {
-            "id": "services.crafting",
-            "kind": "crafting",
-            "displayName": "Crafting",
-            "profileId": ""
-        },
-        {
             "id": "services.dialogue",
             "kind": "dialogue",
             "displayName": "Talk",
-            "profileId": ""
-        },
-        {
-            "id": "services.insurance",
-            "kind": "insurance",
-            "displayName": "Insurance",
-            "profileId": ""
-        },
-        {
-            "id": "services.quest_offer",
-            "kind": "quest_offer",
-            "displayName": "Available Quests",
-            "profileId": ""
-        },
-        {
-            "id": "services.quest_turn_in",
-            "kind": "quest_turn_in",
-            "displayName": "Complete Quest",
-            "profileId": ""
-        },
-        {
-            "id": "services.recovery",
-            "kind": "recovery_storage",
-            "displayName": "Recovery Storage",
+            "menuOption": "Talk-to",
             "profileId": ""
         },
         {
             "id": "services.vendor",
             "kind": "vendor",
             "displayName": "Trade",
+            "menuOption": "Trade",
             "profileId": "vendor.city_general_store"
+        },
+        {
+            "id": "services.bank",
+            "kind": "bank",
+            "displayName": "Character Bank",
+            "menuOption": "Bank",
+            "profileId": ""
+        },
+        {
+            "id": "services.recovery",
+            "kind": "recovery_storage",
+            "displayName": "Recovery Storage",
+            "menuOption": "Recover",
+            "profileId": ""
+        },
+        {
+            "id": "services.insurance",
+            "kind": "insurance",
+            "displayName": "Insurance",
+            "menuOption": "Insure",
+            "profileId": ""
+        },
+        {
+            "id": "services.quest_offer",
+            "kind": "quest_offer",
+            "displayName": "Available Quests",
+            "menuOption": "Quests",
+            "profileId": ""
+        },
+        {
+            "id": "services.quest_turn_in",
+            "kind": "quest_turn_in",
+            "displayName": "Complete Quest",
+            "menuOption": "Turn-in",
+            "profileId": ""
+        },
+        {
+            "id": "services.crafting",
+            "kind": "crafting",
+            "displayName": "Crafting",
+            "menuOption": "Craft",
+            "profileId": ""
         }
     ],
     "activityProfileId": "",
