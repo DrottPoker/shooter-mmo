@@ -18,6 +18,7 @@
     <Content Include="..\..\src\Shared\WorldData\Generated\WorldCollision\**\*"
              Exclude="..\..\src\Shared\WorldData\Generated\WorldCollision\**\*.meta"
              Link="WorldData\Worlds\%(RecursiveDir)Collision\%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
