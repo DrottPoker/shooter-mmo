@@ -26,6 +26,7 @@ internal sealed class EntityPresenceReplicator(
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<WorldActorRuntimeState> worldActorBuffer = [];
     private readonly List<SimulationInterestEntity> interestEntityBuffer = [];
+    private uint refreshCycle;
 
     public int ActiveEntityCount => entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
 
@@ -170,11 +171,16 @@ internal sealed class EntityPresenceReplicator(
         }
     }
 
+    // Refreshes the connections whose turn it is; every connection gets one refresh per
+    // RefreshIntervalSnapshots calls. Joins refresh their connection at once.
     public void RefreshInterests(int? excludedConnectionId)
     {
+        var interval = interestManager.RefreshIntervalSnapshots;
+        var turn = (int)(unchecked(refreshCycle++) % (uint)interval);
         foreach (var context in peers.Contexts)
         {
             if (context.PeerId == excludedConnectionId
+                || context.PeerId % interval != turn
                 || context.Session is null
                 || !connectionBindings.TryGetEntityId(context.PeerId, out var controlledEntityId)
                 || !peers.TryGetCurrentPeer(context, out var peer))

@@ -326,6 +326,11 @@ public sealed record SimulationWorkerConfig(
             interestSection["ExitRadius"],
             "SimulationWorker:InterestManagement:ExitRadius",
             errors);
+        var interestRefreshIntervalSnapshots = PositiveInt(
+            interestSection["RefreshIntervalSnapshots"]
+                ?? InterestManagementConfig.Default.RefreshIntervalSnapshots.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:InterestManagement:RefreshIntervalSnapshots",
+            errors);
         var snapshotReplicationSection = section.GetSection("SnapshotReplication");
         var overloadTargetUtilizationBasisPoints = PositiveInt(
             snapshotReplicationSection["OverloadTargetUtilizationBasisPoints"] ?? "9500",
@@ -431,6 +436,12 @@ public sealed record SimulationWorkerConfig(
             || interestExitRadius / interestCellSize > 64f)
         {
             errors.Add("SimulationWorker interest management requires bounded positive radii, a positive cell size, an exit radius greater than or equal to the enter radius, and no more than 64 searched cells per axis direction.");
+        }
+
+        if (interestRefreshIntervalSnapshots > snapshotRateHz)
+        {
+            errors.Add(
+                "SimulationWorker:InterestManagement:RefreshIntervalSnapshots must not exceed one second of snapshots.");
         }
 
         if (overloadTargetUtilizationBasisPoints > 10_000)
@@ -577,7 +588,8 @@ public sealed record SimulationWorkerConfig(
             InterestManagement = new InterestManagementConfig(
                 interestCellSize,
                 interestEnterRadius,
-                interestExitRadius),
+                interestExitRadius,
+                interestRefreshIntervalSnapshots),
             SnapshotReplication = new SnapshotReplicationConfig(
                 overloadTargetUtilizationBasisPoints),
             CollisionStreaming = new CollisionStreamingConfig(
@@ -717,12 +729,16 @@ public sealed record AdmissionConfig(
     public static AdmissionConfig Default { get; } = new(256, 8, 5, 20, 1024);
 }
 
+// RefreshIntervalSnapshots spreads the visibility work: each connection's visible set is
+// recomputed every that many snapshots, the connections in turn. The exit radius beyond the
+// enter radius keeps an entity visible while its viewer waits for the next refresh.
 public sealed record InterestManagementConfig(
     float CellSize,
     float EnterRadius,
-    float ExitRadius)
+    float ExitRadius,
+    int RefreshIntervalSnapshots = 1)
 {
-    public static InterestManagementConfig Default { get; } = new(64f, 128f, 144f);
+    public static InterestManagementConfig Default { get; } = new(64f, 128f, 144f, 3);
 }
 
 public sealed record SnapshotReplicationConfig(int OverloadTargetUtilizationBasisPoints)

@@ -54,6 +54,7 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(TimeSpan.FromSeconds(10), config.RegistryHeartbeatInterval);
         Assert.Equal(8, config.SimulationSessionHeartbeatMaxConcurrency);
         Assert.Equal(128f, config.InterestManagement.EnterRadius);
+        Assert.Equal(3, config.InterestManagement.RefreshIntervalSnapshots);
         Assert.Equal(
             9_500,
             config.SnapshotReplication.OverloadTargetUtilizationBasisPoints);
@@ -177,6 +178,19 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains(
             "RegistryAcquireTimeoutSeconds must be longer than RegistryHeartbeatSeconds",
             exception.Message);
+    }
+
+    [Fact]
+    public void SimulationWorkerRejectsAnInterestRefreshIntervalLongerThanOneSecond()
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:InterestManagement:RefreshIntervalSnapshots"] = "16";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+
+        Assert.Contains("RefreshIntervalSnapshots must not exceed one second", exception.Message);
     }
 
     [Fact]

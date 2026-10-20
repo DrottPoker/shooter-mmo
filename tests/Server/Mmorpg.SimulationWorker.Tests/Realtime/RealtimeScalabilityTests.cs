@@ -36,6 +36,47 @@ public sealed class RealtimeScalabilityTests
     }
 
     [Fact]
+    public void MovesInsideOneCellReachTheVisibilityTest()
+    {
+        var manager = new SimulationInterestManager(
+            new InterestManagementConfig(64f, 20f, 25f));
+        manager.AddEntity(new SimulationInterestEntity(1, 0f, 0f));
+        manager.AddEntity(new SimulationInterestEntity(2, 10f, 0f));
+        Assert.Contains(2ul, manager.Refresh(1, 1).Visible);
+
+        // Still in the same 64 m cell, but beyond the exit radius.
+        manager.UpdateEntity(new SimulationInterestEntity(2, 40f, 0f));
+        var update = manager.Refresh(1, 1);
+
+        Assert.Equal([2ul], update.Exited);
+        Assert.DoesNotContain(2ul, update.Visible);
+    }
+
+    [Fact]
+    public void EntitiesBetweenTheRadiiStayVisibleOnlyWhenAlreadySeen()
+    {
+        var manager = new SimulationInterestManager(
+            new InterestManagementConfig(64f, 20f, 25f));
+        manager.Rebuild([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 15f, 0f),
+            new SimulationInterestEntity(3, 22f, 0f)
+        ]);
+        var first = manager.Refresh(1, 1);
+        Assert.Equal([1ul, 2ul], manager.GetVisibleOrdered(1));
+        Assert.DoesNotContain(3ul, first.Visible);
+
+        manager.Rebuild([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 22f, 0f),
+            new SimulationInterestEntity(3, 22f, 1f)
+        ]);
+        manager.Refresh(1, 1);
+
+        Assert.Equal([1ul, 2ul], manager.GetVisibleOrdered(1));
+    }
+
+    [Fact]
     [Trait("Category", "Load")]
     public void SpatialInterestAndSnapshotEncodingRemainBoundedAtLargeEntityCounts()
     {
