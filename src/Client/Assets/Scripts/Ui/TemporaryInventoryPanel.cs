@@ -41,6 +41,8 @@ namespace Mmorpg.Client.Ui
         private const float ContentPadding = 4f;
         private const float HeaderHeight = 46f;
         private const float FooterMargin = 10f;
+        // How long an undone item move stays marked in red.
+        private const float RollbackMarkSeconds = 1.5f;
 
         private InventoryClientController controller;
         private CorpseClientController corpseController;
@@ -78,6 +80,9 @@ namespace Mmorpg.Client.Ui
         private bool corpsePartialLoot;
         private string localStatus = "Drag an item onto a highlighted destination.";
         private LiveAmmunitionSlot liveAmmunition;
+        private bool rebuildDeferred;
+        private readonly HashSet<Guid> rolledBackItemIds = new HashSet<Guid>();
+        private float rollbackMarkUntil;
 
         public bool IsOpen
         {
@@ -124,6 +129,7 @@ namespace Mmorpg.Client.Ui
             if (controller != null)
             {
                 controller.State.Changed += Rebuild;
+                controller.State.PredictionRolledBack += OnPredictionRolledBack;
             }
 
             if (corpseController != null)
@@ -152,6 +158,17 @@ namespace Mmorpg.Client.Ui
             if (localPlayerInput == null)
             {
                 FindPlayerPresentation();
+            }
+
+            if (rolledBackItemIds.Count > 0 && Time.unscaledTime >= rollbackMarkUntil)
+            {
+                rolledBackItemIds.Clear();
+                rebuildDeferred = true;
+            }
+
+            if (rebuildDeferred && (dragCoordinator == null || !dragCoordinator.IsDragging))
+            {
+                Rebuild();
             }
 
             if (localPlayerInput != null)
@@ -192,6 +209,7 @@ namespace Mmorpg.Client.Ui
             if (controller != null)
             {
                 controller.State.Changed -= Rebuild;
+                controller.State.PredictionRolledBack -= OnPredictionRolledBack;
             }
 
             if (corpseController != null)
@@ -325,6 +343,16 @@ namespace Mmorpg.Client.Ui
             Show(requestedMode);
         }
 
+        // The undone items flash red where they returned to, and the status line says why.
+        private void OnPredictionRolledBack(InventoryPredictionRollback rollback)
+        {
+            rolledBackItemIds.Clear();
+            rolledBackItemIds.UnionWith(rollback.ItemInstanceIds);
+            rollbackMarkUntil = Time.unscaledTime + RollbackMarkSeconds;
+            localStatus = "Item move undone: " + rollback.Error.Message;
+            Rebuild();
+        }
+
         private void OnCorpseStateChanged()
         {
             if (corpseController?.State.ActiveView != null)
@@ -437,6 +465,16 @@ namespace Mmorpg.Client.Ui
             {
                 return;
             }
+
+            // A confirmation that arrives while the player drags the next item must not cancel
+            // that drag, so the panel redraws when the drag ends.
+            if (dragCoordinator != null && dragCoordinator.IsDragging)
+            {
+                rebuildDeferred = true;
+                return;
+            }
+
+            rebuildDeferred = false;
 
             if (tooltip != null)
             {
@@ -722,7 +760,7 @@ namespace Mmorpg.Client.Ui
                 DragPayload = item == null
                     ? null
                     : InventoryDragPayload.ForItem(item.ItemInstanceId),
-                CanDrag = state.CanMutate,
+                CanDrag = CanMoveItem(state, item),
                 DropValidator = (InventoryDragPayload candidate, out string reason) =>
                     CanDropOnContainer(state, container, slot, candidate, out reason),
                 OnDrop = candidate => OnContainerDrop(container, slot, candidate),
@@ -784,7 +822,7 @@ namespace Mmorpg.Client.Ui
                 DragPayload = item == null
                     ? null
                     : InventoryDragPayload.ForItem(item.ItemInstanceId),
-                CanDrag = state.CanMutate,
+                CanDrag = CanMoveItem(state, item),
                 DropValidator = (InventoryDragPayload candidate, out string reason) =>
                     CanDropOnEquipment(state, equipmentSlot, candidate, out reason),
                 OnDrop = candidate => OnEquipmentDrop(equipmentSlot, candidate),
@@ -1098,7 +1136,7 @@ namespace Mmorpg.Client.Ui
                         : "Split cancelled.";
                     Rebuild();
                 },
-                item.Quantity > 1 && state.CanMutate,
+                item.Quantity > 1 && CanMoveItem(state, item),
                 splitMode ? TemporaryButtonTone.Active : TemporaryButtonTone.Normal);
             var canDestroy = InventoryTargetAdvisor.CanDestroy(
                 state.Catalog,
@@ -1108,7 +1146,7 @@ namespace Mmorpg.Client.Ui
                 row,
                 destroyConfirmation ? "Confirm destroy" : "Destroy",
                 () => DestroySelected(item),
-                canDestroy && state.CanMutate,
+                canDestroy && CanMoveItem(state, item),
                 destroyConfirmation ? TemporaryButtonTone.Danger : TemporaryButtonTone.Normal);
             TemporaryUiKit.CreateButton(
                 row,
@@ -1154,9 +1192,21 @@ namespace Mmorpg.Client.Ui
             out string reason)
         {
             reason = string.Empty;
-            if (!state.CanMutate)
+            if (!TryResolveCurrentSlot(state, container, slot, out container, out slot))
             {
-                reason = "Inventory mutation is unavailable while state is loading or busy.";
+                reason = "This slot is no longer available.";
+                return false;
+            }
+
+            // Item moves show at once and may follow pending ones; corpse loot and Recovery
+            // claims wait for a confirmed state.
+            if (payload.Kind == InventoryDragPayloadKind.Item
+                ? !CanMoveItem(state, null)
+                : !state.CanMutate)
+            {
+                reason = state.HasPendingOperations
+                    ? "Wait until your item moves are confirmed."
+                    : "Inventory mutation is unavailable while state is loading or busy.";
                 return false;
             }
 
@@ -1267,6 +1317,48 @@ namespace Mmorpg.Client.Ui
                 slot,
                 movedQuantity,
                 out reason);
+        }
+
+        // A shown item moves at once, also while earlier moves wait for the server, unless it
+        // is a split stack that the server has not confirmed yet.
+        private static bool CanMoveItem(InventoryClientState state, InventoryItem item)
+        {
+            return (state.CanPredict || state.CanMutate)
+                && (item == null || !state.IsPredictedItem(item.ItemInstanceId));
+        }
+
+        // The drawn slot can be older than the state, when a confirmation arrived during a drag.
+        private static bool TryResolveCurrentSlot(
+            InventoryClientState state,
+            InventoryContainer drawnContainer,
+            InventorySlot drawnSlot,
+            out InventoryContainer container,
+            out InventorySlot slot)
+        {
+            slot = null;
+            var snapshot = state.FullSnapshot;
+            container = snapshot == null
+                ? null
+                : new[]
+                    {
+                        snapshot.PermanentInventory,
+                        snapshot.EquippedBag?.Contents,
+                        snapshot.SecureContainer?.Contents,
+                        state.Bank
+                    }
+                    .FirstOrDefault(candidate =>
+                        candidate != null && candidate.ContainerId == drawnContainer.ContainerId);
+            return container != null && container.TryGetSlot(drawnSlot.SlotIndex, out slot);
+        }
+
+        private static bool TryResolveCurrentEquipmentSlot(
+            InventoryClientState state,
+            InventoryEquipmentSlot drawnSlot,
+            out InventoryEquipmentSlot equipmentSlot)
+        {
+            equipmentSlot = state.FullSnapshot?.Equipment.FirstOrDefault(candidate =>
+                string.Equals(candidate.SlotId, drawnSlot.SlotId, StringComparison.Ordinal));
+            return equipmentSlot != null;
         }
 
         private bool CanDropCorpseItemOnContainer(
@@ -1380,9 +1472,19 @@ namespace Mmorpg.Client.Ui
             out string reason)
         {
             reason = string.Empty;
-            if (!state.CanMutate)
+            if (!TryResolveCurrentEquipmentSlot(state, equipmentSlot, out equipmentSlot))
             {
-                reason = "Inventory mutation is unavailable while state is loading or busy.";
+                reason = "This equipment slot is no longer available.";
+                return false;
+            }
+
+            if (payload.Kind == InventoryDragPayloadKind.Item
+                ? !CanMoveItem(state, null)
+                : !state.CanMutate)
+            {
+                reason = state.HasPendingOperations
+                    ? "Wait until your item moves are confirmed."
+                    : "Inventory mutation is unavailable while state is loading or busy.";
                 return false;
             }
 
@@ -1475,6 +1577,8 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            TryResolveCurrentSlot(state, container, slot, out container, out slot);
+
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {
                 SubmitCorpseLoot(container, slot, payload);
@@ -1566,6 +1670,8 @@ namespace Mmorpg.Client.Ui
                 RejectDrop(validationError);
                 return;
             }
+
+            TryResolveCurrentEquipmentSlot(state, equipmentSlot, out equipmentSlot);
 
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {

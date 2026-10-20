@@ -577,18 +577,7 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
             policies.Select(policy => new ItemPolicySummaryResponse(
                 policy.PolicyKind,
                 policy.Status,
-                ToProtectionSource(policy.SourceKind))).ToArray());
-    }
-
-    private static string ToProtectionSource(string sourceKind)
-    {
-        return sourceKind switch
-        {
-            ItemPolicySourceKinds.InsuranceService => "insurance_npc",
-            ItemPolicySourceKinds.QuestGrant => "quest_grant",
-            ItemPolicySourceKinds.CatalogDefault => "catalog_default",
-            _ => "system"
-        };
+                ItemPolicySourceKinds.ToProtectionSource(policy.SourceKind))).ToArray());
     }
 
     private static int CalculateLoadRatioBasisPoints(long carriedWeight, long capacity)

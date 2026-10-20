@@ -175,7 +175,9 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         // S33: the dead character's name and Shard.
         "GameService.Items/Transactions/Handlers/PlayerDeath/PlayerDeathCommandHandler.cs",
         // S41: equipment reads the character level for its level requirement.
-        "GameService.Items/Transactions/Context/ItemSlotPlacement.cs"
+        "GameService.Items/Transactions/Context/ItemSlotPlacement.cs",
+        // S51: the result reports each touched character's balance.
+        "GameService.Items/Transactions/Context/ItemTransactionFinalizer.cs"
     ];
 
     // The file that defines the single rejection throw, ItemTransactionRejection.

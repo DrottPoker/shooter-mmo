@@ -30,6 +30,16 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
+    /// Where a changed item is after its transaction.
+    /// </summary>
+    public enum RealtimeItemStateLocationKind : byte
+    {
+        Removed = 1,
+        Container = 2,
+        Equipment = 3
+    }
+
+    /// <summary>
     /// The committed carry weight of a character. Weight above the capacity is valid: death can leave an involuntary overflow.
     /// </summary>
     public sealed partial class RealtimeCarryState
@@ -130,6 +140,110 @@ namespace Mmorpg.GameProtocol
         /// The committed container revision.
         /// </summary>
         public long Revision { get; }
+    }
+
+    /// <summary>
+    /// An active policy of an item, as the inventory snapshot shows it.
+    /// </summary>
+    public sealed partial class RealtimeItemPolicySummary
+    {
+        public RealtimeItemPolicySummary(
+            string kind,
+            string status,
+            string protectionSource)
+        {
+            Kind = kind;
+            Status = status;
+            ProtectionSource = protectionSource;
+        }
+
+        /// <summary>
+        /// The policy kind.
+        /// </summary>
+        public string Kind { get; }
+
+        /// <summary>
+        /// The policy status.
+        /// </summary>
+        public string Status { get; }
+
+        /// <summary>
+        /// Where the protection came from.
+        /// </summary>
+        public string ProtectionSource { get; }
+    }
+
+    /// <summary>
+    /// One item after a committed transaction. A removed item carries only its id; an item in a container carries no equipment slot, and an equipped item no container.
+    /// </summary>
+    public sealed partial class RealtimeItemStateChange
+    {
+        public RealtimeItemStateChange(
+            Guid itemInstanceId,
+            RealtimeItemStateLocationKind location,
+            string definitionId,
+            int quantity,
+            long revision,
+            Guid containerId,
+            int slotIndex,
+            string equipmentSlotId,
+            RealtimeItemPolicySummary[] policies)
+        {
+            ItemInstanceId = itemInstanceId;
+            Location = location;
+            DefinitionId = definitionId ?? string.Empty;
+            Quantity = quantity;
+            Revision = revision;
+            ContainerId = containerId;
+            SlotIndex = slotIndex;
+            EquipmentSlotId = equipmentSlotId ?? string.Empty;
+            Policies = policies ?? Array.Empty<RealtimeItemPolicySummary>();
+        }
+
+        /// <summary>
+        /// The item.
+        /// </summary>
+        public Guid ItemInstanceId { get; }
+
+        /// <summary>
+        /// Where the item is now.
+        /// </summary>
+        public RealtimeItemStateLocationKind Location { get; }
+
+        /// <summary>
+        /// The item definition, or empty for a removed item.
+        /// </summary>
+        public string DefinitionId { get; }
+
+        /// <summary>
+        /// The stack quantity, or 0 for a removed item.
+        /// </summary>
+        public int Quantity { get; }
+
+        /// <summary>
+        /// The item revision, or 0 for a removed item.
+        /// </summary>
+        public long Revision { get; }
+
+        /// <summary>
+        /// The container of a contained item, or empty.
+        /// </summary>
+        public Guid ContainerId { get; }
+
+        /// <summary>
+        /// The container slot of a contained item, or -1.
+        /// </summary>
+        public int SlotIndex { get; }
+
+        /// <summary>
+        /// The equipment slot of an equipped item, or empty.
+        /// </summary>
+        public string EquipmentSlotId { get; }
+
+        /// <summary>
+        /// The active policies of the item; empty for a removed item.
+        /// </summary>
+        public RealtimeItemPolicySummary[] Policies { get; }
     }
 
     /// <summary>
@@ -561,6 +675,58 @@ namespace Mmorpg.GameProtocol
         /// The item revision after the change; 0 when it was used up.
         /// </summary>
         public long ItemRevision { get; }
+    }
+
+    /// <summary>
+    /// Every item change of one committed transaction of the owner, so the client patches its inventory without a refresh. The worker sends it before the result of the operation that caused it, and only when it lists the whole change.
+    /// </summary>
+    public sealed partial class RealtimeOwnerItemStateChanged
+    {
+        public RealtimeOwnerItemStateChanged(
+            Guid operationId,
+            long previousItemStateRevision,
+            RealtimeCarryState carryState,
+            long currency,
+            RealtimeContainerRevision[] containerRevisions,
+            RealtimeItemStateChange[] items)
+        {
+            OperationId = operationId;
+            PreviousItemStateRevision = previousItemStateRevision;
+            CarryState = carryState;
+            Currency = currency;
+            ContainerRevisions = containerRevisions ?? Array.Empty<RealtimeContainerRevision>();
+            Items = items ?? Array.Empty<RealtimeItemStateChange>();
+        }
+
+        /// <summary>
+        /// The client operation that committed the change, or empty when no client intent caused it.
+        /// </summary>
+        public Guid OperationId { get; }
+
+        /// <summary>
+        /// The item-state revision the change applies to; the carry state holds the next one.
+        /// </summary>
+        public long PreviousItemStateRevision { get; }
+
+        /// <summary>
+        /// The committed carry state after the change.
+        /// </summary>
+        public RealtimeCarryState CarryState { get; }
+
+        /// <summary>
+        /// The character's balance after the change.
+        /// </summary>
+        public long Currency { get; }
+
+        /// <summary>
+        /// The committed revisions of every container the transaction touched.
+        /// </summary>
+        public RealtimeContainerRevision[] ContainerRevisions { get; }
+
+        /// <summary>
+        /// The state after the change of every item the transaction changed.
+        /// </summary>
+        public RealtimeItemStateChange[] Items { get; }
     }
 
     // Encoding, decoding, and validation of the Items family.
@@ -1456,6 +1622,198 @@ namespace Mmorpg.GameProtocol
             return SatisfiesRules(value);
         }
 
+        /// <summary>
+        /// Every item change of one committed transaction of the owner, so the client patches its inventory without a refresh. The worker sends it before the result of the operation that caused it, and only when it lists the whole change.
+        /// </summary>
+        public static byte[] EncodeOwnerItemStateChanged(RealtimeOwnerItemStateChanged change)
+        {
+            if (!IsValidOwnerItemStateChanged(change))
+            {
+                throw new ArgumentException("Owner item state changed is invalid.", nameof(change));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.OwnerItemStateChanged, SizeOfOwnerItemStateChanged(change));
+            WriteOwnerItemStateChanged(ref writer, change);
+            return writer.Finish();
+        }
+
+        public static bool TryDecodeOwnerItemStateChanged(byte[] data, out RealtimeOwnerItemStateChanged change, out string error)
+        {
+            change = null;
+            if (!TryStartPacket(data, RealtimeMessageType.OwnerItemStateChanged, out var reader, out error)
+                || !TryReadOwnerItemStateChanged(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidOwnerItemStateChanged(decoded))
+            {
+                error = "Owner item state changed is invalid.";
+                return false;
+            }
+
+            change = decoded;
+            return true;
+        }
+
+        private static void WriteOwnerItemStateChanged(ref PacketWriter writer, RealtimeOwnerItemStateChanged value)
+        {
+            writer.WriteGuid(value.OperationId);
+            writer.WriteInt64(value.PreviousItemStateRevision);
+            WriteCarryState(ref writer, value.CarryState);
+            writer.WriteInt64(value.Currency);
+            writer.WriteByte((byte)value.ContainerRevisions.Length);
+            foreach (var item in value.ContainerRevisions)
+            {
+                WriteContainerRevision(ref writer, item);
+            }
+            writer.WriteByte((byte)value.Items.Length);
+            foreach (var item in value.Items)
+            {
+                WriteItemStateChange(ref writer, item);
+            }
+        }
+
+        private static int SizeOfOwnerItemStateChanged(RealtimeOwnerItemStateChanged value)
+        {
+            var size = 56;
+            size += 1 + (value.ContainerRevisions.Length * 24);
+            size += 1;
+            foreach (var item in value.Items)
+            {
+                size += SizeOfItemStateChange(item);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadOwnerItemStateChanged(ref PacketReader reader, out RealtimeOwnerItemStateChanged value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadGuid(out var operationId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt64(out var previousItemStateRevision, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadCarryState(ref reader, out var carryState, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt64(out var currency, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var containerRevisionsCount, out error))
+            {
+                return false;
+            }
+
+            if (containerRevisionsCount > MaximumItemResultContainerRevisions)
+            {
+                error = "Owner item state changed container revisions count is invalid.";
+                return false;
+            }
+
+            var containerRevisions = new RealtimeContainerRevision[containerRevisionsCount];
+            for (var index = 0; index < containerRevisions.Length; index++)
+            {
+                if (!TryReadContainerRevision(ref reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                containerRevisions[index] = element;
+            }
+
+            if (!reader.TryReadByte(out var itemsCount, out error))
+            {
+                return false;
+            }
+
+            if (itemsCount > MaximumItemStateChanges)
+            {
+                error = "Owner item state changed items count is invalid.";
+                return false;
+            }
+
+            var items = new RealtimeItemStateChange[itemsCount];
+            for (var index = 0; index < items.Length; index++)
+            {
+                if (!TryReadItemStateChange(ref reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                items[index] = element;
+            }
+
+            value = new RealtimeOwnerItemStateChanged(operationId, previousItemStateRevision, carryState, currency, containerRevisions, items);
+            return true;
+        }
+
+        private static bool IsValidOwnerItemStateChanged(RealtimeOwnerItemStateChanged value)
+        {
+            if (value == null
+                || value.PreviousItemStateRevision < 0
+                || !IsValidCarryState(value.CarryState)
+                || value.Currency < 0
+                || value.ContainerRevisions == null
+                || value.ContainerRevisions.Length > MaximumItemResultContainerRevisions
+                || value.Items == null
+                || value.Items.Length > MaximumItemStateChanges)
+            {
+                return false;
+            }
+
+            foreach (var item in value.ContainerRevisions)
+            {
+                if (!IsValidContainerRevision(item))
+                {
+                    return false;
+                }
+            }
+
+            for (var first = 0; first < value.ContainerRevisions.Length; first++)
+            {
+                for (var second = first + 1; second < value.ContainerRevisions.Length; second++)
+                {
+                    if (value.ContainerRevisions[first].ContainerId == value.ContainerRevisions[second].ContainerId)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            foreach (var item in value.Items)
+            {
+                if (!IsValidItemStateChange(item))
+                {
+                    return false;
+                }
+            }
+
+            for (var first = 0; first < value.Items.Length; first++)
+            {
+                for (var second = first + 1; second < value.Items.Length; second++)
+                {
+                    if (value.Items[first].ItemInstanceId == value.Items[second].ItemInstanceId)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return SatisfiesRules(value);
+        }
+
         private static void WriteCarryState(ref PacketWriter writer, RealtimeCarryState value)
         {
             writer.WriteInt64(value.ItemStateRevision);
@@ -1601,6 +1959,232 @@ namespace Mmorpg.GameProtocol
             }
 
             return true;
+        }
+
+        private static void WriteItemPolicySummary(ref PacketWriter writer, RealtimeItemPolicySummary value)
+        {
+            writer.WriteString(value.Kind);
+            writer.WriteString(value.Status);
+            writer.WriteString(value.ProtectionSource);
+        }
+
+        private static int SizeOfItemPolicySummary(RealtimeItemPolicySummary value)
+        {
+            var size = 0;
+            size += StringSize(value.Kind);
+            size += StringSize(value.Status);
+            size += StringSize(value.ProtectionSource);
+            return size;
+        }
+
+        private static bool TryReadItemPolicySummary(ref PacketReader reader, out RealtimeItemPolicySummary value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadString(MaximumItemPolicyTextLength, out var kind, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadString(MaximumItemPolicyTextLength, out var status, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadString(MaximumItemPolicyTextLength, out var protectionSource, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeItemPolicySummary(kind, status, protectionSource);
+            return true;
+        }
+
+        private static bool IsValidItemPolicySummary(RealtimeItemPolicySummary value)
+        {
+            if (value == null
+                || string.IsNullOrWhiteSpace(value.Kind)
+                || value.Kind.Length > MaximumItemPolicyTextLength
+                || string.IsNullOrWhiteSpace(value.Status)
+                || value.Status.Length > MaximumItemPolicyTextLength
+                || string.IsNullOrWhiteSpace(value.ProtectionSource)
+                || value.ProtectionSource.Length > MaximumItemPolicyTextLength)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WriteItemStateChange(ref PacketWriter writer, RealtimeItemStateChange value)
+        {
+            writer.WriteGuid(value.ItemInstanceId);
+            writer.WriteByte((byte)value.Location);
+            var hasDefinitionId = !string.IsNullOrWhiteSpace(value.DefinitionId);
+            writer.WriteBoolean(hasDefinitionId);
+            if (hasDefinitionId)
+            {
+                writer.WriteString(value.DefinitionId);
+            }
+            writer.WriteInt32(value.Quantity);
+            writer.WriteInt64(value.Revision);
+            writer.WriteGuid(value.ContainerId);
+            writer.WriteInt32(value.SlotIndex);
+            var hasEquipmentSlotId = !string.IsNullOrWhiteSpace(value.EquipmentSlotId);
+            writer.WriteBoolean(hasEquipmentSlotId);
+            if (hasEquipmentSlotId)
+            {
+                writer.WriteString(value.EquipmentSlotId);
+            }
+            writer.WriteByte((byte)value.Policies.Length);
+            foreach (var item in value.Policies)
+            {
+                WriteItemPolicySummary(ref writer, item);
+            }
+        }
+
+        private static int SizeOfItemStateChange(RealtimeItemStateChange value)
+        {
+            var size = 51;
+            if (!string.IsNullOrWhiteSpace(value.DefinitionId))
+            {
+                size += StringSize(value.DefinitionId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(value.EquipmentSlotId))
+            {
+                size += StringSize(value.EquipmentSlotId);
+            }
+
+            size += 1;
+            foreach (var item in value.Policies)
+            {
+                size += SizeOfItemPolicySummary(item);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadItemStateChange(ref PacketReader reader, out RealtimeItemStateChange value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadGuid(out var itemInstanceId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var locationByte, out error))
+            {
+                return false;
+            }
+
+            var location = (RealtimeItemStateLocationKind)locationByte;
+
+            if (!reader.TryReadBoolean(out var hasDefinitionId, out error))
+            {
+                return false;
+            }
+
+            string definitionId = string.Empty;
+            if (hasDefinitionId)
+            {
+                if (!reader.TryReadString(MaximumDefinitionIdLength, out definitionId, out error))
+                {
+                    return false;
+                }
+            }
+
+            if (!reader.TryReadInt32(out var quantity, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt64(out var revision, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadGuid(out var containerId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt32(out var slotIndex, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadBoolean(out var hasEquipmentSlotId, out error))
+            {
+                return false;
+            }
+
+            string equipmentSlotId = string.Empty;
+            if (hasEquipmentSlotId)
+            {
+                if (!reader.TryReadString(MaximumEquipmentSlotIdLength, out equipmentSlotId, out error))
+                {
+                    return false;
+                }
+            }
+
+            if (!reader.TryReadByte(out var policiesCount, out error))
+            {
+                return false;
+            }
+
+            if (policiesCount > MaximumItemPolicies)
+            {
+                error = "Item state change policies count is invalid.";
+                return false;
+            }
+
+            var policies = new RealtimeItemPolicySummary[policiesCount];
+            for (var index = 0; index < policies.Length; index++)
+            {
+                if (!TryReadItemPolicySummary(ref reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                policies[index] = element;
+            }
+
+            value = new RealtimeItemStateChange(itemInstanceId, location, definitionId, quantity, revision, containerId, slotIndex, equipmentSlotId, policies);
+            return true;
+        }
+
+        private static bool IsValidItemStateChange(RealtimeItemStateChange value)
+        {
+            if (value == null
+                || value.ItemInstanceId == Guid.Empty
+                || !IsDefined(value.Location)
+                || value.DefinitionId == null
+                || value.DefinitionId.Length > MaximumDefinitionIdLength
+                || value.Quantity < 0
+                || value.Revision < 0
+                || value.SlotIndex < -1
+                || value.EquipmentSlotId == null
+                || value.EquipmentSlotId.Length > MaximumEquipmentSlotIdLength
+                || value.Policies == null
+                || value.Policies.Length > MaximumItemPolicies)
+            {
+                return false;
+            }
+
+            foreach (var item in value.Policies)
+            {
+                if (!IsValidItemPolicySummary(item))
+                {
+                    return false;
+                }
+            }
+
+            return SatisfiesRules(value);
+        }
+
+        private static bool IsDefined(RealtimeItemStateLocationKind value)
+        {
+            return (byte)value >= 1 && (byte)value <= 3;
         }
 
         private static bool IsDefined(RealtimeItemOperationKind value)

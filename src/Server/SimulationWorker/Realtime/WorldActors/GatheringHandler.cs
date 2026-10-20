@@ -256,16 +256,27 @@ internal sealed class GatheringHandler(
             return;
         }
 
-        if (!CommittedCarryApplier.TryGetCommittedState(completed.Result.Transaction!, out var committed)
-            || CommittedCarryApplier.IsDiverged(carryApplier.Apply(completed.Session, committed, out var carry)))
+        if (!CommittedCarryApplier.TryGetCommittedState(completed.Result.Transaction!, out var committed))
         {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                "item_state_diverged",
-                "Committed gathering state diverged from the active simulation state.");
+            TerminateForDivergence(peer, completed);
             return;
+        }
+
+        var applyResult = carryApplier.Apply(completed.Session, committed, out var carry);
+        if (CommittedCarryApplier.IsDiverged(applyResult))
+        {
+            TerminateForDivergence(peer, completed);
+            return;
+        }
+
+        // The change goes before the carry state, so the client patches its inventory instead
+        // of reloading it.
+        var change = applyResult == ItemStateApplyResult.Applied
+            ? OwnerItemStateChangeMapper.TryCreate(Guid.Empty, completed.Session.CharacterId, completed.Result.Transaction!)
+            : null;
+        if (change is not null)
+        {
+            sender.SendControl(peer, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
         }
 
         if (entityRegistry.TryGetPlayerByCharacterId(completed.Session.CharacterId, out var entity))
@@ -291,6 +302,16 @@ internal sealed class GatheringHandler(
             profile.YieldDefinitionId,
             profile.YieldQuantity,
             carry.ItemStateRevision)));
+    }
+
+    private void TerminateForDivergence(IRealtimePeerConnection peer, GatheringCycleCompleted completed)
+    {
+        teardown.TerminateForAuthorityFailure(
+            peer,
+            completed.Context,
+            completed.Session,
+            "item_state_diverged",
+            "Committed gathering state diverged from the active simulation state.");
     }
 
     private void FinalizeRejection(GatheringCycleCompleted completed, GatheringActivity? activity)

@@ -1,6 +1,6 @@
 # GameService Modules
 
-Last updated: 2026-10-18
+Last updated: 2026-10-21
 
 ## Status
 
@@ -252,8 +252,19 @@ propagates with its original error.
 | `Journal` | `ItemChangeJournal` | Audit changes, touched characters and containers, result items, and Recovery deliveries |
 
 `ItemTransactionFinalizer` turns the journal into container revisions, carry
-weight with the hard cap, character revisions, result item revisions, and audit
-rows. Handlers never commit, roll back, or open a connection, and they reject
+weight with the hard cap, character revisions with each touched character's
+balance, result item revisions, item changes, and audit rows. The item changes
+are the final state of every item an audit change recorded: its definition,
+quantity, revision, container slot or equipment slot, and active policies with
+their protection source, or `Removed` for an item that no longer exists. A
+transaction that changed more than 32 items reports none. The worker turns them
+into `OwnerItemStateChanged`, described in
+[Realtime Protocol](REALTIME_PROTOCOL.md#owner-item-state-changes), so the client
+patches its inventory instead of reloading it. Every item write must therefore
+record an audit change, which `ItemTransactionChangeReportIntegrationTests`
+checks against the inventory snapshot for every move. Results stored before
+item changes existed have none and no balance, and the worker then sends no
+change. Handlers never commit, roll back, or open a connection, and they reject
 only through `ItemTransactionContext.Reject`.
 
 `ItemTransactionKernelBoundaryTests` pins the boundary: only `Kernel/` begins,
@@ -521,6 +532,7 @@ is Items. R is read, W is write, and L is lock.
 | S48 | The item-state snapshot reads the balance | Chr R | `CharactersSql.CurrencyOf` in `ItemQueryService` |
 | S49 | The Development item tool grants currency | Chr L, W | `ICharacterWallet.CreditAsync` in `DevelopmentItemToolService` |
 | S50 | The Development item tool lists each character's balance | Chr R | `CharactersSql.CurrencyOf` in `DevelopmentItemToolService` |
+| S51 | A committed item transaction reports each touched character's balance | Chr R | `CharactersSql.CurrencyOf` in `ItemTransactionFinalizer` |
 
 The wallet's `FOR NO KEY UPDATE` lock in S30, S45, and S46 falls on a character
 row that the item transaction already locked through `ICharacterLocks`, so it

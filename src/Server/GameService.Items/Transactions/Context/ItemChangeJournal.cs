@@ -13,6 +13,7 @@ internal sealed class ItemChangeJournal(
     private readonly HashSet<Guid> touchedCharacterIds = [];
     private readonly HashSet<Guid> touchedContainerIds = [];
     private readonly HashSet<Guid> resultItemIds = [];
+    private readonly HashSet<Guid> changedItemIds = [];
     private readonly List<ItemAuditChange> auditChanges = [];
     private readonly List<Guid> recoveryDeliveryIds = [];
     private long? secureContainerEntitlementRevision;
@@ -26,6 +27,9 @@ internal sealed class ItemChangeJournal(
     internal IReadOnlyCollection<Guid> TouchedContainerIds => touchedContainerIds;
 
     internal IReadOnlyCollection<Guid> ResultItemIds => resultItemIds;
+
+    // Every item an audit change recorded, so the result can report each item's final state.
+    internal IReadOnlyCollection<Guid> ChangedItemIds => changedItemIds;
 
     internal IReadOnlyList<ItemAuditChange> AuditChanges => auditChanges;
 
@@ -75,6 +79,7 @@ internal sealed class ItemChangeJournal(
             throw new InvalidOperationException("An item audit change requires before or after state.");
         }
 
+        changedItemIds.Add(itemInstanceId);
         auditChanges.Add(new ItemAuditChange(
             changeKind,
             afterState is null ? null : itemInstanceId,

@@ -202,6 +202,15 @@ internal sealed class WorldInteractionHandler(
             return;
         }
 
+        // The item change goes before the carry state, so the client patches its inventory
+        // when it sees the new revision.
+        if (completed.Result.ItemStateChange is not null)
+        {
+            sender.SendControl(
+                peer,
+                RealtimeProtocol.EncodeOwnerItemStateChanged(completed.Result.ItemStateChange));
+        }
+
         if (entityRegistry.TryGetPlayerByCharacterId(
                 completed.Session.CharacterId,
                 out var entity))

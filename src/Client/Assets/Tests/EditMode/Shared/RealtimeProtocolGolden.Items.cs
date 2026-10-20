@@ -16,6 +16,7 @@ namespace Mmorpg.SharedTests
 
             r.Vector("Items/CarryStateChanged/overflow", carry, () => RealtimeProtocol.EncodeCarryStateChanged(CarryStateModel()));
             RegisterOwnerItemQuantityChanged(r);
+            RegisterOwnerItemStateChanged(r);
             r.Vector(
                 "Items/CarryStateChanged/empty",
                 carry,
@@ -430,6 +431,254 @@ namespace Mmorpg.SharedTests
             r.RejectsEncode(
                 "Items/OwnerItemQuantityChanged/revision did not advance",
                 () => RealtimeProtocol.EncodeOwnerItemQuantityChanged(OwnerItemQuantityChangedModel(previousRevision: 12)));
+        }
+
+        private static void RegisterOwnerItemStateChanged(Registry r)
+        {
+            const RealtimeMessageType change = RealtimeMessageType.OwnerItemStateChanged;
+            r.Vector(
+                "Items/OwnerItemStateChanged/swap with an equipped item",
+                change,
+                () => RealtimeProtocol.EncodeOwnerItemStateChanged(OwnerItemStateChangedModel()));
+            r.Vector(
+                "Items/OwnerItemStateChanged/merge removed the source",
+                change,
+                () => RealtimeProtocol.EncodeOwnerItemStateChanged(OwnerItemStateChangedModel(
+                    items: new[] { RemovedItemStateModel(G(2)), ContainedItemStateModel(G(4), 30) })));
+            r.Vector(
+                "Items/OwnerItemStateChanged/no item changed",
+                change,
+                () => RealtimeProtocol.EncodeOwnerItemStateChanged(OwnerItemStateChangedModel(
+                    containers: Array.Empty<RealtimeContainerRevision>(),
+                    items: Array.Empty<RealtimeItemStateChange>())));
+
+            r.Accepts("Items/OwnerItemStateChanged/baseline", OwnerItemStateChangedWire());
+            r.Accepts(
+                "Items/OwnerItemStateChanged/no client operation",
+                OwnerItemStateChangedWire(operationId: Guid.Empty));
+            r.Accepts(
+                "Items/OwnerItemStateChanged/removed item",
+                OwnerItemStateChangedWire(items: new[] { RemovedItemStateWire(G(2)) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/revision skipped",
+                OwnerItemStateChangedWire(previousRevision: 10));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/revision did not advance",
+                OwnerItemStateChangedWire(previousRevision: 12));
+            r.Rejects("Items/OwnerItemStateChanged/negative previous revision", OwnerItemStateChangedWire(previousRevision: -1));
+            r.Rejects("Items/OwnerItemStateChanged/negative currency", OwnerItemStateChangedWire(currency: -1));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/duplicate container",
+                OwnerItemStateChangedWire(containers: new[] { RevisionWire(G(3), 9), RevisionWire(G(3), 10) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/duplicate item",
+                OwnerItemStateChangedWire(items: new[] { RemovedItemStateWire(G(2)), RemovedItemStateWire(G(2)) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/nine items",
+                OwnerItemStateChangedWire(items: Enumerable.Range(10, 9).Select(index => RemovedItemStateWire(G(index))).ToArray()));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/location 0",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), location: 0) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/location 4",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), location: 4) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/removed item with a quantity",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), location: 1, hasDefinition: false, quantity: 1, revision: 0, containerId: Guid.Empty, slotIndex: -1) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/contained item without a container",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), containerId: Guid.Empty) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/contained item without a slot",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), slotIndex: -1) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/contained item with an equipment slot",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), equipmentSlotId: "main_hand") }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/contained item without a definition",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), hasDefinition: false) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/contained item with quantity 0",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), quantity: 0) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/equipped item with a container",
+                OwnerItemStateChangedWire(items: new[]
+                {
+                    ItemStateWire(G(2), location: 3, equipmentSlotId: "main_hand")
+                }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/equipped item without a slot",
+                OwnerItemStateChangedWire(items: new[]
+                {
+                    ItemStateWire(G(2), location: 3, containerId: Guid.Empty, slotIndex: -1)
+                }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/slot below -1",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), slotIndex: -2) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/blank policy kind",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), policies: new[] { PolicyWire(" ") }) }));
+            r.RejectsEncode(
+                "Items/OwnerItemStateChanged/revision skipped",
+                () => RealtimeProtocol.EncodeOwnerItemStateChanged(OwnerItemStateChangedModel(previousRevision: 10)));
+            r.RejectsEncode(
+                "Items/OwnerItemStateChanged/removed item with a definition",
+                () => RealtimeProtocol.EncodeOwnerItemStateChanged(OwnerItemStateChangedModel(
+                    items: new[]
+                    {
+                        new RealtimeItemStateChange(
+                            G(2),
+                            RealtimeItemStateLocationKind.Removed,
+                            "potion",
+                            0,
+                            0,
+                            Guid.Empty,
+                            -1,
+                            string.Empty,
+                            Array.Empty<RealtimeItemPolicySummary>())
+                    })));
+            r.RejectsOversize(
+                "Items/OwnerItemStateChanged/eight long items above the packet limit",
+                () => RealtimeProtocol.EncodeOwnerItemStateChanged(OwnerItemStateChangedModel(
+                    items: Enumerable.Range(10, 8)
+                        .Select(index => new RealtimeItemStateChange(
+                            G(index),
+                            RealtimeItemStateLocationKind.Container,
+                            Repeat("d", 128),
+                            1,
+                            1,
+                            G(3),
+                            0,
+                            string.Empty,
+                            Array.Empty<RealtimeItemPolicySummary>()))
+                        .ToArray())));
+        }
+
+        private static RealtimeOwnerItemStateChanged OwnerItemStateChangedModel(
+            long previousRevision = 11,
+            RealtimeContainerRevision[] containers = null,
+            RealtimeItemStateChange[] items = null)
+        {
+            return new RealtimeOwnerItemStateChanged(
+                G(6),
+                previousRevision,
+                CarryStateModel(),
+                250,
+                containers ?? new[] { new RealtimeContainerRevision(G(3), 9) },
+                items ?? new[]
+                {
+                    ContainedItemStateModel(G(2), 1),
+                    new RealtimeItemStateChange(
+                        G(4),
+                        RealtimeItemStateLocationKind.Equipment,
+                        "sword",
+                        1,
+                        6,
+                        Guid.Empty,
+                        -1,
+                        "main_hand",
+                        new[] { new RealtimeItemPolicySummary("insured", "active", "insurance_npc") })
+                });
+        }
+
+        private static RealtimeItemStateChange ContainedItemStateModel(Guid itemInstanceId, int quantity)
+        {
+            return new RealtimeItemStateChange(
+                itemInstanceId,
+                RealtimeItemStateLocationKind.Container,
+                "potion",
+                quantity,
+                7,
+                G(3),
+                4,
+                string.Empty,
+                Array.Empty<RealtimeItemPolicySummary>());
+        }
+
+        private static RealtimeItemStateChange RemovedItemStateModel(Guid itemInstanceId)
+        {
+            return new RealtimeItemStateChange(
+                itemInstanceId,
+                RealtimeItemStateLocationKind.Removed,
+                string.Empty,
+                0,
+                0,
+                Guid.Empty,
+                -1,
+                string.Empty,
+                Array.Empty<RealtimeItemPolicySummary>());
+        }
+
+        private static Wire OwnerItemStateChangedWire(
+            Guid? operationId = null,
+            long previousRevision = 11,
+            long currency = 250,
+            Wire[] containers = null,
+            Wire[] items = null)
+        {
+            var containerList = containers ?? new[] { RevisionWire(G(3), 9) };
+            var itemList = items ?? new[] { ItemStateWire(G(2)) };
+            var wire = Wire.Message(RealtimeMessageType.OwnerItemStateChanged)
+                .Guid(operationId ?? G(6))
+                .I64(previousRevision)
+                .Append(CarryStateWire())
+                .I64(currency)
+                .U8((byte)containerList.Length);
+            foreach (var container in containerList)
+            {
+                wire.Append(container);
+            }
+
+            wire.U8((byte)itemList.Length);
+            foreach (var item in itemList)
+            {
+                wire.Append(item);
+            }
+
+            return wire;
+        }
+
+        private static Wire ItemStateWire(
+            Guid itemInstanceId,
+            byte location = 2,
+            bool hasDefinition = true,
+            int quantity = 1,
+            long revision = 7,
+            Guid? containerId = null,
+            int slotIndex = 4,
+            WireText equipmentSlotId = null,
+            Wire[] policies = null)
+        {
+            var wire = Wire.Fragment().Guid(itemInstanceId).U8(location);
+            var definition = hasDefinition ? (WireText)"potion" : null;
+            wire = definition == null ? wire.U8(0) : wire.U8(1).Text(definition);
+            wire.I32(quantity).I64(revision).Guid(containerId ?? G(3)).I32(slotIndex);
+            wire = equipmentSlotId == null ? wire.U8(0) : wire.U8(1).Text(equipmentSlotId);
+            var policyList = policies ?? new Wire[0];
+            wire.U8((byte)policyList.Length);
+            foreach (var policy in policyList)
+            {
+                wire.Append(policy);
+            }
+
+            return wire;
+        }
+
+        private static Wire RemovedItemStateWire(Guid itemInstanceId)
+        {
+            return ItemStateWire(
+                itemInstanceId,
+                location: 1,
+                hasDefinition: false,
+                quantity: 0,
+                revision: 0,
+                containerId: Guid.Empty,
+                slotIndex: -1);
+        }
+
+        private static Wire PolicyWire(WireText kind)
+        {
+            return Wire.Fragment().Text(kind).Text("active").Text("insurance_npc");
         }
 
         private static RealtimeOwnerItemQuantityChanged OwnerItemQuantityChangedModel(

@@ -29,11 +29,18 @@ public sealed class RealtimeMetricsAllocationTests
         provider.ForceFlush();
         RecordHotPath(performance, network, 100);
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        RecordHotPath(performance, network, 10_000);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // A listener that another test left subscribed creates its metric points on this
+        // thread once, so one quiet pass proves steady recording; an allocation in the
+        // recording itself repeats in every pass.
+        var allocated = new List<long>();
+        for (var pass = 0; pass < 3 && !allocated.Contains(0); pass++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            RecordHotPath(performance, network, 10_000);
+            allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
-        Assert.Equal(0, allocated);
+        Assert.Contains(0L, allocated);
         provider.ForceFlush();
         Assert.Contains(exported, metric => metric.Name == "simulation_worker.simulation.tick.duration");
         Assert.Contains(exported, metric => metric.Name == "simulation_worker.simulation.tick.overruns");

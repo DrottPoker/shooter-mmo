@@ -76,7 +76,8 @@ internal sealed record SimulationItemOperationResponse(
     IReadOnlyList<ItemTransactionItemRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     long? SecureContainerEntitlementRevision,
-    SimulationCharacterStateResponse? CharacterState)
+    SimulationCharacterStateResponse? CharacterState,
+    IReadOnlyList<ItemTransactionItemChange>? ItemChanges)
 {
     public static SimulationItemOperationResponse From(
         ItemTransactionResult result,
@@ -93,6 +94,7 @@ internal sealed record SimulationItemOperationResponse(
             result.ItemRevisions,
             result.RecoveryDeliveryIds,
             result.SecureContainerEntitlementRevision,
-            characterState);
+            characterState,
+            result.ItemChanges);
     }
 }

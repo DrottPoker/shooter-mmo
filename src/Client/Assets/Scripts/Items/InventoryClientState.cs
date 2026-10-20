@@ -6,18 +6,43 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Items
 {
-    public sealed class InventoryClientState
+    // The inventory as the server confirmed it, and as the player sees it: the confirmed state
+    // with every pending predicted operation applied in order. Rules and panels read the shown
+    // state; intents take their expected revisions from the confirmed one.
+    public sealed class InventoryClientState : IInventoryView
     {
+        // Operations the player may queue ahead of the server.
+        public const int MaximumPendingOperations = 8;
+
+        private readonly List<InventoryPredictedOperation> pendingOperations =
+            new List<InventoryPredictedOperation>();
+        private readonly HashSet<Guid> predictedItemIds = new HashSet<Guid>();
+        private CharacterInventorySnapshot confirmedSnapshot;
+        private CharacterInventorySnapshot predictedSnapshot;
         private InventoryContainer bankOverride;
         private RecoveryStorageInventory recoveryOverride;
+        // Operations a newer confirmed state undid, announced with the next Changed.
+        private InventoryPredictionRollback pendingRollback;
 
         public event Action Changed;
+
+        // Raised when predicted operations are undone, after Changed shows the restored state.
+        public event Action<InventoryPredictionRollback> PredictionRolledBack;
 
         public ClientItemCatalog Catalog { get; private set; }
 
         public Guid CharacterId { get; private set; }
 
-        public CharacterInventorySnapshot FullSnapshot { get; private set; }
+        // The shown snapshot: the confirmed one with the pending predictions applied.
+        public CharacterInventorySnapshot FullSnapshot
+        {
+            get { return predictedSnapshot ?? confirmedSnapshot; }
+        }
+
+        public CharacterInventorySnapshot ConfirmedSnapshot
+        {
+            get { return confirmedSnapshot; }
+        }
 
         public InventoryClientStatus Status { get; private set; } =
             InventoryClientStatus.Unavailable;
@@ -42,21 +67,41 @@ namespace Mmorpg.Client.Items
 
         public InventoryContainer Bank
         {
-            get { return bankOverride ?? FullSnapshot?.Bank; }
+            get { return predictedSnapshot?.Bank ?? ConfirmedBank; }
+        }
+
+        public InventoryContainer ConfirmedBank
+        {
+            get { return bankOverride ?? confirmedSnapshot?.Bank; }
         }
 
         public RecoveryStorageInventory RecoveryStorage
         {
-            get { return recoveryOverride ?? FullSnapshot?.RecoveryStorage; }
+            get { return predictedSnapshot?.RecoveryStorage ?? ConfirmedRecoveryStorage; }
+        }
+
+        public RecoveryStorageInventory ConfirmedRecoveryStorage
+        {
+            get { return recoveryOverride ?? confirmedSnapshot?.RecoveryStorage; }
         }
 
         public bool RequiresFullRefresh { get; private set; }
+
+        public IReadOnlyList<InventoryPredictedOperation> PendingOperations
+        {
+            get { return pendingOperations; }
+        }
+
+        public bool HasPendingOperations
+        {
+            get { return pendingOperations.Count > 0; }
+        }
 
         public bool HasCoherentFullSnapshot
         {
             get
             {
-                return FullSnapshot != null
+                return confirmedSnapshot != null
                     && CharacterObservedRevision == KnownItemStateRevision
                     && BankObservedRevision == KnownItemStateRevision
                     && RecoveryObservedRevision == KnownItemStateRevision
@@ -71,15 +116,44 @@ namespace Mmorpg.Client.Items
                 && CharacterObservedRevision >= minimumRevision;
         }
 
+        // Whether an operation that waits for the server, such as a corpse loot or a vendor
+        // trade, may start: the confirmed state is current and nothing is pending.
         public bool CanMutate
         {
             get
             {
-                return Catalog != null
-                    && FullSnapshot != null
+                return CanShowOperations
                     && Status == InventoryClientStatus.Ready
+                    && pendingOperations.Count == 0;
+            }
+        }
+
+        // Whether the player may make another item operation that the client shows at once.
+        public bool CanPredict
+        {
+            get
+            {
+                return CanShowOperations
+                    && Status is InventoryClientStatus.Ready or InventoryClientStatus.Busy
+                    && pendingOperations.Count < MaximumPendingOperations
+                    && pendingOperations.All(operation => operation.IsPredicted);
+            }
+        }
+
+        private bool CanShowOperations
+        {
+            get
+            {
+                return Catalog != null
+                    && confirmedSnapshot != null
                     && !RequiresFullRefresh;
             }
+        }
+
+        // A stack a pending split shows has no server id yet, so nothing can act on it.
+        public bool IsPredictedItem(Guid itemInstanceId)
+        {
+            return predictedItemIds.Contains(itemInstanceId);
         }
 
         public void SetCatalog(ClientItemCatalog catalog)
@@ -102,6 +176,7 @@ namespace Mmorpg.Client.Items
                 ? InventoryClientStatus.UpdateRequired
                 : InventoryClientStatus.Error;
             RequiresFullRefresh = true;
+            DiscardPredictions();
             NotifyChanged();
         }
 
@@ -113,13 +188,14 @@ namespace Mmorpg.Client.Items
             }
 
             CharacterId = characterId;
-            FullSnapshot = null;
+            confirmedSnapshot = null;
             bankOverride = null;
             recoveryOverride = null;
             CharacterObservedRevision = -1;
             BankObservedRevision = -1;
             RecoveryObservedRevision = -1;
             RequiresFullRefresh = true;
+            DiscardPredictions();
             RestoreCatalogStatusOrUnavailable();
             NotifyChanged();
         }
@@ -145,11 +221,11 @@ namespace Mmorpg.Client.Items
                 return InventorySnapshotApplyResult.Stale;
             }
 
-            if (FullSnapshot != null
+            if (confirmedSnapshot != null
                 && snapshot.ItemStateRevision == CharacterObservedRevision)
             {
                 if (!string.Equals(
-                    FullSnapshot.CoherenceSignature(),
+                    confirmedSnapshot.CoherenceSignature(),
                     snapshot.CoherenceSignature(),
                     StringComparison.Ordinal))
                 {
@@ -160,7 +236,7 @@ namespace Mmorpg.Client.Items
                 return InventorySnapshotApplyResult.Unchanged;
             }
 
-            FullSnapshot = snapshot;
+            confirmedSnapshot = snapshot;
             bankOverride = null;
             recoveryOverride = null;
             CharacterObservedRevision = snapshot.ItemStateRevision;
@@ -183,7 +259,7 @@ namespace Mmorpg.Client.Items
                 return InventorySnapshotApplyResult.Stale;
             }
 
-            var currentBank = Bank;
+            var currentBank = ConfirmedBank;
             if (currentBank != null
                 && snapshot.ItemStateRevision == BankObservedRevision)
             {
@@ -219,7 +295,7 @@ namespace Mmorpg.Client.Items
                 return InventorySnapshotApplyResult.Stale;
             }
 
-            var currentRecovery = RecoveryStorage;
+            var currentRecovery = ConfirmedRecoveryStorage;
             if (currentRecovery != null
                 && snapshot.ItemStateRevision == RecoveryObservedRevision)
             {
@@ -243,6 +319,39 @@ namespace Mmorpg.Client.Items
             return InventorySnapshotApplyResult.Applied;
         }
 
+        // Patches the committed change of one transaction into the coherent snapshot it follows.
+        // In every other case, or when the change touches state it cannot describe, the caller
+        // reloads the inventory.
+        public bool TryApplyItemStateChange(RealtimeOwnerItemStateChanged change)
+        {
+            if (change == null
+                || !HasCoherentFullSnapshot
+                || CharacterObservedRevision != change.PreviousItemStateRevision
+                || !InventoryItemStateChangePatch.TryApply(
+                    Catalog,
+                    confirmedSnapshot,
+                    ConfirmedBank,
+                    ConfirmedRecoveryStorage,
+                    change,
+                    out var patched))
+            {
+                return false;
+            }
+
+            // The change of the sent operation confirms it, so its prediction is not applied
+            // again on top of the state that already contains it.
+            if (change.OperationId != Guid.Empty
+                && pendingOperations.Count > 0
+                && pendingOperations[0].IsSent
+                && pendingOperations[0].OperationId == change.OperationId)
+            {
+                pendingOperations[0].CommittedRevision = change.CarryState.ItemStateRevision;
+            }
+
+            ReplaceConfirmed(patched);
+            return true;
+        }
+
         // Patches a committed quantity change that no client intent caused, such as spent
         // arrows, into the equipped ammunition stack. It applies only to the coherent
         // snapshot the change was computed from and only when the change is the single
@@ -261,7 +370,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            var equipment = FullSnapshot.Equipment;
+            var equipment = confirmedSnapshot.Equipment;
             var patchedEquipment = new InventoryEquipmentSlot[equipment.Count];
             var patched = false;
             for (var index = 0; index < equipment.Count; index++)
@@ -305,16 +414,16 @@ namespace Mmorpg.Client.Items
             }
 
             var carry = change.CarryState;
-            FullSnapshot = new CharacterInventorySnapshot(
-                FullSnapshot.CharacterId,
-                FullSnapshot.CatalogRevision,
+            ReplaceConfirmed(new CharacterInventorySnapshot(
+                confirmedSnapshot.CharacterId,
+                confirmedSnapshot.CatalogRevision,
                 carry.ItemStateRevision,
-                FullSnapshot.PermanentInventory,
+                confirmedSnapshot.PermanentInventory,
                 patchedEquipment,
-                FullSnapshot.EquippedBag,
-                FullSnapshot.Bank,
-                FullSnapshot.SecureContainer,
-                FullSnapshot.RecoveryStorage,
+                confirmedSnapshot.EquippedBag,
+                ConfirmedBank,
+                confirmedSnapshot.SecureContainer,
+                ConfirmedRecoveryStorage,
                 carry.CarriedWeight,
                 carry.CarryCapacity,
                 InventorySnapshotMapper.CalculateLoadRatioBasisPoints(
@@ -323,12 +432,118 @@ namespace Mmorpg.Client.Items
                 EncumbranceRules.CalculateMovementMultiplierBasisPoints(
                     carry.CarriedWeight,
                     carry.CarryCapacity),
-                FullSnapshot.Currency);
-            CharacterObservedRevision = carry.ItemStateRevision;
-            BankObservedRevision = carry.ItemStateRevision;
-            RecoveryObservedRevision = carry.ItemStateRevision;
+                confirmedSnapshot.Currency));
+            return true;
+        }
+
+        // Shows the operation at once, on top of every operation still pending. An operation
+        // the client cannot predict waits alone and keeps the shown state confirmed.
+        public bool TryPredict(InventoryPredictedOperation operation, out string error)
+        {
+            error = string.Empty;
+            if (operation == null)
+            {
+                error = "The item operation is invalid.";
+                return false;
+            }
+
+            if (!operation.IsPredicted || !InventoryOperationPredictor.CanPredict(this, operation))
+            {
+                operation.IsPredicted = false;
+                if (!CanMutate)
+                {
+                    error = "Wait until your other item moves are confirmed.";
+                    return false;
+                }
+
+                pendingOperations.Add(operation);
+                NotifyChanged();
+                return true;
+            }
+
+            if (!CanPredict)
+            {
+                error = pendingOperations.Count >= MaximumPendingOperations
+                    ? "Too many item moves are waiting for the server."
+                    : "Inventory must finish loading in an active simulation session.";
+                return false;
+            }
+
+            if (!InventoryOperationPredictor.TryApply(this, operation, out var predicted, out error))
+            {
+                return false;
+            }
+
+            pendingOperations.Add(operation);
+            predictedSnapshot = predicted;
+            if (operation.PredictedItemInstanceId != Guid.Empty)
+            {
+                predictedItemIds.Add(operation.PredictedItemInstanceId);
+            }
+
             NotifyChanged();
             return true;
+        }
+
+        // The first pending operation committed and the confirmed state already contains it.
+        // Unless a reload is still running, the wait an unpredicted operation showed ends.
+        public void CompletePendingHead(bool endWait)
+        {
+            if (pendingOperations.Count == 0)
+            {
+                return;
+            }
+
+            pendingOperations.RemoveAt(0);
+            if (endWait && Status == InventoryClientStatus.Busy)
+            {
+                Status = InventoryClientStatus.Ready;
+            }
+
+            RebuildPrediction();
+            NotifyChanged();
+        }
+
+        // Ends the wait that an unpredicted operation showed, once its committed change and
+        // its result have both arrived.
+        public void EndOperationWait()
+        {
+            if (Status == InventoryClientStatus.Busy)
+            {
+                Status = InventoryClientStatus.Ready;
+                NotifyChanged();
+            }
+        }
+
+        // The first pending operation committed at a revision the confirmed state has not
+        // reached yet, so it stays shown until a reload reaches it.
+        public void MarkPendingHeadCommitted(long revision)
+        {
+            if (pendingOperations.Count > 0)
+            {
+                pendingOperations[0].CommittedRevision = revision;
+            }
+        }
+
+        // Undoes every pending operation, because the server rejected the first one and the
+        // others were shown on top of it.
+        public void RollBackPredictions(InventoryClientError error)
+        {
+            var rolledBack = pendingOperations.ToArray();
+            DiscardPredictions();
+            Error = error;
+            if (Status is InventoryClientStatus.Busy or InventoryClientStatus.Ready)
+            {
+                Status = InventoryClientStatus.Ready;
+            }
+
+            NotifyChanged();
+            if (rolledBack.Length > 0)
+            {
+                PredictionRolledBack?.Invoke(new InventoryPredictionRollback(
+                    error,
+                    InventoryPredictionRollback.ItemsOf(rolledBack)));
+            }
         }
 
         public void SetError(InventoryClientError error, bool requireFullRefresh)
@@ -338,6 +553,7 @@ namespace Mmorpg.Client.Items
             Status = error != null && error.UpdateRequired
                 ? InventoryClientStatus.UpdateRequired
                 : InventoryClientStatus.Error;
+            DiscardPredictions();
             NotifyChanged();
         }
 
@@ -357,36 +573,73 @@ namespace Mmorpg.Client.Items
                     "The connection closed before the item operation was reconciled. Refresh after reconnect.")
                 : null;
             Status = InventoryClientStatus.Unavailable;
+            DiscardPredictions();
             NotifyChanged();
         }
 
         public void ClearAll()
         {
             CharacterId = Guid.Empty;
-            FullSnapshot = null;
+            confirmedSnapshot = null;
             bankOverride = null;
             recoveryOverride = null;
             CharacterObservedRevision = -1;
             BankObservedRevision = -1;
             RecoveryObservedRevision = -1;
             RequiresFullRefresh = Catalog == null;
+            DiscardPredictions();
             RestoreCatalogStatusOrUnavailable();
             NotifyChanged();
         }
 
+        // Finds an item in the shown state.
         public bool TryFindItem(
+            Guid itemInstanceId,
+            out InventoryItem item,
+            out InventoryItemLocation location)
+        {
+            return TryFindItem(FullSnapshot, Bank, RecoveryStorage, itemInstanceId, out item, out location);
+        }
+
+        // Finds an item as the server last confirmed it, whose revision an intent expects.
+        public bool TryFindConfirmedItem(
+            Guid itemInstanceId,
+            out InventoryItem item,
+            out InventoryItemLocation location)
+        {
+            return TryFindItem(
+                confirmedSnapshot,
+                ConfirmedBank,
+                ConfirmedRecoveryStorage,
+                itemInstanceId,
+                out item,
+                out location);
+        }
+
+        // The confirmed state as a view that operation rules can judge.
+        public IInventoryView ConfirmedView()
+        {
+            return confirmedSnapshot == null
+                ? null
+                : new InventorySnapshotView(Catalog, WithEffectiveStorage(confirmedSnapshot));
+        }
+
+        private static bool TryFindItem(
+            CharacterInventorySnapshot snapshot,
+            InventoryContainer bank,
+            RecoveryStorageInventory recoveryStorage,
             Guid itemInstanceId,
             out InventoryItem item,
             out InventoryItemLocation location)
         {
             item = null;
             location = null;
-            if (FullSnapshot == null)
+            if (snapshot == null)
             {
                 return false;
             }
 
-            foreach (var equipmentSlot in FullSnapshot.Equipment)
+            foreach (var equipmentSlot in snapshot.Equipment)
             {
                 if (equipmentSlot.Item != null
                     && equipmentSlot.Item.ItemInstanceId == itemInstanceId)
@@ -399,13 +652,13 @@ namespace Mmorpg.Client.Items
 
             var containers = new List<InventoryContainer>
             {
-                FullSnapshot.PermanentInventory,
-                Bank,
-                FullSnapshot.SecureContainer.Contents
+                snapshot.PermanentInventory,
+                bank,
+                snapshot.SecureContainer.Contents
             };
-            if (FullSnapshot.EquippedBag != null)
+            if (snapshot.EquippedBag != null)
             {
-                containers.Add(FullSnapshot.EquippedBag.Contents);
+                containers.Add(snapshot.EquippedBag.Contents);
             }
 
             foreach (var container in containers.Where(value => value != null))
@@ -427,12 +680,12 @@ namespace Mmorpg.Client.Items
                 }
             }
 
-            if (RecoveryStorage == null)
+            if (recoveryStorage == null)
             {
                 return false;
             }
 
-            foreach (var delivery in RecoveryStorage.Deliveries)
+            foreach (var delivery in recoveryStorage.Deliveries)
             {
                 foreach (var deliveryItem in delivery.Items)
                 {
@@ -441,7 +694,7 @@ namespace Mmorpg.Client.Items
                         item = deliveryItem.Item;
                         location = new InventoryItemLocation(
                             InventoryItemLocationKind.RecoveryStorage,
-                            RecoveryStorage.ContainerId,
+                            recoveryStorage.ContainerId,
                             ItemContainerTypeIds.RecoveryStorage,
                             deliveryItem.SlotIndex,
                             string.Empty,
@@ -454,10 +707,113 @@ namespace Mmorpg.Client.Items
             return false;
         }
 
+        private void ReplaceConfirmed(CharacterInventorySnapshot snapshot)
+        {
+            confirmedSnapshot = snapshot;
+            bankOverride = null;
+            recoveryOverride = null;
+            CharacterObservedRevision = snapshot.ItemStateRevision;
+            BankObservedRevision = snapshot.ItemStateRevision;
+            RecoveryObservedRevision = snapshot.ItemStateRevision;
+            RebuildPrediction();
+            NotifyChanged();
+        }
+
+        // Applies the pending operations again on the newest confirmed state. One that no
+        // longer applies is undone with every operation after it; one already sent stays
+        // pending without a prediction, because the server still answers it.
+        private void RebuildPrediction()
+        {
+            predictedSnapshot = null;
+            predictedItemIds.Clear();
+            pendingOperations.RemoveAll(operation =>
+                operation.CommittedRevision >= 0
+                && operation.CommittedRevision <= CharacterObservedRevision);
+            if (pendingOperations.Count == 0 || confirmedSnapshot == null || Catalog == null)
+            {
+                return;
+            }
+
+            var view = new InventorySnapshotView(Catalog, WithEffectiveStorage(confirmedSnapshot));
+            var changed = false;
+            for (var index = 0; index < pendingOperations.Count; index++)
+            {
+                var operation = pendingOperations[index];
+                if (!operation.IsPredicted)
+                {
+                    continue;
+                }
+
+                if (!InventoryOperationPredictor.TryApply(view, operation, out var next, out var reason))
+                {
+                    var dropFrom = operation.IsSent ? index + 1 : index;
+                    if (operation.IsSent)
+                    {
+                        operation.IsPredicted = false;
+                    }
+
+                    var dropped = pendingOperations.Skip(dropFrom).ToArray();
+                    pendingOperations.RemoveRange(dropFrom, pendingOperations.Count - dropFrom);
+                    if (dropped.Length > 0)
+                    {
+                        pendingRollback = new InventoryPredictionRollback(
+                            new InventoryClientError(
+                                "item_move_superseded",
+                                "Your item move no longer fits the inventory and was undone: " + reason),
+                            InventoryPredictionRollback.ItemsOf(dropped));
+                    }
+
+                    break;
+                }
+
+                view = new InventorySnapshotView(Catalog, next);
+                changed = true;
+                if (operation.PredictedItemInstanceId != Guid.Empty)
+                {
+                    predictedItemIds.Add(operation.PredictedItemInstanceId);
+                }
+            }
+
+            predictedSnapshot = changed ? view.FullSnapshot : null;
+        }
+
+        private CharacterInventorySnapshot WithEffectiveStorage(CharacterInventorySnapshot snapshot)
+        {
+            if (bankOverride == null && recoveryOverride == null)
+            {
+                return snapshot;
+            }
+
+            return new CharacterInventorySnapshot(
+                snapshot.CharacterId,
+                snapshot.CatalogRevision,
+                snapshot.ItemStateRevision,
+                snapshot.PermanentInventory,
+                snapshot.Equipment.ToArray(),
+                snapshot.EquippedBag,
+                ConfirmedBank,
+                snapshot.SecureContainer,
+                ConfirmedRecoveryStorage,
+                snapshot.CarriedWeight,
+                snapshot.CarryCapacity,
+                snapshot.LoadRatioBasisPoints,
+                snapshot.MovementMultiplierBasisPoints,
+                snapshot.Currency);
+        }
+
+        private void DiscardPredictions()
+        {
+            pendingOperations.Clear();
+            predictedItemIds.Clear();
+            predictedSnapshot = null;
+            pendingRollback = null;
+        }
+
         private void SetReady()
         {
             Error = null;
             Status = InventoryClientStatus.Ready;
+            RebuildPrediction();
             NotifyChanged();
         }
 
@@ -475,9 +831,21 @@ namespace Mmorpg.Client.Items
             Status = InventoryClientStatus.Unavailable;
         }
 
+        // A rollback is announced after Changed, so the restored state is drawn first.
         private void NotifyChanged()
         {
+            var rollback = pendingRollback;
+            pendingRollback = null;
+            if (rollback != null)
+            {
+                Error = rollback.Error;
+            }
+
             Changed?.Invoke();
+            if (rollback != null)
+            {
+                PredictionRolledBack?.Invoke(rollback);
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
@@ -12,6 +13,9 @@ internal sealed class ItemTransactionFinalizer(
     ItemTransactionSession session,
     ItemChangeJournal journal)
 {
+    // Bounds the stored result; no realtime change message carries more items anyway.
+    private const int MaximumReportedItemChanges = 32;
+
     private readonly CarryStateCalculator carryStates = new(session);
 
     private NpgsqlConnection Connection => session.Connection;
@@ -93,7 +97,7 @@ internal sealed class ItemTransactionFinalizer(
 
             var state = await Connection.QuerySingleAsync<CharacterCarryResult>(
                 new CommandDefinition(
-                    """
+                    $"""
                     update character_item_states
                     set revision = revision + 1,
                         carried_weight = @CarriedWeight,
@@ -103,7 +107,8 @@ internal sealed class ItemTransactionFinalizer(
                     returning
                         revision as "Revision",
                         carried_weight as "CarriedWeight",
-                        carry_capacity as "CarryCapacity";
+                        carry_capacity as "CarryCapacity",
+                        {CharactersSql.CurrencyOf("character_item_states.character_id")} as "Currency";
                     """,
                     new
                     {
@@ -117,8 +122,13 @@ internal sealed class ItemTransactionFinalizer(
                 characterId,
                 state.Revision,
                 state.CarriedWeight,
-                state.CarryCapacity));
+                state.CarryCapacity,
+                state.Currency));
         }
+
+        var itemChanges = characterResults.Count == 0
+            ? null
+            : await LoadItemChangesAsync(cancellationToken);
 
         var resultItems = journal.ResultItemIds.Count == 0
             ? []
@@ -177,7 +187,75 @@ internal sealed class ItemTransactionFinalizer(
             containerResults,
             resultItems,
             journal.RecoveryDeliveryIds.Order().ToArray(),
-            journal.SecureContainerEntitlementRevision);
+            journal.SecureContainerEntitlementRevision,
+            itemChanges);
+    }
+
+    // The final state of every changed item, so the simulation client can patch its
+    // inventory. A transaction above the limit reports none, and the client refreshes.
+    private async Task<IReadOnlyList<ItemTransactionItemChange>?> LoadItemChangesAsync(
+        CancellationToken cancellationToken)
+    {
+        if (journal.ChangedItemIds.Count > MaximumReportedItemChanges)
+        {
+            return null;
+        }
+
+        var itemIds = journal.ChangedItemIds.Order().ToArray();
+        if (itemIds.Length == 0)
+        {
+            return [];
+        }
+
+        using var grid = await Connection.QueryMultipleAsync(new CommandDefinition(
+            """
+            select
+                id as "ItemInstanceId",
+                definition_id as "DefinitionId",
+                quantity as "Quantity",
+                revision as "Revision",
+                container_id as "ContainerId",
+                container_slot_index as "ContainerSlotIndex",
+                equipped_character_id as "EquippedCharacterId",
+                equipment_slot_id as "EquipmentSlotId"
+            from item_instances
+            where id = any(@ItemIds);
+
+            select
+                item_instance_id as "ItemInstanceId",
+                policy_kind as "PolicyKind",
+                status as "Status",
+                source_kind as "SourceKind"
+            from item_instance_policies
+            where item_instance_id = any(@ItemIds)
+              and status = 'active'
+            order by item_instance_id, policy_kind;
+            """,
+            new { ItemIds = itemIds },
+            Transaction,
+            cancellationToken: cancellationToken));
+        var items = (await grid.ReadAsync<ChangedItemRow>()).ToDictionary(row => row.ItemInstanceId);
+        var policies = (await grid.ReadAsync<ChangedItemPolicyRow>()).ToLookup(row => row.ItemInstanceId);
+        return itemIds
+            .Select(itemId => items.TryGetValue(itemId, out var item)
+                ? new ItemTransactionItemChange(
+                    itemId,
+                    false,
+                    item.DefinitionId,
+                    item.Quantity,
+                    item.Revision,
+                    item.ContainerId,
+                    item.ContainerSlotIndex,
+                    item.EquippedCharacterId,
+                    item.EquipmentSlotId,
+                    policies[itemId]
+                        .Select(policy => new ItemPolicySummaryResponse(
+                            policy.PolicyKind,
+                            policy.Status,
+                            ItemPolicySourceKinds.ToProtectionSource(policy.SourceKind)))
+                        .ToArray())
+                : new ItemTransactionItemChange(itemId, true, null, 0, 0, null, null, null, null, []))
+            .ToArray();
     }
 
     private sealed class CharacterCarryResult
@@ -187,5 +265,37 @@ internal sealed class ItemTransactionFinalizer(
         public long CarriedWeight { get; set; }
 
         public long CarryCapacity { get; set; }
+
+        public long Currency { get; set; }
+    }
+
+    private sealed class ChangedItemRow
+    {
+        public Guid ItemInstanceId { get; set; }
+
+        public string DefinitionId { get; set; } = string.Empty;
+
+        public int Quantity { get; set; }
+
+        public long Revision { get; set; }
+
+        public Guid? ContainerId { get; set; }
+
+        public int? ContainerSlotIndex { get; set; }
+
+        public Guid? EquippedCharacterId { get; set; }
+
+        public string? EquipmentSlotId { get; set; }
+    }
+
+    private sealed class ChangedItemPolicyRow
+    {
+        public Guid ItemInstanceId { get; set; }
+
+        public string PolicyKind { get; set; } = string.Empty;
+
+        public string Status { get; set; } = string.Empty;
+
+        public string SourceKind { get; set; } = string.Empty;
     }
 }

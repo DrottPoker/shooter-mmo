@@ -1,6 +1,6 @@
 # Realtime Protocol
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 The realtime protocol is the binary contract between SimulationWorker and the
 Unity client over LiteNetLib. Its single source is the local Unity package
@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 20 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 21 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -253,6 +253,7 @@ of every message type, generated from the schema:
 | 32 | `CombatEventBatch` | Combat | Server to client | Control | Reliable ordered |
 | 33 | `OwnerCombatState` | Combat | Server to client | Control | Reliable ordered |
 | 34 | `OwnerItemQuantityChanged` | Items | Server to client | Control | Reliable ordered |
+| 35 | `OwnerItemStateChanged` | Items | Server to client | Control | Reliable ordered |
 
 The control channel is 0, the movement input channel is 1, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
@@ -416,6 +417,40 @@ sends one reliable `WorldActorState` with its rest pose and a newer state
 revision. The wire format already allowed any entity id, and clients skip
 snapshot entities they do not know, so this needed no new protocol version.
 
+## Owner Item State Changes
+
+Protocol version 21 added `OwnerItemStateChanged` (35), in the Items family, so
+the client patches its inventory after a committed transaction instead of
+reloading it over HTTP. It carries:
+
+- `OperationId`: the client operation that committed the change, or empty when
+  no client intent caused it, such as a gathering yield.
+- `PreviousItemStateRevision` and `CarryState`: the revision the change applies
+  to and the carry state after it. The hand-written rule requires that the
+  carry state's revision is exactly one higher, because every transaction
+  advances the item-state revision by one.
+- `Currency`: the balance after the change, at least 0.
+- `ContainerRevisions`: up to `MaximumItemResultContainerRevisions` (8)
+  distinct containers and their new revisions, including containers the
+  client does not show, such as a corpse.
+- `Items`: up to `MaximumItemStateChanges` (8) distinct `ItemStateChange`
+  structs, each an item id, an `ItemStateLocationKind`, and the item's final
+  state. `Removed` (1) carries only the id; `Container` (2) carries the
+  definition, a quantity of at least 1, the revision, the container, and a slot
+  of at least 0; `Equipment` (3) carries the definition, quantity, revision, and
+  the equipment slot. The definition and the equipment slot are optional text,
+  and each item lists up to `MaximumItemPolicies` (8) active
+  `ItemPolicySummary` structs with a kind, a status, and a protection source of
+  up to `MaximumItemPolicyTextLength` (64) characters. A hand-written rule
+  rejects any field that does not belong to the location.
+
+The message can exceed the packet limit, so it sets `runtimeSizeCheck`, and
+`RealtimeProtocol.CanEncodeOwnerItemStateChanged` lets the worker check a change
+before it encodes it. The worker sends the change only when the transaction
+reports every changed item, touches the owner alone, delivers or claims no
+Recovery Storage, changes no Secure Container tier, and fits one packet; the
+client reloads its inventory in every other case. It always goes out before the
+carry state and the result of the operation that caused it.
 ## Corpse Loot Into Equipment
 
 Protocol version 19 added `CorpseInteractionKind.LootToEquipment` (11) and the

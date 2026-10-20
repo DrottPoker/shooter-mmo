@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 ## Purpose
 
@@ -349,6 +349,16 @@ shows a tooltip with the item details. Local definition lookups disable obvious 
 equipment, tag, Secure Container, non-empty Bag, stack, destroy, and hard-cap
 targets, but the server remains final authority.
 
+Moving, swapping, merging, splitting, equipping, unequipping, and destroying
+items react at once: the item lands where you drop it before the server answers,
+and you can keep dragging while up to eight moves wait. The server still decides
+every move. When it rejects one, every waiting move is undone, the items jump
+back and flash red, and the status line says `Item move undone:` with the
+reason. A split stack can be moved once the server has confirmed it, a fraction
+of a second later. A Recovery claim, a Bag that moves with its contents, corpse
+loot, and vendor trades still wait for the server, but their results, like every
+committed change, update the inventory directly instead of reloading it.
+
 The client loads the gameplay and presentation catalogs once through its
 persistent bootstrap. Stable definition ids resolve fallback names,
 localization keys, optional icons, and optional prefab presentation keys
@@ -388,8 +398,9 @@ as a Feral Wolf's, cannot take an item back, so its loot fills an empty slot or
 tops up a stack of the same item in the inventory or the equipment, but never
 swaps. Bank and Recovery Storage items cannot enter corpse
 custody, and an ordinary equipped item enters it only through that swap. The panel never moves either side
-optimistically. Custody-changing transfers refresh character inventory to the
-committed revision, while pure corpse rearrangement updates only corpse state.
+of a corpse transfer ahead of the server. A custody-changing transfer updates
+the character inventory from the committed change, or reloads it when the change
+cannot be described, while pure corpse rearrangement updates only corpse state.
 
 A live Mob corpse closes for every viewer once its last item is taken, and any
 corpse closes when it expires. The Corpse context then names the reason in

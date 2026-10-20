@@ -283,15 +283,18 @@ namespace Mmorpg.Client.Ui
                 _ => SlotOccupiedColor
             };
             image.color = baseColor;
+            var rolledBack = item != null && rolledBackItemIds.Contains(item.ItemInstanceId);
             TemporaryUiKit.AddOutline(
                 image,
-                visualState switch
-                {
-                    InventorySlotVisualState.Selected => TemporaryUiKit.AccentColor,
-                    InventorySlotVisualState.Blocked => new Color(0.55f, 0.20f, 0.18f, 1f),
-                    InventorySlotVisualState.Empty => SlotEmptyBorderColor,
-                    _ => SlotBorderColor
-                });
+                rolledBack
+                    ? TemporaryUiKit.DangerColor
+                    : visualState switch
+                    {
+                        InventorySlotVisualState.Selected => TemporaryUiKit.AccentColor,
+                        InventorySlotVisualState.Blocked => new Color(0.55f, 0.20f, 0.18f, 1f),
+                        InventorySlotVisualState.Empty => SlotEmptyBorderColor,
+                        _ => SlotBorderColor
+                    });
             slotObject.AddComponent<InventorySlotView>().Configure(
                 spec.Key,
                 visualState,

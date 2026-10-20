@@ -101,6 +101,9 @@ namespace Mmorpg.Client.Networking
         // Raised after the carry state of the change has advanced the movement session.
         public event Action<RealtimeOwnerItemQuantityChanged> OwnerItemQuantityChanged;
 
+        // Raised after the carry state of the change has advanced the movement session.
+        public event Action<RealtimeOwnerItemStateChanged> OwnerItemStateChanged;
+
         public RealtimeConnectionState State { get; private set; }
 
         // The gameplay rules of the joined Shard, or null outside a joined session.
@@ -830,6 +833,9 @@ namespace Mmorpg.Client.Networking
                     case RealtimeMessageType.OwnerItemQuantityChanged:
                         HandleOwnerItemQuantityChanged(packet);
                         break;
+                    case RealtimeMessageType.OwnerItemStateChanged:
+                        HandleOwnerItemStateChanged(packet);
+                        break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
                         break;
@@ -872,6 +878,7 @@ namespace Mmorpg.Client.Networking
                 case RealtimeMessageType.CombatEventBatch:
                 case RealtimeMessageType.OwnerCombatState:
                 case RealtimeMessageType.OwnerItemQuantityChanged:
+                case RealtimeMessageType.OwnerItemStateChanged:
                     return true;
                 default:
                     return false;
@@ -1539,6 +1546,37 @@ namespace Mmorpg.Client.Networking
             }
 
             OwnerItemQuantityChanged?.Invoke(change);
+        }
+
+        private void HandleOwnerItemStateChanged(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined || MovementSession == null)
+            {
+                FailProtocol(
+                    "unexpected_owner_item_state_changed",
+                    "An item state change arrived without an active movement session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeOwnerItemStateChanged(
+                    packet,
+                    out var change,
+                    out var error)
+                || !MovementSession.TryApplyCarryState(
+                    change.CarryState,
+                    out var carryChanged,
+                    out error))
+            {
+                FailProtocol("invalid_owner_item_state_changed", error);
+                return;
+            }
+
+            if (carryChanged)
+            {
+                CarryStateChanged?.Invoke(MovementSession.CarryState);
+            }
+
+            OwnerItemStateChanged?.Invoke(change);
         }
 
         private void HandleEntitySpawn(byte[] packet)

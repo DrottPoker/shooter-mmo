@@ -155,6 +155,7 @@ internal sealed class CorpseOperationFinalizer(
                 peer,
                 completed.Context,
                 completed.Session,
+                completed.Result.Intent.OperationId,
                 completed.Result.Mutation))
         {
             return;
@@ -208,6 +209,7 @@ internal sealed class CorpseOperationFinalizer(
         IRealtimePeerConnection peer,
         RealtimePeerContext context,
         ActiveSimulationSession session,
+        Guid operationId,
         CorpseMutationResponse mutation)
     {
         // A durable corpse operation answers with the state next to the transaction; a live
@@ -236,6 +238,16 @@ internal sealed class CorpseOperationFinalizer(
                 "item_state_diverged",
                 "Committed corpse transfer and carry revisions diverged from the active simulation state.");
             return false;
+        }
+
+        // Sent before the carry state and the result, so the client has patched its inventory
+        // when it sees the new revision.
+        var change = carryResult == ItemStateApplyResult.Applied
+            ? OwnerItemStateChangeMapper.TryCreate(operationId, session.CharacterId, mutation.Transaction)
+            : null;
+        if (change is not null)
+        {
+            sender.SendControl(peer, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
         }
 
         if (entityRegistry.TryGetPlayerByCharacterId(
