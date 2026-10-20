@@ -30,9 +30,9 @@ foreach ($manifest in $manifests) {
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
     $results = Invoke-ArtBlender $blender $manifest (
         @("export") + (Get-ArtValidationArguments $manifest) + @("--target", $manifest.TargetPath))
-    $materials = @(ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
-            ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json }))
-    if ($materials.Count -eq 0 -or @($materials | Where-Object { $null -eq $_ }).Count -gt 0) {
+    $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
+            ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
+    if ($null -eq $materials) {
         throw "Blender reported no valid material records for $($manifest.Name)."
     }
 

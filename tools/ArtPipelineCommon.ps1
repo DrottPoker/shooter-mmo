@@ -71,29 +71,42 @@ function Format-ArtNumber([double]$Value) {
 }
 
 function ConvertTo-ArtMaterialRecords($Records) {
-    # Returns one ordered record per valid entry, or $null in place of an invalid one.
-    foreach ($record in @($Records | Where-Object { $null -ne $_ })) {
-        $valid = [string]$record.name -cmatch '^M_[A-Za-z0-9_]+$' -and
-            [string]$record.baseColor -cmatch '^#[0-9A-F]{6}$'
+    # Returns the material records as one array, or $null when the list is empty or any entry
+    # is missing, malformed, or a duplicate, so no invalid entry can drop out unnoticed.
+    $result = New-Object System.Collections.Generic.List[object]
+    $names = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($record in @($Records)) {
+        if ($null -eq $record -or
+            [string]$record.name -cnotmatch '^M_[A-Za-z0-9_]+$' -or
+            [string]$record.baseColor -cnotmatch '^#[0-9A-F]{6}$' -or
+            -not $names.Add([string]$record.name)) {
+            return $null
+        }
+
         $numbers = @()
         foreach ($field in @("metallic", "smoothness")) {
             $value = $record.$field
             if (-not ($value -is [int] -or $value -is [long] -or $value -is [double] -or $value -is [decimal]) -or
                 $value -lt 0 -or $value -gt 1) {
-                $valid = $false
+                return $null
             }
-            else {
-                $numbers += [double]$value
-            }
+
+            $numbers += [double]$value
         }
 
-        if ($valid) {
-            [ordered]@{ name = [string]$record.name; baseColor = [string]$record.baseColor; metallic = $numbers[0]; smoothness = $numbers[1] }
-        }
-        else {
-            $null
-        }
+        $result.Add([ordered]@{
+                name = [string]$record.name
+                baseColor = [string]$record.baseColor
+                metallic = $numbers[0]
+                smoothness = $numbers[1]
+            })
     }
+
+    if ($result.Count -eq 0) {
+        return $null
+    }
+
+    return , $result.ToArray()
 }
 
 function Read-ArtAssetManifest([string]$AssetDirectory) {
@@ -156,13 +169,13 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
 
     $export = $null
     if ($null -ne $json.export) {
-        $materials = @(ConvertTo-ArtMaterialRecords @($json.export.materials))
+        $materials = ConvertTo-ArtMaterialRecords $json.export.materials
         if ([string]$json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or
             [string]$json.export.targetSha256 -cnotmatch $script:ArtShaPattern) {
             $problems.Add("export needs a sourceSha256 and a targetSha256")
         }
-        elseif ($materials.Count -eq 0 -or @($materials | Where-Object { $null -eq $_ }).Count -gt 0) {
-            $problems.Add("export.materials must list every exported material with its name, baseColor (#RRGGBB), metallic, and smoothness")
+        elseif ($null -eq $materials) {
+            $problems.Add("export.materials must list every exported material once with its name, baseColor (#RRGGBB), metallic, and smoothness")
         }
         else {
             $export = [ordered]@{

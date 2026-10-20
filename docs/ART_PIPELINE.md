@@ -148,10 +148,13 @@ whatever the importer said before:
 `ArtModelImportTests` fails when a model has other import settings, embeds a
 material because Unity has no material of that name, uses a material outside
 `Assets/Art/Materials`, or has a model root or Blender root object with a
-position, rotation, or scale. It also reads every `asset.json` and fails when a
-Unity material's `_BaseColor`, `_Metallic`, or `_Smoothness` differs from the
-approved Blender material recorded at export, so the game shows the colors the
-reviewer approved. A Unity material is never changed by the import; set its
+position, rotation, or scale. It also reads every `asset.json` and fails when
+the model renders with a material that has no export record, or a record names
+a material the model does not use, or a Unity material's `_BaseColor`,
+`_Metallic`, or `_Smoothness` differs from the approved Blender material
+recorded at export, so the game shows the colors the reviewer approved.
+`Verify-ArtAssets.ps1` rejects an export record with a missing, malformed, or
+duplicate material entry. A Unity material is never changed by the import; set its
 values from the export record when a material is added or its Blender color
 changes.
 

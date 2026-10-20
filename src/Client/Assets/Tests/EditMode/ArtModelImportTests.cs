@@ -13,6 +13,9 @@ namespace Mmorpg.Client.Tests.EditMode
     // ArtModelImportRules; see docs/ART_PIPELINE.md.
     public sealed class ArtModelImportTests
     {
+        // asset.json targets are repository paths; Unity asset paths start at Assets/.
+        private const string ClientProjectPrefix = "src/Client/";
+
         private static string[] ModelPaths()
         {
             return AssetDatabase.FindAssets("t:Model", new[] { ArtModelImportRules.ModelFolder })
@@ -86,6 +89,22 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 var manifest = JsonUtility.FromJson<ArtAssetManifest>(File.ReadAllText(manifestPath));
                 Assert.That(manifest.export?.materials, Is.Not.Null.And.Not.Empty, manifestPath);
+
+                // Every material the model renders with has an approved record, and no record is stale.
+                Assert.That(manifest.target, Does.StartWith(ClientProjectPrefix), manifestPath);
+                var model = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    manifest.target.Substring(ClientProjectPrefix.Length));
+                Assert.That(model, Is.Not.Null, manifestPath);
+                Assert.That(
+                    model.GetComponentsInChildren<Renderer>(true)
+                        .SelectMany(renderer => renderer.sharedMaterials)
+                        .Select(material => material.name)
+                        .Distinct()
+                        .OrderBy(name => name, StringComparer.Ordinal),
+                    Is.EqualTo(manifest.export.materials
+                        .Select(record => record.name)
+                        .OrderBy(name => name, StringComparer.Ordinal)),
+                    manifestPath);
                 foreach (var record in manifest.export.materials)
                 {
                     var where = manifestPath + " " + record.name;
@@ -132,6 +151,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Serializable]
         private sealed class ArtAssetManifest
         {
+            public string target = string.Empty;
             public ArtAssetExport export = new ArtAssetExport();
         }
 
