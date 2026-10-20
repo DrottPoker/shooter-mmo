@@ -30,8 +30,8 @@ public sealed class ActiveSimulationBotCoordinator(
     private long lifetimePacketsReceived;
     private long lifetimeBytesSent;
     private long lifetimeBytesReceived;
-    private ActiveSimulationBotNavigation? navigation;
-    private string? navigationWorldId;
+    private readonly Dictionary<string, ActiveSimulationBotNavigation?> navigations =
+        new(StringComparer.Ordinal);
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -99,7 +99,10 @@ public sealed class ActiveSimulationBotCoordinator(
         finally
         {
             await ShutdownAsync(pollDelay);
-            navigation?.Dispose();
+            foreach (var navigation in navigations.Values)
+            {
+                navigation?.Dispose();
+            }
         }
     }
 
@@ -163,18 +166,16 @@ public sealed class ActiveSimulationBotCoordinator(
         }
     }
 
-    // Loads the World's collision for planned walks once. Bots walk straight lines when it
-    // cannot be loaded.
+    // Loads a World's collision for planned walks once; bots of every World keep theirs until
+    // the tool stops. Bots walk straight lines when it cannot be loaded.
     private ActiveSimulationBotNavigation? NavigationFor(string worldId)
     {
-        if (string.Equals(navigationWorldId, worldId, StringComparison.Ordinal))
+        if (navigations.TryGetValue(worldId, out var loaded))
         {
-            return navigation;
+            return loaded;
         }
 
-        navigation?.Dispose();
-        navigation = null;
-        navigationWorldId = worldId;
+        ActiveSimulationBotNavigation? navigation = null;
         try
         {
             navigation = ActiveSimulationBotNavigation.Load(
@@ -194,6 +195,7 @@ public sealed class ActiveSimulationBotCoordinator(
                 $"Bots walk straight lines, because the collision of World {worldId} could not be loaded: {exception.Message}");
         }
 
+        navigations.Add(worldId, navigation);
         return navigation;
     }
 
