@@ -16,7 +16,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from art_pipeline import preview  # noqa: E402
-from art_pipeline.export import export_fbx, material_records  # noqa: E402
+from art_pipeline.export import clip_records, export_fbx, export_textures, material_records  # noqa: E402
 from art_pipeline.scene import ArtPipelineError, parse_args  # noqa: E402
 from art_pipeline.validate import validate  # noqa: E402
 
@@ -34,6 +34,7 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--clips", default="", help="Comma-separated animation clip names of a skinned asset.")
         if name == "export":
             command.add_argument("--target", required=True, help="Absolute FBX path.")
+            command.add_argument("--textures", help="Folder for the images of painted materials.")
     command = commands.add_parser("preview")
     command.add_argument("--output", required=True, help="PNG file to write.")
     command.add_argument("--cell-size", type=int, default=420)
@@ -58,6 +59,12 @@ def main() -> int:
         export_fbx(args.kind, args.target)
         for record in material_records():
             print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
+        if args.textures:
+            for name, path in export_textures(args.textures):
+                print(f"ART_TEXTURE {json.dumps({'name': name, 'path': path}, separators=(',', ':'))}")
+        if args.kind == "skinned":
+            for record in clip_records():
+                print(f"ART_CLIP {json.dumps(record, separators=(',', ':'))}")
         print(f"ART_EXPORT {args.target}")
     return 0
 

@@ -22,5 +22,65 @@
             "sourceSha256": "026c3b57470013f7bedbc2eb8f99de6ef9f4ed01d1c025a22234f423f92430a9"
         }
     },
-    "export": null
+    "export": {
+        "sourceSha256": "026c3b57470013f7bedbc2eb8f99de6ef9f4ed01d1c025a22234f423f92430a9",
+        "targetSha256": "de69a39adde6bff22ac9d9b49b90757e103a3694cacb7f927e333d7d2f6b8e45",
+        "materials": [
+            {
+                "name": "M_Body_Female",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Body_Female",
+                "metallic": 0.0,
+                "smoothness": 0.38
+            },
+            {
+                "name": "M_Eye_Female",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Eye_Female_Teal",
+                "metallic": 0.0,
+                "smoothness": 0.88
+            },
+            {
+                "name": "M_Face_Female",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Face_Female_Blush",
+                "metallic": 0.0,
+                "smoothness": 0.45
+            },
+            {
+                "name": "M_Teeth_Female",
+                "baseColor": "#DBD1B8",
+                "metallic": 0.0,
+                "smoothness": 0.65
+            },
+            {
+                "name": "M_Tongue_Female",
+                "baseColor": "#9E4C4F",
+                "metallic": 0.0,
+                "smoothness": 0.55
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Body_Female",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Body_Female.png",
+                "sha256": "8e0f1cbb676e92cd39570239cc4744df10b42419ee20c0a33dc708c7c56fe516"
+            },
+            {
+                "name": "T_Eye_Female_Teal",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Eye_Female_Teal.png",
+                "sha256": "db2fc79d8e8a62b6b3f62eee85674b672fc9ca13861231f4eadb0302f52a2ae1"
+            },
+            {
+                "name": "T_Face_Female_Blush",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Female_Blush.png",
+                "sha256": "b3869a11d16af5144f46f4cefece02a020f7858610f2f50aa13f504bbe09eca6"
+            }
+        ],
+        "clips": [
+            { "name": "Idle", "frames": 120, "loop": true },
+            { "name": "Walk", "frames": 27, "loop": true },
+            { "name": "Jog", "frames": 18, "loop": true }
+        ]
+    }
 }

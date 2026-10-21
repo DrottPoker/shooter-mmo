@@ -19,45 +19,30 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void APersonIsOrangeAndADevelopmentBotIsBlue()
+        public void ATintedPersonIsOrangeAndATintedDevelopmentBotIsBlue()
         {
-            using (var materials = new RemotePlayerBodyMaterials())
+            using (var materials = new PlayerBodyTintMaterials())
             {
                 AssertColor(
-                    BodyColorAfterInitialize(RealtimePlayerArchetypeIds.Player, materials),
-                    RemotePlayerView.PlayerBodyColor);
+                    SkinColorAfterTint(RealtimePlayerArchetypeIds.Player, true, materials),
+                    PlayerBodyAppearance.TintFor(PlayerBodyColors.Player));
                 AssertColor(
-                    BodyColorAfterInitialize(RealtimePlayerArchetypeIds.DevelopmentBot, materials),
-                    RemotePlayerView.DevelopmentBotBodyColor);
+                    SkinColorAfterTint(RealtimePlayerArchetypeIds.DevelopmentBot, true, materials),
+                    PlayerBodyAppearance.TintFor(PlayerBodyColors.DevelopmentBot));
             }
 
-            Assert.That(RemotePlayerView.PlayerBodyColor, Is.Not.EqualTo(RemotePlayerView.DevelopmentBotBodyColor));
+            Assert.That(PlayerBodyColors.Player, Is.Not.EqualTo(PlayerBodyColors.DevelopmentBot));
+            Assert.That(PlayerBodyColors.Player, Is.Not.EqualTo(PlayerBodyColors.LocalPlayer));
+            Assert.That(PlayerBodyColors.DevelopmentBot, Is.Not.EqualTo(PlayerBodyColors.LocalPlayer));
         }
 
         [Test]
-        public void BodiesOfOneColorShareOneMaterialWithoutAPropertyBlock()
+        public void AnUntintedBodyKeepsItsOwnSkin()
         {
-            var source = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            var first = new GameObject("First");
-            var second = new GameObject("Second");
-            try
+            using (var materials = new PlayerBodyTintMaterials())
             {
-                using (var materials = new RemotePlayerBodyMaterials())
-                {
-                    var firstBody = CreateView(first, RealtimePlayerArchetypeIds.DevelopmentBot, source, materials);
-                    var secondBody = CreateView(second, RealtimePlayerArchetypeIds.DevelopmentBot, source, materials);
-
-                    Assert.That(firstBody.sharedMaterial, Is.SameAs(secondBody.sharedMaterial));
-                    Assert.That(firstBody.sharedMaterial, Is.Not.SameAs(source));
-                    Assert.That(firstBody.HasPropertyBlock(), Is.False);
-                    Assert.That(materials.Count, Is.EqualTo(1));
-                }
-            }
-            finally
-            {
-                Object.DestroyImmediate(first);
-                Object.DestroyImmediate(second);
-                Object.DestroyImmediate(source);
+                AssertColor(SkinColorAfterTint(RealtimePlayerArchetypeIds.Player, false, materials), Color.white);
+                Assert.That(materials.Count, Is.Zero);
             }
         }
 
@@ -71,39 +56,23 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(actual.a, Is.EqualTo(expected.a).Within(0.002f));
         }
 
-        private static Color BodyColorAfterInitialize(string archetypeId, RemotePlayerBodyMaterials materials)
+        private static Color SkinColorAfterTint(string archetypeId, bool tinted, PlayerBodyTintMaterials materials)
         {
             var root = new GameObject("RemotePlayer");
-            var source = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            var skin = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             try
             {
-                return CreateView(root, archetypeId, source, materials).sharedMaterial.GetColor(BaseColorId);
+                var body = PlayerBodyAppearanceTests.CreateBody(root.transform, skin, null);
+                var view = root.AddComponent<RemotePlayerView>();
+                view.Initialize(7, "character", "Ada", archetypeId, 30, 4, null, null);
+                view.ApplyBodyTint(tinted, materials);
+                return body.sharedMaterial.GetColor(BaseColorId);
             }
             finally
             {
                 Object.DestroyImmediate(root);
-                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(skin);
             }
-        }
-
-        private static Renderer CreateView(
-            GameObject root,
-            string archetypeId,
-            Material bodyMaterial,
-            RemotePlayerBodyMaterials materials)
-        {
-            var visual = new GameObject("PlayerVisual");
-            visual.transform.SetParent(root.transform, false);
-            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            body.name = "Body";
-            Object.DestroyImmediate(body.GetComponent<Collider>());
-            body.transform.SetParent(visual.transform, false);
-            var bodyRenderer = body.GetComponent<Renderer>();
-            bodyRenderer.sharedMaterial = bodyMaterial;
-            var view = root.AddComponent<RemotePlayerView>();
-
-            view.Initialize(7, "character", "Ada", archetypeId, 30, 4, null, null, materials);
-            return bodyRenderer;
         }
     }
 }

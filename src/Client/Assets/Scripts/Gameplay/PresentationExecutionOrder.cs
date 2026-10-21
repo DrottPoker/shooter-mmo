@@ -6,6 +6,10 @@ namespace Mmorpg.Client.Gameplay
     // may place it with the previous frame's camera, and it trails the character.
     public static class PresentationExecutionOrder
     {
+        // Character animation reads how far its character moved this frame, after every
+        // character moved and before the Animator evaluates.
+        public const int Locomotion = 50;
+
         public const int Camera = 100;
 
         public const int ScreenAnchoredInterface = 200;

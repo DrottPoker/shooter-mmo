@@ -1,0 +1,51 @@
+using UnityEngine;
+
+namespace Mmorpg.Client.Gameplay
+{
+    // How the human body animates at a ground speed. The Walk and Jog clips are authored for
+    // these speeds by tools/blender/human_base/animate.py (WALK_SPEED and JOG_SPEED), so their
+    // feet stay planted when the clip plays at its speed. Between them the Animator blends the
+    // two clips, and the playback rate is set so the blended stride matches the speed. Below
+    // the walk speed, as when a character is encumbered, the walk plays slower.
+    public static class HumanLocomotion
+    {
+        public const float WalkSpeed = 1.4f;
+        public const float JogSpeed = 5.0f;
+
+        // Below this speed the body stands in Idle.
+        public const float MovingSpeed = 0.1f;
+
+        // The walk never plays slower than this, so a character that slows down to a stop
+        // does not move in slow motion while it blends to Idle.
+        public const float MinimumRate = 0.3f;
+
+        public const string SpeedParameter = "Speed";
+        public const string MovingParameter = "Moving";
+        public const string RateParameter = "LocomotionRate";
+        public const string IdleState = "Idle";
+        public const string LocomotionState = "Locomotion";
+        public const string IdleClip = "Idle";
+        public const string WalkClip = "Walk";
+        public const string JogClip = "Jog";
+
+        // The blend parameter and playback rate at a ground speed, from the lengths of the
+        // Walk and Jog cycles. A blended cycle lasts the weighted mean of both lengths, as the
+        // Animator synchronizes them, and covers the weighted mean of both strides.
+        public static void Evaluate(float speed, float walkCycleSeconds, float jogCycleSeconds, out float blend, out float rate)
+        {
+            speed = Mathf.Max(speed, 0f);
+            if (speed <= WalkSpeed)
+            {
+                blend = WalkSpeed;
+                rate = Mathf.Max(speed / WalkSpeed, MinimumRate);
+                return;
+            }
+
+            blend = Mathf.Min(speed, JogSpeed);
+            var weight = (blend - WalkSpeed) / (JogSpeed - WalkSpeed);
+            var cycle = Mathf.Lerp(walkCycleSeconds, jogCycleSeconds, weight);
+            var stride = Mathf.Lerp(WalkSpeed * walkCycleSeconds, JogSpeed * jogCycleSeconds, weight);
+            rate = stride > 0f ? speed * cycle / stride : 1f;
+        }
+    }
+}

@@ -5,6 +5,8 @@
 $script:ArtRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $script:ArtSourceRoot = Join-Path $script:ArtRepositoryRoot "art"
 $script:ArtModelFolder = "src/Client/Assets/Art/Models"
+# The images of painted materials, in the category folder of their model.
+$script:ArtTextureFolder = "src/Client/Assets/Art/Textures"
 $script:ArtSkeletonFolder = Join-Path $script:ArtSourceRoot "Skeletons"
 $script:ArtBlenderVersion = "5.2"
 $script:ArtBlenderCli = Join-Path $PSScriptRoot "blender/art_pipeline_cli.py"
@@ -78,9 +80,14 @@ function Format-ArtNumber([double]$Value) {
     return $Value.ToString("0.0#", [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
+function Test-ArtNumber($Value) {
+    return $Value -is [int] -or $Value -is [long] -or $Value -is [double] -or $Value -is [decimal]
+}
+
 function ConvertTo-ArtMaterialRecords($Records) {
     # Returns the material records as one array, or $null when the list is empty or any entry
-    # is missing, malformed, or a duplicate, so no invalid entry can drop out unnoticed.
+    # is missing, malformed, or a duplicate, so no invalid entry can drop out unnoticed. A
+    # painted material names its texture in baseMap and has a white baseColor.
     $result = New-Object System.Collections.Generic.List[object]
     $names = New-Object System.Collections.Generic.HashSet[string]
     foreach ($record in @($Records)) {
@@ -91,26 +98,85 @@ function ConvertTo-ArtMaterialRecords($Records) {
             return $null
         }
 
+        $baseMap = $null
+        if ($null -ne $record.PSObject.Properties['baseMap']) {
+            $baseMap = [string]$record.baseMap
+            if ($baseMap -cnotmatch '^T_[A-Za-z0-9_]+$' -or [string]$record.baseColor -cne '#FFFFFF') {
+                return $null
+            }
+        }
+
         $numbers = @()
         foreach ($field in @("metallic", "smoothness")) {
             $value = $record.$field
-            if (-not ($value -is [int] -or $value -is [long] -or $value -is [double] -or $value -is [decimal]) -or
-                $value -lt 0 -or $value -gt 1) {
+            if (-not (Test-ArtNumber $value) -or $value -lt 0 -or $value -gt 1) {
                 return $null
             }
 
             $numbers += [double]$value
         }
 
-        $result.Add([ordered]@{
-                name = [string]$record.name
-                baseColor = [string]$record.baseColor
-                metallic = $numbers[0]
-                smoothness = $numbers[1]
-            })
+        $material = [ordered]@{
+            name = [string]$record.name
+            baseColor = [string]$record.baseColor
+        }
+        if ($null -ne $baseMap) {
+            $material.baseMap = $baseMap
+        }
+
+        $material.metallic = $numbers[0]
+        $material.smoothness = $numbers[1]
+        $result.Add($material)
     }
 
     if ($result.Count -eq 0) {
+        return $null
+    }
+
+    return , $result.ToArray()
+}
+
+function Get-ArtTextureFolder([string]$Target) {
+    # The textures of src/Client/Assets/Art/Models/<Category>/<Name>.fbx go to
+    # src/Client/Assets/Art/Textures/<Category>.
+    $category = Split-Path -Leaf (Split-Path -Parent $Target)
+    return "$script:ArtTextureFolder/$category"
+}
+
+function ConvertTo-ArtTextureRecords($Records, [string]$Folder) {
+    # Returns the texture records as one array, empty when there are none, or $null when any
+    # entry is malformed or a duplicate. Each texture is the PNG <Folder>/<name>.png.
+    $result = New-Object System.Collections.Generic.List[object]
+    $names = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($record in @($Records | Where-Object { $null -ne $_ })) {
+        $name = [string]$record.name
+        if ($name -cnotmatch '^T_[A-Za-z0-9_]+$' -or [string]$record.target -cne "$Folder/$name.png" -or
+            [string]$record.sha256 -cnotmatch $script:ArtShaPattern -or -not $names.Add($name)) {
+            return $null
+        }
+
+        $result.Add([ordered]@{ name = $name; target = [string]$record.target; sha256 = [string]$record.sha256 })
+    }
+
+    return , $result.ToArray()
+}
+
+function ConvertTo-ArtClipRecords($Records, [string[]]$Clips) {
+    # Returns the clip records as one array, or $null unless there is exactly one well-formed
+    # record for each clip of the manifest.
+    $result = New-Object System.Collections.Generic.List[object]
+    $names = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($record in @($Records | Where-Object { $null -ne $_ })) {
+        $name = [string]$record.name
+        if ($Clips -cnotcontains $name -or -not ($record.frames -is [int] -or $record.frames -is [long]) -or
+            $record.frames -le 0 -or -not ($record.loop -is [bool]) -or -not $names.Add($name)) {
+            return $null
+        }
+
+        $result.Add([ordered]@{ name = $name; frames = [int]$record.frames; loop = [bool]$record.loop })
+    }
+
+    if ($result.Count -ne $Clips.Count) {
         return $null
     }
 
@@ -257,18 +323,43 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
     $export = $null
     if ($null -ne $json.export) {
         $materials = ConvertTo-ArtMaterialRecords $json.export.materials
+        $textureFolder = Get-ArtTextureFolder $target
+        $textures = ConvertTo-ArtTextureRecords $json.export.textures $textureFolder
+        $clipRecords = $null
+        if ([string]$json.kind -eq "skinned") {
+            $clipRecords = ConvertTo-ArtClipRecords $json.export.clips $clips
+        }
+
+        $baseMaps = (@($materials | Where-Object { $_.Contains("baseMap") } | ForEach-Object { $_.baseMap }) |
+                Sort-Object -Unique) -join ","
+        $textureNames = (@($textures | ForEach-Object { $_.name }) | Sort-Object) -join ","
+
         if ([string]$json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or
             [string]$json.export.targetSha256 -cnotmatch $script:ArtShaPattern) {
             $problems.Add("export needs a sourceSha256 and a targetSha256")
         }
         elseif ($null -eq $materials) {
-            $problems.Add("export.materials must list every exported material once with its name, baseColor (#RRGGBB), metallic, and smoothness")
+            $problems.Add("export.materials must list every exported material once with its name, baseColor (#RRGGBB), optional baseMap, metallic, and smoothness")
+        }
+        elseif ($null -eq $textures) {
+            $problems.Add("export.textures must list every texture once with its name, target ($textureFolder/<name>.png), and sha256")
+        }
+        elseif ($baseMaps -cne $textureNames) {
+            $problems.Add("export.textures must hold exactly the textures that the materials name in baseMap")
+        }
+        elseif ([string]$json.kind -eq "skinned" -and $null -eq $clipRecords) {
+            $problems.Add("export.clips must list every clip of the manifest once with its name, frames, and loop")
+        }
+        elseif ([string]$json.kind -ne "skinned" -and $null -ne $json.export.clips) {
+            $problems.Add("only the export of a skinned asset has clips")
         }
         else {
             $export = [ordered]@{
                 sourceSha256 = [string]$json.export.sourceSha256
                 targetSha256 = [string]$json.export.targetSha256
                 materials = $materials
+                textures = $textures
+                clips = $clipRecords
             }
         }
     }
@@ -354,11 +445,43 @@ function Write-ArtAssetManifest($Manifest) {
             $lines.Add("            {")
             $lines.Add("                `"name`": `"$($material.name)`",")
             $lines.Add("                `"baseColor`": `"$($material.baseColor)`",")
+            if ($material.Contains("baseMap")) {
+                $lines.Add("                `"baseMap`": `"$($material.baseMap)`",")
+            }
             $lines.Add("                `"metallic`": $(Format-ArtNumber $material.metallic),")
             $lines.Add("                `"smoothness`": $(Format-ArtNumber $material.smoothness)")
             $lines.Add("            }$comma")
         }
-        $lines.Add("        ]")
+        $textures = @($Manifest.Export.textures)
+        $clipRecords = @($Manifest.Export.clips | Where-Object { $null -ne $_ })
+        # Only painted materials have textures and only skinned assets have clips, so the
+        # records of other assets stay as they are.
+        $more = $textures.Count -gt 0 -or $clipRecords.Count -gt 0
+        $lines.Add("        ]$(if ($more) { ',' })")
+        if ($textures.Count -gt 0) {
+            $lines.Add('        "textures": [')
+            for ($i = 0; $i -lt $textures.Count; $i++) {
+                $texture = $textures[$i]
+                $comma = if ($i -lt $textures.Count - 1) { "," } else { "" }
+                $lines.Add("            {")
+                $lines.Add("                `"name`": `"$($texture.name)`",")
+                $lines.Add("                `"target`": `"$($texture.target)`",")
+                $lines.Add("                `"sha256`": `"$($texture.sha256)`"")
+                $lines.Add("            }$comma")
+            }
+            $lines.Add("        ]$(if ($clipRecords.Count -gt 0) { ',' })")
+        }
+
+        if ($clipRecords.Count -gt 0) {
+            $lines.Add('        "clips": [')
+            for ($i = 0; $i -lt $clipRecords.Count; $i++) {
+                $clip = $clipRecords[$i]
+                $comma = if ($i -lt $clipRecords.Count - 1) { "," } else { "" }
+                $loop = if ($clip.loop) { "true" } else { "false" }
+                $lines.Add("            { `"name`": `"$($clip.name)`", `"frames`": $($clip.frames), `"loop`": $loop }$comma")
+            }
+            $lines.Add("        ]")
+        }
         $lines.Add("    }")
     }
 
