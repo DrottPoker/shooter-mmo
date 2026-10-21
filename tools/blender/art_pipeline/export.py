@@ -57,12 +57,14 @@ def material_records() -> list[dict[str, object]]:
 
 def export_textures(folder: str) -> list[tuple[str, str]]:
     """Writes the packed image of every painted material as <folder>/<image>.png, byte for byte as
-    it is packed, and returns the names and paths."""
+    it is packed, and returns the names and paths, once per image also when materials share it."""
     written = []
+    images = set()
     for material in _exported_materials():
         image = _base_image(material)
-        if image is None:
+        if image is None or image.name in images:
             continue
+        images.add(image.name)
         data = bytes(image.packed_file.data) if image.packed_file is not None else b""
         if not data.startswith(PNG_SIGNATURE):
             raise ArtPipelineError(f'Image "{image.name}" of "{material.name}" must be packed as a PNG.')
