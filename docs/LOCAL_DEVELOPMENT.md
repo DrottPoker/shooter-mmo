@@ -905,7 +905,7 @@ routed through the worker that currently owns the character.
    SQL; a direct update would bypass the ledger.
 7. To create a durable corpse, keep a source character offline and use the
    `Create Durable Corpse` section. Leave Shard Id as `local-shard-1`, enter a
-   nearby safe World position such as `(0, 0, -1)`, and click
+   nearby safe World position such as `(0, 0, -10)`, beside the Development World 2 spawn, and click
    `Create Durable Corpse`. An empty source first receives the corpse seed package, the
    Full Inventory Test Pack. A non-empty source uses its current item state. A source with
    only pending Recovery deliveries cannot be auto-seeded.
@@ -1174,7 +1174,7 @@ at the same time:
    offline so each has an occupied equipped Bag.
 3. In `MMORPG > Tools > Inventory Item Grants`, select the offline source.
    Under `Create Durable Corpse`, keep Shard Id `local-shard-1`, use World
-   Position `(0, 0, -1)`, and click `Create Durable Corpse`. Expected result:
+   Position `(0, 0, -10)`, and click `Create Durable Corpse`. Expected result:
    the tool reports a corpse id and an expiry five minutes in the future.
 4. Start or restart SimulationWorker after the fixture commits. Run the built
    player and enter Play Mode in the Editor. Log the two looters into their
@@ -1220,7 +1220,7 @@ at the same time:
    refresh.
 11. Create a fresh fixture and restart SimulationWorker before its five-minute
    deadline. Rejoin the Shard. Expected result: the corpse returns at
-   `(0, 0, -1)` with the original absolute expiry. It disappears and closes any
+   `(0, 0, -10)` with the original absolute expiry. It disappears and closes any
    open view at expiry rather than receiving a new five-minute lifetime.
 
 Combat is not required for this test. The fixture enters the same durable
@@ -1237,8 +1237,8 @@ dotnet run --project tools/WorldActorCompiler --configuration Release --no-build
 ```
 
 Expected result: each command reports World `development-world-1` with five
-definitions and six runtime instances, and `development-world-2` with five
-definitions and twelve runtime instances. The compiler reads
+definitions and 14 runtime instances, and `development-world-2` with five
+definitions and 17 runtime instances. The compiler reads
 `content/actors/catalog.json`, one file per actor below
 `content/actors/definitions`, and every `content/worlds/<WorldId>/actor-spawns.json`,
 and writes `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
@@ -1310,7 +1310,7 @@ presentation mapping:
    settings still show and edit only the two Mobs. Undo with `Ctrl+Z`.
 5. Select `City Guard`, change `Stable Actor Id`, and press Enter. Expected
    result: the id stays and the status names `development-world-2`, because
-   that World also places the guard. An actor that only the edited World places
+   that World places the guard. An actor that only the edited World places
    is renamed together with its spawns in one undo step. Click `Delete`.
    Expected result: nothing is deleted and the status lists the spawns that
    place the guard.
@@ -1333,10 +1333,11 @@ presentation mapping:
    files stay byte-for-byte equivalent. Closing the window with unsaved edits
    asks whether to save them.
 8. Open a Scene view and `MMORPG > Tools > Content > Spawn Authoring`.
-   Expected result: the list shows the points `local.city_services` and
-   `local.iron_vein`, the group `local.city_guards`, the area
-   `local.feral_wolves`, and the patrol path `local.wolf_patrol` of
-   `development-world-1`, the Scene view draws all five while `Scene Preview` is
+   Expected result: the list shows the point `development_world_1.mira`, the
+   group `development_world_1.iron_veins`, the area
+   `development_world_1.feral_wolves`, and the patrol path
+   `development_world_1.wolf_patrol` of `development-world-1`, the Scene view
+   draws all four while `Scene Preview` is
    on, and the problems panel reports `No problems found.`. Selecting a point
    shows its prefab under `Presentation Preview`.
 9. Select the group, Ctrl-click the area, and click `Frame`. Expected result:
@@ -1345,16 +1346,16 @@ presentation mapping:
    `Mob Lifecycle` sections appear because the area places the Feral Wolf.
    Enter `0` in `Count`. Expected result: `Count` turns red, the list marks the
    area, and the problems panel reports the allowed range. Undo with `Ctrl+Z`.
-10. Click `New Point`. Expected result: `local.new_point` appears at the Scene
+10. Click `New Point`. Expected result: `development_world_1.new_point` appears at the Scene
     view pivot and is selected. Click the marker of another entry in the Scene
     view. Expected result: that entry is selected, and Ctrl-click adds to the
-    selection. Select `local.new_point` again, click `Ground Snap`, then
+    selection. Select `development_world_1.new_point` again, click `Ground Snap`, then
     `Preview Changes`. Expected result: the point moves onto the scene collider
     below it, or the status reports that no collider was found, and the preview
     shows the exact neutral JSON of the spawn file.
-11. Change the `Stable Id` of `local.wolf_patrol`. Expected result: the area's
+11. Change the `Stable Id` of `development_world_1.wolf_patrol`. Expected result: the area's
     `Patrol Path` follows the new id in the same undo step. Select the patrol
-    path together with `local.new_point` and click `Delete`. Expected result:
+    path together with `development_world_1.new_point` and click `Delete`. Expected result:
     the point is deleted and the patrol path stays, because the area follows
     it. Click `Reload`, confirm the discard, then click `Save + Compile` and
     `Verify Canonical`. Expected result: without edits, the files stay
@@ -1362,7 +1363,7 @@ presentation mapping:
 12. Start GameService and SimulationWorker, join `local-shard-1`, and approach
     Mira. Expected result: actor instances appear and disappear through normal
     interest presence. For the default `development-world-2`, the worker
-    startup log reports `Activated 12 world actors from revision <revision>`.
+    startup log reports `Activated 17 world actors from revision <revision>`.
 13. Left-click Mira. Expected result: the player walks to about `2.5` metres
     from her, and temporary uGUI opens only after the server accepts and lists
     the player-specific authoritative capability summary. Clicking a
@@ -1473,10 +1474,11 @@ Tool slot it yields one Iron Ore every 3 seconds, it holds 5 ore, and a depleted
 vein returns after 30 seconds. The content places them here:
 
 - Development World 2, which `local-shard-1` uses by default: Mira at
-  `(8, 0, 4)` on the central service plaza, and four Iron Veins 6 metres apart
-  around `(96, 0, -124)` on the southeast expansion pad.
-- Development World 1: Mira at `(2.5, 0, -1)` and one Iron Vein at `(-8, 0, 1)`,
-  west of the spawn.
+  `(0, 0, 6)` in the town, 18 m north of the spawn, and seven Iron Veins in the
+  quarry southeast of the town: four 6 metres apart around `(84, 0, -84)` and
+  single veins at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)`.
+- Development World 1, the stress arena: Mira at `(0, 0, 25)` north of the
+  spawn, and nine Iron Veins 4 metres apart around `(24, 0, 0)` east of it.
 
 No manual Unity Editor setup steps are required. The prefab
 `Assets/Prefabs/WorldActors/Resource_IronVein.prefab`, a Prefab Variant of the
@@ -1615,9 +1617,9 @@ and the menu and message panels are created at runtime.
 
 Start the local stack as in [Vendor And Gathering Verification](#vendor-and-gathering-verification),
 open LoginMenu, enter Play Mode, log in, and join `local-shard-1` with a
-character. Development World 2 has Mira at `(8, 0, 4)`, four Iron Veins around
-`(96, 0, -124)`, and the wolves in the southwest wilderness, X and Z between
-`-190` and `-130`.
+character. Development World 2 has Mira at `(0, 0, 6)` in the town, seven Iron
+Veins in the quarry around `(84, 0, -84)`, and the wolves in the wolf woods,
+X and Z between `-120` and `-90`.
 
 1. Move the pointer over Mira without clicking. Expected result: next to the
    pointer, `Talk-to Mira the Quartermaster / 9 more options` appears with her
@@ -1775,8 +1777,8 @@ Play the combat loop on the local stack:
    arrows equipped`, and `No target`.
 4. Press `C`, equip the Training Shortbow in Main Hand and the Bronze Arrows in
    Ammunition. Expected result: the frame shows `Arrows 500`.
-5. Walk to the Feral Wolf area of Development World 2, X and Z between `-190`
-   and `-130`, with several clicks. Hover a wolf. Expected result: no `Click to
+5. Walk to the wolf woods of Development World 2, southwest of the town with the
+   wolves between X and Z `-120` and `-90`, with several clicks. Hover a wolf. Expected result: no `Click to
    interact` prompt, because a Mob is a combat target, never an interaction.
 6. Left-click a wolf from more than 10 m away. Expected result: the target frame
    shows `Feral Wolf 50 / 50`, the character walks to about 9 m and stops, the
@@ -1804,8 +1806,8 @@ Play the combat loop on the local stack:
     the wolf's health bar shows it in combat. Walk away about 35 m. Expected
     result: the wolf turns back, the target frame shows `Returning home`, arrows
     do no damage while it runs, and it arrives at its place with full health.
-11. Press `I` to open the inventory and let the Feral Alpha at
-    `(-120, 0, -195)` or several wolves kill the character. Expected result:
+11. Press `I` to open the inventory and let the Feral Alpha in its lair at
+    `(-160, 0, -160)` or several wolves kill the character. Expected result:
     `You died` with `Respawning in 5 s` counting down above the open inventory,
     clicks do nothing while dead, and the inventory shows at once that only the
     Secure Container contents are left. After the respawn the character stands
@@ -2698,8 +2700,7 @@ Render the review sheet:
 Expected result: `Review sheet for Resource_IronVein:` followed by
 `artifacts\art-previews\Resource_IronVein.png`. The sheet has one row per root
 object, `Available` and then `Depleted`, each seen from four sides at the game
-camera pitch and once next to a 1.8 m mannequin, on a ground in the
-DevelopmentWorld2 ground color.
+camera pitch and once next to a 1.8 m mannequin, on a dark green ground.
 
 To look around freely, open the source in Blender:
 
@@ -2769,7 +2770,7 @@ Prefab Variant, and the registry entry are committed.
    `Depleted` the same rocks with broken flat tops, rubble, and no ore.
 2. Start the local stack and join `local-shard-1` as described in
    [Vendor And Gathering Verification](#vendor-and-gathering-verification), then
-   walk to the four Iron Veins around `(96, 0, -124)`. Expected result: each
+   walk to the seven Iron Veins in the quarry around `(84, 0, -84)`. Expected result: each
    vein shows the new model, about 1.5 m wide and 1 m high, with rust-orange ore
    visible from every camera angle, and a click on the rocks opens the vein.
 3. Mine a vein until it depletes. Expected result: it switches to the depleted
@@ -2957,58 +2958,27 @@ Expected result: `Assets/Prefabs/Player/RemotePlayer.prefab` contains one
 `RemotePlayerView` and at least one Renderer. It is a presentation-only network
 view with no local input, physics authority, camera, or audio listener.
 
-### Build The Test Map
+### Build And Bake The Development Worlds
 
-1. Open `Assets/Scenes/DevelopmentWorld1.unity`.
-2. Create an empty root named `Environment` with empty `Boundaries` and
-   `Obstacles` children. Reset all three transforms.
-3. Create these Cube objects. Parent the walls under `Boundaries`, the test
-   objects under `Obstacles`, and Ground directly under `Environment`:
-   - `Ground`: position `0, -0.25, 0`, scale `30, 0.5, 30`.
-   - `NorthWall`: position `0, 1.5, 14.5`, scale `30, 3, 1`.
-   - `SouthWall`: position `0, 1.5, -14.5`, scale `30, 3, 1`.
-   - `WestWall`: position `-14.5, 1.5, 0`, scale `1, 3, 30`.
-   - `EastWall`: position `14.5, 1.5, 0`, scale `1, 3, 30`.
-   - `CameraTestWall`: position `0, 1.5, 4`, scale `8, 3, 0.5`.
-   - `LowCover`: position `-4, 0.75, -2`, scale `4, 1.5, 1`.
-   - `HighCover`: position `5, 1.5, 1`, scale `2, 3, 2`.
-   - `Ramp`: position `0, 0.4, -7`, rotation `12, 0, 0`, scale `5, 0.5, 8`.
-   - `Step01`: position `-8, 0.15, -7`, scale `2, 0.3, 2`.
-   - `Step02`: position `-8, 0.3, -5.5`, scale `2, 0.6, 2`.
-   - `Step03`: position `-8, 0.45, -4`, scale `2, 0.9, 2`.
-4. Keep the BoxCollider on all 12 map primitives and do not add Rigidbodies.
-5. Mark Environment and every child as static.
-6. Create Ground, Wall, and Obstacle materials under
-   `Assets/Art/Materials/TestMap` and assign them to make collision surfaces
-   visually distinct.
+Both development World scenes are generated by checked-in editor builders and
+are never edited by hand. Their layouts are described in
+[Development Worlds](DEVELOPMENT_WORLDS.md).
 
-Expected result: DevelopmentWorld1 contains a bounded movement area with flat ground,
-a slope, three step heights, low and high cover, and a dedicated wall for camera
-collision testing.
+1. Exit Play Mode.
+2. Select `MMORPG > Tools > Development Worlds > Rebuild Development World 1
+   Environment` and confirm `Rebuild`, then the same for Development World 2.
+   Each builder opens its scene, configures `World Collision Authoring` on the
+   `Environment` root (World id, chunk size `32`, the root itself as collision
+   root, layer mask `3`), replaces every child of `Environment`, moves
+   `Gameplay/PlayerSpawn` to the spawn in the World's `world.json`, and saves.
+3. Select `MMORPG > Tools > World Collision > Bake World Scenes`.
+4. Wait for asset import and script compilation to complete.
 
-### Configure And Bake World Collision
-
-This is required once for DevelopmentWorld1 and again whenever an
-authoritative map collider changes.
-
-1. Exit Play Mode and open `Assets/Scenes/DevelopmentWorld1.unity`.
-2. Select the `Environment` root.
-3. Click `Add Component` and add `World Collision Authoring`.
-4. Configure the component:
-   - World Id: `development-world-1`
-   - Chunk Size: `32`
-   - Collision Root: drag the same `Environment` object into this field
-   - Layer Mask: `3`
-5. Save DevelopmentWorld1.
-6. Select `MMORPG > Tools > World Collision > Bake Open Scene` from Unity's top
-   menu.
-7. Wait for asset import and script compilation to complete.
-
-After both development scenes are Addressables World scenes, use `MMORPG >
-Tools > World Collision > Bake World Scenes` to validate each catalog
-mapping and bake every World scene in one deterministic pass. When
-several Worlds share one reusable scene, the scene is baked once for each of
-those Worlds, and its `WorldCollisionAuthoring` World id must be one of them.
+`Bake World Scenes` validates each catalog mapping and bakes every World scene
+in one deterministic pass. When several Worlds share one reusable scene, the
+scene is baked once for each of those Worlds, and its `WorldCollisionAuthoring`
+World id must be one of them. `MMORPG > Tools > World Collision > Bake Open
+Scene` bakes only the open scene.
 
 The bake writes every file to a temporary `.tmp` sibling first and then swaps
 them in, chunks before the manifest, with a backup of each previous file. If any
@@ -3016,13 +2986,15 @@ write or swap fails, the previous files are restored, so a failed bake never
 leaves a manifest whose checksums do not match its chunks. Unity ignores the
 `.tmp` files.
 
-Expected result: Unity Console reports `[WORLD COLLISION] Baked world
-'development-world-1'` with 13 boxes, 0 meshes, and 0 heightfields in 4 chunks,
-and a SHA-256 revision. The command updates:
+Expected result: the Console reports `[WORLD COLLISION] Baked world
+'development-world-1'` with 30 boxes, 0 meshes, and 0 heightfields in 4 chunks,
+and `'development-world-2'` with 199 boxes, 1 mesh, and 1 heightfield in 144
+chunks, each with a SHA-256 revision. A rebuild without a layout change bakes
+the same revisions. The command updates for each World:
 
-- `content/worlds/development-world-1/collision.json`
-- `src/Shared/WorldData/Generated/WorldCollision/development-world-1/manifest.json`
-- Four `chunk_*.bytes` files in the same generated directory
+- `content/worlds/<WorldId>/collision.json`
+- `src/Shared/WorldData/Generated/WorldCollision/<WorldId>/manifest.json`
+- One `chunk_*.bytes` file per chunk in the same generated directory
 
 The bake reads enabled, non-trigger BoxColliders, non-convex MeshColliders, and
 TerrainColliders below the collision root. Meshes and terrains bake as one-sided
@@ -3038,39 +3010,32 @@ dotnet run --project tools/WorldCollisionCompiler -- --verify
 ```
 
 Expected result: the command reports the same World revisions, four verified
-chunks for Development World 1, and 256 verified chunks for Development World
+chunks for Development World 1, and 144 verified chunks for Development World
 2. It exits with code 1 if any World's collision source and generated data
 differ.
 
-### Compose DevelopmentWorld1
+### World Scene Composition
 
-1. Create an empty root named `Gameplay` and reset its transform.
-2. Add a child named `PlayerSpawn` at position `0, 0, -1` with rotation
-   `0, 0, 0`.
-3. Do not place a LocalPlayer instance in DevelopmentWorld1. The player exists
-   only after an accepted character join.
-4. Remove any separate Main Camera from DevelopmentWorld1. The runtime LocalPlayer owns
-   the only gameplay camera and AudioListener.
-5. Create an empty child of Gameplay named `EntityPresentationRoot` and reset
-   its transform. This object owns runtime views for replicated entities and
-   must not be a child of LocalPlayer.
-6. Create an empty GameObject named `WorldSceneContext` and add the
-   `WorldSceneContext` component.
-7. Assign the `LocalPlayer.prefab` asset to Local Player Prefab and assign
-   Player Spawn Point to PlayerSpawn. Drag the prefab asset from the Project
-   window, not a scene instance.
-8. Assign `RemotePlayer.prefab` to the Remote Player Prefab field. Drag the
-   prefab asset from the Project window, not a temporary scene instance.
-9. Assign Entity Presentation Root to the `EntityPresentationRoot` transform.
-10. Keep one Directional Light in the scene and save the scene.
+Each development World scene keeps the same `Gameplay` composition, which the
+builders do not change apart from the `PlayerSpawn` transform:
 
-Expected result: DevelopmentWorld1 contains no LocalPlayer or gameplay camera
+- `Gameplay/PlayerSpawn`, placed at the World manifest spawn.
+- No LocalPlayer instance and no separate Main Camera. The player exists only
+  after an accepted character join, and the runtime LocalPlayer owns the only
+  gameplay camera and AudioListener.
+- `Gameplay/EntityPresentationRoot`, which owns runtime views for replicated
+  entities and is never a child of LocalPlayer.
+- A `WorldSceneContext` object whose component references the
+  `LocalPlayer.prefab` and `RemotePlayer.prefab` assets, `PlayerSpawn`, and
+  `EntityPresentationRoot`.
+- One Directional Light.
+
+Expected result: a World scene contains no LocalPlayer or gameplay camera
 before a join. After an accepted join, WorldSceneContext creates one LocalPlayer
 from the assigned prefab at PlayerSpawn, connects it to the authoritative
 movement state, and connects its camera. Runtime remote views remain below
-`EntityPresentationRoot`. Opening DevelopmentWorld1 directly without a joined
+`EntityPresentationRoot`. Opening a World scene directly without a joined
 session creates no player and reports no missing-reference error.
-
 The Unity project also contains separate EditMode and PlayMode test assemblies.
 Open `Window > General > Test Runner` and run both suites before delivering Unity
 changes. You can run the same suites outside the Editor with:

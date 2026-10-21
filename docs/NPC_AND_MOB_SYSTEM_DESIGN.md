@@ -38,10 +38,10 @@ The implemented foundation includes:
   `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
 - One framework-neutral compiler and runtime validator used by the command-line
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
-- A shared five-definition actor catalog, a checked-in
-  `development-world-1` baseline with six deterministic instances, including
-  one Iron Vein, and prepared `development-world-2` content with twelve
-  deterministic instances, including one Feral Alpha and four Iron Veins.
+- A shared five-definition actor catalog, the `development-world-1` stress
+  arena with 14 deterministic instances, including nine Iron Veins and four
+  Feral Wolves, and the `development-world-2` test World with 17 deterministic
+  instances, including one Feral Alpha, five Feral Wolves, and seven Iron Veins.
 - Mob combat, brain, locomotion, and loot profiles in actor format 2, validated
   by the compiler and, for loot, against the compiled item catalog.
   SimulationWorker uses the combat and loot profiles for Mob health, death,

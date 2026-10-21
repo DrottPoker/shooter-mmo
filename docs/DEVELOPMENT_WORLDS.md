@@ -1,113 +1,159 @@
 # Development Worlds
 
-Last updated: 2026-10-18
+Last updated: 2026-10-21
 
 ## Purpose
 
-This document defines the checked-in development World identities and the
-manual Unity workflow for authoring their scenes. A World is reusable content.
-A shard references one World at a time and may change that reference only while
-the shard is fully offline and drained.
+This document defines the two checked-in development Worlds, what each one is
+for, their layout, and how their scenes are rebuilt and baked. A World is
+reusable content. A shard references one World at a time and may change that
+reference only while the shard is fully offline and drained.
 
 ## Checked-In World Registry
 
-| World ID | Unity scene | Status | Worker bounds | Authoritative spawn |
+| World ID | Unity scene | Purpose | Playable bounds | Authoritative spawn |
 | --- | --- | --- | --- | --- |
-| `development-world-1` | `DevelopmentWorld1` | Complete baseline | X/Z `-14` to `14` | `(0, 0, -1)` |
-| `development-world-2` | `DevelopmentWorld2` | Expanded gameplay greybox | X/Z `-254` to `254` | `(0, 0, -16)` |
+| `development-world-1` | `DevelopmentWorld1` | Stress arena: many bots and clients on a small area | X/Z `-31` to `31` | `(0, 0, 0)`, yaw `0` |
+| `development-world-2` | `DevelopmentWorld2` | Test World: one zone for every developed feature | X/Z `-190` to `190` | `(0, 0, -12)`, yaw `0` |
 
 The checked-in SimulationWorker configuration requests `development-world-2`
-for `local-shard-1` during broader gameplay testing. GameService accepts and
-persists that binding only when the shard is offline and drained. Both Worlds
-remain reusable content.
+for `local-shard-1`. GameService accepts and persists that binding only when the
+shard is offline and drained.
 
-The client catalog maps `development-world-2` to `DevelopmentWorld2`, and both
-development scenes are Addressables World scenes. Build Profiles contain only
-LoginMenu and CharacterSelect.
+The client catalog maps each World id to its scene, and both scenes are
+Addressables World scenes. Build Profiles contain only LoginMenu and
+CharacterSelect.
 
-## Resource Node Placements
+Both scenes are built by checked-in editor builders, so neither is edited by
+hand. `world.json` is the only source of the spawn and the playable bounds: the
+builders read it to place `PlayerSpawn` and the boundary walls, and
+SimulationWorker reads it to spawn characters and clamp movement.
+`actor-spawns.json` is the only source of NPC, Mob, and resource node
+positions; the layouts only keep those positions clear.
 
-Both Worlds place the `resource.iron_vein` actor, an Iron Vein that players mine
-with a pickaxe. The actor and its resource profile are described in
-[Game Content](../content/README.md#resource-nodes-and-item-references).
+## Shared Look
 
-| World ID | Spawn source | Positions |
-| --- | --- | --- |
-| `development-world-1` | Spawn point `local.iron_vein` | `(-8, 0, 1)`, west of the player spawn |
-| `development-world-2` | Spawn group `development_world_2.iron_veins`, 2 rows by 2 columns, 6 m apart, centered at `(96, 0, -124)` | `(93, 0, -127)`, `(99, 0, -127)`, `(93, 0, -121)`, and `(99, 0, -121)` on the southeast expansion pad, south of its cargo cluster |
+The Worlds are a readable greybox, not final art. The colors mean the same
+thing in both:
 
-Every vein is its own runtime actor with its own charges, so mining one vein
-does not deplete the others.
-
-## Development World 2 Layout Contract
-
-Development World 2 is a 512 by 512 meter greybox with a 508 by 508 meter
-authoritative playable area. Unity units are meters.
-
-| Element | Position or area | Notes |
-| --- | --- | --- |
-| Ground | center `(0, -0.25, 0)`, size `(512, 0.5, 512)` | One BoxCollider is valid across multiple collision chunks |
-| North boundary | center `(0, 3, 255)`, size `(512, 6, 2)` | Interior face aligns with Z `254` |
-| South boundary | center `(0, 3, -255)`, size `(512, 6, 2)` | Interior face aligns with Z `-254` |
-| East boundary | center `(255, 3, 0)`, size `(2, 6, 512)` | Interior face aligns with X `254` |
-| West boundary | center `(-255, 3, 0)`, size `(2, 6, 512)` | Interior face aligns with X `-254` |
-| Player spawn | `(0, 0, -16)` | Yaw `0` |
-| Central service plaza | X `-32` to `32`, Z `-8` to `32` | Service halls, four watch structures, entry pillars, and low cover leave the service NPCs reachable |
-| North traversal course | X `-64` to `64`, Z `64` to `192` | Two raised platforms, ramps, stairs, an observation deck, towers, and mixed cover |
-| East sightline lane | X `80` to `228`, Z `-32` to `32` | Long-range lane with alternating cover, side walls, an observation post, and a backstop |
-| Southwest wilderness | X/Z `-232` to `-98` | Sparse rock perimeter keeps the wolf spawn area and patrol points open |
-| Southeast expansion pad | X `80` to `224`, Z `-224` to `-80` | Mostly empty visual pad with corner beacons and one small cargo cluster |
-| Northeast highlands | X `96` to `224`, Z `96` to `224` | Unity Terrain with rolling hills, a 20 m peak, and an arched tunnel through the foot of the peak |
-
-The canonical World manifest and actor content already reserve these coordinates:
-
-| Content | Position or area |
+| Color | Meaning |
 | --- | --- |
-| Bank access | `(-8, 0, 4)`, radius `3` |
-| Recovery storage access | `(0, 0, 4)`, radius `3` |
-| Insurance NPC access | `(8, 0, 4)`, radius `2` |
-| City Services NPC | `(8, 0, 4)` |
-| City Guard group | centered at `(-16, 0, 12)` |
-| Feral Wolf spawn area | X/Z `-190` to `-130` |
-| Feral Alpha spawn point | `(-120, 0, -195)`, between rocks 05 and 12 |
-| Iron Vein group | 2 by 2 veins 6 m apart, centered at `(96, 0, -124)` |
+| Green with a grid | Ground. Thin lines every meter, a strong line every 4 meters |
+| Light brown | Paths, roads, and zone floors that are only paint |
+| Light grey | Town square, booth, and arena floors |
+| Blue grey | Buildings, platforms, walls, and pillars |
+| Brick red | Roofs |
+| Orange | Ramps, stairs, cover, crates, and the bridge |
+| Bright green | A movement test the character gets through |
+| Bright red | A movement test the character must not get through |
+| Brown grey | Rock |
+| Dark brown and dark green | Tree trunks and crowns |
+| Teal | The sandbox pad reserved for new features |
+| Cyan | Spawn pads, range stripes, and interest markers |
+| Charcoal | Boundary walls |
 
-Do not move these authored landmarks without updating the matching `world.json`
-manifest and actor spawn content in the same change.
+Signs on two posts name every zone and test station, and floor labels give the
+measured values, such as `0.34 m` or `42 deg`. Labels are world-space uGUI text
+with the built-in font: they hide behind walls like any other surface and never
+take pointer input. Sign posts, buildings, rocks, and tree trunks collide;
+roads, floor paint, sign boards, labels, and tree crowns do not.
 
-Every raised surface on the north traversal course is reachable by walking,
-because the character never jumps and steps up at most 0.35 m:
+## Development World 1: Stress Arena
 
-| Course element | Top height | Walking route |
-| --- | --- | --- |
-| West platform | `4` | A 10 degree ramp from the south, centered on X `-30`, ends flush with the platform's south face at Z `89` |
-| East platform | `6` | A 10 degree ramp from the south, centered on X `30`, ends flush with the platform's south face at Z `127` |
-| Observation bridge | `8` | 25 observation steps of 0.32 m with 1 m treads climb from Z `115` to Z `140`, where the bridge starts |
-| Observation deck | `8` | The bridge runs level from Z `140` onto the deck's south edge at Z `165` |
-
-The bridge leaves 7.2 m of headroom, so the ground below it stays walkable. When
-the course changes, keep each ramp top flush with its platform and every rise
-below the step height, then rebake. `MovementPathPlannerTests` plans from the
-ground to each platform, the bridge, and the deck against the baked collision
-and follows each route with the shared movement simulation.
-
-## Northeast Highlands
-
-The highlands are the terrain test area. They are a Unity Terrain baked as a
-collision heightfield, so hills, a mountain, and a tunnel use the same
-authoritative movement and route planning as the boxes. The builder computes
-every height from a fixed function of the position, so a rebuild reproduces the
-same terrain.
+A 64 by 64 meter walled floor whose diagonal of about 88 m stays inside the
+128 m interest enter radius, so every player, bot, NPC, and Mob is visible to
+everyone at once. This is the worst case for replication, interest, and Mob
+AI load.
 
 | Element | Position or area | Notes |
 | --- | --- | --- |
-| Terrain | origin `(96, 0, 96)`, size `(128, 40, 128)` | Heightmap resolution `129`, one sample per meter, at least 0.02 m above the ground box |
+| Ground | `(0, -0.25, 0)`, size `(64, 0.5, 64)` | Four collision chunks |
+| Boundary walls | 3 m high, inner faces on X/Z `±31` | |
+| Spawn and loot hotspot | `(0, 0, 0)`, 8 by 8 m cyan pad | All bots spawn here; the stress loot hotspot is the spawn |
+| Open floor | The center | The 10 m square that stress bots walk from the spawn, X and Z `0` to `10`, stays free |
+| Pillars | `(±14, 0, ±14)`, 2 by 3 by 2 m | Give bot route planning detours |
+| Low cover | `(±8, 0, -12)`, 6 by 1.2 by 0.8 m | |
+| High cover | `(±20, 0, 17)`, 4 by 3 by 0.8 m | |
+| Service booth | Mira at `(0, 0, 25)` facing the spawn | Trade, bank, recovery, insurance, and quests |
+| Gathering field | Nine Iron Veins, 3 by 3, 4 m apart, centered at `(24, 0, 0)` | Shared veins for gathering contention |
+| Wolf pen | X `-31` to `-17`, Z `-7` to `7`, 2 m walls with a 5 m opening to the east | Four Feral Wolves patrol inside and attack players near the opening |
+| Platform | 1 m high, X `4` to `16`, Z `-27` to `-21` | A 10 degree ramp from the north and four 0.25 m stairs from the south |
+
+## Development World 2: Test World
+
+A 384 by 384 meter World with a walled town in the center and one test zone in
+each direction, 30 to 110 m from the town, so every zone is a short walk away.
+
+```text
+                         North (+Z)
++------------------+------------------+------------------+
+| Sandbox          | Movement course  | Highlands        |
+| reserved pad     | steps, slopes,   | hills, peak,     |
+|                  | gaps, stairs,    | cliffs, tunnel   |
+|                  | bridge, maze,    |                  |
+|                  | camera tests     |                  |
++------------------+------------------+------------------+
+| Interest road    | Town             | Combat range     |
+| to the outpost   | spawn, Mira,     | PvP arena,       |
+| 172 m away       | guards, houses   | range lane       |
++------------------+------------------+------------------+
+| Wolf woods       | Meadow           | Quarry           |
+| wolves and the   | open ground      | seven Iron Veins |
+| alpha lair       |                  |                  |
++------------------+------------------+------------------+
+```
+
+### Town
+
+| Element | Position or area | Notes |
+| --- | --- | --- |
+| Town walls | 3 m high, inner faces on X/Z `±36`, 10 m gates in the middle of each side, corner towers | |
+| Spawn | `(0, 0, -12)`, cyan pad | Faces Mira |
+| Mira the Quartermaster | `(0, 0, 6)`, facing south | The service hall stands behind her |
+| Town guards | `(-4, 0, -33)` and `(4, 0, -33)` | Inside the south gate |
+| Service hall | X `-9` to `9`, Z `12` to `20`, 6 m high | Routes around it; a click on its roof ends beside it |
+| Northwest house | X `-28` to `-16`, Z `17` to `27` | Solid |
+| Arcade | Four pillars around X/Z `16` to `28` with a roof at 4 m | Walk under a roof; camera under a roof |
+| Open house | X `-27.5` to `-16.5`, Z `-27.5` to `-16.5`, doorway on the east side at Z `-23.2` to `-20.8` | Walk into a room through a door |
+| Crates | Around `(23, 0, -23)` | Small obstacles |
+
+### Movement Course
+
+North of the town, X `-60` to `50`, Z `64` to `144`. Each station sits just
+inside or just outside a movement limit of the shared simulation: the 0.35 m
+step height, the 45 degree slope limit, and the 0.7 m body width.
+
+| Station | Position | What it shows |
+| --- | --- | --- |
+| Step heights | 3 by 3 m pads at X `-20`, `-12`, `-4`, `4`, `12`, south faces at Z `76.5` | Rises of 0.15, 0.25, and 0.34 m are climbed; 0.36 and 0.50 m are not |
+| Slopes | Ramps at the same X onto separate 2 m pads, pad south faces at Z `96` | 20, 35, and 42 degrees are climbed; 48 and 60 degrees are not |
+| Gaps | A 2.5 m wall at Z `112` from X `0` to `24` with gaps at X `4.25`, `12.25`, `20.25` | 1.5 and 1.0 m gaps are walked through; a 0.6 m gap is walked around |
+| Stairs and ledge | Ten 0.30 m steps at X `-32` from Z `108` to a 3 m platform | Routes never step off the ledge: they only drop as far as the 0.4 m ground snap distance, so the way down is the stairs |
+| Bridge | 4 m platforms at X `-20` and `20`, Z `136` to `144`, joined by a 4 m wide bridge | The west platform has a 10 degree ramp, the east one 0.25 m stairs; the bridge leaves 3.5 m of headroom below |
+| Maze | X `-58` to `-34`, Z `76` to `100`, 6 m lanes | In from the south, out to the north |
+| Camera tests | A corridor at X `44`, Z `80` to `92`, with a 2.6 m ceiling, and a 2 m alley between 8 m walls at X `40` to `42`, Z `100` to `116` | Camera collision in tight spaces |
+
+The route planner searches a 0.5 m grid whose cell centers lie on odd
+multiples of 0.25 m, and it keeps 0.4 m of clearance from walls. A gap narrower
+than 1.3 m is therefore routed only where a cell center has that clearance on
+both sides, which is why the station gaps are centered on cell centers.
+
+### Highlands
+
+The terrain test area. A Unity Terrain baked as a collision heightfield, so
+hills, a mountain, and a tunnel use the same authoritative movement and route
+planning as the boxes. The builder computes every height from a fixed function
+of the position, so a rebuild reproduces the same terrain.
+
+| Element | Position or area | Notes |
+| --- | --- | --- |
+| Terrain | origin `(60, 0, 60)`, size `(128, 40, 128)` | Heightmap resolution `129`, one sample per meter, at least 0.02 m above the ground box |
 | Rolling hills | four smooth hills up to 4 m high | Steepest slopes below 19 degrees |
-| Peak | summit `(154, 20, 188)` | Faces of about 31 degrees. The east face is the only way up |
+| Peak | summit `(118, 20, 152)` | Faces of about 31 degrees. The east face is the only way up |
 | Cliffs | north, south, and west sides of the peak | About 61 degrees, too steep to climb |
-| Tunnel | X `143` to `149`, Z `170` to `206` | Arched tunnel 6 m wide and 6.5 m high, along Z through the foot of the peak |
-| South portal | Z `170` to `178` | Terrain holes at Z `172` to `177` open the south cliff |
-| North portal | Z `198` to `206` | Terrain holes at Z `199` to `204` open the north cliff |
+| Tunnel | X `107` to `113`, Z `134` to `170` | Arched tunnel 6 m wide and 6.5 m high, along Z through the foot of the peak |
+| South portal | Z `134` to `142` | Terrain holes at Z `136` to `141` open the south cliff |
+| North portal | Z `162` to `170` | Terrain holes at Z `163` to `168` open the north cliff |
 
 Terrain layers paint grass where the ground is 40 degrees or flatter and rock
 where it is steeper. Rock means a slope the character cannot walk up, because
@@ -121,75 +167,95 @@ Together they seal the edges of the terrain holes, so the space inside the peak
 cannot be reached. The terrain, the arch mesh, and the terrain layers are
 generated assets below `Assets/Art/Terrain/DevelopmentWorld2`.
 
-`MovementPathPlannerTests` plans against the baked collision to a hilltop, to
-the summit from the east and from the southeast around the south cliff, through
-the tunnel, and down the west face onto the terrain above the tunnel. It also
-checks that the tunnel walls keep the inside of the peak unreachable.
+### Combat Range
 
-## Collision Inventory
+| Element | Position or area | Notes |
+| --- | --- | --- |
+| PvP arena | 40 by 40 m around `(100, 0, 0)` | A 1.2 m wall that eyes see over, 6 m openings to the west and east, four 4 m full-cover pillars, and two 1 m low covers |
+| Range lane | X `130` to `165` at Z `24` to `36` | A cyan start stripe and a stripe every 5 m, labeled up to 35 m, for measuring attack range |
 
-Development World 2 currently contains 112 enabled, non-trigger BoxColliders,
-one non-convex MeshCollider for the tunnel arch, and one TerrainCollider. They
-bake to 112 boxes and 32,676 one-sided triangles: 128 by 128 terrain cells less
-60 portal holes, two triangles per cell, plus 28 arch triangles.
-The broad ground collider still guarantees all 256 collision chunks exist.
-Thin cyan service and spawn guides are visual only and have no Collider. They
-show the canonical bank, recovery, insurance, guard group, and wolf spawn
-coordinates without creating or changing actor content.
+Wolves are the combat targets in Development World 2, and other players are
+the targets in the arena when the Shard allows player versus player.
 
-## Environment Palette
+### Interest Road And Outpost
 
-| Color | Meaning |
-| --- | --- |
-| Dark green | Ground |
-| Charcoal | Routes and plaza surfaces |
-| Blue grey | Buildings, platforms, walls, and towers |
-| Orange | Traversal elements, cover, and cargo |
-| Brown | Wilderness rock formations |
-| Teal | Reserved southeast expansion area |
-| Cyan | Visual-only actor placement guides |
-| Grass green | Walkable highlands terrain |
-| Rock grey | Highlands slopes too steep to walk |
+A road leads west from the town to an outpost at `(-172, 0, 0)` with a guard at
+`(-170, 0, 0)`. Cyan markers and signs stand at 64 m (the collision streaming
+radius of two 32 m chunks), 128 m (the interest enter radius), and 144 m (the
+interest exit radius) from the town center. The outpost is more than 160 m from
+the spawn and every town actor, so walking out removes the town from the
+client and brings the guard in, and walking back reverses it.
 
-The client renders with the Universal Render Pipeline, so the palette builder
-creates `Universal Render Pipeline/Lit` materials. It still selects the shader
-from the active render pipeline and would fall back to the Standard shader only
-if no URP Pipeline Asset were active.
+### Wolf Woods
 
-## Rebuild and Authoring Workflow
+| Element | Position or area | Notes |
+| --- | --- | --- |
+| Feral Wolves | Five in the spawn area X/Z `-120` to `-90` | They patrol `(-116, -116)`, `(-94, -110)`, `(-100, -92)`, and `(-118, -96)` |
+| Trees | 16 trees around the wolf area | Trunks collide; crowns only block the view |
+| Alpha lair | A ring of seven rocks around `(-160, 0, -160)`, open to the northeast | The Feral Alpha boss stands in the middle |
 
-The checked-in editor builder reproduces the complete environment without
-touching `Gameplay`, actor authoring, or actor runtime content.
+### Quarry
+
+Seven Iron Veins: a 2 by 2 group 6 m apart around `(84, 0, -84)` and single
+veins at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)`, inside rock
+walls on the south and east sides.
+
+### Meadow And Sandbox
+
+The meadow south of the town is open ground with six trees, for crowds of bots
+and players. The sandbox is a 100 by 100 m teal pad centered at
+`(-120, 0, 120)`, kept free for features that need space of their own.
+
+## Rebuild And Bake Workflow
+
+The checked-in editor builders reproduce each environment completely. They
+never touch `Gameplay` content other than the `PlayerSpawn` transform, and they
+never change actor content.
 
 1. Open `src/Client` in Unity and allow asset import to finish.
-2. Open `Assets/Scenes/DevelopmentWorld2.unity`.
-3. To restore the complete checked-in layout, select `MMORPG > Tools >
-   Development Worlds > Rebuild Development World 2 Environment` and confirm
-   `Rebuild`. This intentionally replaces every child under `Environment`. If
-   an open scene has unsaved changes, Unity first asks whether to save them,
-   and cancelling stops the rebuild.
-4. To customize the greybox, edit the generated children under `Environment`.
-   Keep authoritative geometry as enabled, non-trigger BoxColliders, non-convex
-   MeshColliders, or TerrainColliders, and follow the rules in Terrain And Mesh
-   Collision Authoring. Decorative route surfaces and cyan guides must remain
-   collider-free.
-5. Keep `PlayerSpawn`, all service markers, the guard marker, the wolf spawn
-   guide, the documented wolf patrol points, and the Iron Vein positions free of
-   blocking geometry.
-6. Save the scene. Select `MMORPG > Tools > World Collision > Bake Open
-   Scene`.
-7. Confirm the Console reports a successful bake for
-    `development-world-2`. The bake must create
-    `content/worlds/development-world-2/collision.json` and
-    `src/Shared/WorldData/Generated/WorldCollision/development-world-2`.
-8. Keep `DevelopmentWorld2` an entry with the address `DevelopmentWorld2` in the
-   `World Scenes` Addressables group, and out of `File > Build Profiles`. `MMORPG
-   > Tools > Addressables > Apply Client Layout` restores both.
+2. Select `MMORPG > Tools > Development Worlds > Rebuild Development World 1
+   Environment` or `Rebuild Development World 2 Environment` and confirm
+   `Rebuild`. The builder opens the scene, replaces every child under
+   `Environment`, moves `PlayerSpawn` to the manifest spawn, and saves the
+   scene. If an open scene has unsaved changes, Unity first asks whether to save
+   them, and cancelling stops the rebuild.
+3. Select `MMORPG > Tools > World Collision > Bake World Scenes`.
+4. Confirm the Console reports `development-world-1` with 30 boxes, 0 meshes,
+   and 0 heightfields in 4 chunks, and `development-world-2` with 199 boxes, 1
+   mesh, and 1 heightfield in 144 chunks.
 
-Expected result: Development World 1 remains playable, the Console reports
-Development World 2 with 112 boxes, 1 mesh, and 1 heightfield in 256 chunks, and
-actor authoring files remain unchanged. Both scenes are selected exclusively through their authoritative
-World IDs.
+To change a layout, edit the builder in
+`src/Client/Assets/Editor/DevelopmentWorlds` instead of the scene, then rebuild
+and bake. To move the spawn or the bounds, edit `world.json` first. To move an
+actor, edit `actor-spawns.json` and run the World Actor Compiler. Keep every
+actor position, patrol point, and the spawn on clear, flat ground; the layout
+tests check it.
+
+Keep both scenes entries with their scene names as addresses in the `World
+Scenes` Addressables group, and out of `File > Build Profiles`. `MMORPG > Tools
+> Addressables > Apply Client Layout` restores both.
+
+## Layout Tests
+
+`tests/Shared/Mmorpg.Shared.Tests/DevelopmentWorldLayoutTests.cs` checks the
+baked collision of both Worlds with the shared route planner and movement
+simulation:
+
+- Every actor spawn, patrol point, and the World spawn lies inside the bounds
+  on ground, with a free 0.6 m radius column above the step height.
+- The stress arena fits inside one interest radius, and the stress bot square
+  from its spawn is free.
+- The stress arena hotspots are reachable from its spawn.
+- Every movement course station behaves as its label says.
+- The town, bridge, maze, camera tests, arena, and highlands routes work, and
+  the inside of the peak stays unreachable.
+- The outpost lies beyond the interest exit radius from the town.
+
+The Unity `AuthoredGameplayAssetTests` check that both scenes keep the World
+scene composition, that `PlayerSpawn` and the boundary walls match the
+manifest, that the labels are world-space text without raycasts, that every
+development World material is used, and that the checked-in bake holds exactly
+the scene's boxes, terrain cells, and mesh triangles.
 
 ## Terrain And Mesh Collision Authoring
 
@@ -217,15 +283,12 @@ From the repository root, verify the new collision outputs:
 
 ```powershell
 dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
-powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
+dotnet test tests/Shared/Mmorpg.Shared.Tests --configuration Release --filter "FullyQualifiedName~DevelopmentWorldLayoutTests"
 ```
 
-Expected result: the collision verifier checks every World and reports
-`development-world-2` with 256 chunks and a deterministic revision, and all Unity EditMode and
-PlayMode tests pass. `Bake World Scenes` also verifies every catalog mapping
-to an Addressables World scene before writing collision output.
-
-The authored baseline has passed review. The local worker configuration now
-requests Development World 2 for `local-shard-1`. Future changes between
-development Worlds remain separate offline operational steps that GameService
-validates and commits on the replacement worker's first heartbeat.
+Expected result: the collision verifier reports `development-world-1` with 4
+chunks and `development-world-2` with 144 chunks and deterministic revisions,
+and every layout test passes. Then run the Unity EditMode and PlayMode tests as
+described in [Local Development](LOCAL_DEVELOPMENT.md). `Bake World Scenes`
+also verifies every catalog mapping to an Addressables World scene before
+writing collision output.

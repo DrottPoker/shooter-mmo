@@ -193,11 +193,12 @@ Expected result:
 Open `src/Client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
 
-The original focused test map is `development-world-1`. The larger greybox map
-is `development-world-2`; its layout and Unity workflow are defined in
-[Development Worlds](docs/DEVELOPMENT_WORLDS.md). The local shard is currently
-bound to Development World 2 for broader gameplay testing. Switching either
-direction remains a separate offline operational step.
+There are two development Worlds: `development-world-2`, the 384 m test World
+with a zone for every developed feature, and `development-world-1`, a 64 m
+stress arena for many bots and clients on a small area. Their layouts and Unity
+workflow are defined in [Development Worlds](docs/DEVELOPMENT_WORLDS.md). The
+local shard is bound to Development World 2. Switching either direction remains
+a separate offline operational step.
 
 GameService and SimulationWorker load the root `.env` for local development.
 Real environment variables and command-line values override it. Never commit

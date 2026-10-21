@@ -4,43 +4,79 @@
     "actorCatalogId": "core",
     "spawnPoints": [
         {
-            "id": "development_world_2.central_services",
+            "id": "development_world_2.mira",
             "actorId": "npc.city_services",
-            "x": 8.0,
+            "x": 0.0,
             "y": 0.0,
-            "z": 4.0,
-            "yawDegrees": 270.0,
+            "z": 6.0,
+            "yawDegrees": 180.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.outpost_guard",
+            "actorId": "npc.city_guard",
+            "x": -170.0,
+            "y": 0.0,
+            "z": 0.0,
+            "yawDegrees": 90.0,
             "patrolPathId": ""
         },
         {
             "id": "development_world_2.feral_alpha",
             "actorId": "mob.feral_alpha",
-            "x": -120.0,
+            "x": -160.0,
             "y": 0.0,
-            "z": -195.0,
-            "yawDegrees": 315.0,
+            "z": -160.0,
+            "yawDegrees": 45.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.quarry_vein_north",
+            "actorId": "resource.iron_vein",
+            "x": 104.0,
+            "y": 0.0,
+            "z": -76.0,
+            "yawDegrees": 0.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.quarry_vein_west",
+            "actorId": "resource.iron_vein",
+            "x": 76.0,
+            "y": 0.0,
+            "z": -104.0,
+            "yawDegrees": 0.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.quarry_vein_far",
+            "actorId": "resource.iron_vein",
+            "x": 106.0,
+            "y": 0.0,
+            "z": -106.0,
+            "yawDegrees": 0.0,
             "patrolPathId": ""
         }
     ],
     "spawnGroups": [
         {
-            "id": "development_world_2.central_guards",
+            "id": "development_world_2.town_guards",
             "actorId": "npc.city_guard",
-            "centerX": -16.0,
+            "centerX": 0.0,
             "centerY": 0.0,
-            "centerZ": 12.0,
-            "yawDegrees": 45.0,
+            "centerZ": -33.0,
+            "yawDegrees": 180.0,
             "rows": 1,
             "columns": 2,
-            "spacing": 3.0,
+            "spacing": 8.0,
             "patrolPathId": ""
         },
         {
-            "id": "development_world_2.iron_veins",
+            "id": "development_world_2.quarry_veins",
             "actorId": "resource.iron_vein",
-            "centerX": 96.0,
+            "centerX": 84.0,
             "centerY": 0.0,
-            "centerZ": -124.0,
+            "centerZ": -84.0,
             "yawDegrees": 0.0,
             "rows": 2,
             "columns": 2,
@@ -52,13 +88,13 @@
         {
             "id": "development_world_2.feral_wolves",
             "actorId": "mob.feral_wolf",
-            "minimumX": -190.0,
-            "minimumZ": -190.0,
-            "maximumX": -130.0,
-            "maximumZ": -130.0,
+            "minimumX": -120.0,
+            "minimumZ": -120.0,
+            "maximumX": -90.0,
+            "maximumZ": -90.0,
             "y": 0.0,
             "yawDegrees": 45.0,
-            "count": 4,
+            "count": 5,
             "seed": 2201,
             "patrolPathId": "development_world_2.wolf_patrol"
         }
@@ -68,22 +104,28 @@
             "id": "development_world_2.wolf_patrol",
             "points": [
                 {
-                    "x": -184.0,
+                    "x": -116.0,
                     "y": 0.0,
-                    "z": -184.0,
+                    "z": -116.0,
                     "waitSeconds": 1.0
                 },
                 {
-                    "x": -136.0,
+                    "x": -94.0,
                     "y": 0.0,
-                    "z": -176.0,
+                    "z": -110.0,
                     "waitSeconds": 0.5
                 },
                 {
-                    "x": -148.0,
+                    "x": -100.0,
                     "y": 0.0,
-                    "z": -136.0,
+                    "z": -92.0,
                     "waitSeconds": 1.0
+                },
+                {
+                    "x": -118.0,
+                    "y": 0.0,
+                    "z": -96.0,
+                    "waitSeconds": 0.5
                 }
             ]
         }

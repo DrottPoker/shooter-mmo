@@ -42,7 +42,7 @@ public sealed class WorldActorCompilerTests
         var runtime = WorldActorTestData.CompileWorld("development-world-2");
 
         Assert.Equal(5, runtime.Actors.Length);
-        Assert.Equal(12, runtime.SpawnInstances.Length);
+        Assert.Equal(17, runtime.SpawnInstances.Length);
         Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "mob.feral_alpha");
         Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "resource.iron_vein");
     }

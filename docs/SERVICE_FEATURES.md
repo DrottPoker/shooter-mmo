@@ -394,10 +394,12 @@ worker output, which the build copies from the WorldData runtime catalog.
 SimulationWorker loads `SimulationWorker:ActorDataPath` before binding UDP and
 rejects malformed runtime content, revision drift, wrong World identity,
 unsupported values, invalid references, or unsafe collection bounds. The
-checked-in development content contains five shared definitions, six spawn
-instances for `development-world-1`, and twelve prepared spawn instances for
-`development-world-2`, among them one Iron Vein resource node in the first and
-four in the second.
+checked-in development content contains five shared definitions, 14 spawn
+instances for `development-world-1`, and 17 spawn instances for
+`development-world-2`, among them nine Iron Vein resource nodes in the first and
+seven in the second. The compiler rounds every float step of a group or area
+placement to float on its own, so the Unity Editor under Mono, which keeps
+intermediates in double, places exactly what the .NET tools place.
 
 - Neutral actor JSON in `content/actors`, one file per actor, and each World's
   `content/worlds/<WorldId>/actor-spawns.json` are compiled deterministically by
@@ -738,7 +740,7 @@ heightfields. The shared compiler triangulates heightfields, two triangles per
 cell except for holes, so Unity and .NET produce identical chunks. A triangle
 collides only from its front, so a tunnel can run below walkable terrain.
 Development World 1 uses only boxes. Development World 2 adds the terrain and
-tunnel of its northeast highlands. Replicated dynamic transforms are not
+tunnel of its highlands. Replicated dynamic transforms are not
 implemented.
 
 ## Item Catalog, Persistence, Account APIs, And Live Mutation
