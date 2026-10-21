@@ -2769,16 +2769,18 @@ Resource_IronVein.blend changed after the 'model' approval.`, and
    that goes to Unity in a collection named `Export`, give the top-level objects
    the names the game code expects, and face the front toward Blender's +Y.
 2. Give every Blender material a name that starts with `M_` and one Principled
-   BSDF with a flat Base Color, Metallic, and Roughness. Create a URP Lit
-   material with exactly the same name below `src/Client/Assets/Art/Materials`.
+   BSDF with a flat Base Color, Metallic, and Roughness, or for a skinned asset
+   a Base Color from one packed Image Texture.
 3. Write `asset.json` with `schemaVersion`, `kind`, `target`, `rootObjects`, and
-   `triangleBudget` as described in
-   [Asset Manifest](ART_PIPELINE.md#asset-manifest), `"approvals": {}`, and
-   `"export": null`.
-4. Render the review sheet, review, approve, export, and verify as above. Then
-   set each Unity material's `Base Map` color, `Metallic`, and `Smoothness` to
-   the `baseColor`, `metallic`, and `smoothness` that the export recorded under
-   `export.materials` in `asset.json`.
+   `triangleBudget`, and for a skinned asset `skeleton` and `clips`, as
+   described in [Asset Manifest](ART_PIPELINE.md#asset-manifest),
+   `"approvals": {}`, and `"export": null`.
+4. Render the review sheet, review, approve every stage, export, and verify as
+   above. Then run `MMORPG > Tools > Art Pipeline > Create Missing Materials` in
+   Unity. Expected result: the Console lists one URP Lit material per exported
+   material below `Assets/Art/Materials/<Category>`, with the `baseColor`,
+   `baseMap`, `metallic`, and `smoothness` that the export recorded under
+   `export.materials` in `asset.json`, and the model renders with them.
 5. In Unity, select the imported model in `Assets/Art/Models/<Category>`, choose
    `Assets > Create > Prefab Variant`, move the variant to its prefab folder, and
    reference it from the presentation registry. To replace an existing
@@ -2809,7 +2811,15 @@ Prefab Variant, and the registry entry are committed.
 
 [Human Base Characters](ART_PIPELINE.md#human-base-characters) describes the two
 characters and how the build makes them. Rebuild them after a change to
-`tools/blender/human_base`:
+`tools/blender/human_base`. A change to the rig or the animations only, in
+`rig.py`, `poses.py`, `animate.py`, or their checks and reviews, needs no
+download:
+
+```powershell
+.\tools\Build-HumanBase.ps1 -SkipModel
+```
+
+A change to the model needs the Human Base Meshes bundle:
 
 1. Download `human-base-meshes-bundle-v1.4.1.zip` from Blender's
    [asset bundles](https://www.blender.org/download/demo-files/) page (Human Base
@@ -2821,63 +2831,91 @@ characters and how the build makes them. Rebuild them after a change to
    .\tools\Build-HumanBase.ps1 -ReferenceBundle D:\Downloads\human-base-meshes\human_base_meshes_bundle.blend
    ```
 
-   Expected result after about seven minutes: one line per step with its time,
-   then the paths of `artifacts\human-base\Human_Base.blend` (both characters
-   side by side), the review sheets in `artifacts\human-base\review`, and
-   `artifacts\human-base\report.txt`, and for each asset either
-   `Human_Male: unchanged, the committed file is kept; its approval covers the
-   file.` or `Human_Male: rebuilt with changes; Human_Male.blend changed after
-   the 'model' approval.` A step that finds a broken rule stops the build and
-   names the rule and the step's log. Another bundle stops it with
-   `... is not human_base_meshes_bundle.blend of Human Base Meshes v1.4.1`.
-3. Review the sheets and the review file, which opens in Material Preview:
+Expected result: one line per step with its time, about eight minutes with the
+bundle and two without it, then the paths of the review files
+`artifacts\human-base\Human_Base_Rig.blend` (the test poses as an animation) and
+`artifacts\human-base\Human_Base_Animation.blend` (the clips on a moving floor),
+with `Human_Base.blend` for a full build, the review sheets in
+`artifacts\human-base\review`, and `artifacts\human-base\report.txt` with the
+largest foot slip of every clip, and for each asset either `Human_Male:
+unchanged, the committed file is kept; its approval covers the file.` or
+`Human_Male: rebuilt with changes; Human_Male.blend changed after the 'rig'
+approval.` A step that finds a broken rule stops the build and names the rule
+and the step's log. Another bundle stops it with `... is not
+human_base_meshes_bundle.blend of Human Base Meshes v1.4.1`.
 
-   ```powershell
-   & $env:BLENDER_PATH artifacts\human-base\Human_Base.blend
-   ```
+Review the sheets and the review files; press Space in Blender to play them:
 
-4. When the reviewer approves the changed characters, record the approvals and
-   verify:
+```powershell
+& $env:BLENDER_PATH artifacts\human-base\Human_Base_Animation.blend
+```
 
-   ```powershell
-   .\tools\Approve-ArtAsset.ps1 -Asset art/Characters/Human_Male -Stage model
-   .\tools\Approve-ArtAsset.ps1 -Asset art/Characters/Human_Female -Stage model
-   .\tools\Verify-ArtAssets.ps1
-   ```
+When the reviewer approves the changed characters, record every changed stage
+in order, `model` only after a full build, then export and verify:
 
-   Expected result: `Approved the 'model' stage of Human_Male
-   (triangles=9202).`, the same for `Human_Female`, and `Verified 3 art
-   asset(s).` Commit both `.blend` files and their `asset.json` together.
-   `Export-ArtAsset.ps1` refuses the characters until their `rig` and
-   `animation` stages exist.
+```powershell
+foreach ($asset in "art/Characters/Human_Male", "art/Characters/Human_Female") {
+    .\tools\Approve-ArtAsset.ps1 -Asset $asset -Stage rig
+    .\tools\Approve-ArtAsset.ps1 -Asset $asset -Stage animation
+}
+.\tools\Export-ArtAsset.ps1 -Asset art/Characters/Human_Male, art/Characters/Human_Female
+.\tools\Verify-ArtAssets.ps1
+```
+
+Expected result: `Approved the 'rig' stage of Human_Male (triangles=9202).` and
+the same for `animation` and `Human_Female`, `Exported Human_Male to
+src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
+the same for the female, and `Verified 3 art asset(s).` The export also writes
+the textures below `src/Client/Assets/Art/Textures/Characters`. When Unity gets
+focus it imports the models; if the export added a material, run `MMORPG >
+Tools > Art Pipeline > Create Missing Materials`. Expected result: the Console
+lists the created materials, or says every exported art material has a project
+material. Commit the `.blend` files, `asset.json`, the FBX and texture files, and
+their `.meta` files together.
 
 ### Manual Test Of The Human Base Characters
 
-No manual Unity Editor steps are required: the characters are not exported to
-Unity before their rig.
+No manual Unity Editor steps are required: the models, textures, materials,
+controller, and prefabs are committed.
 
-1. Open a character:
+1. Open the animation review file:
 
    ```powershell
-   & $env:BLENDER_PATH art\Characters\Human_Male\Human_Male.blend
+   & $env:BLENDER_PATH artifacts\anim-review-7\Human_Base_Animation_7.blend
    ```
 
-   Expected result: the viewport shows the male in Material Preview, and the
-   Outliner holds `Export > Male` with the root `Male` and its children: ten
-   body parts from `Male_Head` to `Male_Feet`, `Male_Eye_L`, `Male_Eye_R`,
-   `Male_Teeth_Upper`, `Male_Teeth_Lower`, and `Male_Tongue`.
-2. Hide `Male_Torso` with its eye icon. Expected result: the torso disappears
-   and the neck, arms, and pelvis stay, with open edges where the torso was.
-3. In the `Shading` workspace, select `Male_Head`, choose the `M_Face_Male`
-   material, and switch its Image Texture from `T_Face_Male_Stubble` to
-   `T_Face_Male_Scarred`. Expected result: the face shows the scarred variant.
-   Revert the file without saving.
-4. Run `.\tools\Approve-ArtAsset.ps1 -Asset art/Characters/Human_Male -Stage
-   rig`. Expected result: `The 'rig' stage of a skinned asset cannot be checked
-   yet, so it cannot be approved.`
-5. Run `.\tools\Export-ArtAsset.ps1 -Asset art/Characters/Human_Male`.
-   Expected result: `Human_Male cannot be exported: the 'rig' review stage is
-   not approved.`
+   On a fresh checkout, build it first with `.\tools\Build-HumanBase.ps1
+   -SkipModel` and open `artifacts\human-base\Human_Base_Animation.blend`.
+   Press Space. Expected result: the male and the female stand, walk, and jog in
+   turn on a checkered floor that moves at the clip's speed, with the feet
+   planted on it, the pelvis turning, and the arms and hands following the swing.
+2. Open `art\Characters\Human_Male\Human_Male.blend`. Expected result: the
+   Outliner holds `Export > Male`, the armature, with the ten body parts from
+   `Male_Head` to `Male_Feet`, the eyes, teeth, and tongue as its children, and
+   the actions `Idle`, `Jog`, and `Walk`. Revert the file without saving.
+3. In Unity, open `Assets/Prefabs/Player/HumanMaleBody.prefab`. Expected result:
+   the Inspector names it a Prefab Variant of `Human_Male`, with an `Animator`
+   using `HumanLocomotion` and the avatar `Human_MaleAvatar`, a
+   `CharacterLocomotionAnimator`, and a `PlayerBodyAppearance` with the skin
+   materials `M_Body_Male` and `M_Face_Male`.
+4. Start the local stack, enter Play Mode from `Assets/Scenes/LoginMenu.unity`,
+   log in, and join a shard. Expected result: your character is the male body
+   in underwear and stands in `Idle`, breathing.
+5. Click the ground 15 m away. Expected result: the body jogs there at 5 m/s
+   with its feet on the ground, and stands again when it arrives.
+6. Carry more than the encumbered limit, as described in
+   [Carry Weight And Encumbrance](GAME_FEATURES.md#carry-weight-and-encumbrance),
+   and walk. Expected result: the body walks slower, without sliding.
+7. Start ActiveSimulationBots as described in
+   [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) and join
+   `local-shard-2`. Expected result: every bot is the same male body and walks
+   or jogs with its speed.
+8. Press F2 and turn on `Tint bodies: you purple, players orange, bots blue` in
+   the Presentation section. Expected result: your skin turns faintly purple and
+   the bots' faintly blue, a second client's character faintly orange; the eyes,
+   teeth, and tongue keep their colors. Turn it off again. Expected result: every
+   body shows its own skin. The setting is off in a new installation and is kept
+   between sessions.
 
 ## One-Time Unity World Scene Authoring
 
