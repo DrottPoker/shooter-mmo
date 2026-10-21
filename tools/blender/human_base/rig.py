@@ -82,15 +82,20 @@ SHAPE_REACH = 0.14
 # The hip: the thigh moves the skin below a boundary that runs around it, with a wide blend so the
 # top of the thigh and the buttock stretch instead of folding at the leg line: just above the groin
 # in front, over the greater trochanter at the outer side, halfway up the buttock at the back and
-# through the crotch on the inner side. Per angle around the thigh (0 front, 90 outer side, 180
+# at the crotch on the inner side, with a short blend. Per angle around the thigh (0 front, 90 outer side, 180
 # back, 270 inner side): the boundary's distance below the hip joint along the thigh (negative is
 # above it) and the half width of the blend across it. The hip's shaping reaches this far down the
 # thigh.
-HIP_BOUNDARY = ((0, -0.02, 0.07), (90, -0.03, 0.07), (180, 0.0, 0.10), (270, 0.04, 0.035))
+HIP_BOUNDARY = ((0, -0.02, 0.07), (90, -0.03, 0.07), (180, 0.0, 0.10), (270, 0.02, 0.03))
 HIP_REGION = 0.22
-# Between the legs the thighs' shares fade to half toward the centre line within this distance, so
-# the crotch moves half with the legs and keeps its shape.
-CROTCH_WIDTH = 0.045
+# Between the legs the thighs' shares fade toward the lowest point of the crotch, down to this share
+# at it, within this distance of it, on the pelvis and the thighs alike, and are then smoothed
+# there: the crotch keeps its place, the skin around it stretches evenly, and no two neighbouring
+# vertices differ much, which would cut a notch when a thigh is raised. A long blend down the
+# inner thigh, far from the hip joint, would sink in instead.
+CROTCH_RADIUS = 0.07
+CROTCH_FLOOR = 0.0
+CROTCH_SMOOTHING = 6
 # The knee and the elbow blend from the upper to the lower bone across their joint, along the lower
 # bone, over a half width on the side the joint folds to (the back of the knee, the inside of the
 # elbow) and another on the opposite side, within this reach of the joint.
@@ -500,13 +505,16 @@ def _around(axis, forward, outward):
     return f, o / np.linalg.norm(o)
 
 
-def hip_weights(points, index, weights, column, arm, s):
+def hip_weights(points, faces, index, weights, column, arm, s):
     """Sets the share of each thigh around the hip from HIP_BOUNDARY: the thigh takes the skin
     below the boundary, the pelvis keeps the rest with its own bones from the bone heat."""
     bones = arm.data.bones
     rows = np.unique(np.concatenate([index["Pelvis"], index["Thighs"]]))
-    in_pelvis = np.zeros(len(points), bool)
-    in_pelvis[index["Pelvis"]] = True
+    pelvis = points[index["Pelvis"]]
+    centre = pelvis[np.abs(pelvis[:, 0]) < 1e-5]
+    crotch_point = centre[np.argmin(centre[:, 2])]
+    to_crotch = np.linalg.norm(points[rows] - crotch_point, axis=1)
+    crotch = CROTCH_FLOOR + (1.0 - CROTCH_FLOOR) * _smooth(0.0, CROTCH_RADIUS * s, to_crotch)
     angles = [a for a, _b, _w in HIP_BOUNDARY] + [360.0]
     below = [b for _a, b, _w in HIP_BOUNDARY] + [HIP_BOUNDARY[0][1]]
     widths = [w for _a, _b, w in HIP_BOUNDARY] + [HIP_BOUNDARY[0][2]]
@@ -522,9 +530,7 @@ def hip_weights(points, index, weights, column, arm, s):
         phi = np.degrees(np.arctan2(radial @ outward, radial @ forward)) % 360.0
         b = np.interp(phi, angles, below) * s
         w = np.interp(phi, angles, widths) * s
-        thigh = _smooth(b - w, b + w, t)
-        crotch = 0.5 + 0.5 * _smooth(0.0, CROTCH_WIDTH, np.abs(points[rows, 0]))
-        thigh = np.where(in_pelvis[rows], thigh * crotch, thigh)
+        thigh = _smooth(b - w, b + w, t) * crotch
         inside[side] = (points[rows, 0] * sx > -1e-6) & (t < HIP_REGION * s)
         share[side] = np.where(inside[side], thigh, 0.0)
     region = inside["R"] | inside["L"]
@@ -540,6 +546,17 @@ def hip_weights(points, index, weights, column, arm, s):
     weights[selected] = rest * (1.0 - thighs)[:, None]
     for side, _sx in SIDES:
         weights[selected, column[f"UpperLeg_{side}"]] += share[side][region]
+
+    # Smooth the weights around the crotch over the body's edges.
+    near = rows[to_crotch < CROTCH_RADIUS * s * 1.5]
+    neighbours = {v: set() for v in near}
+    for face in faces:
+        for i, v in enumerate(face):
+            if v in neighbours:
+                neighbours[v].update((face[i - 1], face[(i + 1) % len(face)]))
+    for _ in range(CROTCH_SMOOTHING):
+        mean = np.array([weights[list(neighbours[v])].mean(0) for v in near])
+        weights[near] = 0.5 * weights[near] + 0.5 * mean
     return weights
 
 
@@ -701,7 +718,7 @@ def solve_weights(label, arm, skeleton, digit_verts):
     weights /= weights.sum(1, keepdims=True)
     weights = shape_weights(label, arm, points, faces, index, weights, allowed, column)
     scale = float(points[:, 2].max()) / REFERENCE_HEIGHT
-    weights = hip_weights(points, index, weights, column, arm, scale)
+    weights = hip_weights(points, faces, index, weights, column, arm, scale)
     weights = hinge_weights(points, index, weights, column, arm, scale)
     head_idx = np.concatenate([index["Head"], index["Neck"]])
     share = _jaw_share(label, points[head_idx]) * weights[head_idx, column["Head"]]

@@ -124,7 +124,8 @@ foreach ($character in $characters) {
     $null = Invoke-HumanBaseStep "rig" @($model, $character.Label, $skeleton, $rigged) "rig_$($character.Label)"
     $null = Invoke-HumanBaseStep "check-rig" @($model, $rigged, $character.Label, $skeleton) "check_rig_$($character.Label)"
     $built = Join-Path $assetWork "$($character.Asset).blend"
-    Copy-Item -LiteralPath $rigged -Destination $built -Force
+    $null = Invoke-HumanBaseStep "animate" @($rigged, $character.Label, $built) "animate_$($character.Label)"
+    $null = Invoke-HumanBaseStep "check-animation" @($built, $character.Label, $skeleton) "check_animation_$($character.Label)"
     $character | Add-Member -NotePropertyName Built -NotePropertyValue $built
     $same = $false
     if (Test-Path -LiteralPath $source) {
@@ -147,10 +148,13 @@ if (-not $SkipModel) {
 
 foreach ($character in $characters) {
     $null = Invoke-HumanBaseStep "review-rig" @($character.Built, $character.Label, $reviewSheets, $character.Asset) "review_rig_$($character.Label)"
+    $null = Invoke-HumanBaseStep "review-animation" @($character.Built, $character.Label, $reviewSheets, $character.Asset) "review_animation_$($character.Label)"
 }
 
 $rigReview = Join-Path $work "Human_Base_Rig.blend"
 $null = Invoke-HumanBaseStep "rig-review-file" @($characters[0].Built, $characters[1].Built, $rigReview)
+$animationReview = Join-Path $work "Human_Base_Animation.blend"
+$null = Invoke-HumanBaseStep "animation-review-file" @($characters[0].Built, $characters[1].Built, $animationReview)
 $reportPath = Join-Path $work "report.txt"
 [System.IO.File]::WriteAllLines($reportPath, [string[]]$report)
 
@@ -159,6 +163,7 @@ if (-not $SkipModel) {
 }
 
 Write-Host "Review file of the rigs, with the test poses as an animation: $rigReview"
+Write-Host "Review file of the animations, on a moving floor: $animationReview"
 Write-Host "Review sheets: $reviewSheets"
 Write-Host "Quality report: $reportPath"
 $toReview = 0

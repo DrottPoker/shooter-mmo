@@ -15,7 +15,11 @@
         },
         "rig": {
             "date": "2026-10-21",
-            "sourceSha256": "0995c084b89579978c9842be9e239e08bd33fde973ea4f725ea4cab3bd76b52f"
+            "sourceSha256": "026c3b57470013f7bedbc2eb8f99de6ef9f4ed01d1c025a22234f423f92430a9"
+        },
+        "animation": {
+            "date": "2026-10-21",
+            "sourceSha256": "026c3b57470013f7bedbc2eb8f99de6ef9f4ed01d1c025a22234f423f92430a9"
         }
     },
     "export": null

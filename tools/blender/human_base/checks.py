@@ -11,7 +11,9 @@ found broken:
   topology, the parts close up into one watertight body (every open edge of a part is matched
   by an edge of a neighbouring part), and the normals agree across the cuts.
 - rig: a rigged character against the model it was rigged from: the meshes at rest are the
-  model's meshes, the art pipeline's rig rules hold, and the weights are mirror symmetric."""
+  model's meshes, the art pipeline's rig rules hold, and the weights are mirror symmetric.
+- animation: the clips of an animated character follow the art pipeline's animation rules, and a
+  foot on the ground keeps its place when the character moves at the clip's speed."""
 
 import math
 
@@ -34,6 +36,12 @@ OPEN_ALLOWED = ("_Teeth_", "_Tongue")
 # sides of a cut can differ by a few hundredths of a degree; a seam shows from a few degrees.
 NORMAL_TOLERANCE = 0.005  # length of the difference vector, about 0.3 degrees
 REST_POSITION_TOLERANCE = 1e-6  # m, the rigged mesh at rest against the model
+# A foot point is on the ground while it is at most this much above its height in the rest pose;
+# on the ground it may slide this much (m), measured while the character moves at the clip's speed.
+# The heel point sits this far behind the ankle.
+GROUND = 0.004
+SLIP_TOLERANCE = 0.015
+HEEL_BEHIND = 0.045
 
 
 # ------------------------------------------------------------------------------------- mesh
@@ -353,6 +361,66 @@ def rig(model_path, rigged_path, label, skeleton_path):
         failures.append(f"{label}: the weights are not mirror symmetric ({asymmetry:.2e})")
     bones = bpy.data.objects[label].data.bones
     lines.append(f"{label}: {len(bones)} bones, {sum(b.use_deform for b in bones)} deforming")
+    return lines, failures
+
+
+# -------------------------------------------------------------------------------- animation
+
+def animation(path, label, skeleton_path):
+    """Checks the clips of an animated character: the art pipeline's animation rules, and that a
+    foot on the ground keeps its place when the character moves at the clip's speed."""
+    from mathutils import Vector
+
+    from art_pipeline import skeleton as skeleton_definition
+    from art_pipeline import skinned
+    from . import animate
+
+    bpy.ops.wm.open_mainfile(filepath=path)
+    lines, failures = [], []
+    arm = bpy.data.objects[label]
+    skeleton = skeleton_definition.load(skeleton_path)
+    failures += [f"{label}: {e}" for e in skinned.animation_errors(arm, list(animate.CLIPS), skeleton)]
+    scene = bpy.context.scene
+    arm.animation_data_create()
+    heels, ground = {}, {}
+    for side in ("R", "L"):
+        bone = arm.data.bones[f"Foot_{side}"]
+        ankle = bone.head_local
+        heels[side] = bone.matrix_local.inverted() @ Vector((ankle.x, ankle.y - HEEL_BEHIND, 0.012))
+        ground[(side, "heel")] = 0.012 + GROUND
+        ground[(side, "ball")] = arm.data.bones[f"Toes_{side}"].head_local.z + GROUND
+    for name, speed in animate.CLIPS.items():
+        action = bpy.data.actions.get(name)
+        if action is None:
+            continue
+        arm.animation_data.action = action
+        frames = int(action.frame_range[1])
+        tracks = {}
+        hips = []
+        for f in range(frames + 1):
+            scene.frame_set(f)
+            travelled = speed * f / animate.FPS
+            hips.append((arm.matrix_world @ arm.pose.bones["Hips"].head).z)
+            for side in ("R", "L"):
+                heel = arm.pose.bones[f"Foot_{side}"].matrix @ heels[side]
+                for point, where in (("ball", arm.pose.bones[f"Toes_{side}"].head), ("heel", heel)):
+                    p = arm.matrix_world @ where
+                    tracks.setdefault((side, point), []).append((p.z < ground[(side, point)], p.y + travelled))
+        slip = 0.0
+        for track in tracks.values():
+            run = []
+            for on_ground, y in track + [(False, 0.0)]:
+                if on_ground:
+                    run.append(y)
+                    continue
+                if len(run) > 2:
+                    slip = max(slip, max(run) - min(run))
+                run = []
+        lines.append(f"{label} {name}: {frames} frames, {speed:.1f} m/s, hips {min(hips):.3f} to {max(hips):.3f} m, "
+                     f"largest slip of a foot on the ground {slip * 1000:.1f} mm")
+        if slip > SLIP_TOLERANCE:
+            failures.append(f"{label} {name}: a foot slides {slip * 1000:.1f} mm on the ground")
+    arm.animation_data.action = None
     return lines, failures
 
 

@@ -15,9 +15,13 @@ Steps:
     asset <characters.blend> <Male|Female> <asset.blend>
     rig <asset.blend> <Male|Female> <skeleton.json> <rigged.blend>
     check-rig <asset.blend> <rigged.blend> <Male|Female> <skeleton.json>
+    animate <rigged.blend> <Male|Female> <animated.blend>
+    check-animation <animated.blend> <Male|Female> <skeleton.json>
     review <characters.blend> <output dir> <prefix>
     review-rig <rigged.blend> <Male|Female> <output dir> <prefix>
     rig-review-file <male.blend> <female.blend> <review.blend>
+    review-animation <animated.blend> <Male|Female> <output dir> <prefix>
+    animation-review-file <male.blend> <female.blend> <review.blend>
     compare <a.blend> <b.blend>
 
 Report lines start with HUMAN_BASE_REPORT, broken rules with HUMAN_BASE_FAILED, and the result
@@ -32,7 +36,7 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from human_base import characters, checks, geometry, references, review, rig, rig_review, textures  # noqa: E402
+from human_base import anim_review, animate, characters, checks, geometry, references, review, rig, rig_review, textures  # noqa: E402
 
 STEPS = {
     "references": (2, references.prepare),
@@ -41,6 +45,7 @@ STEPS = {
     "characters": (2, characters.organize),
     "asset": (3, characters.write_asset),
     "rig": (4, rig.rig),
+    "animate": (3, animate.animate),
 }
 CHECKS = {"check-mesh": checks.mesh, "check-seams": checks.seams, "check-parts": checks.parts}
 
@@ -74,6 +79,16 @@ def main(argv: list[str]) -> int:
         for failure in failures:
             print(f"HUMAN_BASE_FAILED {failure}")
         return 1 if failures else 0
+    if step == "check-animation":
+        if len(args) != 3:
+            print("HUMAN_BASE_FAILED check-animation takes 3 arguments")
+            return 2
+        lines, failures = checks.animation(*args)
+        for line in lines:
+            print(f"HUMAN_BASE_REPORT {line}")
+        for failure in failures:
+            print(f"HUMAN_BASE_FAILED {failure}")
+        return 1 if failures else 0
     if step == "compare":
         lines, differences = checks.compare(*args)
         for line in lines:
@@ -83,6 +98,13 @@ def main(argv: list[str]) -> int:
     if step == "review":
         for path in review.render(*args):
             print(f"HUMAN_BASE_REPORT review sheet {path}")
+        return 0
+    if step == "review-animation":
+        for path in anim_review.render(*args):
+            print(f"HUMAN_BASE_REPORT review sheet {path}")
+        return 0
+    if step == "animation-review-file":
+        print(f"HUMAN_BASE_REPORT review file {anim_review.review_file(*args)}")
         return 0
     if step == "rig-review-file":
         print(f"HUMAN_BASE_REPORT review file {rig_review.review_file(*args)}")
