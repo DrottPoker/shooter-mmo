@@ -13,8 +13,26 @@ namespace Mmorpg.Client.Items
     // intent expects the revisions of the confirmed state when it is sent, so a later operation
     // builds on the committed result of the one before it. A rejection undoes every pending
     // operation; a committed change patches the confirmed state, or a reload replaces it.
+    // The queue that every item-changing operation goes through, so each one builds on the
+    // committed result of the one before it. Corpse and vendor controllers use it.
+    public interface IInventoryOperationQueue
+    {
+        InventoryClientState State { get; }
+
+        bool TryQueueOperation(InventoryPredictedOperation operation, out string error);
+
+        void CompleteExternalOperation(
+            Guid operationId,
+            bool succeeded,
+            InventoryClientError error,
+            bool requiresInventoryRefresh,
+            long itemStateRevision);
+
+        void EnsureFullState(long minimumRevision);
+    }
+
     [DisallowMultipleComponent]
-    public sealed class InventoryClientController : MonoBehaviour
+    public sealed class InventoryClientController : MonoBehaviour, IInventoryOperationQueue
     {
         private const int MaximumRefreshAttempts = 3;
         private const float RefreshRetryDelaySeconds = 0.1f;
@@ -38,7 +56,6 @@ namespace Mmorpg.Client.Items
         // discarded the pending operations.
         private Guid sentOperationId;
         private Guid lastCompletedOperationId;
-        private RealtimeItemOperationKind lastCompletedOperationKind;
 
         public InventoryClientState State { get; } = new InventoryClientState();
 
@@ -361,6 +378,13 @@ namespace Mmorpg.Client.Items
             return true;
         }
 
+        // Queues an operation that another controller owns, such as a corpse loot or a vendor
+        // trade, behind every pending item operation, so it builds on their committed results.
+        public bool TryQueueOperation(InventoryPredictedOperation operation, out string error)
+        {
+            return CanStartOperation(out error) && TryQueue(operation, out error);
+        }
+
         private bool TryQueue(InventoryPredictedOperation operation, out string error)
         {
             if (!State.TryPredict(operation, out error))
@@ -393,6 +417,24 @@ namespace Mmorpg.Client.Items
                 return;
             }
 
+            // An owner that answers Wait, such as a corpse with a refresh or an earlier view in
+            // flight, is asked again on the next frame, because Update calls this every frame.
+            if (operation.IsExternal)
+            {
+                switch (operation.SendExternal(State, out var externalOperationId, out var externalError))
+                {
+                    case InventoryOperationSendResult.Sent:
+                        operation.OperationId = externalOperationId;
+                        sentOperationId = externalOperationId;
+                        break;
+                    case InventoryOperationSendResult.Failed:
+                        State.RollBackPredictions(new InventoryClientError("item_move_stale", externalError));
+                        break;
+                }
+
+                return;
+            }
+
             if (!TryCreateIntent(operation, out var intent, out var rejectionScope, out var error))
             {
                 State.RollBackPredictions(new InventoryClientError("item_move_stale", error));
@@ -410,11 +452,6 @@ namespace Mmorpg.Client.Items
             operation.OperationId = intent.OperationId;
             operation.RejectionRefreshScope = rejectionScope;
             sentOperationId = intent.OperationId;
-            if (!operation.IsPredicted)
-            {
-                // Nothing is shown ahead, so the panel shows that the operation is waiting.
-                State.BeginLoading(true);
-            }
         }
 
         private bool TryCreateIntent(
@@ -542,31 +579,81 @@ namespace Mmorpg.Client.Items
         private void OnItemOperationCompleted(RealtimeItemOperationResult result)
         {
             var operation = State.PendingOperations.FirstOrDefault();
-            var matches = operation != null
-                && operation.IsSent
-                && operation.OperationId == result.OperationId
-                && operation.Kind == result.OperationKind;
-            if (!matches)
+            Complete(
+                result.OperationId,
+                operation != null
+                    && !operation.IsExternal
+                    && operation.IsSent
+                    && operation.OperationId == result.OperationId
+                    && operation.Kind == result.OperationKind,
+                result.Succeeded,
+                result.Succeeded
+                    ? null
+                    : new InventoryClientError(
+                        result.Error?.Code ?? "item_operation_rejected",
+                        result.Error?.Message ?? "The server rejected the item operation."),
+                result.RequiresInventoryRefresh,
+                result.CarryState.ItemStateRevision);
+        }
+
+        // The result of a corpse or vendor operation that this controller sent for the
+        // controller that owns it. A rejection undoes every pending operation.
+        public void CompleteExternalOperation(
+            Guid operationId,
+            bool succeeded,
+            InventoryClientError error,
+            bool requiresInventoryRefresh,
+            long itemStateRevision)
+        {
+            var operation = State.PendingOperations.FirstOrDefault();
+            Complete(
+                operationId,
+                operation != null
+                    && operation.IsExternal
+                    && operation.IsSent
+                    && operation.OperationId == operationId,
+                succeeded,
+                succeeded
+                    ? null
+                    : error ?? new InventoryClientError("item_operation_rejected", "The server rejected the item operation."),
+                requiresInventoryRefresh,
+                itemStateRevision);
+        }
+
+        private void Complete(
+            Guid operationId,
+            bool matchesHead,
+            bool succeeded,
+            InventoryClientError error,
+            bool requiresInventoryRefresh,
+            long itemStateRevision)
+        {
+            var operation = State.PendingOperations.FirstOrDefault();
+            if (!matchesHead)
             {
-                if (result.OperationId == sentOperationId)
+                if (operationId == sentOperationId)
                 {
                     // Its committed change already confirmed the operation, or an error discarded
                     // its prediction while the server worked on it. A reload runs only when the
                     // confirmed state has not reached the result.
                     sentOperationId = Guid.Empty;
-                    RememberCompleted(result);
+                    lastCompletedOperationId = operationId;
                     if (!refreshInProgress)
                     {
                         State.EndOperationWait();
                     }
 
-                    EnsureFullState(result.CarryState.ItemStateRevision);
+                    if (!succeeded)
+                    {
+                        State.RollBackPredictions(error);
+                    }
+
+                    EnsureFullState(itemStateRevision);
                     SendNextPendingOperation();
                     return;
                 }
 
-                if (result.OperationId == lastCompletedOperationId
-                    && result.OperationKind == lastCompletedOperationKind)
+                if (operationId == lastCompletedOperationId)
                 {
                     return;
                 }
@@ -582,38 +669,29 @@ namespace Mmorpg.Client.Items
             }
 
             sentOperationId = Guid.Empty;
-            RememberCompleted(result);
-            if (!result.Succeeded)
+            lastCompletedOperationId = operationId;
+            if (!succeeded)
             {
-                State.RollBackPredictions(new InventoryClientError(
-                    result.Error?.Code ?? "item_operation_rejected",
-                    result.Error?.Message ?? "The server rejected the item operation."));
-                if (result.RequiresInventoryRefresh)
+                State.RollBackPredictions(error);
+                if (requiresInventoryRefresh)
                 {
-                    BeginRefresh(
-                        operation.RejectionRefreshScope,
-                        true,
-                        result.CarryState.ItemStateRevision);
+                    BeginRefresh(operation.RejectionRefreshScope, true, itemStateRevision);
                 }
 
                 return;
             }
 
             // The committed change arrived before the result and already patched the state.
-            if (State.HasCoherentFullSnapshotAtLeast(result.CarryState.ItemStateRevision))
+            if (State.HasCoherentFullSnapshotAtLeast(itemStateRevision))
             {
                 State.CompletePendingHead(!refreshInProgress);
                 SendNextPendingOperation();
                 return;
             }
 
-            State.MarkPendingHeadCommitted(result.CarryState.ItemStateRevision);
-            BeginRefresh(
-                InventoryRefreshScope.Full,
-                true,
-                result.CarryState.ItemStateRevision);
+            State.MarkPendingHeadCommitted(itemStateRevision);
+            BeginRefresh(InventoryRefreshScope.Full, true, itemStateRevision);
         }
-
         // A committed transaction of the owner. A change the snapshot follows patches it;
         // any other change needs a reload unless a reload already reached it.
         private void OnOwnerItemStateChanged(RealtimeOwnerItemStateChanged change)
@@ -645,11 +723,6 @@ namespace Mmorpg.Client.Items
             serverRevisionFollower.Reset();
         }
 
-        private void RememberCompleted(RealtimeItemOperationResult result)
-        {
-            lastCompletedOperationId = result.OperationId;
-            lastCompletedOperationKind = result.OperationKind;
-        }
 
         private void BeginRefresh(
             InventoryRefreshScope scope,
@@ -923,7 +996,6 @@ namespace Mmorpg.Client.Items
             observedCharacterId = characterId;
             sentOperationId = Guid.Empty;
             lastCompletedOperationId = Guid.Empty;
-            lastCompletedOperationKind = default;
             serverRevisionFollower.Reset();
             if (!Guid.TryParse(characterId, out var parsedCharacterId)
                 || parsedCharacterId == Guid.Empty

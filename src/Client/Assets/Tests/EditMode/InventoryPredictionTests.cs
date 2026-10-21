@@ -74,7 +74,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 new RealtimeCarryState(KnownRevision + 2, 40, 200),
                 75,
                 new[] { Revision(state.FullSnapshot.PermanentInventory, 2) },
-                new[] { Contained(ore, state.FullSnapshot.PermanentInventory.ContainerId, 1, 4) }));
+                new[] { Contained(ore, state.FullSnapshot.PermanentInventory.ContainerId, 1, 4) },
+                Array.Empty<Guid>()));
 
             // A changed container without its new revision.
             AssertRefused(ore, state => Change(
@@ -344,25 +345,6 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void AnUnpredictedOperationWaitsAloneAndBlocksLaterMoves()
-        {
-            var ore = Item("fixture.ore", 10, 3);
-            var state = CreateState(new[] { ore });
-            var claim = InventoryPredictedOperation.ClaimRecovery(
-                new RecoveryDelivery(Guid.NewGuid(), 1, "death", "", "", "", "", Array.Empty<RecoveryDeliveryItem>()),
-                state.FullSnapshot.PermanentInventory.ContainerId);
-
-            Assert.That(state.TryPredict(claim, out var error), Is.True, error);
-            Assert.That(state.FullSnapshot, Is.SameAs(state.ConfirmedSnapshot));
-            Assert.That(state.CanPredict, Is.False);
-            Assert.That(
-                state.TryPredict(
-                    InventoryPredictedOperation.Relocate(ore.ItemInstanceId, state.FullSnapshot.PermanentInventory.ContainerId, 2),
-                    out error),
-                Is.False);
-        }
-
-        [Test]
         public void ThePendingQueueIsBounded()
         {
             var ore = Item("fixture.ore", 10, 3);
@@ -400,7 +382,10 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.KnownItemStateRevision, Is.EqualTo(KnownRevision));
         }
 
-        private InventoryClientState CreateState(IReadOnlyList<InventoryItem> inventoryItems, InventoryItem mainHand = null)
+        private InventoryClientState CreateState(
+            IReadOnlyList<InventoryItem> inventoryItems,
+            InventoryItem mainHand = null,
+            RecoveryDelivery[] deliveries = null)
         {
             var characterId = Guid.NewGuid();
             var state = new InventoryClientState();
@@ -417,7 +402,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         "secure_container.base",
                         1,
                         Container(Guid.NewGuid(), "secure_container", 1)),
-                    new RecoveryStorageInventory(Guid.NewGuid(), 1, Array.Empty<RecoveryDelivery>()),
+                    new RecoveryStorageInventory(Guid.NewGuid(), 1, deliveries ?? Array.Empty<RecoveryDelivery>()),
                     100,
                     75,
                     mainHand)),
@@ -491,13 +476,24 @@ namespace Mmorpg.Client.Tests.EditMode
             RealtimeContainerRevision[] containers,
             params RealtimeItemStateChange[] items)
         {
+            return ClaimChange(operationId, weight, containers, null, items);
+        }
+
+        private static RealtimeOwnerItemStateChanged ClaimChange(
+            Guid operationId,
+            long weight,
+            RealtimeContainerRevision[] containers,
+            Guid[] claimed,
+            params RealtimeItemStateChange[] items)
+        {
             return new RealtimeOwnerItemStateChanged(
                 operationId,
                 KnownRevision,
                 new RealtimeCarryState(KnownRevision + 1, weight, 200),
                 75,
                 containers,
-                items);
+                items,
+                claimed ?? Array.Empty<Guid>());
         }
 
         private static RealtimeContainerRevision Revision(InventoryContainer container, long revision)
@@ -521,10 +517,17 @@ namespace Mmorpg.Client.Tests.EditMode
                 containerId,
                 slotIndex,
                 string.Empty,
-                Array.Empty<RealtimeItemPolicySummary>());
+                Array.Empty<RealtimeItemPolicySummary>(),
+                Guid.Empty,
+                0);
         }
 
-        private static RealtimeItemStateChange Equipped(InventoryItem item, string equipmentSlotId, long revision)
+        private static RealtimeItemStateChange Equipped(
+            InventoryItem item,
+            string equipmentSlotId,
+            long revision,
+            Guid bagContentsId = default,
+            long bagContentsRevision = 0)
         {
             return new RealtimeItemStateChange(
                 item.ItemInstanceId,
@@ -535,7 +538,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 Guid.Empty,
                 -1,
                 equipmentSlotId,
-                Array.Empty<RealtimeItemPolicySummary>());
+                Array.Empty<RealtimeItemPolicySummary>(),
+                bagContentsId,
+                bagContentsRevision);
         }
 
         private ItemDefinition Definition(string definitionId)

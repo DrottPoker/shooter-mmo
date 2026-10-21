@@ -307,7 +307,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 21;
+        public const ushort Version = 22;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -375,7 +375,7 @@ namespace Mmorpg.GameProtocol
         private const int MaximumItemOperationItems = 24;
         private const int MaximumItemResultItemRevisions = 32;
         private const int MaximumItemResultContainerRevisions = 8;
-        private const int MaximumItemStateChanges = 8;
+        private const int MaximumItemStateChanges = 16;
         private const int MaximumItemPolicies = 8;
         private const int MaximumItemPolicyTextLength = 64;
         private const int MaximumItemResultRecoveryDeliveries = 8;

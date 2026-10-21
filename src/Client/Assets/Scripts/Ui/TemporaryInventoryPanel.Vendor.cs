@@ -110,8 +110,8 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            var idle = state.CanMutate
-                && worldInteractionController.State.PendingOperationId == Guid.Empty;
+            // Trades show at once and queue behind other item moves.
+            var idle = CanMoveItem(state, null);
             CreateSubheader(parent, vendor.DisplayName, "You have " + VendorClientRules.FormatAmount(state.Catalog, snapshot.Currency));
             foreach (var offer in VendorClientRules.ListOffers(state.Catalog, vendor))
             {
@@ -223,7 +223,6 @@ namespace Mmorpg.Client.Ui
                 offer.DefinitionId,
                 quantity,
                 price,
-                state.KnownItemStateRevision,
                 out var error);
             ExecuteTrade(
                 sent,
@@ -336,9 +335,9 @@ namespace Mmorpg.Client.Ui
             out string reason)
         {
             reason = string.Empty;
-            if (!state.CanMutate)
+            if (!CanMoveItem(state, null))
             {
-                reason = "Inventory mutation is unavailable while state is loading or busy.";
+                reason = "Inventory mutation is unavailable while state is loading.";
                 return false;
             }
 
@@ -409,10 +408,8 @@ namespace Mmorpg.Client.Ui
             var sent = worldInteractionController.TrySell(
                 capability.Id,
                 item.ItemInstanceId,
-                item.Revision,
                 quantity,
                 price,
-                state.KnownItemStateRevision,
                 out var error);
             if (sent)
             {

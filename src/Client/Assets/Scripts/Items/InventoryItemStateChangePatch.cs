@@ -7,8 +7,8 @@ using Mmorpg.WorldData.Items;
 namespace Mmorpg.Client.Items
 {
     // Applies one committed OwnerItemStateChanged to the snapshot it follows. Anything the
-    // change cannot describe exactly, such as an equipped Bag's contents or Recovery Storage,
-    // refuses the patch, and the caller reloads the inventory instead.
+    // change cannot describe exactly, such as an item arriving in Recovery Storage, refuses
+    // the patch, and the caller reloads the inventory instead.
     public static class InventoryItemStateChangePatch
     {
         public static bool TryApply(
@@ -33,13 +33,24 @@ namespace Mmorpg.Client.Items
 
             var editor = new InventorySnapshotEditor(snapshot, bank, recovery);
             var recoveryContainerId = editor.RecoveryStorageContainerId;
+            var claimed = new HashSet<Guid>(change.ClaimedRecoveryDeliveryIds);
+            var claimedItems = new HashSet<Guid>();
+            foreach (var deliveryId in claimed)
+            {
+                var delivery = editor.RemoveDelivery(deliveryId);
+                if (delivery == null)
+                {
+                    return false;
+                }
+
+                claimedItems.UnionWith(delivery.Items.Select(item => item.Item.ItemInstanceId));
+            }
+
             // Every changed item leaves its slot first, so swaps and moves into a slot another
             // changed item left place cleanly.
             foreach (var item in change.Items)
             {
-                if (editor.IsInRecoveryStorage(item.ItemInstanceId)
-                    || (editor.TryFind(item.ItemInstanceId, out _, out var location)
-                        && IsEquippedBagSlot(location)))
+                if (editor.TryFindDelivery(item.ItemInstanceId, out _))
                 {
                     return false;
                 }
@@ -47,7 +58,14 @@ namespace Mmorpg.Client.Items
                 editor.Remove(item.ItemInstanceId);
             }
 
-            foreach (var item in change.Items)
+            // A claimed delivery's items all go somewhere this change names.
+            if (!claimedItems.IsSubsetOf(change.Items.Select(item => item.ItemInstanceId)))
+            {
+                return false;
+            }
+
+            // The Bag slot first, so the items inside a newly equipped Bag find its contents.
+            foreach (var item in change.Items.OrderBy(item => item.Location == RealtimeItemStateLocationKind.Equipment ? 0 : 1))
             {
                 if (!TryPlace(catalog, editor, recoveryContainerId, item))
                 {
@@ -99,17 +117,26 @@ namespace Mmorpg.Client.Items
                         || (catalog.TryGetDefinition(item.DefinitionId, out _)
                             && editor.TryPlace(item.ContainerId, item.SlotIndex, ToItem(item)));
                 default:
-                    return !string.Equals(item.EquipmentSlotId, ItemEquipmentSlotIds.Bag, StringComparison.Ordinal)
-                        && catalog.TryGetDefinition(item.DefinitionId, out _)
-                        && editor.TryEquip(item.EquipmentSlotId, ToItem(item));
-            }
-        }
+                    if (!catalog.TryGetDefinition(item.DefinitionId, out var definition))
+                    {
+                        return false;
+                    }
 
-        // An equipped Bag brings its contents, which only a reload can show.
-        private static bool IsEquippedBagSlot(InventoryItemLocation location)
-        {
-            return location.Kind == InventoryItemLocationKind.Equipment
-                && string.Equals(location.EquipmentSlotId, ItemEquipmentSlotIds.Bag, StringComparison.Ordinal);
+                    if (!string.Equals(item.EquipmentSlotId, ItemEquipmentSlotIds.Bag, StringComparison.Ordinal))
+                    {
+                        return editor.TryEquip(item.EquipmentSlotId, ToItem(item));
+                    }
+
+                    // An equipped Bag shows its contents, laid out as its definition.
+                    return definition.Bag != null
+                        && item.BagContentsContainerId != Guid.Empty
+                        && editor.TryEquipBag(
+                            ToItem(item),
+                            InventorySnapshotEditor.CreateBagContents(
+                                definition,
+                                item.BagContentsContainerId,
+                                item.BagContentsRevision));
+            }
         }
 
         private static InventoryItem ToItem(RealtimeItemStateChange item)

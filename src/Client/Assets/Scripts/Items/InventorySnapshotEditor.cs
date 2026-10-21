@@ -11,9 +11,13 @@ namespace Mmorpg.Client.Items
     internal sealed class InventorySnapshotEditor
     {
         private readonly CharacterInventorySnapshot source;
-        private readonly RecoveryStorageInventory recoveryStorage;
+        private readonly RecoveryStorageInventory recoverySource;
         private readonly List<EditableContainer> containers = new List<EditableContainer>();
         private readonly InventoryItem[] equipment;
+        private readonly List<RecoveryDelivery> deliveries;
+        private EditableContainer bagContents;
+        private long recoveryRevision;
+        private bool recoveryChanged;
 
         public InventorySnapshotEditor(
             CharacterInventorySnapshot snapshot,
@@ -21,21 +25,33 @@ namespace Mmorpg.Client.Items
             RecoveryStorageInventory recovery)
         {
             source = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
-            recoveryStorage = recovery ?? snapshot.RecoveryStorage;
+            recoverySource = recovery ?? snapshot.RecoveryStorage;
             containers.Add(new EditableContainer(snapshot.PermanentInventory));
             containers.Add(new EditableContainer(bank ?? snapshot.Bank));
             containers.Add(new EditableContainer(snapshot.SecureContainer.Contents));
             if (snapshot.EquippedBag != null)
             {
-                containers.Add(new EditableContainer(snapshot.EquippedBag.Contents));
+                bagContents = new EditableContainer(snapshot.EquippedBag.Contents);
+                containers.Add(bagContents);
             }
 
             equipment = snapshot.Equipment.Select(slot => slot.Item).ToArray();
+            deliveries = recoverySource?.Deliveries.ToList() ?? new List<RecoveryDelivery>();
+            recoveryRevision = recoverySource?.Revision ?? 0;
         }
 
         public Guid RecoveryStorageContainerId
         {
-            get { return recoveryStorage?.ContainerId ?? Guid.Empty; }
+            get { return recoverySource?.ContainerId ?? Guid.Empty; }
+        }
+
+        public InventoryItem EquippedBag
+        {
+            get
+            {
+                var index = EquipmentIndex(ItemEquipmentSlotIds.Bag);
+                return index < 0 ? null : equipment[index];
+            }
         }
 
         public bool HasContainer(Guid containerId)
@@ -50,11 +66,11 @@ namespace Mmorpg.Client.Items
             return container != null;
         }
 
-        public bool IsInRecoveryStorage(Guid itemInstanceId)
+        public bool TryFindDelivery(Guid itemInstanceId, out RecoveryDelivery delivery)
         {
-            return recoveryStorage != null
-                && recoveryStorage.Deliveries.Any(delivery => delivery.Items.Any(item =>
-                    item.Item.ItemInstanceId == itemInstanceId));
+            delivery = deliveries.FirstOrDefault(candidate => candidate.Items.Any(item =>
+                item.Item.ItemInstanceId == itemInstanceId));
+            return delivery != null;
         }
 
         public bool TryFind(Guid itemInstanceId, out InventoryItem item, out InventoryItemLocation location)
@@ -93,6 +109,8 @@ namespace Mmorpg.Client.Items
             return false;
         }
 
+        // Takes the item out of its slot. A Bag that leaves the Bag slot takes its contents
+        // container out of view with it.
         public InventoryItem Remove(Guid itemInstanceId)
         {
             foreach (var container in containers)
@@ -114,6 +132,13 @@ namespace Mmorpg.Client.Items
                 {
                     var removed = equipment[index];
                     equipment[index] = null;
+                    if (string.Equals(source.Equipment[index].SlotId, ItemEquipmentSlotIds.Bag, StringComparison.Ordinal)
+                        && bagContents != null)
+                    {
+                        containers.Remove(bagContents);
+                        bagContents = null;
+                    }
+
                     return removed;
                 }
             }
@@ -169,13 +194,44 @@ namespace Mmorpg.Client.Items
         public bool TryEquip(string equipmentSlotId, InventoryItem item)
         {
             var index = EquipmentIndex(equipmentSlotId);
-            if (index < 0 || item == null || equipment[index] != null)
+            if (index < 0
+                || item == null
+                || equipment[index] != null
+                || string.Equals(equipmentSlotId, ItemEquipmentSlotIds.Bag, StringComparison.Ordinal))
             {
                 return false;
             }
 
             equipment[index] = item;
             return true;
+        }
+
+        // Equips a Bag together with its contents container, which becomes visible.
+        public bool TryEquipBag(InventoryItem bag, InventoryContainer contents)
+        {
+            var index = EquipmentIndex(ItemEquipmentSlotIds.Bag);
+            if (index < 0 || bag == null || contents == null || equipment[index] != null || bagContents != null)
+            {
+                return false;
+            }
+
+            equipment[index] = bag;
+            bagContents = new EditableContainer(contents) { Changed = true };
+            containers.Add(bagContents);
+            return true;
+        }
+
+        public bool TryGetSlotItem(Guid containerId, int slotIndex, out InventoryItem item)
+        {
+            item = null;
+            var container = FindContainer(containerId);
+            return container != null && container.Items.TryGetValue(slotIndex, out item);
+        }
+
+        public InventoryItem GetEquipped(string equipmentSlotId)
+        {
+            var index = EquipmentIndex(equipmentSlotId);
+            return index < 0 ? null : equipment[index];
         }
 
         public bool HasEquipmentSlot(string equipmentSlotId)
@@ -185,6 +241,13 @@ namespace Mmorpg.Client.Items
 
         public bool SetContainerRevision(Guid containerId, long revision)
         {
+            if (containerId != Guid.Empty && containerId == RecoveryStorageContainerId)
+            {
+                recoveryRevision = revision;
+                recoveryChanged = true;
+                return true;
+            }
+
             var container = FindContainer(containerId);
             if (container == null)
             {
@@ -195,12 +258,27 @@ namespace Mmorpg.Client.Items
             return true;
         }
 
+        // Takes a claimed delivery out of Recovery Storage. Its items leave with it, so the
+        // caller places every one of them elsewhere.
+        public RecoveryDelivery RemoveDelivery(Guid deliveryId)
+        {
+            var delivery = deliveries.FirstOrDefault(candidate => candidate.DeliveryId == deliveryId);
+            if (delivery != null)
+            {
+                deliveries.Remove(delivery);
+                recoveryChanged = true;
+            }
+
+            return delivery;
+        }
+
         // A known container whose contents changed without a new revision would leave the
         // patched snapshot incoherent with the server's.
         public bool ChangedContainersHaveRevisions(ISet<Guid> revisedContainerIds)
         {
             return containers.All(container =>
-                !container.Changed || revisedContainerIds.Contains(container.Source.ContainerId));
+                    !container.Changed || revisedContainerIds.Contains(container.Source.ContainerId))
+                && (!recoveryChanged || revisedContainerIds.Contains(RecoveryStorageContainerId));
         }
 
         public CharacterInventorySnapshot Build(
@@ -209,7 +287,9 @@ namespace Mmorpg.Client.Items
             long carryCapacity,
             long currency)
         {
-            var built = containers.Select(container => container.Build()).ToArray();
+            var permanent = containers[0].Build();
+            var bank = containers[1].Build();
+            var secure = containers[2].Build();
             var equipmentSlots = new InventoryEquipmentSlot[equipment.Length];
             for (var index = 0; index < equipment.Length; index++)
             {
@@ -219,41 +299,73 @@ namespace Mmorpg.Client.Items
                     : new InventoryEquipmentSlot(slot.SlotId, slot.SortOrder, equipment[index]);
             }
 
-            var bagIndex = EquipmentIndex(ItemEquipmentSlotIds.Bag);
-            var equippedBag = source.EquippedBag;
-            if (equippedBag != null)
+            var bagItem = EquippedBag;
+            if ((bagItem == null) != (bagContents == null))
             {
-                var bagItem = bagIndex < 0 ? null : equipment[bagIndex];
-                if (bagItem == null || bagItem.ItemInstanceId != equippedBag.Item.ItemInstanceId)
-                {
-                    throw new InvalidOperationException("The equipped Bag cannot change through an item edit.");
-                }
+                throw new InvalidOperationException("An equipped Bag must have its contents container.");
+            }
 
-                equippedBag = ReferenceEquals(bagItem, equippedBag.Item) && ReferenceEquals(built[3], equippedBag.Contents)
-                    ? equippedBag
-                    : new EquippedBagInventory(bagItem, built[3]);
+            EquippedBagInventory equippedBag = null;
+            if (bagItem != null)
+            {
+                var contents = bagContents.Build();
+                equippedBag = source.EquippedBag != null
+                    && ReferenceEquals(bagItem, source.EquippedBag.Item)
+                    && ReferenceEquals(contents, source.EquippedBag.Contents)
+                        ? source.EquippedBag
+                        : new EquippedBagInventory(bagItem, contents);
             }
 
             return new CharacterInventorySnapshot(
                 source.CharacterId,
                 source.CatalogRevision,
                 itemStateRevision,
-                built[0],
+                permanent,
                 equipmentSlots,
                 equippedBag,
-                built[1],
-                ReferenceEquals(built[2], source.SecureContainer.Contents)
+                bank,
+                ReferenceEquals(secure, source.SecureContainer.Contents)
                     ? source.SecureContainer
                     : new SecureContainerInventory(
                         source.SecureContainer.TierId,
                         source.SecureContainer.EntitlementRevision,
-                        built[2]),
-                recoveryStorage,
+                        secure),
+                BuildRecovery(),
                 carriedWeight,
                 carryCapacity,
                 InventorySnapshotMapper.CalculateLoadRatioBasisPoints(carriedWeight, carryCapacity),
                 EncumbranceRules.CalculateMovementMultiplierBasisPoints(carriedWeight, carryCapacity),
                 currency);
+        }
+
+        // The empty contents container of a Bag, laid out as its catalog definition and as
+        // GameService creates it.
+        public static InventoryContainer CreateBagContents(ItemDefinition bag, Guid containerId, long revision)
+        {
+            var slots = bag.Bag.Slots
+                .OrderBy(slot => slot.Index)
+                .Select(slot => new InventorySlot(
+                    slot.Index,
+                    string.IsNullOrWhiteSpace(slot.Kind) ? BagSlotKindIds.General : slot.Kind,
+                    slot.AcceptedTags ?? Array.Empty<string>(),
+                    null))
+                .ToArray();
+            return new InventoryContainer(
+                containerId,
+                ItemContainerTypeIds.BagContents,
+                revision,
+                slots.Length,
+                slots);
+        }
+
+        private RecoveryStorageInventory BuildRecovery()
+        {
+            if (recoverySource == null || !recoveryChanged)
+            {
+                return recoverySource;
+            }
+
+            return new RecoveryStorageInventory(recoverySource.ContainerId, recoveryRevision, deliveries.ToArray());
         }
 
         private EditableContainer FindContainer(Guid containerId)

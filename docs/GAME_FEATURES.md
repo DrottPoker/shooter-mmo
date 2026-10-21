@@ -369,15 +369,18 @@ shows a tooltip with the item details. Local definition lookups disable obvious 
 equipment, tag, Secure Container, non-empty Bag, stack, destroy, and hard-cap
 targets, but the server remains final authority.
 
-Moving, swapping, merging, splitting, equipping, unequipping, and destroying
-items react at once: the item lands where you drop it before the server answers,
-and you can keep dragging while up to eight moves wait. The server still decides
-every move. When it rejects one, every waiting move is undone, the items jump
-back and flash red, and the status line says `Item move undone:` with the
-reason. A split stack can be moved once the server has confirmed it, a fraction
-of a second later. A Recovery claim, a Bag that moves with its contents, corpse
-loot, and vendor trades still wait for the server, but their results, like every
-committed change, update the inventory directly instead of reloading it.
+Every item move reacts at once: moving, swapping, merging, splitting, equipping
+and unequipping items and Bags, destroying, claiming a Recovery delivery,
+looting, depositing, and rearranging a corpse, swapping Bags with a corpse, and
+buying or selling at a vendor. The item lands where you drop it and the balance
+changes before the server answers, and you can keep going while up to eight
+moves wait. The server still decides every move. When it rejects one, every
+waiting move is undone, the items jump back and flash red, and the status line
+says `Item move undone:` with the reason. A new stack from a split, a purchase,
+or a partial loot, and the contents of a Bag you just equipped, can be used once
+the server has confirmed them, a fraction of a second later. Committed changes
+update the inventory directly, and opening the Bank or Recovery tab shows them
+without reloading.
 
 The client loads the gameplay and presentation catalogs once through its
 persistent bootstrap. Stable definition ids resolve fallback names,
@@ -417,10 +420,9 @@ equipped item into the corpse slot the loot came from. A live Mob corpse, such
 as a Feral Wolf's, cannot take an item back, so its loot fills an empty slot or
 tops up a stack of the same item in the inventory or the equipment, but never
 swaps. Bank and Recovery Storage items cannot enter corpse
-custody, and an ordinary equipped item enters it only through that swap. The panel never moves either side
-of a corpse transfer ahead of the server. A custody-changing transfer updates
-the character inventory from the committed change, or reloads it when the change
-cannot be described, while pure corpse rearrangement updates only corpse state.
+custody, and an ordinary equipped item enters it only through that swap. Every
+corpse transfer and rearrangement shows on both sides at once, and the committed
+change and the corpse view that follow it confirm what you see.
 
 A live Mob corpse closes for every viewer once its last item is taken, and any
 corpse closes when it expires. The Corpse context then names the reason in

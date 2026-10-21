@@ -216,7 +216,8 @@ public sealed record SimulationItemTransactionResponse(
     IReadOnlyList<SimulationItemChange>? ItemChanges = null);
 
 // The final state of one item a transaction changed. GameService leaves the list out when
-// the transaction changed too many items, and a removed item has no definition.
+// the transaction changed too many items, and a removed item has no definition. A Bag in
+// the Bag slot names its contents container.
 public sealed record SimulationItemChange(
     Guid ItemInstanceId,
     bool Removed,
@@ -227,7 +228,9 @@ public sealed record SimulationItemChange(
     int? ContainerSlotIndex,
     Guid? EquippedCharacterId,
     string? EquipmentSlotId,
-    IReadOnlyList<SimulationItemPolicySummary>? Policies);
+    IReadOnlyList<SimulationItemPolicySummary>? Policies,
+    Guid? BagContentsContainerId = null,
+    long? BagContentsRevision = null);
 
 public sealed record SimulationItemPolicySummary(
     string PolicyKind,
