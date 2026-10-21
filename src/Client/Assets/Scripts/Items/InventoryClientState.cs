@@ -244,6 +244,9 @@ namespace Mmorpg.Client.Items
                     return InventorySnapshotApplyResult.Diverged;
                 }
 
+                // An equal full snapshot proves the confirmed state, so a reconnect that changed
+                // nothing makes the inventory usable again instead of waiting for a newer revision.
+                RequiresFullRefresh = false;
                 SetReady();
                 return InventorySnapshotApplyResult.Unchanged;
             }
