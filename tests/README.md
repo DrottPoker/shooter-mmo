@@ -77,12 +77,15 @@ Worlds can be redesigned without rewriting them:
 - `CollisionTestWorldFactory` builds a flat 30 by 30 meter collision world for
   the .NET tests, and the Unity `FixtureCollisionWorld` builds the same ground
   with a wall, cover, and a ramp for the Unity movement tests.
+- The Unity `FixtureWorldActorContent` copies the actor content to a temporary
+  folder with the fixture spawns as Development World 1's spawns, for the actor
+  editor view tests.
 
 Content tests name a World instead. `WorldActorTestData.LoadWorldSpawns`,
 `CompileWorld`, `RuntimeJsonFor`, and `CheckedInWorldIds` read the checked-in
-spawns and generated runtime of every World, and the World layout tests in
-`MovementPathPlannerTests` and the Unity `AuthoredGameplayAssetTests` check the
-baked development Worlds themselves.
+spawns and generated runtime of every World, and `DevelopmentWorldLayoutTests`
+and the Unity `AuthoredGameplayAssetTests` check the baked development Worlds
+themselves.
 
 ## Shared Build Settings
 

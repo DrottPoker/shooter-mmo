@@ -16,11 +16,13 @@ namespace Mmorpg.Client.Tests.EditMode
         private const string PatrolKey = "patrolPaths/local.wolf_patrol";
 
         private ContentUndoState undoState;
+        private FixtureWorldActorContent content;
 
         [SetUp]
         public void CreateUndoState()
         {
             undoState = ContentUndoState.Create("Spawn Authoring View Test");
+            content = new FixtureWorldActorContent();
         }
 
         [TearDown]
@@ -28,6 +30,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             Undo.ClearUndo(undoState);
             Object.DestroyImmediate(undoState);
+            content.Dispose();
         }
 
         [Test]
@@ -219,7 +222,7 @@ namespace Mmorpg.Client.Tests.EditMode
         private WorldActorSpawnAuthoringView CreateView()
         {
             return new WorldActorSpawnAuthoringView(
-                new WorldActorEditorService(WorldActorEditorPaths.CreateDefault()),
+                new WorldActorEditorService(content.Paths),
                 undoState);
         }
 

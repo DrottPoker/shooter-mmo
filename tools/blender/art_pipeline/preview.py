@@ -1,6 +1,6 @@
 """Renders a review sheet for an asset: one row per exported root object, seen from four
 sides at the game camera pitch, plus a fifth view with a 1.8 m mannequin for scale. Only
-the Export collection is rendered, on a ground in the DevelopmentWorld2 ground color."""
+the Export collection is rendered, on a dark green ground."""
 
 import math
 import os

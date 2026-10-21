@@ -67,10 +67,10 @@ Global Services
   future economy, social, inventory, and persistence services
 
 World: development-world-1
-  complete small-map development content
+  stress arena: 64 m, everything inside one interest radius
 
 World: development-world-2
-  registered large-map development content, Unity scene and collision pending
+  test World: 384 m, one zone for every developed feature
 
 Fleet: local-fleet
   Node: local-node-1
@@ -79,7 +79,7 @@ Fleet: local-fleet
       SimulationAssignment: worker -> local-shard-1
 
 Shard: local-shard-1
-  World: development-world-1
+  World: development-world-2
   Fleet: local-fleet
 ```
 

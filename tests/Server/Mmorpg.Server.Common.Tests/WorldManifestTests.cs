@@ -19,10 +19,7 @@ public sealed class WorldManifestTests
             manifests,
             manifest => manifest.worldId == "development-world-2");
         Assert.Equal("DevelopmentWorld1", worldOne.clientSceneName);
-        Assert.Equal(-14f, worldOne.bounds.minimumX);
         Assert.Equal("DevelopmentWorld2", worldTwo.clientSceneName);
-        Assert.Equal(-254f, worldTwo.bounds.minimumX);
-        Assert.Equal(-16f, worldTwo.spawn.z);
     }
 
     [Fact]

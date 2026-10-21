@@ -8,7 +8,8 @@
     "Mmorpg.Client.Core",
     "Mmorpg.WorldData",
     "Mmorpg.WorldData.Client",
-    "Unity.Addressables.Editor"
+    "Unity.Addressables.Editor",
+    "UnityEngine.UI"
   ],
   "includePlatforms": [
     "Editor"

@@ -26,13 +26,6 @@ namespace Mmorpg.Client.Tests.EditMode
             "Assets/Scenes/DevelopmentWorld1.unity";
         private const string DevelopmentWorld2ScenePath =
             "Assets/Scenes/DevelopmentWorld2.unity";
-        private const string DevelopmentWorld2MaterialDirectory =
-            "Assets/Art/Materials/DevelopmentWorld2";
-        private const int DevelopmentWorld2CollisionBoxCount = 112;
-
-        // 128 by 128 terrain cells less 60 portal holes, two triangles each, plus the 14
-        // quads of the tunnel arch.
-        private const int DevelopmentWorld2CollisionTriangleCount = ((128 * 128) - 60) * 2 + 28;
 
         [Test]
         public void PlayerControlsDefinesRequiredGameplayActions()
@@ -293,25 +286,16 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(prefab.GetComponentsInChildren<PlayerInput>(true), Is.Empty);
         }
 
-        [Test]
-        public void DevelopmentWorldOneUsesAuthoredGameplayComposition()
+        [TestCase(DevelopmentWorld1ScenePath, "development-world-1")]
+        [TestCase(DevelopmentWorld2ScenePath, "development-world-2")]
+        public void DevelopmentWorldSceneUsesTheAuthoredWorldComposition(string scenePath, string worldId)
         {
-            var scene = SceneManager.GetSceneByPath(DevelopmentWorld1ScenePath);
-            var openedForTest = !scene.IsValid() || !scene.isLoaded;
-
-            if (openedForTest)
-            {
-                scene = EditorSceneManager.OpenScene(
-                    DevelopmentWorld1ScenePath,
-                    OpenSceneMode.Additive);
-            }
-
-            try
+            var manifest = DevelopmentWorldBuilder.LoadManifest(worldId);
+            WithScene(scenePath, scene =>
             {
                 var environment = FindGameObject(scene, "Environment");
                 var gameplay = FindGameObject(scene, "Gameplay");
                 var spawnPoint = FindGameObject(scene, "PlayerSpawn");
-                var localPlayer = FindGameObject(scene, "LocalPlayer");
                 var context = FindGameObject(scene, "WorldSceneContext");
                 var entityPresentationRoot = FindGameObject(scene, "EntityPresentationRoot");
 
@@ -321,17 +305,20 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(context, Is.Not.Null);
                 Assert.That(entityPresentationRoot, Is.Not.Null);
                 Assert.That(FindGameObject(scene, "Main Camera"), Is.Null);
+                Assert.That(FindGameObject(scene, "LocalPlayer"), Is.Null);
                 Assert.That(spawnPoint.transform.parent, Is.EqualTo(gameplay.transform));
-                Assert.That(spawnPoint.transform.localPosition, Is.EqualTo(new Vector3(0f, 0f, -1f)));
-                Assert.That(localPlayer, Is.Null);
                 Assert.That(entityPresentationRoot.transform.parent, Is.EqualTo(gameplay.transform));
 
-                var sceneContext = context.GetComponent<WorldSceneContext>();
-                var contextProperties = new SerializedObject(sceneContext);
+                // PlayerSpawn follows the World manifest, which the worker uses.
+                Assert.That(
+                    spawnPoint.transform.localPosition,
+                    Is.EqualTo(new Vector3(manifest.spawn.x, manifest.spawn.y, manifest.spawn.z)));
+                Assert.That(spawnPoint.transform.localEulerAngles.y, Is.EqualTo(manifest.spawn.yawDegrees).Within(0.001f));
+
+                var contextProperties = new SerializedObject(context.GetComponent<WorldSceneContext>());
                 var localPlayerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(LocalPlayerPrefabPath);
                 Assert.That(contextProperties.FindProperty("localPlayerPrefab").objectReferenceValue,
                     Is.EqualTo(localPlayerPrefab.GetComponent<LocalPlayerController>()));
-                Assert.That(contextProperties.FindProperty("playerCamera"), Is.Null);
                 Assert.That(contextProperties.FindProperty("playerSpawnPoint").objectReferenceValue,
                     Is.EqualTo(spawnPoint.transform));
                 var remotePlayerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(RemotePlayerPrefabPath);
@@ -340,112 +327,86 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(contextProperties.FindProperty("entityPresentationRoot").objectReferenceValue,
                     Is.EqualTo(entityPresentationRoot.transform));
 
-                Assert.That(environment.GetComponentsInChildren<BoxCollider>(true), Has.Length.EqualTo(13));
-                Assert.That(environment.GetComponentsInChildren<Rigidbody>(true), Is.Empty);
-                Assert.That(environment.GetComponentsInChildren<Transform>(true)
-                    .All(transform => transform.gameObject.isStatic), Is.True);
-
-                Assert.That(FindGameObject(scene, "NorthWall"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "Ramp"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "CameraTestWall"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "Step01"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "Step02"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "Step03"), Is.Not.Null);
-            }
-            finally
-            {
-                if (openedForTest)
-                {
-                    EditorSceneManager.CloseScene(scene, true);
-                }
-            }
-        }
-
-        [Test]
-        public void DevelopmentWorldTwoMatchesItsAuthoredWorldContract()
-        {
-            var scene = SceneManager.GetSceneByPath(DevelopmentWorld2ScenePath);
-            var openedForTest = !scene.IsValid() || !scene.isLoaded;
-
-            if (openedForTest)
-            {
-                scene = EditorSceneManager.OpenScene(
-                    DevelopmentWorld2ScenePath,
-                    OpenSceneMode.Additive);
-            }
-
-            try
-            {
-                var environment = FindGameObject(scene, "Environment");
-                var gameplay = FindGameObject(scene, "Gameplay");
-                var spawnPoint = FindGameObject(scene, "PlayerSpawn");
                 var authoring = scene.GetRootGameObjects()
                     .SelectMany(root => root.GetComponentsInChildren<WorldCollisionAuthoring>(true))
                     .Single();
-
-                Assert.That(environment, Is.Not.Null);
-                Assert.That(gameplay, Is.Not.Null);
-                Assert.That(spawnPoint, Is.Not.Null);
-                Assert.That(spawnPoint.transform.parent, Is.EqualTo(gameplay.transform));
-                Assert.That(
-                    spawnPoint.transform.localPosition,
-                    Is.EqualTo(new Vector3(0f, 0f, -16f)));
-                Assert.That(authoring.WorldId, Is.EqualTo("development-world-2"));
-                Assert.That(authoring.ChunkSize, Is.EqualTo(32f));
+                Assert.That(authoring.WorldId, Is.EqualTo(worldId));
+                Assert.That(authoring.ChunkSize, Is.EqualTo(DevelopmentWorldBuilder.ChunkSize));
                 Assert.That(authoring.CollisionRoot, Is.EqualTo(environment.transform));
+                Assert.That(authoring.LayerMask, Is.EqualTo((uint)DevelopmentWorldBuilder.CollisionLayerMask));
 
-                AssertTransform(scene, "Ground", new Vector3(0f, -0.25f, 0f),
-                    new Vector3(512f, 0.5f, 512f));
-                AssertTransform(scene, "NorthWall", new Vector3(0f, 3f, 255f),
-                    new Vector3(512f, 6f, 2f));
-                AssertTransform(scene, "SouthWall", new Vector3(0f, 3f, -255f),
-                    new Vector3(512f, 6f, 2f));
-                AssertTransform(scene, "EastWall", new Vector3(255f, 3f, 0f),
-                    new Vector3(2f, 6f, 512f));
-                AssertTransform(scene, "WestWall", new Vector3(-255f, 3f, 0f),
-                    new Vector3(2f, 6f, 512f));
-
-                Assert.That(FindGameObject(scene, "CentralHub"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "NorthTraversal"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "EastSightline"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "SouthwestWilderness"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "SoutheastExpansion"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "NpcPlacementGuides"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "BankServiceMarker"), Is.Not.Null);
-                Assert.That(FindGameObject(scene, "WolfSpawnAreaGuide"), Is.Not.Null);
+                // Only bakeable colliders, nothing dynamic, and everything static.
                 var colliders = environment.GetComponentsInChildren<Collider>(true);
-                Assert.That(
-                    colliders.OfType<BoxCollider>().ToArray(),
-                    Has.Length.EqualTo(DevelopmentWorld2CollisionBoxCount));
-                var tunnel = colliders.OfType<MeshCollider>().Single();
-                Assert.That(tunnel.convex, Is.False);
-                var terrain = colliders.OfType<TerrainCollider>().Single();
-                Assert.That(terrain.transform.position, Is.EqualTo(new Vector3(96f, 0f, 96f)));
-                Assert.That(terrain.terrainData.size, Is.EqualTo(new Vector3(128f, 40f, 128f)));
-                Assert.That(colliders, Has.Length.EqualTo(DevelopmentWorld2CollisionBoxCount + 2));
                 Assert.That(colliders.All(collider => !collider.isTrigger), Is.True);
+                Assert.That(
+                    colliders.All(collider => collider is BoxCollider
+                        || collider is TerrainCollider
+                        || (collider is MeshCollider mesh && !mesh.convex)),
+                    Is.True);
                 Assert.That(environment.GetComponentsInChildren<Rigidbody>(true), Is.Empty);
                 Assert.That(environment.GetComponentsInChildren<Transform>(true)
                     .All(transform => transform.gameObject.isStatic), Is.True);
 
-                AssertClearOfEnvironmentObstacles(colliders, new Vector3(0f, 1f, -16f));
-                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-8f, 1f, 4f));
-                AssertClearOfEnvironmentObstacles(colliders, new Vector3(0f, 1f, 4f));
-                AssertClearOfEnvironmentObstacles(colliders, new Vector3(8f, 1f, 4f));
-                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-16f, 1f, 12f));
-                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-184f, 1f, -184f));
-                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-136f, 1f, -176f));
-                AssertClearOfEnvironmentObstacles(colliders, new Vector3(-148f, 1f, -136f));
-            }
-            finally
-            {
-                if (openedForTest)
-                {
-                    EditorSceneManager.CloseScene(scene, true);
-                }
-            }
+                // Labels are depth-tested world-space text that never takes pointer input.
+                Assert.That(
+                    environment.GetComponentsInChildren<Canvas>(true).All(canvas => canvas.renderMode == RenderMode.WorldSpace),
+                    Is.True);
+                Assert.That(environment.GetComponentsInChildren<UnityEngine.UI.GraphicRaycaster>(true), Is.Empty);
+                Assert.That(
+                    environment.GetComponentsInChildren<UnityEngine.UI.Graphic>(true).All(graphic => !graphic.raycastTarget),
+                    Is.True);
+
+                // The boundary walls' inner faces lie on the manifest bounds.
+                var bounds = manifest.bounds;
+                AssertInnerFace(scene, "NorthWall", wall => wall.min.z, bounds.maximumZ);
+                AssertInnerFace(scene, "SouthWall", wall => wall.max.z, bounds.minimumZ);
+                AssertInnerFace(scene, "EastWall", wall => wall.min.x, bounds.maximumX);
+                AssertInnerFace(scene, "WestWall", wall => wall.max.x, bounds.minimumX);
+                var ground = FindGameObject(scene, "Ground").GetComponent<BoxCollider>().bounds;
+                Assert.That(ground.max.y, Is.EqualTo(manifest.groundHeight).Within(0.0001f));
+                Assert.That(ground.min.x, Is.LessThanOrEqualTo(bounds.minimumX - 1f));
+                Assert.That(ground.max.x, Is.GreaterThanOrEqualTo(bounds.maximumX + 1f));
+            });
         }
 
+        [Test]
+        public void DevelopmentWorldOneIsTheStressArena()
+        {
+            WithScene(DevelopmentWorld1ScenePath, scene =>
+            {
+                foreach (var group in new[] { "Spawn", "Obstacles", "ServiceBooth", "GatheringField", "WolfPen", "Platform" })
+                {
+                    Assert.That(FindGameObject(scene, group), Is.Not.Null, group);
+                }
+
+                var environment = FindGameObject(scene, "Environment");
+                Assert.That(environment.GetComponentsInChildren<TerrainCollider>(true), Is.Empty);
+                Assert.That(environment.GetComponentsInChildren<MeshCollider>(true), Is.Empty);
+            });
+        }
+
+        [Test]
+        public void DevelopmentWorldTwoHasEveryTestZone()
+        {
+            WithScene(DevelopmentWorld2ScenePath, scene =>
+            {
+                foreach (var zone in new[]
+                         {
+                             "Town", "Roads", "MovementCourse", "Highlands", "CombatRange", "InterestRoad",
+                             "WolfWoods", "Quarry", "Meadow", "Sandbox"
+                         })
+                {
+                    Assert.That(FindGameObject(scene, zone), Is.Not.Null, zone);
+                }
+
+                var environment = FindGameObject(scene, "Environment");
+                var tunnel = environment.GetComponentsInChildren<MeshCollider>(true).Single();
+                Assert.That(tunnel.convex, Is.False);
+                var terrain = environment.GetComponentsInChildren<TerrainCollider>(true).Single();
+                Assert.That(terrain.transform.position, Is.EqualTo(DevelopmentWorld2Builder.HighlandsOrigin));
+                Assert.That(terrain.terrainData.size, Is.EqualTo(DevelopmentWorld2Builder.HighlandsSize));
+            });
+        }
         [Test]
         public void ProjectRendersWithUrpOnEveryQualityLevel()
         {
@@ -548,9 +509,6 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EveryProjectMaterialUsesTheUrpLitShader()
         {
-            Assert.That(
-                AssetDatabase.FindAssets("t:Material", new[] { DevelopmentWorld2MaterialDirectory }),
-                Has.Length.EqualTo(8));
             var materialGuids = AssetDatabase.FindAssets("t:Material", new[] { "Assets" });
             Assert.That(materialGuids, Is.Not.Empty);
             foreach (var materialGuid in materialGuids)
@@ -563,53 +521,68 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // The builders create the shared palette, so a material that no development World
+        // uses any more is stale.
         [Test]
-        public void BakedWorldCollisionLoadsAllAuthoredBoxes()
+        public void EveryDevelopmentWorldMaterialIsUsedByADevelopmentWorld()
         {
-            var loaded = UnityWorldCollisionLoader.TryLoad(
-                "development-world-1",
-                out var collisionWorld,
-                out var error);
+            var used = AssetDatabase.GetDependencies(
+                new[] { DevelopmentWorld1ScenePath, DevelopmentWorld2ScenePath },
+                true);
+            var materials = AssetDatabase.FindAssets("t:Material", new[] { DevelopmentWorldPalette.MaterialDirectory })
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .ToArray();
 
-            Assert.That(loaded, Is.True, error);
-            Assert.That(collisionWorld.ChunkCount, Is.EqualTo(4));
-            Assert.That(collisionWorld.Revision, Is.Not.Empty);
-            var buffer = new CollisionQueryBuffer();
-            collisionWorld.QueryShapes(
-                new CollisionAabb(
-                    new SimulationVector3(-16f, -2f, -16f),
-                    new SimulationVector3(16f, 5f, 16f)),
-                CollisionLayers.CharacterMovement,
-                buffer);
-            Assert.That(buffer.Shapes, Has.Count.EqualTo(13));
+            Assert.That(materials, Is.Not.Empty);
+            foreach (var material in materials)
+            {
+                Assert.That(used, Does.Contain(material));
+            }
         }
 
-        [Test]
-        public void BakedDevelopmentWorldTwoCollisionLoadsAllAuthoredShapes()
+        // The checked-in bake must be current: it holds exactly the scene's boxes, terrain
+        // cells, and mesh triangles, in every chunk the ground covers.
+        [TestCase(DevelopmentWorld1ScenePath, "development-world-1")]
+        [TestCase(DevelopmentWorld2ScenePath, "development-world-2")]
+        public void BakedWorldCollisionMatchesItsScene(string scenePath, string worldId)
         {
-            var loaded = UnityWorldCollisionLoader.TryLoad(
-                "development-world-2",
-                out var collisionWorld,
-                out var error);
+            Assert.That(
+                UnityWorldCollisionLoader.TryLoad(worldId, out var collisionWorld, out var error),
+                Is.True,
+                error);
+            WithScene(scenePath, scene =>
+            {
+                var environment = FindGameObject(scene, "Environment");
+                var ground = FindGameObject(scene, "Ground").GetComponent<BoxCollider>().bounds;
+                var chunkSize = DevelopmentWorldBuilder.ChunkSize;
+                var chunksX = Mathf.FloorToInt((ground.max.x - 0.001f) / chunkSize) - Mathf.FloorToInt(ground.min.x / chunkSize) + 1;
+                var chunksZ = Mathf.FloorToInt((ground.max.z - 0.001f) / chunkSize) - Mathf.FloorToInt(ground.min.z / chunkSize) + 1;
+                Assert.That(collisionWorld.ChunkCount, Is.EqualTo(chunksX * chunksZ));
 
-            Assert.That(loaded, Is.True, error);
-            Assert.That(collisionWorld.ChunkCount, Is.EqualTo(256));
-            Assert.That(collisionWorld.Revision, Is.Not.Empty);
-            var buffer = new CollisionQueryBuffer();
-            collisionWorld.QueryShapes(
-                new CollisionAabb(
-                    new SimulationVector3(-256f, -2f, -256f),
-                    new SimulationVector3(256f, 64f, 256f)),
-                CollisionLayers.CharacterMovement,
-                buffer);
-            Assert.That(
-                buffer.Shapes.OfType<CollisionBox>().Count(),
-                Is.EqualTo(DevelopmentWorld2CollisionBoxCount));
-            Assert.That(
-                buffer.Shapes.OfType<CollisionTriangle>().Count(),
-                Is.EqualTo(DevelopmentWorld2CollisionTriangleCount));
+                var expectedTriangles = environment.GetComponentsInChildren<MeshCollider>(true)
+                    .Sum(mesh => mesh.sharedMesh.triangles.Length / 3);
+                foreach (var terrain in environment.GetComponentsInChildren<TerrainCollider>(true))
+                {
+                    var data = terrain.terrainData;
+                    var cells = data.heightmapResolution - 1;
+                    var holes = data.GetHoles(0, 0, cells, cells);
+                    var solidCells = holes.Cast<bool>().Count(solid => solid);
+                    expectedTriangles += solidCells * 2;
+                }
+
+                var buffer = new CollisionQueryBuffer();
+                collisionWorld.QueryShapes(
+                    new CollisionAabb(
+                        new SimulationVector3(ground.min.x, -2f, ground.min.z),
+                        new SimulationVector3(ground.max.x, 64f, ground.max.z)),
+                    CollisionLayers.CharacterMovement,
+                    buffer);
+                Assert.That(
+                    buffer.Shapes.OfType<CollisionBox>().Count(),
+                    Is.EqualTo(environment.GetComponentsInChildren<BoxCollider>(true).Length));
+                Assert.That(buffer.Shapes.OfType<CollisionTriangle>().Count(), Is.EqualTo(expectedTriangles));
+            });
         }
-
         // Guards the terrain bake mapping: the baked surface must match the Unity Terrain at
         // every heightmap sample away from the tunnel portals.
         [Test]
@@ -665,50 +638,38 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        private static void AssertClearOfEnvironmentObstacles(
-            Collider[] colliders,
-            Vector3 point)
+        private static void WithScene(string scenePath, System.Action<Scene> assertions)
         {
-            foreach (var collider in colliders)
+            var scene = SceneManager.GetSceneByPath(scenePath);
+            var openedForTest = !scene.IsValid() || !scene.isLoaded;
+            if (openedForTest)
             {
-                if (collider.name == "Ground")
-                {
-                    continue;
-                }
+                scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+            }
 
-                // ClosestPoint supports only primitive and convex colliders, so terrains
-                // and meshes must keep the position outside their bounds instead.
-                if (collider is TerrainCollider || (collider is MeshCollider mesh && !mesh.convex))
+            try
+            {
+                assertions(scene);
+            }
+            finally
+            {
+                if (openedForTest)
                 {
-                    Assert.That(
-                        collider.bounds.Contains(point),
-                        Is.False,
-                        "Protected gameplay position " + point + " lies within the bounds of "
-                        + collider.name + ".");
-                    continue;
+                    EditorSceneManager.CloseScene(scene, true);
                 }
-
-                var closestPoint = collider.ClosestPoint(point);
-                Assert.That(
-                    (closestPoint - point).sqrMagnitude,
-                    Is.GreaterThan(0.0001f),
-                    "Protected gameplay position " + point + " overlaps "
-                    + collider.name + ".");
             }
         }
 
-        private static void AssertTransform(
+        private static void AssertInnerFace(
             Scene scene,
-            string objectName,
-            Vector3 expectedPosition,
-            Vector3 expectedScale)
+            string wallName,
+            System.Func<Bounds, float> innerFace,
+            float expected)
         {
-            var gameObject = FindGameObject(scene, objectName);
-            Assert.That(gameObject, Is.Not.Null, objectName + " is missing.");
-            Assert.That(gameObject.transform.localPosition, Is.EqualTo(expectedPosition));
-            Assert.That(gameObject.transform.localScale, Is.EqualTo(expectedScale));
+            var wall = FindGameObject(scene, wallName);
+            Assert.That(wall, Is.Not.Null, wallName + " is missing.");
+            Assert.That(innerFace(wall.GetComponent<BoxCollider>().bounds), Is.EqualTo(expected).Within(0.001f), wallName);
         }
-
         private static GameObject FindGameObject(Scene scene, string objectName)
         {
             foreach (var root in scene.GetRootGameObjects())
