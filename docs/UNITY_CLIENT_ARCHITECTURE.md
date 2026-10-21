@@ -111,6 +111,9 @@ LocalPlayer prefab
   +-- PlayerInput and LocalPlayerInput
   +-- LocalPlayerController
   +-- PlayerVisual
+      +-- Body (HumanMaleBody prefab, also in the RemotePlayer prefab)
+          +-- Animator with HumanLocomotion, CharacterLocomotionAnimator
+          +-- PlayerBodyAppearance (combined parts, tint)
   +-- CameraTarget
   +-- LocalPlayerCamera
       +-- Camera and AudioListener
@@ -1101,14 +1104,10 @@ the player for combat, and it reports that height for health bars. A trigger
 never blocks movement, the camera, or the pointer. It stores the network entity
 id, persistent character id, display name, and presentation archetype supplied
 by the spawn message. `WorldSceneContext` presents the archetypes
-`player.default` and `player.development_bot`, and the view colors the prefab's
-`PlayerVisual/Body` renderer: orange for a person and blue for a development
-bot, so neither looks like the purple LocalPlayer. The color comes from a tinted
-copy of the body material that `RemotePlayerBodyMaterials` in `WorldSceneContext`
-creates once per color and shares between every body of that color, so a crowd
-of remote players stays in the SRP Batcher; a property block per body kept every
-body out of it. `WorldSceneContext` destroys the copies with the scene. Its
-`RemoteMovementPresenter`, which moving Mobs share, buffers server states in
+`player.default` and `player.development_bot`. The prefab shows the human body
+described in [Player Bodies](#player-bodies); with the body tint setting on, the
+view tints it orange for a person and blue for a development bot, so neither
+looks like the purple LocalPlayer. Its `RemoteMovementPresenter`, which moving Mobs share, buffers server states in
 `RemoteMovementInterpolation`, advances an adaptive monotonic frame-rate
 `RemoteRenderClock` two snapshot intervals behind the server, four ticks or
 about 133 ms at 30 ticks and 15 snapshots per second,
@@ -1158,6 +1157,60 @@ and tunnel meshes. The capsule
 dimensions, slope limit, step height, ground snap distance, and substep budget
 come from the validated server join settings. Movement never uses Unity
 CharacterController or PhysX to decide network position.
+
+## Player Bodies
+
+The LocalPlayer and RemotePlayer prefabs show the male human base body as
+`PlayerVisual/Body`, a nested `Assets/Prefabs/Player/HumanMaleBody.prefab`,
+which is a Prefab Variant of the exported `Human_Male.fbx` (see
+[Art Pipeline](ART_PIPELINE.md#prefabs)). Every player shows this body until
+the body type is chosen at character creation. The body has no collider; the
+movement capsule, the remote pointer trigger, and the health bar height stay as
+they were.
+
+The body's Animator uses its Humanoid avatar,
+`Assets/Art/Animation/HumanLocomotion.controller`, no root motion, and
+`Cull Update Transforms`, so a body off screen skips its pose. The controller has
+two states: `Idle`, and `Locomotion`, a 1D blend tree on `Speed` with `Walk` at
+1.4 m/s and `Jog` at 5.0 m/s, the speeds the clips were authored for, played at
+the rate `LocomotionRate`. The bool `Moving` switches between them with short
+fixed crossfades. `CharacterLocomotionAnimator` drives these parameters from how
+far its body moved over the ground in the frame, so the local player, remote
+players, and anything else that moves a body animate the same way without
+knowing about each other. It runs after every character moved and before the
+Animator evaluates (`PresentationExecutionOrder.Locomotion`), smooths the speed
+over 0.08 s, and ignores a jump faster than 20 m/s, such as a teleport or a
+correction. `HumanLocomotion` turns the speed into the parameters: below the walk
+speed, as when a character is encumbered, the walk plays slower, down to 0.3 of
+its rate; between walk and jog the rate makes the blended stride match the
+speed, from the lengths of both cycles; and above the jog speed the jog plays
+faster. `PlayerBodyAssetTests` checks that the two speeds match
+`tools/blender/human_base/animate.py`.
+
+A body is made of skinned parts, one per equipment zone plus the eyes, teeth,
+and tongue, so equipment can hide a zone later. Drawn as parts, a crowd paid
+for every part of every body: 200 bodies cost about 20 ms of main thread time
+per frame in the Editor. When `WorldSceneContext` spawns a player,
+`PlayerBodyAppearance.CombineParts` draws the visible parts as one skinned
+renderer, `CombinedBody`, with one submesh per material, and hides the parts.
+`PlayerBodyMeshes`, owned by `WorldSceneContext`, builds the combined mesh once
+per model and set of visible parts and shares it between every body that has
+them; each body binds it to its own bones. 200 combined bodies cost about 6 ms,
+with skinning down from 4.3 to 0.3 ms and culling from 3.4 to 0.35 ms. The
+context destroys the meshes with the scene. `PlayerBodyMeshesTests` checks that
+a combined body skins every vertex where its parts do.
+
+The World Debug panel (F2) has the setting
+`Tint bodies: you purple, players orange, bots blue`, off by default.
+`ClientBootstrap` owns the `PlayerBodyTintSetting`, keeps it in `PlayerPrefs`
+between sessions, and passes it to the panel and to `WorldSceneContext`, which
+tints the local and every remote body when it changes and every body that
+spawns. A tint multiplies the skin materials of the body, which
+`PlayerBodyAppearance` lists, by a faint version of the color (35 percent of the
+way from white), and leaves the eyes, teeth, and tongue alone. The tinted
+materials are copies that `PlayerBodyTintMaterials` in `WorldSceneContext`
+creates once per material and color and shares between every body, so a crowd
+stays in the SRP Batcher; a property block per body kept every body out of it.
 
 ## World Actor And Interaction Client
 

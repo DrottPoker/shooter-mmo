@@ -6,17 +6,12 @@ namespace Mmorpg.Client.Gameplay
 {
     // Presentation of another player. Its only collider is a runtime trigger capsule of the
     // movement capsule's size, so the pointer can pick the player; it never blocks anything.
-    // The body is orange for a person and blue for a development bot, so neither can be taken
-    // for the purple local player. The color comes from a shared tinted material, which keeps
-    // a crowd of bodies in the SRP Batcher.
+    // With the body tint setting on, the body is tinted orange for a person and blue for a
+    // development bot, so neither can be taken for the purple local player.
     [DisallowMultipleComponent]
     public sealed class RemotePlayerView : MonoBehaviour
     {
-        public static readonly Color PlayerBodyColor = new Color(1f, 0.55f, 0.15f, 1f);
-        public static readonly Color DevelopmentBotBodyColor = new Color(0.29f, 0.70f, 1f, 1f);
-
         private const string PointerTargetName = "PointerTargetBounds";
-        private const string BodyPath = "PlayerVisual/Body";
 
         private readonly RemoteMovementPresenter movement = new RemoteMovementPresenter();
 
@@ -37,13 +32,6 @@ namespace Mmorpg.Client.Gameplay
                 || string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal);
         }
 
-        public static Color BodyColorFor(string archetypeId)
-        {
-            return string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal)
-                ? DevelopmentBotBodyColor
-                : PlayerBodyColor;
-        }
-
         public void Initialize(
             ulong networkEntityId,
             string persistentId,
@@ -52,8 +40,7 @@ namespace Mmorpg.Client.Gameplay
             int simulationTickRateHz,
             int delayTicks,
             ICollisionWorld worldCollision,
-            CharacterCollisionSettings characterCollision,
-            RemotePlayerBodyMaterials bodyMaterials)
+            CharacterCollisionSettings characterCollision)
         {
             NetworkEntityId = networkEntityId;
             PersistentId = persistentId;
@@ -62,7 +49,15 @@ namespace Mmorpg.Client.Gameplay
             movement.Configure(simulationTickRateHz, delayTicks, worldCollision, characterCollision);
             name = "RemotePlayer_" + networkEntityId + "_" + displayName;
             ConfigurePointerTarget(characterCollision);
-            ApplyBodyColor(bodyMaterials);
+        }
+
+        public void ApplyBodyTint(bool tinted, PlayerBodyTintMaterials materials)
+        {
+            var appearance = GetComponentInChildren<PlayerBodyAppearance>(true);
+            if (appearance != null)
+            {
+                appearance.ApplyTint(tinted, PlayerBodyColors.ForRemote(ArchetypeId), materials);
+            }
         }
 
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)
@@ -114,20 +109,6 @@ namespace Mmorpg.Client.Gameplay
             capsule.radius = characterCollision.Radius;
             capsule.height = characterCollision.Height;
             capsule.center = new Vector3(0f, characterCollision.Height * 0.5f, 0f);
-        }
-
-        private void ApplyBodyColor(RemotePlayerBodyMaterials bodyMaterials)
-        {
-            var body = transform.Find(BodyPath);
-            var bodyRenderer = body != null ? body.GetComponent<Renderer>() : null;
-            if (bodyRenderer == null || bodyRenderer.sharedMaterial == null || bodyMaterials == null)
-            {
-                return;
-            }
-
-            bodyRenderer.sharedMaterial = bodyMaterials.For(
-                bodyRenderer.sharedMaterial,
-                BodyColorFor(ArchetypeId));
         }
 
         private void ApplyPresentedPose()

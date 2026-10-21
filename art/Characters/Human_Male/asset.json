@@ -6,11 +6,81 @@
         "Male"
     ],
     "triangleBudget": 10000,
+    "skeleton": "Humanoid",
+    "clips": ["Idle", "Walk", "Jog"],
     "approvals": {
         "model": {
             "date": "2026-10-21",
             "sourceSha256": "6b53b0929902d679ef08bd944f037b87e47f943595a330c171a1dbccfcd4f1d1"
+        },
+        "rig": {
+            "date": "2026-10-21",
+            "sourceSha256": "70587c76a6e2e27929a5baaf62bf769a21c061fa6b09da1699faaab83535dd37"
+        },
+        "animation": {
+            "date": "2026-10-21",
+            "sourceSha256": "70587c76a6e2e27929a5baaf62bf769a21c061fa6b09da1699faaab83535dd37"
         }
     },
-    "export": null
+    "export": {
+        "sourceSha256": "70587c76a6e2e27929a5baaf62bf769a21c061fa6b09da1699faaab83535dd37",
+        "targetSha256": "b8407ca2a15efd1b8670b5f472b5dbff75e1da2ad006745b9750f665fdc40b03",
+        "materials": [
+            {
+                "name": "M_Body_Male",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Body_Male",
+                "metallic": 0.0,
+                "smoothness": 0.38
+            },
+            {
+                "name": "M_Eye_Male",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Eye_Male_Teal",
+                "metallic": 0.0,
+                "smoothness": 0.88
+            },
+            {
+                "name": "M_Face_Male",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Face_Male_Stubble",
+                "metallic": 0.0,
+                "smoothness": 0.45
+            },
+            {
+                "name": "M_Teeth_Male",
+                "baseColor": "#DBD1B8",
+                "metallic": 0.0,
+                "smoothness": 0.65
+            },
+            {
+                "name": "M_Tongue_Male",
+                "baseColor": "#9E4C4F",
+                "metallic": 0.0,
+                "smoothness": 0.55
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Body_Male",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Body_Male.png",
+                "sha256": "3a8570c70e0b6f4e804e7afc649d3458e424c80f800f1744be3cb3f35ab1a246"
+            },
+            {
+                "name": "T_Eye_Male_Teal",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Eye_Male_Teal.png",
+                "sha256": "0c612c3eada342c66958245b2b1c9d556a5aad128a0c237726d2a847aa4c27d2"
+            },
+            {
+                "name": "T_Face_Male_Stubble",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Male_Stubble.png",
+                "sha256": "a7f35e1bf0d14dc8a690e39b7dcdfbec579f09bca6044ed374c01d9b88d8f997"
+            }
+        ],
+        "clips": [
+            { "name": "Idle", "frames": 120, "loop": true },
+            { "name": "Walk", "frames": 28, "loop": true },
+            { "name": "Jog", "frames": 19, "loop": true }
+        ]
+    }
 }

@@ -222,10 +222,12 @@ required.
 7. Keep the Unity Console visible for protocol, collision revision, or
    disconnect errors.
 
-Expected result: the local player uses the normal authenticated flow and is
-purple. SimulationWorker spawns every bot with the presentation archetype
-`player.development_bot`, so remote `Active Bot N` instances are blue, while a
-second Unity client's character is orange. Bots appear only after reliable
+Expected result: the local player uses the normal authenticated flow, and every
+character shows the male human body, which walks and jogs with its speed.
+SimulationWorker spawns every bot with the presentation archetype
+`player.development_bot`. With `Tint bodies` on in the F2 panel, the local player
+is tinted purple, remote `Active Bot N` instances blue, and a second Unity
+client's character orange. Bots appear only after reliable
 spawn messages, movement is
 interpolated from SimulationWorker snapshots, and graceful bot logout removes
 the matching remote instance through a reliable despawn. The 64 m stress arena

@@ -16,7 +16,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from art_pipeline import preview  # noqa: E402
-from art_pipeline.export import export_fbx, material_records  # noqa: E402
+from art_pipeline.export import clip_records, export_fbx, export_textures, material_records  # noqa: E402
 from art_pipeline.scene import ArtPipelineError, parse_args  # noqa: E402
 from art_pipeline.validate import validate  # noqa: E402
 
@@ -29,8 +29,12 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--kind", required=True)
         command.add_argument("--roots", required=True, help="Comma-separated root object names.")
         command.add_argument("--triangle-budget", type=int, required=True)
+        command.add_argument("--stage", default="model", help="The review stage whose rules apply, with every earlier one.")
+        command.add_argument("--skeleton", help="The skeleton definition of a skinned asset.")
+        command.add_argument("--clips", default="", help="Comma-separated animation clip names of a skinned asset.")
         if name == "export":
             command.add_argument("--target", required=True, help="Absolute FBX path.")
+            command.add_argument("--textures", help="Folder for the images of painted materials.")
     command = commands.add_parser("preview")
     command.add_argument("--output", required=True, help="PNG file to write.")
     command.add_argument("--cell-size", type=int, default=420)
@@ -44,7 +48,8 @@ def main() -> int:
         print(f"ART_PREVIEW {path}")
         return 0
 
-    errors, triangles = validate(args.kind, args.roots.split(","), args.triangle_budget)
+    errors, triangles = validate(args.kind, args.roots.split(","), args.triangle_budget, args.stage, args.skeleton,
+                                 [c for c in args.clips.split(",") if c])
     for error in errors:
         print(f"ART_PIPELINE_ERROR {error}")
     if errors:
@@ -54,6 +59,12 @@ def main() -> int:
         export_fbx(args.kind, args.target)
         for record in material_records():
             print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
+        if args.textures:
+            for name, path in export_textures(args.textures):
+                print(f"ART_TEXTURE {json.dumps({'name': name, 'path': path}, separators=(',', ':'))}")
+        if args.kind == "skinned":
+            for record in clip_records():
+                print(f"ART_CLIP {json.dumps(record, separators=(',', ':'))}")
         print(f"ART_EXPORT {args.target}")
     return 0
 

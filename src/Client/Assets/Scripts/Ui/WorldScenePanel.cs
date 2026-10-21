@@ -25,12 +25,17 @@ namespace Mmorpg.Client.Ui
         private bool isVisible = true;
         private RealtimeSimulationClient simulationClient;
         private WorldPointerFocus pointerFocus;
+        private PlayerBodyTintSetting bodyTint;
 
         // Called by the composition root before the component is activated.
-        public void Initialize(RealtimeSimulationClient realtimeClient, WorldPointerFocus focus)
+        public void Initialize(
+            RealtimeSimulationClient realtimeClient,
+            WorldPointerFocus focus,
+            PlayerBodyTintSetting tintSetting)
         {
             simulationClient = realtimeClient;
             pointerFocus = focus;
+            bodyTint = tintSetting;
         }
 
         private void Start()
@@ -104,6 +109,7 @@ namespace Mmorpg.Client.Ui
             DrawRenderingSection();
             DrawPredictionSection();
             DrawNetworkSection();
+            DrawPresentationSection();
             DrawStatusAndLeave();
 
             GUILayout.EndScrollView();
@@ -331,6 +337,20 @@ namespace Mmorpg.Client.Ui
             DrawMetric(
                 "Rate Sample Window",
                 WorldDebugDiagnostics.Age(telemetry.NetworkSampleSeconds));
+        }
+
+        private void DrawPresentationSection()
+        {
+            DrawSectionHeader("Presentation");
+            if (bodyTint == null)
+            {
+                DrawMetric("Body Tint", "Unavailable", WorldDebugHealth.Unavailable);
+                return;
+            }
+
+            bodyTint.Enabled = GUILayout.Toggle(
+                bodyTint.Enabled,
+                " Tint bodies: you purple, players orange, bots blue");
         }
 
         private void DrawStatusAndLeave()

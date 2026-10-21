@@ -43,9 +43,10 @@ operations, and future design do not drift into duplicate descriptions.
     test goes, test traits, per-test databases, CI jobs, golden files, and test
     access to internals.
 15. [Art Pipeline](ART_PIPELINE.md) for 3D models from Blender to Unity: the
-    asset layout, the review stages and approvals, the export and import rules,
-    the modeling conventions, the human base characters and their scripted
-    build, and the Blender MCP server for live work.
+    asset layout, the review stages and approvals, the shared skeletons, the
+    export and import rules for static and skinned models and their textures,
+    the modeling conventions, the human base characters with their scripted
+    build, rig, and animations, and the Blender MCP server for live work.
 
 ## Foundation Hardening
 

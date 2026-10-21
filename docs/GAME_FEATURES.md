@@ -88,8 +88,11 @@ no local player exists in the scene.
 
 The test shard has no durable gameplay simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
-rendered from interpolated SimulationWorker snapshots. The local player is
-purple, other players are orange, and synthetic development bots are blue. SimulationWorker assigns each live
+rendered from interpolated SimulationWorker snapshots. Every player, the local
+one included, shows the male human body, which stands, walks, and jogs with the
+speed it moves at; the body type at character creation is planned. With the
+World Debug setting `Tint bodies` on, off by default, the local player is tinted
+purple, other players orange, and synthetic development bots blue. SimulationWorker assigns each live
 player a network entity id. Reliable spawn and despawn messages decide when a
 remote player exists, while unreliable snapshots update only its movement.
 Remote instances are kept under the active World scene's separate
@@ -274,6 +277,8 @@ Status: Temporary UI presentation
 - The temporary World Client Debug panel is scrollable and anchored to the
   bottom-left corner.
 - F2 hides or restores the World Debug panel.
+- The Presentation section has the setting `Tint bodies: you purple, players
+  orange, bots blue`, off by default and kept between sessions.
 - During an authenticated simulation session, World Debug shows only information
   available to that client. It includes frame average, p95, and maximum time,
   FPS, Unity memory, connection identity, ping, snapshot age and observed rate,

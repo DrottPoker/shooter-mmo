@@ -234,8 +234,8 @@ def build_extras(m, sex, label, surface, coll, x_offset):
     objs = []
     eye_mat = material(f"M_Eye_{label}")
     for c, r in m.eyes:
-        # Character's right eye is at -x (the asset faces +Y); m.eyes[0] is at +x.
-        name = f"{label}_Eye_{'L' if c.x > 0 else 'R'}"
+        # The asset faces +Y, so the character's right eye is at +x.
+        name = f"{label}_Eye_{'R' if c.x > 0 else 'L'}"
         mesh = eyeball_mesh(name, r)
         mesh.materials.append(eye_mat)
         obj = bpy.data.objects.new(name, mesh)

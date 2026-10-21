@@ -198,7 +198,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Feral Wolf",
                     "corpse.remains")));
                 var player = playerObject.AddComponent<RemotePlayerView>();
-                player.Initialize(PlayerId, "character", "Ada", RealtimePlayerArchetypeIds.Player, 30, 4, null, CollisionSettings(), null);
+                player.Initialize(PlayerId, "character", "Ada", RealtimePlayerArchetypeIds.Player, 30, 4, null, CollisionSettings());
 
                 AssertDescribed(new WorldPointerCandidate(mob, 4f), actors, CombatClickTargetKind.Mob, MobId);
                 AssertDescribed(new WorldPointerCandidate(npc, 4f), actors, CombatClickTargetKind.Other, 0);
@@ -246,7 +246,7 @@ namespace Mmorpg.Client.Tests.EditMode
             try
             {
                 var player = playerObject.AddComponent<RemotePlayerView>();
-                player.Initialize(PlayerId, "character", "Ada", RealtimePlayerArchetypeIds.Player, 30, 4, null, CollisionSettings(), null);
+                player.Initialize(PlayerId, "character", "Ada", RealtimePlayerArchetypeIds.Player, 30, 4, null, CollisionSettings());
 
                 var capsule = playerObject.GetComponentInChildren<CapsuleCollider>();
                 Assert.That(capsule, Is.Not.Null);
@@ -260,7 +260,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(candidate.Distance, Is.EqualTo(3f));
 
                 // Initializing again keeps one trigger.
-                player.Initialize(PlayerId, "character", "Ada", RealtimePlayerArchetypeIds.Player, 30, 4, null, CollisionSettings(), null);
+                player.Initialize(PlayerId, "character", "Ada", RealtimePlayerArchetypeIds.Player, 30, 4, null, CollisionSettings());
                 Assert.That(playerObject.GetComponentsInChildren<Collider>().Length, Is.EqualTo(1));
             }
             finally

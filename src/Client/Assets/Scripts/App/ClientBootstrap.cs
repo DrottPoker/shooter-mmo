@@ -33,6 +33,10 @@ namespace Mmorpg.Client.App
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
         private readonly GameMessageLog gameMessages = new GameMessageLog();
 
+        // The World Debug panel's body tint setting, kept between sessions, off by default.
+        private const string BodyTintPreference = "Mmorpg.Debug.TintPlayerBodies";
+        private PlayerBodyTintSetting bodyTint;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
@@ -58,6 +62,8 @@ namespace Mmorpg.Client.App
                     "The client configuration has no runtime primitive material, so markers, arrows, and fallback models render with the error shader in a player build.");
             }
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
+            bodyTint = new PlayerBodyTintSetting(PlayerPrefs.GetInt(BodyTintPreference, 0) == 1);
+            bodyTint.Changed += SaveBodyTint;
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
 
             inventoryController = GetOrAddComponent<InventoryClientController>();
@@ -108,10 +114,21 @@ namespace Mmorpg.Client.App
                 simulationClient.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
             }
 
+            if (bodyTint != null)
+            {
+                bodyTint.Changed -= SaveBodyTint;
+            }
+
             apiClient?.Dispose();
             apiClient = null;
             ClientAssets.Release(configHandle);
             configHandle = default;
+        }
+
+        private void SaveBodyTint()
+        {
+            PlayerPrefs.SetInt(BodyTintPreference, bodyTint.Enabled ? 1 : 0);
+            PlayerPrefs.Save();
         }
 
         private T GetOrAddComponent<T>() where T : Component
@@ -268,13 +285,13 @@ namespace Mmorpg.Client.App
             {
                 foreach (var context in root.GetComponentsInChildren<WorldSceneContext>(true))
                 {
-                    context.Initialize(simulationClient, pointerFocus);
+                    context.Initialize(simulationClient, pointerFocus, bodyTint);
                     sceneContext = sceneContext != null ? sceneContext : context;
                 }
             }
 
             AddSceneComponentIfMissing<WorldScenePanel>(
-                panel => panel.Initialize(simulationClient, pointerFocus));
+                panel => panel.Initialize(simulationClient, pointerFocus, bodyTint));
             AddSceneComponentIfMissing<MovementDestinationMarker>(
                 marker => marker.Initialize(runtimePrimitiveMaterial));
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(

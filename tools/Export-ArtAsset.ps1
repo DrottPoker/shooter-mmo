@@ -1,5 +1,7 @@
-# Exports approved art assets from art/ to their FBX target below src/Client/Assets/Art/Models
-# and records the hashes of the approved source and the written FBX in asset.json. An asset
+# Exports approved art assets from art/ to their FBX target below src/Client/Assets/Art/Models,
+# with the images of painted materials as PNG files below src/Client/Assets/Art/Textures, and
+# records the hashes of the approved source and the written files, the materials, and the
+# animation clips in asset.json. An asset
 # whose review stages are not all approved for the current .blend file is refused. Unity
 # imports the FBX with the rules in ArtModelImportRules. See docs/ART_PIPELINE.md.
 param(
@@ -28,18 +30,63 @@ foreach ($manifest in $manifests) {
 $blender = Resolve-ArtBlender $BlenderPath
 foreach ($manifest in $manifests) {
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
+    $textureFolder = Get-ArtTextureFolder $manifest.Target
     $results = Invoke-ArtBlender $blender $manifest (
-        @("export") + (Get-ArtValidationArguments $manifest) + @("--target", $manifest.TargetPath))
+        @("export") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]) + @(
+            "--target", $manifest.TargetPath, "--textures", (Join-Path $script:ArtRepositoryRoot $textureFolder)))
     $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
             ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
     if ($null -eq $materials) {
         throw "Blender reported no valid material records for $($manifest.Name)."
     }
 
+    $textures = ConvertTo-ArtTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
+            ForEach-Object {
+                $texture = $_.Substring("ART_TEXTURE ".Length) | ConvertFrom-Json
+                [pscustomobject]@{
+                    name = $texture.name
+                    target = Get-ArtRelativePath $texture.path
+                    sha256 = Get-ArtFileSha256 $texture.path
+                }
+            }) $textureFolder
+    if ($null -eq $textures) {
+        throw "Blender reported invalid texture records for $($manifest.Name)."
+    }
+
+    $clipRecords = $null
+    if ($manifest.Kind -eq "skinned") {
+        # In the order of the manifest, so the record reads like it.
+        $reported = @($results | Where-Object { $_ -like "ART_CLIP *" } |
+                ForEach-Object { $_.Substring("ART_CLIP ".Length) | ConvertFrom-Json })
+        $clipRecords = ConvertTo-ArtClipRecords @($manifest.Clips | ForEach-Object {
+                $clip = $_
+                $reported | Where-Object { $_.name -ceq $clip }
+            }) $manifest.Clips
+        if ($null -eq $clipRecords) {
+            throw "Blender did not report every clip of $($manifest.Name) once."
+        }
+    }
+
+    # A texture that an earlier export wrote and this one no longer does is removed with its
+    # Unity .meta file, so no stale image stays in the project.
+    if ($null -ne $manifest.Export) {
+        $written = @($textures | ForEach-Object { $_.target })
+        foreach ($old in @($manifest.Export.textures | Where-Object { $written -cnotcontains $_.target })) {
+            foreach ($path in @($old.target, "$($old.target).meta")) {
+                $full = Join-Path $script:ArtRepositoryRoot $path
+                if (Test-Path -LiteralPath $full -PathType Leaf) {
+                    Remove-Item -LiteralPath $full
+                }
+            }
+        }
+    }
+
     $manifest.Export = [ordered]@{
         sourceSha256 = $sourceSha256
         targetSha256 = Get-ArtFileSha256 $manifest.TargetPath
         materials = $materials
+        textures = $textures
+        clips = $clipRecords
     }
     Write-ArtAssetManifest $manifest
     $triangles = ($results | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''

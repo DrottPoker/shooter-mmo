@@ -9,13 +9,18 @@ found broken:
   both faces that share the seam edge (sRGB, 0..255). It is a report and breaks no rule.
 - parts: the split characters, where every body part of the male and the female has the same
   topology, the parts close up into one watertight body (every open edge of a part is matched
-  by an edge of a neighbouring part), and the normals agree across the cuts."""
+  by an edge of a neighbouring part), and the normals agree across the cuts.
+- rig: a rigged character against the model it was rigged from: the meshes at rest are the
+  model's meshes, the art pipeline's rig rules hold, and the weights are mirror symmetric.
+- animation: the clips of an animated character follow the art pipeline's animation rules, and a
+  foot on the ground keeps its place when the character moves at the clip's speed."""
 
 import math
 
 import bmesh
 import bpy
 import numpy as np
+from bpy_extras import anim_utils
 from mathutils import Vector
 from mathutils.kdtree import KDTree
 
@@ -30,6 +35,13 @@ OPEN_ALLOWED = ("_Teeth_", "_Tongue")
 # Blender stores custom normals compressed (16 bit per component in a local frame), so the two
 # sides of a cut can differ by a few hundredths of a degree; a seam shows from a few degrees.
 NORMAL_TOLERANCE = 0.005  # length of the difference vector, about 0.3 degrees
+REST_POSITION_TOLERANCE = 1e-6  # m, the rigged mesh at rest against the model
+# A foot point is on the ground while it is at most this much above its height in the rest pose;
+# on the ground it may slide this much (m), measured while the character moves at the clip's speed.
+# The heel point sits this far behind the ankle.
+GROUND = 0.004
+SLIP_TOLERANCE = 0.015
+HEEL_BEHIND = 0.045
 
 
 # ------------------------------------------------------------------------------------- mesh
@@ -265,6 +277,153 @@ def parts(path):
     return lines, failures
 
 
+# -------------------------------------------------------------------------------------- rig
+
+def _rest_meshes(label):
+    """Evaluated meshes of a character's children by name: positions, corner normals and UVs."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    found = {}
+    for o in bpy.data.objects[label].children:
+        if o.type != "MESH":
+            continue
+        evaluated = o.evaluated_get(depsgraph)
+        me = evaluated.to_mesh()
+        try:
+            co = np.array([o.matrix_world @ v.co for v in me.vertices])
+            normals = np.empty(len(me.loops) * 3)
+            me.corner_normals.foreach_get("vector", normals)
+            uv = np.empty(len(me.loops) * 2)
+            if me.uv_layers.active:
+                me.uv_layers.active.data.foreach_get("uv", uv)
+            found[o.name] = (co, normals, uv, [tuple(p.vertices) for p in me.polygons])
+        finally:
+            evaluated.to_mesh_clear()
+    return found
+
+
+def _mirror_name(name):
+    return name[:-2] + {"_L": "_R", "_R": "_L"}[name[-2:]] if name[-2:] in ("_L", "_R") else name
+
+
+def rig(model_path, rigged_path, label, skeleton_path):
+    """Checks a rigged character against the model file it was rigged from."""
+    from art_pipeline import skeleton as skeleton_definition
+    from art_pipeline import skinned
+    from . import rig as rigging
+
+    lines, failures = [], []
+    bpy.ops.wm.open_mainfile(filepath=model_path)
+    rigging.normalize(label)
+    before = _rest_meshes(label)
+    bpy.ops.wm.open_mainfile(filepath=rigged_path)
+    after = _rest_meshes(label)
+    if sorted(before) != sorted(after):
+        failures.append(f"{label}: the rigged meshes {sorted(after)} are not the model's {sorted(before)}")
+    moved = turned = 0.0
+    for name in sorted(set(before) & set(after)):
+        (co0, n0, uv0, f0), (co1, n1, uv1, f1) = before[name], after[name]
+        if f0 != f1 or len(co0) != len(co1) or not np.array_equal(uv0, uv1):
+            failures.append(f"{name}: the rig changed the faces or UVs of the model")
+            continue
+        moved = max(moved, float(np.abs(co0 - co1).max()))
+        turned = max(turned, float(np.abs(n0 - n1).max()))
+    lines.append(f"{label}: at rest, largest change of a position {moved:.2e} m and of a normal {turned:.2e}")
+    if moved > REST_POSITION_TOLERANCE or turned > NORMAL_TOLERANCE:
+        failures.append(f"{label}: the rig changes the model at rest ({moved:.2e} m, normals {turned:.2e})")
+
+    skeleton = skeleton_definition.load(skeleton_path)
+    exported = [o for o in bpy.data.objects if o == bpy.data.objects[label] or o.parent == bpy.data.objects[label]]
+    failures += [f"{label}: {e}" for e in skinned.rig_errors(exported, [bpy.data.objects[label]], skeleton)]
+
+    # Weights: influences per vertex and mirror symmetry.
+    influences = {}
+    asymmetry = 0.0
+    for o in bpy.data.objects[label].children:
+        if o.type != "MESH" or "zone" not in o:
+            continue
+        names = {g.index: g.name for g in o.vertex_groups}
+        keyed = {}
+        for v in o.data.vertices:
+            w = {names[g.group]: g.weight for g in v.groups if g.weight > 0}
+            influences[len(w)] = influences.get(len(w), 0) + 1
+            keyed[_key(v.co)] = w
+        for k, w in keyed.items():
+            m = keyed.get((-k[0], k[1], k[2]))
+            if m is None:
+                failures.append(f"{o.name}: a vertex has no mirror partner")
+                break
+            mirrored = {_mirror_name(b): x for b, x in m.items()}
+            for b in set(w) | set(mirrored):
+                asymmetry = max(asymmetry, abs(w.get(b, 0.0) - mirrored.get(b, 0.0)))
+    lines.append(f"{label}: vertices by bone count {dict(sorted(influences.items()))}")
+    lines.append(f"{label}: largest weight difference to the mirror side {asymmetry:.2e}")
+    if asymmetry > 1e-4:
+        failures.append(f"{label}: the weights are not mirror symmetric ({asymmetry:.2e})")
+    bones = bpy.data.objects[label].data.bones
+    lines.append(f"{label}: {len(bones)} bones, {sum(b.use_deform for b in bones)} deforming")
+    return lines, failures
+
+
+# -------------------------------------------------------------------------------- animation
+
+def animation(path, label, skeleton_path):
+    """Checks the clips of an animated character: the art pipeline's animation rules, and that a
+    foot on the ground keeps its place when the character moves at the clip's speed."""
+    from mathutils import Vector
+
+    from art_pipeline import skeleton as skeleton_definition
+    from art_pipeline import skinned
+    from . import animate
+
+    bpy.ops.wm.open_mainfile(filepath=path)
+    lines, failures = [], []
+    arm = bpy.data.objects[label]
+    skeleton = skeleton_definition.load(skeleton_path)
+    failures += [f"{label}: {e}" for e in skinned.animation_errors(arm, list(animate.CLIPS), skeleton)]
+    scene = bpy.context.scene
+    arm.animation_data_create()
+    heels, ground = {}, {}
+    for side in ("R", "L"):
+        bone = arm.data.bones[f"Foot_{side}"]
+        ankle = bone.head_local
+        heels[side] = bone.matrix_local.inverted() @ Vector((ankle.x, ankle.y - HEEL_BEHIND, 0.012))
+        ground[(side, "heel")] = 0.012 + GROUND
+        ground[(side, "ball")] = arm.data.bones[f"Toes_{side}"].head_local.z + GROUND
+    for name, speed in animate.CLIPS.items():
+        action = bpy.data.actions.get(name)
+        if action is None:
+            continue
+        arm.animation_data.action = action
+        frames = int(action.frame_range[1])
+        tracks = {}
+        hips = []
+        for f in range(frames + 1):
+            scene.frame_set(f)
+            travelled = speed * f / animate.FPS
+            hips.append((arm.matrix_world @ arm.pose.bones["Hips"].head).z)
+            for side in ("R", "L"):
+                heel = arm.pose.bones[f"Foot_{side}"].matrix @ heels[side]
+                for point, where in (("ball", arm.pose.bones[f"Toes_{side}"].head), ("heel", heel)):
+                    p = arm.matrix_world @ where
+                    tracks.setdefault((side, point), []).append((p.z < ground[(side, point)], p.y + travelled))
+        slip = 0.0
+        for track in tracks.values():
+            run = []
+            for on_ground, y in track + [(False, 0.0)]:
+                if on_ground:
+                    run.append(y)
+                    continue
+                if len(run) > 2:
+                    slip = max(slip, max(run) - min(run))
+                run = []
+        lines.append(f"{label} {name}: {frames} frames, {speed:.1f} m/s, hips {min(hips):.3f} to {max(hips):.3f} m, "
+                     f"largest slip of a foot on the ground {slip * 1000:.1f} mm")
+        if slip > SLIP_TOLERANCE:
+            failures.append(f"{label} {name}: a foot slides {slip * 1000:.1f} mm on the ground")
+    arm.animation_data.action = None
+    return lines, failures
+
+
 # ---------------------------------------------------------------------------------- compare
 
 def _mesh_snapshot(me):
@@ -284,13 +443,14 @@ def _mesh_snapshot(me):
 
 
 def _snapshot(path):
-    """Everything of a character file that shows or that later stages read, by name."""
+    """Everything of a character file that shows or that later stages read, by name: also the
+    armature's bones and pose, the skin weights, and the animation clips."""
     bpy.ops.wm.open_mainfile(filepath=path)
     data = {"collections": {c.name: (sorted(o.name for o in c.objects), sorted(k.name for k in c.children))
                             for c in bpy.data.collections}}
     depsgraph = bpy.context.evaluated_depsgraph_get()
     for o in bpy.data.objects:
-        entry = {"type": o.type, "parent": o.parent.name if o.parent else None,
+        entry = {"type": o.type, "data": o.data.name if o.data else None, "parent": o.parent.name if o.parent else None,
                  "matrix": np.array(o.evaluated_get(depsgraph).matrix_world).tobytes(),
                  "constraints": [(c.type, c.name, c.enabled) for c in o.constraints],
                  "visibility": (o.hide_viewport, o.hide_render, o.hide_get()),
@@ -304,7 +464,35 @@ def _snapshot(path):
                 entry.update(_mesh_snapshot(me), materials=[s.material.name if s.material else None for s in o.material_slots])
             finally:
                 evaluated.to_mesh_clear()
+            names = [g.name for g in o.vertex_groups]
+            entry["weights"] = (names, [tuple((names[g.group], g.weight) for g in v.groups) for v in o.data.vertices],
+                                [(m.type, getattr(m, "object", None) and m.object.name,
+                                  getattr(m, "use_deform_preserve_volume", None)) for m in o.modifiers])
+        if o.type == "ARMATURE":
+            entry["bones"] = [(b.name, b.parent.name if b.parent else None, b.use_deform, b.use_connect,
+                               np.array(b.matrix_local).tobytes(), b.length, sorted(c.name for c in b.collections))
+                              for b in o.data.bones]
+            entry["pose"] = [(pb.name, pb.rotation_mode, tuple(pb.location), tuple(pb.rotation_quaternion), tuple(pb.scale))
+                             for pb in o.pose.bones]
+            entry["armature"] = (o.data.display_type, o.data.pose_position, o.show_in_front)
+            ad = o.animation_data
+            entry["animation"] = None if ad is None else (ad.action.name if ad.action else None, len(ad.nla_tracks))
         data["object " + o.name] = entry
+    for a in bpy.data.actions:
+        curves = []
+        for slot in a.slots:
+            channelbag = anim_utils.action_get_channelbag_for_slot(a, slot)
+            for fc in (channelbag.fcurves if channelbag else []):
+                points = np.empty(len(fc.keyframe_points) * 6)
+                fc.keyframe_points.foreach_get("co", points[:len(fc.keyframe_points) * 2])
+                fc.keyframe_points.foreach_get("handle_left", points[len(fc.keyframe_points) * 2:len(fc.keyframe_points) * 4])
+                fc.keyframe_points.foreach_get("handle_right", points[len(fc.keyframe_points) * 4:])
+                curves.append((slot.identifier, fc.data_path, fc.array_index, points.tobytes(),
+                               [k.interpolation for k in fc.keyframe_points], fc.extrapolation))
+        data["action " + a.name] = (tuple(a.frame_range), a.use_frame_range, a.use_fake_user,
+                                    {k: repr(a[k]) for k in a.keys()}, sorted(curves))
+    scene = bpy.context.scene
+    data["scene"] = (scene.render.fps, scene.render.fps_base, scene.frame_start, scene.frame_end)
     for m in bpy.data.materials:
         nodes, links = [], []
         if m.node_tree is not None:
