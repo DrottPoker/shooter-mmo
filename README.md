@@ -188,7 +188,16 @@ Expected result:
 - SimulationWorker binds UDP `27015`, registers
   `local-simulation-worker-1`, loads the committed world-actor revision, and
   receives assignment to `local-shard-1`.
-- `GET http://localhost:5000/api/shards` reports the local shard online.
+- `GET http://localhost:5000/api/shards` reports `local-shard-1` online.
+
+To also run the stress arena, Development World 1, on `local-shard-2`, start a
+second worker:
+
+```powershell
+dotnet run --project src/Server/SimulationWorker --launch-profile StressArena
+```
+
+It binds UDP `27016` and appears in CharacterSelect as `Local Stress Arena`.
 
 Open `src/Client` in Unity and enter Play Mode from
 `Assets/Scenes/LoginMenu.unity`.
@@ -196,9 +205,9 @@ Open `src/Client` in Unity and enter Play Mode from
 There are two development Worlds: `development-world-2`, the 384 m test World
 with a zone for every developed feature, and `development-world-1`, a 64 m
 stress arena for many bots and clients on a small area. Their layouts and Unity
-workflow are defined in [Development Worlds](docs/DEVELOPMENT_WORLDS.md). The
-local shard is bound to Development World 2. Switching either direction remains
-a separate offline operational step.
+workflow are defined in [Development Worlds](docs/DEVELOPMENT_WORLDS.md).
+`local-shard-1` runs Development World 2 and `local-shard-2` runs Development
+World 1. Switching a shard's World remains a separate offline operational step.
 
 GameService and SimulationWorker load the root `.env` for local development.
 Real environment variables and command-line values override it. Never commit

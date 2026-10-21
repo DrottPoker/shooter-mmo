@@ -1,6 +1,6 @@
 # Active Simulation Bots
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 ## Purpose
 
@@ -11,8 +11,10 @@ the normal LiteNetLib UDP connection, one-time join ticket, server-provided
 simulation tick rate, sequenced movement input, entity lifecycle, snapshots,
 session heartbeat, and graceful leave flow.
 
-Use this tool to inspect a populated test map, remote interpolation, reliable
+Use this tool to inspect a populated World, remote interpolation, reliable
 spawn and despawn, interest behavior, collision, movement, and connection churn.
+By default the bots join `local-shard-2`, the stress arena in Development
+World 1, where every bot stays inside one interest radius.
 The bots behave like Unity clients on the wire: each one sends one movement
 input per simulation tick, plans its walks with the same planner and collision as
 the client, and decodes every message a client receives.
@@ -83,7 +85,7 @@ Population and behavior controls live in
 | --- | ---: | --- |
 | `AuthorityUrl` | `http://127.0.0.1:5000` | Real local GameService URL, loopback only |
 | `AuthoritySecret` | empty | Optional local override; prefer the ignored `.env` value |
-| `ShardId` | `local-shard-1` | Shard requested for every bot |
+| `ShardId` | `local-shard-2` | Shard requested for every bot: the stress arena. Use `local-shard-1` for a population spread over Development World 2 |
 | `MinimumActiveBots` | `300` | Lower bound for randomly selected population targets |
 | `MaximumActiveBots` | `400` | Upper bound and number of stable bot slots |
 | `StartupBotsPerSecond` | `20` | Maximum ticket and connection ramp rate |
@@ -136,8 +138,14 @@ dotnet run --project src/Server/GameService
 ```
 
 ```powershell
-dotnet run --project src/Server/SimulationWorker
+dotnet run --project src/Server/SimulationWorker --launch-profile StressArena
 ```
+
+The `StressArena` launch profile runs the stress arena worker for
+`local-shard-2` on UDP port `27016`, as described in
+[Run The Stress Arena Shard](LOCAL_DEVELOPMENT.md#run-the-stress-arena-shard).
+Start the default worker as well, with `dotnet run --project
+src/Server/SimulationWorker`, to keep `local-shard-1` online beside it.
 
 Then start the active population:
 
@@ -201,13 +209,14 @@ waits up to `ShutdownTimeoutSeconds`, prints its final status, and exits.
 No Unity scene, prefab, package, Inspector, or build-setting changes are
 required.
 
-1. Start GameService, SimulationWorker, and ActiveSimulationBots as described
-   above.
+1. Start GameService, the stress arena SimulationWorker, and ActiveSimulationBots
+   as described above.
 2. Open `src/Client` in Unity.
 3. Enter Play Mode from `Assets/Scenes/LoginMenu.unity`.
 4. Log in with a normal account, select a character, and join
-   `local-shard-1`.
-5. Move around the test map while bots log in, move, and log out.
+   `Local Stress Arena` (`local-shard-2`).
+5. Move around the arena while bots log in, move, and log out. Walk to the wolf
+   pen opening to fight wolves inside the crowd.
 6. Press F2 and verify the client-observed frame, prediction, snapshot, and
    payload metrics while the crowd moves.
 7. Keep the Unity Console visible for protocol, collision revision, or
@@ -219,9 +228,9 @@ purple. SimulationWorker spawns every bot with the presentation archetype
 second Unity client's character is orange. Bots appear only after reliable
 spawn messages, movement is
 interpolated from SimulationWorker snapshots, and graceful bot logout removes
-the matching remote instance through a reliable despawn. The small current map
-keeps these clients within the same interest area, so it is useful as a dense
-visual crowd test.
+the matching remote instance through a reliable despawn. The 64 m stress arena
+keeps every client, bot, and actor within the same interest area, so it is a
+dense visual crowd test.
 
 The F2 panel intentionally does not reveal the server-wide real-player count,
 bot count, CPU, memory, or internal tick timing. Verify those values in the

@@ -77,16 +77,23 @@ Fleet: local-fleet
     SimulationWorker: local-simulation-worker-1
       Worker runtime: generated opaque id per process start
       SimulationAssignment: worker -> local-shard-1
+    SimulationWorker: local-simulation-worker-2 (StressArena launch profile)
+      SimulationAssignment: worker -> local-shard-2
 
 Shard: local-shard-1
   World: development-world-2
   Fleet: local-fleet
+
+Shard: local-shard-2 (Local Stress Arena)
+  World: development-world-1
+  Fleet: local-fleet
 ```
 
 Both development Worlds are registered independently of shard placement from
-their canonical manifests. The local worker currently requests
-`development-world-2`; adding another World does not start it or hot-swap a
-running shard.
+their canonical manifests. The default local worker requests
+`development-world-2` for `local-shard-1`, and the `StressArena` launch profile
+requests `development-world-1` for `local-shard-2`; adding another World does
+not start it or hot-swap a running shard.
 
 A shard belongs to one fleet and references exactly one World definition at a
 time. The binding is accepted runtime state, not permanent character or shard

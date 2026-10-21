@@ -63,7 +63,9 @@ Task Workflow. These notes override the app's defaults where they differ.
 - Local stack for manual or end-to-end tests: `docker compose up -d --wait`,
   then `dotnet run --project src/Server/GameService` and
   `dotnet run --project src/Server/SimulationWorker` as background processes. Stop both
-  processes when finished.
+  processes when finished. The default worker runs Development World 2 on
+  `local-shard-1`; add `--launch-profile StressArena` for a second worker that
+  runs the Development World 1 stress arena on `local-shard-2` and UDP `27016`.
 
 ## Unity Editor
 

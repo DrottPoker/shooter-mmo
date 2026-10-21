@@ -161,7 +161,11 @@ Startup validation rejects empty collections, invalid identifiers, duplicates,
 unknown references, invalid display names, and invalid region codes. After
 migrations, `SimulationTopologySeeder` idempotently upserts configured records.
 It does not manufacture online workers. A seeded shard remains offline until a
-valid heartbeat and active assignment exist.
+valid heartbeat and active assignment exist. The checked-in topology seeds two
+shards in `local-fleet`: `local-shard-1` (`Local Shard 1`), which the default
+worker binds to Development World 2, and `local-shard-2` (`Local Stress
+Arena`), which the SimulationWorker `StressArena` launch profile binds to
+Development World 1.
 
 A shard is rebound to another World when a worker heartbeat proposes a different
 configured `WorldId`. GameService locks the shard row and refuses the change while
