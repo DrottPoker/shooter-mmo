@@ -896,7 +896,7 @@ namespace Mmorpg.Client.Ui
                         Item = item,
                         Interactable = true,
                         DragPayload = InventoryDragPayload.ForRecoveryDelivery(delivery.DeliveryId),
-                        CanDrag = state.CanMutate,
+                        CanDrag = CanMoveItem(state, null),
                         DropValidator = RejectRecoveryDestination,
                         Tooltip = InventorySlotPresentation.BuildItemTooltip(
                             state.Catalog,
@@ -955,7 +955,7 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            var view = corpseState.ActiveView;
+            var view = corpseState.ShownView;
             CreateMessage(
                 parent,
                 "<b>" + view.SourceDisplayName + "</b>"
@@ -1045,7 +1045,8 @@ namespace Mmorpg.Client.Ui
                 DragPayload = item == null
                     ? null
                     : InventoryDragPayload.ForCorpseItem(view.CorpseId, item.ItemInstanceId),
-                CanDrag = corpseController.State.CanMutate,
+                CanDrag = corpseController.State.CanShowOperations
+                    && CanMoveItem(controller.State, item?.ToInventoryItem()),
                 DropValidator = (InventoryDragPayload candidate, out string reason) =>
                     CanDropOnCorpse(
                         inventoryState,
@@ -1200,13 +1201,9 @@ namespace Mmorpg.Client.Ui
 
             // Item moves show at once and may follow pending ones; corpse loot and Recovery
             // claims wait for a confirmed state.
-            if (payload.Kind == InventoryDragPayloadKind.Item
-                ? !CanMoveItem(state, null)
-                : !state.CanMutate)
+            if (!CanMoveItem(state, null))
             {
-                reason = state.HasPendingOperations
-                    ? "Wait until your item moves are confirmed."
-                    : "Inventory mutation is unavailable while state is loading or busy.";
+                reason = "Inventory mutation is unavailable while state is loading.";
                 return false;
             }
 
@@ -1368,9 +1365,9 @@ namespace Mmorpg.Client.Ui
             InventoryDragPayload payload,
             out string reason)
         {
-            var view = corpseController?.State.ActiveView;
+            var view = corpseController?.State.ShownView;
             if (view == null
-                || !corpseController.State.CanMutate
+                || !corpseController.State.CanShowOperations
                 || view.CorpseId != payload.CorpseId
                 || !view.TryFindItem(
                     payload.ItemInstanceId,
@@ -1402,10 +1399,12 @@ namespace Mmorpg.Client.Ui
             out string reason)
         {
             reason = string.Empty;
-            if (!state.CanMutate
-                || corpseController?.State.ActiveView == null
-                || !corpseController.State.CanMutate
-                || corpseController.State.ActiveView.CorpseId != view.CorpseId)
+            view = corpseController?.State.ShownView;
+            if (!CanMoveItem(state, null)
+                || view == null
+                || !corpseController.State.CanShowOperations
+                || !view.TryGetSection(section.SectionKind, out section)
+                || !section.TryGetSlot(slot.SlotIndex, out slot))
             {
                 reason = "Inventory or corpse mutation is unavailable while state is loading or busy.";
                 return false;
@@ -1478,21 +1477,17 @@ namespace Mmorpg.Client.Ui
                 return false;
             }
 
-            if (payload.Kind == InventoryDragPayloadKind.Item
-                ? !CanMoveItem(state, null)
-                : !state.CanMutate)
+            if (!CanMoveItem(state, null))
             {
-                reason = state.HasPendingOperations
-                    ? "Wait until your item moves are confirmed."
-                    : "Inventory mutation is unavailable while state is loading or busy.";
+                reason = "Inventory mutation is unavailable while state is loading.";
                 return false;
             }
 
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {
-                var view = corpseController?.State.ActiveView;
+                var view = corpseController?.State.ShownView;
                 if (view == null
-                    || !corpseController.State.CanMutate
+                    || !corpseController.State.CanShowOperations
                     || view.CorpseId != payload.CorpseId
                     || !view.TryFindItem(
                         payload.ItemInstanceId,
@@ -1675,7 +1670,7 @@ namespace Mmorpg.Client.Ui
 
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {
-                var view = corpseController.State.ActiveView;
+                var view = corpseController.State.ShownView;
                 view.TryFindItem(
                     payload.ItemInstanceId,
                     out var corpseItem,
@@ -1806,7 +1801,7 @@ namespace Mmorpg.Client.Ui
             InventorySlot destinationSlot,
             InventoryDragPayload payload)
         {
-            var view = corpseController?.State.ActiveView;
+            var view = corpseController?.State.ShownView;
             if (view == null
                 || !view.TryFindItem(
                     payload.ItemInstanceId,
@@ -1954,9 +1949,11 @@ namespace Mmorpg.Client.Ui
         {
             context = next;
             ClearSelection();
+            // Committed changes keep the Bank and Recovery Storage current, so opening them
+            // reloads only a state that is not coherent; Refresh still reloads on request.
             if (next is InventoryContextKind.Bank or InventoryContextKind.RecoveryStorage)
             {
-                controller.RefreshContext(next);
+                controller.EnsureFullState();
             }
 
             Rebuild();
@@ -2010,7 +2007,9 @@ namespace Mmorpg.Client.Ui
                 CreateMessage(parent, state.Error.ToDisplayMessage(), TemporaryUiKit.DangerColor);
             }
 
-            if (state.Status is InventoryClientStatus.Loading or InventoryClientStatus.Busy)
+            // A reload after a committed operation runs behind the shown state, so only a
+            // first load says so.
+            if (state.Status == InventoryClientStatus.Loading)
             {
                 CreateMessage(parent, StatusText(state), TemporaryUiKit.WarningColor);
             }

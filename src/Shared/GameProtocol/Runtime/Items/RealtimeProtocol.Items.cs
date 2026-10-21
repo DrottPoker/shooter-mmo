@@ -38,9 +38,17 @@ namespace Mmorpg.GameProtocol
         }
 
         // A removed item carries only its id, a contained item its container and slot, and an
-        // equipped item its equipment slot.
+        // equipped item its equipment slot. Only an equipped Bag names its contents, with their
+        // revision.
         private static bool SatisfiesRules(RealtimeItemStateChange change)
         {
+            if ((change.BagContentsContainerId == Guid.Empty && change.BagContentsRevision != 0)
+                || (change.BagContentsContainerId != Guid.Empty
+                    && change.Location != RealtimeItemStateLocationKind.Equipment))
+            {
+                return false;
+            }
+
             switch (change.Location)
             {
                 case RealtimeItemStateLocationKind.Removed:

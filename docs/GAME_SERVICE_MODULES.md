@@ -256,8 +256,10 @@ weight with the hard cap, character revisions with each touched character's
 balance, result item revisions, item changes, and audit rows. The item changes
 are the final state of every item an audit change recorded: its definition,
 quantity, revision, container slot or equipment slot, and active policies with
-their protection source, or `Removed` for an item that no longer exists. A
-transaction that changed more than 32 items reports none. The worker turns them
+their protection source, or `Removed` for an item that no longer exists. A Bag
+in the Bag slot also names its contents container and revision, and every item
+inside it is reported too, so the client sees the contents of a Bag it just
+equipped. A transaction that changed more than 32 items reports none. The worker turns them
 into `OwnerItemStateChanged`, described in
 [Realtime Protocol](REALTIME_PROTOCOL.md#owner-item-state-changes), so the client
 patches its inventory instead of reloading it. Every item write must therefore

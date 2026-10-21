@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 21 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 22 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -433,7 +433,7 @@ reloading it over HTTP. It carries:
 - `ContainerRevisions`: up to `MaximumItemResultContainerRevisions` (8)
   distinct containers and their new revisions, including containers the
   client does not show, such as a corpse.
-- `Items`: up to `MaximumItemStateChanges` (8) distinct `ItemStateChange`
+- `Items`: up to `MaximumItemStateChanges` (16) distinct `ItemStateChange`
   structs, each an item id, an `ItemStateLocationKind`, and the item's final
   state. `Removed` (1) carries only the id; `Container` (2) carries the
   definition, a quantity of at least 1, the revision, the container, and a slot
@@ -441,14 +441,20 @@ reloading it over HTTP. It carries:
   the equipment slot. The definition and the equipment slot are optional text,
   and each item lists up to `MaximumItemPolicies` (8) active
   `ItemPolicySummary` structs with a kind, a status, and a protection source of
-  up to `MaximumItemPolicyTextLength` (64) characters. A hand-written rule
-  rejects any field that does not belong to the location.
+  up to `MaximumItemPolicyTextLength` (64) characters. Since protocol version
+  22 a Bag in the Bag equipment slot also names its `BagContentsContainerId`
+  and `BagContentsRevision`, and the change lists every item inside a Bag that
+  the transaction put into the Bag slot. A hand-written rule rejects any field
+  that does not belong to the location, and contents on anything but equipment.
+- `ClaimedRecoveryDeliveryIds`: since protocol version 22, up to
+  `MaximumItemResultRecoveryDeliveries` (8) distinct deliveries that a Recovery
+  claim took out of Recovery Storage, whose items the change places elsewhere.
 
 The message can exceed the packet limit, so it sets `runtimeSizeCheck`, and
 `RealtimeProtocol.CanEncodeOwnerItemStateChanged` lets the worker check a change
 before it encodes it. The worker sends the change only when the transaction
-reports every changed item, touches the owner alone, delivers or claims no
-Recovery Storage, changes no Secure Container tier, and fits one packet; the
+reports every changed item, touches the owner alone, adds no Recovery delivery
+other than by a claim, changes no Secure Container tier, and fits one packet; the
 client reloads its inventory in every other case. It always goes out before the
 carry state and the result of the operation that caused it.
 ## Corpse Loot Into Equipment

@@ -17,6 +17,8 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private GameObject host;
         private FakeCorpseChannel channel;
+        private ImmediateInventoryQueue inventory;
+        private InventoryItem equippedSword;
         private CorpseClientController controller;
         private Guid corpseId;
         private Guid itemId;
@@ -28,7 +30,9 @@ namespace Mmorpg.Client.Tests.EditMode
             host = new GameObject(nameof(CorpseClientControllerTests));
             channel = new FakeCorpseChannel();
             controller = host.AddComponent<CorpseClientController>();
-            controller.Initialize(channel, null);
+            equippedSword = new InventoryItem(Guid.NewGuid(), "fixture.sword", 1, 4, Array.Empty<InventoryPolicy>());
+            inventory = new ImmediateInventoryQueue(equippedSword);
+            controller.Initialize(channel, inventory);
             corpseId = Guid.NewGuid();
             itemId = Guid.NewGuid();
             containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
@@ -216,7 +220,7 @@ namespace Mmorpg.Client.Tests.EditMode
             OpenView();
             var view = controller.State.ActiveView;
             Assert.That(view.TryFindItem(itemId, out var item, out _, out _), Is.True);
-            var equipped = new InventoryItem(Guid.NewGuid(), "fixture.sword", 1, 4, Array.Empty<InventoryPolicy>());
+            var equipped = equippedSword;
 
             Assert.That(
                 controller.TryLootToEquipment(item, new InventoryEquipmentSlot("main_hand", 2, equipped), out var error),
@@ -281,6 +285,86 @@ namespace Mmorpg.Client.Tests.EditMode
                 false,
                 2,
                 new[] { CreateSlot(0, itemId, 3, 2) });
+        }
+
+        // Shows each operation on a loaded inventory and sends it at once, as the inventory
+        // controller does when nothing else is pending.
+        private sealed class ImmediateInventoryQueue : IInventoryOperationQueue
+        {
+            public ImmediateInventoryQueue(InventoryItem mainHand)
+            {
+                var characterId = Guid.NewGuid();
+                var catalog = FixtureItemCatalog.Load();
+                State.SetCatalog(catalog);
+                State.PrepareCharacter(characterId);
+                InventoryContainer Container(string type)
+                {
+                    return new InventoryContainer(
+                        Guid.NewGuid(),
+                        type,
+                        1,
+                        4,
+                        new[] { new InventorySlot(0, "general", Array.Empty<string>(), null) });
+                }
+
+                Assert.That(
+                    State.ApplyFull(new CharacterInventorySnapshot(
+                        characterId,
+                        catalog.Revision,
+                        3,
+                        Container("permanent_inventory"),
+                        new[] { new InventoryEquipmentSlot("main_hand", 2, mainHand) },
+                        null,
+                        Container("bank"),
+                        new SecureContainerInventory("secure_container.base", 1, Container("secure_container")),
+                        new RecoveryStorageInventory(Guid.NewGuid(), 1, Array.Empty<RecoveryDelivery>()),
+                        0,
+                        200,
+                        0,
+                        10_000)),
+                    Is.EqualTo(InventorySnapshotApplyResult.Applied));
+            }
+
+            public InventoryClientState State { get; } = new InventoryClientState();
+
+            public List<Guid> Completed { get; } = new List<Guid>();
+
+            public bool TryQueueOperation(InventoryPredictedOperation operation, out string error)
+            {
+                if (!State.TryPredict(operation, out error))
+                {
+                    return false;
+                }
+
+                if (operation.SendExternal(State, out var operationId, out error) == InventoryOperationSendResult.Sent)
+                {
+                    operation.OperationId = operationId;
+                }
+
+                return true;
+            }
+
+            public void CompleteExternalOperation(
+                Guid operationId,
+                bool succeeded,
+                InventoryClientError error,
+                bool requiresInventoryRefresh,
+                long itemStateRevision)
+            {
+                Completed.Add(operationId);
+                if (succeeded)
+                {
+                    State.CompletePendingHead(true);
+                }
+                else
+                {
+                    State.RollBackPredictions(error);
+                }
+            }
+
+            public void EnsureFullState(long minimumRevision)
+            {
+            }
         }
 
         private sealed class FakeCorpseChannel : IRealtimeCorpseChannel

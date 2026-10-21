@@ -451,6 +451,7 @@ internal sealed record ItemTransactionCharacterRevision(
 
 // The final state of one item the transaction changed. A removed item has no definition,
 // and an equipped item no container. Policies are the active ones, as snapshots show them.
+// A Bag in the Bag slot names its contents container and its revision.
 internal sealed record ItemTransactionItemChange(
     Guid ItemInstanceId,
     bool Removed,
@@ -461,7 +462,9 @@ internal sealed record ItemTransactionItemChange(
     int? ContainerSlotIndex,
     Guid? EquippedCharacterId,
     string? EquipmentSlotId,
-    IReadOnlyList<ItemPolicySummaryResponse> Policies);
+    IReadOnlyList<ItemPolicySummaryResponse> Policies,
+    Guid? BagContentsContainerId = null,
+    long? BagContentsRevision = null);
 
 internal sealed record ItemTransactionItemRevision(
     Guid ItemInstanceId,

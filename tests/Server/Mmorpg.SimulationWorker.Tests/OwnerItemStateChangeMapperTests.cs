@@ -57,6 +57,36 @@ public sealed class OwnerItemStateChangeMapperTests
     }
 
     [Fact]
+    public void ClaimsNameTheirDeliveriesAndEquippedBagsTheirContents()
+    {
+        var deliveryId = Guid.NewGuid();
+        var bagId = Guid.NewGuid();
+        var contentsId = Guid.NewGuid();
+
+        var change = OwnerItemStateChangeMapper.TryCreate(
+            OperationId,
+            CharacterId,
+            Transaction(
+                [
+                    Contained(Guid.NewGuid()),
+                    new SimulationItemChange(bagId, false, "pack", 1, 2, null, null, CharacterId, "bag", null, contentsId, 4)
+                ]) with
+            {
+                OperationKind = "claim_recovery_delivery",
+                RecoveryDeliveryIds = [deliveryId]
+            });
+
+        Assert.NotNull(change);
+        Assert.Equal(new[] { deliveryId }, change.ClaimedRecoveryDeliveryIds);
+        var bag = change.Items.Single(item => item.ItemInstanceId == bagId);
+        Assert.Equal(contentsId, bag.BagContentsContainerId);
+        Assert.Equal(4, bag.BagContentsRevision);
+        Assert.All(
+            change.Items.Where(item => item.ItemInstanceId != bagId),
+            item => Assert.Equal(Guid.Empty, item.BagContentsContainerId));
+    }
+
+    [Fact]
     public void TransactionsThatDoNotDescribeTheWholeChangeSendNothing()
     {
         // GameService listed no changes, because the transaction changed too many items.
@@ -86,7 +116,7 @@ public sealed class OwnerItemStateChangeMapperTests
         Assert.Null(OwnerItemStateChangeMapper.TryCreate(
             OperationId,
             CharacterId,
-            Transaction(Enumerable.Range(0, 9).Select(_ => Contained(Guid.NewGuid())).ToArray())));
+            Transaction(Enumerable.Range(0, 17).Select(_ => Contained(Guid.NewGuid())).ToArray())));
         // Items that do not fit one packet.
         Assert.Null(OwnerItemStateChangeMapper.TryCreate(
             OperationId,

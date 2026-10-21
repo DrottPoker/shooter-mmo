@@ -9,16 +9,21 @@ namespace Mmorpg.SimulationWorker.Items;
 // client then reloads its inventory instead.
 internal static class OwnerItemStateChangeMapper
 {
+    private const string ClaimRecoveryDeliveryKind = "claim_recovery_delivery";
+
     public static RealtimeOwnerItemStateChanged? TryCreate(
         Guid operationId,
         Guid characterId,
         SimulationItemTransactionResponse transaction)
     {
         ArgumentNullException.ThrowIfNull(transaction);
-        // Recovery deliveries and Secure Container tiers are state the change cannot describe.
+        // A claim takes its deliveries out of Recovery Storage; deliveries another transaction
+        // adds and Secure Container tiers are state the change cannot describe.
+        var claim = string.Equals(transaction.OperationKind, ClaimRecoveryDeliveryKind, StringComparison.Ordinal);
         if (!transaction.Succeeded
             || transaction.ItemChanges is null
-            || transaction.RecoveryDeliveryIds is not { Count: 0 }
+            || transaction.RecoveryDeliveryIds is null
+            || (transaction.RecoveryDeliveryIds.Count > 0 && !claim)
             || transaction.SecureContainerEntitlementRevision is not null
             || transaction.ContainerRevisions is null
             || transaction.CharacterRevisions is not { Count: 1 }
@@ -50,7 +55,8 @@ internal static class OwnerItemStateChangeMapper
             transaction.ContainerRevisions
                 .Select(revision => new RealtimeContainerRevision(revision.ContainerId, revision.Revision))
                 .ToArray(),
-            items);
+            items,
+            transaction.RecoveryDeliveryIds.ToArray());
         return RealtimeProtocol.CanEncodeOwnerItemStateChanged(change) ? change : null;
     }
 
@@ -67,7 +73,9 @@ internal static class OwnerItemStateChangeMapper
                 Guid.Empty,
                 -1,
                 string.Empty,
-                []);
+                [],
+                Guid.Empty,
+                0);
         }
 
         var policies = (item.Policies ?? [])
@@ -87,7 +95,9 @@ internal static class OwnerItemStateChangeMapper
                 containerId,
                 slotIndex,
                 string.Empty,
-                policies);
+                policies,
+                Guid.Empty,
+                0);
         }
 
         // An item equipped by anyone else is not the owner's to show.
@@ -101,7 +111,9 @@ internal static class OwnerItemStateChangeMapper
                 Guid.Empty,
                 -1,
                 item.EquipmentSlotId,
-                policies)
+                policies,
+                item.BagContentsContainerId ?? Guid.Empty,
+                item.BagContentsContainerId is null ? 0 : item.BagContentsRevision ?? 0)
             : null;
     }
 }

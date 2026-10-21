@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
@@ -152,6 +154,8 @@ namespace Mmorpg.Client.WorldActors
         private RealtimeCapabilityActionKind pendingCapabilityAction;
         private Guid pendingOpenOperationId;
         private string pendingOpenCapabilityId = string.Empty;
+        // Vendor trades in the inventory's queue, whose results this controller hands back.
+        private readonly List<InventoryPredictedOperation> queuedOperations = new List<InventoryPredictedOperation>();
 
         // Raised when the server confirms an opened Character Bank, Recovery Storage, or
         // Vendor capability. The inventory presents it while the interaction stays open.
@@ -202,6 +206,7 @@ namespace Mmorpg.Client.WorldActors
             simulationClient.WorldInteractionClosed += OnClosed;
             simulationClient.GatheringStateReceived += OnGatheringState;
             simulationClient.SessionEnded += OnSessionEnded;
+            inventoryController.State.PredictionsDiscarded += OnPredictionsDiscarded;
             initialized = true;
             State.Clear();
             Gathering.Clear();
@@ -421,53 +426,137 @@ namespace Mmorpg.Client.WorldActors
                 out error);
         }
 
-        // Buys a quantity of a vendor offer for the total the player was shown.
+        // Buys a quantity of a vendor offer for the total the player was shown. The purchase
+        // shows at once and is sent in order with every other item operation.
         public bool TryPurchase(
             string capabilityId,
             string definitionId,
             int quantity,
             long expectedPrice,
-            long expectedCharacterRevision,
             out string error)
         {
-            return TryExecuteCapability(
+            return TryQueueVendorOperation(
                 capabilityId,
-                RealtimeCapabilityActionKind.VendorPurchase,
-                expectedCharacterRevision,
-                Guid.Empty,
-                0,
-                Guid.Empty,
-                -1,
-                out error,
-                definitionId,
-                quantity,
-                expectedPrice);
+                VendorPrediction.Purchase(
+                    definitionId,
+                    quantity,
+                    expectedPrice,
+                    (InventoryClientState inventory, out Guid operationId, out string sendError) =>
+                        SendCapabilityAction(
+                            capabilityId,
+                            RealtimeCapabilityActionKind.VendorPurchase,
+                            inventory.KnownItemStateRevision,
+                            Guid.Empty,
+                            0,
+                            definitionId,
+                            quantity,
+                            expectedPrice,
+                            out operationId,
+                            out sendError)),
+                out error);
         }
 
         // Sells a quantity of a carried item for the total the player was shown.
         public bool TrySell(
             string capabilityId,
             Guid itemInstanceId,
-            long expectedItemRevision,
             int quantity,
             long expectedPrice,
-            long expectedCharacterRevision,
             out string error)
         {
-            return TryExecuteCapability(
+            return TryQueueVendorOperation(
                 capabilityId,
-                RealtimeCapabilityActionKind.VendorSale,
-                expectedCharacterRevision,
-                itemInstanceId,
-                expectedItemRevision,
-                Guid.Empty,
-                -1,
-                out error,
-                string.Empty,
-                quantity,
-                expectedPrice);
+                VendorPrediction.Sale(
+                    itemInstanceId,
+                    quantity,
+                    expectedPrice,
+                    (InventoryClientState inventory, out Guid operationId, out string sendError) =>
+                    {
+                        if (!inventory.TryFindConfirmedItem(itemInstanceId, out var item, out _))
+                        {
+                            operationId = Guid.Empty;
+                            sendError = "The item changed before the sale could be sent.";
+                            return InventoryOperationSendResult.Failed;
+                        }
+
+                        return SendCapabilityAction(
+                            capabilityId,
+                            RealtimeCapabilityActionKind.VendorSale,
+                            inventory.KnownItemStateRevision,
+                            itemInstanceId,
+                            item.Revision,
+                            string.Empty,
+                            quantity,
+                            expectedPrice,
+                            out operationId,
+                            out sendError);
+                    }),
+                out error);
         }
 
+        private bool TryQueueVendorOperation(
+            string capabilityId,
+            InventoryPredictedOperation operation,
+            out string error)
+        {
+            if (State.ActiveInteraction == null
+                || !Array.Exists(
+                    State.ActiveInteraction.Capabilities,
+                    value => string.Equals(value.Id, capabilityId, StringComparison.Ordinal) && value.IsAvailable))
+            {
+                error = "The selected capability is not currently available.";
+                return false;
+            }
+
+            if (!inventoryController.TryQueueOperation(operation, out error))
+            {
+                return false;
+            }
+
+            queuedOperations.Add(operation);
+            return true;
+        }
+
+        // Sends a queued vendor trade once the interaction is idle; it waits while another
+        // world operation is in flight and fails once the interaction closed.
+        private InventoryOperationSendResult SendCapabilityAction(
+            string capabilityId,
+            RealtimeCapabilityActionKind action,
+            long expectedCharacterRevision,
+            Guid itemInstanceId,
+            long expectedItemRevision,
+            string offerDefinitionId,
+            int quantity,
+            long expectedPrice,
+            out Guid operationId,
+            out string error)
+        {
+            operationId = Guid.Empty;
+            if (State.ActiveInteraction != null && State.PendingOperationId != Guid.Empty)
+            {
+                error = string.Empty;
+                return InventoryOperationSendResult.Wait;
+            }
+
+            if (!TryExecuteCapability(
+                    capabilityId,
+                    action,
+                    expectedCharacterRevision,
+                    itemInstanceId,
+                    expectedItemRevision,
+                    Guid.Empty,
+                    -1,
+                    out error,
+                    offerDefinitionId,
+                    quantity,
+                    expectedPrice))
+            {
+                return InventoryOperationSendResult.Failed;
+            }
+
+            operationId = pendingCapabilityOperationId;
+            return InventoryOperationSendResult.Sent;
+        }
         public bool TryStartGathering(string capabilityId, out string error)
         {
             return TryExecuteCapability(
@@ -643,7 +732,21 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
-            if (result.Succeeded && result.ItemStateRevision > 0)
+            var queued = queuedOperations.FirstOrDefault(operation =>
+                operation.IsSent && operation.OperationId == result.OperationId);
+            if (queued != null)
+            {
+                queuedOperations.Remove(queued);
+                inventoryController.CompleteExternalOperation(
+                    result.OperationId,
+                    result.Succeeded,
+                    result.Succeeded
+                        ? null
+                        : new InventoryClientError(result.Error.Code, result.Error.Message),
+                    false,
+                    result.ItemStateRevision > 0 ? result.ItemStateRevision : inventoryController.State.KnownItemStateRevision);
+            }
+            else if (result.Succeeded && result.ItemStateRevision > 0)
             {
                 inventoryController.EnsureFullState(
                     result.ItemStateRevision);
@@ -695,8 +798,14 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
+        private void OnPredictionsDiscarded(IReadOnlyList<InventoryPredictedOperation> operations)
+        {
+            queuedOperations.RemoveAll(operations.Contains);
+        }
+
         private void OnSessionEnded(RealtimeClientError error)
         {
+            queuedOperations.Clear();
             State.Clear();
             Gathering.Clear();
             ClearPendingOpen();
@@ -714,6 +823,7 @@ namespace Mmorpg.Client.WorldActors
             simulationClient.WorldInteractionClosed -= OnClosed;
             simulationClient.GatheringStateReceived -= OnGatheringState;
             simulationClient.SessionEnded -= OnSessionEnded;
+            inventoryController.State.PredictionsDiscarded -= OnPredictionsDiscarded;
             initialized = false;
         }
     }

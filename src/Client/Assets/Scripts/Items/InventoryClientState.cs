@@ -17,6 +17,7 @@ namespace Mmorpg.Client.Items
         private readonly List<InventoryPredictedOperation> pendingOperations =
             new List<InventoryPredictedOperation>();
         private readonly HashSet<Guid> predictedItemIds = new HashSet<Guid>();
+        private readonly HashSet<Guid> predictedContainerIds = new HashSet<Guid>();
         private CharacterInventorySnapshot confirmedSnapshot;
         private CharacterInventorySnapshot predictedSnapshot;
         private InventoryContainer bankOverride;
@@ -28,6 +29,11 @@ namespace Mmorpg.Client.Items
 
         // Raised when predicted operations are undone, after Changed shows the restored state.
         public event Action<InventoryPredictionRollback> PredictionRolledBack;
+
+        // Raised for every pending operation that leaves without committing, by a rejection,
+        // an error, a disconnect, or a newer state it no longer fits, so the controller that
+        // owns it drops what it showed outside the inventory.
+        public event Action<IReadOnlyList<InventoryPredictedOperation>> PredictionsDiscarded;
 
         public ClientItemCatalog Catalog { get; private set; }
 
@@ -135,8 +141,7 @@ namespace Mmorpg.Client.Items
             {
                 return CanShowOperations
                     && Status is InventoryClientStatus.Ready or InventoryClientStatus.Busy
-                    && pendingOperations.Count < MaximumPendingOperations
-                    && pendingOperations.All(operation => operation.IsPredicted);
+                    && pendingOperations.Count < MaximumPendingOperations;
             }
         }
 
@@ -154,6 +159,13 @@ namespace Mmorpg.Client.Items
         public bool IsPredictedItem(Guid itemInstanceId)
         {
             return predictedItemIds.Contains(itemInstanceId);
+        }
+
+        // The contents of a Bag a pending equip shows have no server id yet, so nothing can
+        // move into them.
+        public bool IsPredictedContainer(Guid containerId)
+        {
+            return predictedContainerIds.Contains(containerId);
         }
 
         public void SetCatalog(ClientItemCatalog catalog)
@@ -436,8 +448,7 @@ namespace Mmorpg.Client.Items
             return true;
         }
 
-        // Shows the operation at once, on top of every operation still pending. An operation
-        // the client cannot predict waits alone and keeps the shown state confirmed.
+        // Shows the operation at once, on top of every operation still pending.
         public bool TryPredict(InventoryPredictedOperation operation, out string error)
         {
             error = string.Empty;
@@ -445,20 +456,6 @@ namespace Mmorpg.Client.Items
             {
                 error = "The item operation is invalid.";
                 return false;
-            }
-
-            if (!operation.IsPredicted || !InventoryOperationPredictor.CanPredict(this, operation))
-            {
-                operation.IsPredicted = false;
-                if (!CanMutate)
-                {
-                    error = "Wait until your other item moves are confirmed.";
-                    return false;
-                }
-
-                pendingOperations.Add(operation);
-                NotifyChanged();
-                return true;
             }
 
             if (!CanPredict)
@@ -476,15 +473,10 @@ namespace Mmorpg.Client.Items
 
             pendingOperations.Add(operation);
             predictedSnapshot = predicted;
-            if (operation.PredictedItemInstanceId != Guid.Empty)
-            {
-                predictedItemIds.Add(operation.PredictedItemInstanceId);
-            }
-
+            RememberPredictedIds(operation, predicted);
             NotifyChanged();
             return true;
         }
-
         // The first pending operation committed and the confirmed state already contains it.
         // Unless a reload is still running, the wait an unpredicted operation showed ends.
         public void CompletePendingHead(bool endWait)
@@ -540,9 +532,7 @@ namespace Mmorpg.Client.Items
             NotifyChanged();
             if (rolledBack.Length > 0)
             {
-                PredictionRolledBack?.Invoke(new InventoryPredictionRollback(
-                    error,
-                    InventoryPredictionRollback.ItemsOf(rolledBack)));
+                PredictionRolledBack?.Invoke(new InventoryPredictionRollback(error, rolledBack));
             }
         }
 
@@ -614,6 +604,28 @@ namespace Mmorpg.Client.Items
                 itemInstanceId,
                 out item,
                 out location);
+        }
+
+        // A container as the server last confirmed it, whose revision an intent expects.
+        public bool TryFindConfirmedContainer(Guid containerId, out InventoryContainer container)
+        {
+            container = confirmedSnapshot == null
+                ? null
+                : new[]
+                    {
+                        confirmedSnapshot.PermanentInventory,
+                        confirmedSnapshot.EquippedBag?.Contents,
+                        confirmedSnapshot.SecureContainer?.Contents,
+                        ConfirmedBank
+                    }
+                    .FirstOrDefault(candidate => candidate != null && candidate.ContainerId == containerId);
+            return container != null;
+        }
+
+        public InventoryItem ConfirmedEquippedItem(string equipmentSlotId)
+        {
+            return confirmedSnapshot?.Equipment.FirstOrDefault(slot =>
+                string.Equals(slot.SlotId, equipmentSlotId, StringComparison.Ordinal))?.Item;
         }
 
         // The confirmed state as a view that operation rules can judge.
@@ -726,6 +738,7 @@ namespace Mmorpg.Client.Items
         {
             predictedSnapshot = null;
             predictedItemIds.Clear();
+            predictedContainerIds.Clear();
             pendingOperations.RemoveAll(operation =>
                 operation.CommittedRevision >= 0
                 && operation.CommittedRevision <= CharacterObservedRevision);
@@ -756,11 +769,15 @@ namespace Mmorpg.Client.Items
                     pendingOperations.RemoveRange(dropFrom, pendingOperations.Count - dropFrom);
                     if (dropped.Length > 0)
                     {
+                        PredictionsDiscarded?.Invoke(dropped);
+                    }
+                    if (dropped.Length > 0)
+                    {
                         pendingRollback = new InventoryPredictionRollback(
                             new InventoryClientError(
                                 "item_move_superseded",
                                 "Your item move no longer fits the inventory and was undone: " + reason),
-                            InventoryPredictionRollback.ItemsOf(dropped));
+                            dropped);
                     }
 
                     break;
@@ -768,10 +785,7 @@ namespace Mmorpg.Client.Items
 
                 view = new InventorySnapshotView(Catalog, next);
                 changed = true;
-                if (operation.PredictedItemInstanceId != Guid.Empty)
-                {
-                    predictedItemIds.Add(operation.PredictedItemInstanceId);
-                }
+                RememberPredictedIds(operation, next);
             }
 
             predictedSnapshot = changed ? view.FullSnapshot : null;
@@ -801,10 +815,25 @@ namespace Mmorpg.Client.Items
                 snapshot.Currency);
         }
 
+        private void RememberPredictedIds(InventoryPredictedOperation operation, CharacterInventorySnapshot predicted)
+        {
+            predictedItemIds.UnionWith(operation.PredictedItemInstanceIds);
+            if (predicted.EquippedBag?.Contents.ContainerId == operation.PredictedContainerId)
+            {
+                predictedContainerIds.Add(operation.PredictedContainerId);
+            }
+        }
+
         private void DiscardPredictions()
         {
+            var discarded = pendingOperations.ToArray();
             pendingOperations.Clear();
             predictedItemIds.Clear();
+            predictedContainerIds.Clear();
+            if (discarded.Length > 0)
+            {
+                PredictionsDiscarded?.Invoke(discarded);
+            }
             predictedSnapshot = null;
             pendingRollback = null;
         }

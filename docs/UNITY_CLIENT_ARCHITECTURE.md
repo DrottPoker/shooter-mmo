@@ -682,12 +682,17 @@ NPC services such as vendor trades, and gathering yields.
 `InventoryItemStateChangePatch` applies it to the coherent confirmed snapshot it
 follows: every changed item leaves its slot, then takes its new place, an item
 that moved into a container the snapshot does not show, such as a corpse, leaves
-the view, and every changed container must have its new revision. The patched
-snapshot equals what `GET /api/characters/{characterId}/item-state` returns for
-the new revision, so no reload follows. A change the patch cannot describe, such
-as one that touches the equipped Bag, whose contents only a reload shows, or
-Recovery Storage, or one that does not follow the known revision, calls
-`EnsureFullState` with the new revision instead.
+the view, and every changed container must have its new revision. A Bag that
+enters the Bag slot brings its contents container, laid out as its catalog Bag
+with the items the change lists inside it; a Bag that leaves it takes its
+contents out of view. A claim's deliveries leave Recovery Storage, and every one
+of their items must take a place the change names. The patched snapshot equals
+what `GET /api/characters/{characterId}/item-state` returns for the new
+revision, so no reload follows. A change the patch cannot describe, such as an
+item arriving in Recovery Storage, or one that does not follow the known
+revision, calls `EnsureFullState` with the new revision instead. Opening the
+Bank or Recovery tab reloads only an incoherent state; the Refresh button still
+reloads on request.
 
 `InventoryClientState` keeps the confirmed snapshot and shows it with every
 pending item operation applied in order. `FullSnapshot`, `Bank`,
@@ -697,11 +702,36 @@ state the server confirmed. A drop creates an `InventoryPredictedOperation` that
 names items and destinations only. `InventoryOperationPredictor` checks it with
 the same `InventoryTargetAdvisor` rules as the drop targets and applies it the
 way GameService commits it: a relocation, unequip, split, merge, container swap,
-equip with its swap into the source slot, or destroy, with the carried weight
-adjusted for items that enter or leave carried storage. A split shows its new
-stack under a temporary id that nothing may act on until the server confirms
-it. Up to `MaximumPendingOperations` (8) operations may wait, so a player can
-drag item after item without waiting.
+equip with its swap into the source slot, destroy, or Recovery claim, with the
+carried weight adjusted for items that enter or leave carried storage. A Bag
+equip shows the Bag's empty contents, laid out as its catalog Bag under a
+temporary container id that nothing may move into until the server names its
+own, and adds the Bag's capacity bonus; unequipping an empty Bag removes both. A
+claim places the delivery, in item order, in the first free slots of Permanent
+Inventory or the Bank that accept each item, as GameService does. A split, a
+purchase, or a partial corpse loot shows its new stack under a temporary id that
+nothing may act on until the server confirms it. Up to
+`MaximumPendingOperations` (8) operations may wait, so a player can drag item
+after item without waiting.
+
+Corpse and vendor operations join the same queue through
+`IInventoryOperationQueue`, which `InventoryClientController` implements, as
+operations that carry their own prediction and their own send.
+`CorpseClientController` shows loot, loot into equipment, deposits, moves inside
+the corpse, and Bag swaps at once: `CorpseInventoryPrediction` applies the
+inventory side, merging into a compatible stack or swapping a whole item, and
+`CorpseViewEdit`s show the corpse side on `CorpseClientState.ShownView`, the
+confirmed view with the edits applied. The corpse side stays shown after a
+successful result until a newer corpse view arrives, which the worker sends
+right after the result, or for at most 2 seconds before a refresh. A corpse
+operation waits in the queue while the corpse has a refresh in flight and fails
+once its corpse is closed. `VendorPrediction` shows a purchase the way
+GameService acquires it, topping up unprotected stacks of the definition in
+Permanent Inventory and then the equipped Bag before taking the first free slot
+among specialized Bag slots, Permanent Inventory, and general Bag slots, and a
+sale as a smaller or removed stack; both change the balance at once.
+`WorldInteractionClientController` sends a queued trade once the interaction is
+idle.
 
 `InventoryClientController` sends the first pending operation once the
 confirmed state is current, with the revisions the confirmed state expects, and
@@ -719,14 +749,14 @@ reloads its scope. A newer confirmed state that no longer fits a pending
 operation, such as a gathered stack that lands in the target slot, undoes that
 operation and every one after it with `item_move_superseded`; an operation
 already sent stays pending without a prediction, because the server still
-answers it. An operation the client cannot show ahead, a Recovery claim or a Bag
-that moves with its contents, waits alone with the old busy status and blocks
-later operations until it completes. Corpse loot, vendor trades, and other
-operations that need the confirmed state wait until no item operation is pending,
-which `CanMutate` reports; `CanPredict` reports whether another item operation
-may be shown. A disconnect with a pending operation marks the local result
-uncertain, discards every prediction, and relies on the reconnect refresh to
-resolve the committed outcome.
+answers it. Every operation that leaves the queue without committing raises
+`PredictionsDiscarded`, so the corpse and world interaction controllers drop
+what they showed. `CanMutate` reports whether an operation that needs the
+confirmed state may start, and `CanPredict` whether another item operation may
+be shown. A reload after a committed operation runs behind the shown state, so
+the panel says Loading only for a first load. A disconnect with a pending
+operation marks the local result uncertain, discards every prediction, and
+relies on the reconnect refresh to resolve the committed outcome.
 
 ### Inventory UI
 
@@ -1697,8 +1727,12 @@ operation is not applied twice, so a swap never swaps back, that later moves
 build on earlier predictions, that a rejection undoes every pending move and
 names their items, that a newer state that no longer fits undoes a pending move
 but keeps a sent one waiting, the split stack's temporary id, merge, swap, and
-equip with its swap and weight, invalid moves, an unpredicted operation that
-waits alone, and the bound of eight pending moves.
+equip with its swap and weight, invalid moves, and the bound of eight pending
+moves. `InventoryStoragePredictionTests` cover
+claim and Bag patches, a claim that leaves an item behind, predicted Bag equips
+and unequips with their capacity, claims into the first free slots, purchases
+that top up stacks or take a free slot, an unaffordable purchase, sales, corpse
+loot that merges or swaps, deposit swaps, and corpse view edits.
 
 World actor coverage verifies monotonic actor presence and state,
 reconnect cleanup, operation correlation, authoritative capability summaries,

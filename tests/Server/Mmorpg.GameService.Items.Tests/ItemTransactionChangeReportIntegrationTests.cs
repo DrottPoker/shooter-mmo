@@ -114,7 +114,119 @@ public sealed class ItemTransactionChangeReportIntegrationTests
             Item(snapshot.PermanentInventory, 7)));
     }
 
+    [PostgresIntegrationFact]
+    public async Task BagEquipsAndRecoveryClaimsReportTheirContentsAndDeliveries()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync(
+            "bag-claim-report@example.com",
+            "bag_claim_report_player",
+            "Bag Claim Hero");
+        var snapshot = await GetSnapshotAsync(context, player);
+        var inventory = snapshot.PermanentInventory.ContainerId;
+        foreach (var (definitionId, quantity, slotIndex) in new[]
+                 {
+                     ("fixture.pack", 1, 0),
+                     ("fixture.ore", 5, 1),
+                     ("fixture.potion", 2, 2)
+                 })
+        {
+            var grant = await context.ItemTransactionService.ExecuteAsync(
+                new ItemTransactionRequest<GrantItemCommand>(
+                    Guid.NewGuid(),
+                    ItemTransactionActor.ForSystem(),
+                    new GrantItemCommand(
+                        player.Character.Id,
+                        snapshot.ItemStateRevision,
+                        definitionId,
+                        quantity,
+                        inventory,
+                        slotIndex)),
+                CancellationToken.None);
+            Assert.True(grant.Succeeded, grant.Error?.Message);
+            snapshot = await GetSnapshotAsync(context, player);
+        }
+
+        var potion = Item(snapshot.PermanentInventory, 2);
+        var delivery = await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<AddRecoveryDeliveryCommand>(
+                Guid.NewGuid(),
+                ItemTransactionActor.ForSystem(),
+                new AddRecoveryDeliveryCommand(
+                    player.Character.Id,
+                    snapshot.ItemStateRevision,
+                    "change_report_test",
+                    Guid.NewGuid().ToString("N"),
+                    DateTime.UtcNow.AddMinutes(-1),
+                    null,
+                    [new ItemRevisionExpectation(potion.ItemInstanceId, potion.Revision)])),
+            CancellationToken.None);
+        Assert.True(delivery.Succeeded, delivery.Error?.Message);
+        snapshot = await GetSnapshotAsync(context, player);
+        var session = await JoinAsync(context, player);
+
+        // An equipped Bag names its contents, which the client shows from then on.
+        var pack = Item(snapshot.PermanentInventory, 0);
+        var equipped = await ReportAsync(context, player, session, snapshot, Request(
+            session,
+            ItemOperationKinds.Equip,
+            snapshot,
+            pack) with
+        { EquipmentSlotId = "bag" });
+        snapshot = equipped.After;
+        var reportedPack = equipped.Result.ItemChanges!.Single(change => change.ItemInstanceId == pack.ItemInstanceId);
+        Assert.Equal(snapshot.EquippedBag!.Contents.ContainerId, reportedPack.BagContentsContainerId);
+        Assert.Equal(snapshot.EquippedBag.Contents.Revision, reportedPack.BagContentsRevision);
+
+        // Items move into and out of the Bag like any container.
+        snapshot = await AssertReportedAsync(context, player, session, snapshot, Request(
+            session,
+            ItemOperationKinds.Relocate,
+            snapshot,
+            Item(snapshot.PermanentInventory, 1)) with
+        { DestinationContainerId = snapshot.EquippedBag.Contents.ContainerId, DestinationSlotIndex = 0 });
+
+        // A claim reports the delivery it took out of Recovery Storage.
+        var recovery = Assert.Single(snapshot.RecoveryStorage.Deliveries);
+        var claim = Request(session, ItemOperationKinds.ClaimRecoveryDelivery, snapshot, null) with
+        {
+            RecoveryDeliveryId = recovery.DeliveryId,
+            ExpectedRecoveryDeliveryRevision = recovery.Revision,
+            DestinationContainerId = inventory,
+            Items = recovery.Items
+                .Select(item => new ItemRevisionExpectation(item.Item.ItemInstanceId, item.Item.Revision))
+                .ToArray()
+        };
+        snapshot = await AssertReportedAsync(context, player, session, snapshot, claim);
+        Assert.Empty(snapshot.RecoveryStorage.Deliveries);
+
+        // An emptied Bag unequips, and its contents leave view.
+        snapshot = await AssertReportedAsync(context, player, session, snapshot, Request(
+            session,
+            ItemOperationKinds.Relocate,
+            snapshot,
+            Item(snapshot.EquippedBag!.Contents, 0)) with
+        { DestinationContainerId = inventory, DestinationSlotIndex = 6 });
+        snapshot = await AssertReportedAsync(context, player, session, snapshot, Request(
+            session,
+            ItemOperationKinds.Unequip,
+            snapshot,
+            Equipped(snapshot, "bag")) with
+        { DestinationContainerId = inventory, DestinationSlotIndex = 7 });
+        Assert.Null(snapshot.EquippedBag);
+    }
+
     private static async Task<CharacterInventorySnapshotResponse> AssertReportedAsync(
+        PostgresIntegrationTestContext context,
+        IntegrationPlayer player,
+        ConsumedSimulationJoinTicketResponse session,
+        CharacterInventorySnapshotResponse before,
+        SimulationItemOperationRequest request)
+    {
+        return (await ReportAsync(context, player, session, before, request)).After;
+    }
+
+    private static async Task<Reported> ReportAsync(
         PostgresIntegrationTestContext context,
         IntegrationPlayer player,
         ConsumedSimulationJoinTicketResponse session,
@@ -181,7 +293,7 @@ public sealed class ItemTransactionChangeReportIntegrationTests
             }
         }
 
-        return after;
+        return new Reported(after, result);
     }
 
 
@@ -189,7 +301,7 @@ public sealed class ItemTransactionChangeReportIntegrationTests
         ConsumedSimulationJoinTicketResponse session,
         string operationKind,
         CharacterInventorySnapshotResponse snapshot,
-        ItemInstanceSnapshotResponse item,
+        ItemInstanceSnapshotResponse? item,
         ItemInstanceSnapshotResponse? target = null)
     {
         return new SimulationItemOperationRequest(
@@ -200,11 +312,11 @@ public sealed class ItemTransactionChangeReportIntegrationTests
             session.WorkerRuntimeId,
             session.ShardId,
             session.SimulationSessionToken,
-            new SimulationItemAccessRequest(true, false, false),
+            new SimulationItemAccessRequest(true, true, false),
             operationKind,
             snapshot.ItemStateRevision,
-            item.ItemInstanceId,
-            item.Revision,
+            item?.ItemInstanceId,
+            item?.Revision,
             target?.ItemInstanceId,
             target?.Revision);
     }
@@ -212,7 +324,7 @@ public sealed class ItemTransactionChangeReportIntegrationTests
     private static Dictionary<Guid, SnapshotItem> Flatten(CharacterInventorySnapshotResponse snapshot)
     {
         var items = new Dictionary<Guid, SnapshotItem>();
-        foreach (var container in new[] { snapshot.PermanentInventory, snapshot.Bank, snapshot.SecureContainer.Contents })
+        foreach (var container in new[] { snapshot.PermanentInventory, snapshot.Bank, snapshot.SecureContainer.Contents, snapshot.EquippedBag?.Contents }.OfType<ItemContainerSnapshotResponse>())
         {
             foreach (var slot in container.Slots.Where(slot => slot.Item is not null))
             {
@@ -280,6 +392,8 @@ public sealed class ItemTransactionChangeReportIntegrationTests
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         return consumed.Value!;
     }
+
+    private sealed record Reported(CharacterInventorySnapshotResponse After, SimulationItemOperationResponse Result);
 
     private sealed record SnapshotItem(
         string Location,

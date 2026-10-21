@@ -452,7 +452,58 @@ namespace Mmorpg.SharedTests
                     containers: Array.Empty<RealtimeContainerRevision>(),
                     items: Array.Empty<RealtimeItemStateChange>())));
 
+            r.Vector(
+                "Items/OwnerItemStateChanged/equipped Bag and claimed delivery",
+                change,
+                () => RealtimeProtocol.EncodeOwnerItemStateChanged(OwnerItemStateChangedModel(
+                    items: new[]
+                    {
+                        new RealtimeItemStateChange(
+                            G(4),
+                            RealtimeItemStateLocationKind.Equipment,
+                            "pack",
+                            1,
+                            3,
+                            Guid.Empty,
+                            -1,
+                            "bag",
+                            Array.Empty<RealtimeItemPolicySummary>(),
+                            G(7),
+                            5)
+                    },
+                    claimed: new[] { G(8) })));
+
             r.Accepts("Items/OwnerItemStateChanged/baseline", OwnerItemStateChangedWire());
+            r.Accepts(
+                "Items/OwnerItemStateChanged/equipped Bag contents",
+                OwnerItemStateChangedWire(items: new[]
+                {
+                    ItemStateWire(G(2), location: 3, containerId: Guid.Empty, slotIndex: -1, equipmentSlotId: "bag", bagContentsId: G(7), bagContentsRevision: 5)
+                }));
+            r.Accepts(
+                "Items/OwnerItemStateChanged/claimed deliveries",
+                OwnerItemStateChangedWire(claimed: new[] { G(8), G(9) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/Bag contents on a contained item",
+                OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), bagContentsId: G(7), bagContentsRevision: 5) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/Bag contents revision without contents",
+                OwnerItemStateChangedWire(items: new[]
+                {
+                    ItemStateWire(G(2), location: 3, containerId: Guid.Empty, slotIndex: -1, equipmentSlotId: "bag", bagContentsRevision: 5)
+                }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/negative Bag contents revision",
+                OwnerItemStateChangedWire(items: new[]
+                {
+                    ItemStateWire(G(2), location: 3, containerId: Guid.Empty, slotIndex: -1, equipmentSlotId: "bag", bagContentsId: G(7), bagContentsRevision: -1)
+                }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/duplicate claimed delivery",
+                OwnerItemStateChangedWire(claimed: new[] { G(8), G(8) }));
+            r.Rejects(
+                "Items/OwnerItemStateChanged/empty claimed delivery",
+                OwnerItemStateChangedWire(claimed: new[] { Guid.Empty }));
             r.Accepts(
                 "Items/OwnerItemStateChanged/no client operation",
                 OwnerItemStateChangedWire(operationId: Guid.Empty));
@@ -474,8 +525,8 @@ namespace Mmorpg.SharedTests
                 "Items/OwnerItemStateChanged/duplicate item",
                 OwnerItemStateChangedWire(items: new[] { RemovedItemStateWire(G(2)), RemovedItemStateWire(G(2)) }));
             r.Rejects(
-                "Items/OwnerItemStateChanged/nine items",
-                OwnerItemStateChangedWire(items: Enumerable.Range(10, 9).Select(index => RemovedItemStateWire(G(index))).ToArray()));
+                "Items/OwnerItemStateChanged/seventeen items",
+                OwnerItemStateChangedWire(items: Enumerable.Range(10, 17).Select(index => RemovedItemStateWire(G(index))).ToArray()));
             r.Rejects(
                 "Items/OwnerItemStateChanged/location 0",
                 OwnerItemStateChangedWire(items: new[] { ItemStateWire(G(2), location: 0) }));
@@ -535,7 +586,9 @@ namespace Mmorpg.SharedTests
                             Guid.Empty,
                             -1,
                             string.Empty,
-                            Array.Empty<RealtimeItemPolicySummary>())
+                            Array.Empty<RealtimeItemPolicySummary>(),
+                            Guid.Empty,
+                            0)
                     })));
             r.RejectsOversize(
                 "Items/OwnerItemStateChanged/eight long items above the packet limit",
@@ -550,14 +603,17 @@ namespace Mmorpg.SharedTests
                             G(3),
                             0,
                             string.Empty,
-                            Array.Empty<RealtimeItemPolicySummary>()))
+                            Array.Empty<RealtimeItemPolicySummary>(),
+                            Guid.Empty,
+                            0))
                         .ToArray())));
         }
 
         private static RealtimeOwnerItemStateChanged OwnerItemStateChangedModel(
             long previousRevision = 11,
             RealtimeContainerRevision[] containers = null,
-            RealtimeItemStateChange[] items = null)
+            RealtimeItemStateChange[] items = null,
+            Guid[] claimed = null)
         {
             return new RealtimeOwnerItemStateChanged(
                 G(6),
@@ -577,8 +633,11 @@ namespace Mmorpg.SharedTests
                         Guid.Empty,
                         -1,
                         "main_hand",
-                        new[] { new RealtimeItemPolicySummary("insured", "active", "insurance_npc") })
-                });
+                        new[] { new RealtimeItemPolicySummary("insured", "active", "insurance_npc") },
+                        Guid.Empty,
+                        0)
+                },
+                claimed ?? Array.Empty<Guid>());
         }
 
         private static RealtimeItemStateChange ContainedItemStateModel(Guid itemInstanceId, int quantity)
@@ -592,7 +651,9 @@ namespace Mmorpg.SharedTests
                 G(3),
                 4,
                 string.Empty,
-                Array.Empty<RealtimeItemPolicySummary>());
+                Array.Empty<RealtimeItemPolicySummary>(),
+                Guid.Empty,
+                0);
         }
 
         private static RealtimeItemStateChange RemovedItemStateModel(Guid itemInstanceId)
@@ -606,7 +667,9 @@ namespace Mmorpg.SharedTests
                 Guid.Empty,
                 -1,
                 string.Empty,
-                Array.Empty<RealtimeItemPolicySummary>());
+                Array.Empty<RealtimeItemPolicySummary>(),
+                Guid.Empty,
+                0);
         }
 
         private static Wire OwnerItemStateChangedWire(
@@ -614,7 +677,8 @@ namespace Mmorpg.SharedTests
             long previousRevision = 11,
             long currency = 250,
             Wire[] containers = null,
-            Wire[] items = null)
+            Wire[] items = null,
+            Guid[] claimed = null)
         {
             var containerList = containers ?? new[] { RevisionWire(G(3), 9) };
             var itemList = items ?? new[] { ItemStateWire(G(2)) };
@@ -635,6 +699,13 @@ namespace Mmorpg.SharedTests
                 wire.Append(item);
             }
 
+            var claimedList = claimed ?? new Guid[0];
+            wire.U8((byte)claimedList.Length);
+            foreach (var deliveryId in claimedList)
+            {
+                wire.Guid(deliveryId);
+            }
+
             return wire;
         }
 
@@ -647,7 +718,9 @@ namespace Mmorpg.SharedTests
             Guid? containerId = null,
             int slotIndex = 4,
             WireText equipmentSlotId = null,
-            Wire[] policies = null)
+            Wire[] policies = null,
+            Guid? bagContentsId = null,
+            long bagContentsRevision = 0)
         {
             var wire = Wire.Fragment().Guid(itemInstanceId).U8(location);
             var definition = hasDefinition ? (WireText)"potion" : null;
@@ -661,7 +734,7 @@ namespace Mmorpg.SharedTests
                 wire.Append(policy);
             }
 
-            return wire;
+            return wire.Guid(bagContentsId ?? Guid.Empty).I64(bagContentsRevision);
         }
 
         private static Wire RemovedItemStateWire(Guid itemInstanceId)
