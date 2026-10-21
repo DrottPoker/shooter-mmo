@@ -29,7 +29,7 @@ $blender = Resolve-ArtBlender $BlenderPath
 foreach ($manifest in $manifests) {
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
     $results = Invoke-ArtBlender $blender $manifest (
-        @("export") + (Get-ArtValidationArguments $manifest) + @("--target", $manifest.TargetPath))
+        @("export") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]) + @("--target", $manifest.TargetPath))
     $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
             ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
     if ($null -eq $materials) {

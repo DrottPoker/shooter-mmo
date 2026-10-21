@@ -29,6 +29,9 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--kind", required=True)
         command.add_argument("--roots", required=True, help="Comma-separated root object names.")
         command.add_argument("--triangle-budget", type=int, required=True)
+        command.add_argument("--stage", default="model", help="The review stage whose rules apply, with every earlier one.")
+        command.add_argument("--skeleton", help="The skeleton definition of a skinned asset.")
+        command.add_argument("--clips", default="", help="Comma-separated animation clip names of a skinned asset.")
         if name == "export":
             command.add_argument("--target", required=True, help="Absolute FBX path.")
     command = commands.add_parser("preview")
@@ -44,7 +47,8 @@ def main() -> int:
         print(f"ART_PREVIEW {path}")
         return 0
 
-    errors, triangles = validate(args.kind, args.roots.split(","), args.triangle_budget)
+    errors, triangles = validate(args.kind, args.roots.split(","), args.triangle_budget, args.stage, args.skeleton,
+                                 [c for c in args.clips.split(",") if c])
     for error in errors:
         print(f"ART_PIPELINE_ERROR {error}")
     if errors:

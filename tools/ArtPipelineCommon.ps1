@@ -5,6 +5,7 @@
 $script:ArtRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $script:ArtSourceRoot = Join-Path $script:ArtRepositoryRoot "art"
 $script:ArtModelFolder = "src/Client/Assets/Art/Models"
+$script:ArtSkeletonFolder = Join-Path $script:ArtSourceRoot "Skeletons"
 $script:ArtBlenderVersion = "5.2"
 $script:ArtBlenderCli = Join-Path $PSScriptRoot "blender/art_pipeline_cli.py"
 
@@ -14,11 +15,10 @@ $script:ArtReviewStages = @{
     skinned = @("model", "rig", "animation")
 }
 
-# The stages whose rules Blender can check, and so can be approved. A skinned asset stops at
-# its model until the rig and animation stages exist.
+# The stages whose rules Blender can check, and so can be approved.
 $script:ArtImplementedStages = @{
     static = @("model")
-    skinned = @("model")
+    skinned = @("model", "rig", "animation")
 }
 
 $script:ArtNamePattern = '^[A-Za-z][A-Za-z0-9_]*$'
@@ -117,6 +117,49 @@ function ConvertTo-ArtMaterialRecords($Records) {
     return , $result.ToArray()
 }
 
+function Read-ArtSkeleton([string]$Name) {
+    # Returns the path of art/Skeletons/<Name>.json after checking its bones: unique names, one
+    # root, every parent before its children, and a deform flag on every bone.
+    $path = Join-Path $script:ArtSkeletonFolder "$Name.json"
+    $where = Get-ArtRelativePath $path
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "${where}: the skeleton definition is missing."
+    }
+
+    try {
+        $json = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+    }
+    catch {
+        throw "${where}: invalid JSON. $($_.Exception.Message)"
+    }
+
+    $names = New-Object System.Collections.Generic.HashSet[string]
+    $roots = 0
+    foreach ($bone in @($json.bones)) {
+        $boneName = [string]$bone.name
+        if ($boneName -cnotmatch $script:ArtNamePattern -or -not ($bone.deform -is [bool])) {
+            throw "${where}: every bone needs a name of letters, digits, and underscores and a deform flag."
+        }
+
+        if ($null -eq $bone.parent) {
+            $roots++
+        }
+        elseif (-not $names.Contains([string]$bone.parent)) {
+            throw "${where}: bone '$boneName' must follow its parent '$($bone.parent)'."
+        }
+
+        if (-not $names.Add($boneName)) {
+            throw "${where}: bone '$boneName' is listed twice."
+        }
+    }
+
+    if ($json.schemaVersion -ne 1 -or [string]$json.name -cne $Name -or $roots -ne 1) {
+        throw "${where}: needs schemaVersion 1, the name '$Name', and exactly one root bone."
+    }
+
+    return $path
+}
+
 function Read-ArtAssetManifest([string]$AssetDirectory) {
     $name = Split-Path -Leaf $AssetDirectory
     $manifestPath = Join-Path $AssetDirectory "asset.json"
@@ -155,6 +198,34 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
 
     if (-not ($json.triangleBudget -is [int] -or $json.triangleBudget -is [long]) -or $json.triangleBudget -le 0) {
         $problems.Add("triangleBudget must be a positive whole number")
+    }
+
+    # A skinned asset names its shared skeleton and the animation clips the game plays on it.
+    $skeleton = $null
+    $skeletonPath = $null
+    $clips = @()
+    if ([string]$json.kind -eq "skinned") {
+        $skeleton = [string]$json.skeleton
+        $clips = @($json.clips | ForEach-Object { [string]$_ })
+        if ($skeleton -cnotmatch $script:ArtNamePattern) {
+            $problems.Add("skeleton must name a skeleton definition in art/Skeletons")
+        }
+        else {
+            try {
+                $skeletonPath = Read-ArtSkeleton $skeleton
+            }
+            catch {
+                $problems.Add($_.Exception.Message)
+            }
+        }
+
+        if ($clips.Count -eq 0 -or @($clips | Where-Object { $_ -cnotmatch $script:ArtNamePattern }).Count -gt 0 -or
+            @($clips | Sort-Object -Unique).Count -ne $clips.Count) {
+            $problems.Add("clips must list one or more unique animation clip names")
+        }
+    }
+    elseif ($null -ne $json.skeleton -or $null -ne $json.clips) {
+        $problems.Add("only a skinned asset has a skeleton and clips")
     }
 
     $approvals = [ordered]@{}
@@ -224,6 +295,9 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
         TargetPath = Join-Path $script:ArtRepositoryRoot $target
         RootObjects = [string[]]$roots
         TriangleBudget = [int]$json.triangleBudget
+        Skeleton = $skeleton
+        SkeletonPath = $skeletonPath
+        Clips = [string[]]$clips
         Approvals = $approvals
         Export = $export
     }
@@ -243,6 +317,11 @@ function Write-ArtAssetManifest($Manifest) {
     }
     $lines.Add("    ],")
     $lines.Add("    `"triangleBudget`": $($Manifest.TriangleBudget),")
+    if ($Manifest.Kind -eq "skinned") {
+        $lines.Add("    `"skeleton`": `"$($Manifest.Skeleton)`",")
+        $clips = (@($Manifest.Clips) | ForEach-Object { '"' + $_ + '"' }) -join ", "
+        $lines.Add("    `"clips`": [$clips],")
+    }
     $approvedStages = @($Manifest.Stages | Where-Object { $Manifest.Approvals.Contains($_) })
     if ($approvedStages.Count -eq 0) {
         $lines.Add('    "approvals": {},')
@@ -390,9 +469,16 @@ function Invoke-ArtBlender([string]$Blender, $Manifest, [string[]]$Arguments) {
     return $results
 }
 
-function Get-ArtValidationArguments($Manifest) {
-    return @(
+function Get-ArtValidationArguments($Manifest, [string]$Stage) {
+    # The rules of the given review stage and of every earlier one apply.
+    $arguments = @(
         "--kind", $Manifest.Kind,
         "--roots", ($Manifest.RootObjects -join ","),
-        "--triangle-budget", [string]$Manifest.TriangleBudget)
+        "--triangle-budget", [string]$Manifest.TriangleBudget,
+        "--stage", $Stage)
+    if ($Manifest.Kind -eq "skinned") {
+        $arguments += @("--skeleton", $Manifest.SkeletonPath, "--clips", ($Manifest.Clips -join ","))
+    }
+
+    return $arguments
 }

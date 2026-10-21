@@ -278,7 +278,7 @@ def faces(out, cam):
 
 
 def look(body, yaw_deg, pitch_deg):
-    """Turns both eyeballs: yaw to the character's left (+x) and pitch up, in degrees."""
+    """Turns both eyeballs: yaw to the character's right (+x) and pitch up, in degrees."""
     for o in eye_objects(body):
         o.rotation_euler = (math.radians(pitch_deg), 0.0, math.radians(-yaw_deg))
 

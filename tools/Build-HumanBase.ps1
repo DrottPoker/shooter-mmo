@@ -1,14 +1,20 @@
 # Builds the human base characters from the Human Base Meshes bundle and writes the art assets
-# art/Characters/Human_Male/Human_Male.blend and art/Characters/Human_Female/Human_Female.blend,
-# plus a review file with both characters side by side, the review sheets, and a quality report.
+# art/Characters/Human_Male/Human_Male.blend and art/Characters/Human_Female/Human_Female.blend:
+# the models, their rigs with the shared Humanoid skeleton, and their animations. It also writes
+# review files with both characters side by side, the review sheets, and a quality report.
 # The bundle is a download and is read as data only: every Blender step runs with factory
-# settings and with the file's scripts disabled. A rebuilt asset replaces the committed file only
-# when its content changed, and then needs a new review and approval with Approve-ArtAsset.ps1.
-# See docs/ART_PIPELINE.md.
+# settings and with the file's scripts disabled. With -SkipModel only the rigs and the animations
+# are built again, on the committed models, and the bundle is not needed. A rebuilt asset
+# replaces the committed file only when its content changed, and then needs a new review and
+# approval with Approve-ArtAsset.ps1. See docs/ART_PIPELINE.md.
+[CmdletBinding(DefaultParameterSetName = "Full")]
 param(
     # human_base_meshes_bundle.blend of Human Base Meshes v1.4.1 (Blender Studio, CC0).
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = "Full")]
     [string]$ReferenceBundle,
+    # Builds only the rigs and the animations again, on the committed models.
+    [Parameter(Mandatory = $true, ParameterSetName = "SkipModel")]
+    [switch]$SkipModel,
     # Work files, review file, sheets, and report. Defaults to artifacts/human-base, which Git ignores.
     [string]$WorkDirectory,
     [string]$BlenderPath
@@ -24,10 +30,13 @@ $characters = @(
     [pscustomobject]@{ Label = "Male"; Asset = "Human_Male" },
     [pscustomobject]@{ Label = "Female"; Asset = "Human_Female" })
 
-$bundle = (Resolve-Path -LiteralPath $ReferenceBundle).Path
-$bundleSha256 = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($bundleSha256 -ne $expectedBundleSha256) {
-    throw "'$bundle' is not human_base_meshes_bundle.blend of Human Base Meshes v1.4.1 (its SHA-256 is $bundleSha256)."
+$skeleton = Join-Path $script:ArtSkeletonFolder "Humanoid.json"
+if (-not $SkipModel) {
+    $bundle = (Resolve-Path -LiteralPath $ReferenceBundle).Path
+    $bundleSha256 = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($bundleSha256 -ne $expectedBundleSha256) {
+        throw "'$bundle' is not human_base_meshes_bundle.blend of Human Base Meshes v1.4.1 (its SHA-256 is $bundleSha256)."
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($WorkDirectory)) {
@@ -73,36 +82,52 @@ function Test-GitLfsPointer([string]$Path) {
     return $item.Length -lt 1024 -and [System.IO.File]::ReadAllText($item.FullName).StartsWith("version https://git-lfs")
 }
 
-$refs = Join-Path $work "refs.blend"
-$geometry = Join-Path $work "geometry.blend"
-$textured = Join-Path $work "textured.blend"
 $review = Join-Path $work "Human_Base.blend"
-$null = Invoke-HumanBaseStep "references" @($bundle, $refs)
-$null = Invoke-HumanBaseStep "geometry" @($refs, $geometry)
-$null = Invoke-HumanBaseStep "textures" @($geometry, $refs, $textured, (Join-Path $work "textures"))
-$report.Add("")
-$null = Invoke-HumanBaseStep "check-mesh" @($textured)
-$null = Invoke-HumanBaseStep "check-seams" @($textured)
-$null = Invoke-HumanBaseStep "characters" @($textured, $review)
-$report.Add("")
-$null = Invoke-HumanBaseStep "check-parts" @($review)
-$report.Add("")
+$reviewSheets = Join-Path $work "review"
+if (-not $SkipModel) {
+    $refs = Join-Path $work "refs.blend"
+    $geometry = Join-Path $work "geometry.blend"
+    $textured = Join-Path $work "textured.blend"
+    $null = Invoke-HumanBaseStep "references" @($bundle, $refs)
+    $null = Invoke-HumanBaseStep "geometry" @($refs, $geometry)
+    $null = Invoke-HumanBaseStep "textures" @($geometry, $refs, $textured, (Join-Path $work "textures"))
+    $report.Add("")
+    $null = Invoke-HumanBaseStep "check-mesh" @($textured)
+    $null = Invoke-HumanBaseStep "check-seams" @($textured)
+    $null = Invoke-HumanBaseStep "characters" @($textured, $review)
+    $report.Add("")
+    $null = Invoke-HumanBaseStep "check-parts" @($review)
+    $report.Add("")
+}
 
 # Blender's files differ in their bytes from run to run, so a rebuilt asset only replaces the
 # committed file when its content changed, and an unchanged rebuild keeps its approval.
 $assetWork = Join-Path $work "assets"
 New-Item -ItemType Directory -Force -Path $assetWork | Out-Null
 foreach ($character in $characters) {
-    $built = Join-Path $assetWork "$($character.Asset).blend"
-    $null = Invoke-HumanBaseStep "asset" @($review, $character.Label, $built) "asset_$($character.Label)"
     $directory = Join-Path $script:ArtSourceRoot "Characters/$($character.Asset)"
     $source = Join-Path $directory "$($character.Asset).blend"
+    if ((Test-Path -LiteralPath $source) -and (Test-GitLfsPointer $source)) {
+        throw "$source is a Git LFS pointer; run git lfs pull first."
+    }
+
+    $model = Join-Path $assetWork "$($character.Asset)_model.blend"
+    if ($SkipModel) {
+        # The committed asset holds the approved model; the rig step takes any earlier rig off.
+        Copy-Item -LiteralPath $source -Destination $model -Force
+    }
+    else {
+        $null = Invoke-HumanBaseStep "asset" @($review, $character.Label, $model) "asset_$($character.Label)"
+    }
+
+    $rigged = Join-Path $assetWork "$($character.Asset)_rig.blend"
+    $null = Invoke-HumanBaseStep "rig" @($model, $character.Label, $skeleton, $rigged) "rig_$($character.Label)"
+    $null = Invoke-HumanBaseStep "check-rig" @($model, $rigged, $character.Label, $skeleton) "check_rig_$($character.Label)"
+    $built = Join-Path $assetWork "$($character.Asset).blend"
+    Copy-Item -LiteralPath $rigged -Destination $built -Force
+    $character | Add-Member -NotePropertyName Built -NotePropertyValue $built
     $same = $false
     if (Test-Path -LiteralPath $source) {
-        if (Test-GitLfsPointer $source) {
-            throw "$source is a Git LFS pointer; run git lfs pull first."
-        }
-
         $output = Invoke-HumanBaseStep "compare" @($source, $built) "compare_$($character.Label)"
         $same = @($output | Where-Object { $_ -eq "HUMAN_BASE_SAME yes" }).Count -gt 0
     }
@@ -116,12 +141,25 @@ foreach ($character in $characters) {
 }
 
 $report.Add("")
-$null = Invoke-HumanBaseStep "review" @($review, (Join-Path $work "review"), "Human_Base")
+if (-not $SkipModel) {
+    $null = Invoke-HumanBaseStep "review" @($review, $reviewSheets, "Human_Base")
+}
+
+foreach ($character in $characters) {
+    $null = Invoke-HumanBaseStep "review-rig" @($character.Built, $character.Label, $reviewSheets, $character.Asset) "review_rig_$($character.Label)"
+}
+
+$rigReview = Join-Path $work "Human_Base_Rig.blend"
+$null = Invoke-HumanBaseStep "rig-review-file" @($characters[0].Built, $characters[1].Built, $rigReview)
 $reportPath = Join-Path $work "report.txt"
 [System.IO.File]::WriteAllLines($reportPath, [string[]]$report)
 
-Write-Host "Review file: $review"
-Write-Host "Review sheets: $(Join-Path $work "review")"
+if (-not $SkipModel) {
+    Write-Host "Review file of the models: $review"
+}
+
+Write-Host "Review file of the rigs, with the test poses as an animation: $rigReview"
+Write-Host "Review sheets: $reviewSheets"
 Write-Host "Quality report: $reportPath"
 $toReview = 0
 foreach ($character in $characters) {

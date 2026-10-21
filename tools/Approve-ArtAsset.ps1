@@ -31,7 +31,7 @@ for ($i = 0; $i -lt $stageIndex; $i++) {
 
 # Only an asset that meets the export rules can be approved.
 $blender = Resolve-ArtBlender $BlenderPath
-$validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest))
+$validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $Stage))
 
 $manifest.Approvals[$Stage] = [ordered]@{
     date = (Get-Date).ToString("yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)

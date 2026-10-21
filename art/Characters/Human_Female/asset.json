@@ -6,10 +6,16 @@
         "Female"
     ],
     "triangleBudget": 10000,
+    "skeleton": "Humanoid",
+    "clips": ["Idle", "Walk", "Jog"],
     "approvals": {
         "model": {
             "date": "2026-10-21",
             "sourceSha256": "47ddf8ca305d408158f86f029f280f4197d7ca41c125f949f79e8c7ae50f810c"
+        },
+        "rig": {
+            "date": "2026-10-21",
+            "sourceSha256": "0995c084b89579978c9842be9e239e08bd33fde973ea4f725ea4cab3bd76b52f"
         }
     },
     "export": null
