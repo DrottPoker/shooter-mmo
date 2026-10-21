@@ -466,7 +466,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (!InventoryOperationPredictor.TryApply(this, operation, out var predicted, out error))
+            if (!InventoryOperationPredictor.TryApply(this, operation, IsPredictedContainer, out var predicted, out error))
             {
                 return false;
             }
@@ -757,7 +757,7 @@ namespace Mmorpg.Client.Items
                     continue;
                 }
 
-                if (!InventoryOperationPredictor.TryApply(view, operation, out var next, out var reason))
+                if (!InventoryOperationPredictor.TryApply(view, operation, IsPredictedContainer, out var next, out var reason))
                 {
                     var dropFrom = operation.IsSent ? index + 1 : index;
                     if (operation.IsSent)

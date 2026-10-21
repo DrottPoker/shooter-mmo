@@ -114,6 +114,24 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void APredictedBagIsNoDestinationUntilItsEquipCommits()
+        {
+            var pack = Item("fixture.pack", 1, 1);
+            var ore = Item("fixture.ore", 5, 1);
+            var state = CreateState(new[] { pack, ore });
+            Assert.That(state.TryPredict(InventoryPredictedOperation.Equip(pack.ItemInstanceId, ItemEquipmentSlotIds.Bag), out var error), Is.True, error);
+            var predictedBag = state.FullSnapshot.EquippedBag.Contents.ContainerId;
+
+            Assert.That(
+                state.TryPredict(InventoryPredictedOperation.Relocate(ore.ItemInstanceId, predictedBag, 0), out error),
+                Is.False);
+            Assert.That(error, Does.Contain("equipped Bag is confirmed"));
+            Assert.That(
+                state.TryPredict(InventoryPredictedOperation.Split(ore.ItemInstanceId, 2, predictedBag, 1), out _),
+                Is.False);
+        }
+
+        [Test]
         public void AClaimShowsTheDeliveryInTheFirstFreeSlots()
         {
             var ore = Item("fixture.ore", 10, 3);

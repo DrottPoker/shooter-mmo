@@ -273,9 +273,12 @@ namespace Mmorpg.Client.Items
     // carry capacity, and balance that the step changes.
     internal sealed class InventoryPredictionEdit
     {
-        public InventoryPredictionEdit(IInventoryView view)
+        private readonly Func<Guid, bool> isPredictedContainer;
+
+        public InventoryPredictionEdit(IInventoryView view, Func<Guid, bool> isPredictedContainer = null)
         {
             View = view;
+            this.isPredictedContainer = isPredictedContainer;
             Editor = new InventorySnapshotEditor(view.FullSnapshot, view.Bank, view.FullSnapshot.RecoveryStorage);
             Weight = view.FullSnapshot.CarriedWeight;
             Capacity = view.FullSnapshot.CarryCapacity;
@@ -337,8 +340,20 @@ namespace Mmorpg.Client.Items
             return Catalog.TryGetDefinition(definitionId, out definition);
         }
 
+        // A Bag contents container that only a pending equip shows has no server id yet, so
+        // nothing may target it until the equip commits.
+        public bool IsPredictedContainer(Guid containerId)
+        {
+            return isPredictedContainer != null && isPredictedContainer(containerId);
+        }
+
         public InventoryContainer FindContainer(Guid containerId)
         {
+            if (IsPredictedContainer(containerId))
+            {
+                return null;
+            }
+
             return new[]
                 {
                     View.FullSnapshot.PermanentInventory,
@@ -391,6 +406,16 @@ namespace Mmorpg.Client.Items
             out CharacterInventorySnapshot predicted,
             out string reason)
         {
+            return TryApply(view, operation, null, out predicted, out reason);
+        }
+
+        internal static bool TryApply(
+            IInventoryView view,
+            InventoryPredictedOperation operation,
+            Func<Guid, bool> isPredictedContainer,
+            out CharacterInventorySnapshot predicted,
+            out string reason)
+        {
             predicted = null;
             reason = "The item is no longer where it was.";
             if (view?.Catalog == null || view.FullSnapshot == null || operation == null)
@@ -399,7 +424,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            var edit = new InventoryPredictionEdit(view);
+            var edit = new InventoryPredictionEdit(view, isPredictedContainer);
             try
             {
                 var applied = operation.IsExternal
@@ -652,7 +677,9 @@ namespace Mmorpg.Client.Items
             out InventorySlot slot,
             out string reason)
         {
-            reason = "The destination container is unavailable.";
+            reason = edit.IsPredictedContainer(operation.DestinationContainerId)
+                ? "Wait a moment until your equipped Bag is confirmed."
+                : "The destination container is unavailable.";
             slot = null;
             container = edit.FindContainer(operation.DestinationContainerId);
             if (container == null)

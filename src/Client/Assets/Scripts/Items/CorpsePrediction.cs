@@ -112,7 +112,9 @@ namespace Mmorpg.Client.Items
             out string reason)
         {
             displaced = null;
-            reason = "The loot destination is no longer available.";
+            reason = edit.IsPredictedContainer(destinationContainerId)
+                ? "Wait a moment until your equipped Bag is confirmed."
+                : "The loot destination is no longer available.";
             var container = edit.FindContainer(destinationContainerId);
             if (container == null
                 || !container.TryGetSlot(destinationSlotIndex, out _)

@@ -706,7 +706,7 @@ equip with its swap into the source slot, destroy, or Recovery claim, with the
 carried weight adjusted for items that enter or leave carried storage. A Bag
 equip shows the Bag's empty contents, laid out as its catalog Bag under a
 temporary container id that nothing may move into until the server names its
-own, and adds the Bag's capacity bonus; unequipping an empty Bag removes both. A
+own (a move or corpse loot into it is refused with a short wait message), and adds the Bag's capacity bonus; unequipping an empty Bag removes both. A
 claim places the delivery, in item order, in the first free slots of Permanent
 Inventory or the Bank that accept each item, as GameService does. A split, a
 purchase, or a partial corpse loot shows its new stack under a temporary id that

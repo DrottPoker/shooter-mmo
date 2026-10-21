@@ -170,7 +170,7 @@ namespace Mmorpg.Client.Items
             var createdId = Guid.NewGuid();
             var containerId = destination.ContainerId;
             var slotIndex = destinationSlot.SlotIndex;
-            var probe = new InventoryPredictionEdit(inventoryController.State);
+            var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
             if (!CorpseInventoryPrediction.TryLoot(probe, item, quantity, containerId, slotIndex, createdId, out var displaced, out error))
             {
                 return false;
@@ -219,7 +219,7 @@ namespace Mmorpg.Client.Items
 
             var createdId = Guid.NewGuid();
             var slotId = equipmentSlot.SlotId;
-            var probe = new InventoryPredictionEdit(inventoryController.State);
+            var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
             if (!CorpseInventoryPrediction.TryLootToEquipment(probe, item, slotId, createdId, out var displaced, out error))
             {
                 return false;
@@ -271,7 +271,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            var probe = new InventoryPredictionEdit(inventoryController.State);
+            var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
             if (!CorpseInventoryPrediction.TrySwapBag(probe, bag, bagSection, out error))
             {
                 return false;
@@ -360,7 +360,7 @@ namespace Mmorpg.Client.Items
             var swappedIn = target != null && !merges ? target : null;
             var createdId = partial ? Guid.NewGuid() : currentItem.ItemInstanceId;
             var itemId = currentItem.ItemInstanceId;
-            var probe = new InventoryPredictionEdit(inventoryController.State);
+            var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
             if (!CorpseInventoryPrediction.TryDeposit(probe, itemId, quantity, swappedIn, out error))
             {
                 return false;
