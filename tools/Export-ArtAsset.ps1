@@ -2,8 +2,10 @@
 # with the images of painted materials as PNG files below src/Client/Assets/Art/Textures, and
 # records the hashes of the approved source and the written files, the materials, and the
 # animation clips in asset.json. An asset
-# whose review stages are not all approved for the current .blend file is refused. Unity
-# imports the FBX with the rules in ArtModelImportRules. See docs/ART_PIPELINE.md.
+# whose review stages are not all approved for the current .blend file is refused. An animation
+# library exports its armature and clips only, and records the export of the rig it was authored
+# on, so it is exported after that rig. Unity imports the FBX with the rules in
+# ArtModelImportRules. See docs/ART_PIPELINE.md.
 param(
     [string[]]$Asset,
     # Export every asset below art/.
@@ -19,7 +21,9 @@ if ($All -eq ($Asset.Count -gt 0)) {
 }
 
 $directories = if ($All) { Get-ArtAssetDirectories } else { @($Asset | ForEach-Object { Resolve-ArtAssetDirectory $_ }) }
-$manifests = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
+# Animation libraries go last, so they record the export of a rig exported in the same run.
+$read = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
+$manifests = @($read | Where-Object { $_.Kind -ne "animations" }) + @($read | Where-Object { $_.Kind -eq "animations" })
 foreach ($manifest in $manifests) {
     $problem = Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)
     if ($null -ne $problem) {
@@ -30,14 +34,27 @@ foreach ($manifest in $manifests) {
 $blender = Resolve-ArtBlender $BlenderPath
 foreach ($manifest in $manifests) {
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
+    $rigSourceSha256 = $null
+    if ($manifest.Kind -eq "animations") {
+        $rigExport = (Read-ArtAssetManifest (Split-Path -Parent $manifest.Rig.ManifestPath)).Export
+        if ($null -eq $rigExport) {
+            throw "$($manifest.Name) cannot be exported before its rig $($manifest.Rig.Asset) is exported."
+        }
+
+        $rigSourceSha256 = $rigExport.sourceSha256
+    }
+
     $textureFolder = Get-ArtTextureFolder $manifest.Target
     $results = Invoke-ArtBlender $blender $manifest (
         @("export") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]) + @(
             "--target", $manifest.TargetPath, "--textures", (Join-Path $script:ArtRepositoryRoot $textureFolder)))
-    $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
-            ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
-    if ($null -eq $materials) {
-        throw "Blender reported no valid material records for $($manifest.Name)."
+    $materials = @()
+    if ($manifest.Kind -ne "animations") {
+        $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
+                ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
+        if ($null -eq $materials) {
+            throw "Blender reported no valid material records for $($manifest.Name)."
+        }
     }
 
     $textures = ConvertTo-ArtTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
@@ -54,7 +71,7 @@ foreach ($manifest in $manifests) {
     }
 
     $clipRecords = $null
-    if ($manifest.Kind -eq "skinned") {
+    if ($script:ArtAnimatedKinds -contains $manifest.Kind) {
         # In the order of the manifest, so the record reads like it.
         $reported = @($results | Where-Object { $_ -like "ART_CLIP *" } |
                 ForEach-Object { $_.Substring("ART_CLIP ".Length) | ConvertFrom-Json })
@@ -84,11 +101,13 @@ foreach ($manifest in $manifests) {
     $manifest.Export = [ordered]@{
         sourceSha256 = $sourceSha256
         targetSha256 = Get-ArtFileSha256 $manifest.TargetPath
+        rigSourceSha256 = $rigSourceSha256
         materials = $materials
         textures = $textures
         clips = $clipRecords
     }
     Write-ArtAssetManifest $manifest
     $triangles = ($results | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''
-    Write-Host "Exported $($manifest.Name) to $($manifest.Target) ($triangles)."
+    $what = if ($manifest.Kind -eq "animations") { "clips=$($manifest.Clips -join ',')" } else { $triangles }
+    Write-Host "Exported $($manifest.Name) to $($manifest.Target) ($what)."
 }

@@ -12,16 +12,23 @@ $script:ArtBlenderVersion = "5.2"
 $script:ArtBlenderCli = Join-Path $PSScriptRoot "blender/art_pipeline_cli.py"
 
 # The review stages each asset kind passes in order. The last stage is the export gate.
+# An animation library holds handmade clips of one skeleton, without meshes, so its only stage is
+# the animation.
 $script:ArtReviewStages = @{
     static = @("model")
     skinned = @("model", "rig", "animation")
+    animations = @("animation")
 }
 
 # The stages whose rules Blender can check, and so can be approved.
 $script:ArtImplementedStages = @{
     static = @("model")
     skinned = @("model", "rig", "animation")
+    animations = @("animation")
 }
+
+# Kinds with a skeleton and animation clips.
+$script:ArtAnimatedKinds = @("skinned", "animations")
 
 $script:ArtNamePattern = '^[A-Za-z][A-Za-z0-9_]*$'
 $script:ArtShaPattern = '^[0-9a-f]{64}$'
@@ -226,7 +233,33 @@ function Read-ArtSkeleton([string]$Name) {
     return $path
 }
 
-function Read-ArtAssetManifest([string]$AssetDirectory) {
+function Read-ArtRigReference([string]$Asset, [string]$Skeleton, [string]$Field) {
+    # A skinned asset of the given skeleton that an animation library names: its repository path,
+    # its .blend file, its armature, and its manifest path. Its approvals are checked on its own.
+    $directory = Join-Path $script:ArtRepositoryRoot $Asset
+    $manifestPath = Join-Path $directory "asset.json"
+    if ($Asset -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
+        -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw "$Field must name skinned assets as art/<Category>/<Name>; '$Asset' is none"
+    }
+
+    $json = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    $roots = @($json.rootObjects)
+    if ([string]$json.kind -ne "skinned" -or [string]$json.skeleton -cne $Skeleton -or $roots.Count -ne 1) {
+        throw "$Field '$Asset' must be a skinned asset of the $Skeleton skeleton with its armature as its one root object"
+    }
+
+    $name = Split-Path -Leaf $Asset
+    return [pscustomobject]@{
+        Asset = $Asset
+        ManifestPath = $manifestPath
+        SourcePath = Join-Path $directory "$name.blend"
+        Root = [string]$roots[0]
+    }
+}
+
+function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSource) {
+    # AllowMissingSource reads the manifest of a new animation library before its first sync.
     $name = Split-Path -Leaf $AssetDirectory
     $manifestPath = Join-Path $AssetDirectory "asset.json"
     $where = Get-ArtRelativePath $manifestPath
@@ -262,15 +295,26 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
         $problems.Add("rootObjects must list one or more unique object names")
     }
 
-    if (-not ($json.triangleBudget -is [int] -or $json.triangleBudget -is [long]) -or $json.triangleBudget -le 0) {
+    $kind = [string]$json.kind
+    $triangleBudget = $null
+    if ($kind -eq "animations") {
+        if ($null -ne $json.PSObject.Properties['triangleBudget']) {
+            $problems.Add("an animation library exports no meshes and has no triangleBudget")
+        }
+    }
+    elseif (-not ($json.triangleBudget -is [int] -or $json.triangleBudget -is [long]) -or $json.triangleBudget -le 0) {
         $problems.Add("triangleBudget must be a positive whole number")
     }
+    else {
+        $triangleBudget = [int]$json.triangleBudget
+    }
 
-    # A skinned asset names its shared skeleton and the animation clips the game plays on it.
+    # A skinned asset and an animation library name their shared skeleton and the animation clips
+    # the game plays on it.
     $skeleton = $null
     $skeletonPath = $null
     $clips = @()
-    if ([string]$json.kind -eq "skinned") {
+    if ($script:ArtAnimatedKinds -contains $kind) {
         $skeleton = [string]$json.skeleton
         $clips = @($json.clips | ForEach-Object { [string]$_ })
         if ($skeleton -cnotmatch $script:ArtNamePattern) {
@@ -291,7 +335,30 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
         }
     }
     elseif ($null -ne $json.skeleton -or $null -ne $json.clips) {
-        $problems.Add("only a skinned asset has a skeleton and clips")
+        $problems.Add("only a skinned asset or an animation library has a skeleton and clips")
+    }
+
+    # An animation library is authored on the rig of one skinned asset of its skeleton and shows
+    # its clips on the bodies of others.
+    $rig = $null
+    $previews = @()
+    if ($kind -eq "animations") {
+        try {
+            $rig = Read-ArtRigReference ([string]$json.rig) $skeleton "rig"
+            $previews = @(@($json.previews | Where-Object { $null -ne $_ }) |
+                ForEach-Object { Read-ArtRigReference ([string]$_) $skeleton "previews" })
+        }
+        catch {
+            $problems.Add($_.Exception.Message)
+        }
+
+        if (@($previews | ForEach-Object { $_.Asset } | Sort-Object -Unique).Count -ne $previews.Count -or
+            @($previews | Where-Object { $null -ne $rig -and $_.Asset -eq $rig.Asset }).Count -gt 0) {
+            $problems.Add("previews must name other skinned assets than the rig, each once")
+        }
+    }
+    elseif ($null -ne $json.rig -or $null -ne $json.previews) {
+        $problems.Add("only an animation library has a rig and previews")
     }
 
     $approvals = [ordered]@{}
@@ -321,7 +388,31 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
     }
 
     $export = $null
-    if ($null -ne $json.export) {
+    if ($null -ne $json.export -and $kind -eq "animations") {
+        $clipRecords = ConvertTo-ArtClipRecords $json.export.clips $clips
+        if ([string]$json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or
+            [string]$json.export.targetSha256 -cnotmatch $script:ArtShaPattern -or
+            [string]$json.export.rigSourceSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs a sourceSha256, a targetSha256, and the rigSourceSha256 of the rig's export")
+        }
+        elseif ($null -ne $json.export.materials -or $null -ne $json.export.textures) {
+            $problems.Add("the export of an animation library has no materials or textures")
+        }
+        elseif ($null -eq $clipRecords) {
+            $problems.Add("export.clips must list every clip of the manifest once with its name, frames, and loop")
+        }
+        else {
+            $export = [ordered]@{
+                sourceSha256 = [string]$json.export.sourceSha256
+                targetSha256 = [string]$json.export.targetSha256
+                rigSourceSha256 = [string]$json.export.rigSourceSha256
+                materials = @()
+                textures = @()
+                clips = $clipRecords
+            }
+        }
+    }
+    elseif ($null -ne $json.export) {
         $materials = ConvertTo-ArtMaterialRecords $json.export.materials
         $textureFolder = Get-ArtTextureFolder $target
         $textures = ConvertTo-ArtTextureRecords $json.export.textures $textureFolder
@@ -365,7 +456,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
     }
 
     $sourcePath = Join-Path $AssetDirectory "$name.blend"
-    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+    if (-not $AllowMissingSource -and -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
         $problems.Add("the source file $name.blend is missing next to asset.json")
     }
 
@@ -385,13 +476,26 @@ function Read-ArtAssetManifest([string]$AssetDirectory) {
         Target = $target
         TargetPath = Join-Path $script:ArtRepositoryRoot $target
         RootObjects = [string[]]$roots
-        TriangleBudget = [int]$json.triangleBudget
+        TriangleBudget = $triangleBudget
         Skeleton = $skeleton
         SkeletonPath = $skeletonPath
+        Rig = $rig
+        Previews = $previews
         Clips = [string[]]$clips
         Approvals = $approvals
         Export = $export
     }
+}
+
+function Add-ArtClipLines($Lines, $ClipRecords) {
+    $Lines.Add('        "clips": [')
+    for ($i = 0; $i -lt $ClipRecords.Count; $i++) {
+        $clip = $ClipRecords[$i]
+        $comma = if ($i -lt $ClipRecords.Count - 1) { "," } else { "" }
+        $loop = if ($clip.loop) { "true" } else { "false" }
+        $Lines.Add("            { `"name`": `"$($clip.name)`", `"frames`": $($clip.frames), `"loop`": $loop }$comma")
+    }
+    $Lines.Add("        ]")
 }
 
 function Write-ArtAssetManifest($Manifest) {
@@ -407,9 +511,21 @@ function Write-ArtAssetManifest($Manifest) {
         $lines.Add("        `"$($Manifest.RootObjects[$i])`"$comma")
     }
     $lines.Add("    ],")
-    $lines.Add("    `"triangleBudget`": $($Manifest.TriangleBudget),")
-    if ($Manifest.Kind -eq "skinned") {
+    if ($null -ne $Manifest.TriangleBudget) {
+        $lines.Add("    `"triangleBudget`": $($Manifest.TriangleBudget),")
+    }
+
+    if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
         $lines.Add("    `"skeleton`": `"$($Manifest.Skeleton)`",")
+    }
+
+    if ($Manifest.Kind -eq "animations") {
+        $lines.Add("    `"rig`": `"$($Manifest.Rig.Asset)`",")
+        $previews = (@($Manifest.Previews) | ForEach-Object { '"' + $_.Asset + '"' }) -join ", "
+        $lines.Add("    `"previews`": [$previews],")
+    }
+
+    if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
         $clips = (@($Manifest.Clips) | ForEach-Object { '"' + $_ + '"' }) -join ", "
         $lines.Add("    `"clips`": [$clips],")
     }
@@ -432,6 +548,14 @@ function Write-ArtAssetManifest($Manifest) {
 
     if ($null -eq $Manifest.Export) {
         $lines.Add('    "export": null')
+    }
+    elseif ($Manifest.Kind -eq "animations") {
+        $lines.Add('    "export": {')
+        $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
+        $lines.Add("        `"targetSha256`": `"$($Manifest.Export.targetSha256)`",")
+        $lines.Add("        `"rigSourceSha256`": `"$($Manifest.Export.rigSourceSha256)`",")
+        Add-ArtClipLines $lines @($Manifest.Export.clips)
+        $lines.Add("    }")
     }
     else {
         $lines.Add('    "export": {')
@@ -473,14 +597,7 @@ function Write-ArtAssetManifest($Manifest) {
         }
 
         if ($clipRecords.Count -gt 0) {
-            $lines.Add('        "clips": [')
-            for ($i = 0; $i -lt $clipRecords.Count; $i++) {
-                $clip = $clipRecords[$i]
-                $comma = if ($i -lt $clipRecords.Count - 1) { "," } else { "" }
-                $loop = if ($clip.loop) { "true" } else { "false" }
-                $lines.Add("            { `"name`": `"$($clip.name)`", `"frames`": $($clip.frames), `"loop`": $loop }$comma")
-            }
-            $lines.Add("        ]")
+            Add-ArtClipLines $lines $clipRecords
         }
         $lines.Add("    }")
     }
@@ -597,10 +714,17 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
     $arguments = @(
         "--kind", $Manifest.Kind,
         "--roots", ($Manifest.RootObjects -join ","),
-        "--triangle-budget", [string]$Manifest.TriangleBudget,
         "--stage", $Stage)
-    if ($Manifest.Kind -eq "skinned") {
+    if ($null -ne $Manifest.TriangleBudget) {
+        $arguments += @("--triangle-budget", [string]$Manifest.TriangleBudget)
+    }
+
+    if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
         $arguments += @("--skeleton", $Manifest.SkeletonPath, "--clips", ($Manifest.Clips -join ","))
+    }
+
+    if ($Manifest.Kind -eq "animations") {
+        $arguments += @("--rig-source", $Manifest.Rig.SourcePath, "--rig-root", $Manifest.Rig.Root)
     }
 
     return $arguments

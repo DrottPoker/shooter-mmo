@@ -11,8 +11,8 @@ namespace Mmorpg.Client.Editor
     // hand-edited importer settings. Materials keep the names they have in Blender and are
     // remapped to the project material of the same name below Assets/Art/Materials; a model
     // without a matching material keeps an embedded one, which the EditMode tests reject.
-    // A skinned model gets a Humanoid avatar mapped from its skeleton definition and one
-    // animation clip per exported clip, as asset.json records them.
+    // A skinned model and an animation library get a Humanoid avatar mapped from their skeleton
+    // definition and one animation clip per exported clip, as asset.json records them.
     public sealed class ArtModelImportRules : AssetPostprocessor
     {
         public const string ModelFolder = "Assets/Art/Models";
@@ -25,7 +25,7 @@ namespace Mmorpg.Client.Editor
 
         public override uint GetVersion()
         {
-            return 3;
+            return 4;
         }
 
         public static bool AppliesTo(string assetPath)
@@ -49,14 +49,28 @@ namespace Mmorpg.Client.Editor
 
         public static void ApplySkinnedModelSettings(ModelImporter importer, ArtAssetManifest manifest, ArtSkeleton skeleton)
         {
+            ApplyHumanoidSettings(importer, manifest, skeleton);
+            // The game combines the visible body parts into one mesh, which reads the parts.
+            importer.isReadable = true;
+        }
+
+        // An animation library has an armature and clips, without meshes. Its avatar is made
+        // from its own armature, so its clips become muscle motion that plays on every body of
+        // the skeleton.
+        public static void ApplyAnimationLibrarySettings(ModelImporter importer, ArtAssetManifest manifest, ArtSkeleton skeleton)
+        {
+            ApplyHumanoidSettings(importer, manifest, skeleton);
+            importer.materialImportMode = ModelImporterMaterialImportMode.None;
+        }
+
+        private static void ApplyHumanoidSettings(ModelImporter importer, ArtAssetManifest manifest, ArtSkeleton skeleton)
+        {
             ApplySharedModelSettings(importer);
             importer.animationType = ModelImporterAnimationType.Human;
             importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
             importer.humanDescription = HumanDescriptionFor(skeleton);
             // The sockets must stay transforms, so equipment can be attached to them.
             importer.optimizeGameObjects = false;
-            // The game combines the visible body parts into one mesh, which reads the parts.
-            importer.isReadable = true;
             importer.importAnimation = true;
             importer.animationCompression = ModelImporterAnimationCompression.Off;
             importer.clipAnimations = ClipsFor(manifest);
@@ -178,6 +192,10 @@ namespace Mmorpg.Client.Editor
             if (manifest != null && manifest.IsSkinned)
             {
                 ApplySkinnedModelSettings(importer, manifest, ArtAssetManifests.LoadSkeleton(manifest.skeleton));
+            }
+            else if (manifest != null && manifest.IsAnimationLibrary)
+            {
+                ApplyAnimationLibrarySettings(importer, manifest, ArtAssetManifests.LoadSkeleton(manifest.skeleton));
             }
             else
             {

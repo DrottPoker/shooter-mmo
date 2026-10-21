@@ -14,8 +14,23 @@ namespace Mmorpg.Client.Gameplay
         private const string PointerTargetName = "PointerTargetBounds";
 
         private readonly RemoteMovementPresenter movement = new RemoteMovementPresenter();
+        private CharacterLocomotionAnimator body;
 
         public ulong NetworkEntityId { get; private set; }
+
+        // The animated body of the player, or null without one.
+        public CharacterLocomotionAnimator Body
+        {
+            get
+            {
+                if (body == null)
+                {
+                    body = GetComponentInChildren<CharacterLocomotionAnimator>(true);
+                }
+
+                return body;
+            }
+        }
 
         public string PersistentId { get; private set; }
 

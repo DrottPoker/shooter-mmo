@@ -32,6 +32,12 @@ namespace Mmorpg.Client.Gameplay
             get { return localPlayer; }
         }
 
+        // The presentations of the other players in view.
+        public Dictionary<ulong, RemotePlayerView>.ValueCollection RemotePlayers
+        {
+            get { return remotePlayers.Values; }
+        }
+
         // The presentation of another player by its network entity id.
         public bool TryGetRemotePlayer(ulong entityId, out RemotePlayerView view)
         {

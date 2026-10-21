@@ -18,6 +18,7 @@ namespace Mmorpg.Client.Tests.EditMode
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
         private const string BodyModelPath = "Assets/Art/Models/Characters/Human_Male.fbx";
         private const string ControllerPath = "Assets/Art/Animation/HumanLocomotion.controller";
+        private const string ActionsModelPath = "Assets/Art/Models/Animations/Human_Actions.fbx";
         private const string AnimateScript = "tools/blender/human_base/animate.py";
 
         private static readonly string[] PlayerPrefabPaths =
@@ -92,6 +93,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     (HumanLocomotion.MovingParameter, AnimatorControllerParameterType.Bool),
                     (HumanLocomotion.SpeedParameter, AnimatorControllerParameterType.Float),
                     (HumanLocomotion.RateParameter, AnimatorControllerParameterType.Float),
+                    (HumanLocomotion.DeadParameter, AnimatorControllerParameterType.Bool),
                 }));
             Assert.That(
                 controller.parameters.Single(parameter => parameter.name == HumanLocomotion.RateParameter).defaultFloat,
@@ -100,7 +102,9 @@ namespace Mmorpg.Client.Tests.EditMode
 
             var machine = controller.layers[0].stateMachine;
             var states = machine.states.Select(child => child.state).ToDictionary(state => state.name);
-            Assert.That(states.Keys, Is.EquivalentTo(new[] { HumanLocomotion.IdleState, HumanLocomotion.LocomotionState }));
+            Assert.That(
+                states.Keys,
+                Is.EquivalentTo(new[] { HumanLocomotion.IdleState, HumanLocomotion.LocomotionState, HumanLocomotion.DeathState }));
             var idle = states[HumanLocomotion.IdleState];
             var locomotion = states[HumanLocomotion.LocomotionState];
             Assert.That(machine.defaultState, Is.SameAs(idle));
@@ -121,6 +125,36 @@ namespace Mmorpg.Client.Tests.EditMode
 
             AssertTransition(idle, locomotion, AnimatorConditionMode.If);
             AssertTransition(locomotion, idle, AnimatorConditionMode.IfNot);
+        }
+
+        [Test]
+        public void EveryStateFallsIntoTheHandmadeDeathWhileDead()
+        {
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+            var machine = controller.layers[0].stateMachine;
+            var states = machine.states.Select(child => child.state).ToDictionary(state => state.name);
+            var death = states[HumanLocomotion.DeathState];
+            var clip = death.motion as AnimationClip;
+            Assert.That(clip, Is.Not.Null);
+            Assert.That(clip.name, Is.EqualTo(HumanLocomotion.DeathClip));
+            Assert.That(AssetDatabase.GetAssetPath(clip), Is.EqualTo(ActionsModelPath));
+            Assert.That(clip.isHumanMotion, Is.True);
+            // Death holds its last pose, lying on the ground.
+            Assert.That(clip.isLooping, Is.False);
+
+            var into = machine.anyStateTransitions.Where(transition => transition.destinationState == death).ToArray();
+            Assert.That(into, Has.Length.EqualTo(1));
+            Assert.That(machine.anyStateTransitions, Has.Length.EqualTo(1));
+            Assert.That(into[0].canTransitionToSelf, Is.False);
+            Assert.That(into[0].hasExitTime, Is.False);
+            Assert.That(into[0].hasFixedDuration, Is.True);
+            Assert.That(into[0].duration, Is.EqualTo(HumanLocomotion.DeathCrossfadeSeconds));
+            AssertCondition(into[0], AnimatorConditionMode.If, HumanLocomotion.DeadParameter);
+
+            var back = death.transitions.Single();
+            Assert.That(back.destinationState, Is.SameAs(states[HumanLocomotion.IdleState]));
+            Assert.That(back.hasExitTime, Is.False);
+            AssertCondition(back, AnimatorConditionMode.IfNot, HumanLocomotion.DeadParameter);
         }
 
         [Test]
@@ -154,9 +188,14 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(transition.hasExitTime, Is.False, from.name);
             Assert.That(transition.hasFixedDuration, Is.True, from.name);
             Assert.That(transition.duration, Is.InRange(0.05f, 0.3f), from.name);
-            Assert.That(transition.conditions, Has.Length.EqualTo(1), from.name);
-            Assert.That(transition.conditions[0].mode, Is.EqualTo(mode), from.name);
-            Assert.That(transition.conditions[0].parameter, Is.EqualTo(HumanLocomotion.MovingParameter), from.name);
+            AssertCondition(transition, mode, HumanLocomotion.MovingParameter);
+        }
+
+        private static void AssertCondition(AnimatorStateTransition transition, AnimatorConditionMode mode, string parameter)
+        {
+            Assert.That(transition.conditions, Has.Length.EqualTo(1), parameter);
+            Assert.That(transition.conditions[0].mode, Is.EqualTo(mode), parameter);
+            Assert.That(transition.conditions[0].parameter, Is.EqualTo(parameter), parameter);
         }
     }
 }

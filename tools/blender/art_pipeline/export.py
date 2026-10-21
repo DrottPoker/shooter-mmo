@@ -1,6 +1,7 @@
 """Writes the Export collection as FBX with the fixed settings that the Unity import rules expect.
 A skinned asset also exports its armature with every animation clip as its own take, and writes
-the images of its materials as PNG files for Unity."""
+the images of its materials as PNG files for Unity. An animation library exports only its armature
+and its clips."""
 
 import os
 
@@ -9,7 +10,9 @@ import bpy
 from .scene import EXPORT_COLLECTION, ArtPipelineError, export_objects
 from .validate import principled_inputs
 
-OBJECT_TYPES = {"static": {"EMPTY", "MESH"}, "skinned": {"ARMATURE", "MESH"}}
+OBJECT_TYPES = {"static": {"EMPTY", "MESH"}, "skinned": {"ARMATURE", "MESH"}, "animations": {"ARMATURE"}}
+# Kinds whose FBX carries an armature and its clips.
+ANIMATED_KINDS = {"skinned", "animations"}
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
@@ -103,7 +106,7 @@ def export_fbx(kind: str, target: str) -> None:
         raise ArtPipelineError(f'Assets of kind "{kind}" cannot be exported.')
     _activate_export_collection()
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    skinned = kind == "skinned"
+    animated = kind in ANIMATED_KINDS
     # Blender's own axes go into the file unchanged and the Unity importer bakes the axis
     # conversion, so no object keeps a correction rotation. Blender +Y becomes Unity +Z, so an
     # asset faces +Y in Blender. Blender's Apply Transform is not used: it breaks armatures.
@@ -133,7 +136,7 @@ def export_fbx(kind: str, target: str) -> None:
         secondary_bone_axis="X",
         use_armature_deform_only=False,
         armature_nodetype="NULL",
-        bake_anim=skinned,
+        bake_anim=animated,
         bake_anim_use_all_bones=True,
         bake_anim_use_nla_strips=False,
         bake_anim_use_all_actions=True,

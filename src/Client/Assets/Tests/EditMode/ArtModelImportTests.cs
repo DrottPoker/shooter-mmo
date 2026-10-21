@@ -49,7 +49,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(importer.addCollider, Is.False, path);
                 Assert.That(importer.isReadable, Is.EqualTo(manifest.IsSkinned), path);
                 Assert.That(importer.importNormals, Is.EqualTo(ModelImporterNormals.Import), path);
-                if (manifest.IsSkinned)
+                if (manifest.HasSkeleton)
                 {
                     Assert.That(importer.importAnimation, Is.True, path);
                     Assert.That(importer.animationType, Is.EqualTo(ModelImporterAnimationType.Human), path);
@@ -67,8 +67,9 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EverySkinnedModelHasAHumanoidAvatarFromItsSkeleton()
         {
-            var skinned = ExportedManifests().Where(manifest => manifest.IsSkinned).ToArray();
-            Assert.That(skinned, Is.Not.Empty);
+            var skinned = ExportedManifests().Where(manifest => manifest.HasSkeleton).ToArray();
+            Assert.That(skinned.Where(manifest => manifest.IsSkinned), Is.Not.Empty);
+            Assert.That(skinned.Where(manifest => manifest.IsAnimationLibrary), Is.Not.Empty);
             foreach (var manifest in skinned)
             {
                 var path = manifest.UnityTargetPath;
@@ -108,7 +109,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EverySkinnedModelHasTheExportedClips()
         {
-            foreach (var manifest in ExportedManifests().Where(manifest => manifest.IsSkinned))
+            foreach (var manifest in ExportedManifests().Where(manifest => manifest.HasSkeleton))
             {
                 var path = manifest.UnityTargetPath;
                 Assert.That(manifest.export.clips.Select(clip => clip.name), Is.EquivalentTo(manifest.clips), path);
@@ -140,6 +141,13 @@ namespace Mmorpg.Client.Tests.EditMode
                         + ArtModelImportRules.MaterialFolder);
                 var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 var renderers = model.GetComponentsInChildren<Renderer>(true);
+                // An animation library is an armature and its clips; the bodies stay in Blender.
+                if (ArtAssetManifests.ForModel(path).IsAnimationLibrary)
+                {
+                    Assert.That(renderers, Is.Empty, path);
+                    continue;
+                }
+
                 Assert.That(renderers, Is.Not.Empty, path);
                 foreach (var renderer in renderers)
                 {

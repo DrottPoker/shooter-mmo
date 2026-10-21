@@ -65,6 +65,22 @@ foreach ($directory in $directories) {
         $problems.Add("${where}: $($manifest.Target) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
     }
 
+    # An animation library was exported against the current export of its rig; the export itself
+    # checked in Blender that the library's armature is that rig.
+    if ($manifest.Kind -eq "animations") {
+        $rigExport = $null
+        try {
+            $rigExport = (Read-ArtAssetManifest (Split-Path -Parent $manifest.Rig.ManifestPath)).Export
+        }
+        catch {
+            # The rig's own problems are reported with the rig.
+        }
+
+        if ($null -eq $rigExport -or $rigExport.sourceSha256 -ne $manifest.Export.rigSourceSha256) {
+            $problems.Add("${where}: was exported against another export of its rig $($manifest.Rig.Asset); run tools/Sync-AnimationLibrary.ps1, and if it changed the library, review and approve it again, then run tools/Export-ArtAsset.ps1.")
+        }
+    }
+
     foreach ($texture in @($manifest.Export.textures)) {
         if ($textures.ContainsKey($texture.target)) {
             $problems.Add("${where}: $($texture.target) is also a texture of $($textures[$texture.target]).")

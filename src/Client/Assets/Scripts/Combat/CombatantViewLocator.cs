@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.WorldActors;
@@ -44,6 +45,8 @@ namespace Mmorpg.Client.Combat
     {
         public const string LocalPlayerName = "You";
         private const float FallbackHeight = 1.8f;
+        private static readonly Dictionary<ulong, RemotePlayerView> NoRemotePlayers =
+            new Dictionary<ulong, RemotePlayerView>();
 
         private readonly RealtimeSimulationClient realtimeClient;
         private readonly WorldSceneContext sceneContext;
@@ -84,6 +87,12 @@ namespace Mmorpg.Client.Combat
                     ? player.PlayerCamera.Camera
                     : null;
             }
+        }
+
+        // The presentations of the other players in view.
+        public Dictionary<ulong, RemotePlayerView>.ValueCollection RemotePlayers
+        {
+            get { return sceneContext != null ? sceneContext.RemotePlayers : NoRemotePlayers.Values; }
         }
 
         // A visible presentation of the combatant, or false when it has none right now,

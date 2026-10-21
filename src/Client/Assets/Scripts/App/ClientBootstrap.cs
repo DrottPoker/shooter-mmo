@@ -341,6 +341,8 @@ namespace Mmorpg.Client.App
                     simulationClient,
                     combatantViews,
                     runtimePrimitiveMaterial));
+            AddSceneComponentIfMissing<CombatDeathPresentation>(
+                presentation => presentation.Initialize(combatController, combatantViews));
             AddSceneComponentIfMissing<TemporaryCombatHud>(
                 hud => hud.Initialize(
                     combatController,

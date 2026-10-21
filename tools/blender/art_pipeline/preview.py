@@ -1,6 +1,8 @@
 """Renders a review sheet for an asset: one row per exported root object, seen from four
 sides at the game camera pitch, plus a fifth view with a 1.8 m mannequin for scale. Only
-the Export collection is rendered, on a dark green ground."""
+the Export collection is rendered, on a dark green ground. The sheet of an animation library
+shows every clip on the bodies of its Reference collection instead: two rows of frames per clip,
+from the front right and from the back left."""
 
 import math
 import os
@@ -117,14 +119,8 @@ def _render(scene: bpy.types.Scene, path: str) -> np.ndarray:
         bpy.data.images.remove(image)
 
 
-def render_sheet(output: str, cell: int) -> str:
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-    scene = bpy.context.scene
-    exported = export_objects()
-    roots = root_objects()
-    for obj in scene.objects:
-        obj.hide_render = obj not in exported
-
+def _studio(scene: bpy.types.Scene, cell: int) -> tuple[bpy.types.Object, bpy.types.Object]:
+    """Engine, world, output settings, a camera, and a sun; returns the camera and the sun."""
     _set_engine(scene)
     _set_world(scene)
     scene.render.resolution_x = cell
@@ -143,6 +139,27 @@ def render_sheet(output: str, cell: int) -> str:
     sun_data.energy = 3.5
     sun_data.angle = math.radians(8.0)
     sun = _add_object(scene, "PreviewSun", sun_data)
+    return camera, sun
+
+
+def _save(sheet: np.ndarray, output: str) -> str:
+    image = bpy.data.images.new("PreviewSheet", sheet.shape[1], sheet.shape[0], alpha=True)
+    image.pixels.foreach_set(sheet.ravel())
+    image.filepath_raw = output
+    image.file_format = "PNG"
+    image.save()
+    return output
+
+
+def render_sheet(output: str, cell: int) -> str:
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    scene = bpy.context.scene
+    exported = export_objects()
+    roots = root_objects()
+    for obj in scene.objects:
+        obj.hide_render = obj not in exported
+
+    camera, sun = _studio(scene, cell)
     ground_mesh = bpy.data.meshes.new("PreviewGround")
     ground_mesh.from_pydata([(-30, -30, 0), (30, -30, 0), (30, 30, 0), (-30, 30, 0)], [], [(0, 1, 2, 3)])
     ground_mesh.materials.append(_flat_material("PreviewGround", GROUND_SRGB))
@@ -177,10 +194,49 @@ def render_sheet(output: str, cell: int) -> str:
             top = (len(roots) - 1 - row) * cell
             sheet[top:top + cell, len(YAWS) * cell:] = pixels
 
-    image = bpy.data.images.new("PreviewSheet", sheet.shape[1], sheet.shape[0], alpha=True)
-    image.pixels.foreach_set(sheet.ravel())
-    image.filepath_raw = output
-    image.file_format = "PNG"
-    image.save()
-    return output
+    return _save(sheet, output)
+
+
+CLIP_FRAMES = 8
+CLIP_YAWS = (35.0, 215.0)
+
+
+def render_clip_sheet(output: str, cell: int) -> str:
+    """Every clip of an animation library at evenly spaced frames, from its first to its last, on
+    the bodies of the Reference collection and their ground grid."""
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    scene = bpy.context.scene
+    arm = next(o for o in export_objects() if o.type == "ARMATURE")
+    reference = bpy.data.collections.get("Reference")
+    shown = set(reference.all_objects) if reference is not None else set()
+    for obj in scene.objects:
+        obj.hide_render = obj not in shown
+    camera, sun = _studio(scene, cell)
+    bodies = [o for o in shown if o.type == "MESH" and o.name != "Reference_Ground"]
+    low, high = _bounds(bodies)
+    # Room for a body lying on the ground in any direction.
+    center = Vector(((low.x + high.x) / 2.0, (low.y + high.y) / 2.0, 0.7))
+    radius = max((high.x - low.x) / 2.0, 0.0) + 1.6
+
+    actions = sorted(bpy.data.actions, key=lambda a: a.name)
+    arm.animation_data_create()
+    sheet = np.zeros((cell * len(CLIP_YAWS) * len(actions), cell * CLIP_FRAMES, 4), dtype=np.float32)
+    with tempfile.TemporaryDirectory() as scratch:
+        for index, action in enumerate(actions):
+            arm.animation_data.action = action
+            if action.slots:
+                arm.animation_data.action_slot = action.slots[0]
+            end = int(action.frame_range[1])
+            for view, yaw in enumerate(CLIP_YAWS):
+                row = index * len(CLIP_YAWS) + view
+                top = row * cell
+                _aim(camera, sun, center, radius, yaw)
+                for column in range(CLIP_FRAMES):
+                    scene.frame_set(round(column * end / (CLIP_FRAMES - 1)))
+                    pixels = _render(scene, os.path.join(scratch, f"{row}_{column}.png"))
+                    # Image rows run bottom up, so the first clip is drawn at the top.
+                    bottom = sheet.shape[0] - top - cell
+                    sheet[bottom:bottom + cell, column * cell:(column + 1) * cell] = pixels
+    arm.animation_data.action = None
+    return _save(sheet, output)
 
