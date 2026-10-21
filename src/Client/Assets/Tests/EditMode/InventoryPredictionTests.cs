@@ -63,6 +63,25 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void AReconnectThatChangedNothingMakesTheInventoryUsableAgain()
+        {
+            var ore = Item("fixture.ore", 10, 3);
+            var state = CreateState(new[] { ore });
+            var unchanged = state.FullSnapshot;
+
+            state.MarkDisconnected(false);
+            Assert.That(state.CanPredict, Is.False);
+
+            state.BeginLoading(false);
+            Assert.That(state.ApplyFull(unchanged), Is.EqualTo(InventorySnapshotApplyResult.Unchanged));
+            Assert.That(state.Status, Is.EqualTo(InventoryClientStatus.Ready));
+            Assert.That(state.RequiresFullRefresh, Is.False);
+            Assert.That(state.HasCoherentFullSnapshotAtLeast(KnownRevision), Is.True);
+            Assert.That(state.CanPredict, Is.True);
+            Assert.That(state.CanMutate, Is.True);
+        }
+
+        [Test]
         public void ChangesThePatchCannotDescribeRequireAReload()
         {
             var ore = Item("fixture.ore", 10, 3);
