@@ -14,7 +14,11 @@ public sealed class StressGeneratorOptionsTests
         Assert.True(options.AuthorityUrl.IsLoopback);
         Assert.Equal(100, options.BotCount);
         Assert.Equal(25, options.RampStep);
-        Assert.Equal("development-world-2", options.WorldId);
+        Assert.Equal("development-world-1", options.WorldId);
+        Assert.Equal("local-shard-2", options.ShardId);
+        Assert.Equal("local-simulation-worker-2", options.WorkerId);
+        Assert.Equal(27016, options.WorkerUdpPort);
+        Assert.Equal((0, 0, 0), (options.LootHotspotX, options.LootHotspotY, options.LootHotspotZ));
         Assert.Equal("Stress Bot 1", $"Stress Bot {options.BotStartIndex}");
         Assert.NotNull(options.WorkerSecret);
         Assert.True(options.WorkerSecret.Length >= 32);

@@ -1,6 +1,6 @@
 # Stack Stress Testing
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 ## Purpose
 
@@ -25,7 +25,9 @@ does after joining:
 
 Both modes run independent headless LiteNetLib clients through the real join,
 movement, snapshot, entity lifecycle, simulation-session, and graceful-leave
-paths. The current small map keeps every bot inside the same interest radius.
+paths. Runs target `local-shard-2` and Development World 1, the 64 m stress
+arena, by default, and every bot starts on its spawn, so all bots stay inside
+the same interest radius.
 This intentionally measures a worst-case local crowd, not the distributed
 capacity of a future larger World.
 
@@ -235,6 +237,10 @@ by the generator and this metrics override before normal local development:
 Remove-Item Env:GAME_SERVICE_BASE_URL -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_SERVICE_SECRET -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_MAX_CONNECTIONS -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_WORKER_ID -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_FLEET_ID -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_NODE_ID -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_SHARD_ID -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORLD_ID -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_UDP_PORT -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_ADVERTISED_HOST -ErrorAction SilentlyContinue
@@ -297,13 +303,16 @@ $env:SIMULATION_WORKER_SERVICE_SECRET = "stack-stress-local-worker-secret-2026"
 $env:SIMULATION_WORKER_UDP_PORT = "27025"
 $env:SIMULATION_WORKER_ADVERTISED_HOST = "127.0.0.1"
 $env:SIMULATION_WORKER_ADVERTISED_UDP_PORT = "27025"
-$env:SIMULATION_WORLD_ID = "development-world-2"
+$env:SIMULATION_WORKER_ID = "local-simulation-worker-2"
+$env:SIMULATION_SHARD_ID = "local-shard-2"
+$env:SIMULATION_WORLD_ID = "development-world-1"
 $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
 dotnet run --project src/Server/SimulationWorker --configuration Release --no-build --no-launch-profile
 ```
 
-Expected result: the worker registers `local-shard-1` and
-`development-world-2` with GameService and advertises UDP port `27025`.
+Expected result: the worker registers `local-shard-2` and
+`development-world-1`, the stress arena, with GameService and advertises UDP
+port `27025`.
 
 For `loot-hotspot` or `mixed-gameplay`, use a one-second durable corpse
 reconciliation interval so a newly provisioned stress corpse becomes visible
@@ -412,6 +421,8 @@ Remove-Item Env:GAME_SERVICE_BASE_URL -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_UDP_PORT -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_ADVERTISED_HOST -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORKER_ADVERTISED_UDP_PORT -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_WORKER_ID -ErrorAction SilentlyContinue
+Remove-Item Env:SIMULATION_SHARD_ID -ErrorAction SilentlyContinue
 Remove-Item Env:SIMULATION_WORLD_ID -ErrorAction SilentlyContinue
 Remove-Item Env:SimulationWorker__NetworkMetricsLogSeconds -ErrorAction SilentlyContinue
 Remove-Item Env:SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds -ErrorAction SilentlyContinue

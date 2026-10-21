@@ -11,14 +11,18 @@ reference only while the shard is fully offline and drained.
 
 ## Checked-In World Registry
 
-| World ID | Unity scene | Purpose | Playable bounds | Authoritative spawn |
-| --- | --- | --- | --- | --- |
-| `development-world-1` | `DevelopmentWorld1` | Stress arena: many bots and clients on a small area | X/Z `-31` to `31` | `(0, 0, 0)`, yaw `0` |
-| `development-world-2` | `DevelopmentWorld2` | Test World: one zone for every developed feature | X/Z `-190` to `190` | `(0, 0, -12)`, yaw `0` |
+| World ID | Unity scene | Purpose | Local shard | Playable bounds | Authoritative spawn |
+| --- | --- | --- | --- | --- | --- |
+| `development-world-1` | `DevelopmentWorld1` | Stress arena: many bots and clients on a small area | `local-shard-2`, `Local Stress Arena` | X/Z `-31` to `31` | `(0, 0, 0)`, yaw `0` |
+| `development-world-2` | `DevelopmentWorld2` | Test World: one zone for every developed feature | `local-shard-1`, `Local Shard 1` | X/Z `-190` to `190` | `(0, 0, -12)`, yaw `0` |
 
 The checked-in SimulationWorker configuration requests `development-world-2`
-for `local-shard-1`. GameService accepts and persists that binding only when the
-shard is offline and drained.
+for `local-shard-1`, and its `StressArena` launch profile requests
+`development-world-1` for `local-shard-2` on UDP port `27016`, so both Worlds
+run side by side; see
+[Run The Stress Arena Shard](LOCAL_DEVELOPMENT.md#run-the-stress-arena-shard).
+GameService accepts and persists a shard's World binding only when the shard is
+offline and drained.
 
 The client catalog maps each World id to its scene, and both scenes are
 Addressables World scenes. Build Profiles contain only LoginMenu and

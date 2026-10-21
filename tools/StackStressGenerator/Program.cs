@@ -107,6 +107,10 @@ public static class Program
         Console.WriteLine($"$env:GAME_SERVICE_BASE_URL='{options.AuthorityUrl}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_SERVICE_SECRET='{options.WorkerSecret}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_MAX_CONNECTIONS='{Math.Max(100, options.BotCount)}'");
+        Console.WriteLine($"$env:SIMULATION_WORKER_ID='{options.WorkerId}'");
+        Console.WriteLine($"$env:SIMULATION_FLEET_ID='{options.FleetId}'");
+        Console.WriteLine($"$env:SIMULATION_NODE_ID='{options.NodeId}'");
+        Console.WriteLine($"$env:SIMULATION_SHARD_ID='{options.ShardId}'");
         Console.WriteLine($"$env:SIMULATION_WORLD_ID='{options.WorldId}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_UDP_PORT='{options.WorkerUdpPort}'");
         Console.WriteLine($"$env:SIMULATION_WORKER_ADVERTISED_HOST='{options.WorkerHost}'");

@@ -2115,6 +2115,35 @@ Interest enters at 128 meters and exits at 144 meters. Collision loads within
 two chunks of active anchors and unloads outside three chunks. Invalid values
 fail startup.
 
+### Run The Stress Arena Shard
+
+GameService seeds two local shards: `local-shard-1` (`Local Shard 1`), which the
+default worker binds to Development World 2, and `local-shard-2` (`Local Stress
+Arena`), which runs Development World 1, the stress arena. To run both, start a
+second worker in a third terminal with the `StressArena` launch profile:
+
+```powershell
+dotnet run --project src/Server/SimulationWorker --launch-profile StressArena
+```
+
+The profile sets worker `local-simulation-worker-2`, shard `local-shard-2`,
+World `development-world-1`, and UDP port `27016`, so both workers run side by
+side against the same GameService, PostgreSQL, and Redis.
+
+Expected result: the second worker logs shard `local-shard-2`, World
+`development-world-1`, UDP port `27016`, 4 collision chunks, and `Activated 14
+world actors`. `GET /api/shards` lists both shards online, and CharacterSelect
+shows `Local Stress Arena` next to `Local Shard 1`. Joining it loads
+`DevelopmentWorld1` with the character on the spawn pad in the middle of the
+arena. ActiveSimulationBots and StackStressGenerator target this shard by
+default; see [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) and
+[Stack Stress Testing](STACK_STRESS_TESTING.md).
+
+The shard binds to its World on the worker's first heartbeat. If
+`local-shard-2` was bound to another World before, stop its worker and wait
+until it has no players, pending tickets, or open corpses, as for any offline
+World change.
+
 Run a one-time SimulationWorker startup health check while the normal worker is
 stopped:
 
