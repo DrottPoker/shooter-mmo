@@ -712,7 +712,9 @@ Inventory or the Bank that accept each item, as GameService does. A split, a
 purchase, or a partial corpse loot shows its new stack under a temporary id that
 nothing may act on until the server confirms it. Up to
 `MaximumPendingOperations` (8) operations may wait, so a player can drag item
-after item without waiting.
+after item without waiting. Every predicted step, corpse and vendor steps
+included, must end within the 140 percent hard cap that GameService checks on
+each voluntary transaction, so a swap to a smaller Bag cannot show an overload.
 
 Corpse and vendor operations join the same queue through
 `IInventoryOperationQueue`, which `InventoryClientController` implements, as

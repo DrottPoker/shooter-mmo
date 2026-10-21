@@ -437,6 +437,14 @@ namespace Mmorpg.Client.Items
                     return false;
                 }
 
+                // GameService checks the hard cap on every voluntary transaction, so no step
+                // may show a load it would refuse, such as a swap to a smaller Bag.
+                if (!edit.FitsHardCap())
+                {
+                    reason = "The move would exceed the 140 percent carry cap.";
+                    return false;
+                }
+
                 predicted = edit.Build();
                 reason = string.Empty;
                 return true;

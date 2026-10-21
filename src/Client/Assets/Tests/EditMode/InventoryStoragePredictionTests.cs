@@ -114,6 +114,31 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void NoPredictionMayEndAboveTheHardCap()
+        {
+            var state = CreateState(Array.Empty<InventoryItem>());
+            var overweight = InventoryPredictedOperation.External(
+                (InventoryPredictionEdit edit, out string reason) =>
+                {
+                    // Like a swap to a smaller Bag, the step itself never checks the cap.
+                    edit.Capacity = 1;
+                    reason = string.Empty;
+                    return true;
+                },
+                (InventoryClientState _, out Guid operationId, out string sendError) =>
+                {
+                    operationId = Guid.NewGuid();
+                    sendError = string.Empty;
+                    return InventoryOperationSendResult.Sent;
+                },
+                Array.Empty<Guid>(),
+                Array.Empty<Guid>());
+
+            Assert.That(state.TryPredict(overweight, out var error), Is.False);
+            Assert.That(error, Does.Contain("140 percent carry cap"));
+        }
+
+        [Test]
         public void APredictedBagIsNoDestinationUntilItsEquipCommits()
         {
             var pack = Item("fixture.pack", 1, 1);
