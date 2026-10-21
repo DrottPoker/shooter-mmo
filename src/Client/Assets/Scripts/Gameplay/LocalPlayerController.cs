@@ -30,6 +30,7 @@ namespace Mmorpg.Client.Gameplay
         private readonly SimulationVector3[] collisionStreamingAnchor =
             new SimulationVector3[1];
         private CharacterBody characterBody;
+        private CharacterLocomotionAnimator body;
         private LocalPlayerInput playerInput;
         private RealtimeSimulationClient realtimeClient;
         private ClientMovementPrediction movementPrediction;
@@ -61,6 +62,20 @@ namespace Mmorpg.Client.Gameplay
         public OrbitCameraController PlayerCamera
         {
             get { return playerCamera; }
+        }
+
+        // The animated body of the player, or null without one.
+        public CharacterLocomotionAnimator Body
+        {
+            get
+            {
+                if (body == null)
+                {
+                    body = GetComponentInChildren<CharacterLocomotionAnimator>(true);
+                }
+
+                return body;
+            }
         }
 
         public bool IsServerAuthoritative

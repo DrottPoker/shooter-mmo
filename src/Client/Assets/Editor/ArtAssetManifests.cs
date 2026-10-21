@@ -13,6 +13,9 @@ namespace Mmorpg.Client.Editor
     {
         public const string SkinnedKind = "skinned";
 
+        // An armature with handmade clips of a skeleton, without meshes.
+        public const string AnimationLibraryKind = "animations";
+
         // asset.json targets are repository paths; Unity asset paths start at Assets/.
         public const string ClientProjectPrefix = "src/Client/";
 
@@ -80,10 +83,27 @@ namespace Mmorpg.Client.Editor
             get { return string.Equals(kind, ArtAssetManifests.SkinnedKind, StringComparison.Ordinal); }
         }
 
-        // JsonUtility reads "export": null as an empty record.
+        public bool IsAnimationLibrary
+        {
+            get { return string.Equals(kind, ArtAssetManifests.AnimationLibraryKind, StringComparison.Ordinal); }
+        }
+
+        // A skinned model or an animation library: a Humanoid armature with clips.
+        public bool HasSkeleton
+        {
+            get { return IsSkinned || IsAnimationLibrary; }
+        }
+
+        // JsonUtility reads "export": null as an empty record. Every model has materials, and
+        // an animation library has clips.
         public bool IsExported
         {
-            get { return export != null && export.materials != null && export.materials.Length > 0; }
+            get
+            {
+                return export != null
+                    && ((export.materials != null && export.materials.Length > 0)
+                        || (IsAnimationLibrary && export.clips != null && export.clips.Length > 0));
+            }
         }
     }
 

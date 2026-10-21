@@ -30,12 +30,19 @@ Assets/Prefabs/... Prefab Variant of the model -> presentation registry or playe
 Nothing reaches Unity without an approval of the exact source file that was
 exported, and CI checks the whole chain without Blender.
 
+Scripted assets, such as the [human base characters](#human-base-characters),
+are rebuilt from their scripts, and a rebuild replaces their `.blend` files.
+Everything made by hand lives in assets of its own that no build writes, such as
+the handmade clips of an [animation library](#animation-libraries), so a rebuild
+never overwrites handmade work.
+
 ## Layout
 
 | Path | Responsibility |
 | --- | --- |
 | `art/<Category>/<Name>/<Name>.blend` | Source of truth for one asset, stored in Git LFS. The folder name is the asset name. |
 | `art/<Category>/<Name>/asset.json` | Asset manifest: kind, export target, root objects, triangle budget, skeleton and clips of a skinned asset, approvals, and the export record. |
+| `art/Animations/<Name>/<Name>.blend` | An [animation library](#animation-libraries): handmade clips of one skeleton, keyed on the rig of one character, with the bodies that show them. |
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. |
 | `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. |
@@ -45,6 +52,7 @@ exported, and CI checks the whole chain without Blender.
 | `tools/blender/art_pipeline_cli.py` | Blender entry point for the scripts below. |
 | `tools/Render-ArtPreview.ps1`, `tools/Approve-ArtAsset.ps1`, `tools/Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/ArtPipelineCommon.ps1`. |
 | `tools/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
+| `tools/Sync-AnimationLibrary.ps1`, `tools/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
 | `tools/Build-HumanBase.ps1`, `tools/blender/human_base`, `tools/blender/human_base_cli.py` | The scripted build of the [human base characters](#human-base-characters) from the Human Base Meshes bundle. |
 | `src/Client/Assets/Editor/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
 | `src/Client/Assets/Editor/ArtAssetManifests.cs` | Reads `asset.json` and the skeleton definitions for the import rules, the material command, and the tests. |
@@ -60,14 +68,16 @@ exported, and CI checks the whole chain without Blender.
 | Field | Meaning |
 | --- | --- |
 | `schemaVersion` | Always `1`. |
-| `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig. |
+| `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries). |
 | `target` | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx`, where `<Name>` is the folder name. |
-| `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. |
-| `triangleBudget` | The maximum number of exported triangles, after modifiers. |
-| `skeleton` | Skinned assets only: the name of the skeleton definition in `art/Skeletons`, such as `Humanoid`. |
-| `clips` | Skinned assets only: the names of the animation clips the asset exports, such as `["Idle", "Walk", "Jog"]`. Each is one Blender action. |
+| `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. The one root object of an animation library is its armature, named after its skeleton. |
+| `triangleBudget` | The maximum number of exported triangles, after modifiers. An animation library exports no meshes and has none. |
+| `skeleton` | Skinned assets and animation libraries: the name of the skeleton definition in `art/Skeletons`, such as `Humanoid`. |
+| `rig` | Animation libraries only: the skinned asset whose rig the clips are keyed on, such as `art/Characters/Human_Male`. |
+| `previews` | Animation libraries only: other skinned assets of the skeleton whose bodies show the clips in the library, such as `["art/Characters/Human_Female"]`. |
+| `clips` | Skinned assets and animation libraries: the names of the animation clips the asset exports, such as `["Idle", "Walk", "Jog"]`. Each is one Blender action. |
 | `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. |
-| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. `null` before the first export. |
+| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. `null` before the first export. |
 
 ## Review Stages
 
@@ -80,6 +90,7 @@ saving the file again, even without a visible change, needs a new approval.
 | --- | --- | --- |
 | `static` | `model` | Implemented. |
 | `skinned` (characters, creatures) | `model`, then `rig`, then `animation` | Implemented. |
+| `animations` (animation libraries) | `animation` | Implemented. |
 
 The `rig` review looks at the skeleton and the weights: test poses that raise
 the arms, bend the elbows and knees, stride, sit, close the hands, open the jaw,
@@ -98,7 +109,8 @@ must cover the committed `.blend` file, so the repository only holds approved
 states: work on the next stage stays on its branch until that stage is approved.
 
 `Verify-ArtAssets.ps1` runs in the CI backend job and fails when an approval is
-missing or stale, when an asset in review has an export or an FBX, when the
+missing or stale, when an animation library was exported against another export
+of its rig, when an asset in review has an export or an FBX, when the
 committed FBX or a committed texture differs from the recorded export, or when a
 model below `src/Client/Assets/Art/Models` or a texture below
 `src/Client/Assets/Art/Textures` has no asset. It reads the SHA-256 of a `.blend`
@@ -157,6 +169,16 @@ The `animation` stage adds these:
 - A clip only turns bones, with all four quaternion channels keyed, and only the
   root bone may move.
 
+An animation library has its own rules, from its only stage on:
+
+- The `Export` collection holds exactly one armature, its only root object,
+  without meshes. Its bones are exactly those of the skeleton definition, and it
+  is in its rest pose without constraints, an active action, or NLA tracks.
+- The armature is the current rig of the library's `rig` asset: every bone has
+  the same parent, deform flag, length, and rest matrix, to a hundredth of a
+  millimeter. Approval and export compare it with the rig asset's `.blend` file.
+- The clips follow the animation rules above.
+
 Modeling conventions: one Blender unit is one meter, Z is up, and the ground is
 at Z = 0; rocks and similar props may sink a few centimeters into it. The front
 of an asset faces Blender's **+Y** axis, so Blender's Back view (`Ctrl+Numpad 1`)
@@ -201,7 +223,8 @@ every frame without simplification. Blender names each take
 `<armature>|<action>`. The images of its painted materials are written below
 `src/Client/Assets/Art/Textures/<Category>` as the PNG bytes packed in the
 `.blend` file, and a texture that an earlier export wrote and this one does not
-is removed.
+is removed. An animation library exports its armature and its clips the same
+way, without meshes.
 
 These settings were chosen with an axis probe imported into Unity. Exporting
 with Forward -Z and Up Y, the usual advice for Unity, leaves a 90 degree
@@ -242,6 +265,11 @@ A skinned model also gets:
   plays in place: the body's turn, height, and sway stay in the pose, and the
   game moves the character.
 
+An animation library gets the same Humanoid avatar and clip settings, from its
+own armature, and imports no materials. Its clips become Humanoid muscle motion,
+so an Animator plays them on every body of the skeleton, next to the clips of
+the body's own model.
+
 Every PNG below `Assets/Art/Textures` imports as an sRGB texture with mipmaps,
 without alpha, not readable, clamped, trilinear, at most 2048 px, with high
 quality compression.
@@ -261,8 +289,8 @@ and fails when the model renders with a material that has no export record, or
 a record names a material the model does not use, or a Unity material's
 `_BaseColor`, `_Metallic`, `_Smoothness`, or `_BaseMap` texture differs from the
 approved Blender material recorded at export, so the game shows the colors and
-the painted textures the reviewer approved. For a skinned model it fails when
-the avatar is not a valid Humanoid, a human bone maps to another bone than the
+the painted textures the reviewer approved. For a skinned model and an animation
+library it fails when the avatar is not a valid Humanoid, a human bone maps to another bone than the
 skeleton definition says, a bone or socket is missing or has another parent, or
 a clip is missing, has another length, or loops differently than recorded. A
 texture below `Assets/Art/Textures` without an export record or with other
@@ -287,6 +315,44 @@ the body's look; see
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 `PlayerBodyAssetTests` checks the variant, the controller, and both player
 prefabs.
+
+## Animation Libraries
+
+The clips of the human base characters are made by script, so a rebuild makes
+them again. A clip made by hand, such as `Death`, lives in an animation library
+instead: an art asset of kind `animations` below `art/Animations` that no build
+writes. `art/Animations/Human_Actions` is the library of the human bodies:
+
+- The `Export` collection holds the armature `Humanoid`, a copy of the rig of
+  `Human_Male` named after its skeleton. Every handmade clip is an action keyed
+  on it, at 30 frames per second, like the scripted clips.
+- The `Reference` collection, which is never exported, holds what shows the
+  clips: the male body bound to `Humanoid`, so it moves with every key, the
+  female body 2 m to its right on an armature of her own whose bones copy the
+  pose of `Humanoid` in local space, with the hips' movement scaled to her hip
+  height as Unity retargets a Humanoid clip, and a checkered ground of
+  quarter-meter squares, so a body that slides or sinks shows at once.
+
+`tools/Sync-AnimationLibrary.ps1` builds the library file from the manifest's
+`rig` and `previews`. When the rig changes, such as after a rebuild of the
+characters with another rig, it replaces the armature and the bodies and keeps
+every action, so the clips play on the new rig and are reviewed and approved
+again. A library whose armature is already the current rig is left as it is.
+The approval and the export refuse a library whose armature is not the current
+rig, and CI refuses one that was exported against an older export of its rig;
+exporting it again is enough when the rig itself did not change.
+
+A clip is made by hand in the library file, in the reviewer's Blender, through
+the [Blender MCP server](#live-work-with-the-blender-mcp-server) or the
+reviewer's own keys: key poses on `Humanoid`, smoothed by Blender's curves, with
+the custom property `loop` and a manual frame range from frame 0. Before the
+approval, the file is saved with `Humanoid` in its rest pose and without an
+active action. The library's review sheet shows every clip as eight frames on
+both bodies, from the front right and from the back left.
+
+In Unity, `Human_Actions.fbx` brings its clips as Humanoid motion, and
+`HumanLocomotion.controller` plays `Death` on every player body; see
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 
 ## Live Work With The Blender MCP Server
 
@@ -326,7 +392,8 @@ For models this means:
 
 `art/Characters/Human_Male` and `art/Characters/Human_Female` are the base bodies
 of the playable humans, rigged with the `Humanoid` skeleton and animated with
-`Idle`, `Walk`, and `Jog`. Hair, brows, beards, clothes, and equipment are
+`Idle`, `Walk`, and `Jog`. Their handmade clips, such as `Death`, come from the
+[animation library](#animation-libraries) `art/Animations/Human_Actions`. Hair, brows, beards, clothes, and equipment are
 modeled on top of them later, and faces are painted on them. A script builds both from the realistic bodies and the
 Generic Topology head of the
 [Human Base Meshes](https://www.blender.org/download/demo-files/) bundle v1.4.1
@@ -440,6 +507,7 @@ never committed.
 
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
+| `art/Animations/Human_Actions` | `animations` | `Humanoid` | The handmade clips of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Death`, 2 s, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-21. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, the `Humanoid` rig, and the clips `Idle`, `Walk`, and `Jog`, built by `tools/Build-HumanBase.ps1`. Model, rig, and animations approved 2026-10-21. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, 9,202 triangles, the `Humanoid` rig, and the clips `Idle`, `Walk`, and `Jog`, built by `tools/Build-HumanBase.ps1`. Model, rig, and animations approved 2026-10-21. The game shows it for every player. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |

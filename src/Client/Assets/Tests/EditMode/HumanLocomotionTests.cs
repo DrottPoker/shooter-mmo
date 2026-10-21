@@ -67,6 +67,27 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(CharacterLocomotionAnimator.Smooth(5f, 5f, 0.016f), Is.EqualTo(5f).Within(0.0001f));
         }
 
+        [Test]
+        public void ABodyFallsOnlyWhenItsCharacterDiesInView()
+        {
+            Assert.That(HumanLocomotion.LifeChangeFor(true, false, true), Is.EqualTo(HumanLocomotion.LifeChange.Fall));
+            Assert.That(HumanLocomotion.LifeChangeFor(true, true, true), Is.EqualTo(HumanLocomotion.LifeChange.None));
+            Assert.That(HumanLocomotion.LifeChangeFor(true, false, false), Is.EqualTo(HumanLocomotion.LifeChange.None));
+        }
+
+        [Test]
+        public void ABodyFirstSeenDeadLiesDownAtOnce()
+        {
+            Assert.That(HumanLocomotion.LifeChangeFor(false, false, true), Is.EqualTo(HumanLocomotion.LifeChange.LieDead));
+            Assert.That(HumanLocomotion.LifeChangeFor(false, false, false), Is.EqualTo(HumanLocomotion.LifeChange.None));
+        }
+
+        [Test]
+        public void ARespawnedBodyStandsAtOnce()
+        {
+            Assert.That(HumanLocomotion.LifeChangeFor(true, true, false), Is.EqualTo(HumanLocomotion.LifeChange.StandUp));
+        }
+
         private static void AssertEvaluate(float speed, float expectedBlend, float expectedRate)
         {
             HumanLocomotion.Evaluate(speed, WalkCycle, JogCycle, out var blend, out var rate);

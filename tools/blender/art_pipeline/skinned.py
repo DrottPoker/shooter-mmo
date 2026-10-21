@@ -1,13 +1,17 @@
 """Rules of the rig and animation stages of skinned assets: one armature with exactly the bones of
 the asset's skeleton definition, every mesh bound to it with clean weights that agree across the
-cuts between body parts, and animation clips that Unity can import as they were approved."""
+cuts between body parts, and animation clips that Unity can import as they were approved. An
+animation library has the same armature and clip rules without meshes, and its armature must be
+the rig of the character it was authored on."""
 
+import hashlib
 import math
 import re
 
 import bpy
 from bpy_extras import anim_utils
 
+from .scene import ArtPipelineError
 from .skeleton import Skeleton
 
 MAX_INFLUENCES = 4
@@ -34,7 +38,25 @@ def armature_of(objects: list[bpy.types.Object]) -> bpy.types.Object | None:
     return armatures[0] if len(armatures) == 1 else None
 
 
-def rig_errors(objects: list[bpy.types.Object], roots: list[bpy.types.Object], skeleton: Skeleton) -> list[str]:
+def _rounded(value: float) -> str:
+    # Rounded to a hundredth of a millimetre, and never "-0.00000".
+    return f"{round(value, 5) or 0.0:.5f}"
+
+
+def rig_fingerprint(arm: bpy.types.Object) -> str:
+    """SHA-256 of the armature's rest pose: every bone's name, parent, deform flag, length, and
+    rest matrix in armature space. Clips authored on one rig fit another rig with the same
+    fingerprint exactly."""
+    lines = []
+    for bone in sorted(arm.data.bones, key=lambda b: b.name):
+        values = [v for row in bone.matrix_local for v in row] + [bone.length]
+        parent = bone.parent.name if bone.parent else ""
+        lines.append(f"{bone.name}|{parent}|{int(bone.use_deform)}|" + ",".join(_rounded(v) for v in values))
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def rig_errors(objects: list[bpy.types.Object], roots: list[bpy.types.Object], skeleton: Skeleton,
+               meshes_allowed: bool = True) -> list[str]:
     errors: list[str] = []
     armatures = [o for o in objects if o.type == "ARMATURE"]
     if len(armatures) != 1:
@@ -44,6 +66,12 @@ def rig_errors(objects: list[bpy.types.Object], roots: list[bpy.types.Object], s
         errors.append(f'The armature "{arm.name}" must be the only root object; the meshes are its children.')
     errors += _bone_errors(arm, skeleton)
     errors += _rest_errors(arm)
+    if not meshes_allowed:
+        others = sorted(o.name for o in objects if o != arm)
+        if others:
+            errors.append(f"An animation library exports only its armature; the Export collection also holds {others}. "
+                          "Keep the bodies that show the clips in the Reference collection.")
+        return errors
     deform = set(skeleton.deform_bones)
     meshes = [o for o in objects if o.type == "MESH"]
     weights = {}
@@ -54,6 +82,27 @@ def rig_errors(objects: list[bpy.types.Object], roots: list[bpy.types.Object], s
         errors += problems
     errors += _cut_errors(meshes, weights)
     return errors
+
+
+def linked_armature(path: str, name: str) -> bpy.types.Object:
+    """The armature object of another .blend file, linked read-only into this session."""
+    with bpy.data.libraries.load(path, link=True) as (source, target):
+        if name not in source.objects:
+            raise ArtPipelineError(f'{path} has no object "{name}".')
+        target.objects = [name]
+    obj = target.objects[0]
+    if obj is None or obj.type != "ARMATURE":
+        raise ArtPipelineError(f'"{name}" in {path} is not an armature.')
+    return obj
+
+
+def rig_source_errors(arm: bpy.types.Object, rig_path: str, rig_root: str) -> list[str]:
+    """An animation library's armature must be the rig of the character its clips are authored on,
+    so the clips look in the game as they did in review."""
+    if rig_fingerprint(linked_armature(rig_path, rig_root)) != rig_fingerprint(arm):
+        return [f'The armature "{arm.name}" is not the current rig "{rig_root}" of {rig_path}; update it with '
+                "tools/Sync-AnimationLibrary.ps1 and review the clips again."]
+    return []
 
 
 def _bone_errors(arm: bpy.types.Object, skeleton: Skeleton) -> list[str]:

@@ -10,12 +10,15 @@ from .scene import EXPORT_COLLECTION, export_collection, export_objects, root_ob
 
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 MATERIAL_PATTERN = re.compile(r"^M_[A-Za-z0-9_]+$")
-# The review stages of each kind, in order.
-STAGES = {"static": ("model",), "skinned": ("model", "rig", "animation")}
+# The review stages of each kind, in order. An animation library is an armature with handmade
+# clips, without meshes, so its only stage is the animation.
+STAGES = {"static": ("model",), "skinned": ("model", "rig", "animation"), "animations": ("animation",)}
 # What each kind exports up to its rig stage, and from it on. The model stage of a skinned asset
 # leaves an armature to the rig stage's rules.
-OBJECT_TYPES = {"static": {"MESH", "EMPTY"}, "skinned": {"MESH", "EMPTY", "ARMATURE"}}
+OBJECT_TYPES = {"static": {"MESH", "EMPTY"}, "skinned": {"MESH", "EMPTY", "ARMATURE"}, "animations": {"ARMATURE"}}
 RIGGED_OBJECT_TYPES = {"MESH", "ARMATURE"}
+# Kinds with an armature from their first stage on.
+ARMATURE_KINDS = {"animations"}
 # Kinds whose materials may take the Base Color from one packed image, such as a painted body.
 TEXTURED_KINDS = {"skinned"}
 TOLERANCE = 1e-4
@@ -99,10 +102,12 @@ def _layer_collection(layer: bpy.types.LayerCollection, name: str) -> bpy.types.
     return None
 
 
-def validate(kind: str, roots: list[str], triangle_budget: int, stage: str = "model", skeleton_path: str | None = None,
-             clips: list[str] | None = None) -> tuple[list[str], int]:
+def validate(kind: str, roots: list[str], triangle_budget: int | None, stage: str = "model",
+             skeleton_path: str | None = None, clips: list[str] | None = None, rig_source: str | None = None,
+             rig_root: str | None = None) -> tuple[list[str], int]:
     """Return the problems found and the total exported triangle count. The rules of every review
-    stage up to the given one apply."""
+    stage up to the given one apply. An animation library has no triangle budget, and its armature
+    must be the rig_root armature of the rig_source file."""
     errors: list[str] = []
     export_collection()
     layer = _layer_collection(bpy.context.view_layer.layer_collection, EXPORT_COLLECTION)
@@ -115,6 +120,7 @@ def validate(kind: str, roots: list[str], triangle_budget: int, stage: str = "mo
     if stage not in STAGES[kind]:
         return [f'A {kind} asset has no review stage "{stage}".'], 0
     reached = STAGES[kind][:STAGES[kind].index(stage) + 1]
+    rigged = "rig" in reached or kind in ARMATURE_KINDS
     if "rig" in reached:
         allowed_types = RIGGED_OBJECT_TYPES
 
@@ -139,15 +145,20 @@ def validate(kind: str, roots: list[str], triangle_budget: int, stage: str = "mo
             errors.append(f'Root object "{root.name}" must sit at the origin without rotation, '
                           "because its origin is the actor position in the game.")
 
-    if "rig" in reached:
+    if rigged:
         skeleton = skeleton_definition.load(skeleton_path)
-        errors += skinned.rig_errors(objects, root_objects(), skeleton)
+        errors += skinned.rig_errors(objects, root_objects(), skeleton, meshes_allowed=kind not in ARMATURE_KINDS)
         arm = skinned.armature_of(objects)
         if "animation" in reached and arm is not None:
             errors += skinned.animation_errors(arm, clips or [], skeleton)
+        if kind in ARMATURE_KINDS and arm is not None:
+            if not rig_source or not rig_root:
+                errors.append("An animation library needs the rig source file and its armature to compare with.")
+            else:
+                errors += skinned.rig_source_errors(arm, rig_source, rig_root)
 
     triangles = sum(triangle_count(o) for o in objects)
-    if triangles > triangle_budget:
+    if triangle_budget is not None and triangles > triangle_budget:
         errors.append(f"The asset has {triangles} triangles; the budget is {triangle_budget}.")
     return errors, triangles
 

@@ -6,7 +6,8 @@ namespace Mmorpg.Client.Gameplay
     // these speeds by tools/blender/human_base/animate.py (WALK_SPEED and JOG_SPEED), so their
     // feet stay planted when the clip plays at its speed. Between them the Animator blends the
     // two clips, and the playback rate is set so the blended stride matches the speed. Below
-    // the walk speed, as when a character is encumbered, the walk plays slower.
+    // the walk speed, as when a character is encumbered, the walk plays slower. A dead body
+    // plays Death instead.
     public static class HumanLocomotion
     {
         public const float WalkSpeed = 1.4f;
@@ -27,6 +28,41 @@ namespace Mmorpg.Client.Gameplay
         public const string IdleClip = "Idle";
         public const string WalkClip = "Walk";
         public const string JogClip = "Jog";
+
+        // Death is a handmade clip of the Human_Actions animation library. Any state crossfades
+        // into it while Dead is true, and it holds its last pose, lying on the ground.
+        public const string DeadParameter = "Dead";
+        public const string DeathState = "Death";
+        public const string DeathClip = "Death";
+        public const float DeathCrossfadeSeconds = 0.15f;
+
+        public enum LifeChange
+        {
+            None,
+            // Dies in view: the body falls.
+            Fall,
+            // Was dead before the body showed a life state, such as a player who died before
+            // coming into view: the body lies in the end pose at once.
+            LieDead,
+            // Lives again: the body stands in Idle at once, as a respawn teleports it.
+            StandUp,
+        }
+
+        // How a body shows a new life state, from the one it shows now.
+        public static LifeChange LifeChangeFor(bool hasLifeState, bool shownDead, bool dead)
+        {
+            if (!hasLifeState)
+            {
+                return dead ? LifeChange.LieDead : LifeChange.None;
+            }
+
+            if (shownDead == dead)
+            {
+                return LifeChange.None;
+            }
+
+            return dead ? LifeChange.Fall : LifeChange.StandUp;
+        }
 
         // The blend parameter and playback rate at a ground speed, from the lengths of the
         // Walk and Jog cycles. A blended cycle lasts the weighted mean of both lengths, as the

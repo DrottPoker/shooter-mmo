@@ -5,7 +5,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
-    # Review stages of a static asset: model. Of a skinned asset: model, rig, animation.
+    # Review stages of a static asset: model. Of a skinned asset: model, rig, animation. Of an
+    # animation library: animation.
     [string]$Stage = "model",
     [string]$BlenderPath
 )
@@ -45,4 +46,5 @@ for ($i = $stageIndex + 1; $i -lt $manifest.Stages.Count; $i++) {
 
 Write-ArtAssetManifest $manifest
 $triangles = ($validation | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''
-Write-Host "Approved the '$Stage' stage of $($manifest.Name) ($triangles)."
+$what = if ($manifest.Kind -eq "animations") { "clips=$($manifest.Clips -join ',')" } else { $triangles }
+Write-Host "Approved the '$Stage' stage of $($manifest.Name) ($what)."
