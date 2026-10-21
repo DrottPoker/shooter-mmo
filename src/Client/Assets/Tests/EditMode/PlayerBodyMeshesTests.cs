@@ -140,7 +140,7 @@ namespace Mmorpg.Client.Tests.EditMode
             try
             {
                 using (var meshes = new PlayerBodyMeshes())
-                using (var tints = new PlayerBodyTintMaterials())
+                using (var tints = new PlayerBodyMaterials())
                 {
                     var appearance = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
                     appearance.CombineParts(meshes);

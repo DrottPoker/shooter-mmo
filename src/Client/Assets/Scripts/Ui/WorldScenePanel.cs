@@ -26,16 +26,19 @@ namespace Mmorpg.Client.Ui
         private RealtimeSimulationClient simulationClient;
         private WorldPointerFocus pointerFocus;
         private PlayerBodyTintSetting bodyTint;
+        private PlayerBodyLookSetting bodyLook;
 
         // Called by the composition root before the component is activated.
         public void Initialize(
             RealtimeSimulationClient realtimeClient,
             WorldPointerFocus focus,
-            PlayerBodyTintSetting tintSetting)
+            PlayerBodyTintSetting tintSetting,
+            PlayerBodyLookSetting lookSetting)
         {
             simulationClient = realtimeClient;
             pointerFocus = focus;
             bodyTint = tintSetting;
+            bodyLook = lookSetting;
         }
 
         private void Start()
@@ -351,6 +354,50 @@ namespace Mmorpg.Client.Ui
             bodyTint.Enabled = GUILayout.Toggle(
                 bodyTint.Enabled,
                 " Tint bodies: you purple, players orange, bots blue");
+            DrawBodyLook();
+        }
+
+        // One row per appearance slot of the local body, such as Face and Eye, that steps
+        // through its options.
+        private void DrawBodyLook()
+        {
+            var catalog = bodyLook != null ? bodyLook.Catalog : null;
+            if (catalog == null)
+            {
+                return;
+            }
+
+            foreach (var slot in catalog.Slots)
+            {
+                if (slot == null || slot.Options.Count < 2)
+                {
+                    continue;
+                }
+
+                var options = slot.Options;
+                var current = 0;
+                for (var index = 0; index < options.Count; index++)
+                {
+                    if (string.Equals(options[index].Name, bodyLook.Look.OptionFor(slot.Name), StringComparison.Ordinal))
+                    {
+                        current = index;
+                    }
+                }
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Your " + slot.Name.ToLowerInvariant() + ": " + options[current].Name, GUILayout.Width(220f));
+                if (GUILayout.Button("<", GUILayout.Width(28f)))
+                {
+                    bodyLook.Look = bodyLook.Look.With(slot.Name, options[(current + options.Count - 1) % options.Count].Name);
+                }
+
+                if (GUILayout.Button(">", GUILayout.Width(28f)))
+                {
+                    bodyLook.Look = bodyLook.Look.With(slot.Name, options[(current + 1) % options.Count].Name);
+                }
+
+                GUILayout.EndHorizontal();
+            }
         }
 
         private void DrawStatusAndLeave()

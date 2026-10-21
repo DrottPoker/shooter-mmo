@@ -103,3 +103,4 @@ MonoBehaviour:
   skinMaterials:
   - {fileID: 2100000, guid: 684061e19042ab2478c742aeb3099b22, type: 2}
   - {fileID: 2100000, guid: bc8c0d7966ea127409c7b30e9d77f0f1, type: 2}
+  catalog: {fileID: 11400000, guid: 8c84088feaea20e46b6cfccb98677847, type: 2}

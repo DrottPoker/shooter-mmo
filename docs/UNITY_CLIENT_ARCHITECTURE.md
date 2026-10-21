@@ -56,10 +56,12 @@ panels, sits above it. Ui and App reference Combat: the combat HUD and the
 inventory's live arrow count read its state. Each namespace
 equals its assembly name. Areas that read `ClientSession` reference Api as
 well, because the session caches Api contracts. The Editor-only
-`Mmorpg.Client.Editor` assembly references Core and Worlds plus the shared
-WorldData editor and the Addressables editor assemblies. It also holds
+`Mmorpg.Client.Editor` assembly references Core, Worlds, and Gameplay plus the
+shared WorldData editor and the Addressables editor assemblies. It also holds
 `ArtModelImportRules`, the import rules for every model the art pipeline
-exports to `Assets/Art/Models`, described in [Art Pipeline](ART_PIPELINE.md).
+exports to `Assets/Art/Models`, and `ArtAppearanceCatalogs`, which writes the
+Gameplay appearance catalogs of the exported bodies, described in
+[Art Pipeline](ART_PIPELINE.md).
 
 `ClientAssemblyArchitectureTests` pins the exact declared references of every
 client assembly, including shared and package assemblies, the layer order, and
@@ -1262,10 +1264,35 @@ between sessions, and passes it to the panel and to `WorldSceneContext`, which
 tints the local and every remote body when it changes and every body that
 spawns. A tint multiplies the skin materials of the body, which
 `PlayerBodyAppearance` lists, by a faint version of the color (35 percent of the
-way from white), and leaves the eyes, teeth, and tongue alone. The tinted
-materials are copies that `PlayerBodyTintMaterials` in `WorldSceneContext`
-creates once per material and color and shares between every body, so a crowd
-stays in the SRP Batcher; a property block per body kept every body out of it.
+way from white), and leaves the eyes, teeth, and tongue alone.
+
+A body also shows a look: another face or eye color from the
+[appearance variants](ART_PIPELINE.md#appearance-layers) of its model. The body's
+`PlayerBodyAppearance` references the model's `BodyAppearanceCatalog`,
+`Assets/Art/Appearance/Human_Male_Appearance.asset`, with the slots `Eye` (`Teal`,
+`Brown`) and `Face` (`Stubble`, `Scarred`), the material's own image first. A
+`BodyLook` is a value that names one option per slot, with a stable key such as
+`Eye=Brown;Face=Scarred`; a slot it does not name shows the material's own
+image. Until looks are chosen at character creation, saved with the character,
+and sent to other clients, the local player's look comes from the World Debug
+panel (F2), whose Presentation section steps through every slot of the local
+body's catalog with `<` and `>`. `ClientBootstrap` owns this
+`PlayerBodyLookSetting`, keeps its key in `PlayerPrefs`, and passes it to the
+panel and to `WorldSceneContext`, which offers the setting the local body's
+catalog and shows a new look at once. Other players show the default look, and a
+development bot shows a look picked from its persistent id with a mixed FNV-1a
+hash, `BodyLook.Varied`, so a crowd of bots shows every combination and each bot
+keeps its look.
+
+The look and the tint draw with copies of the body's materials, another image in
+`_BaseMap`, a tinted `_BaseColor`, or both, that `PlayerBodyMaterials` in
+`WorldSceneContext` creates once per material, image, and tint and shares
+between every body that looks the same, so a crowd stays in the SRP Batcher; a
+property block per body kept every body out of it. The default look without a
+tint draws with the body's own materials. The look is applied to the combined
+renderer, so bodies with other faces still share one combined mesh.
+`PlayerBodyAppearanceTests`, `BodyLookTests`, and `ArtAppearanceCatalogTests`
+cover the looks, their materials, and the catalogs.
 
 ## World Actor And Interaction Client
 

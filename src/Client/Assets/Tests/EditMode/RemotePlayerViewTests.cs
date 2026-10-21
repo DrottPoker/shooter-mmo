@@ -21,7 +21,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ATintedPersonIsOrangeAndATintedDevelopmentBotIsBlue()
         {
-            using (var materials = new PlayerBodyTintMaterials())
+            using (var materials = new PlayerBodyMaterials())
             {
                 AssertColor(
                     SkinColorAfterTint(RealtimePlayerArchetypeIds.Player, true, materials),
@@ -39,7 +39,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void AnUntintedBodyKeepsItsOwnSkin()
         {
-            using (var materials = new PlayerBodyTintMaterials())
+            using (var materials = new PlayerBodyMaterials())
             {
                 AssertColor(SkinColorAfterTint(RealtimePlayerArchetypeIds.Player, false, materials), Color.white);
                 Assert.That(materials.Count, Is.Zero);
@@ -56,7 +56,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(actual.a, Is.EqualTo(expected.a).Within(0.002f));
         }
 
-        private static Color SkinColorAfterTint(string archetypeId, bool tinted, PlayerBodyTintMaterials materials)
+        private static Color SkinColorAfterTint(string archetypeId, bool tinted, PlayerBodyMaterials materials)
         {
             var root = new GameObject("RemotePlayer");
             var skin = new Material(Shader.Find("Universal Render Pipeline/Lit"));

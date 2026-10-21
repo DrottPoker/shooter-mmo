@@ -1,0 +1,94 @@
+using System;
+using System.IO;
+using System.Linq;
+using Mmorpg.Client.Gameplay;
+using UnityEditor;
+using UnityEngine;
+
+namespace Mmorpg.Client.Editor
+{
+    // Writes the appearance catalog of every exported skinned model that names variants in its
+    // asset.json: one slot per painted material with variants, its own image first, as
+    // Assets/Art/Appearance/<Model>_Appearance.asset. ArtAppearanceCatalogTests fails when a
+    // catalog differs from what this writes. See docs/ART_PIPELINE.md.
+    public static class ArtAppearanceCatalogs
+    {
+        public const string Folder = "Assets/Art/Appearance";
+        public const string MenuPath = "MMORPG/Tools/Art Pipeline/Update Appearance Catalogs";
+
+        [MenuItem(MenuPath)]
+        public static void UpdateAll()
+        {
+            var written = 0;
+            foreach (var manifest in ManifestsWithVariants())
+            {
+                var path = PathFor(manifest);
+                var slots = SlotsFor(manifest);
+                var catalog = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(path);
+                if (catalog == null)
+                {
+                    Directory.CreateDirectory(Folder);
+                    catalog = ScriptableObject.CreateInstance<BodyAppearanceCatalog>();
+                    catalog.Configure(slots);
+                    AssetDatabase.CreateAsset(catalog, path);
+                }
+                else
+                {
+                    catalog.Configure(slots);
+                    EditorUtility.SetDirty(catalog);
+                }
+
+                written++;
+                Debug.Log("Wrote the appearance catalog " + path + " with " + string.Join(", ",
+                    slots.Select(slot => slot.Name + " (" + string.Join(", ", slot.Options.Select(option => option.Name)) + ")")));
+            }
+
+            AssetDatabase.SaveAssets();
+            Debug.Log(written == 0 ? "No art asset names variants." : "Wrote " + written + " appearance catalog(s).");
+        }
+
+        public static ArtAssetManifest[] ManifestsWithVariants()
+        {
+            return ArtAssetManifests.ManifestPaths()
+                .Select(ArtAssetManifests.Load)
+                .Where(manifest => manifest.IsSkinned && manifest.IsExported && manifest.variants.Length > 0)
+                .ToArray();
+        }
+
+        public static string PathFor(ArtAssetManifest manifest)
+        {
+            return Folder + "/" + Path.GetFileNameWithoutExtension(manifest.target) + "_Appearance.asset";
+        }
+
+        // M_Face_Male with T_Face_Male_Stubble as its own image and the variant
+        // T_Face_Male_Scarred is the slot Face with the options Stubble and Scarred.
+        public static BodyAppearanceCatalog.Slot[] SlotsFor(ArtAssetManifest manifest)
+        {
+            return manifest.variants
+                .OrderBy(variant => variant.material, StringComparer.Ordinal)
+                .Select(variant =>
+                {
+                    var parts = variant.material.Split('_');
+                    if (parts.Length != 3 || parts[0] != "M")
+                    {
+                        throw new InvalidOperationException(manifest.path + ": " + variant.material + " is not M_<Part>_<Label>.");
+                    }
+
+                    var record = manifest.export.materials.Single(material => material.name == variant.material);
+                    var prefix = "T_" + parts[1] + "_" + parts[2] + "_";
+                    var images = new[] { record.baseMap }.Concat(variant.images);
+                    var options = images
+                        .Select(image => new BodyAppearanceCatalog.Option(
+                            image.Substring(prefix.Length),
+                            AssetDatabase.LoadAssetAtPath<Texture2D>(ArtAssetManifests.ToUnityPath(
+                                manifest.export.textures.Single(texture => texture.name == image).target))))
+                        .ToArray();
+                    return new BodyAppearanceCatalog.Slot(
+                        parts[1],
+                        ArtModelImportRules.FindProjectMaterial(variant.material),
+                        options);
+                })
+                .ToArray();
+        }
+    }
+}

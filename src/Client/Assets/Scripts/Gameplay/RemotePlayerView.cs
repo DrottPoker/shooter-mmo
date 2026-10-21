@@ -66,13 +66,32 @@ namespace Mmorpg.Client.Gameplay
             ConfigurePointerTarget(characterCollision);
         }
 
-        public void ApplyBodyTint(bool tinted, PlayerBodyTintMaterials materials)
+        public void ApplyBodyTint(bool tinted, PlayerBodyMaterials materials)
         {
             var appearance = GetComponentInChildren<PlayerBodyAppearance>(true);
             if (appearance != null)
             {
                 appearance.ApplyTint(tinted, PlayerBodyColors.ForRemote(ArchetypeId), materials);
             }
+        }
+
+        // Every player shows the default look until looks are saved with characters and sent to
+        // other clients; a development bot shows a look of its own, picked from its persistent
+        // id, so a crowd of bots shows every face and eye color.
+        public void ApplyBodyLook(PlayerBodyMaterials materials)
+        {
+            var appearance = GetComponentInChildren<PlayerBodyAppearance>(true);
+            if (appearance != null)
+            {
+                appearance.ApplyLook(LookFor(ArchetypeId, PersistentId, appearance.Catalog), materials);
+            }
+        }
+
+        public static BodyLook LookFor(string archetypeId, string persistentId, BodyAppearanceCatalog catalog)
+        {
+            return string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal)
+                ? BodyLook.Varied(persistentId, catalog)
+                : BodyLook.Default;
         }
 
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)

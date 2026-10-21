@@ -4,10 +4,12 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // The look of a player body. Its visible skinned parts are drawn as one combined renderer,
-    // and its skin materials take a tint: a faint multiply of the skin's painted color, from
-    // shared tinted materials, that leaves the eyes, teeth, and tongue as they are. No tint
-    // restores the body's own materials.
+    // The look of a player body. Its visible skinned parts are drawn as one combined renderer.
+    // A look from the body's appearance catalog shows other images on its painted materials,
+    // such as another face or eye color, and a tint multiplies the skin materials by a faint
+    // color and leaves the eyes, teeth, and tongue as they are. Both come from shared materials,
+    // so bodies that look the same draw with the same materials; the default look without a
+    // tint draws with the body's own materials.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -17,13 +19,29 @@ namespace Mmorpg.Client.Gameplay
         public const string CombinedRendererName = "CombinedBody";
 
         [SerializeField] private Material[] skinMaterials = new Material[0];
+        [SerializeField] private BodyAppearanceCatalog catalog;
 
         private readonly Dictionary<Renderer, Material[]> ownMaterials = new Dictionary<Renderer, Material[]>();
         private SkinnedMeshRenderer combinedRenderer;
+        private PlayerBodyMaterials materials;
+        private BodyLook look = BodyLook.Default;
+        private bool tinted;
+        private Color tintColor = Color.white;
 
         public IReadOnlyList<Material> SkinMaterials
         {
             get { return skinMaterials; }
+        }
+
+        // The looks the body's model offers, or null.
+        public BodyAppearanceCatalog Catalog
+        {
+            get { return catalog; }
+        }
+
+        public BodyLook Look
+        {
+            get { return look; }
         }
 
         // The renderer that draws the combined parts, or null before CombineParts.
@@ -33,7 +51,8 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Draws the visible parts as one skinned renderer with the shared mesh of these parts,
-        // and hides the parts. Equipment that hides a zone combines the body again.
+        // and hides the parts. Equipment that hides a zone combines the body again. The look
+        // and the tint stay.
         public void CombineParts(PlayerBodyMeshes meshes)
         {
             if (meshes == null || combinedRenderer != null)
@@ -77,6 +96,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             ownMaterials.Clear();
+            Refresh();
 
             // The Animator culls by its renderers, which changed.
             var animator = GetComponent<Animator>();
@@ -93,12 +113,29 @@ namespace Mmorpg.Client.Gameplay
             return tint;
         }
 
-        // Tints the skin toward the color, or restores the body's own materials when tinted
-        // is false.
-        public void ApplyTint(bool tinted, Color color, PlayerBodyTintMaterials materials)
+        // Shows the look, drawn with materials from the shared set.
+        public void ApplyLook(BodyLook bodyLook, PlayerBodyMaterials bodyMaterials)
+        {
+            look = bodyLook ?? BodyLook.Default;
+            materials = bodyMaterials;
+            Refresh();
+        }
+
+        // Tints the skin toward the color, or takes the tint off when tinted is false.
+        public void ApplyTint(bool isTinted, Color color, PlayerBodyMaterials bodyMaterials)
+        {
+            tinted = isTinted;
+            tintColor = color;
+            materials = bodyMaterials;
+            Refresh();
+        }
+
+        // Every renderer draws with the materials of the look and the tint, from the body's
+        // own materials.
+        private void Refresh()
         {
             CaptureOwnMaterials();
-            var tint = TintFor(color);
+            var tint = tinted ? TintFor(tintColor) : Color.white;
             foreach (var entry in ownMaterials)
             {
                 if (entry.Key == null)
@@ -106,7 +143,7 @@ namespace Mmorpg.Client.Gameplay
                     continue;
                 }
 
-                if (!tinted || materials == null)
+                if (materials == null)
                 {
                     entry.Key.sharedMaterials = entry.Value;
                     continue;
@@ -115,10 +152,15 @@ namespace Mmorpg.Client.Gameplay
                 var applied = (Material[])entry.Value.Clone();
                 for (var index = 0; index < applied.Length; index++)
                 {
-                    if (applied[index] != null && System.Array.IndexOf(skinMaterials, applied[index]) >= 0)
+                    var own = applied[index];
+                    if (own == null)
                     {
-                        applied[index] = materials.For(applied[index], tint);
+                        continue;
                     }
+
+                    var baseMap = catalog != null ? catalog.TextureFor(own, look) : null;
+                    var skinTint = System.Array.IndexOf(skinMaterials, own) >= 0 ? tint : Color.white;
+                    applied[index] = materials.For(own, baseMap, skinTint);
                 }
 
                 entry.Key.sharedMaterials = applied;

@@ -35,7 +35,9 @@ namespace Mmorpg.Client.App
 
         // The World Debug panel's body tint setting, kept between sessions, off by default.
         private const string BodyTintPreference = "Mmorpg.Debug.TintPlayerBodies";
+        private const string BodyLookPreference = "Mmorpg.Debug.PlayerBodyLook";
         private PlayerBodyTintSetting bodyTint;
+        private PlayerBodyLookSetting bodyLook;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -64,6 +66,8 @@ namespace Mmorpg.Client.App
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
             bodyTint = new PlayerBodyTintSetting(PlayerPrefs.GetInt(BodyTintPreference, 0) == 1);
             bodyTint.Changed += SaveBodyTint;
+            bodyLook = new PlayerBodyLookSetting(BodyLook.Parse(PlayerPrefs.GetString(BodyLookPreference, string.Empty)));
+            bodyLook.Changed += SaveBodyLook;
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
 
             inventoryController = GetOrAddComponent<InventoryClientController>();
@@ -119,6 +123,11 @@ namespace Mmorpg.Client.App
                 bodyTint.Changed -= SaveBodyTint;
             }
 
+            if (bodyLook != null)
+            {
+                bodyLook.Changed -= SaveBodyLook;
+            }
+
             apiClient?.Dispose();
             apiClient = null;
             ClientAssets.Release(configHandle);
@@ -128,6 +137,12 @@ namespace Mmorpg.Client.App
         private void SaveBodyTint()
         {
             PlayerPrefs.SetInt(BodyTintPreference, bodyTint.Enabled ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
+        private void SaveBodyLook()
+        {
+            PlayerPrefs.SetString(BodyLookPreference, bodyLook.Look.Key);
             PlayerPrefs.Save();
         }
 
@@ -285,13 +300,13 @@ namespace Mmorpg.Client.App
             {
                 foreach (var context in root.GetComponentsInChildren<WorldSceneContext>(true))
                 {
-                    context.Initialize(simulationClient, pointerFocus, bodyTint);
+                    context.Initialize(simulationClient, pointerFocus, bodyTint, bodyLook);
                     sceneContext = sceneContext != null ? sceneContext : context;
                 }
             }
 
             AddSceneComponentIfMissing<WorldScenePanel>(
-                panel => panel.Initialize(simulationClient, pointerFocus, bodyTint));
+                panel => panel.Initialize(simulationClient, pointerFocus, bodyTint, bodyLook));
             AddSceneComponentIfMissing<MovementDestinationMarker>(
                 marker => marker.Initialize(runtimePrimitiveMaterial));
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(

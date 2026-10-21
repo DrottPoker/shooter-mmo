@@ -104,7 +104,7 @@ Expected result:
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, and the absence of tracked
   client builds.
-- Art asset verification reports `Verified 3 art asset(s).`: every asset below
+- Art asset verification reports `Verified 4 art asset(s).`: every asset below
   `art/` is approved for its current `.blend` file, every model below
   `src/Client/Assets/Art/Models` is the recorded export of one of them, and an
   asset in review, such as a character before its rig, has no model yet. It needs
@@ -2753,7 +2753,7 @@ When the reviewer approves the model, record the approval and export:
 Expected result: `Approved the 'model' stage of Resource_IronVein
 (triangles=878).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified 3 art asset(s).` Unity imports the model the
+(triangles=878).`, and `Verified 4 art asset(s).` Unity imports the model the
 next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
 its `.meta` file together.
 
@@ -2865,13 +2865,20 @@ foreach ($asset in "art/Characters/Human_Male", "art/Characters/Human_Female") {
 Expected result: `Approved the 'rig' stage of Human_Male (triangles=9202).` and
 the same for `animation` and `Human_Female`, `Exported Human_Male to
 src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
-the same for the female, and `Verified 3 art asset(s).` The export also writes
-the textures below `src/Client/Assets/Art/Textures/Characters`. When Unity gets
+the same for the female, and `Verified 4 art asset(s).` The export also writes
+the textures below `src/Client/Assets/Art/Textures/Characters`, the face and eye
+variants that `variants` in `asset.json` names among them. When Unity gets
 focus it imports the models; if the export added a material, run `MMORPG >
 Tools > Art Pipeline > Create Missing Materials`. Expected result: the Console
 lists the created materials, or says every exported art material has a project
-material. Commit the `.blend` files, `asset.json`, the FBX and texture files, and
-their `.meta` files together.
+material. If the export added or removed a variant, run `MMORPG > Tools > Art
+Pipeline > Update Appearance Catalogs`. Expected result: the Console lists each
+catalog with its slots, such as `Eye (Teal, Brown), Face (Stubble, Scarred)`.
+Exporting the characters again also needs a new export of the animation library,
+as described in [Make A Handmade Clip](#make-a-handmade-clip). Commit the
+`.blend` files, `asset.json`, the FBX and texture files, the catalogs, and their
+`.meta` files together. An export of unchanged sources leaves every file as it
+is.
 
 ### Make A Handmade Clip
 
@@ -2995,6 +3002,17 @@ controller, and prefabs are committed.
     until it respawns. Join with the second client while the first character is
     dead. Expected result: the dead body already lies in the end pose and does
     not fall again.
+12. Press F2. In the Presentation section, press `>` next to `Your face:
+    Stubble`, then next to `Your eye: Teal`. Expected result: the rows read
+    `Your face: Scarred` and `Your eye: Brown`, and your body shows a scar over
+    the right eye and brown eyes at once; zoom in with the mouse wheel to see
+    them. Leave the shard and join again. Expected result: your body keeps the
+    scar and the brown eyes. Press `>` twice more. Expected result: the stubble
+    face and teal eyes are back.
+13. With ActiveSimulationBots on the shard, as in step 7, look at the bots up
+    close. Expected result: the bots show both faces and both eye colors in every
+    combination, and each bot keeps its look while it stays. Real players show
+    the stubble face and teal eyes until looks are saved with characters.
 
 ## One-Time Unity World Scene Authoring
 

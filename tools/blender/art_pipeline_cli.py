@@ -16,7 +16,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from art_pipeline import library, preview  # noqa: E402
-from art_pipeline.export import clip_records, export_fbx, export_textures, material_records  # noqa: E402
+from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
+                                  variant_errors)
 from art_pipeline.scene import ArtPipelineError, parse_args  # noqa: E402
 from art_pipeline.validate import validate  # noqa: E402
 
@@ -34,6 +35,7 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--clips", default="", help="Comma-separated animation clip names of a skinned asset.")
         command.add_argument("--rig-source", help="The .blend file of the rig an animation library is authored on.")
         command.add_argument("--rig-root", help="The armature in the rig source.")
+        command.add_argument("--variants", help='Other images of painted materials, "M_A=T_1+T_2;M_B=T_3".')
         if name == "export":
             command.add_argument("--target", required=True, help="Absolute FBX path.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
@@ -68,6 +70,8 @@ def main() -> int:
     errors, triangles = validate(args.kind, args.roots.split(","), args.triangle_budget, args.stage, args.skeleton,
                                  [c for c in args.clips.split(",") if c],
                                  os.path.abspath(args.rig_source) if args.rig_source else None, args.rig_root)
+    variants = parse_variants(args.variants)
+    errors += variant_errors(variants)
     for error in errors:
         print(f"ART_PIPELINE_ERROR {error}")
     if errors:
@@ -78,7 +82,7 @@ def main() -> int:
         for record in material_records():
             print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
         if args.textures:
-            for name, path in export_textures(args.textures):
+            for name, path in export_textures(args.textures, variants):
                 print(f"ART_TEXTURE {json.dumps({'name': name, 'path': path}, separators=(',', ':'))}")
         if args.kind in ("skinned", "animations"):
             for record in clip_records():

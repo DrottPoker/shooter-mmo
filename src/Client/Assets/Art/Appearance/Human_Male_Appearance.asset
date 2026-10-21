@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2829ab1d45469840a8be86be96480a5, type: 3}
+  m_Name: Human_Male_Appearance
+  m_EditorClassIdentifier: Mmorpg.Client.Gameplay::Mmorpg.Client.Gameplay.BodyAppearanceCatalog
+  slots:
+  - name: Eye
+    material: {fileID: 2100000, guid: 3d54727924ff8e34d9521e3b3b29f7b9, type: 2}
+    options:
+    - name: Teal
+      texture: {fileID: 2800000, guid: ed4dc8fef93deb240bf8ac461f7a5ae8, type: 3}
+    - name: Brown
+      texture: {fileID: 2800000, guid: 465e12a7a4e52e047b2241a219d701dc, type: 3}
+  - name: Face
+    material: {fileID: 2100000, guid: bc8c0d7966ea127409c7b30e9d77f0f1, type: 2}
+    options:
+    - name: Stubble
+      texture: {fileID: 2800000, guid: 6137d3077c94dbf40936996fc979a614, type: 3}
+    - name: Scarred
+      texture: {fileID: 2800000, guid: 13580b0d57f2b074297280078076674a, type: 3}

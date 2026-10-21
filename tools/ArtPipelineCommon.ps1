@@ -190,6 +190,34 @@ function ConvertTo-ArtClipRecords($Records, [string[]]$Clips) {
     return , $result.ToArray()
 }
 
+function ConvertTo-ArtVariantRecords($Records) {
+    # Returns the variants of a skinned asset as one array, or $null when any entry is malformed
+    # or names a material or image twice. Each names a painted material M_<Part>_<Label> and the
+    # other images T_<Part>_<Label>_<Option> it may take in the game instead of its own.
+    $result = New-Object System.Collections.Generic.List[object]
+    $materials = New-Object System.Collections.Generic.HashSet[string]
+    $images = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($record in @($Records | Where-Object { $null -ne $_ })) {
+        $material = [string]$record.material
+        $names = @($record.images | ForEach-Object { [string]$_ })
+        if ($material -cnotmatch '^M_([A-Za-z0-9]+)_([A-Za-z0-9]+)$' -or -not $materials.Add($material) -or $names.Count -eq 0) {
+            return $null
+        }
+
+        $prefix = "T_$($Matches[1])_$($Matches[2])_"
+        foreach ($name in $names) {
+            if (-not $name.StartsWith($prefix, [System.StringComparison]::Ordinal) -or
+                $name.Substring($prefix.Length) -cnotmatch '^[A-Za-z0-9]+$' -or -not $images.Add($name)) {
+                return $null
+            }
+        }
+
+        $result.Add([ordered]@{ material = $material; images = [string[]]$names })
+    }
+
+    return , $result.ToArray()
+}
+
 function Read-ArtSkeleton([string]$Name) {
     # Returns the path of art/Skeletons/<Name>.json after checking its bones: unique names, one
     # root, every parent before its children, and a deform flag on every bone.
@@ -338,6 +366,20 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         $problems.Add("only a skinned asset or an animation library has a skeleton and clips")
     }
 
+    # A skinned asset may name other images that its painted materials take in the game, such as
+    # the face and eye variants of a character.
+    $variants = @()
+    if ($null -ne $json.variants) {
+        $variants = ConvertTo-ArtVariantRecords $json.variants
+        if ($kind -ne "skinned") {
+            $problems.Add("only a skinned asset has variants")
+        }
+        elseif ($null -eq $variants) {
+            $problems.Add("variants must name each painted material M_<Part>_<Label> once with its other images T_<Part>_<Label>_<Option>, each once")
+            $variants = @()
+        }
+    }
+
     # An animation library is authored on the rig of one skinned asset of its skeleton and shows
     # its clips on the bodies of others.
     $rig = $null
@@ -388,6 +430,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
     }
 
     $export = $null
+    $exportProblem = $null
     if ($null -ne $json.export -and $kind -eq "animations") {
         $clipRecords = ConvertTo-ArtClipRecords $json.export.clips $clips
         if ([string]$json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or
@@ -421,8 +464,16 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
             $clipRecords = ConvertTo-ArtClipRecords $json.export.clips $clips
         }
 
-        $baseMaps = (@($materials | Where-Object { $_.Contains("baseMap") } | ForEach-Object { $_.baseMap }) |
-                Sort-Object -Unique) -join ","
+        $baseMaps = (@(@($materials | Where-Object { $_.Contains("baseMap") } | ForEach-Object { $_.baseMap }) +
+                @($variants | ForEach-Object { $_.images })) | Sort-Object -Unique) -join ","
+        $variantProblem = $null
+        foreach ($variant in $variants) {
+            $owner = @($materials | Where-Object { $_.name -ceq $variant.material -and $_.Contains("baseMap") })
+            $prefix = $variant.material -replace '^M_', 'T_'
+            if ($owner.Count -ne 1 -or -not ([string]$owner[0].baseMap).StartsWith("${prefix}_", [System.StringComparison]::Ordinal)) {
+                $variantProblem = "the variants of $($variant.material) need an exported painted material whose image is named ${prefix}_<Option>"
+            }
+        }
         $textureNames = (@($textures | ForEach-Object { $_.name }) | Sort-Object) -join ","
 
         if ([string]$json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or
@@ -434,9 +485,6 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         }
         elseif ($null -eq $textures) {
             $problems.Add("export.textures must list every texture once with its name, target ($textureFolder/<name>.png), and sha256")
-        }
-        elseif ($baseMaps -cne $textureNames) {
-            $problems.Add("export.textures must hold exactly the textures that the materials name in baseMap")
         }
         elseif ([string]$json.kind -eq "skinned" -and $null -eq $clipRecords) {
             $problems.Add("export.clips must list every clip of the manifest once with its name, frames, and loop")
@@ -451,6 +499,15 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
                 materials = $materials
                 textures = $textures
                 clips = $clipRecords
+            }
+
+            # A record that no longer fits the manifest, such as after a change of its variants,
+            # is stale: the next export replaces it, and the verification reports it until then.
+            if ($baseMaps -cne $textureNames) {
+                $exportProblem = "export.textures must hold exactly the textures that the materials name in baseMap and the variants; export the asset again"
+            }
+            elseif ($null -ne $variantProblem) {
+                $exportProblem = $variantProblem
             }
         }
     }
@@ -482,8 +539,10 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         Rig = $rig
         Previews = $previews
         Clips = [string[]]$clips
+        Variants = $variants
         Approvals = $approvals
         Export = $export
+        ExportProblem = $exportProblem
     }
 }
 
@@ -528,6 +587,17 @@ function Write-ArtAssetManifest($Manifest) {
     if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
         $clips = (@($Manifest.Clips) | ForEach-Object { '"' + $_ + '"' }) -join ", "
         $lines.Add("    `"clips`": [$clips],")
+    }
+
+    $variants = @($Manifest.Variants)
+    if ($variants.Count -gt 0) {
+        $lines.Add('    "variants": [')
+        for ($i = 0; $i -lt $variants.Count; $i++) {
+            $comma = if ($i -lt $variants.Count - 1) { "," } else { "" }
+            $images = (@($variants[$i].images) | ForEach-Object { '"' + $_ + '"' }) -join ", "
+            $lines.Add("        { `"material`": `"$($variants[$i].material)`", `"images`": [$images] }$comma")
+        }
+        $lines.Add("    ],")
     }
     $approvedStages = @($Manifest.Stages | Where-Object { $Manifest.Approvals.Contains($_) })
     if ($approvedStages.Count -eq 0) {
@@ -690,10 +760,35 @@ function Invoke-ArtNative([string]$Executable, [string[]]$Arguments) {
 }
 
 function Invoke-ArtBlender([string]$Blender, $Manifest, [string[]]$Arguments) {
-    # Runs one art_pipeline_cli.py command and returns its ART_ result lines.
-    $output = Invoke-ArtNative $Blender (@(
-            "--background", "--factory-startup", $Manifest.SourcePath, "--python-exit-code", "1",
-            "--python", $script:ArtBlenderCli, "--") + $Arguments)
+    # Runs one art_pipeline_cli.py command and returns its ART_ result lines. Blender's Python
+    # sees one variable of this environment, PYTHONHASHSEED: fixed string hashes make the FBX
+    # export byte for byte reproducible. Every other Python variable is cleared, so no Python
+    # setup of the machine reaches the pipeline.
+    $environment = [ordered]@{
+        PYTHONHASHSEED = "0"
+        PYTHONNOUSERSITE = "1"
+        PYTHONPATH = $null
+        PYTHONHOME = $null
+        PYTHONSTARTUP = $null
+        PYTHONUSERBASE = $null
+    }
+    $saved = @{}
+    foreach ($name in $environment.Keys) {
+        $saved[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+        [Environment]::SetEnvironmentVariable($name, $environment[$name], "Process")
+    }
+
+    try {
+        $output = Invoke-ArtNative $Blender (@(
+                "--background", "--factory-startup", "--python-use-system-env", $Manifest.SourcePath,
+                "--python-exit-code", "1", "--python", $script:ArtBlenderCli, "--") + $Arguments)
+    }
+    finally {
+        foreach ($name in $environment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $saved[$name], "Process")
+        }
+    }
+
     $exitCode = $script:ArtNativeExitCode
     $results = @($output | Where-Object { $_ -like "ART_*" })
     $errors = @($results | Where-Object { $_ -like "ART_PIPELINE_ERROR *" } |
@@ -725,6 +820,11 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
 
     if ($Manifest.Kind -eq "animations") {
         $arguments += @("--rig-source", $Manifest.Rig.SourcePath, "--rig-root", $Manifest.Rig.Root)
+    }
+
+    $variants = @($Manifest.Variants)
+    if ($variants.Count -gt 0) {
+        $arguments += @("--variants", ((@($variants | ForEach-Object { "$($_.material)=$(@($_.images) -join '+')" })) -join ";"))
     }
 
     return $arguments
