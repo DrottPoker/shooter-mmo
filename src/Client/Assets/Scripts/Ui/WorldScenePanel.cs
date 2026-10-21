@@ -398,6 +398,22 @@ namespace Mmorpg.Client.Ui
 
                 GUILayout.EndHorizontal();
             }
+
+            // Paint layers show on the body without being equipped until equipment shows them.
+            foreach (var paint in catalog.Paints)
+            {
+                if (paint == null)
+                {
+                    continue;
+                }
+
+                var worn = bodyLook.Look.HasPaint(paint.Name);
+                var wear = GUILayout.Toggle(worn, " Try on paint: " + paint.Name);
+                if (wear != worn)
+                {
+                    bodyLook.Look = bodyLook.Look.WithPaint(paint.Name, wear);
+                }
+            }
         }
 
         private void DrawStatusAndLeave()

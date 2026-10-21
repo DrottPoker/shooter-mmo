@@ -18,6 +18,9 @@ namespace Mmorpg.Client.Editor
         public const string ModelFolder = "Assets/Art/Models";
         public const string MaterialFolder = "Assets/Art/Materials";
         public const string TextureFolder = "Assets/Art/Textures";
+
+        // Paint layers keep their alpha, which says where the paint covers the skin.
+        public const string PaintTextureFolder = TextureFolder + "/Paint";
         public const int MaximumTextureSize = 2048;
 
         // Blender writes every clip at this rate; the animation rules require it.
@@ -25,7 +28,7 @@ namespace Mmorpg.Client.Editor
 
         public override uint GetVersion()
         {
-            return 4;
+            return 5;
         }
 
         public static bool AppliesTo(string assetPath)
@@ -128,13 +131,20 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
         }
 
-        public static void ApplyTextureSettings(TextureImporter importer)
+        public static bool IsPaintTexture(string assetPath)
+        {
+            return assetPath.StartsWith(PaintTextureFolder + "/", StringComparison.Ordinal);
+        }
+
+        public static void ApplyTextureSettings(TextureImporter importer, bool paint = false)
         {
             importer.textureType = TextureImporterType.Default;
             importer.textureShape = TextureImporterShape.Texture2D;
             importer.sRGBTexture = true;
-            importer.alphaSource = TextureImporterAlphaSource.None;
-            importer.alphaIsTransparency = false;
+            // A paint layer's transparent texels take the color of their neighbors, so filtering
+            // at its edges never darkens the skin.
+            importer.alphaSource = paint ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None;
+            importer.alphaIsTransparency = paint;
             importer.mipmapEnabled = true;
             importer.isReadable = false;
             importer.wrapMode = TextureWrapMode.Clamp;
@@ -207,7 +217,7 @@ namespace Mmorpg.Client.Editor
         {
             if (AppliesToTexture(assetPath))
             {
-                ApplyTextureSettings((TextureImporter)assetImporter);
+                ApplyTextureSettings((TextureImporter)assetImporter, IsPaintTexture(assetPath));
             }
         }
 

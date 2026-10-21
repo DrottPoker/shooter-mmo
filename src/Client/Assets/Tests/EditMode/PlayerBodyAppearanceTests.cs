@@ -7,6 +7,7 @@ namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class PlayerBodyAppearanceTests
     {
+        private const string SkinShader = "Mmorpg/Character Skin";
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
         [Test]
@@ -147,6 +148,77 @@ namespace Mmorpg.Client.Tests.EditMode
                 Object.DestroyImmediate(scarred);
                 Object.DestroyImmediate(catalog);
             }
+        }
+
+        [Test]
+        public void APaintLayerDrawsOverTheSkinWithTheSkinShader()
+        {
+            var first = new GameObject("First");
+            var second = new GameObject("Second");
+            var skin = new Material(Shader.Find(SkinShader));
+            var lit = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            var jerkin = new Texture2D(4, 4) { name = "T_Paint_LeatherJerkin_Male" };
+            var catalog = ScriptableObject.CreateInstance<BodyAppearanceCatalog>();
+            catalog.Configure(
+                new BodyAppearanceCatalog.Slot[0],
+                new[]
+                {
+                    new BodyAppearanceCatalog.Paint("LeatherJerkin", skin, jerkin, 30, 0.38f, 0f),
+                    new BodyAppearanceCatalog.Paint("Apron", lit, jerkin, 40, 0.5f, 0f),
+                });
+            try
+            {
+                using (var materials = new PlayerBodyMaterials())
+                {
+                    var firstBody = CreateBody(first.transform, skin, lit, catalog);
+                    var secondBody = CreateBody(second.transform, skin, lit, catalog);
+                    var look = BodyLook.Default.WithPaint("LeatherJerkin", true).WithPaint("Apron", true);
+                    first.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
+                    second.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
+
+                    var painted = firstBody.sharedMaterials[0];
+                    Assert.That(painted, Is.Not.SameAs(skin));
+                    Assert.That(painted.GetFloat("_PaintCount"), Is.EqualTo(1f));
+                    Assert.That(painted.GetTexture("_PaintMap1"), Is.SameAs(jerkin));
+                    Assert.That((Vector2)painted.GetVector("_PaintSurface1"), Is.EqualTo(new Vector2(0.38f, 0f)));
+                    Assert.That(secondBody.sharedMaterials[0], Is.SameAs(painted));
+                    // A material without the skin shader cannot take paint and stays as it is.
+                    Assert.That(firstBody.sharedMaterials[1], Is.SameAs(lit));
+
+                    first.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(BodyLook.Default, materials);
+                    Assert.That(firstBody.sharedMaterials, Is.EqualTo(new[] { skin, lit }));
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
+                Object.DestroyImmediate(skin);
+                Object.DestroyImmediate(lit);
+                Object.DestroyImmediate(jerkin);
+                Object.DestroyImmediate(catalog);
+            }
+        }
+
+        [Test]
+        public void TheSkinShaderIsLitWithPaintLayers()
+        {
+            var shader = Shader.Find(SkinShader);
+            Assert.That(shader, Is.Not.Null);
+            Assert.That(ShaderUtil.ShaderHasError(shader), Is.False);
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            for (var index = 0; index < lit.GetPropertyCount(); index++)
+            {
+                Assert.That(shader.FindPropertyIndex(lit.GetPropertyName(index)), Is.GreaterThanOrEqualTo(0), lit.GetPropertyName(index));
+            }
+
+            for (var layer = 1; layer <= PlayerBodyMaterials.MaximumPaintLayers; layer++)
+            {
+                Assert.That(shader.FindPropertyIndex("_PaintMap" + layer), Is.GreaterThanOrEqualTo(0));
+                Assert.That(shader.FindPropertyIndex("_PaintSurface" + layer), Is.GreaterThanOrEqualTo(0));
+            }
+
+            Assert.That(shader.FindPropertyIndex("_PaintCount"), Is.GreaterThanOrEqualTo(0));
         }
 
         [Test]

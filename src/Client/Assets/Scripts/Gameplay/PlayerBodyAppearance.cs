@@ -6,7 +6,7 @@ namespace Mmorpg.Client.Gameplay
 {
     // The look of a player body. Its visible skinned parts are drawn as one combined renderer.
     // A look from the body's appearance catalog shows other images on its painted materials,
-    // such as another face or eye color, and a tint multiplies the skin materials by a faint
+    // such as another face or eye color, and paint layers over its skin, and a tint multiplies the skin materials by a faint
     // color and leaves the eyes, teeth, and tongue as they are. Both come from shared materials,
     // so bodies that look the same draw with the same materials; the default look without a
     // tint draws with the body's own materials.
@@ -22,6 +22,7 @@ namespace Mmorpg.Client.Gameplay
         [SerializeField] private BodyAppearanceCatalog catalog;
 
         private readonly Dictionary<Renderer, Material[]> ownMaterials = new Dictionary<Renderer, Material[]>();
+        private readonly List<BodyAppearanceCatalog.Paint> paints = new List<BodyAppearanceCatalog.Paint>();
         private SkinnedMeshRenderer combinedRenderer;
         private PlayerBodyMaterials materials;
         private BodyLook look = BodyLook.Default;
@@ -159,8 +160,14 @@ namespace Mmorpg.Client.Gameplay
                     }
 
                     var baseMap = catalog != null ? catalog.TextureFor(own, look) : null;
+                    paints.Clear();
+                    if (catalog != null)
+                    {
+                        catalog.PaintsFor(own, look, paints);
+                    }
+
                     var skinTint = System.Array.IndexOf(skinMaterials, own) >= 0 ? tint : Color.white;
-                    applied[index] = materials.For(own, baseMap, skinTint);
+                    applied[index] = materials.For(own, baseMap, skinTint, paints);
                 }
 
                 entry.Key.sharedMaterials = applied;

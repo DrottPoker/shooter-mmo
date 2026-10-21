@@ -8,7 +8,8 @@ using UnityEngine;
 namespace Mmorpg.Client.Editor
 {
     // Writes the appearance catalog of every exported skinned model that names variants in its
-    // asset.json: one slot per painted material with variants, its own image first, as
+    // asset.json or that a paint layer fits: one slot per painted material with variants, its own
+    // image first, and the paint layers of the body in the order they are drawn, as
     // Assets/Art/Appearance/<Model>_Appearance.asset. ArtAppearanceCatalogTests fails when a
     // catalog differs from what this writes. See docs/ART_PIPELINE.md.
     public static class ArtAppearanceCatalogs
@@ -20,38 +21,67 @@ namespace Mmorpg.Client.Editor
         public static void UpdateAll()
         {
             var written = 0;
-            foreach (var manifest in ManifestsWithVariants())
+            foreach (var manifest in ManifestsWithLooks())
             {
                 var path = PathFor(manifest);
                 var slots = SlotsFor(manifest);
+                var paints = PaintsFor(manifest);
                 var catalog = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(path);
                 if (catalog == null)
                 {
                     Directory.CreateDirectory(Folder);
                     catalog = ScriptableObject.CreateInstance<BodyAppearanceCatalog>();
-                    catalog.Configure(slots);
+                    catalog.Configure(slots, paints);
                     AssetDatabase.CreateAsset(catalog, path);
                 }
                 else
                 {
-                    catalog.Configure(slots);
+                    catalog.Configure(slots, paints);
                     EditorUtility.SetDirty(catalog);
                 }
 
                 written++;
                 Debug.Log("Wrote the appearance catalog " + path + " with " + string.Join(", ",
-                    slots.Select(slot => slot.Name + " (" + string.Join(", ", slot.Options.Select(option => option.Name)) + ")")));
+                    slots.Select(slot => slot.Name + " (" + string.Join(", ", slot.Options.Select(option => option.Name)) + ")")
+                        .Concat(paints.Select(paint => "Paint " + paint.Name))));
             }
 
             AssetDatabase.SaveAssets();
-            Debug.Log(written == 0 ? "No art asset names variants." : "Wrote " + written + " appearance catalog(s).");
+            Debug.Log(written == 0 ? "No art asset names variants or paint layers." : "Wrote " + written + " appearance catalog(s).");
         }
 
-        public static ArtAssetManifest[] ManifestsWithVariants()
+        // Every exported body with variants or with a paint layer that fits it.
+        public static ArtAssetManifest[] ManifestsWithLooks()
         {
+            var painted = ArtAssetManifests.PaintLayers().SelectMany(paint => paint.bodies).ToArray();
             return ArtAssetManifests.ManifestPaths()
                 .Select(ArtAssetManifests.Load)
-                .Where(manifest => manifest.IsSkinned && manifest.IsExported && manifest.variants.Length > 0)
+                .Where(manifest => manifest.IsSkinned && manifest.IsExported
+                    && (manifest.variants.Length > 0 || painted.Contains(manifest.AssetPath)))
+                .ToArray();
+        }
+
+        // The paint layers that fit the body, drawn from the lowest layer up: the paint layer
+        // LeatherJerkin over M_Body_Male is the image T_Paint_LeatherJerkin_Male.
+        public static BodyAppearanceCatalog.Paint[] PaintsFor(ArtAssetManifest body)
+        {
+            var label = body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
+            return ArtAssetManifests.PaintLayers()
+                .Where(paint => paint.bodies.Contains(body.AssetPath))
+                .OrderBy(paint => paint.layer)
+                .ThenBy(paint => paint.Name, StringComparer.Ordinal)
+                .Select(paint =>
+                {
+                    var image = "T_Paint_" + paint.Name + "_" + label;
+                    var texture = paint.export.textures.Single(record => record.name == image);
+                    return new BodyAppearanceCatalog.Paint(
+                        paint.Name,
+                        ArtModelImportRules.FindProjectMaterial("M_" + paint.part + "_" + label),
+                        AssetDatabase.LoadAssetAtPath<Texture2D>(ArtAssetManifests.ToUnityPath(texture.target)),
+                        paint.layer,
+                        paint.export.smoothness,
+                        paint.export.metallic);
+                })
                 .ToArray();
         }
 

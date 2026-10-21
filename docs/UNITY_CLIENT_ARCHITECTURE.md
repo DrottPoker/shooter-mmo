@@ -1281,9 +1281,19 @@ development bot shows a look picked from its persistent id with a mixed FNV-1a
 hash, `BodyLook.Varied`, so a crowd of bots shows every combination and each bot
 keeps its look.
 
+A look also names the paint layers its body wears, such as `LeatherJerkin`, which
+the catalog lists for its body with their material, image, layer, smoothness,
+and metallic. Until equipment shows its paint, the Presentation section of the
+World Debug panel has `Try on paint: <Name>` for every paint layer of the local
+body's catalog. The body materials that paint layers paint draw with the skin
+shader `Mmorpg/Character Skin`, URP Lit with up to four paint layers; see
+[Art Pipeline](ART_PIPELINE.md#paint-layers). A look's paint layers on such a
+material go into its copy, from the lowest layer up, and a material with another
+shader ignores them.
+
 The look and the tint draw with copies of the body's materials, another image in
-`_BaseMap`, a tinted `_BaseColor`, or both, that `PlayerBodyMaterials` in
-`WorldSceneContext` creates once per material, image, and tint and shares
+`_BaseMap`, paint layers, a tinted `_BaseColor`, or any of them together, that `PlayerBodyMaterials` in
+`WorldSceneContext` creates once per material, image, paint layers, and tint and shares
 between every body that looks the same, so a crowd stays in the SRP Batcher; a
 property block per body kept every body out of it. The default look without a
 tint draws with the body's own materials. The look is applied to the combined

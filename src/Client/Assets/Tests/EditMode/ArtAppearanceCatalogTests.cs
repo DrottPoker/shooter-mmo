@@ -16,7 +16,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EveryCatalogIsWhatTheExportedVariantsGive()
         {
-            var manifests = ArtAppearanceCatalogs.ManifestsWithVariants();
+            var manifests = ArtAppearanceCatalogs.ManifestsWithLooks();
             Assert.That(manifests, Is.Not.Empty);
             foreach (var manifest in manifests)
             {
@@ -37,6 +37,21 @@ namespace Mmorpg.Client.Tests.EditMode
                     // The first option is the material's own image.
                     Assert.That(actual.Options[0].Texture, Is.SameAs(actual.Material.GetTexture("_BaseMap")), where);
                 }
+
+                var paints = ArtAppearanceCatalogs.PaintsFor(manifest);
+                Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EqualTo(paints.Select(paint => paint.Name)), path);
+                for (var index = 0; index < paints.Length; index++)
+                {
+                    var actual = catalog.Paints[index];
+                    var where = path + " paint " + actual.Name;
+                    Assert.That(actual.Material, Is.Not.Null, where);
+                    Assert.That(actual.Material, Is.SameAs(paints[index].Material), where);
+                    Assert.That(actual.Texture, Is.Not.Null, where);
+                    Assert.That(actual.Texture, Is.SameAs(paints[index].Texture), where);
+                    Assert.That(actual.Layer, Is.EqualTo(paints[index].Layer), where);
+                    Assert.That(actual.Smoothness, Is.EqualTo(paints[index].Smoothness), where);
+                    Assert.That(actual.Metallic, Is.EqualTo(paints[index].Metallic), where);
+                }
             }
 
             Assert.That(
@@ -46,15 +61,29 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void EveryPaintedMaterialDrawsWithTheSkinShader()
+        {
+            var painted = ArtAssetManifests.PaintedMaterialNames();
+            Assert.That(painted, Is.Not.Empty);
+            foreach (var name in painted)
+            {
+                var material = ArtModelImportRules.FindProjectMaterial(name);
+                Assert.That(material, Is.Not.Null, name);
+                Assert.That(material.shader.name, Is.EqualTo(ArtMaterialCreator.SkinShader), name);
+            }
+        }
+
+        [Test]
         public void TheBodyOffersTheLooksOfItsModel()
         {
             var body = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath);
             var catalog = body.GetComponent<PlayerBodyAppearance>().Catalog;
             Assert.That(catalog, Is.Not.Null);
-            var manifest = ArtAppearanceCatalogs.ManifestsWithVariants()
+            var manifest = ArtAppearanceCatalogs.ManifestsWithLooks()
                 .Single(candidate => candidate.UnityTargetPath == "Assets/Art/Models/Characters/Human_Male.fbx");
             Assert.That(AssetDatabase.GetAssetPath(catalog), Is.EqualTo(ArtAppearanceCatalogs.PathFor(manifest)));
             Assert.That(catalog.Slots.Select(slot => slot.Name), Is.EquivalentTo(new[] { "Eye", "Face" }));
+            Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EquivalentTo(new[] { "LeatherJerkin" }));
         }
     }
 }

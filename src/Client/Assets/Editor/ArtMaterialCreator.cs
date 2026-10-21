@@ -7,7 +7,8 @@ using UnityEngine;
 namespace Mmorpg.Client.Editor
 {
     // Creates the project material of every exported Blender material that has none yet, as a
-    // URP Lit material with the values of its export record, below
+    // URP Lit material, or a CharacterSkin material when a paint layer paints it, with the values
+    // of its export record, below
     // Assets/Art/Materials/<Category>, the category folder of its model. An existing material is
     // never changed, so a material whose Blender look changed is updated by hand from its
     // record; ArtModelImportTests compares every material with its record.
@@ -15,7 +16,8 @@ namespace Mmorpg.Client.Editor
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Create Missing Materials";
 
-        private const string LitShader = "Universal Render Pipeline/Lit";
+        public const string LitShader = "Universal Render Pipeline/Lit";
+        public const string SkinShader = "Mmorpg/Character Skin";
 
         [MenuItem(MenuPath)]
         public static void CreateMissingMaterialsMenu()
@@ -70,7 +72,8 @@ namespace Mmorpg.Client.Editor
 
         private static Material CreateMaterial(ArtAssetManifest manifest, ArtMaterialRecord record)
         {
-            var material = new Material(Shader.Find(LitShader)) { name = record.name };
+            var shader = ArtAssetManifests.PaintedMaterialNames().Contains(record.name) ? SkinShader : LitShader;
+            var material = new Material(Shader.Find(shader)) { name = record.name };
             if (!ColorUtility.TryParseHtmlString(record.baseColor, out var baseColor))
             {
                 throw new System.InvalidOperationException(
