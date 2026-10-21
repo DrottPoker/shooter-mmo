@@ -1390,6 +1390,20 @@ namespace Mmorpg.Client.Ui
                 out reason);
         }
 
+        // The drawn corpse slot again in the newest shown view, since a view update may have
+        // replaced its section, such as the Bag section after a committed Bag swap.
+        private bool TryResolveCorpseTarget(
+            ref CorpseLootView view,
+            ref CorpseLootSection section,
+            ref CorpseLootSlot slot)
+        {
+            view = corpseController?.State.ShownView;
+            return view != null
+                && corpseController.State.CanShowOperations
+                && view.TryGetSection(section.SectionKind, out section)
+                && section.TryGetSlot(slot.SlotIndex, out slot);
+        }
+
         private bool CanDropOnCorpse(
             InventoryClientState state,
             CorpseLootView view,
@@ -1399,12 +1413,8 @@ namespace Mmorpg.Client.Ui
             out string reason)
         {
             reason = string.Empty;
-            view = corpseController?.State.ShownView;
             if (!CanMoveItem(state, null)
-                || view == null
-                || !corpseController.State.CanShowOperations
-                || !view.TryGetSection(section.SectionKind, out section)
-                || !section.TryGetSlot(slot.SlotIndex, out slot))
+                || !TryResolveCorpseTarget(ref view, ref section, ref slot))
             {
                 reason = "Inventory or corpse mutation is unavailable while state is loading or busy.";
                 return false;
@@ -1847,6 +1857,7 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            TryResolveCorpseTarget(ref view, ref section, ref slot);
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {
                 view.TryFindItem(
