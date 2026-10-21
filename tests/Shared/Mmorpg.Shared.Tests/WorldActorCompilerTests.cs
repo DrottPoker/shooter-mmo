@@ -8,36 +8,43 @@ namespace Mmorpg.Shared.Tests;
 
 public sealed class WorldActorCompilerTests
 {
+    public static TheoryData<string> CheckedInWorldIds => new(WorldActorTestData.CheckedInWorldIds());
+
     [Fact]
-    public void CheckedInAuthoringMatchesDeterministicRuntime()
+    public void FixtureCompilesToTheExpectedRuntime()
     {
         var runtime = WorldActorTestData.Compile();
 
         Assert.Equal(WorldActorDataFormat.Version, runtime.FormatVersion);
         Assert.Equal("core", runtime.CatalogId);
-        Assert.Equal("development-world-1", runtime.WorldId);
+        Assert.Equal(WorldActorTestData.FixtureWorldId, runtime.WorldId);
         Assert.Equal(64, runtime.Revision.Length);
         Assert.Equal(5, runtime.Actors.Length);
         Assert.Equal(6, runtime.SpawnInstances.Length);
-        Assert.Equal(
-            WorldActorJson.SerializeRuntime(runtime),
-            NormalizeLineEndings(WorldActorTestData.RuntimeJson));
     }
 
-    [Fact]
-    public void DevelopmentWorldTwoAuthoringMatchesDeterministicRuntime()
+    [Theory]
+    [MemberData(nameof(CheckedInWorldIds))]
+    public void CheckedInWorldAuthoringMatchesItsGeneratedRuntime(string worldId)
     {
-        const string worldId = "development-world-2";
-        var runtime = WorldActorTestData.Compile(worldId);
+        var runtime = WorldActorTestData.CompileWorld(worldId);
 
         Assert.Equal(worldId, runtime.WorldId);
-        Assert.Equal(5, runtime.Actors.Length);
-        Assert.Equal(12, runtime.SpawnInstances.Length);
-        Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "mob.feral_alpha");
-        Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "resource.iron_vein");
+        Assert.NotEmpty(runtime.SpawnInstances);
         Assert.Equal(
             WorldActorJson.SerializeRuntime(runtime),
             NormalizeLineEndings(WorldActorTestData.RuntimeJsonFor(worldId)));
+    }
+
+    [Fact]
+    public void DevelopmentWorldTwoPlacesEveryActorKind()
+    {
+        var runtime = WorldActorTestData.CompileWorld("development-world-2");
+
+        Assert.Equal(5, runtime.Actors.Length);
+        Assert.Equal(17, runtime.SpawnInstances.Length);
+        Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "mob.feral_alpha");
+        Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "resource.iron_vein");
     }
 
     [Fact]

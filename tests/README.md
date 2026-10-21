@@ -63,6 +63,30 @@ checked-in game content compiles, round-trips, and fits its development
 packages, read the real catalog. How to change and recompile the fixture is in
 [Item Catalog Authoring](../content/items/README.md#test-fixture-catalog).
 
+## World Layout Fixtures
+
+Simulation tests never depend on the layout of a development World, so the
+Worlds can be redesigned without rewriting them:
+
+- `Fixtures/WorldActors/actor-spawns.json` is the test-owned actor layout: one
+  service NPC at `(2.5, 0, -1)`, two guards, one Iron Vein, and two Feral Wolves
+  with a patrol, under the `development-world-1` identity that the realtime test
+  harness joins. `WorldActorTestData.LoadSpawns` and `Compile` read it, and
+  `RepositoryPaths.WorldActorFixtureSpawnsPath` names it. It uses the real actor
+  catalog.
+- `CollisionTestWorldFactory` builds a flat 30 by 30 meter collision world for
+  the .NET tests, and the Unity `FixtureCollisionWorld` builds the same ground
+  with a wall, cover, and a ramp for the Unity movement tests.
+- The Unity `FixtureWorldActorContent` copies the actor content to a temporary
+  folder with the fixture spawns as Development World 1's spawns, for the actor
+  editor view tests.
+
+Content tests name a World instead. `WorldActorTestData.LoadWorldSpawns`,
+`CompileWorld`, `RuntimeJsonFor`, and `CheckedInWorldIds` read the checked-in
+spawns and generated runtime of every World, and `DevelopmentWorldLayoutTests`
+and the Unity `AuthoredGameplayAssetTests` check the baked development Worlds
+themselves.
+
 ## Shared Build Settings
 
 `tests/Directory.Build.props` applies to every project below `tests`. It sets the

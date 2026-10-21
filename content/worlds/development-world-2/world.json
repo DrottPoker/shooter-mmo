@@ -5,15 +5,15 @@
   "clientSceneName": "DevelopmentWorld2",
   "groundHeight": 0.0,
   "bounds": {
-    "minimumX": -254.0,
-    "maximumX": 254.0,
-    "minimumZ": -254.0,
-    "maximumZ": 254.0
+    "minimumX": -190.0,
+    "maximumX": 190.0,
+    "minimumZ": -190.0,
+    "maximumZ": 190.0
   },
   "spawn": {
     "x": 0.0,
     "y": 0.0,
-    "z": -16.0,
+    "z": -12.0,
     "yawDegrees": 0.0
   }
 }

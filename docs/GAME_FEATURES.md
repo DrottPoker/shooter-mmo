@@ -62,17 +62,29 @@ LoginMenu.
 
 Status: Initial content on implemented network gameplay foundation
 
-DevelopmentWorld1 contains the original 30 by 30 meter scene-authored test map.
-DevelopmentWorld2 provides a 512 by 512 meter greybox map with a central service
-settlement, a northern traversal course, an eastern sightline lane, southwest
-wilderness, and a reserved southeast expansion pad. It includes visual-only
-guides for canonical actor coordinates while actor content remains owned by
-WorldData. Each registered World scene owns a LocalPlayer prefab
-reference, an explicit spawn point, and a separate entity presentation root.
-After SimulationWorker accepts a character join, the mapped scene creates one
-runtime LocalPlayer instance whose prefab owns the orbit camera. Without an active joined session, no local player exists in the scene.
-DevelopmentWorld1 retains the static boundaries, slope, three step heights,
-cover, and dedicated camera-collision wall used by focused movement tests.
+Two development Worlds exist, both readable greyboxes with a meter grid on the
+ground, signs that name every zone and test station, and floor labels with the
+measured values. [Development Worlds](DEVELOPMENT_WORLDS.md) has their full
+layouts.
+
+- DevelopmentWorld2, the test World, is 384 by 384 meters with a walled town in
+  the center and one test zone in each direction: a movement course with step,
+  slope, and gap stations just inside and outside the movement limits, stairs,
+  a bridge, a maze, and camera tests; the highlands terrain with a peak, cliffs,
+  and a tunnel; a combat range with a PvP arena and a range lane; an interest
+  road to an outpost beyond the interest radius; the wolf woods with the Feral
+  Alpha's lair; a quarry with seven Iron Veins; an open meadow; and a sandbox
+  reserved for new features. Green stations get the character through, red
+  ones must not.
+- DevelopmentWorld1, the stress arena, is a 64 by 64 meter walled floor that
+  keeps every player, bot, and actor inside one interest radius, with Mira,
+  nine Iron Veins, a wolf pen, and a platform around an open spawn.
+
+Each registered World scene owns a LocalPlayer prefab reference, an explicit
+spawn point, and a separate entity presentation root. After SimulationWorker
+accepts a character join, the mapped scene creates one runtime LocalPlayer
+instance whose prefab owns the orbit camera. Without an active joined session,
+no local player exists in the scene.
 
 The test shard has no durable gameplay simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
@@ -220,9 +232,12 @@ the authoritative collision revision when the character joins, and the client
 refuses to predict against a different revision. The LocalPlayer prefab moves
 only in an authenticated World-scene session and has no offline movement mode.
 
-The Development World 2 traversal course is walkable with click-to-move. Its
-ramps end flush with the raised platforms, and the observation steps climb in
-rises below the step height to a bridge that leads onto the observation deck.
+The Development World 2 movement course shows each limit with click-to-move:
+steps up to 0.34 m and slopes up to 42 degrees are climbed, while 0.36 m steps
+and 48 degree slopes are not; gaps of 1.5 and 1.0 m are walked through and a
+0.6 m gap is walked around. Routes never step off a ledge higher than 0.4 m, so
+from a raised platform they take the stairs down. Ramps and stairs lead onto
+platforms joined by a bridge that can be walked over and under.
 
 Terrain works with click-to-move. In the Development World 2 highlands the
 player walks over hills and up a mountain's walkable face, is stopped by cliffs
@@ -507,8 +522,8 @@ first version. Faction and disposition own friendly or hostile behavior
 independently from actor kind. The checked-in actor catalog contains one
 composable service NPC, one guard NPC, two Mob definitions, and the Iron Vein
 resource node, each with an examine text and a menu option per capability.
-Development World 1 places six deterministic actor instances and
-Development World 2 twelve. The Character Bank and Recovery Storage buttons open
+Development World 1 places 14 deterministic actor instances and
+Development World 2 17. The Character Bank and Recovery Storage buttons open
 the inventory with that storage, and `Trade` opens it with the vendor; each stays
 usable while the interaction is open. The insurance and quest offer
 capabilities run their item lifecycle. Dialogue, crafting, trainer, and quest
@@ -563,8 +578,8 @@ player trading, and temporary uGUI. Manual test steps are in
 
 Status: MVP implemented with temporary presentation
 
-- Iron Veins are resource nodes. Development World 2 has four on the southeast
-  expansion pad, and Development World 1 has one west of the spawn.
+- Iron Veins are resource nodes. Development World 2 has seven in the quarry
+  southeast of the town, and Development World 1 has nine east of the spawn.
 - An Iron Vein is the game's first authored 3D model: grey faceted rocks with
   chunky rust-orange iron ore that shows from every camera angle. A depleted
   vein keeps its rocks, now with broken flat tops and rubble around them, but
@@ -628,9 +643,10 @@ Combat is target based and server authoritative:
 - A Feral Wolf has 50 health, drops a Wolf Pelt and sometimes Bronze Arrows,
   and returns after 30 seconds. The Feral Alpha boss has 240 health, leaves a
   durable corpse, notices characters within 10 m, bites for 7 to 12 every 2.4
-  seconds, and returns after 300 seconds. In Development World 2 the
-  wolves live in the southwest wilderness, X and Z between `-190` and `-130`,
-  and the Feral Alpha stands at `(-120, 0, -195)`.
+  seconds, and returns after 300 seconds. In Development World 2 five
+  wolves live in the wolf woods southwest of the town, X and Z between `-120`
+  and `-90`, and the Feral Alpha stands in its lair at `(-160, 0, -160)`. In
+  Development World 1 four wolves patrol a pen west of the spawn.
 
 [Combat Verification](LOCAL_DEVELOPMENT.md#combat-verification) walks through
 the loop.

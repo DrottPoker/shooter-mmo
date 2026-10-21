@@ -6,6 +6,17 @@
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       }
+    },
+    "StressArena": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "SIMULATION_WORKER_ID": "local-simulation-worker-2",
+        "SIMULATION_SHARD_ID": "local-shard-2",
+        "SIMULATION_WORLD_ID": "development-world-1",
+        "SIMULATION_WORKER_UDP_PORT": "27016",
+        "SIMULATION_WORKER_ADVERTISED_UDP_PORT": "27016"
+      }
     }
   }
 }

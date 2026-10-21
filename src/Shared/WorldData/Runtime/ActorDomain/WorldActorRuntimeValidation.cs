@@ -945,21 +945,21 @@ namespace Mmorpg.WorldData.Actors
 
                 if (value.Kind == WorldActorSpawnKindIds.Group)
                 {
-                    var halfWidth = (value.Columns - 1) * value.Spacing * 0.5f;
-                    var halfDepth = (value.Rows - 1) * value.Spacing * 0.5f;
+                    var halfWidth = GroupHalfSize(value.Columns, value.Spacing);
+                    var halfDepth = GroupHalfSize(value.Rows, value.Spacing);
                     if (value.Seed != 0
-                        || value.MinimumX != value.OriginX - halfWidth
-                        || value.MaximumX != value.OriginX + halfWidth
-                        || value.MinimumZ != value.OriginZ - halfDepth
-                        || value.MaximumZ != value.OriginZ + halfDepth)
+                        || value.MinimumX != (float)(value.OriginX - halfWidth)
+                        || value.MaximumX != (float)(value.OriginX + halfWidth)
+                        || value.MinimumZ != (float)(value.OriginZ - halfDepth)
+                        || value.MaximumZ != (float)(value.OriginZ + halfDepth))
                     {
                         errors.Add("runtime group spawn " + value.Id
                             + " bounds do not match its grid.");
                     }
                 }
                 else if (value.Kind == WorldActorSpawnKindIds.Area
-                    && (value.OriginX != (value.MinimumX + value.MaximumX) * 0.5f
-                        || value.OriginZ != (value.MinimumZ + value.MaximumZ) * 0.5f))
+                    && (value.OriginX != AreaCenter(value.MinimumX, value.MaximumX)
+                        || value.OriginZ != AreaCenter(value.MinimumZ, value.MaximumZ)))
                 {
                     errors.Add("runtime area spawn " + value.Id
                         + " origin does not match its bounds.");
@@ -1120,19 +1120,19 @@ namespace Mmorpg.WorldData.Actors
 
                 var row = index / source.Columns;
                 var column = index % source.Columns;
-                var halfWidth = (source.Columns - 1) * source.Spacing * 0.5f;
-                var halfDepth = (source.Rows - 1) * source.Spacing * 0.5f;
-                expectedX = source.OriginX + (column * source.Spacing) - halfWidth;
-                expectedZ = source.OriginZ + (row * source.Spacing) - halfDepth;
+                expectedX = GroupCoordinate(source.OriginX, column, source.Spacing, GroupHalfSize(source.Columns, source.Spacing));
+                expectedZ = GroupCoordinate(source.OriginZ, row, source.Spacing, GroupHalfSize(source.Rows, source.Spacing));
             }
             else if (source.Kind == WorldActorSpawnKindIds.Area)
             {
-                expectedX = source.MinimumX
-                    + ((source.MaximumX - source.MinimumX)
-                        * DeterministicUnit(source.Id, source.Seed, index, "x"));
-                expectedZ = source.MinimumZ
-                    + ((source.MaximumZ - source.MinimumZ)
-                        * DeterministicUnit(source.Id, source.Seed, index, "z"));
+                expectedX = AreaCoordinate(
+                    source.MinimumX,
+                    source.MaximumX,
+                    DeterministicUnit(source.Id, source.Seed, index, "x"));
+                expectedZ = AreaCoordinate(
+                    source.MinimumZ,
+                    source.MaximumZ,
+                    DeterministicUnit(source.Id, source.Seed, index, "z"));
             }
 
             if (!string.Equals(instance.Id, expectedId, StringComparison.Ordinal)

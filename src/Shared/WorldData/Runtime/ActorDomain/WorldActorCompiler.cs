@@ -870,7 +870,7 @@ namespace Mmorpg.WorldData.Actors
             }
 
             return IsFinite(collisionHeight)
-                && collisionHeight > collisionRadius * 2f
+                && collisionHeight > (float)(collisionRadius * 2f)
                 && collisionHeight <= WorldActorCombatRules.MaximumCollisionHeight
                 ? null
                 : "collisionHeight must exceed twice the collisionRadius and be at most "
@@ -1748,8 +1748,8 @@ namespace Mmorpg.WorldData.Actors
             ICollection<WorldActorSpawnInstanceDefinition> instances)
         {
             var count = group.Rows * group.Columns;
-            var halfWidth = (group.Columns - 1) * group.Spacing * 0.5f;
-            var halfDepth = (group.Rows - 1) * group.Spacing * 0.5f;
+            var halfWidth = GroupHalfSize(group.Columns, group.Spacing);
+            var halfDepth = GroupHalfSize(group.Rows, group.Spacing);
             sources.Add(CreateSpawnSource(
                 group.Id,
                 WorldActorSpawnKindIds.Group,
@@ -1759,10 +1759,10 @@ namespace Mmorpg.WorldData.Actors
                 group.CenterX,
                 group.CenterY,
                 group.CenterZ,
-                group.CenterX - halfWidth,
-                group.CenterZ - halfDepth,
-                group.CenterX + halfWidth,
-                group.CenterZ + halfDepth,
+                (float)(group.CenterX - halfWidth),
+                (float)(group.CenterZ - halfDepth),
+                (float)(group.CenterX + halfWidth),
+                (float)(group.CenterZ + halfDepth),
                 group.YawDegrees,
                 group.Rows,
                 group.Columns,
@@ -1778,9 +1778,9 @@ namespace Mmorpg.WorldData.Actors
                         group.Id + ":" + instanceIndex.ToString("D4", CultureInfo.InvariantCulture),
                         group.Id,
                         group.ActorId,
-                        group.CenterX + (column * group.Spacing) - halfWidth,
+                        GroupCoordinate(group.CenterX, column, group.Spacing, halfWidth),
                         group.CenterY,
-                        group.CenterZ + (row * group.Spacing) - halfDepth,
+                        GroupCoordinate(group.CenterZ, row, group.Spacing, halfDepth),
                         group.YawDegrees,
                         group.PatrolPathId));
                     instanceIndex++;
@@ -1799,9 +1799,9 @@ namespace Mmorpg.WorldData.Actors
                 area.ActorId,
                 area.Count,
                 area.PatrolPathId,
-                (area.MinimumX + area.MaximumX) * 0.5f,
+                AreaCenter(area.MinimumX, area.MaximumX),
                 area.Y,
-                (area.MinimumZ + area.MaximumZ) * 0.5f,
+                AreaCenter(area.MinimumZ, area.MaximumZ),
                 area.MinimumX,
                 area.MinimumZ,
                 area.MaximumX,
@@ -1819,9 +1819,9 @@ namespace Mmorpg.WorldData.Actors
                     area.Id + ":" + index.ToString("D4", CultureInfo.InvariantCulture),
                     area.Id,
                     area.ActorId,
-                    area.MinimumX + ((area.MaximumX - area.MinimumX) * unitX),
+                    AreaCoordinate(area.MinimumX, area.MaximumX, unitX),
                     area.Y,
-                    area.MinimumZ + ((area.MaximumZ - area.MinimumZ) * unitZ),
+                    AreaCoordinate(area.MinimumZ, area.MaximumZ, unitZ),
                     area.YawDegrees,
                     area.PatrolPathId));
             }
@@ -1946,6 +1946,29 @@ namespace Mmorpg.WorldData.Actors
             return string.Join(",", values);
         }
 
+        // Spawn placement shared by compilation and runtime validation. Every float step is
+        // rounded to float on its own, because Mono keeps intermediates in double and the
+        // Unity editor must place exactly what the .NET tools place.
+        private static float GroupHalfSize(int count, float spacing)
+        {
+            return (float)((float)((count - 1) * spacing) * 0.5f);
+        }
+
+        private static float GroupCoordinate(float origin, int cell, float spacing, float halfSize)
+        {
+            return (float)((float)(origin + (float)(cell * spacing)) - halfSize);
+        }
+
+        private static float AreaCenter(float minimum, float maximum)
+        {
+            return (float)((float)(minimum + maximum) * 0.5f);
+        }
+
+        private static float AreaCoordinate(float minimum, float maximum, float unit)
+        {
+            return (float)(minimum + (float)((float)(maximum - minimum) * unit));
+        }
+
         private static float DeterministicUnit(
             string id,
             int seed,
@@ -1968,7 +1991,7 @@ namespace Mmorpg.WorldData.Actors
                 | ((uint)hash[1] << 8)
                 | ((uint)hash[2] << 16)
                 | ((uint)hash[3] << 24);
-            return value / (float)uint.MaxValue;
+            return (float)((float)value / (float)uint.MaxValue);
         }
 
         private static HashSet<string> RequireCollection<T>(

@@ -86,8 +86,8 @@ not the future topological `Zone` scaling unit and must not be represented as
 Zones, SimulationAssignments, or worker ownership boundaries.
 
 Implementation of gameplay rule areas is deferred until the project has a
-larger authored map with meaningful locations and boundaries. The current small
-movement test map does not define these areas.
+larger authored map with meaningful locations and boundaries. The development
+Worlds are test maps and do not define these areas.
 
 When the map is ready, the first playable version should keep rule areas simple:
 

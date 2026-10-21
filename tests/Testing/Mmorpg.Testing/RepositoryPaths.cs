@@ -28,6 +28,11 @@ public static class RepositoryPaths
     public static string ItemCatalogFixtureRuntimePath =>
         ContentLayout.GeneratedItemCatalogPath(ItemCatalogFixtureGenerated);
 
+    // The test-owned actor spawn layout. Simulation tests use it, so the development
+    // Worlds can be redesigned without breaking them; content tests read the real Worlds.
+    public static string WorldActorFixtureSpawnsPath =>
+        Path.Combine(Root, "tests", "Fixtures", "WorldActors", "actor-spawns.json");
+
     // The source folder of a test project, for files the project keeps next to its tests.
     // Compile-time paths are not used because ContinuousIntegrationBuild remaps them.
     public static string ProjectDirectory(Assembly testAssembly)

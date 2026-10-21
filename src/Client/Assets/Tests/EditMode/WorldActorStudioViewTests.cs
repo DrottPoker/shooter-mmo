@@ -13,11 +13,13 @@ namespace Mmorpg.Client.Tests.EditMode
         private const string LocalActorId = "npc.test_local_only";
 
         private ContentUndoState undoState;
+        private FixtureWorldActorContent content;
 
         [SetUp]
         public void CreateUndoState()
         {
             undoState = ContentUndoState.Create("Actor Studio View Test");
+            content = new FixtureWorldActorContent();
         }
 
         [TearDown]
@@ -25,6 +27,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             Undo.ClearUndo(undoState);
             UnityEngine.Object.DestroyImmediate(undoState);
+            content.Dispose();
         }
 
         [Test]
@@ -218,7 +221,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private WorldActorStudioView CreateView()
         {
-            var service = new WorldActorEditorService(WorldActorEditorPaths.CreateDefault());
+            var service = new WorldActorEditorService(content.Paths);
             return new WorldActorStudioView(service, undoState, () => LoadWithLocalOnlyActor(service));
         }
 
