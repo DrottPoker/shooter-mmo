@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2829ab1d45469840a8be86be96480a5, type: 3}
+  m_Name: Human_Female_Appearance
+  m_EditorClassIdentifier: Mmorpg.Client.Gameplay::Mmorpg.Client.Gameplay.BodyAppearanceCatalog
+  slots:
+  - name: Eye
+    material: {fileID: 2100000, guid: 0f332197c339b5a42ba706bd978257de, type: 2}
+    options:
+    - name: Teal
+      texture: {fileID: 2800000, guid: 33113f25e17de6d4dababcdd4cc54d57, type: 3}
+    - name: Hazel
+      texture: {fileID: 2800000, guid: 86c3777ef3cf9b34b8232b5f81f51a74, type: 3}
+  - name: Face
+    material: {fileID: 2100000, guid: a1188cde8f5d62548a76853e1534b236, type: 2}
+    options:
+    - name: Blush
+      texture: {fileID: 2800000, guid: fc056981226cb23429bb9a48a8f17b79, type: 3}
+    - name: Freckles
+      texture: {fileID: 2800000, guid: 5cd2dd2928c3c31478b55cffdf8634fb, type: 3}

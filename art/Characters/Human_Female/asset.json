@@ -8,6 +8,10 @@
     "triangleBudget": 10000,
     "skeleton": "Humanoid",
     "clips": ["Idle", "Walk", "Jog"],
+    "variants": [
+        { "material": "M_Eye_Female", "images": ["T_Eye_Female_Hazel"] },
+        { "material": "M_Face_Female", "images": ["T_Face_Female_Freckles"] }
+    ],
     "approvals": {
         "model": {
             "date": "2026-10-21",
@@ -24,7 +28,7 @@
     },
     "export": {
         "sourceSha256": "026c3b57470013f7bedbc2eb8f99de6ef9f4ed01d1c025a22234f423f92430a9",
-        "targetSha256": "de69a39adde6bff22ac9d9b49b90757e103a3694cacb7f927e333d7d2f6b8e45",
+        "targetSha256": "71b6b450d6f18541cf1ec8f5bc3d674a0b9f91f7c4b70fc3f45871c90a3591e0",
         "materials": [
             {
                 "name": "M_Body_Female",
@@ -75,6 +79,16 @@
                 "name": "T_Face_Female_Blush",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Female_Blush.png",
                 "sha256": "b3869a11d16af5144f46f4cefece02a020f7858610f2f50aa13f504bbe09eca6"
+            },
+            {
+                "name": "T_Eye_Female_Hazel",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Eye_Female_Hazel.png",
+                "sha256": "faf50f954665ed53f3648c5bf9daee4bd674217817beb9659780425a37172dd8"
+            },
+            {
+                "name": "T_Face_Female_Freckles",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Female_Freckles.png",
+                "sha256": "849bffd4326dda6d18bf9475f7aaa0ea487fc7abadca92c0f44888773a056cbd"
             }
         ],
         "clips": [

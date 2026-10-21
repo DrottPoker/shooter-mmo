@@ -54,6 +54,10 @@ foreach ($directory in $directories) {
         continue
     }
 
+    if ($null -ne $manifest.ExportProblem) {
+        $problems.Add("${where}/asset.json: $($manifest.ExportProblem).")
+    }
+
     if ($manifest.Export.sourceSha256 -ne $sourceSha256) {
         $problems.Add("${where}: $($manifest.Target) was exported from another version of $($manifest.Name).blend; run tools/Export-ArtAsset.ps1.")
     }

@@ -71,6 +71,7 @@ namespace Mmorpg.Client.Editor
         public string[] rootObjects = Array.Empty<string>();
         public string skeleton = string.Empty;
         public string[] clips = Array.Empty<string>();
+        public ArtMaterialVariants[] variants = Array.Empty<ArtMaterialVariants>();
         public ArtAssetExport export = new ArtAssetExport();
 
         public string UnityTargetPath
@@ -131,6 +132,15 @@ namespace Mmorpg.Client.Editor
         public string name = string.Empty;
         public string target = string.Empty;
         public string sha256 = string.Empty;
+    }
+
+    // A painted material M_<Part>_<Label> and the other images T_<Part>_<Label>_<Option> it may
+    // show in the game instead of its own.
+    [Serializable]
+    public sealed class ArtMaterialVariants
+    {
+        public string material = string.Empty;
+        public string[] images = Array.Empty<string>();
     }
 
     [Serializable]

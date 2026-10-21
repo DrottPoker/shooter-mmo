@@ -17,7 +17,7 @@
     },
     "export": {
         "sourceSha256": "974e5900fb3bd40019754be5f07ab5a7539a90f33aa84a717f1ff81e28780c35",
-        "targetSha256": "70de77ae9e9164207363699538d3b8abaa0ff62099a318d35895b596da63e719",
+        "targetSha256": "c4c674af0f106719e3d2f966a487d23aeaebc6feb15ad08818d689fbe1967235",
         "rigSourceSha256": "70587c76a6e2e27929a5baaf62bf769a21c061fa6b09da1699faaab83535dd37",
         "clips": [
             { "name": "Death", "frames": 60, "loop": false }

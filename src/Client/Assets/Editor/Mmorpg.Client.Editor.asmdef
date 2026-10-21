@@ -6,6 +6,7 @@
     "Mmorpg.GameSimulation",
     "Mmorpg.WorldData.Editor",
     "Mmorpg.Client.Core",
+    "Mmorpg.Client.Gameplay",
     "Mmorpg.WorldData",
     "Mmorpg.WorldData.Client",
     "Unity.Addressables.Editor",

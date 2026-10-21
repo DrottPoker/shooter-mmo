@@ -76,8 +76,9 @@ never overwrites handmade work.
 | `rig` | Animation libraries only: the skinned asset whose rig the clips are keyed on, such as `art/Characters/Human_Male`. |
 | `previews` | Animation libraries only: other skinned assets of the skeleton whose bodies show the clips in the library, such as `["art/Characters/Human_Female"]`. |
 | `clips` | Skinned assets and animation libraries: the names of the animation clips the asset exports, such as `["Idle", "Walk", "Jog"]`. Each is one Blender action. |
+| `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
 | `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. |
-| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. `null` before the first export. |
+| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. `null` before the first export. |
 
 ## Review Stages
 
@@ -144,6 +145,8 @@ asset that breaks one of these rules:
   `.blend` file, such as a painted body, read through the mesh's active UV map,
   which every mesh with that material must have.
 - The exported triangles stay within `triangleBudget`.
+- Every variant image is packed into the file as a PNG of the same size as the
+  image of its material, so it fits the material's UV layout.
 
 The `rig` stage of a skinned asset adds these rules:
 
@@ -223,8 +226,18 @@ every frame without simplification. Blender names each take
 `<armature>|<action>`. The images of its painted materials are written below
 `src/Client/Assets/Art/Textures/<Category>` as the PNG bytes packed in the
 `.blend` file, and a texture that an earlier export wrote and this one does not
-is removed. An animation library exports its armature and its clips the same
-way, without meshes.
+is removed. The variant images are written the same way. An animation library
+exports its armature and its clips the same way, without meshes.
+
+The export is reproducible: the same `.blend` file gives the same FBX bytes in
+every checkout. Blender's exporter writes the time of the export and the path of
+the `.blend` file into the FBX header and derives its object ids from Python's
+string hashes, which Python randomizes per process. `export.py` fixes the header
+time to 2000-01-01 and leaves the path empty, and `Invoke-ArtBlender` in
+`tools/ArtPipelineCommon.ps1` runs Blender with `PYTHONHASHSEED=0` and
+`--python-use-system-env`, after clearing every other Python variable, so no
+Python setup of the machine reaches the pipeline. An export without the fixed
+seed stops. Exporting an unchanged asset again leaves its files unchanged.
 
 These settings were chosen with an axis probe imported into Unity. Exporting
 with Forward -Z and Up Y, the usual advice for Unity, leaves a 90 degree
@@ -273,6 +286,12 @@ the body's own model.
 Every PNG below `Assets/Art/Textures` imports as an sRGB texture with mipmaps,
 without alpha, not readable, clamped, trilinear, at most 2048 px, with high
 quality compression.
+
+`MMORPG > Tools > Art Pipeline > Update Appearance Catalogs` writes the
+appearance catalog of every exported skinned model with `variants`, as
+`Assets/Art/Appearance/<Model>_Appearance.asset`; see
+[Appearance Layers](#appearance-layers). `ArtAppearanceCatalogTests` fails when
+a catalog differs from what the command writes from `asset.json`.
 
 A project material is never changed by the import. When an export adds a
 material, `MMORPG > Tools > Art Pipeline > Create Missing Materials` creates it
@@ -354,6 +373,28 @@ In Unity, `Human_Actions.fbx` brings its clips as Humanoid motion, and
 `HumanLocomotion.controller` plays `Death` on every player body; see
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 
+## Appearance Layers
+
+Players change how their bodies look in the style of World of Warcraft: other
+paint on the same model, such as another face or eye color, equipment painted
+onto the skin, often together with a modeled part, hair as a mesh with paint on
+the scalp, and later skin colors. The same rule as for clips holds: what is made
+by hand lives in assets of its own, and nothing that a build rebuilds holds
+handmade work.
+
+| Layer | Made as | In the game | Status |
+| --- | --- | --- | --- |
+| Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Scarred` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
+| Paint layers | Transparent paint over the skin in the body texture's UV layout, such as the paint of a leather jerkin or a scalp, in an appearance asset of its own. Painted once on the male body; the export moves it to every body of identical topology. | Composed over the skin texture when the body is drawn. | Planned next. |
+| Attachments | Meshes skinned to the shared skeleton, such as hair, beards, and the modeled parts of armor, in appearance assets of their own, fitted to every body type from one design. | Combined with the visible body parts into the body's one mesh. | Planned with the first hair or armor part. |
+
+The faces and eyes of the human base characters are variants: the build paints
+them, the model review shows them, and `variants` in `asset.json` exports them
+with the model. In Unity, the body's `BodyAppearanceCatalog` lists one slot per
+material with variants, such as `Face` and `Eye`, with its options, the
+material's own image first, and a look picks one option per slot; see
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
+
 ## Live Work With The Blender MCP Server
 
 The Blender Lab MCP server lets Claude Code inspect and change the Blender file
@@ -419,11 +460,11 @@ Each file holds one character in the `Export` collection:
   `T_Body_<Label>` with the underwear, `M_Face_<Label>` a 1024 px face texture,
   `M_Eye_<Label>` a 512 px iris texture, and `M_Teeth_<Label>` and
   `M_Tongue_<Label>` flat colors. The face and eye variants for character
-  creation are packed into the file: `T_Face_Male_Stubble`,
-  `T_Face_Male_Scarred`, `T_Eye_Male_Teal`, and `T_Eye_Male_Brown` for the male,
-  `T_Face_Female_Blush`, `T_Face_Female_Freckles`, `T_Eye_Female_Teal`, and
-  `T_Eye_Female_Hazel` for the female. Another face is the face or eye material
-  with another image.
+  creation are packed into the file and exported as
+  [variants](#appearance-layers): `T_Face_Male_Stubble`, `T_Face_Male_Scarred`,
+  `T_Eye_Male_Teal`, and `T_Eye_Male_Brown` for the male, `T_Face_Female_Blush`,
+  `T_Face_Female_Freckles`, `T_Eye_Female_Teal`, and `T_Eye_Female_Hazel` for
+  the female. Another face is the face or eye material with another image.
 
 `tools/Build-HumanBase.ps1` runs the build, one Blender process per step:
 
@@ -515,7 +556,8 @@ never committed.
 ## Planned
 
 - The body type at character creation, which shows the female body for female
-  characters, through an `AnimatorOverrideController` with her own clips.
+  characters, through an `AnimatorOverrideController` with her own clips, and
+  the look chosen there, saved with the character and sent to every client.
 - Eyelid bones for blinking and forearm twist bones.
 - A model fix of the low armpits, where the triceps meet the torso.
 - A shared palette texture for stylized models, level-of-detail meshes, and

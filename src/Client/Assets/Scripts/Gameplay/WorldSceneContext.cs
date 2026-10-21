@@ -19,11 +19,12 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly Dictionary<ulong, RemotePlayerView> remotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
-        private readonly PlayerBodyTintMaterials tintMaterials = new PlayerBodyTintMaterials();
+        private readonly PlayerBodyMaterials bodyMaterials = new PlayerBodyMaterials();
         private readonly PlayerBodyMeshes bodyMeshes = new PlayerBodyMeshes();
         private RealtimeSimulationClient simulationClient;
         private WorldPointerFocus pointerFocus;
         private PlayerBodyTintSetting bodyTint;
+        private PlayerBodyLookSetting bodyLook;
         private LocalPlayerController localPlayer;
 
         // The local player of the joined session, or null before it spawned.
@@ -45,15 +46,17 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // The composition root passes the persistent realtime client, the pointer focus, and
-        // the body tint setting when the scene loads, before Start runs.
+        // the body tint and look settings when the scene loads, before Start runs.
         public void Initialize(
             RealtimeSimulationClient realtimeClient,
             WorldPointerFocus focus,
-            PlayerBodyTintSetting tintSetting)
+            PlayerBodyTintSetting tintSetting,
+            PlayerBodyLookSetting lookSetting)
         {
             simulationClient = realtimeClient;
             pointerFocus = focus;
             bodyTint = tintSetting;
+            bodyLook = lookSetting;
         }
 
         private void Start()
@@ -128,9 +131,16 @@ namespace Mmorpg.Client.Gameplay
 
             CombineBody(localPlayer);
             ApplyLocalBodyTint();
+            ApplyLocalBodyLook();
             if (bodyTint != null)
             {
                 bodyTint.Changed += OnBodyTintChanged;
+            }
+
+            if (bodyLook != null)
+            {
+                bodyLook.Offer(LocalAppearance != null ? LocalAppearance.Catalog : null);
+                bodyLook.Changed += ApplyLocalBodyLook;
             }
 
             simulationClient.EntitySpawned += OnEntitySpawned;
@@ -156,8 +166,14 @@ namespace Mmorpg.Client.Gameplay
                 bodyTint.Changed -= OnBodyTintChanged;
             }
 
+            if (bodyLook != null)
+            {
+                bodyLook.Changed -= ApplyLocalBodyLook;
+                bodyLook.Offer(null);
+            }
+
             remotePlayers.Clear();
-            tintMaterials.Dispose();
+            bodyMaterials.Dispose();
             bodyMeshes.Dispose();
 
             DestroyLocalPlayer();
@@ -212,7 +228,8 @@ namespace Mmorpg.Client.Gameplay
                     movementSession.CollisionWorld,
                     movementSession.Settings.CharacterCollision);
                 CombineBody(remotePlayer);
-                remotePlayer.ApplyBodyTint(BodiesTinted, tintMaterials);
+                remotePlayer.ApplyBodyTint(BodiesTinted, bodyMaterials);
+                remotePlayer.ApplyBodyLook(bodyMaterials);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
             }
 
@@ -278,19 +295,36 @@ namespace Mmorpg.Client.Gameplay
             {
                 if (remotePlayer != null)
                 {
-                    remotePlayer.ApplyBodyTint(BodiesTinted, tintMaterials);
+                    remotePlayer.ApplyBodyTint(BodiesTinted, bodyMaterials);
                 }
+            }
+        }
+
+        private PlayerBodyAppearance LocalAppearance
+        {
+            get
+            {
+                return localPlayer != null
+                    ? localPlayer.GetComponentInChildren<PlayerBodyAppearance>(true)
+                    : null;
             }
         }
 
         private void ApplyLocalBodyTint()
         {
-            var appearance = localPlayer != null
-                ? localPlayer.GetComponentInChildren<PlayerBodyAppearance>(true)
-                : null;
+            var appearance = LocalAppearance;
             if (appearance != null)
             {
-                appearance.ApplyTint(BodiesTinted, PlayerBodyColors.LocalPlayer, tintMaterials);
+                appearance.ApplyTint(BodiesTinted, PlayerBodyColors.LocalPlayer, bodyMaterials);
+            }
+        }
+
+        private void ApplyLocalBodyLook()
+        {
+            var appearance = LocalAppearance;
+            if (appearance != null && bodyLook != null)
+            {
+                appearance.ApplyLook(bodyLook.Look, bodyMaterials);
             }
         }
 

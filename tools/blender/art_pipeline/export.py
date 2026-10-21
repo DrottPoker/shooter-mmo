@@ -3,9 +3,13 @@ A skinned asset also exports its armature with every animation clip as its own t
 the images of its materials as PNG files for Unity. An animation library exports only its armature
 and its clips."""
 
+import contextlib
+import datetime
 import os
+import sys
 
 import bpy
+from io_scene_fbx import export_fbx_bin
 
 from .scene import EXPORT_COLLECTION, ArtPipelineError, export_objects
 from .validate import principled_inputs
@@ -14,6 +18,8 @@ OBJECT_TYPES = {"static": {"EMPTY", "MESH"}, "skinned": {"ARMATURE", "MESH"}, "a
 # Kinds whose FBX carries an armature and its clips.
 ANIMATED_KINDS = {"skinned", "animations"}
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# The creation time every FBX header records.
+FBX_TIME = datetime.datetime(2000, 1, 1)
 
 
 def _linear_to_srgb(value: float) -> float:
@@ -58,9 +64,53 @@ def material_records() -> list[dict[str, object]]:
     return records
 
 
-def export_textures(folder: str) -> list[tuple[str, str]]:
-    """Writes the packed image of every painted material as <folder>/<image>.png, byte for byte as
-    it is packed, and returns the names and paths, once per image also when materials share it."""
+def parse_variants(text: str | None) -> dict[str, list[str]]:
+    """The variants argument, "M_Face=T_A+T_B;M_Eye=T_C": the other images each material may take
+    in the game instead of its own."""
+    variants: dict[str, list[str]] = {}
+    for entry in (text or "").split(";"):
+        if entry:
+            material, images = entry.split("=", 1)
+            variants[material] = [i for i in images.split("+") if i]
+    return variants
+
+
+def variant_errors(variants: dict[str, list[str]]) -> list[str]:
+    """Every variant is a packed PNG of the same size as the image of its painted material, so it
+    fits the material's UV layout and its texture import."""
+    errors = []
+    materials = {m.name: m for m in _exported_materials()}
+    for name, images in sorted(variants.items()):
+        material = materials.get(name)
+        base = _base_image(material) if material is not None else None
+        if base is None:
+            errors.append(f'The variants of "{name}" need an exported material with an Image Texture.')
+            continue
+        for image_name in images:
+            image = bpy.data.images.get(image_name)
+            if image is None or image.packed_file is None or not bytes(image.packed_file.data).startswith(PNG_SIGNATURE):
+                errors.append(f'Variant "{image_name}" of "{name}" must be an image packed as a PNG in the file.')
+            elif tuple(image.size) != tuple(base.size):
+                errors.append(f'Variant "{image_name}" of "{name}" is {tuple(image.size)} pixels; '
+                              f'"{base.name}" is {tuple(base.size)}.')
+    return errors
+
+
+def _write_image(image: bpy.types.Image, folder: str, owner: str) -> tuple[str, str]:
+    data = bytes(image.packed_file.data) if image.packed_file is not None else b""
+    if not data.startswith(PNG_SIGNATURE):
+        raise ArtPipelineError(f'Image "{image.name}" of "{owner}" must be packed as a PNG.')
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{image.name}.png")
+    with open(path, "wb") as f:
+        f.write(data)
+    return image.name, path
+
+
+def export_textures(folder: str, variants: dict[str, list[str]] | None = None) -> list[tuple[str, str]]:
+    """Writes the packed image of every painted material and every variant image as
+    <folder>/<image>.png, byte for byte as it is packed, and returns the names and paths, once per
+    image also when materials share it."""
     written = []
     images = set()
     for material in _exported_materials():
@@ -68,14 +118,12 @@ def export_textures(folder: str) -> list[tuple[str, str]]:
         if image is None or image.name in images:
             continue
         images.add(image.name)
-        data = bytes(image.packed_file.data) if image.packed_file is not None else b""
-        if not data.startswith(PNG_SIGNATURE):
-            raise ArtPipelineError(f'Image "{image.name}" of "{material.name}" must be packed as a PNG.')
-        os.makedirs(folder, exist_ok=True)
-        path = os.path.join(folder, f"{image.name}.png")
-        with open(path, "wb") as f:
-            f.write(data)
-        written.append((image.name, path))
+        written.append(_write_image(image, folder, material.name))
+    for material, names in sorted((variants or {}).items()):
+        for name in names:
+            if name not in images:
+                images.add(name)
+                written.append(_write_image(bpy.data.images[name], folder, material))
     return written
 
 
@@ -101,9 +149,44 @@ def _activate_export_collection() -> None:
     bpy.context.view_layer.active_layer_collection = layer
 
 
+class _DataWithoutPath:
+    """bpy.data, but the file path reads as empty."""
+
+    def __getattr__(self, name):
+        return "" if name == "filepath" else getattr(bpy.data, name)
+
+
+class _BpyWithoutPath:
+    data = _DataWithoutPath()
+
+    def __getattr__(self, name):
+        return getattr(bpy, name)
+
+
+@contextlib.contextmanager
+def _reproducible_fbx():
+    """The same file gives the same FBX bytes: Blender's exporter writes the time of the export and
+    the path of the .blend file into the header, and derives object ids from Python's string
+    hashes, which tools/ArtPipelineCommon.ps1 fixes with PYTHONHASHSEED."""
+    if sys.flags.hash_randomization:
+        raise ArtPipelineError("Export through tools/Export-ArtAsset.ps1, which runs Blender with fixed string hashes.")
+    header, module_bpy = export_fbx_bin.fbx_header_elements, export_fbx_bin.bpy
+    export_fbx_bin.fbx_header_elements = lambda root, scene_data, time=None: header(root, scene_data, FBX_TIME)
+    export_fbx_bin.bpy = _BpyWithoutPath()
+    try:
+        yield
+    finally:
+        export_fbx_bin.fbx_header_elements, export_fbx_bin.bpy = header, module_bpy
+
+
 def export_fbx(kind: str, target: str) -> None:
     if kind not in OBJECT_TYPES:
         raise ArtPipelineError(f'Assets of kind "{kind}" cannot be exported.')
+    with _reproducible_fbx():
+        _export_fbx(kind, target)
+
+
+def _export_fbx(kind: str, target: str) -> None:
     _activate_export_collection()
     os.makedirs(os.path.dirname(target), exist_ok=True)
     animated = kind in ANIMATED_KINDS

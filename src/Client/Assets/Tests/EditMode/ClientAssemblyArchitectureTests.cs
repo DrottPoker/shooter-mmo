@@ -137,6 +137,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 ["Mmorpg.Client.Editor"] = new[]
                 {
                     "Mmorpg.Client.Core",
+                    "Mmorpg.Client.Gameplay",
                     "Mmorpg.Client.Worlds",
                     "Mmorpg.GameSimulation",
                     "Mmorpg.WorldData",
