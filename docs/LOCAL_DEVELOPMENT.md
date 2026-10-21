@@ -2873,6 +2873,66 @@ lists the created materials, or says every exported art material has a project
 material. Commit the `.blend` files, `asset.json`, the FBX and texture files, and
 their `.meta` files together.
 
+### Make A Handmade Clip
+
+[Animation Libraries](ART_PIPELINE.md#animation-libraries) describes where
+handmade clips live and the rules they follow. `art/Animations/Human_Actions`
+holds the handmade clips of the human bodies.
+
+1. Bring the library up to date with the rig it is keyed on:
+
+   ```powershell
+   .\tools\Sync-AnimationLibrary.ps1 -Asset art/Animations/Human_Actions
+   ```
+
+   Expected result: `Human_Actions is up to date: its armature is the current
+   rig of art/Characters/Human_Male.`, or after a rig change `Synced
+   Human_Actions from art/Characters/Human_Male: ...` followed by the reminder to
+   review and approve the clips again. A new library starts from an
+   `asset.json` with `kind` `animations`, `target`, `rootObjects` (the armature
+   name, such as `["Humanoid"]`), `skeleton`, `rig`, `previews`, `clips`,
+   `"approvals": {}`, and `"export": null`, and the first sync creates its
+   `.blend` file.
+2. Open the library in Blender:
+
+   ```powershell
+   & $env:BLENDER_PATH art\Animations\Human_Actions\Human_Actions.blend
+   ```
+
+   Expected result: the male body stands at the origin and the female body 2 m to
+   his right on a checkered ground. Select `Humanoid`, enter Pose Mode, create an
+   action for the new clip in the Dope Sheet's Action Editor, and key poses on its
+   bones. Both bodies follow every pose.
+3. Give the action the custom property `loop` (true or false), a manual frame
+   range from frame 0 in the Action properties, and add its name to `clips` in
+   `asset.json`. Then clear the armature's active action, reset its pose to the
+   rest pose (`Alt+G`, `Alt+R` on every bone), and save.
+4. Render the review sheet, review it and the clip in Blender, then approve,
+   export, and verify:
+
+   ```powershell
+   .\tools\Render-ArtPreview.ps1 -Asset art/Animations/Human_Actions
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Animations/Human_Actions -Stage animation
+   .\tools\Export-ArtAsset.ps1 -Asset art/Animations/Human_Actions
+   .\tools\Verify-ArtAssets.ps1
+   ```
+
+   Expected result: `Review sheet for Human_Actions:
+   artifacts\art-previews\Human_Actions.png` with two rows of eight frames per
+   clip, `Approved the 'animation' stage of Human_Actions (clips=Death).`,
+   `Exported Human_Actions to
+   src/Client/Assets/Art/Models/Animations/Human_Actions.fbx (clips=Death).`,
+   and `Verified 4 art asset(s).` Unity imports the clips as Humanoid motion when
+   it gets focus. A library whose armature is not the current rig stops the
+   approval and the export with `The armature "Humanoid" is not the current rig
+   "Male" ...`; sync it first. Commit the `.blend` file, `asset.json`, the FBX,
+   and its `.meta` file together.
+
+When the characters are exported again, for example after a rebuild, export the
+library again too. `Verify-ArtAssets.ps1` otherwise stops with `was exported
+against another export of its rig`. If the rebuild changed the rig, the sync
+changes the library, and it needs a new review and approval first.
+
 ### Manual Test Of The Human Base Characters
 
 No manual Unity Editor steps are required: the models, textures, materials,
@@ -2916,6 +2976,25 @@ controller, and prefabs are committed.
    teeth, and tongue keep their colors. Turn it off again. Expected result: every
    body shows its own skin. The setting is off in a new installation and is kept
    between sessions.
+9. Open the review sheet of the handmade clips, or the library in Blender:
+
+   ```powershell
+   .\tools\Render-ArtPreview.ps1 -Asset art/Animations/Human_Actions
+   ```
+
+   Expected result: two rows of frames show `Death` on both bodies: a hit, the
+   knees buckle, the body tips over to its right and backward, and it lies on its
+   back with the arms out.
+10. Back on `local-shard-1`, walk to the Feral Wolves around `(-105, 0, -105)`
+    without a weapon and let them kill your character. Expected result: when the
+    death overlay appears, your body falls into `Death` and lies on its back
+    until the countdown ends; then it stands in `Idle` at the World spawn.
+11. With a second client on the same shard, as in
+    [Manual Two-Client Corpse Loop](#manual-two-client-corpse-loop), watch the
+    other character die. Expected result: its body falls the same way and lies
+    until it respawns. Join with the second client while the first character is
+    dead. Expected result: the dead body already lies in the end pose and does
+    not fall again.
 
 ## One-Time Unity World Scene Authoring
 

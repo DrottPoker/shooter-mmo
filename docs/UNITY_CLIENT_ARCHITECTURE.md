@@ -1202,8 +1202,8 @@ they were.
 
 The body's Animator uses its Humanoid avatar,
 `Assets/Art/Animation/HumanLocomotion.controller`, no root motion, and
-`Cull Update Transforms`, so a body off screen skips its pose. The controller has
-two states: `Idle`, and `Locomotion`, a 1D blend tree on `Speed` with `Walk` at
+`Cull Update Transforms`, so a body off screen skips its pose. The controller
+moves between two states: `Idle`, and `Locomotion`, a 1D blend tree on `Speed` with `Walk` at
 1.4 m/s and `Jog` at 5.0 m/s, the speeds the clips were authored for, played at
 the rate `LocomotionRate`. The bool `Moving` switches between them with short
 fixed crossfades. `CharacterLocomotionAnimator` drives these parameters from how
@@ -1218,6 +1218,26 @@ its rate; between walk and jog the rate makes the blended stride match the
 speed, from the lengths of both cycles; and above the jog speed the jog plays
 faster. `PlayerBodyAssetTests` checks that the two speeds match
 `tools/blender/human_base/animate.py`.
+
+The controller's third state, `Death`, plays the handmade `Death` clip of
+`Assets/Art/Models/Animations/Human_Actions.fbx`, the
+[animation library](ART_PIPELINE.md#animation-libraries) of the human bodies.
+An Any State transition crossfades into it in 0.15 s while the bool `Dead` is
+true, from any state, and it holds its last frame, the body lying on its back.
+`CombatDeathPresentation` in `Mmorpg.Client.Combat`, which the bootstrap creates
+in every World scene, tells every player body in view each frame whether its
+character is dead: the local player from `OwnerCombatState` and every other
+player from its `CombatantState`. A player without combat state, such as a
+development bot, is never shown dead. `CharacterLocomotionAnimator.ShowLifeState`
+turns the life state into the Animator: a body whose character dies in view
+falls, a body that first shows its character already dead, such as a player who
+died before coming into view or a client that joins while dead, lies in the end
+pose at once, and a body whose character lives again stands in `Idle` at once,
+because the respawn teleports it to the World spawn. While dead, an Animator that
+starts over, after `Rebind` or when it is enabled again, goes back to the end
+pose. `HumanLocomotionTests` covers these decisions, `PlayerBodyAssetTests` the
+state and its transitions, and `PlayerBodyLifePlayModeTests` the real body in
+Play Mode.
 
 A body is made of skinned parts, one per equipment zone plus the eyes, teeth,
 and tongue, so equipment can hide a zone later. Drawn as parts, a crowd paid
@@ -1681,6 +1701,10 @@ it takes a raycast, so it never blocks a world click. It shows:
   overlay is a nested canvas that overrides the sorting order with
   `DeathOverlaySortingOrder`, 150, so an open inventory or corpse view never
   hides it.
+
+`CombatDeathPresentation` is not temporary: it plays the handmade `Death` clip
+on the body of every player who dies in view, as described in
+[Player Bodies](#player-bodies).
 
 `CombatProjectilePresentation` in `Mmorpg.Client.Combat` draws a simple arrow,
 a collider-free stretched cube, from the attacker to the target of every
