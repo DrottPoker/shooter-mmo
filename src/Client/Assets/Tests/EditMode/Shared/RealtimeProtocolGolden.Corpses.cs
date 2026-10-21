@@ -207,6 +207,9 @@ namespace Mmorpg.SharedTests
                 "Corpses/CorpsePresenceSnapshotChunk/NaN position",
                 PresenceWire(corpses: new[] { PresenceEntryWire(positionXBits: QuietNaNBits) }));
             r.Rejects(
+                "Corpses/CorpsePresenceSnapshotChunk/NaN yaw",
+                PresenceWire(corpses: new[] { PresenceEntryWire(yawBits: QuietNaNBits) }));
+            r.Rejects(
                 "Corpses/CorpsePresenceSnapshotChunk/whitespace source name",
                 PresenceWire(corpses: new[] { PresenceEntryWire(sourceDisplayName: " ") }));
             r.Rejects(
@@ -597,6 +600,7 @@ namespace Mmorpg.SharedTests
                 positionX: 5.5f,
                 positionY: 0f,
                 positionZ: -7.25f,
+                yawDegrees: 123.5f,
                 expiresAtUnixMilliseconds: expiresAt,
                 isEmpty: isEmpty,
                 sourceDisplayName: sourceDisplayName,
@@ -709,6 +713,7 @@ namespace Mmorpg.SharedTests
         private static Wire PresenceEntryWire(
             Guid? corpseId = null,
             uint? positionXBits = null,
+            uint? yawBits = null,
             long expiresAt = CorpseExpiresAt,
             byte isEmpty = 0,
             WireText sourceDisplayName = null,
@@ -719,6 +724,7 @@ namespace Mmorpg.SharedTests
                 .F32Or(5.5f, positionXBits)
                 .F32(0f)
                 .F32(-7.25f)
+                .F32Or(123.5f, yawBits)
                 .I64(expiresAt)
                 .U8(isEmpty)
                 .Text(sourceDisplayName ?? "Grön Ödla")

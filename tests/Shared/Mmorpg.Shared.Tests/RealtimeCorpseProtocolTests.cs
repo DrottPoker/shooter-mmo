@@ -184,6 +184,7 @@ public sealed class RealtimeCorpseProtocolTests
                     index,
                     1,
                     -index,
+                    index * 30,
                     DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds(),
                     index == 2,
                     "Corpse " + index,

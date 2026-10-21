@@ -93,6 +93,29 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(life.IsDead, Is.False);
         }
 
+        [UnityTest]
+        public IEnumerator APlayerCorpseIsTheBodyLyingInTheLastPoseOfDeath()
+        {
+            Assert.That(PlayerCorpseBodies.IsPlayerCorpse(PlayerCorpseBodies.PresentationKey), Is.True);
+            Assert.That(PlayerCorpseBodies.IsPlayerCorpse("mob.feral_wolf"), Is.False);
+            var prefab = Spawn().GetComponent<PlayerBodyAppearance>();
+            yield return null;
+            using (var meshes = new PlayerBodyMeshes())
+            using (var corpses = new PlayerCorpseBodies())
+            {
+                Assert.That(corpses.TryGet(prefab, meshes, out var mesh, out var materials), Is.True);
+                Assert.That(corpses.TryGet(prefab, meshes, out var again, out _), Is.True);
+                Assert.That(again, Is.SameAs(mesh), "every player corpse shares one baked body");
+                Assert.That(materials, Is.Not.Empty);
+
+                // Lying on the ground: low and long, not standing.
+                var bounds = mesh.bounds;
+                Assert.That(bounds.max.y, Is.LessThan(0.6f));
+                Assert.That(bounds.min.y, Is.GreaterThan(-0.1f));
+                Assert.That(Mathf.Max(bounds.size.x, bounds.size.z), Is.GreaterThan(1.3f));
+            }
+        }
+
         private CharacterLocomotionAnimator Spawn()
         {
 #if UNITY_EDITOR

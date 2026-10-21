@@ -32,6 +32,9 @@ public sealed record LiveMobCorpseState(
     IReadOnlyList<LiveMobCorpseLootEntry> Loot) : ICorpseRuntimePresence
 {
     public bool IsEmpty => Loot.Count == 0;
+
+    // Mob corpses have no model that faces anywhere yet.
+    public float YawDegrees => 0f;
 }
 
 public sealed class LiveMobCorpseStore(TimeProvider timeProvider)

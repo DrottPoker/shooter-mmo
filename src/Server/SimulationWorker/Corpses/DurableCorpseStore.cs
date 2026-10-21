@@ -9,6 +9,9 @@ public interface ICorpseRuntimePresence
     double PositionX { get; }
     double PositionY { get; }
     double PositionZ { get; }
+    // The facing of whoever left the corpse around the vertical axis, so the remains lie as the
+    // body fell.
+    float YawDegrees { get; }
     string PresentationKey { get; }
     long Revision { get; }
     DateTime CreatedAt { get; }
@@ -33,7 +36,21 @@ public sealed record DurableCorpseState(
     DateTime CreatedAt,
     DateTime ExpiresAt,
     bool IsEmpty,
-    IReadOnlyList<CorpseSectionState> Sections) : ICorpseRuntimePresence;
+    IReadOnlyList<CorpseSectionState> Sections) : ICorpseRuntimePresence
+{
+    public float YawDegrees => CorpseFacing.YawDegrees(RotationX, RotationY, RotationZ, RotationW);
+}
+
+public static class CorpseFacing
+{
+    // The turn around the vertical axis (Y) of a rotation, in degrees from -180 to 180. A player
+    // corpse stores the facing of its character as a turn around Y only.
+    public static float YawDegrees(double x, double y, double z, double w)
+    {
+        var radians = Math.Atan2(2d * ((w * y) + (x * z)), 1d - (2d * ((x * x) + (y * y))));
+        return (float)(radians * 180d / Math.PI);
+    }
+}
 
 public sealed record CorpseSectionState(
     string SectionKind,

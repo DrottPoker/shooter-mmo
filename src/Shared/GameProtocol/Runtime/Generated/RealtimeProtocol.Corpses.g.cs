@@ -43,6 +43,7 @@ namespace Mmorpg.GameProtocol
             float positionX,
             float positionY,
             float positionZ,
+            float yawDegrees,
             long expiresAtUnixMilliseconds,
             bool isEmpty,
             string sourceDisplayName,
@@ -52,6 +53,7 @@ namespace Mmorpg.GameProtocol
             PositionX = positionX;
             PositionY = positionY;
             PositionZ = positionZ;
+            YawDegrees = yawDegrees;
             ExpiresAtUnixMilliseconds = expiresAtUnixMilliseconds;
             IsEmpty = isEmpty;
             SourceDisplayName = sourceDisplayName;
@@ -77,6 +79,11 @@ namespace Mmorpg.GameProtocol
         /// The position on the z axis.
         /// </summary>
         public float PositionZ { get; }
+
+        /// <summary>
+        /// The facing of whoever left the corpse around the vertical axis in degrees, so the remains lie as the body fell.
+        /// </summary>
+        public float YawDegrees { get; }
 
         /// <summary>
         /// When the corpse decays.
@@ -2112,6 +2119,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteSingle(value.PositionX);
             writer.WriteSingle(value.PositionY);
             writer.WriteSingle(value.PositionZ);
+            writer.WriteSingle(value.YawDegrees);
             writer.WriteInt64(value.ExpiresAtUnixMilliseconds);
             writer.WriteBoolean(value.IsEmpty);
             writer.WriteString(value.SourceDisplayName);
@@ -2120,7 +2128,7 @@ namespace Mmorpg.GameProtocol
 
         private static int SizeOfCorpsePresence(RealtimeCorpsePresence value)
         {
-            var size = 37;
+            var size = 41;
             size += StringSize(value.SourceDisplayName);
             size += StringSize(value.PresentationKey);
             return size;
@@ -2149,6 +2157,11 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
+            if (!reader.TryReadSingle(out var yawDegrees, out error))
+            {
+                return false;
+            }
+
             if (!reader.TryReadInt64(out var expiresAtUnixMilliseconds, out error))
             {
                 return false;
@@ -2169,7 +2182,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, expiresAtUnixMilliseconds, isEmpty, sourceDisplayName, presentationKey);
+            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, yawDegrees, expiresAtUnixMilliseconds, isEmpty, sourceDisplayName, presentationKey);
             return true;
         }
 
@@ -2180,6 +2193,7 @@ namespace Mmorpg.GameProtocol
                 || !IsFinite(value.PositionX)
                 || !IsFinite(value.PositionY)
                 || !IsFinite(value.PositionZ)
+                || !IsFinite(value.YawDegrees)
                 || value.ExpiresAtUnixMilliseconds < 1
                 || string.IsNullOrWhiteSpace(value.SourceDisplayName)
                 || value.SourceDisplayName.Length > MaximumCorpseSourceNameLength
