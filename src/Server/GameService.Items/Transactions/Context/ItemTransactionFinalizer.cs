@@ -192,7 +192,9 @@ internal sealed class ItemTransactionFinalizer(
     }
 
     // The final state of every changed item, so the simulation client can patch its
-    // inventory. A transaction above the limit reports none, and the client refreshes.
+    // inventory, and of every item inside a changed Bag that sits in the Bag slot, whose
+    // contents the client only sees once the Bag is equipped. A transaction above the limit
+    // reports none, and the client refreshes.
     private async Task<IReadOnlyList<ItemTransactionItemChange>?> LoadItemChangesAsync(
         CancellationToken cancellationToken)
     {
@@ -201,41 +203,76 @@ internal sealed class ItemTransactionFinalizer(
             return null;
         }
 
-        var itemIds = journal.ChangedItemIds.Order().ToArray();
-        if (itemIds.Length == 0)
+        var changedIds = journal.ChangedItemIds.Order().ToArray();
+        if (changedIds.Length == 0)
         {
             return [];
         }
 
         using var grid = await Connection.QueryMultipleAsync(new CommandDefinition(
             """
+            with reported as (
+                select id
+                from item_instances
+                where id = any(@ItemIds)
+                union
+                select contents.id
+                from item_instances bag
+                join item_containers container
+                  on container.bound_bag_item_instance_id = bag.id
+                 and container.container_type = 'bag_contents'
+                join item_instances contents on contents.container_id = container.id
+                where bag.id = any(@ItemIds)
+                  and bag.equipment_slot_id = @BagSlot
+            )
             select
-                id as "ItemInstanceId",
-                definition_id as "DefinitionId",
-                quantity as "Quantity",
-                revision as "Revision",
-                container_id as "ContainerId",
-                container_slot_index as "ContainerSlotIndex",
-                equipped_character_id as "EquippedCharacterId",
-                equipment_slot_id as "EquipmentSlotId"
-            from item_instances
-            where id = any(@ItemIds);
+                item.id as "ItemInstanceId",
+                item.definition_id as "DefinitionId",
+                item.quantity as "Quantity",
+                item.revision as "Revision",
+                item.container_id as "ContainerId",
+                item.container_slot_index as "ContainerSlotIndex",
+                item.equipped_character_id as "EquippedCharacterId",
+                item.equipment_slot_id as "EquipmentSlotId",
+                contents.id as "BagContentsContainerId",
+                contents.revision as "BagContentsRevision"
+            from item_instances item
+            join reported on reported.id = item.id
+            left join item_containers contents
+              on contents.bound_bag_item_instance_id = item.id
+             and contents.container_type = 'bag_contents'
+             and item.equipment_slot_id = @BagSlot;
 
             select
-                item_instance_id as "ItemInstanceId",
-                policy_kind as "PolicyKind",
-                status as "Status",
-                source_kind as "SourceKind"
-            from item_instance_policies
-            where item_instance_id = any(@ItemIds)
-              and status = 'active'
-            order by item_instance_id, policy_kind;
+                policy.item_instance_id as "ItemInstanceId",
+                policy.policy_kind as "PolicyKind",
+                policy.status as "Status",
+                policy.source_kind as "SourceKind"
+            from item_instance_policies policy
+            join item_instances item on item.id = policy.item_instance_id
+            where policy.status = 'active'
+              and (item.id = any(@ItemIds)
+                or item.container_id in (
+                    select container.id
+                    from item_instances bag
+                    join item_containers container
+                      on container.bound_bag_item_instance_id = bag.id
+                     and container.container_type = 'bag_contents'
+                    where bag.id = any(@ItemIds)
+                      and bag.equipment_slot_id = @BagSlot))
+            order by policy.item_instance_id, policy.policy_kind;
             """,
-            new { ItemIds = itemIds },
+            new { ItemIds = changedIds, BagSlot = ItemEquipmentSlotIds.Bag },
             Transaction,
             cancellationToken: cancellationToken));
         var items = (await grid.ReadAsync<ChangedItemRow>()).ToDictionary(row => row.ItemInstanceId);
         var policies = (await grid.ReadAsync<ChangedItemPolicyRow>()).ToLookup(row => row.ItemInstanceId);
+        var itemIds = changedIds.Union(items.Keys).Order().ToArray();
+        if (itemIds.Length > MaximumReportedItemChanges)
+        {
+            return null;
+        }
+
         return itemIds
             .Select(itemId => items.TryGetValue(itemId, out var item)
                 ? new ItemTransactionItemChange(
@@ -253,11 +290,12 @@ internal sealed class ItemTransactionFinalizer(
                             policy.PolicyKind,
                             policy.Status,
                             ItemPolicySourceKinds.ToProtectionSource(policy.SourceKind)))
-                        .ToArray())
+                        .ToArray(),
+                    item.BagContentsContainerId,
+                    item.BagContentsRevision)
                 : new ItemTransactionItemChange(itemId, true, null, 0, 0, null, null, null, null, []))
             .ToArray();
     }
-
     private sealed class CharacterCarryResult
     {
         public long Revision { get; set; }
@@ -286,6 +324,10 @@ internal sealed class ItemTransactionFinalizer(
         public Guid? EquippedCharacterId { get; set; }
 
         public string? EquipmentSlotId { get; set; }
+
+        public Guid? BagContentsContainerId { get; set; }
+
+        public long? BagContentsRevision { get; set; }
     }
 
     private sealed class ChangedItemPolicyRow

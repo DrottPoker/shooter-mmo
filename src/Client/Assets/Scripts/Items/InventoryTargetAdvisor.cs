@@ -578,9 +578,10 @@ namespace Mmorpg.Client.Items
                 return true;
             }
 
-            if (!ItemContainerTypeIds.IsCarried(destination.ContainerType))
+            // GameService delivers a claim into Permanent Inventory or the Bank only.
+            if (!string.Equals(destination.ContainerType, ItemContainerTypeIds.PermanentInventory, StringComparison.Ordinal))
             {
-                reason = "This container is not a supported Recovery destination.";
+                reason = "Claim a Recovery delivery into Permanent Inventory or the Bank.";
                 return false;
             }
 
@@ -666,6 +667,32 @@ namespace Mmorpg.Client.Items
             }
 
             return true;
+        }
+
+        // Whether an empty slot accepts an item of the definition without contents, as the slot
+        // rules of GameService decide when it picks a slot itself.
+        public static bool SlotAccepts(ItemDefinition definition, InventoryContainer container, InventorySlot slot)
+        {
+            if (definition == null || container == null || slot == null)
+            {
+                return false;
+            }
+
+            if (definition.Bag != null)
+            {
+                return BagDestinationRules.TryResolve(container.ContainerType, slot.SlotKind, out var bagDestination)
+                    && BagLocationRules.CanPlace(false, bagDestination, false);
+            }
+
+            var slotDefinition = new BagSlotDefinition
+            {
+                Index = slot.SlotIndex,
+                Kind = slot.SlotKind,
+                AcceptedTags = slot.AcceptedTags.ToArray()
+            };
+            return ItemSlotRules.Accepts(definition, slotDefinition)
+                && (!string.Equals(container.ContainerType, ItemContainerTypeIds.SecureContainer, StringComparison.Ordinal)
+                    || SecureContainerRules.IsEligible(definition));
         }
 
         private static bool CanPlaceBag(

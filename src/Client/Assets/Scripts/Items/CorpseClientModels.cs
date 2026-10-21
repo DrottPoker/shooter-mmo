@@ -100,6 +100,45 @@ namespace Mmorpg.Client.Items
             BagContentsRevision = source.BagContentsRevision;
         }
 
+        // An item a prediction shows in a corpse slot.
+        public CorpseLootItem(
+            Guid itemInstanceId,
+            string definitionId,
+            int quantity,
+            long revision,
+            Guid bagContentsContainerId,
+            long bagContentsRevision)
+        {
+            ItemInstanceId = itemInstanceId;
+            DefinitionId = definitionId ?? string.Empty;
+            Quantity = quantity;
+            Revision = revision;
+            BagContentsContainerId = bagContentsContainerId;
+            BagContentsRevision = bagContentsRevision;
+        }
+
+        public CorpseLootItem WithQuantity(int quantity)
+        {
+            return new CorpseLootItem(
+                ItemInstanceId,
+                DefinitionId,
+                quantity,
+                Revision,
+                BagContentsContainerId,
+                BagContentsRevision);
+        }
+
+        public static CorpseLootItem FromInventoryItem(InventoryItem item, Guid bagContentsContainerId = default, long bagContentsRevision = 0)
+        {
+            return new CorpseLootItem(
+                item.ItemInstanceId,
+                item.DefinitionId,
+                item.Quantity,
+                item.Revision,
+                bagContentsContainerId,
+                bagContentsRevision);
+        }
+
         public Guid ItemInstanceId { get; }
 
         public string DefinitionId { get; }
@@ -322,6 +361,9 @@ namespace Mmorpg.Client.Items
 
         // True when the worker closed the view while the pending operation was in flight.
         private bool pendingOutlivedView;
+        private IReadOnlyList<CorpseViewEdit> predictedEdits = Array.Empty<CorpseViewEdit>();
+        private CorpseLootView shownView;
+        private CorpseLootView shownViewSource;
 
         public event Action Changed;
 
@@ -351,6 +393,41 @@ namespace Mmorpg.Client.Items
                     && ActiveView != null
                     && PendingOperationId == Guid.Empty;
             }
+        }
+
+        // The view as the player sees it: the confirmed view with the corpse side of every
+        // pending predicted operation applied.
+        public CorpseLootView ShownView
+        {
+            get
+            {
+                if (ActiveView == null || predictedEdits.Count == 0)
+                {
+                    return ActiveView;
+                }
+
+                if (!ReferenceEquals(shownViewSource, ActiveView))
+                {
+                    shownView = CorpseViewEdit.Apply(ActiveView, predictedEdits);
+                    shownViewSource = ActiveView;
+                }
+
+                return shownView;
+            }
+        }
+
+        // Whether the player may make a corpse operation that the client shows at once; the
+        // inventory queue decides when it is sent.
+        public bool CanShowOperations
+        {
+            get { return Status != CorpseClientStatus.Unavailable && ActiveView != null; }
+        }
+
+        public void SetPredictedEdits(IReadOnlyList<CorpseViewEdit> edits)
+        {
+            predictedEdits = edits ?? Array.Empty<CorpseViewEdit>();
+            shownViewSource = null;
+            Changed?.Invoke();
         }
 
         // Starts an operation the player asked for. It replaces the last outcome, so Error

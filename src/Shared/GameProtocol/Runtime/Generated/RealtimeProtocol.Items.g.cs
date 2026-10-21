@@ -187,7 +187,9 @@ namespace Mmorpg.GameProtocol
             Guid containerId,
             int slotIndex,
             string equipmentSlotId,
-            RealtimeItemPolicySummary[] policies)
+            RealtimeItemPolicySummary[] policies,
+            Guid bagContentsContainerId,
+            long bagContentsRevision)
         {
             ItemInstanceId = itemInstanceId;
             Location = location;
@@ -198,6 +200,8 @@ namespace Mmorpg.GameProtocol
             SlotIndex = slotIndex;
             EquipmentSlotId = equipmentSlotId ?? string.Empty;
             Policies = policies ?? Array.Empty<RealtimeItemPolicySummary>();
+            BagContentsContainerId = bagContentsContainerId;
+            BagContentsRevision = bagContentsRevision;
         }
 
         /// <summary>
@@ -244,6 +248,16 @@ namespace Mmorpg.GameProtocol
         /// The active policies of the item; empty for a removed item.
         /// </summary>
         public RealtimeItemPolicySummary[] Policies { get; }
+
+        /// <summary>
+        /// The contents container of a Bag in the Bag equipment slot, or empty.
+        /// </summary>
+        public Guid BagContentsContainerId { get; }
+
+        /// <summary>
+        /// The revision of that contents container, or 0 without one.
+        /// </summary>
+        public long BagContentsRevision { get; }
     }
 
     /// <summary>
@@ -688,7 +702,8 @@ namespace Mmorpg.GameProtocol
             RealtimeCarryState carryState,
             long currency,
             RealtimeContainerRevision[] containerRevisions,
-            RealtimeItemStateChange[] items)
+            RealtimeItemStateChange[] items,
+            Guid[] claimedRecoveryDeliveryIds)
         {
             OperationId = operationId;
             PreviousItemStateRevision = previousItemStateRevision;
@@ -696,6 +711,7 @@ namespace Mmorpg.GameProtocol
             Currency = currency;
             ContainerRevisions = containerRevisions ?? Array.Empty<RealtimeContainerRevision>();
             Items = items ?? Array.Empty<RealtimeItemStateChange>();
+            ClaimedRecoveryDeliveryIds = claimedRecoveryDeliveryIds ?? Array.Empty<Guid>();
         }
 
         /// <summary>
@@ -724,9 +740,14 @@ namespace Mmorpg.GameProtocol
         public RealtimeContainerRevision[] ContainerRevisions { get; }
 
         /// <summary>
-        /// The state after the change of every item the transaction changed.
+        /// The state after the change of every item the transaction changed, and every item inside a Bag that the transaction equipped.
         /// </summary>
         public RealtimeItemStateChange[] Items { get; }
+
+        /// <summary>
+        /// The Recovery deliveries the transaction claimed, which leave Recovery Storage.
+        /// </summary>
+        public Guid[] ClaimedRecoveryDeliveryIds { get; }
     }
 
     // Encoding, decoding, and validation of the Items family.
@@ -1673,6 +1694,11 @@ namespace Mmorpg.GameProtocol
             {
                 WriteItemStateChange(ref writer, item);
             }
+            writer.WriteByte((byte)value.ClaimedRecoveryDeliveryIds.Length);
+            foreach (var item in value.ClaimedRecoveryDeliveryIds)
+            {
+                writer.WriteGuid(item);
+            }
         }
 
         private static int SizeOfOwnerItemStateChanged(RealtimeOwnerItemStateChanged value)
@@ -1685,6 +1711,7 @@ namespace Mmorpg.GameProtocol
                 size += SizeOfItemStateChange(item);
             }
 
+            size += 1 + (value.ClaimedRecoveryDeliveryIds.Length * 16);
             return size;
         }
 
@@ -1755,7 +1782,29 @@ namespace Mmorpg.GameProtocol
                 items[index] = element;
             }
 
-            value = new RealtimeOwnerItemStateChanged(operationId, previousItemStateRevision, carryState, currency, containerRevisions, items);
+            if (!reader.TryReadByte(out var claimedRecoveryDeliveryIdsCount, out error))
+            {
+                return false;
+            }
+
+            if (claimedRecoveryDeliveryIdsCount > MaximumItemResultRecoveryDeliveries)
+            {
+                error = "Owner item state changed claimed recovery delivery ids count is invalid.";
+                return false;
+            }
+
+            var claimedRecoveryDeliveryIds = new Guid[claimedRecoveryDeliveryIdsCount];
+            for (var index = 0; index < claimedRecoveryDeliveryIds.Length; index++)
+            {
+                if (!reader.TryReadGuid(out var element, out error))
+                {
+                    return false;
+                }
+
+                claimedRecoveryDeliveryIds[index] = element;
+            }
+
+            value = new RealtimeOwnerItemStateChanged(operationId, previousItemStateRevision, carryState, currency, containerRevisions, items, claimedRecoveryDeliveryIds);
             return true;
         }
 
@@ -1768,7 +1817,9 @@ namespace Mmorpg.GameProtocol
                 || value.ContainerRevisions == null
                 || value.ContainerRevisions.Length > MaximumItemResultContainerRevisions
                 || value.Items == null
-                || value.Items.Length > MaximumItemStateChanges)
+                || value.Items.Length > MaximumItemStateChanges
+                || value.ClaimedRecoveryDeliveryIds == null
+                || value.ClaimedRecoveryDeliveryIds.Length > MaximumItemResultRecoveryDeliveries)
             {
                 return false;
             }
@@ -1805,6 +1856,25 @@ namespace Mmorpg.GameProtocol
                 for (var second = first + 1; second < value.Items.Length; second++)
                 {
                     if (value.Items[first].ItemInstanceId == value.Items[second].ItemInstanceId)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            foreach (var item in value.ClaimedRecoveryDeliveryIds)
+            {
+                if (item == Guid.Empty)
+                {
+                    return false;
+                }
+            }
+
+            for (var first = 0; first < value.ClaimedRecoveryDeliveryIds.Length; first++)
+            {
+                for (var second = first + 1; second < value.ClaimedRecoveryDeliveryIds.Length; second++)
+                {
+                    if (value.ClaimedRecoveryDeliveryIds[first] == value.ClaimedRecoveryDeliveryIds[second])
                     {
                         return false;
                     }
@@ -2040,11 +2110,13 @@ namespace Mmorpg.GameProtocol
             {
                 WriteItemPolicySummary(ref writer, item);
             }
+            writer.WriteGuid(value.BagContentsContainerId);
+            writer.WriteInt64(value.BagContentsRevision);
         }
 
         private static int SizeOfItemStateChange(RealtimeItemStateChange value)
         {
-            var size = 51;
+            var size = 75;
             if (!string.IsNullOrWhiteSpace(value.DefinitionId))
             {
                 size += StringSize(value.DefinitionId);
@@ -2149,7 +2221,17 @@ namespace Mmorpg.GameProtocol
                 policies[index] = element;
             }
 
-            value = new RealtimeItemStateChange(itemInstanceId, location, definitionId, quantity, revision, containerId, slotIndex, equipmentSlotId, policies);
+            if (!reader.TryReadGuid(out var bagContentsContainerId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt64(out var bagContentsRevision, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeItemStateChange(itemInstanceId, location, definitionId, quantity, revision, containerId, slotIndex, equipmentSlotId, policies, bagContentsContainerId, bagContentsRevision);
             return true;
         }
 
@@ -2166,7 +2248,8 @@ namespace Mmorpg.GameProtocol
                 || value.EquipmentSlotId == null
                 || value.EquipmentSlotId.Length > MaximumEquipmentSlotIdLength
                 || value.Policies == null
-                || value.Policies.Length > MaximumItemPolicies)
+                || value.Policies.Length > MaximumItemPolicies
+                || value.BagContentsRevision < 0)
             {
                 return false;
             }
