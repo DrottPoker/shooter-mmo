@@ -165,10 +165,10 @@ namespace Mmorpg.SharedTests
             ["Corpses/CorpsePresenceSnapshotChunk/one corpse"] =
                 "d4 c3 b2 a1 00 00 01 00 01 a0 a1 a2 a3 a4 a5 a6 " +
                 "a7 a8 a9 aa ab ac ad ae af 00 00 b0 40 00 00 00 " +
-                "00 00 00 e8 c0 00 c0 2c c8 99 01 00 00 00 0b 00 " +
-                "47 72 c3 b6 6e 20 c3 96 64 6c 61 0d 00 63 6f 72 " +
-                "70 73 65 2e 70 6c 61 79 65 72",
-            ["Corpses/CorpsePresenceSnapshotChunk/six corpses"] = "sha256:399:a4fc904cfcf6b51eb40688be93479dd98b3d89bf1fc4db0f614edf7fde3602ce",
+                "00 00 00 e8 c0 00 00 f7 42 00 c0 2c c8 99 01 00 " +
+                "00 00 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c 61 0d " +
+                "00 63 6f 72 70 73 65 2e 70 6c 61 79 65 72",
+            ["Corpses/CorpsePresenceSnapshotChunk/six corpses"] = "sha256:423:b25546275206767ea588cd1a7124363ad93f6eefe3c56fc55a181f8b492bc63f",
             ["Corpses/CorpseViewClosed/typical"] =
                 "a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae af " +
                 "0e 00 63 6f 72 70 73 65 5f 65 78 70 69 72 65 64 " +

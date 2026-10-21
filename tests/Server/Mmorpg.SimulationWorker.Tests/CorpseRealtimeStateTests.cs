@@ -202,6 +202,42 @@ public sealed class CorpseRealtimeStateTests
                 <= RealtimeProtocol.MaximumPacketSize));
     }
 
+    [Theory]
+    [InlineData(0d)]
+    [InlineData(90d)]
+    [InlineData(-135d)]
+    [InlineData(179d)]
+    public void PresenceCarriesTheFacingOfAPlayerCorpse(double yawDegrees)
+    {
+        // A player corpse stores the facing of its character as a turn around Y, as the death
+        // request builds it.
+        var halfYaw = yawDegrees * Math.PI / 360d;
+        var now = DateTime.UtcNow;
+        var corpse = new DurableCorpseState(
+            Guid.NewGuid(),
+            null,
+            "Fallen Hero",
+            "local-shard-1",
+            1,
+            0,
+            2,
+            0,
+            Math.Sin(halfYaw),
+            0,
+            Math.Cos(halfYaw),
+            "corpse.remains",
+            1,
+            now,
+            now.AddMinutes(5),
+            false,
+            Array.Empty<CorpseSectionState>());
+
+        var presence = CorpseRealtimePacketBuilder.BuildPresence(1, [corpse]).Single().Corpses.Single();
+
+        Assert.Equal(yawDegrees, presence.YawDegrees, 3);
+        Assert.Equal(0f, CorpseFacing.YawDegrees(0, 0, 0, 1));
+    }
+
     [Fact]
     public void ViewBuilderDynamicallyPacksUnicodeStateInsideMtu()
     {

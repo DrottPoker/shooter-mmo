@@ -60,6 +60,7 @@ namespace Mmorpg.Client.Items
             PositionX = source.PositionX;
             PositionY = source.PositionY;
             PositionZ = source.PositionZ;
+            YawDegrees = source.YawDegrees;
             ExpiresAtUnixMilliseconds = source.ExpiresAtUnixMilliseconds;
             IsEmpty = source.IsEmpty;
             SourceDisplayName = source.SourceDisplayName ?? string.Empty;
@@ -73,6 +74,9 @@ namespace Mmorpg.Client.Items
         public float PositionY { get; }
 
         public float PositionZ { get; }
+
+        // The facing of whoever left the corpse, so the remains lie as the body fell.
+        public float YawDegrees { get; }
 
         public long ExpiresAtUnixMilliseconds { get; }
 

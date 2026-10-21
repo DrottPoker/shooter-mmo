@@ -195,7 +195,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             || command.SourceDisplayName.Length > 128
             || !string.Equals(
                 command.PresentationKey,
-                CorpseTransformRules.PlayerCorpsePresentationKey,
+                CorpseTransformRules.MobCorpsePresentationKey,
                 StringComparison.Ordinal)
             || !double.IsFinite(command.LifetimeSeconds)
             || command.LifetimeSeconds

@@ -775,7 +775,7 @@ public sealed class ItemTransactionTraceGoldenTests
                     0d,
                     0d,
                     1d,
-                    CorpsePresentationKey,
+                    MobCorpsePresentationKey,
                     300d,
                     30,
                     [

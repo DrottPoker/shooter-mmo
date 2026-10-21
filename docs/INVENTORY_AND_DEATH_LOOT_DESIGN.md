@@ -748,8 +748,11 @@ section even though the real Bag has moved to Recovery Storage.
 - Multiple players may inspect and loot the same corpse concurrently.
 - Each player may have only one active loot interaction at a time.
 - When the assigned SimulationWorker restarts, it restores every unexpired
-  player corpse. It presents a restored corpse with the generic `corpse.remains` key at
-  the recorded location while preserving the same durable corpse id and custody.
+  player corpse. It presents a restored corpse with the player corpse key
+  `corpse.remains`, which the client shows as the body lying in the last pose of
+  Death, at the recorded location and facing while preserving the same durable
+  corpse id and custody. A Mob corpse uses `corpse.mob` and keeps the generic
+  capsule.
 - When expiry wins the corpse lock, all remaining loot is destroyed with audit
   records and the live representation is removed.
 - An in-flight committed loot transaction wins before cleanup. A request that

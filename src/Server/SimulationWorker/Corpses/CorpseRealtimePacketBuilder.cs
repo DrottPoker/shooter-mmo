@@ -21,6 +21,7 @@ public static class CorpseRealtimePacketBuilder
                 checked((float)corpse.PositionX),
                 checked((float)corpse.PositionY),
                 checked((float)corpse.PositionZ),
+                corpse.YawDegrees,
                 ToUnixMilliseconds(corpse.ExpiresAt),
                 corpse.IsEmpty,
                 corpse.SourceDisplayName,

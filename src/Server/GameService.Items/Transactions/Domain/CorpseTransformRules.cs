@@ -3,7 +3,11 @@ namespace Mmorpg.GameService.Items.Transactions.Domain;
 // Validation of corpse presentation and transforms.
 internal static class CorpseTransformRules
 {
+    // The client lays a player corpse down as the body of the character.
     public const string PlayerCorpsePresentationKey = "corpse.remains";
+
+    // A Mob corpse keeps the generic remains until Mobs have models.
+    public const string MobCorpsePresentationKey = "corpse.mob";
 
     // A player corpse keeps its full lifetime even when empty. The ck_corpses_expiry CHECK in
     // PlayerCorpsePersistenceMigration enforces the same lifetime in the database.

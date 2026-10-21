@@ -52,6 +52,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 1f,
                 2f,
                 3f,
+                45f,
                 ExpiresAtUnixMilliseconds,
                 false,
                 name,

@@ -989,10 +989,21 @@ when the late result reports `RequiresInventoryRefresh`, and it never refreshes
 a closed view; a stale delta noticed before the closure no longer asks for a
 refresh.
 
-`CorpsePresentationController` creates one replaceable generic capsule for every
-nearby presence entry and updates it from server position and presentation key.
-It uses a shared renderer property block on the runtime primitive material and
-never creates per-frame materials.
+`CorpsePresentationController` creates one presentation for every nearby
+presence entry and updates it from server position, facing, and presentation
+key. A player corpse, presentation key `corpse.remains`, shows the body lying in
+the last pose of the handmade `Death` clip, turned by the presence's
+`YawDegrees`, so it lies where and as the body fell. `PlayerCorpseBodies` in
+`WorldSceneContext` bakes that body once, from the remote player prefab's body
+playing the end of `Death`, into a static mesh that every player corpse shares,
+so a field of corpses costs no animation or skinning; the corpse has a box
+collider around it for the pointer. While a body that shows its character dead
+lies within 1.5 m, the corpse stays hidden, so the dying body and its remains
+never show twice; it appears when the character respawns at the World spawn. The
+corpse shows the default look until looks are sent to other clients. Every
+other corpse, such as a Mob corpse with presentation key `corpse.mob`, is a
+generic capsule with a shared renderer property block on the runtime primitive
+material, which never creates per-frame materials.
 Loot in a corpse's world menu, also its left-click option, walks the player
 into range and opens it through the shared [World Menu](#world-menu).
 No authored scene or prefab object is required for the temporary presentation.

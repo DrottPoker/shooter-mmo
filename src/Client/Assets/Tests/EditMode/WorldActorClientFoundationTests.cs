@@ -340,6 +340,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     1f,
                     0f,
                     2f,
+                    90f,
                     2_000_000_000_000L,
                     false,
                     "Fallen Hero",

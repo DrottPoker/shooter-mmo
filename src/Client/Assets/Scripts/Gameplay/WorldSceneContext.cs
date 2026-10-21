@@ -21,6 +21,7 @@ namespace Mmorpg.Client.Gameplay
             new Dictionary<ulong, RemotePlayerView>();
         private readonly PlayerBodyMaterials bodyMaterials = new PlayerBodyMaterials();
         private readonly PlayerBodyMeshes bodyMeshes = new PlayerBodyMeshes();
+        private readonly PlayerCorpseBodies corpseBodies = new PlayerCorpseBodies();
         private RealtimeSimulationClient simulationClient;
         private WorldPointerFocus pointerFocus;
         private PlayerBodyTintSetting bodyTint;
@@ -37,6 +38,48 @@ namespace Mmorpg.Client.Gameplay
         public Dictionary<ulong, RemotePlayerView>.ValueCollection RemotePlayers
         {
             get { return remotePlayers.Values; }
+        }
+
+        // The lying body that player corpses show, from the body of the remote player prefab.
+        public bool TryGetCorpseBody(out Mesh mesh, out Material[] materials)
+        {
+            var body = remotePlayerPrefab != null
+                ? remotePlayerPrefab.GetComponentInChildren<PlayerBodyAppearance>(true)
+                : null;
+            return corpseBodies.TryGet(body, bodyMeshes, out mesh, out materials);
+        }
+
+        // Whether a body that shows its character dead lies near the position, such as the body
+        // of the player who left a corpse there, until the player respawns.
+        public bool IsDeadBodyNear(Vector3 position, float radius)
+        {
+            var body = localPlayer != null ? localPlayer.Body : null;
+            if (IsDeadNear(body, position, radius))
+            {
+                return true;
+            }
+
+            foreach (var remote in remotePlayers.Values)
+            {
+                if (remote != null && IsDeadNear(remote.Body, position, radius))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsDeadNear(CharacterLocomotionAnimator body, Vector3 position, float radius)
+        {
+            if (body == null || !body.IsDead || !body.isActiveAndEnabled)
+            {
+                return false;
+            }
+
+            var offset = body.transform.position - position;
+            offset.y = 0f;
+            return offset.sqrMagnitude <= radius * radius;
         }
 
         // The presentation of another player by its network entity id.
@@ -174,6 +217,7 @@ namespace Mmorpg.Client.Gameplay
 
             remotePlayers.Clear();
             bodyMaterials.Dispose();
+            corpseBodies.Dispose();
             bodyMeshes.Dispose();
 
             DestroyLocalPlayer();

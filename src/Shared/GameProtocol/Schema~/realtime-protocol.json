@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 22,
+    "version": 23,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -817,6 +817,11 @@
         { "name": "PositionX", "type": "f32", "description": "The position on the x axis." },
         { "name": "PositionY", "type": "f32", "description": "The position on the y axis." },
         { "name": "PositionZ", "type": "f32", "description": "The position on the z axis." },
+        {
+          "name": "YawDegrees",
+          "type": "f32",
+          "description": "The facing of whoever left the corpse around the vertical axis in degrees, so the remains lie as the body fell."
+        },
         {
           "name": "ExpiresAtUnixMilliseconds",
           "type": "i64",
