@@ -63,6 +63,34 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void ACombinedBodyIsBoundedAroundEveryPart()
+        {
+            var scene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                using (var meshes = new PlayerBodyMeshes())
+                {
+                    var body = InstantiateBody(scene);
+                    var parts = body.GetComponentsInChildren<SkinnedMeshRenderer>()
+                        .ToDictionary(part => part.name, part => part.bounds);
+                    var appearance = body.GetComponent<PlayerBodyAppearance>();
+                    appearance.CombineParts(meshes);
+                    var combined = appearance.CombinedRenderer.bounds;
+                    combined.Expand(0.001f);
+                    foreach (var part in parts)
+                    {
+                        Assert.That(combined.Contains(part.Value.min), Is.True, part.Key);
+                        Assert.That(combined.Contains(part.Value.max), Is.True, part.Key);
+                    }
+                }
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(scene);
+            }
+        }
+
+        [Test]
         public void BodiesWithTheSameVisiblePartsShareOneMeshWithOneSubmeshPerMaterial()
         {
             var scene = EditorSceneManager.NewPreviewScene();

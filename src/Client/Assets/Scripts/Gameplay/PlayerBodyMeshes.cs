@@ -83,7 +83,7 @@ namespace Mmorpg.Client.Gameplay
             var partTriangles = new List<int>();
             var bounds = new Bounds();
             var hasBounds = false;
-            var rootBone = parts[0].rootBone;
+            var rootBone = parts[0].rootBone != null ? parts[0].rootBone : root;
 
             foreach (var part in parts)
             {
@@ -173,18 +173,19 @@ namespace Mmorpg.Client.Gameplay
                     }
                 }
 
-                // The bounds of the parts, in the space of their common root bone.
-                if (part.rootBone == rootBone)
+                // A skinned renderer's bounds are in its root bone's space, or its own without one.
+                var partBounds = BoundsIn(
+                    part.rootBone != null ? part.rootBone : part.transform,
+                    part.localBounds,
+                    rootBone);
+                if (hasBounds)
                 {
-                    if (hasBounds)
-                    {
-                        bounds.Encapsulate(part.localBounds);
-                    }
-                    else
-                    {
-                        bounds = part.localBounds;
-                        hasBounds = true;
-                    }
+                    bounds.Encapsulate(partBounds);
+                }
+                else
+                {
+                    bounds = partBounds;
+                    hasBounds = true;
                 }
             }
 
@@ -223,8 +224,30 @@ namespace Mmorpg.Client.Gameplay
                 combinedMesh,
                 boneNames,
                 materials.ToArray(),
-                rootBone != null ? rootBone.name : null,
-                hasBounds ? bounds : combinedMesh.bounds);
+                rootBone.name,
+                bounds);
+        }
+
+        // Bounds in the space of one transform, as bounds in the space of another.
+        private static Bounds BoundsIn(Transform from, Bounds local, Transform to)
+        {
+            if (from == to)
+            {
+                return local;
+            }
+
+            var matrix = to.worldToLocalMatrix * from.localToWorldMatrix;
+            var result = new Bounds(matrix.MultiplyPoint3x4(local.center), Vector3.zero);
+            for (var corner = 0; corner < 8; corner++)
+            {
+                var offset = new Vector3(
+                    (corner & 1) == 0 ? -local.extents.x : local.extents.x,
+                    (corner & 2) == 0 ? -local.extents.y : local.extents.y,
+                    (corner & 4) == 0 ? -local.extents.z : local.extents.z);
+                result.Encapsulate(matrix.MultiplyPoint3x4(local.center + offset));
+            }
+
+            return result;
         }
 
         private static string KeyOf(IReadOnlyList<SkinnedMeshRenderer> parts)

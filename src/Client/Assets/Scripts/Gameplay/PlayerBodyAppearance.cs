@@ -62,7 +62,9 @@ namespace Mmorpg.Client.Gameplay
             combinedRenderer = rendererObject.AddComponent<SkinnedMeshRenderer>();
             combinedRenderer.sharedMesh = combined.Mesh;
             combinedRenderer.bones = combined.BoneNames.Select(boneName => transforms[boneName]).ToArray();
-            combinedRenderer.rootBone = combined.RootBoneName != null ? transforms[combined.RootBoneName] : null;
+            combinedRenderer.rootBone = transforms.TryGetValue(combined.RootBoneName, out var rootBone)
+                ? rootBone
+                : transform;
             combinedRenderer.localBounds = combined.LocalBounds;
             combinedRenderer.sharedMaterials = combined.Materials.ToArray();
             combinedRenderer.shadowCastingMode = parts[0].shadowCastingMode;
