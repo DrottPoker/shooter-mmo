@@ -31,6 +31,37 @@ foreach ($manifest in $manifests) {
     }
 }
 
+function Export-ArtPaint([string]$Blender, $Manifest, [string]$SourceSha256) {
+    # A paint layer exports one image per body and the smoothness and metallic of its paint.
+    $folder = $script:ArtPaintTextureFolder
+    $results = Invoke-ArtBlender $Blender $Manifest (
+        @("export") + (Get-ArtValidationArguments $Manifest "paint") + @(
+            "--textures", (Join-Path $script:ArtRepositoryRoot $folder)))
+    $textures = ConvertTo-ArtTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
+            ForEach-Object {
+                $texture = $_.Substring("ART_TEXTURE ".Length) | ConvertFrom-Json
+                [pscustomobject]@{
+                    name = $texture.name
+                    target = Get-ArtRelativePath $texture.path
+                    sha256 = Get-ArtFileSha256 $texture.path
+                }
+            }) $folder
+    $surface = @($results | Where-Object { $_ -like "ART_PAINT *" } |
+            ForEach-Object { $_.Substring("ART_PAINT ".Length) | ConvertFrom-Json }) | Select-Object -First 1
+    if ($null -eq $textures -or $null -eq $surface) {
+        throw "Blender reported no valid paint records for $($Manifest.Name)."
+    }
+
+    $Manifest.Export = [ordered]@{
+        sourceSha256 = $SourceSha256
+        textures = $textures
+        smoothness = [double]$surface.smoothness
+        metallic = [double]$surface.metallic
+    }
+    Write-ArtAssetManifest $Manifest
+    Write-Host "Exported $($Manifest.Name) to $folder ($(@($textures | ForEach-Object { $_.name }) -join ', '))."
+}
+
 $blender = Resolve-ArtBlender $BlenderPath
 foreach ($manifest in $manifests) {
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
@@ -42,6 +73,11 @@ foreach ($manifest in $manifests) {
         }
 
         $rigSourceSha256 = $rigExport.sourceSha256
+    }
+
+    if ($manifest.Kind -eq "paint") {
+        Export-ArtPaint $blender $manifest $sourceSha256
+        continue
     }
 
     $textureFolder = Get-ArtTextureFolder $manifest.Target

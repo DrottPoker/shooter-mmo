@@ -18,6 +18,7 @@ $script:ArtReviewStages = @{
     static = @("model")
     skinned = @("model", "rig", "animation")
     animations = @("animation")
+    paint = @("paint")
 }
 
 # The stages whose rules Blender can check, and so can be approved.
@@ -25,7 +26,11 @@ $script:ArtImplementedStages = @{
     static = @("model")
     skinned = @("model", "rig", "animation")
     animations = @("animation")
+    paint = @("paint")
 }
+
+# A paint layer exports only images, below this folder.
+$script:ArtPaintTextureFolder = "$script:ArtTextureFolder/Paint"
 
 # Kinds with a skeleton and animation clips.
 $script:ArtAnimatedKinds = @("skinned", "animations")
@@ -286,8 +291,177 @@ function Read-ArtRigReference([string]$Asset, [string]$Skeleton, [string]$Field)
     }
 }
 
+function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
+    # A paint layer: transparent paint over one painted material of its bodies, painted on the
+    # first body and moved to the others, exported as one image per body.
+    $name = Split-Path -Leaf $AssetDirectory
+    $problems = New-Object System.Collections.Generic.List[string]
+    if ($name -notmatch '^[A-Za-z][A-Za-z0-9]*$') {
+        $problems.Add("the folder name '$name' of a paint layer must use only letters and digits")
+    }
+
+    if ($Json.schemaVersion -ne 1) {
+        $problems.Add("schemaVersion must be 1")
+    }
+
+    foreach ($field in @("target", "rootObjects", "triangleBudget", "skeleton", "clips", "rig", "previews", "variants")) {
+        if ($null -ne $Json.PSObject.Properties[$field]) {
+            $problems.Add("a paint layer has no $field")
+        }
+    }
+
+    $part = [string]$Json.part
+    if ($part -cnotmatch '^[A-Za-z][A-Za-z0-9]*$') {
+        $problems.Add("part must name the painted material M_<Part>_<Label>, such as Body")
+    }
+
+    if (-not ($Json.layer -is [int] -or $Json.layer -is [long]) -or $Json.layer -lt 0 -or $Json.layer -gt 1000) {
+        $problems.Add("layer must be a whole number from 0 to 1000, the order paint layers are drawn in")
+    }
+
+    $bodies = @()
+    try {
+        $first = @($Json.bodies)[0]
+        $skeleton = if ($null -ne $first) { [string](Get-Content -Raw -LiteralPath (Join-Path (Join-Path $script:ArtRepositoryRoot ([string]$first)) "asset.json") | ConvertFrom-Json).skeleton } else { "" }
+        $bodies = @(@($Json.bodies | Where-Object { $null -ne $_ }) | ForEach-Object { Read-ArtRigReference ([string]$_) $skeleton "bodies" })
+    }
+    catch {
+        $problems.Add($_.Exception.Message)
+    }
+
+    if ($bodies.Count -eq 0 -or @($bodies | ForEach-Object { $_.Asset } | Sort-Object -Unique).Count -ne $bodies.Count -or
+        @($bodies | ForEach-Object { $_.Root } | Sort-Object -Unique).Count -ne $bodies.Count) {
+        $problems.Add("bodies must name one or more skinned assets of one skeleton, each once, the painted body first")
+    }
+
+    $approvals = [ordered]@{}
+    if ($null -ne $Json.approvals) {
+        foreach ($property in $Json.approvals.PSObject.Properties) {
+            $value = $property.Value
+            if ($property.Name -ne "paint" -or [string]$value.date -notmatch $script:ArtDatePattern -or
+                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern) {
+                $problems.Add("approvals of a paint layer hold the 'paint' stage with a date (yyyy-MM-dd) and a sourceSha256")
+                continue
+            }
+
+            $approvals["paint"] = [ordered]@{ date = [string]$value.date; sourceSha256 = [string]$value.sourceSha256 }
+        }
+    }
+
+    $export = $null
+    if ($null -ne $Json.export) {
+        $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtPaintTextureFolder
+        $expected = (@($bodies | ForEach-Object { "T_Paint_${name}_$($_.Root)" }) | Sort-Object) -join ","
+        $smoothness = $Json.export.smoothness
+        $metallic = $Json.export.metallic
+        if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs a sourceSha256")
+        }
+        elseif ($null -eq $textures -or ((@($textures | ForEach-Object { $_.name }) | Sort-Object) -join ",") -cne $expected) {
+            $problems.Add("export.textures must list T_Paint_${name}_<Label> of every body once with its target ($script:ArtPaintTextureFolder/<name>.png) and sha256")
+        }
+        elseif (-not (Test-ArtNumber $smoothness) -or $smoothness -lt 0 -or $smoothness -gt 1 -or
+            -not (Test-ArtNumber $metallic) -or $metallic -lt 0 -or $metallic -gt 1) {
+            $problems.Add("export needs the smoothness and metallic of the paint, from 0 to 1")
+        }
+        else {
+            $export = [ordered]@{
+                sourceSha256 = [string]$Json.export.sourceSha256
+                textures = $textures
+                smoothness = [double]$smoothness
+                metallic = [double]$metallic
+            }
+        }
+    }
+
+    $sourcePath = Join-Path $AssetDirectory "$name.blend"
+    if (-not $AllowMissingSource -and -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        $problems.Add("the source file $name.blend is missing next to asset.json")
+    }
+
+    if ($problems.Count -gt 0) {
+        throw "${Where}: $($problems -join '; ')."
+    }
+
+    return [pscustomobject]@{
+        Name = $name
+        Directory = $AssetDirectory
+        ManifestPath = Join-Path $AssetDirectory "asset.json"
+        RelativeDirectory = Get-ArtRelativePath $AssetDirectory
+        SourcePath = $sourcePath
+        Kind = "paint"
+        Stages = $script:ArtReviewStages["paint"]
+        ImplementedStages = $script:ArtImplementedStages["paint"]
+        Target = $null
+        TargetPath = $null
+        RootObjects = [string[]]@()
+        TriangleBudget = $null
+        Skeleton = $null
+        SkeletonPath = $null
+        Rig = $null
+        Previews = @()
+        Clips = [string[]]@()
+        Variants = @()
+        Part = $part
+        Layer = [int]$Json.layer
+        Bodies = $bodies
+        Approvals = $approvals
+        Export = $export
+        ExportProblem = $null
+    }
+}
+
+function Write-ArtPaintManifest($Manifest) {
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("{")
+    $lines.Add('    "schemaVersion": 1,')
+    $lines.Add('    "kind": "paint",')
+    $lines.Add("    `"part`": `"$($Manifest.Part)`",")
+    $bodies = (@($Manifest.Bodies) | ForEach-Object { '"' + $_.Asset + '"' }) -join ", "
+    $lines.Add("    `"bodies`": [$bodies],")
+    $lines.Add("    `"layer`": $($Manifest.Layer),")
+    if ($Manifest.Approvals.Contains("paint")) {
+        $lines.Add('    "approvals": {')
+        $lines.Add('        "paint": {')
+        $lines.Add("            `"date`": `"$($Manifest.Approvals.paint.date)`",")
+        $lines.Add("            `"sourceSha256`": `"$($Manifest.Approvals.paint.sourceSha256)`"")
+        $lines.Add('        }')
+        $lines.Add('    },')
+    }
+    else {
+        $lines.Add('    "approvals": {},')
+    }
+
+    if ($null -eq $Manifest.Export) {
+        $lines.Add('    "export": null')
+    }
+    else {
+        $lines.Add('    "export": {')
+        $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
+        $lines.Add('        "textures": [')
+        $textures = @($Manifest.Export.textures)
+        for ($i = 0; $i -lt $textures.Count; $i++) {
+            $comma = if ($i -lt $textures.Count - 1) { "," } else { "" }
+            $lines.Add("            {")
+            $lines.Add("                `"name`": `"$($textures[$i].name)`",")
+            $lines.Add("                `"target`": `"$($textures[$i].target)`",")
+            $lines.Add("                `"sha256`": `"$($textures[$i].sha256)`"")
+            $lines.Add("            }$comma")
+        }
+        $lines.Add('        ],')
+        $lines.Add("        `"smoothness`": $(Format-ArtNumber $Manifest.Export.smoothness),")
+        $lines.Add("        `"metallic`": $(Format-ArtNumber $Manifest.Export.metallic)")
+        $lines.Add("    }")
+    }
+
+    $lines.Add("}")
+    $text = ($lines -join "`n") + "`n"
+    [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSource) {
-    # AllowMissingSource reads the manifest of a new animation library before its first sync.
+    # AllowMissingSource reads the manifest of a new animation library or paint layer before its
+    # first sync.
     $name = Split-Path -Leaf $AssetDirectory
     $manifestPath = Join-Path $AssetDirectory "asset.json"
     $where = Get-ArtRelativePath $manifestPath
@@ -296,6 +470,10 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
     }
     catch {
         throw "${where}: invalid JSON. $($_.Exception.Message)"
+    }
+
+    if ([string]$json.kind -eq "paint") {
+        return Read-ArtPaintManifest $AssetDirectory $json $where -AllowMissingSource:$AllowMissingSource
     }
 
     $problems = New-Object System.Collections.Generic.List[string]
@@ -559,6 +737,11 @@ function Add-ArtClipLines($Lines, $ClipRecords) {
 
 function Write-ArtAssetManifest($Manifest) {
     # Written by hand so Windows PowerShell 5.1 and PowerShell 7 produce identical files.
+    if ($Manifest.Kind -eq "paint") {
+        Write-ArtPaintManifest $Manifest
+        return
+    }
+
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("{")
     $lines.Add('    "schemaVersion": 1,')
@@ -806,6 +989,11 @@ function Invoke-ArtBlender([string]$Blender, $Manifest, [string[]]$Arguments) {
 
 function Get-ArtValidationArguments($Manifest, [string]$Stage) {
     # The rules of the given review stage and of every earlier one apply.
+    if ($Manifest.Kind -eq "paint") {
+        return @("--kind", "paint", "--roots", (@($Manifest.Bodies | ForEach-Object { $_.Root }) -join ","),
+            "--stage", $Stage, "--paint", $Manifest.Name, "--part", $Manifest.Part)
+    }
+
     $arguments = @(
         "--kind", $Manifest.Kind,
         "--roots", ($Manifest.RootObjects -join ","),

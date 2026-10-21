@@ -506,9 +506,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(ArtModelImportRules.ModelFolder + "/WorldActors/Resource_IronVein.fbx"));
         }
 
+        // URP Lit everywhere, except the body materials that paint layers paint over, which use
+        // the skin shader, URP Lit with paint layers.
         [Test]
         public void EveryProjectMaterialUsesTheUrpLitShader()
         {
+            var painted = ArtAssetManifests.PaintedMaterialNames();
             var materialGuids = AssetDatabase.FindAssets("t:Material", new[] { "Assets" });
             Assert.That(materialGuids, Is.Not.Empty);
             foreach (var materialGuid in materialGuids)
@@ -517,7 +520,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 var material = AssetDatabase.LoadAssetAtPath<Material>(path);
                 Assert.That(material, Is.Not.Null, path);
                 Assert.That(material.shader, Is.Not.Null, path);
-                Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"), path);
+                Assert.That(
+                    material.shader.name,
+                    Is.EqualTo(painted.Contains(material.name) ? ArtMaterialCreator.SkinShader : ArtMaterialCreator.LitShader),
+                    path);
             }
         }
 

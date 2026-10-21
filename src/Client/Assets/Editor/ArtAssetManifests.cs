@@ -16,6 +16,9 @@ namespace Mmorpg.Client.Editor
         // An armature with handmade clips of a skeleton, without meshes.
         public const string AnimationLibraryKind = "animations";
 
+        // Paint over the skin of bodies, exported as one image per body.
+        public const string PaintKind = "paint";
+
         // asset.json targets are repository paths; Unity asset paths start at Assets/.
         public const string ClientProjectPrefix = "src/Client/";
 
@@ -47,6 +50,32 @@ namespace Mmorpg.Client.Editor
                     StringComparison.Ordinal));
         }
 
+        public static ArtAssetManifest[] PaintLayers()
+        {
+            return ManifestPaths()
+                .Select(Load)
+                .Where(manifest => manifest.IsPaint && manifest.IsExported)
+                .ToArray();
+        }
+
+        // The label of a body, its armature, such as Male for art/Characters/Human_Male.
+        public static string BodyLabel(string bodyAsset)
+        {
+            var path = Path.Combine(RepositoryLayout.FindRoot(), bodyAsset, "asset.json");
+            var body = Load(path);
+            return body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
+        }
+
+        // The materials that paint layers paint, M_<Part>_<Label>, which draw with the skin shader.
+        public static string[] PaintedMaterialNames()
+        {
+            return PaintLayers()
+                .SelectMany(paint => paint.bodies.Select(body => "M_" + paint.part + "_" + BodyLabel(body)))
+                .Distinct()
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+        }
+
         public static ArtSkeleton LoadSkeleton(string name)
         {
             var path = Path.Combine(RepositoryLayout.FindRoot(), "art", "Skeletons", name + ".json");
@@ -72,7 +101,34 @@ namespace Mmorpg.Client.Editor
         public string skeleton = string.Empty;
         public string[] clips = Array.Empty<string>();
         public ArtMaterialVariants[] variants = Array.Empty<ArtMaterialVariants>();
+        // A paint layer: the painted material part, the bodies, the painted one first, and the
+        // order paint layers are drawn in.
+        public string part = string.Empty;
+        public string[] bodies = Array.Empty<string>();
+        public int layer;
         public ArtAssetExport export = new ArtAssetExport();
+
+        // The paint layer's name, its folder, such as LeatherJerkin.
+        public string Name
+        {
+            get { return Path.GetFileName(Path.GetDirectoryName(path)); }
+        }
+
+        // The repository path of the asset folder, such as art/Characters/Human_Male.
+        public string AssetPath
+        {
+            get
+            {
+                var root = RepositoryLayout.FindRoot();
+                var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+                return Path.GetRelativePath(root, directory).Replace('\\', '/');
+            }
+        }
+
+        public bool IsPaint
+        {
+            get { return string.Equals(kind, ArtAssetManifests.PaintKind, StringComparison.Ordinal); }
+        }
 
         public string UnityTargetPath
         {
@@ -103,7 +159,8 @@ namespace Mmorpg.Client.Editor
             {
                 return export != null
                     && ((export.materials != null && export.materials.Length > 0)
-                        || (IsAnimationLibrary && export.clips != null && export.clips.Length > 0));
+                        || (IsAnimationLibrary && export.clips != null && export.clips.Length > 0)
+                        || (IsPaint && export.textures != null && export.textures.Length > 0));
             }
         }
     }
@@ -114,6 +171,9 @@ namespace Mmorpg.Client.Editor
         public ArtMaterialRecord[] materials = Array.Empty<ArtMaterialRecord>();
         public ArtTextureRecord[] textures = Array.Empty<ArtTextureRecord>();
         public ArtClipRecord[] clips = Array.Empty<ArtClipRecord>();
+        // A paint layer's smoothness and metallic.
+        public float smoothness = -1f;
+        public float metallic = -1f;
     }
 
     [Serializable]

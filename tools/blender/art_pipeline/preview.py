@@ -197,6 +197,30 @@ def render_sheet(output: str, cell: int) -> str:
     return _save(sheet, output)
 
 
+def render_paint_sheet(output: str, cell: int) -> str:
+    """A paint layer on every body of its file: the bodies side by side from four sides, then each
+    body's torso from the front and from the back."""
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    scene = bpy.context.scene
+    bodies = sorted((o for o in scene.objects if o.type == "MESH" and o.name.startswith("Paint_")), key=lambda o: o.location.x)
+    camera, sun = _studio(scene, cell)
+    low, high = _bounds(bodies)
+    center = (low + high) / 2.0
+    radius = max((high - low).length / 2.0, 0.1)
+    closeups = [(body, yaw) for body in bodies for yaw in (180.0, 0.0)]
+    columns = max(len(YAWS), len(closeups))
+    sheet = np.zeros((cell * 2, cell * columns, 4), dtype=np.float32)
+    with tempfile.TemporaryDirectory() as scratch:
+        for column, yaw in enumerate(YAWS):
+            _aim(camera, sun, center, radius, yaw)
+            sheet[cell:, column * cell:(column + 1) * cell] = _render(scene, os.path.join(scratch, f"a{column}.png"))
+        for column, (body, yaw) in enumerate(closeups):
+            torso = Vector((body.location.x, body.location.y, 1.2))
+            _aim(camera, sun, torso, 0.5, yaw)
+            sheet[:cell, column * cell:(column + 1) * cell] = _render(scene, os.path.join(scratch, f"b{column}.png"))
+    return _save(sheet, output)
+
+
 CLIP_FRAMES = 8
 CLIP_YAWS = (35.0, 215.0)
 

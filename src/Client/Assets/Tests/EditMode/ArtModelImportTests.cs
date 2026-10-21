@@ -171,8 +171,9 @@ namespace Mmorpg.Client.Tests.EditMode
             // the game shows the colors and the painted textures the reviewer approved.
             var manifests = ArtAssetManifests.ManifestPaths().Select(ArtAssetManifests.Load).ToArray();
             Assert.That(manifests, Is.Not.Empty);
-            foreach (var manifest in manifests)
+            foreach (var manifest in manifests.Where(manifest => !manifest.IsPaint))
             {
+                // A paint layer exports images only; ArtAppearanceCatalogTests covers it.
                 Assert.That(manifest.UnityTargetPath, Is.Not.Null, manifest.path);
                 var model = AssetDatabase.LoadAssetAtPath<GameObject>(manifest.UnityTargetPath);
                 if (!manifest.IsExported)
@@ -244,7 +245,13 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(importer.mipmapEnabled, Is.True, path);
                 Assert.That(importer.isReadable, Is.False, path);
                 Assert.That(importer.maxTextureSize, Is.EqualTo(ArtModelImportRules.MaximumTextureSize), path);
-                Assert.That(importer.alphaSource, Is.EqualTo(TextureImporterAlphaSource.None), path);
+                // Paint layers keep their alpha, where the paint covers the skin.
+                var paint = ArtModelImportRules.IsPaintTexture(path);
+                Assert.That(
+                    importer.alphaSource,
+                    Is.EqualTo(paint ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None),
+                    path);
+                Assert.That(importer.alphaIsTransparency, Is.EqualTo(paint), path);
             }
         }
 

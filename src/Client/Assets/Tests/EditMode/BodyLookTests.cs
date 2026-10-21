@@ -22,6 +22,19 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void ALookWearsPaintLayersInItsKey()
+        {
+            var look = BodyLook.Default.With("Face", "Scarred").WithPaint("LeatherJerkin", true).WithPaint("Apron", true);
+
+            Assert.That(look.Key, Is.EqualTo("Face=Scarred;Paint=Apron+LeatherJerkin"));
+            Assert.That(look.HasPaint("LeatherJerkin"), Is.True);
+            Assert.That(BodyLook.Parse(look.Key), Is.EqualTo(look));
+            Assert.That(look.WithPaint("Apron", false).Key, Is.EqualTo("Face=Scarred;Paint=LeatherJerkin"));
+            Assert.That(BodyLook.Parse("Paint=LeatherJerkin+Brö+").Key, Is.EqualTo("Paint=LeatherJerkin"));
+            Assert.Throws<System.ArgumentException>(() => BodyLook.Default.With(BodyLook.PaintKey, "LeatherJerkin"));
+        }
+
+        [Test]
         public void ALookComesBackFromItsKeyAndSkipsBrokenEntries()
         {
             var look = BodyLook.Parse("Eye=Brown;Face=Scarred");

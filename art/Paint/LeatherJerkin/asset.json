@@ -1,0 +1,30 @@
+{
+    "schemaVersion": 1,
+    "kind": "paint",
+    "part": "Body",
+    "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
+    "layer": 30,
+    "approvals": {
+        "paint": {
+            "date": "2026-10-21",
+            "sourceSha256": "9d3217cc302adac6f7305dc2ab28e354550fc43959c134d7ca13c101e7e06bae"
+        }
+    },
+    "export": {
+        "sourceSha256": "9d3217cc302adac6f7305dc2ab28e354550fc43959c134d7ca13c101e7e06bae",
+        "textures": [
+            {
+                "name": "T_Paint_LeatherJerkin_Male",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_LeatherJerkin_Male.png",
+                "sha256": "07a03fa204395787fcee5685d1979ed249ec1f451e490c2ec00cc438f1f3a0d5"
+            },
+            {
+                "name": "T_Paint_LeatherJerkin_Female",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_LeatherJerkin_Female.png",
+                "sha256": "806f21dfba86f1553b6ea54f2e80701eccd19e464efa33715a7a0e13f478350e"
+            }
+        ],
+        "smoothness": 0.38,
+        "metallic": 0.0
+    }
+}

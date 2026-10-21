@@ -10,7 +10,7 @@ import os
 import bpy
 
 from . import skinned
-from .scene import EXPORT_COLLECTION, ArtPipelineError
+from .scene import EXPORT_COLLECTION, ArtPipelineError, relative_image_paths
 
 REFERENCE_COLLECTION = "Reference"
 PREVIEW_PREFIX = "Preview_"
@@ -165,6 +165,7 @@ def sync(library: str, armature_name: str, rig_path: str, rig_root: str, preview
         _follow(preview, arm)
 
     _ground(reference, PREVIEW_SPACING * len(previews) / 2.0)
+    relative_image_paths()
     scene = bpy.context.scene
     scene.render.fps, scene.render.fps_base = FRAME_RATE, 1.0
     ends = [int(a.frame_range[1]) for a in bpy.data.actions]

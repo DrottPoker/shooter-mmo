@@ -104,7 +104,7 @@ Expected result:
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, and the absence of tracked
   client builds.
-- Art asset verification reports `Verified 4 art asset(s).`: every asset below
+- Art asset verification reports `Verified 5 art asset(s).`: every asset below
   `art/` is approved for its current `.blend` file, every model below
   `src/Client/Assets/Art/Models` is the recorded export of one of them, and an
   asset in review, such as a character before its rig, has no model yet. It needs
@@ -2753,7 +2753,7 @@ When the reviewer approves the model, record the approval and export:
 Expected result: `Approved the 'model' stage of Resource_IronVein
 (triangles=878).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified 4 art asset(s).` Unity imports the model the
+(triangles=878).`, and `Verified 5 art asset(s).` Unity imports the model the
 next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
 its `.meta` file together.
 
@@ -2865,7 +2865,7 @@ foreach ($asset in "art/Characters/Human_Male", "art/Characters/Human_Female") {
 Expected result: `Approved the 'rig' stage of Human_Male (triangles=9202).` and
 the same for `animation` and `Human_Female`, `Exported Human_Male to
 src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
-the same for the female, and `Verified 4 art asset(s).` The export also writes
+the same for the female, and `Verified 5 art asset(s).` The export also writes
 the textures below `src/Client/Assets/Art/Textures/Characters`, the face and eye
 variants that `variants` in `asset.json` names among them. When Unity gets
 focus it imports the models; if the export added a material, run `MMORPG >
@@ -2929,7 +2929,7 @@ holds the handmade clips of the human bodies.
    clip, `Approved the 'animation' stage of Human_Actions (clips=Death).`,
    `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx (clips=Death).`,
-   and `Verified 4 art asset(s).` Unity imports the clips as Humanoid motion when
+   and `Verified 5 art asset(s).` Unity imports the clips as Humanoid motion when
    it gets focus. A library whose armature is not the current rig stops the
    approval and the export with `The armature "Humanoid" is not the current rig
    "Male" ...`; sync it first. Commit the `.blend` file, `asset.json`, the FBX,
@@ -2939,6 +2939,45 @@ When the characters are exported again, for example after a rebuild, export the
 library again too. `Verify-ArtAssets.ps1` otherwise stops with `was exported
 against another export of its rig`. If the rebuild changed the rig, the sync
 changes the library, and it needs a new review and approval first.
+
+### Make A Paint Layer
+
+[Paint Layers](ART_PIPELINE.md#paint-layers) describes paint over the skin of the
+bodies. `art/Paint/LeatherJerkin` is the paint of the leather jerkin.
+
+1. A new paint layer starts from an `asset.json` with `kind` `paint`, `part`
+   (`Body`), `bodies` (the body it is painted on first), `layer`,
+   `"approvals": {}`, and `"export": null`. Build or update its file:
+
+   ```powershell
+   .\tools\Sync-PaintAsset.ps1 -Asset art/Paint/LeatherJerkin
+   ```
+
+   Expected result: `LeatherJerkin is up to date: every body is there and shows
+   the current paint.`, or `Synced LeatherJerkin: ...` for a new or changed file.
+2. Open the file in Blender, select `Paint_Male`, switch to Texture Paint, and
+   paint into `T_Paint_LeatherJerkin_Male`, or change its custom properties
+   `roughness` and `metallic`. Save, then run the sync again. Expected result:
+   `Synced LeatherJerkin`, and `Paint_Female` shows the same paint when the file
+   is opened again.
+3. Render the review sheet, review it and the file, then approve, export, and
+   verify:
+
+   ```powershell
+   .\tools\Render-ArtPreview.ps1 -Asset art/Paint/LeatherJerkin
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Paint/LeatherJerkin -Stage paint
+   .\tools\Export-ArtAsset.ps1 -Asset art/Paint/LeatherJerkin
+   .\tools\Verify-ArtAssets.ps1
+   ```
+
+   Expected result: a sheet with both bodies from four sides and each torso from
+   the front and the back, `Approved the 'paint' stage of LeatherJerkin (paint).`,
+   `Exported LeatherJerkin to src/Client/Assets/Art/Textures/Paint
+   (T_Paint_LeatherJerkin_Male, T_Paint_LeatherJerkin_Female).`, and `Verified
+   5 art asset(s).` In Unity, run `MMORPG > Tools > Art Pipeline > Update
+   Appearance Catalogs`. Expected result: the Console lists `Paint
+   LeatherJerkin` in both catalogs. Commit the `.blend` file, `asset.json`, the
+   PNG files, the catalogs, and their `.meta` files together.
 
 ### Manual Test Of The Human Base Characters
 
@@ -3009,7 +3048,11 @@ controller, and prefabs are committed.
     them. Leave the shard and join again. Expected result: your body keeps the
     scar and the brown eyes. Press `>` twice more. Expected result: the stubble
     face and teal eyes are back.
-13. With ActiveSimulationBots on the shard, as in step 7, look at the bots up
+13. Still in the F2 Presentation section, turn on `Try on paint: LeatherJerkin`.
+    Expected result: your body wears the brown leather jerkin at once, with short
+    sleeves, stitched trim, and the laced V at the front; turn it off and it is
+    gone. The choice is kept between sessions like the face and the eyes.
+14. With ActiveSimulationBots on the shard, as in step 7, look at the bots up
     close. Expected result: the bots show both faces and both eye colors in every
     combination, and each bot keeps its look while it stays. Real players show
     the stubble face and teal eyes until looks are saved with characters.

@@ -55,3 +55,11 @@ def triangle_count(obj: bpy.types.Object) -> int:
         return len(mesh.loop_triangles)
     finally:
         evaluated.to_mesh_clear()
+
+
+def relative_image_paths() -> None:
+    """Images appended from another file record its absolute folder. Every packed image keeps a
+    path relative to the open file instead, so no file records the folder it was made in."""
+    for image in bpy.data.images:
+        if image.packed_file is not None and image.filepath_raw and not image.filepath_raw.startswith("//"):
+            image.filepath_raw = f"//{image.name}.png"

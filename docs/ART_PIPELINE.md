@@ -43,9 +43,11 @@ never overwrites handmade work.
 | `art/<Category>/<Name>/<Name>.blend` | Source of truth for one asset, stored in Git LFS. The folder name is the asset name. |
 | `art/<Category>/<Name>/asset.json` | Asset manifest: kind, export target, root objects, triangle budget, skeleton and clips of a skinned asset, approvals, and the export record. |
 | `art/Animations/<Name>/<Name>.blend` | An [animation library](#animation-libraries): handmade clips of one skeleton, keyed on the rig of one character, with the bodies that show them. |
+| `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the first body and moved to the others. |
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. |
-| `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. |
+| `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint`. |
+| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers. |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
 | `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, and the review sheet. |
@@ -53,6 +55,7 @@ never overwrites handmade work.
 | `tools/Render-ArtPreview.ps1`, `tools/Approve-ArtAsset.ps1`, `tools/Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/ArtPipelineCommon.ps1`. |
 | `tools/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/Sync-AnimationLibrary.ps1`, `tools/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
+| `tools/Sync-PaintAsset.ps1`, `tools/blender/art_pipeline/paint.py` | Builds a paint layer file from its bodies, or updates it, and moves the paint of the first body to the others. |
 | `tools/Build-HumanBase.ps1`, `tools/blender/human_base`, `tools/blender/human_base_cli.py` | The scripted build of the [human base characters](#human-base-characters) from the Human Base Meshes bundle. |
 | `src/Client/Assets/Editor/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
 | `src/Client/Assets/Editor/ArtAssetManifests.cs` | Reads `asset.json` and the skeleton definitions for the import rules, the material command, and the tests. |
@@ -68,7 +71,7 @@ never overwrites handmade work.
 | Field | Meaning |
 | --- | --- |
 | `schemaVersion` | Always `1`. |
-| `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries). |
+| `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries), `paint` for a [paint layer](#paint-layers). A paint layer has no `target`, `rootObjects`, or `triangleBudget`. |
 | `target` | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx`, where `<Name>` is the folder name. |
 | `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. The one root object of an animation library is its armature, named after its skeleton. |
 | `triangleBudget` | The maximum number of exported triangles, after modifiers. An animation library exports no meshes and has none. |
@@ -76,9 +79,12 @@ never overwrites handmade work.
 | `rig` | Animation libraries only: the skinned asset whose rig the clips are keyed on, such as `art/Characters/Human_Male`. |
 | `previews` | Animation libraries only: other skinned assets of the skeleton whose bodies show the clips in the library, such as `["art/Characters/Human_Female"]`. |
 | `clips` | Skinned assets and animation libraries: the names of the animation clips the asset exports, such as `["Idle", "Walk", "Jog"]`. Each is one Blender action. |
+| `part` | Paint layers only: the part of the painted material `M_<Part>_<Label>`, such as `Body`. |
+| `bodies` | Paint layers only: the skinned assets the paint fits, the body it is painted on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. |
+| `layer` | Paint layers only: the order paint layers are drawn in, from 0 to 1000, the lowest first, such as `30` for a chest piece over a shirt at `10`. |
 | `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
 | `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. |
-| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. `null` before the first export. |
+| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. `null` before the first export. |
 
 ## Review Stages
 
@@ -92,6 +98,7 @@ saving the file again, even without a visible change, needs a new approval.
 | `static` | `model` | Implemented. |
 | `skinned` (characters, creatures) | `model`, then `rig`, then `animation` | Implemented. |
 | `animations` (animation libraries) | `animation` | Implemented. |
+| `paint` (paint layers) | `paint` | Implemented. |
 
 The `rig` review looks at the skeleton and the weights: test poses that raise
 the arms, bend the elbows and knees, stride, sit, close the hands, open the jaw,
@@ -181,6 +188,15 @@ An animation library has its own rules, from its only stage on:
   the same parent, deform flag, length, and rest matrix, to a hundredth of a
   millimeter. Approval and export compare it with the rig asset's `.blend` file.
 - The clips follow the animation rules above.
+
+A paint layer has these rules:
+
+- The file holds the mesh `Paint_<Label>` and the image `T_Paint_<Name>_<Label>` of every
+  body. Every image is packed as a PNG with alpha, of the size of its body
+  texture, with the custom properties `roughness` and `metallic` from 0 to 1.
+- The paint of every body but the first is the move of the first body's paint
+  and has its roughness and metallic, so the file shows what the game will. A
+  file that a painter changed without the sync stops with `is not the move of`.
 
 Modeling conventions: one Blender unit is one meter, Z is up, and the ground is
 at Z = 0; rocks and similar props may sink a few centimeters into it. The front
@@ -385,7 +401,7 @@ handmade work.
 | Layer | Made as | In the game | Status |
 | --- | --- | --- | --- |
 | Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Scarred` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
-| Paint layers | Transparent paint over the skin in the body texture's UV layout, such as the paint of a leather jerkin or a scalp, in an appearance asset of its own. Painted once on the male body; the export moves it to every body of identical topology. | Composed over the skin texture when the body is drawn. | Planned next. |
+| Paint layers | Transparent paint over the skin in the body texture's UV layout, such as the paint of a leather jerkin or a scalp, in a [paint layer](#paint-layers) asset of its own. Painted once on the male body and moved to every body of the same topology. | The skin shader lays it over the skin when the body is drawn. | Implemented. |
 | Attachments | Meshes skinned to the shared skeleton, such as hair, beards, and the modeled parts of armor, in appearance assets of their own, fitted to every body type from one design. | Combined with the visible body parts into the body's one mesh. | Planned with the first hair or armor part. |
 
 The faces and eyes of the human base characters are variants: the build paints
@@ -394,6 +410,40 @@ with the model. In Unity, the body's `BodyAppearanceCatalog` lists one slot per
 material with variants, such as `Face` and `Eye`, with its options, the
 material's own image first, and a look picks one option per slot; see
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
+
+## Paint Layers
+
+A paint layer below `art/Paint` is paint over the skin of the bodies, such as the
+painted leather jerkin `art/Paint/LeatherJerkin`. Its file holds, per body, the
+mesh `Paint_<Label>`, the body's parts joined in its rest pose, and the image
+`T_Paint_<Name>_<Label>` in the layout of the body texture `T_<Part>_<Label>`,
+transparent where the skin shows. A preview material lays the image over the
+skin by its alpha, with its roughness, so Blender's Material Preview shows the
+look. The paint is made on the first body, by hand in Texture Paint mode or by a
+script, and its image carries the custom properties `roughness` and `metallic`.
+
+Bodies of the same topology have the same faces in the same order, so
+`tools/Sync-PaintAsset.ps1` moves the paint from the first body to every other
+one: each other body gets the first body's UV map as `UVMap_Paint`, and Cycles
+bakes the first body's paint, read through that map, into the other body's own
+UV layout. A texel takes the paint at the same place of the same face, and the
+colors and the alpha bake separately. The approval and the export check that the
+moved paint is current, and the export writes every image as it is packed.
+
+In Unity, a paint image imports with its alpha, and its transparent texels take
+the color of their neighbors, so filtering at the edges never darkens the skin.
+The skin shader `Mmorpg/Character Skin` is URP Lit with up to four paint layers:
+only the include of `CharacterSkinInput.hlsl`, a copy of URP's `LitInput.hlsl`
+with the paint properties in the material constant buffer, and the paint
+properties differ from Lit. Each layer is a `_PaintMap<N>` with
+`_PaintSurface<N>` (smoothness, metallic) and lays its color, tinted like the
+base map, its smoothness, and its metallic over the surface by its alpha, in
+order; `_PaintCount` says how many layers are drawn. The body materials that a
+paint layer paints, such as `M_Body_Male`, draw with this shader, and without a
+layer they draw like Lit. `Create Missing Materials` creates them with it. When
+URP is upgraded, the shader is made again from the new `Lit.shader` and
+`LitInput.hlsl` with the same changes. The appearance catalog of every body lists
+the paint layers that fit it, in the order of their `layer`.
 
 ## Live Work With The Blender MCP Server
 
@@ -549,6 +599,7 @@ never committed.
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
 | `art/Animations/Human_Actions` | `animations` | `Humanoid` | The handmade clips of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Death`, 2 s, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-21. |
+| `art/Paint/LeatherJerkin` | `paint` | none | The paint of the leather jerkin over `M_Body`, painted on the male and moved to the female, layer 30: warm brown leather with large soft blotches, fine grain, and worn lighter high points, darker trim with stitches along every edge, side and shoulder seams, short sleeves to a little less than half the upper arm, a round collar that stands 2 cm up the neck, and a V at the front laced across. Smoothness 0.38. Approved 2026-10-21; the female's bra straps are painted up her neck, above any collar, until the base body is fixed. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, the `Humanoid` rig, and the clips `Idle`, `Walk`, and `Jog`, built by `tools/Build-HumanBase.ps1`. Model, rig, and animations approved 2026-10-21. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, 9,202 triangles, the `Humanoid` rig, and the clips `Idle`, `Walk`, and `Jog`, built by `tools/Build-HumanBase.ps1`. Model, rig, and animations approved 2026-10-21. The game shows it for every player. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |
@@ -559,6 +610,12 @@ never committed.
   characters, through an `AnimatorOverrideController` with her own clips, and
   the look chosen there, saved with the character and sent to every client.
 - Eyelid bones for blinking and forearm twist bones.
-- A model fix of the low armpits, where the triceps meet the torso.
+- A model fix of the low armpits, where the triceps meet the torso, and of the
+  female's bra straps, which are painted up her neck, above the collar of chest
+  paint.
+- Attachments: hair, beards, and the modeled parts of armor as meshes skinned to
+  the shared skeleton, combined with the body's parts; the first is the leather
+  jerkin's collar and shoulder flaps, together with the jerkin as an item that
+  shows its paint when equipped.
 - A shared palette texture for stylized models, level-of-detail meshes, and
   per-asset collision proxies if presentation ever needs them.

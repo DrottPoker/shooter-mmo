@@ -3,7 +3,9 @@
     blender --background --factory-startup <asset.blend> --python-exit-code 1 \
         --python tools/blender/art_pipeline_cli.py -- <validate|export|preview> [options]
 
-Every result line starts with ART_ so the PowerShell scripts can read it from Blender's log.
+library-sync builds or updates an animation library and paint-sync a paint layer; both run without
+an open file. Every result line starts with ART_ so the PowerShell scripts can read it from
+Blender's log.
 """
 
 import argparse
@@ -15,7 +17,7 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from art_pipeline import library, preview  # noqa: E402
+from art_pipeline import library, paint, preview  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
 from art_pipeline.scene import ArtPipelineError, parse_args  # noqa: E402
@@ -36,8 +38,10 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--rig-source", help="The .blend file of the rig an animation library is authored on.")
         command.add_argument("--rig-root", help="The armature in the rig source.")
         command.add_argument("--variants", help='Other images of painted materials, "M_A=T_1+T_2;M_B=T_3".')
+        command.add_argument("--paint", help="The name of a paint layer.")
+        command.add_argument("--part", help="The painted material part of a paint layer, such as Body.")
         if name == "export":
-            command.add_argument("--target", required=True, help="Absolute FBX path.")
+            command.add_argument("--target", help="Absolute FBX path; a paint layer has none.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
     command = commands.add_parser("preview")
     command.add_argument("--output", required=True, help="PNG file to write.")
@@ -50,16 +54,47 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--rig-root", required=True)
     command.add_argument("--preview", action="append", default=[], help="<file.blend>=<armature> of a body that shows the clips.")
     command.add_argument("--force", action="store_true")
+    command = commands.add_parser("paint-sync")
+    command.add_argument("--file", required=True, help="The paint layer .blend to build or update.")
+    command.add_argument("--paint", required=True)
+    command.add_argument("--part", required=True)
+    command.add_argument("--body", action="append", default=[], help="<file.blend>=<armature>, the painted body first.")
+    command.add_argument("--force", action="store_true")
     return parser
+
+
+def _paint(args) -> int:
+    """Validation and export of a paint layer, which holds images and no exported objects."""
+    labels = args.roots.split(",")
+    errors = paint.paint_errors(args.paint, args.part, labels)
+    for error in errors:
+        print(f"ART_PIPELINE_ERROR {error}")
+    if errors:
+        return 1
+    print("ART_VALIDATION paint")
+    if args.command == "export":
+        for name, path in paint.export_images(args.paint, labels, args.textures):
+            print(f"ART_TEXTURE {json.dumps({'name': name, 'path': path}, separators=(',', ':'))}")
+        print(f"ART_PAINT {json.dumps(paint.paint_record(args.paint, labels), separators=(',', ':'))}")
+    return 0
 
 
 def main() -> int:
     args = parse_args(_parser())
     if args.command == "preview":
-        render = preview.render_clip_sheet if args.kind == "animations" else preview.render_sheet
+        render = {"animations": preview.render_clip_sheet, "paint": preview.render_paint_sheet}.get(
+            args.kind, preview.render_sheet)
         path = render(os.path.abspath(args.output), args.cell_size)
         print(f"ART_PREVIEW {path}")
         return 0
+    if args.command == "paint-sync":
+        bodies = [tuple(b.rsplit("=", 1)) for b in args.body]
+        changed = paint.sync(os.path.abspath(args.file), args.paint, args.part,
+                             [(os.path.abspath(path), root) for path, root in bodies], args.force)
+        print(f"ART_PAINT_SYNC {'synced' if changed else 'up-to-date'} {args.file}")
+        return 0
+    if args.kind == "paint":
+        return _paint(args)
     if args.command == "library-sync":
         previews = [tuple(p.rsplit("=", 1)) for p in args.preview]
         changed = library.sync(os.path.abspath(args.library), args.armature, os.path.abspath(args.rig_source),

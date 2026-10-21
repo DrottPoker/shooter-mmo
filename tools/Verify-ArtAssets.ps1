@@ -21,11 +21,15 @@ foreach ($directory in $directories) {
     }
 
     $where = $manifest.RelativeDirectory
-    if ($targets.ContainsKey($manifest.Target)) {
-        $problems.Add("${where}: $($manifest.Target) is also the target of $($targets[$manifest.Target]).")
+    # A paint layer exports images only, so it has no model target.
+    if ($null -ne $manifest.Target) {
+        if ($targets.ContainsKey($manifest.Target)) {
+            $problems.Add("${where}: $($manifest.Target) is also the target of $($targets[$manifest.Target]).")
+        }
+
+        $targets[$manifest.Target] = $where
     }
 
-    $targets[$manifest.Target] = $where
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
     if (Test-ArtAssetInReview $manifest) {
         $reviewProblem = Get-ArtReviewProblem $manifest $sourceSha256
@@ -37,7 +41,7 @@ foreach ($directory in $directories) {
             $problems.Add("${where}: an asset in review has no export; export it after its last review stage.")
         }
 
-        if (Test-Path -LiteralPath $manifest.TargetPath) {
+        if ($null -ne $manifest.TargetPath -and (Test-Path -LiteralPath $manifest.TargetPath)) {
             $problems.Add("${where}: $($manifest.Target) exists although the asset is still in review.")
         }
 
@@ -59,10 +63,13 @@ foreach ($directory in $directories) {
     }
 
     if ($manifest.Export.sourceSha256 -ne $sourceSha256) {
-        $problems.Add("${where}: $($manifest.Target) was exported from another version of $($manifest.Name).blend; run tools/Export-ArtAsset.ps1.")
+        $problems.Add("${where}: the export comes from another version of $($manifest.Name).blend; run tools/Export-ArtAsset.ps1.")
     }
 
-    if (-not (Test-Path -LiteralPath $manifest.TargetPath -PathType Leaf)) {
+    if ($null -eq $manifest.Target) {
+        # Only the images below.
+    }
+    elseif (-not (Test-Path -LiteralPath $manifest.TargetPath -PathType Leaf)) {
         $problems.Add("${where}: $($manifest.Target) is missing; run tools/Export-ArtAsset.ps1.")
     }
     elseif ((Get-ArtFileSha256 $manifest.TargetPath) -ne $manifest.Export.targetSha256) {
