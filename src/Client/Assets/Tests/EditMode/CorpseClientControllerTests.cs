@@ -239,6 +239,36 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(controller.State.PendingOperationId, Is.EqualTo(intent.OperationId));
         }
 
+        [Test]
+        public void AQueuedCorpseMoveWaitsForTheViewTheEarlierMoveCommitted()
+        {
+            OpenView();
+            var first = MoveItemToSecondSlot();
+            var shown = controller.State.ShownView;
+            Assert.That(shown.TryFindItem(itemId, out var item, out var section, out var slot), Is.True);
+            Assert.That(slot.SlotIndex, Is.EqualTo(1));
+            Assert.That(section.TryGetSlot(0, out var destination), Is.True);
+            Assert.That(
+                controller.TryMoveWithinCorpse(item, section, destination, item.Quantity, out var error),
+                Is.True,
+                error);
+            Assert.That(channel.Sent.Count, Is.EqualTo(2));
+
+            // The result arrives before the corpse view, which still has the old revisions.
+            channel.Complete(Succeeded(first.OperationId, RealtimeCorpseInteractionKind.MoveItem, corpseId));
+            inventory.Pump();
+            Assert.That(channel.Sent.Count, Is.EqualTo(2));
+            Assert.That(controller.State.ShownView.TryFindItem(itemId, out _, out _, out var shownSlot), Is.True);
+            Assert.That(shownSlot.SlotIndex, Is.EqualTo(0));
+
+            channel.Deliver(CreateSnapshot(corpseId, itemId, containers, 5, ViewRevision + 1, 2));
+            inventory.Pump();
+
+            Assert.That(channel.Sent.Count, Is.EqualTo(3));
+            Assert.That(channel.LastSent.OperationKind, Is.EqualTo(RealtimeCorpseInteractionKind.MoveItem));
+            Assert.That(channel.LastSent.ExpectedCorpseRevision, Is.EqualTo(ViewRevision + 1));
+        }
+
         // Opens the corpse the way the worker answers: presence first, then the open result
         // and its snapshot.
         private void OpenView()
@@ -336,12 +366,20 @@ namespace Mmorpg.Client.Tests.EditMode
                     return false;
                 }
 
-                if (operation.SendExternal(State, out var operationId, out error) == InventoryOperationSendResult.Sent)
-                {
-                    operation.OperationId = operationId;
-                }
-
+                Pump();
                 return true;
+            }
+
+            // Sends the first pending operation, as the inventory controller does every frame.
+            public void Pump()
+            {
+                var head = State.PendingOperations.Count == 0 ? null : State.PendingOperations[0];
+                if (head != null
+                    && !head.IsSent
+                    && head.SendExternal(State, out var operationId, out _) == InventoryOperationSendResult.Sent)
+                {
+                    head.OperationId = operationId;
+                }
             }
 
             public void CompleteExternalOperation(
@@ -360,6 +398,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 {
                     State.RollBackPredictions(error);
                 }
+
+                Pump();
             }
 
             public void EnsureFullState(long minimumRevision)

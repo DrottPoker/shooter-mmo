@@ -417,6 +417,8 @@ namespace Mmorpg.Client.Items
                 return;
             }
 
+            // An owner that answers Wait, such as a corpse with a refresh or an earlier view in
+            // flight, is asked again on the next frame, because Update calls this every frame.
             if (operation.IsExternal)
             {
                 switch (operation.SendExternal(State, out var externalOperationId, out var externalError))

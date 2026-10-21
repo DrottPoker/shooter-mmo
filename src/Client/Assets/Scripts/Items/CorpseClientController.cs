@@ -543,7 +543,10 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (State.PendingOperationId != Guid.Empty)
+            // The worker sends the committed corpse view after the result, so an earlier
+            // operation's view must arrive before the next intent can expect its revisions.
+            if (State.PendingOperationId != Guid.Empty
+                || pendingOperations.Any(pending => pending.CorpseId == corpseId && pending.SettleAfterRevision >= 0))
             {
                 result = InventoryOperationSendResult.Wait;
                 return false;
