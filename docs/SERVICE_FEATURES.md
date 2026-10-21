@@ -1112,8 +1112,9 @@ concurrent inspection, and authoritative looting:
   refresh-on-stale behavior. A worker closure that arrives before the result of
   the pending operation ends the view but keeps the operation correlated, so the
   late result settles it without a disconnect and never reopens the closed view.
-  A replaceable generic corpse capsule presents the
-  server identity and transform. A click on a corpse walks into range and opens
+  A player corpse shows the body lying in the last pose of `Death` and a Mob
+  corpse a replaceable generic capsule, both at the server identity and
+  transform. A click on a corpse walks into range and opens
   it, and the
   same typed drag layer submits bidirectional full or partial transfers,
   corpse-internal moves, compatible stack merges, ordinary occupied-slot swaps,

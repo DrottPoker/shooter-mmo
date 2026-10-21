@@ -20,6 +20,7 @@ public sealed class ItemCommandValidationTests
         AssertMobCorpseInvalid(MobCorpse() with { CorpseId = Guid.Empty });
         AssertMobCorpseInvalid(MobCorpse() with { WorkerId = "worker one" });
         AssertMobCorpseInvalid(MobCorpse() with { PresentationKey = "corpse.other" });
+        AssertMobCorpseInvalid(MobCorpse() with { PresentationKey = "corpse.remains" });
         AssertMobCorpseInvalid(MobCorpse() with { LifetimeSeconds = 0.5d });
         AssertMobCorpseInvalid(MobCorpse() with { LifetimeSeconds = double.NaN });
         AssertMobCorpseInvalid(MobCorpse() with { WorkerHeartbeatTimeoutSeconds = 0 });
@@ -144,7 +145,7 @@ public sealed class ItemCommandValidationTests
             0d,
             0d,
             1d,
-            "corpse.remains",
+            "corpse.mob",
             60d,
             30,
             [new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", 1)]);

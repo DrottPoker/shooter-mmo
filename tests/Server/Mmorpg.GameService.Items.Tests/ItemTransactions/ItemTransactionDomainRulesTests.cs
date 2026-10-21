@@ -84,6 +84,7 @@ public sealed class ItemTransactionDomainRulesTests
     public void CorpseTransformRulesBoundPositionsAndNormalizeRotations()
     {
         Assert.Equal("corpse.remains", CorpseTransformRules.PlayerCorpsePresentationKey);
+        Assert.Equal("corpse.mob", CorpseTransformRules.MobCorpsePresentationKey);
         Assert.True(CorpseTransformRules.IsFinitePosition(1_000_000d));
         Assert.False(CorpseTransformRules.IsFinitePosition(1_000_000.5d));
         Assert.False(CorpseTransformRules.IsFinitePosition(double.NaN));

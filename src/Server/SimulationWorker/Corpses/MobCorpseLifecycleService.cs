@@ -46,7 +46,8 @@ public sealed class MobCorpseLifecycleService(
     SimulationWorkerIdentity identity,
     TimeProvider timeProvider)
 {
-    public const string DefaultPresentationKey = "corpse.remains";
+    // Player corpses use corpse.remains, which the client lays down as a body.
+    public const string DefaultPresentationKey = "corpse.mob";
 
     public async Task<MobCorpseCreationResult> CreateAsync(
         CreateMobCorpseRequest request,

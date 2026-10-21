@@ -397,8 +397,9 @@ visuals are deliberately temporary, but catalog, snapshot, revision,
 operation-id, error, refresh, reconnect, and authority handling are permanent
 foundations.
 
-Nearby durable corpses use a generic replaceable capsule presentation. Click a
-corpse to walk to it and open it. An open corpse always shows in the complete
+A nearby player corpse shows the body of the character lying where and as it
+fell, in the last pose of its death; a Mob corpse uses a generic replaceable
+capsule presentation. Click a corpse to walk to it and open it. An open corpse always shows in the complete
 view, which the panel switches to; switching to `B` or `C` closes the corpse.
 The Corpse tab lists nearby corpses but cannot open them. The contextual module
 shows general inventory, equipment, and Bag contents only after a complete

@@ -97,7 +97,8 @@ namespace Mmorpg.Client.Tests.PlayMode
         public IEnumerator APlayerCorpseIsTheBodyLyingInTheLastPoseOfDeath()
         {
             Assert.That(PlayerCorpseBodies.IsPlayerCorpse(PlayerCorpseBodies.PresentationKey), Is.True);
-            Assert.That(PlayerCorpseBodies.IsPlayerCorpse("mob.feral_wolf"), Is.False);
+            // The key a Mob corpse sends keeps the generic capsule.
+            Assert.That(PlayerCorpseBodies.IsPlayerCorpse("corpse.mob"), Is.False);
             var prefab = Spawn().GetComponent<PlayerBodyAppearance>();
             yield return null;
             using (var meshes = new PlayerBodyMeshes())

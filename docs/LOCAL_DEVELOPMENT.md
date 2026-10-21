@@ -114,7 +114,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports eleven definitions, one base Secure
   Container tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 22 with 35 messages
+- Protocol verification reports realtime protocol version 23 with 35 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -268,9 +268,9 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 22 with 35
+Expected result: both commands report realtime protocol version 23 with 35
 messages and 18 generated files, and the second prints
-`Realtime protocol version 22 verified: 35 messages, 18 generated files.`
+`Realtime protocol version 23 verified: 35 messages, 18 generated files.`
 The first command rewrites only changed files and removes files that the schema
 no longer produces. The second fails and names the file when a generated file
 is stale, missing, or not produced by the schema. Commit the schema,
@@ -1178,9 +1178,9 @@ at the same time:
    the tool reports a corpse id and an expiry five minutes in the future.
 4. Start or restart SimulationWorker after the fixture commits. Run the built
    player and enter Play Mode in the Editor. Log the two looters into their
-   separate accounts and join `local-shard-1`. Both spawn beside the generic
-   corpse capsule.
-5. Click the corpse capsule in both clients. Expected result: each player walks
+   separate accounts and join `local-shard-1`. Both spawn beside the corpse,
+   which shows as a body lying on its back like every player corpse.
+5. Click the corpse in both clients. Expected result: each player walks
    into range and opens the same complete
    three-section corpse view. The character column stays fixed while the
    middle Corpse column opens.
@@ -1680,8 +1680,9 @@ that carries them. Poll `unity command test_status` until `status` is
 ## Mob Corpse Verification
 
 Mob corpses reuse the corpse presence, view, drag, inventory refresh, and
-generic `corpse.remains` presentation. It adds no scene object, prefab, inspector
-reference, or protocol version. Mob definitions own the persistence choice and
+generic capsule presentation under their own presentation key `corpse.mob`, so the
+client never lays a Mob corpse down as a player body. It adds no scene object,
+prefab, inspector reference, or protocol version. Mob definitions own the persistence choice and
 lifetime:
 
 - `mob.feral_wolf`: `live`, `120` seconds.
@@ -2091,7 +2092,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 22, simulation revision,
+`27015`, runtime id, realtime protocol version 23, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
@@ -3040,7 +3041,9 @@ controller, and prefabs are committed.
     other character die. Expected result: its body falls the same way and lies
     until it respawns. Join with the second client while the first character is
     dead. Expected result: the dead body already lies in the end pose and does
-    not fall again.
+    not fall again. When the character respawns, its corpse stays at the place
+    of death as the same body lying in the same pose and direction, where the
+    grey capsule used to be, and a click on it opens the corpse as before.
 12. Press F2. In the Presentation section, press `>` next to `Your face:
     Stubble`, then next to `Your eye: Teal`. Expected result: the rows read
     `Your face: Scarred` and `Your eye: Brown`, and your body shows a scar over

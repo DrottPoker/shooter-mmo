@@ -355,7 +355,7 @@ public sealed class ItemOperationCanonicalRequestTests
                     0d,
                     0d,
                     1d,
-                    CorpsePresentationKey,
+                    MobCorpsePresentationKey,
                     90.25d,
                     30,
                     [new MobCorpseLootEntryRequest(lootGrantId, "fixture.ore", 3)])),
@@ -366,7 +366,7 @@ public sealed class ItemOperationCanonicalRequestTests
             ItemOperationKinds.CreatePersistentMobCorpse,
             Canonical(
                 SystemActor,
-                $$"""{"corpseId":"{{mobCorpseId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1","sourceActorDefinitionId":"mob.feral_wolf","sourceDisplayName":"Feral Wolf","positionX":1.5,"positionY":0,"positionZ":-2,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.remains","lifetimeSeconds":90.25,"workerHeartbeatTimeoutSeconds":30,"loot":[{"grantId":"{{lootGrantId}}","definitionId":"fixture.ore","quantity":3}]}"""),
+                $$"""{"corpseId":"{{mobCorpseId}}","workerId":"local-simulation-worker-1","workerRuntimeId":"integration-worker-runtime","shardId":"local-shard-1","sourceActorDefinitionId":"mob.feral_wolf","sourceDisplayName":"Feral Wolf","positionX":1.5,"positionY":0,"positionZ":-2,"rotationX":0,"rotationY":0,"rotationZ":0,"rotationW":1,"presentationKey":"corpse.mob","lifetimeSeconds":90.25,"workerHeartbeatTimeoutSeconds":30,"loot":[{"grantId":"{{lootGrantId}}","definitionId":"fixture.ore","quantity":3}]}"""),
             null,
             null);
 

@@ -780,7 +780,7 @@ internal sealed partial class CorpseService(
             && request.SourceDisplayName.Length <= 128
             && string.Equals(
                 request.PresentationKey,
-                ItemTransactionService.DefaultPlayerCorpsePresentationKey,
+                CorpseTransformRules.MobCorpsePresentationKey,
                 StringComparison.Ordinal)
             && request.LifetimeSeconds
                 is >= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MinimumLifetimeSeconds

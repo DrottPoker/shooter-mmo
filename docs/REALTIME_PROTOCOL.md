@@ -310,6 +310,20 @@ A corpse view section may have zero slots. Protocol version 16 allows
 its equipment and Bag sections are empty, and a fully looted live Mob corpse has
 no general slots left. Carried weight and carry capacity are unitless integers.
 
+## Corpse Presence Facing
+
+Since protocol version 23, every `CorpsePresence` carries `YawDegrees`, the
+facing of whoever left the corpse around the vertical axis. The worker takes it
+from the rotation it stores with a player corpse, a turn around Y that the death
+request builds from the character's yaw, so the client lays the body of a player
+corpse down as it fell. A durable Mob corpse carries the facing its Mob had and a
+live Mob corpse sends 0; neither matters until Mob corpses get models.
+
+The presentation key tells the client what to show. A player corpse sends
+`corpse.remains`, which the client shows as the body, and a Mob corpse sends
+`corpse.mob`, which keeps the generic capsule. GameService accepts only these
+keys for player deaths and for durable Mob corpses.
+
 ## Corpse View Closures
 
 `CorpseViewClosed` names why a view ended with a stable code, and the hand-written
