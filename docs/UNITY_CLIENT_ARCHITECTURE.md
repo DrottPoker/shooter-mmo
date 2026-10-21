@@ -646,6 +646,9 @@ advance its slice, but any newer focused revision marks the complete snapshot
 incoherent and disables mutation until a full refresh reaches the newest known
 revision. Same-revision content disagreement is an error. Older responses are
 ignored. Initial join and reconnect trigger a complete refresh automatically.
+A complete snapshot at the revision the client already holds, with equal
+content, also proves the state and enables mutation again, so a leave and
+rejoin or a reconnect that changed no item never leaves the inventory locked.
 
 Spent arrows commit in worker batches that no client intent caused. The worker
 reports each committed batch with `OwnerItemQuantityChanged`: the item-state
