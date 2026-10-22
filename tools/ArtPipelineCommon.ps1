@@ -524,6 +524,39 @@ function Get-ArtGarmentModelTarget([string]$Name, [string]$Label) {
     return "$script:ArtGarmentModelFolder/${Name}_$Label.fbx"
 }
 
+function Get-ArtGarmentDataTarget([string]$Name, [string]$Label) {
+    # The cover mask, underlay, and pull-in of a garment's model for one body.
+    return "$script:ArtGarmentModelFolder/${Name}_$Label.json"
+}
+
+function Get-ArtClipLibraries([string]$Skeleton) {
+    # The animation libraries of a skeleton, whose clips a garment is checked in: their repository
+    # path, their .blend file, and their clips.
+    return @(Get-ArtAssetDirectories | ForEach-Object {
+            $json = Get-Content -Raw -LiteralPath (Join-Path $_ "asset.json") | ConvertFrom-Json
+            if ([string]$json.kind -eq "animations" -and [string]$json.skeleton -ceq $Skeleton) {
+                $name = Split-Path -Leaf $_
+                [pscustomobject]@{
+                    Asset = Get-ArtRelativePath $_
+                    SourcePath = Join-Path $_ "$name.blend"
+                    Clips = [string[]]@($json.clips | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
+                    Export = $json.export
+                }
+            }
+        })
+}
+
+function Get-ArtGarmentClipArguments($Manifest) {
+    $arguments = @()
+    foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) {
+        if ($library.Clips.Count -gt 0) {
+            $arguments += @("--clip-library", "$($library.SourcePath)=$($library.Clips -join '+')")
+        }
+    }
+
+    return $arguments
+}
+
 function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
     # A garment: a mesh made on the first body and fitted to the others, exported as one model per
     # body, skinned to that body's rig. See docs/EQUIPMENT_VISUALS_DESIGN.md.
@@ -629,7 +662,15 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
 
     $models = @($bodies | ForEach-Object {
             $target = Get-ArtGarmentModelTarget $name $_.Root
-            [pscustomobject]@{ Body = $_.Root; Target = $target; TargetPath = Join-Path $script:ArtRepositoryRoot $target }
+            $data = Get-ArtGarmentDataTarget $name $_.Root
+            [pscustomobject]@{
+                Body = $_.Root
+                BodyAsset = $_.Asset
+                Target = $target
+                TargetPath = Join-Path $script:ArtRepositoryRoot $target
+                Data = $data
+                DataPath = Join-Path $script:ArtRepositoryRoot $data
+            }
         })
 
     $export = $null
@@ -640,15 +681,26 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         $modelsMatch = $records.Count -eq $models.Count
         for ($i = 0; $modelsMatch -and $i -lt $models.Count; $i++) {
             $modelsMatch = [string]$records[$i].body -ceq $models[$i].Body -and [string]$records[$i].target -ceq $models[$i].Target -and
-                [string]$records[$i].sha256 -cmatch $script:ArtShaPattern
+                [string]$records[$i].sha256 -cmatch $script:ArtShaPattern -and [string]$records[$i].data -ceq $models[$i].Data -and
+                [string]$records[$i].dataSha256 -cmatch $script:ArtShaPattern -and
+                [string]$records[$i].bodySourceSha256 -cmatch $script:ArtShaPattern
         }
+
+        $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
+        $clipSourcesMatch = @($clipSources | Where-Object {
+                [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
+                [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+            @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
 
         $baseMaps = (@($materials | Where-Object { $null -ne $_ -and $_.Contains("baseMap") } | ForEach-Object { $_.baseMap }) | Sort-Object) -join ","
         if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern) {
             $problems.Add("export needs a sourceSha256")
         }
         elseif (-not $modelsMatch) {
-            $problems.Add("export.models must list the model of every body in order with its body, target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx), and sha256")
+            $problems.Add("export.models must list the model of every body in order with its body, the bodySourceSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
+        }
+        elseif (-not $clipSourcesMatch) {
+            $problems.Add("export.clipSources must list every animation library the garment was checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export")
         }
         elseif ($null -eq $materials -or @($materials | Where-Object { $_.name -cne "M_Garment_$name" }).Count -gt 0) {
             $problems.Add("export.materials must hold the one material M_Garment_$name with its baseColor (#RRGGBB), optional baseMap, metallic, and smoothness")
@@ -659,7 +711,17 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         else {
             $export = [ordered]@{
                 sourceSha256 = [string]$Json.export.sourceSha256
-                models = @($records | ForEach-Object { [ordered]@{ body = [string]$_.body; target = [string]$_.target; sha256 = [string]$_.sha256 } })
+                models = @($records | ForEach-Object {
+                        [ordered]@{
+                            body = [string]$_.body
+                            bodySourceSha256 = [string]$_.bodySourceSha256
+                            target = [string]$_.target
+                            sha256 = [string]$_.sha256
+                            data = [string]$_.data
+                            dataSha256 = [string]$_.dataSha256
+                        }
+                    })
+                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; sourceSha256 = [string]$_.sourceSha256 } })
                 materials = $materials
                 textures = $textures
             }
@@ -738,9 +800,19 @@ function Write-ArtGarmentManifest($Manifest) {
             $comma = if ($i -lt $models.Count - 1) { "," } else { "" }
             $lines.Add("            {")
             $lines.Add("                `"body`": `"$($models[$i].body)`",")
+            $lines.Add("                `"bodySourceSha256`": `"$($models[$i].bodySourceSha256)`",")
             $lines.Add("                `"target`": `"$($models[$i].target)`",")
-            $lines.Add("                `"sha256`": `"$($models[$i].sha256)`"")
+            $lines.Add("                `"sha256`": `"$($models[$i].sha256)`",")
+            $lines.Add("                `"data`": `"$($models[$i].data)`",")
+            $lines.Add("                `"dataSha256`": `"$($models[$i].dataSha256)`"")
             $lines.Add("            }$comma")
+        }
+        $lines.Add('        ],')
+        $lines.Add('        "clipSources": [')
+        $sources = @($Manifest.Export.clipSources)
+        for ($i = 0; $i -lt $sources.Count; $i++) {
+            $comma = if ($i -lt $sources.Count - 1) { "," } else { "" }
+            $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"sourceSha256`": `"$($sources[$i].sourceSha256)`" }$comma")
         }
         $lines.Add('        ],')
         Add-ArtMaterialLines $lines @($Manifest.Export.materials) ","
@@ -1275,7 +1347,7 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
             $arguments += @("--body", "$($body.SourcePath)=$($body.Root)")
         }
 
-        return $arguments
+        return $arguments + (Get-ArtGarmentClipArguments $Manifest)
     }
 
     $arguments = @(

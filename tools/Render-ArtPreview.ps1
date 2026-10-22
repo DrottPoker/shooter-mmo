@@ -21,5 +21,11 @@ if ([string]::IsNullOrWhiteSpace($Output)) {
 
 $Output = [System.IO.Path]::GetFullPath($Output)
 $blender = Resolve-ArtBlender $BlenderPath
-Invoke-ArtBlender $blender $manifest @("preview", "--output", $Output, "--kind", $manifest.Kind) | Out-Null
+$arguments = @("preview", "--output", $Output, "--kind", $manifest.Kind)
+if ($manifest.Kind -eq "garment") {
+    # The sheet of a garment also shows what it covers, at rest and in the clips.
+    $arguments += @("--garment", $manifest.Name, "--band", $manifest.Band) + (Get-ArtGarmentClipArguments $manifest)
+}
+
+Invoke-ArtBlender $blender $manifest $arguments | Out-Null
 Write-Host "Review sheet for $($manifest.Name): $Output"

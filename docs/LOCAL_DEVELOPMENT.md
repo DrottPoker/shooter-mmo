@@ -3070,7 +3070,9 @@ of their own, made on the male body and fitted to the female.
    ```
 
    Expected result: the report lines, `Synced LinenShirt: ...`, the paths of the
-   review sheet and the review file, and `LinenShirt meets every rule. Review
+   review sheet and the review file, what it covers on each body, such as
+   `LinenShirt_Male: covers <n> of 4358 body faces, <m> of them for motion, and
+   pulls in <k> visible vertices`, and `LinenShirt meets every rule. Review
    it, ...`. A second run prints `LinenShirt is up to date: ...` and leaves the
    file as it is. A broken rule stops it with the list of rules, such as a
    version that leaves its band, with the body parts where it does. The starting
@@ -3079,10 +3081,12 @@ of their own, made on the male body and fitted to the female.
    every weight from the bodies again, also the weights painted by hand.
 3. Look at `artifacts\art-previews\LinenShirt.png` and open
    `artifacts\art-previews\LinenShirt_poses.blend` in Blender and play the
-   timeline. Expected result: both bodies side by side in the garment, stepping
-   through the test poses, with the garment following the arms, the torso, and
-   the legs without the body showing through. Close the review file without
-   saving.
+   timeline. Expected result: on the sheet, each body's third row shows it
+   without the garment, orange where the garment covers it, red where it is
+   hidden for motion, and blue where it is pulled in; in the review file, both
+   bodies side by side in the garment, stepping through the test poses, with the
+   garment following the arms, the torso, and the legs without the body showing
+   through. Close the review file without saving.
 4. Approve both stages, export, and verify:
 
    ```powershell
@@ -3095,11 +3099,13 @@ of their own, made on the male body and fitted to the female.
    Expected result: `Approved the 'model' stage of LinenShirt (triangles=...)`,
    the same for `rig`, `Exported LinenShirt to
    src/Client/Assets/Art/Models/Garments/LinenShirt_Male.fbx,
-   src/Client/Assets/Art/Models/Garments/LinenShirt_Female.fbx (...)`, and
+   src/Client/Assets/Art/Models/Garments/LinenShirt_Female.fbx with their data
+   (...)`, and
    `Verified <n> art asset(s).` When Unity gets focus, it creates
    `Assets/Art/Materials/Garments/M_Garment_LinenShirt.mat`. Commit the
-   `.blend` file, `asset.json`, the FBX and PNG files, the material, and their
-   `.meta` files together. Putting garments on a character in the game comes
+   `.blend` file, `asset.json`, the FBX, JSON, and PNG files, the material, and
+   their `.meta` files together. A garment is exported after its bodies and the
+   animation library, and again whenever one of them is exported again. Putting garments on a character in the game comes
    with delivery step 4 of [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md).
 
 ### Manual Test Of The Human Base Characters
@@ -3185,16 +3191,21 @@ controller, and prefabs are committed.
     every test passes, among them a robe that stays outside the legs while the
     body jogs. No garment uses the chains yet, so nothing changes in the game.
 16. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/LeatherJerkin`.
-    Expected result: `LeatherJerkin_Male: 1124 triangles, 6.0 to 17.7 mm from
-    the skin, median 9.9 mm`, the same for the female, `LeatherJerkin is up to
-    date: ...`, and `LeatherJerkin meets every rule, and both stages are
-    approved for this file.` Open
+    Expected result: `LeatherJerkin_Male: 1124 triangles, 5.3 to 17.7 mm from
+    the skin, median 10.0 mm`, the same for the female, `LeatherJerkin is up to
+    date: ...`, `LeatherJerkin_Male: covers 487 of 4358 body faces, 22 of them
+    for motion, and pulls in 0 visible vertices`, `LeatherJerkin_Female: covers
+    488 of 4358 body faces, 18 of them for motion, ...`, and `LeatherJerkin meets
+    every rule, and both stages are approved for this file.` Open
     `artifacts\art-previews\LeatherJerkin.png`. Expected result: the jerkin on
-    both bodies from four sides, the torso up close, and the test poses. Open
+    both bodies from four sides, the torso up close, the test poses, and each
+    body without it, orange in the jerkin's shape with the laced V and the
+    arms below the sleeves left visible and a few red faces at the front of the
+    armpits. Open
     `artifacts\art-previews\LeatherJerkin_poses.blend` and play the timeline.
     Expected result: the jerkin follows both bodies through the poses. In Unity,
-    run the EditMode test `EveryGarmentModelIsSkinnedToTheRigOfItsBody`.
-    Expected result: it passes. No character wears the garment in the game yet.
+    run the EditMode tests `EveryGarmentModelIsSkinnedToTheRigOfItsBody` and
+    `EveryGarmentModelHasItsData`. Expected result: both pass. No character wears the garment in the game yet.
 
 ## One-Time Unity World Scene Authoring
 

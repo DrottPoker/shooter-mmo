@@ -20,7 +20,7 @@ import bpy
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from art_pipeline import garment, library, paint, preview, skinned  # noqa: E402
+from art_pipeline import coverage, garment, library, paint, preview, skinned  # noqa: E402
 from art_pipeline import skeleton as skeleton_definition  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
@@ -48,6 +48,8 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--band", help="The band of a garment: tight, mid, outer, or loose.")
         command.add_argument("--body", action="append", default=[],
                              help="<file.blend>=<armature> of a body a garment fits, the first body first.")
+        command.add_argument("--clip-library", action="append", default=[],
+                             help="<file.blend>=<Clip>+<Clip> of an animation library whose clips a garment is checked in.")
         if name == "export":
             command.add_argument("--target", help="Absolute FBX path; a paint layer has none.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
@@ -55,6 +57,10 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--output", required=True, help="PNG file to write.")
     command.add_argument("--cell-size", type=int, default=420)
     command.add_argument("--kind", default="static")
+    command.add_argument("--garment", help="The name of a garment, whose sheet also shows what it covers.")
+    command.add_argument("--band", help="The band of a garment.")
+    command.add_argument("--clip-library", action="append", default=[],
+                         help="<file.blend>=<Clip>+<Clip> of an animation library whose clips complete a garment's mask.")
     command = commands.add_parser("library-sync")
     command.add_argument("--library", required=True, help="The animation library .blend to build or update.")
     command.add_argument("--armature", required=True, help="The name of the armature the clips are keyed on.")
@@ -77,6 +83,7 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--paint-name")
             command.add_argument("--part", default="Body")
         elif name == "garment-sync":
+            command.add_argument("--band", required=True, choices=sorted(garment.BANDS))
             command.add_argument("--weights", action="store_true",
                                  help="Transfer every weight from the bodies again, also those painted by hand.")
         else:
@@ -110,15 +117,21 @@ def _bodies(args) -> list[tuple[str, str]]:
     return [(os.path.abspath(path), root) for path, root in (b.rsplit("=", 1) for b in args.body)]
 
 
+def _clip_libraries(args) -> list[tuple[str, list[str]]]:
+    return [(os.path.abspath(path), clips.split("+")) for path, clips in (e.rsplit("=", 1) for e in args.clip_library)]
+
+
 def _garment(args) -> int:
     """Validation and export of a garment: one version per body, each exported with its body's
-    armature from its own collection. The model stage checks the shape, the fitting, and the band;
-    the rig stage the armature and the weights."""
+    armature from its own collection and with its data: the cover mask, underlay, and pull-in. The
+    model stage checks the shape, the fitting, and the band, and reports the mask at rest; the rig
+    stage checks the armature and the weights, and hides the skin that comes out of the garment in
+    the test poses and the clips. The export needs the rig stage."""
     body_list = _bodies(args)
     labels = args.roots.split(",")
     if [root for _path, root in body_list] != labels:
         raise ArtPipelineError("A garment is checked against its bodies; pass one --body per root, in order.")
-    errors = garment.stale_errors(args.garment, body_list)
+    errors = garment.stale_errors(args.garment, args.band, body_list)
     errors += garment.garment_errors(args.garment, labels, args.band, args.triangle_budget)
     versions = [v for v in (bpy.data.objects.get(garment.version_name(args.garment, label)) for label in labels)
                 if v is not None]
@@ -131,6 +144,20 @@ def _garment(args) -> int:
                 errors += skinned.rig_errors([arm, version], [arm], skeleton)
     elif args.stage != "model":
         raise ArtPipelineError(f'A garment has the review stages model and rig, not "{args.stage}".')
+    coverages = {}
+    if not errors:
+        for label in labels:
+            coverages[label] = coverage.compute(args.garment, label, args.band)
+            if args.stage == "model":
+                print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
+    if not errors and args.stage == "rig":
+        actions = coverage.load_actions(_clip_libraries(args))
+        for label in labels:
+            motion = coverage.settle_motion(args.garment, coverages[label], actions)
+            print(f"ART_REPORT {coverage.motion_summary(args.garment, motion)}")
+            print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
+        for library_data in {a.library for a in actions if a.library is not None}:
+            bpy.data.libraries.remove(library_data)
     for error in errors:
         print(f"ART_PIPELINE_ERROR {error}")
     if errors:
@@ -138,9 +165,13 @@ def _garment(args) -> int:
     triangles = max(sum(len(p.vertices) - 2 for p in v.data.polygons) for v in versions)
     print(f"ART_VALIDATION triangles={triangles}")
     if args.command == "export":
+        if args.stage != "rig":
+            raise ArtPipelineError("A garment is exported with its rig stage, whose motion completes its masks.")
         for label, target in garment.export_paths(args.garment, labels, args.target):
             export_fbx("garment", target, garment.collection_name(label))
-            print(f"ART_GARMENT_FBX {json.dumps({'label': label, 'path': target}, separators=(',', ':'))}")
+            data = os.path.splitext(target)[0] + ".json"
+            coverage.write_record(data, coverage.record(args.garment, coverages[label]))
+            print(f"ART_GARMENT_FBX {json.dumps({'label': label, 'path': target, 'data': data}, separators=(',', ':'))}")
         for record in material_records(versions):
             print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
         if args.textures:
@@ -153,8 +184,12 @@ def _garment(args) -> int:
 def main() -> int:
     args = parse_args(_parser())
     if args.command == "preview":
-        render = {"animations": preview.render_clip_sheet, "paint": preview.render_paint_sheet,
-                  "garment": preview.render_garment_sheet}.get(
+        if args.kind == "garment":
+            path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size, args.garment, args.band,
+                                                _clip_libraries(args))
+            print(f"ART_PREVIEW {path}")
+            return 0
+        render = {"animations": preview.render_clip_sheet, "paint": preview.render_paint_sheet}.get(
             args.kind, preview.render_sheet)
         path = render(os.path.abspath(args.output), args.cell_size)
         print(f"ART_PREVIEW {path}")
@@ -180,7 +215,7 @@ def main() -> int:
             garment.create(os.path.abspath(args.file), args.garment, args.slot, args.band, body_list,
                            os.path.abspath(args.paint_file) if args.paint_file else None, args.paint_name, args.part)
         else:
-            changed, hand = garment.sync(os.path.abspath(args.file), args.garment, body_list, args.weights)
+            changed, hand = garment.sync(os.path.abspath(args.file), args.garment, args.band, body_list, args.weights)
             state = "synced" if changed else "up-to-date"
             if hand:
                 print(f"ART_REPORT {hand} vertices keep the weights painted on them by hand.")

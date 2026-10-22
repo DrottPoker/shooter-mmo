@@ -3,10 +3,10 @@
 Last updated: 2026-10-22
 
 Status: accepted by Victor on 2026-10-22, with the support of future races added.
-It is implemented in the order of [Delivery Plan](#delivery-plan); steps 1 and 2,
-this document and the cloth chains with their solver, are done, and of step 3 the
-garment kind with its fitting, weights, bands, review, export, and Unity import,
-with the leather jerkin as its first garment.
+It is implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 3,
+this document, the cloth chains with their solver, and the garment kind with its
+fitting, weights, bands, masks, review, export, and Unity import, are done, with
+the leather jerkin as the first garment.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -109,10 +109,16 @@ can refer to. For every body type a garment fits, the pipeline computes:
 - **The cover mask**: one bit per body face, set when the garment covers the face.
   From sample points on the face, rays go outward in a cone around the face
   normal up to the garment's reach. A sample is covered when every ray hits the
-  garment where its texture is opaque; a face is covered when all its samples
-  are. A ray that leaves through a hole, a crop top's open belly, or a
+  garment where its texture is opaque, or the body itself, as in an armpit; a
+  face is covered when all its samples are and at least one ray hits the
+  garment. A ray that leaves through a hole, a crop top's open belly, or a
   transparent part of a lace texture leaves the face visible, with its skin and
   everything painted on it.
+- **In motion**, the mask also hides the visible skin under the garment that
+  comes out of it in the test poses and the clips. Skinning blends the bones of
+  a fold, such as an armpit, so the gap between skin and cloth closes there in
+  motion whatever the weights, and the skin there would show through. The hidden
+  faces lie under the garment; a look into an opening sees the garment's inside.
 - **The underlay**: for every face of the garment, the index of the body face
   under it, the closest body face along the garment's inward normal.
 - **The pull-in**: for every body vertex that stays visible but lies closer to
@@ -165,13 +171,17 @@ fits it to every other body type of the same topology, also those of
 - **Shape**: every garment vertex is bound to the closest point of the first
   body's surface, as a face, barycentric coordinates, and an offset along the
   surface normal and tangents, and placed at the same point and offset on the
-  other body. Garments stay out of the body's armpits and crotch by the same rule
-  as they do on the first body.
+  other body. A vertex or a face centre that then leaves the garment's band,
+  because the other body curves differently, moves back into it. Garments stay
+  out of the body's armpits and crotch by the same rule as they do on the first
+  body.
 - **Corrections**: where the fitted shape needs a hand, a person sculpts it on the
   other body's version. The pipeline keeps the correction as a difference to the
   fitted shape, so the next fit after a change of the first version keeps it.
 - **Weights**: a garment vertex takes the skin weights of the body at its bound
-  point, smoothed; loose parts take the cloth chains instead. Weights painted by
+  point, not smoothed, so it moves like the skin it covers; measured on the
+  jerkin, smoothed weights let the skin under a sleeve come through further, 20
+  instead of 7 mm. Loose parts take the cloth chains instead. Weights painted by
   hand on the first version are kept, and the other versions copy them, because
   every version of a garment has the same topology.
 
@@ -339,19 +349,25 @@ pull-in, all recorded with their hashes like every export.
 The sync stops on a broken rule and reports the rest:
 
 - Every version has the garment's topology and stays within its triangle budget.
-- Every vertex lies within its band on every body type.
-- In the rig review's test poses and at sampled frames of `Idle`, `Walk`, `Jog`,
-  and `Death`, no visible body vertex lies outside the garment where it should be
-  under it, and no garment of a lower layer reaches through a higher one; the
-  report names the worst place and its depth.
-- Masks cover at least the faces under opaque cloth in the rest pose.
+- Every vertex and every face centre lies within its band on every body type, so
+  a flat face over a round shoulder cannot dip under the skin.
+- In the rig review's test poses and at every frame of `Idle`, `Walk`, `Jog`,
+  and `Death`, no visible body vertex comes out of the garment where it is under
+  it: such a vertex has its faces hidden for motion, and the report names how
+  many and the deepest place. No garment of a lower layer reaches through a
+  higher one; this is checked when a character wears garments together, in
+  step 4.
+- The faces that only the cone of rays leaves visible are the garment's
+  openings, and the review sheet shows the mask, so a mask that is too small
+  shows there; a check that the faces under opaque cloth are covered would only
+  repeat the rays.
 - Only a garment whose texture has an alpha channel is clipped.
 
 ### Review
 
 The review sheet shows the garment on every body type from four sides, the
-covered body faces in a color over the body, the pulled-in vertices, and the
-garment in the test poses. Cloth motion is reviewed in the Wardrobe preview, a
+garment in the test poses, and the body without it, the faces covered at rest
+orange, those hidden for motion red, and the pulled-in vertices blue. Cloth motion is reviewed in the Wardrobe preview, a
 Unity Editor window that dresses a body in chosen garments, plays a clip on a
 moving ground, and runs the cloth solver.
 
@@ -379,9 +395,8 @@ quarter of the triangles come with the first crowd measurement that needs them.
    garment made in code.
 3. The garment kind: `New-ArtAsset.ps1 -Kind garment`, `Sync-GarmentAsset.ps1`
    with fitting, weights, masks, pull-in, bands, and the clipping report, the
-   review sheet, the export, the Unity import rules, and their tests. Done
-   without the masks, underlay, pull-in, and clipping report, which come next;
-   the leather jerkin is its first garment, still the shell of its paint layer.
+   review sheet, the export, the Unity import rules, and their tests. Done; the
+   leather jerkin is its first garment, still the shell of its paint layer.
 4. Putting a character together in Unity: masks, garment layers, pull-in, the
    garment shader with clipping and dyes, the Wardrobe preview, and trying
    garments on in F2.

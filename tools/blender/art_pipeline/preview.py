@@ -14,7 +14,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from . import poses
+from . import bodies, coverage, garment, poses
 from .scene import descendants, export_objects, root_objects
 
 YAWS = (35.0, 125.0, 215.0, 305.0)
@@ -227,23 +227,73 @@ def render_paint_sheet(output: str, cell: int) -> str:
 # yaw of 0 looks at its back.
 GARMENT_POSES = ("t_pose", "arms_up", "arms_forward", "torso", "stride", "sit")
 GARMENT_POSE_YAW = 215.0
+# The mask view: body faces the garment covers at rest and for motion, the vertices it pulls in,
+# and the visible skin.
+COVERED_SRGB = (0.95, 0.45, 0.10)
+MOVED_SRGB = (0.85, 0.10, 0.20)
+PULLED_SRGB = (0.15, 0.45, 0.95)
+VISIBLE_SRGB = (0.78, 0.74, 0.70)
 
 
-def render_garment_sheet(output: str, cell: int) -> str:
-    """A garment on every body of its file, two rows per body: the body in the garment from four
-    sides with its torso from the front and from the back, then the test poses that bend it."""
+def _mask_material(body: bpy.types.Object, result) -> bpy.types.Material:
+    """A material that shows the cover mask and the pull-in on the body, from a color attribute."""
+    attribute = body.data.color_attributes.new("CoverPreview", "BYTE_COLOR", "CORNER")
+    pulled = set(int(v) for v in result.pull_vertices)
+    colors = {key: tuple(_srgb_to_linear(c) for c in srgb) + (1.0,)
+              for key, srgb in (("covered", COVERED_SRGB), ("moved", MOVED_SRGB), ("pulled", PULLED_SRGB),
+                                ("visible", VISIBLE_SRGB))}
+    for polygon in body.data.polygons:
+        for loop in polygon.loop_indices:
+            if result.moved is not None and result.moved[polygon.index]:
+                color = colors["moved"]
+            elif result.covered[polygon.index]:
+                color = colors["covered"]
+            elif body.data.loops[loop].vertex_index in pulled:
+                color = colors["pulled"]
+            else:
+                color = colors["visible"]
+            attribute.data[loop].color = color
+    material = bpy.data.materials.new("PreviewCoverMask")
+    if material.node_tree is None:
+        material.use_nodes = True
+    nodes = material.node_tree.nodes
+    bsdf = next(n for n in nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Roughness"].default_value = 0.9
+    source = nodes.new("ShaderNodeVertexColor")
+    source.layer_name = attribute.name
+    material.node_tree.links.new(source.outputs["Color"], bsdf.inputs["Base Color"])
+    return material
+
+
+def render_garment_sheet(output: str, cell: int, name: str | None = None, band: str | None = None,
+                         libraries: list[tuple[str, list[str]]] | None = None) -> str:
+    """A garment on every body of its file, rows per body: the body in the garment from four sides
+    with its torso from the front and from the back, then the test poses that bend it, and with the
+    garment's name and band the body without it, its covered faces and pulled-in vertices colored:
+    orange the faces covered at rest, red those hidden for motion in the clips of the libraries."""
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
     armatures = sorted((o for o in scene.objects if o.type == "ARMATURE"), key=lambda o: o.name)
     camera, sun = _studio(scene, cell)
     columns = max(len(YAWS) + 2, len(GARMENT_POSES))
-    rows = 2 * len(armatures)
+    per_body = 3 if name else 2
+    rows = per_body * len(armatures)
     sheet = np.zeros((cell * rows, cell * columns, 4), dtype=np.float32)
 
     def place(row: int, column: int, path: str) -> None:
         top = (rows - 1 - row) * cell
         sheet[top:top + cell, column * cell:(column + 1) * cell] = _render(scene, path)
 
+    def around(row: int, center: Vector, radius: float, low: Vector, high: Vector, tag: str) -> None:
+        for column, yaw in enumerate(YAWS):
+            _aim(camera, sun, center, radius, yaw)
+            place(row, column, os.path.join(scratch, f"{tag}_{column}.png"))
+        torso = Vector((center.x, center.y, low.z + (high.z - low.z) * 0.68))
+        for column, yaw in enumerate((180.0, 0.0), len(YAWS)):
+            _aim(camera, sun, torso, (high.z - low.z) * 0.22, yaw)
+            place(row, column, os.path.join(scratch, f"{tag}_c{column}.png"))
+
+    actions = coverage.load_actions(libraries or []) if name else []
     with tempfile.TemporaryDirectory() as scratch:
         for index, arm in enumerate(armatures):
             shown = set(descendants(arm))
@@ -254,19 +304,29 @@ def render_garment_sheet(output: str, cell: int) -> str:
             low, high = _bounds([o for o in shown if o.type == "MESH"])
             center = (low + high) / 2.0
             radius = max((high - low).length / 2.0, 0.1)
-            for column, yaw in enumerate(YAWS):
-                _aim(camera, sun, center, radius, yaw)
-                place(2 * index, column, os.path.join(scratch, f"{index}_{column}.png"))
-            torso = Vector((center.x, center.y, low.z + (high.z - low.z) * 0.68))
-            for column, yaw in enumerate((180.0, 0.0), len(YAWS)):
-                _aim(camera, sun, torso, (high.z - low.z) * 0.22, yaw)
-                place(2 * index, column, os.path.join(scratch, f"{index}_c{column}.png"))
-            for column, name in enumerate(GARMENT_POSES):
-                poses.apply(arm, next(p for n, _d, p in poses.POSES if n == name))
+            row = per_body * index
+            around(row, center, radius, low, high, f"{index}")
+            for column, pose_name in enumerate(GARMENT_POSES):
+                poses.apply(arm, next(p for n, _d, p in poses.POSES if n == pose_name))
                 # Raised arms reach above the rest pose's bounds.
                 _aim(camera, sun, center, radius * 1.2, GARMENT_POSE_YAW)
-                place(2 * index + 1, column, os.path.join(scratch, f"{index}_p{column}.png"))
+                place(row + 1, column, os.path.join(scratch, f"{index}_p{column}.png"))
             poses.rest(arm)
+            if name:
+                body = bodies.source_body(arm.name)
+                version = bpy.data.objects[garment.version_name(name, arm.name)]
+                materials = list(body.data.materials)
+                result = coverage.compute(name, arm.name, band)
+                coverage.settle_motion(name, result, actions)
+                mask = _mask_material(body, result)
+                for slot in range(len(body.data.materials)):
+                    body.data.materials[slot] = mask
+                version.hide_render = True
+                around(row + 2, center, radius, low, high, f"{index}_m")
+                version.hide_render = False
+                for slot, material in enumerate(materials):
+                    body.data.materials[slot] = material
+                body.data.color_attributes.remove(body.data.color_attributes["CoverPreview"])
     return _save(sheet, output)
 
 
