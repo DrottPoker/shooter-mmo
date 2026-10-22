@@ -7,13 +7,14 @@ garment's version <Name>_<Label> bound to it, and in the Reference collection th
 eyes, teeth, and tongue, which show it and which the fitting reads. The first body's version is the
 garment a person edits. Every other version is fitted from it: each vertex is bound to a triangle of
 the first body, by barycentric coordinates and an offset in the triangle's frame, and placed at the
-same triangle and offset of the other body. A person's corrections of a fitted version are kept as
+same triangle and offset of the other body, and a vertex or a face centre that then leaves the
+garment's band is moved back into it. A person's corrections of a fitted version are kept as
 the difference to the attribute "fitted", the shape the last fitting gave.
 
-Every vertex takes the weights of the body under it, interpolated from the corners of its triangle.
-The attribute "transferred_weights" holds a checksum of the weights the last transfer gave each
-vertex of the first version; a vertex whose weights differ from it was painted by hand and keeps
-them, also in the other versions."""
+Every vertex takes the weights of the body under it, interpolated from the corners of its triangle
+and not smoothed, so it moves like the skin it covers. The attribute "transferred_weights" holds a
+checksum of the weights the last transfer gave each vertex of the first version; a vertex whose
+weights differ from it was painted by hand and keeps them, also in the other versions."""
 
 import hashlib
 import os
@@ -49,6 +50,10 @@ SLOT_ZONES = {
 SHELL_DISTANCES = {"tight": (0.004, 0.002, 0.007), "mid": (0.010, 0.0075, 0.022),
                    "outer": (0.020, 0.015, 0.050), "loose": (0.020, 0.015, None)}
 SHELL_SMOOTHING = 12
+# A vertex or a face centre that leaves its band moves back into it by the difference and this
+# margin, a few times over, because moving one face moves the corners it shares.
+SETTLE_MARGIN = 0.0005
+SETTLE_PASSES = 4
 ALPHA_CUT = 0.5
 # The review file places the bodies side by side, this far apart.
 REVIEW_OFFSET = 0.8
@@ -91,7 +96,7 @@ def _triangles(mesh: bpy.types.Mesh) -> list[tuple[int, int, int, int]]:
     return found
 
 
-class _Surface:
+class Surface:
     """A body's surface for fitting: its triangles, their frames, and the body's weights over the
     given bones, or over its own vertex groups."""
 
@@ -135,13 +140,40 @@ class _Surface:
         _p, a, b, c = self.triangles[triangle]
         return _limited(self.weights[a] * weights[0] + self.weights[b] * weights[1] + self.weights[c] * weights[2])
 
-    def signed_distance(self, point: Vector) -> tuple[float, int]:
-        """The distance from the nearest point of the surface along its normal, and the polygon
-        of that point."""
+    def nearest(self, point: Vector) -> tuple[float, Vector, int]:
+        """The distance from the nearest point of the surface along its normal, that normal, and the
+        polygon of that point."""
         found, normal, triangle, _distance = self.tree.find_nearest(point)
         if found is None:
-            return float("inf"), -1
-        return (point - found).dot(normal), self.triangles[triangle][0]
+            return float("inf"), Vector((0.0, 0.0, 1.0)), -1
+        return (point - found).dot(normal), normal, self.triangles[triangle][0]
+
+    def signed_distance(self, point: Vector) -> tuple[float, int]:
+        distance, _normal, polygon = self.nearest(point)
+        return distance, polygon
+
+
+def _settle(positions: np.ndarray, polygons: list[tuple[int, ...]], surface: Surface, low: float,
+            high: float | None) -> np.ndarray:
+    """The positions with every vertex, and the corners of every face whose centre, that lies closer
+    to the skin than low or farther than high moved along the skin's normal there into the band, so
+    the whole surface keeps it, not only its corners."""
+    co = positions.copy()
+    points = [(i,) for i in range(len(co))] + list(polygons)
+    for _ in range(SETTLE_PASSES):
+        settled = True
+        for polygon in points:
+            corners = list(polygon)
+            distance, normal, _p = surface.nearest(Vector(co[corners].mean(axis=0)))
+            if distance < low:
+                co[corners] += np.array(normal) * (low + SETTLE_MARGIN - distance)
+                settled = False
+            elif high is not None and distance > high:
+                co[corners] -= np.array(normal) * (distance - high + SETTLE_MARGIN)
+                settled = False
+        if settled:
+            break
+    return co
 
 
 def _limited(row: np.ndarray) -> np.ndarray:
@@ -296,6 +328,14 @@ def _shell(body: bpy.types.Object, keep: list[bool], band: str) -> bpy.types.Mes
                 v.co = found + normal * gap
             elif ceiling is not None and distance > ceiling:
                 v.co = found + normal * ceiling
+    # The centres of the faces keep the distances too.
+    bm.verts.index_update()
+    matrix = body.matrix_world
+    co = np.array([tuple(matrix @ v.co) for v in bm.verts])
+    co = _settle(co, [tuple(v.index for v in f.verts) for f in bm.faces], Surface(body, []), gap, ceiling)
+    inverse = matrix.inverted()
+    for v in bm.verts:
+        v.co = inverse @ Vector(co[v.index])
     mesh = bpy.data.meshes.new("shell")
     bm.to_mesh(mesh)
     bm.free()
@@ -387,7 +427,7 @@ def create(file: str, name: str, slot: str, band: str, body_list: list[tuple[str
         polygon.material_index = 0
     if image is not None:
         image.pack()
-    _apply(_plan(name, arms, transfer_all=True), name, arms)
+    _apply(_plan(name, arms, band, transfer_all=True), name, arms)
     _show_first(arms)
     relative_image_paths()
     bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
@@ -430,7 +470,7 @@ def _rounded_weights(weights: np.ndarray) -> np.ndarray:
     return weights.astype(np.float32).astype(np.float64)
 
 
-def _plan(name: str, arms: list[bpy.types.Object], transfer_all: bool = False) -> dict:
+def _plan(name: str, arms: list[bpy.types.Object], band: str, transfer_all: bool = False) -> dict:
     """What a sync gives every version: its positions, its weights over the first body's bones,
     and the checksums of the transferred weights of the first version, with the number of vertices
     painted by hand."""
@@ -439,7 +479,7 @@ def _plan(name: str, arms: list[bpy.types.Object], transfer_all: bool = False) -
     # Every deforming bone, so weights painted by hand on cloth chain bones, which the body has
     # none of, are kept too.
     names = [b.name for b in arms[0].data.bones if b.use_deform]
-    surface = _Surface(bodies.source_body(labels[0]), names)
+    surface = Surface(bodies.source_body(labels[0]), names)
     co = bodies.world_positions(first)
     binding = [surface.bind(Vector(p)) for p in co]
     transferred = _rounded_weights(np.array([surface.weights_at(t, w) for t, w, _o in binding]))
@@ -457,8 +497,9 @@ def _plan(name: str, arms: list[bpy.types.Object], transfer_all: bool = False) -
     plan = {"names": names, "hand": int(hand.sum()),
             "versions": {first.name: {"positions": None, "weights": first_weights, "checksums": checksums}}}
     for arm in arms[1:]:
-        own = _Surface(bodies.source_body(arm.name), names)
-        positions = np.array([own.place(t, w, o) for t, w, o in binding])
+        own = Surface(bodies.source_body(arm.name), names)
+        positions = _settle(np.array([own.place(t, w, o) for t, w, o in binding]),
+                            [tuple(p.vertices) for p in first.data.polygons], own, *BANDS[band])
         weights = _rounded_weights(np.array([own.weights_at(t, w) for t, w, _o in binding]))
         plan["versions"][version_name(name, arm.name)] = {
             "positions": positions, "weights": np.where(hand[:, None], first_weights, weights), "checksums": None}
@@ -530,7 +571,7 @@ def _state(name: str, labels: list[str]) -> str:
     return digest.hexdigest()
 
 
-def sync(file: str, name: str, body_list: list[tuple[str, str]], transfer_all: bool = False) -> tuple[bool, int]:
+def sync(file: str, name: str, band: str, body_list: list[tuple[str, str]], transfer_all: bool = False) -> tuple[bool, int]:
     """Appends the bodies again that changed in their own files, fits every other version of the
     garment again from the first, and gives every version its weights, keeping the corrections and
     the weights painted by hand, unless every weight is transferred again. Returns whether the file
@@ -548,7 +589,7 @@ def sync(file: str, name: str, body_list: list[tuple[str, str]], transfer_all: b
         for child in list(obj.children_recursive):
             bpy.data.objects.remove(child, do_unlink=True)
         bpy.data.objects.remove(obj, do_unlink=True)
-    plan = _plan(name, arms, transfer_all)
+    plan = _plan(name, arms, band, transfer_all)
     _apply(plan, name, arms)
     if _state(name, labels) == before:
         return False, plan["hand"]
@@ -559,7 +600,7 @@ def sync(file: str, name: str, body_list: list[tuple[str, str]], transfer_all: b
     return True, plan["hand"]
 
 
-def stale_errors(name: str, body_list: list[tuple[str, str]]) -> list[str]:
+def stale_errors(name: str, band: str, body_list: list[tuple[str, str]]) -> list[str]:
     """A garment is checked as a sync would leave it: its bodies are the current ones of their
     files, every fitted version is fitted to the current first version, and every version has the
     weights a sync gives it."""
@@ -569,7 +610,7 @@ def stale_errors(name: str, body_list: list[tuple[str, str]]) -> list[str]:
         return [f"The bodies {stale} of the garment changed in their own files; run tools/Sync-GarmentAsset.ps1."]
     arms = [bpy.data.objects[label] for label in labels]
     try:
-        plan = _plan(name, arms)
+        plan = _plan(name, arms, band)
     except ArtPipelineError:
         # garment_errors reports the missing first version.
         return []
@@ -593,7 +634,8 @@ def stale_errors(name: str, body_list: list[tuple[str, str]]) -> list[str]:
 
 def garment_errors(name: str, labels: list[str], band: str, budget: int) -> list[str]:
     """The model rules of a garment: a version per body with the first version's topology, within the
-    triangle budget and its band from the skin."""
+    triangle budget and its band from the skin, at every vertex and at the centre of every face, so
+    a large flat face over a round shoulder cannot dip under the skin between its corners."""
     errors = []
     try:
         first = _first_version(name, labels)
@@ -628,15 +670,18 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int) -> list
                 worst.append(f"the farthest {distances[far].max() * 1000:.1f} mm")
             errors.append(f'"{obj.name}" leaves its {band} band of {low * 1000:.0f} to '
                           f'{"any" if high is None else f"{high * 1000:.0f}"} mm from the skin at {int((near | far).sum())} '
-                          f"vertices ({int(near.sum())} too close, {int(far.sum())} too far; {', '.join(worst)}), "
-                          f"over {places}.")
+                          f"vertices and face centres ({int(near.sum())} too close, {int(far.sum())} too far; "
+                          f"{', '.join(worst)}), over {places}.")
     return errors
 
 
 def _distances(obj: bpy.types.Object, label: str) -> tuple[np.ndarray, np.ndarray]:
-    """Every vertex's distance from the skin and the body polygon it is nearest to."""
-    surface = _Surface(bodies.source_body(label), [])
-    found = [surface.signed_distance(Vector(p)) for p in bodies.world_positions(obj)]
+    """The distance from the skin of every vertex and of the centre of every face, and the body
+    polygon each is nearest to."""
+    surface = Surface(bodies.source_body(label), [])
+    co = bodies.world_positions(obj)
+    points = list(co) + [co[list(p.vertices)].mean(axis=0) for p in obj.data.polygons]
+    found = [surface.signed_distance(Vector(p)) for p in points]
     return np.array([d for d, _p in found]), np.array([p for _d, p in found], np.int64)
 
 

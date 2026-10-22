@@ -32,7 +32,7 @@ $blender = Resolve-ArtBlender $BlenderPath
 $arguments = @(
     "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
     "--python", $script:ArtBlenderCli, "--", "garment-sync",
-    "--file", $manifest.SourcePath, "--garment", $manifest.Name) + $bodyArguments
+    "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--band", $manifest.Band) + $bodyArguments
 if ($Weights) {
     $arguments += "--weights"
 }
@@ -63,7 +63,8 @@ else {
 # The review sheet and the review file, which Git ignores.
 $previews = Join-Path $script:ArtRepositoryRoot "artifacts/art-previews"
 $sheet = Join-Path $previews "$($manifest.Name).png"
-Invoke-ArtBlender $blender $manifest @("preview", "--output", $sheet, "--kind", "garment") | Out-Null
+Invoke-ArtBlender $blender $manifest (@("preview", "--output", $sheet, "--kind", "garment", "--garment", $manifest.Name,
+        "--band", $manifest.Band) + (Get-ArtGarmentClipArguments $manifest)) | Out-Null
 $reviewFile = Join-Path $previews "$($manifest.Name)_poses.blend"
 $output = Invoke-ArtNative $blender (@(
         "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
@@ -76,8 +77,13 @@ if ($script:ArtNativeExitCode -ne 0 -or @($output | Where-Object { $_ -like "ART
 Write-Host "Review sheet: $sheet"
 Write-Host "Review file with the test poses (play the timeline): $reviewFile"
 
-# Every rule of both stages, so a broken one shows before the review.
-Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1])) | Out-Null
+# Every rule of both stages, so a broken one shows before the review, and what the garment covers
+# at rest and in motion.
+$validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]))
+foreach ($line in @($validation | Where-Object { $_ -like "ART_REPORT *" })) {
+    Write-Host $line.Substring("ART_REPORT ".Length)
+}
+
 if ($null -eq (Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath))) {
     Write-Host "$($manifest.Name) meets every rule, and both stages are approved for this file."
 }

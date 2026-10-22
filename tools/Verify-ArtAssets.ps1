@@ -21,8 +21,9 @@ foreach ($directory in $directories) {
     }
 
     $where = $manifest.RelativeDirectory
-    # A paint layer exports images only, so it has no model target, and a garment one per body.
-    $modelTargets = if ($manifest.Kind -eq "garment") { @($manifest.Models | ForEach-Object { $_.Target }) }
+    # A paint layer exports images only, so it has no model target, and a garment a model and its
+    # data per body.
+    $modelTargets = if ($manifest.Kind -eq "garment") { @($manifest.Models | ForEach-Object { $_.Target; $_.Data }) }
     elseif ($null -ne $manifest.Target) { @($manifest.Target) } else { @() }
     foreach ($target in $modelTargets) {
         if ($targets.ContainsKey($target)) {
@@ -72,13 +73,38 @@ foreach ($directory in $directories) {
 
     if ($manifest.Kind -eq "garment") {
         foreach ($model in @($manifest.Export.models)) {
-            $modelPath = Join-Path $script:ArtRepositoryRoot $model.target
-            if (-not (Test-Path -LiteralPath $modelPath -PathType Leaf)) {
-                $problems.Add("${where}: $($model.target) is missing; run tools/Export-ArtAsset.ps1.")
+            foreach ($file in @(@($model.target, $model.sha256), @($model.data, $model.dataSha256))) {
+                $filePath = Join-Path $script:ArtRepositoryRoot $file[0]
+                if (-not (Test-Path -LiteralPath $filePath -PathType Leaf)) {
+                    $problems.Add("${where}: $($file[0]) is missing; run tools/Export-ArtAsset.ps1.")
+                }
+                elseif ((Get-ArtFileSha256 $filePath) -ne $file[1]) {
+                    $problems.Add("${where}: $($file[0]) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
+                }
             }
-            elseif ((Get-ArtFileSha256 $modelPath) -ne $model.sha256) {
-                $problems.Add("${where}: $($model.target) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
+
+            # The garment was fitted and checked against the export of its body.
+            $body = @($manifest.Models | Where-Object { $_.Body -ceq $model.body }) | Select-Object -First 1
+            $bodyExport = $null
+            try {
+                $bodyExport = (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $body.BodyAsset)).Export
             }
+            catch {
+                # The body's own problems are reported with the body.
+            }
+
+            if ($null -eq $bodyExport -or $bodyExport.sourceSha256 -ne $model.bodySourceSha256) {
+                $problems.Add("${where}: was exported against another export of its body $($body.BodyAsset); run tools/Sync-GarmentAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1.")
+            }
+        }
+
+        # Its masks hide the skin that comes out of it in the clips of these libraries.
+        $libraries = @(Get-ArtClipLibraries $manifest.Skeleton | ForEach-Object {
+                [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.sourceSha256 } else { "" })
+            } | Sort-Object)
+        $recorded = @($manifest.Export.clipSources | ForEach-Object { "$($_.library)=$($_.sourceSha256)" } | Sort-Object)
+        if (($libraries -join ",") -cne ($recorded -join ",")) {
+            $problems.Add("${where}: was checked in other clips than the current exports of the $($manifest.Skeleton) animation libraries; run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
         }
     }
     elseif ($null -eq $manifest.Target) {
@@ -125,7 +151,8 @@ foreach ($directory in $directories) {
 
 $modelRoot = Join-Path $script:ArtRepositoryRoot $script:ArtModelFolder
 if (Test-Path -LiteralPath $modelRoot) {
-    $modelExtensions = @(".fbx", ".obj", ".blend", ".gltf", ".glb", ".dae", ".3ds", ".max", ".ma", ".mb")
+    # A garment's data lies next to its model.
+    $modelExtensions = @(".fbx", ".obj", ".blend", ".gltf", ".glb", ".dae", ".3ds", ".max", ".ma", ".mb", ".json")
     $models = @(Get-ChildItem -LiteralPath $modelRoot -Recurse -File |
         Where-Object { $modelExtensions -contains $_.Extension.ToLowerInvariant() })
     foreach ($model in $models) {

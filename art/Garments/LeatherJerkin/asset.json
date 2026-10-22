@@ -13,26 +13,35 @@
     "approvals": {
         "model": {
             "date": "2026-10-22",
-            "sourceSha256": "c03ddbcf8caaa81c7ebee9b8cf783a8fbc69dc1bb45ae5f842360525438ebf6d"
+            "sourceSha256": "769a72ea77bc2c5358866984dc4ca5cb03ec80a8cd453cbce50f5c7e5aec5564"
         },
         "rig": {
             "date": "2026-10-22",
-            "sourceSha256": "c03ddbcf8caaa81c7ebee9b8cf783a8fbc69dc1bb45ae5f842360525438ebf6d"
+            "sourceSha256": "769a72ea77bc2c5358866984dc4ca5cb03ec80a8cd453cbce50f5c7e5aec5564"
         }
     },
     "export": {
-        "sourceSha256": "c03ddbcf8caaa81c7ebee9b8cf783a8fbc69dc1bb45ae5f842360525438ebf6d",
+        "sourceSha256": "769a72ea77bc2c5358866984dc4ca5cb03ec80a8cd453cbce50f5c7e5aec5564",
         "models": [
             {
                 "body": "Male",
+                "bodySourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf",
                 "target": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.fbx",
-                "sha256": "8cb8b8d898e2dea677f97511d0d3ffe9931469326ae7d23eb31fff98cfcfef4a"
+                "sha256": "51360fbfdbad4854f1aee162497e2fdc5bc9756a107bf0b9a395a98fb939eb1f",
+                "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json",
+                "dataSha256": "884b70b8be3c8ed8958d7579a222131edb7cd9c35cb605c926939cf66d8c77a4"
             },
             {
                 "body": "Female",
+                "bodySourceSha256": "56ada98f9e810992eb62668b62af0691a9f2a81b471b9b99032e71bd97a5ed73",
                 "target": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.fbx",
-                "sha256": "98b6499fcc16edb8bcadc87040723157bf336061de35a5f557936602ef1af38a"
+                "sha256": "9e7ede01b0a7ec544b4f7dfe4c1b9630b911ad1507bfa3530d9b0519ac9c5a3e",
+                "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json",
+                "dataSha256": "28342924669fc5ba79960b86a2f1cb6ed7ad6ae53b1a72bc7184075d74b1e504"
             }
+        ],
+        "clipSources": [
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c" }
         ],
         "materials": [
             {

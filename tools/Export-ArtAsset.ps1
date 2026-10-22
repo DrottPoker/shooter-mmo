@@ -22,9 +22,11 @@ if ($All -eq ($Asset.Count -gt 0)) {
 }
 
 $directories = if ($All) { Get-ArtAssetDirectories } else { @($Asset | ForEach-Object { Resolve-ArtAssetDirectory $_ }) }
-# Animation libraries go last, so they record the export of a rig exported in the same run.
+# Animation libraries come after the rigs they record the export of, and garments last, because
+# they record the exports of their bodies and of the libraries they were checked in.
 $read = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
-$manifests = @($read | Where-Object { $_.Kind -ne "animations" }) + @($read | Where-Object { $_.Kind -eq "animations" })
+$manifests = @($read | Where-Object { @("animations", "garment") -notcontains $_.Kind }) +
+    @($read | Where-Object { $_.Kind -eq "animations" }) + @($read | Where-Object { $_.Kind -eq "garment" })
 foreach ($manifest in $manifests) {
     $problem = Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)
     if ($null -ne $problem) {
@@ -77,7 +79,26 @@ function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
 }
 
 function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
-    # A garment exports one model per body, each with that body's armature, and its images.
+    # A garment exports one model per body, each with that body's armature and its data, and its
+    # images. It records the exports of the bodies and the animation libraries it was checked
+    # against, so a change of either needs a new export of the garment.
+    $bodyExports = @{}
+    foreach ($body in @($Manifest.Bodies)) {
+        $bodyExport = (Read-ArtAssetManifest (Split-Path -Parent $body.ManifestPath)).Export
+        if ($null -eq $bodyExport) {
+            throw "$($Manifest.Name) cannot be exported before its body $($body.Asset) is exported."
+        }
+
+        $bodyExports[$body.Root] = [string]$bodyExport.sourceSha256
+    }
+
+    $clipSources = @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
+            if ($null -eq $_.Export) {
+                throw "$($Manifest.Name) cannot be exported before the animation library $($_.Asset) is exported."
+            }
+
+            [ordered]@{ library = $_.Asset; sourceSha256 = [string]$_.Export.sourceSha256 }
+        })
     $folder = $script:ArtGarmentTextureFolder
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1]) + @(
@@ -88,11 +109,19 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
     $models = @($Manifest.Models | ForEach-Object {
             $model = $_
             $record = @($reported | Where-Object { [string]$_.label -ceq $model.Body })
-            if ($record.Count -ne 1 -or (Get-ArtRelativePath $record[0].path) -cne $model.Target) {
-                throw "Blender did not report the model $($model.Target) of $($Manifest.Name) once."
+            if ($record.Count -ne 1 -or (Get-ArtRelativePath $record[0].path) -cne $model.Target -or
+                (Get-ArtRelativePath $record[0].data) -cne $model.Data) {
+                throw "Blender did not report the model $($model.Target) and its data of $($Manifest.Name) once."
             }
 
-            [ordered]@{ body = $model.Body; target = $model.Target; sha256 = Get-ArtFileSha256 $model.TargetPath }
+            [ordered]@{
+                body = $model.Body
+                bodySourceSha256 = $bodyExports[$model.Body]
+                target = $model.Target
+                sha256 = Get-ArtFileSha256 $model.TargetPath
+                data = $model.Data
+                dataSha256 = Get-ArtFileSha256 $model.DataPath
+            }
         })
     $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
             ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
@@ -110,19 +139,24 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
     }
 
     if ($null -ne $Manifest.Export) {
-        Remove-ArtStaleFiles @($Manifest.Export.models | ForEach-Object { $_.target }) @($models | ForEach-Object { $_.target })
+        Remove-ArtStaleFiles @($Manifest.Export.models | ForEach-Object { $_.target; $_.data }) @($models | ForEach-Object { $_.target; $_.data })
         Remove-ArtStaleFiles @($Manifest.Export.textures | ForEach-Object { $_.target }) @($textures | ForEach-Object { $_.target })
     }
 
     $Manifest.Export = [ordered]@{
         sourceSha256 = $SourceSha256
         models = $models
+        clipSources = $clipSources
         materials = $materials
         textures = $textures
     }
     Write-ArtAssetManifest $Manifest
     $triangles = ($results | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''
-    Write-Host "Exported $($Manifest.Name) to $(@($models | ForEach-Object { $_.target }) -join ', ') ($triangles)."
+    foreach ($line in @($results | Where-Object { $_ -like "ART_REPORT *" })) {
+        Write-Host $line.Substring("ART_REPORT ".Length)
+    }
+
+    Write-Host "Exported $($Manifest.Name) to $(@($models | ForEach-Object { $_.target }) -join ', ') with their data ($triangles)."
 }
 
 $blender = Resolve-ArtBlender $BlenderPath

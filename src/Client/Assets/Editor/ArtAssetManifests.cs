@@ -233,13 +233,50 @@ namespace Mmorpg.Client.Editor
         public float smoothness = -1f;
     }
 
-    // A garment's model for one body: the body's label, such as Male, and the model.
+    // A garment's model for one body: the body's label, such as Male, the model, and its data.
     [Serializable]
     public sealed class ArtModelRecord
     {
         public string body = string.Empty;
         public string target = string.Empty;
         public string sha256 = string.Empty;
+        public string data = string.Empty;
+        public string dataSha256 = string.Empty;
+
+        public string UnityDataPath
+        {
+            get { return ArtAssetManifests.ToUnityPath(data); }
+        }
+    }
+
+    // What a garment's model covers on its body, in the faces and vertices of the body's editable
+    // mesh, which every body of the shared topology numbers alike: the body faces it hides at rest
+    // and in motion, the body face under each of its faces, and how far to move visible body
+    // vertices inward. Export-ArtAsset.ps1 writes it next to the model; see
+    // docs/EQUIPMENT_VISUALS_DESIGN.md.
+    [Serializable]
+    public sealed class ArtGarmentData
+    {
+        public const int SchemaVersion = 1;
+
+        // The most a pulled-in vertex moves, in meters.
+        public const float MaximumPullIn = 0.003f;
+
+        public int schemaVersion;
+        public string garment = string.Empty;
+        public string body = string.Empty;
+        public int bodyFaces;
+        public int bodyVertices;
+        public int garmentFaces;
+        public int[] covered = Array.Empty<int>();
+        public int[] underlay = Array.Empty<int>();
+        public int[] pullInVertices = Array.Empty<int>();
+        public float[] pullInDistances = Array.Empty<float>();
+
+        public static ArtGarmentData FromJson(string json)
+        {
+            return JsonUtility.FromJson<ArtGarmentData>(json);
+        }
     }
 
     [Serializable]

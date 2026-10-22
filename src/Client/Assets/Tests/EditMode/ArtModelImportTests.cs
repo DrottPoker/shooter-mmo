@@ -196,6 +196,41 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void EveryGarmentModelHasItsData()
+        {
+            // The data says which body faces the garment hides and which face lies under each of its
+            // faces, in the numbering of the body's editable mesh.
+            var garments = ExportedManifests().Where(manifest => manifest.IsGarment).ToArray();
+            Assert.That(garments, Is.Not.Empty);
+            foreach (var manifest in garments)
+            {
+                foreach (var record in manifest.export.models)
+                {
+                    var path = record.UnityDataPath;
+                    var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+                    Assert.That(asset, Is.Not.Null, manifest.path + " " + record.data);
+                    var data = ArtGarmentData.FromJson(asset.text);
+                    Assert.That(data.schemaVersion, Is.EqualTo(ArtGarmentData.SchemaVersion), path);
+                    Assert.That(data.garment, Is.EqualTo(manifest.Name), path);
+                    Assert.That(data.body, Is.EqualTo(record.body), path);
+                    Assert.That(data.bodyFaces, Is.GreaterThan(0), path);
+                    Assert.That(data.covered, Is.Not.Empty, path);
+                    Assert.That(data.covered, Is.Ordered.And.Unique, path);
+                    Assert.That(data.covered.All(face => face >= 0 && face < data.bodyFaces), Is.True, path);
+                    Assert.That(data.underlay, Has.Length.EqualTo(data.garmentFaces), path);
+                    Assert.That(data.underlay.All(face => face >= 0 && face < data.bodyFaces), Is.True, path);
+                    Assert.That(data.pullInDistances, Has.Length.EqualTo(data.pullInVertices.Length), path);
+                    Assert.That(data.pullInVertices, Is.Ordered.And.Unique, path);
+                    Assert.That(data.pullInVertices.All(vertex => vertex >= 0 && vertex < data.bodyVertices), Is.True, path);
+                    Assert.That(
+                        data.pullInDistances.All(distance => distance > 0f && distance <= ArtGarmentData.MaximumPullIn + 1e-6f),
+                        Is.True,
+                        path);
+                }
+            }
+        }
+
+        [Test]
         public void EveryArtModelUsesProjectMaterials()
         {
             foreach (var path in ModelPaths())
