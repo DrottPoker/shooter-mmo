@@ -54,7 +54,7 @@ From the inside out:
 1. **Body**: the skinned body with its skin, face, and eye materials and the
    [paint layers](ART_PIPELINE.md#paint-layers) on the skin. Body faces that a
    worn garment covers are removed when the character is put together.
-2. **Garments**: one mesh per visual slot, ordered by layer. Each hides what it
+2. **Garments**: meshes in visual slots, ordered by layer. Each hides what it
    covers of the body and of the garments below it.
 3. **Hair**: a mesh per hairstyle, in its normal or compressed form.
 4. **Attachments**: rigid objects on the skeleton's sockets: weapons and shields
@@ -89,9 +89,13 @@ name. A cloak needs a `back` equipment slot, which the catalog does not have yet
 it comes with the first cloak item. `neck`, `ring_1`, and `ring_2` show nothing,
 and `main_hand`, `off_hand`, and `bag` show attachments.
 
-Only one garment per visual slot is worn. Sleeves are part of the `body`
-garment; gloves sit over them (layer 150 over a shirt at 100) or under the
-sleeves of a coat (300).
+A visual slot holds every worn garment of that slot, ordered by layer, and no two
+of them share a layer. One equipment slot holds one item, so the garments of a
+visual slot come from the items that show them: one item can be several garments
+of a slot, such as a brigand's outfit made of a shirt at 100 and a vest at 200,
+and garments of other items join them, such as a robe's hood in `head` under a
+helmet from the `head` item. Sleeves are part of a `body` garment; gloves sit
+over them (layer 150 over a shirt at 100) or under the sleeves of a coat (300).
 
 ### Cover Masks
 
@@ -147,7 +151,7 @@ as a veil, needs dithered transparency and comes when a garment needs it.
 A garment may carry a dye mask, an image whose red, green, and blue channels mark
 up to three regions that a dye color tints, such as cloth, trim, and leather. The
 undyed garment shows its painted colors. Which colors an item has, per definition
-or per item, is decided with the items in step 3.
+or per item, is decided with the items in delivery step 6.
 
 ## Fitting Every Body Type
 
@@ -373,7 +377,7 @@ quarter of the triangles come with the first crowd measurement that needs them.
    its collar, trousers, boots, a garment that shows skin (a crop top or a net
    shirt) over a tattoo paint layer, a robe with a hood, a cloak, and one hair
    with its compressed form.
-6. Step 3: items show their garments, the `back` slot, dye colors on items, and
+6. Items: items show their garments, the `back` slot, dye colors on items, and
    the look sent to every client with the body type.
 7. With the first new race: making a body type from a human body, generalizing
    `Sync-HumanBase.ps1` to every body of the topology, and fitting the garments to
