@@ -3,21 +3,26 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Mmorpg.Client.Editor
 {
     // Creates the project material of every exported Blender material that has none yet, as a
     // URP Lit material, or a CharacterSkin material when a paint layer paints it, with the values
     // of its export record, below
-    // Assets/Art/Materials/<Category>, the category folder of its model. An existing material is
-    // never changed, so a material whose Blender look changed is updated by hand from its
-    // record; ArtModelImportTests compares every material with its record.
+    // Assets/Art/Materials/<Category>, the category folder of its model. A garment's material cuts
+    // its texture at alpha 0.5 and draws both faces, so holes and the inside of a sleeve show. An
+    // existing material is never changed, so a material whose Blender look changed is updated by
+    // hand from its record; ArtModelImportTests compares every material with its record.
     public static class ArtMaterialCreator
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Create Missing Materials";
 
         public const string LitShader = "Universal Render Pipeline/Lit";
         public const string SkinShader = "Mmorpg/Character Skin";
+
+        // Where a garment's texture cuts, as the cover masks read it.
+        public const float GarmentAlphaCutoff = 0.5f;
 
         [MenuItem(MenuPath)]
         public static void CreateMissingMaterialsMenu()
@@ -36,12 +41,13 @@ namespace Mmorpg.Client.Editor
             var models = new List<string>();
             foreach (var manifest in ArtAssetManifests.ManifestPaths().Select(ArtAssetManifests.Load))
             {
-                if (!manifest.IsExported || manifest.UnityTargetPath == null)
+                var modelPaths = manifest.UnityModelPaths;
+                if (!manifest.IsExported || modelPaths.Length == 0)
                 {
                     continue;
                 }
 
-                var category = Path.GetFileName(Path.GetDirectoryName(manifest.UnityTargetPath));
+                var category = Path.GetFileName(Path.GetDirectoryName(modelPaths[0]));
                 var folder = ArtModelImportRules.MaterialFolder + "/" + category;
                 foreach (var record in manifest.export.materials)
                 {
@@ -54,10 +60,7 @@ namespace Mmorpg.Client.Editor
                     var path = folder + "/" + record.name + ".mat";
                     AssetDatabase.CreateAsset(CreateMaterial(manifest, record), path);
                     created.Add(path);
-                    if (!models.Contains(manifest.UnityTargetPath))
-                    {
-                        models.Add(manifest.UnityTargetPath);
-                    }
+                    models.AddRange(modelPaths.Where(model => !models.Contains(model)));
                 }
             }
 
@@ -97,7 +100,24 @@ namespace Mmorpg.Client.Editor
 
             material.SetFloat("_Metallic", record.metallic);
             material.SetFloat("_Smoothness", record.smoothness);
+            if (manifest.IsGarment)
+            {
+                SetGarmentSurface(material);
+            }
+
             return material;
+        }
+
+        // An opaque surface cut at the garment's alpha and drawn from both sides, as the URP Lit
+        // inspector sets it up.
+        public static void SetGarmentSurface(Material material)
+        {
+            material.SetFloat("_AlphaClip", 1f);
+            material.SetFloat("_Cutoff", GarmentAlphaCutoff);
+            material.SetFloat("_Cull", (float)CullMode.Off);
+            material.EnableKeyword("_ALPHATEST_ON");
+            material.SetOverrideTag("RenderType", "TransparentCutout");
+            material.renderQueue = (int)RenderQueue.AlphaTest;
         }
 
         private static void EnsureFolder(string folder)

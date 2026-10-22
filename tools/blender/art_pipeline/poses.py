@@ -1,5 +1,5 @@
 """Test poses for the rig review: each pose turns bones about their own axes. The bone axes of the
-base characters follow one convention (see rig.joints): every limb, digit and spine bone bends
+base characters follow one convention (see human_base.rig.joints): every limb, digit and spine bone bends
 forward, or toward the palm, about its X axis; the arms raise sideways about Z, and the head and
 the spine twist about Y. A bone name ending in _s means both sides: the left side takes the same
 X turn and the opposite Y and Z turns, so the pose stays mirror symmetric. Both eyes share one set

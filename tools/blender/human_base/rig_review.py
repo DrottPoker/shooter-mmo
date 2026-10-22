@@ -12,9 +12,9 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
-from art_pipeline import bodies
+from art_pipeline import bodies, poses
 
-from . import files, poses, review
+from . import files, review
 
 # Bone colours of the skeleton sheet: the character's right, left, centre, and the sockets.
 BONE_COLOURS = {"R": (0.95, 0.30, 0.25), "L": (0.25, 0.55, 0.95), "C": (0.95, 0.80, 0.25), "S": (0.25, 0.90, 0.40)}

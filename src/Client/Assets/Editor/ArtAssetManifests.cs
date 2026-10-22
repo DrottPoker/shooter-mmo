@@ -19,6 +19,9 @@ namespace Mmorpg.Client.Editor
         // Paint over the skin of bodies, exported as one image per body.
         public const string PaintKind = "paint";
 
+        // Clothes or armor, exported as one model per body, skinned to that body's rig.
+        public const string GarmentKind = "garment";
+
         // asset.json targets are repository paths; Unity asset paths start at Assets/.
         public const string ClientProjectPrefix = "src/Client/";
 
@@ -39,15 +42,12 @@ namespace Mmorpg.Client.Editor
             return manifest;
         }
 
-        // The manifest whose target is this model, or null.
+        // The manifest one of whose models is this model, or null.
         public static ArtAssetManifest ForModel(string assetPath)
         {
             return ManifestPaths()
                 .Select(Load)
-                .FirstOrDefault(manifest => string.Equals(
-                    manifest.UnityTargetPath,
-                    assetPath,
-                    StringComparison.Ordinal));
+                .FirstOrDefault(manifest => manifest.UnityModelPaths.Contains(assetPath, StringComparer.Ordinal));
         }
 
         public static ArtAssetManifest[] PaintLayers()
@@ -58,11 +58,16 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
         }
 
+        // The manifest of an asset folder, such as art/Characters/Human_Male.
+        public static ArtAssetManifest LoadAsset(string asset)
+        {
+            return Load(Path.Combine(RepositoryLayout.FindRoot(), asset, "asset.json"));
+        }
+
         // The label of a body, its armature, such as Male for art/Characters/Human_Male.
         public static string BodyLabel(string bodyAsset)
         {
-            var path = Path.Combine(RepositoryLayout.FindRoot(), bodyAsset, "asset.json");
-            var body = Load(path);
+            var body = LoadAsset(bodyAsset);
             return body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
         }
 
@@ -106,9 +111,13 @@ namespace Mmorpg.Client.Editor
         public string part = string.Empty;
         public string[] bodies = Array.Empty<string>();
         public int layer;
+        // A garment: its visual slot and its band from the skin; its bodies, the one it is made on
+        // first; and its layer from the inside out.
+        public string slot = string.Empty;
+        public string band = string.Empty;
         public ArtAssetExport export = new ArtAssetExport();
 
-        // The paint layer's name, its folder, such as LeatherJerkin.
+        // The asset's name, its folder, such as LeatherJerkin.
         public string Name
         {
             get { return Path.GetFileName(Path.GetDirectoryName(path)); }
@@ -130,9 +139,44 @@ namespace Mmorpg.Client.Editor
             get { return string.Equals(kind, ArtAssetManifests.PaintKind, StringComparison.Ordinal); }
         }
 
+        public bool IsGarment
+        {
+            get { return string.Equals(kind, ArtAssetManifests.GarmentKind, StringComparison.Ordinal); }
+        }
+
         public string UnityTargetPath
         {
             get { return ArtAssetManifests.ToUnityPath(target); }
+        }
+
+        // The Unity paths of the asset's exported models: its target, or a garment's model per body.
+        public string[] UnityModelPaths
+        {
+            get
+            {
+                if (IsGarment)
+                {
+                    return (export?.models ?? Array.Empty<ArtModelRecord>())
+                        .Select(model => ArtAssetManifests.ToUnityPath(model.target))
+                        .Where(modelPath => modelPath != null)
+                        .ToArray();
+                }
+
+                return UnityTargetPath != null ? new[] { UnityTargetPath } : Array.Empty<string>();
+            }
+        }
+
+        // The root objects of one of its models: a garment's model holds its body's armature.
+        public string[] RootObjectsOf(string unityModelPath)
+        {
+            if (!IsGarment)
+            {
+                return rootObjects;
+            }
+
+            var model = (export?.models ?? Array.Empty<ArtModelRecord>())
+                .FirstOrDefault(record => ArtAssetManifests.ToUnityPath(record.target) == unityModelPath);
+            return model != null ? new[] { model.body } : Array.Empty<string>();
         }
 
         public bool IsSkinned
@@ -158,7 +202,8 @@ namespace Mmorpg.Client.Editor
             get
             {
                 return export != null
-                    && ((export.materials != null && export.materials.Length > 0)
+                    && ((export.materials != null && export.materials.Length > 0
+                            && (!IsGarment || (export.models != null && export.models.Length > 0)))
                         || (IsAnimationLibrary && export.clips != null && export.clips.Length > 0)
                         || (IsPaint && export.textures != null && export.textures.Length > 0));
             }
@@ -168,6 +213,8 @@ namespace Mmorpg.Client.Editor
     [Serializable]
     public sealed class ArtAssetExport
     {
+        // A garment's model per body.
+        public ArtModelRecord[] models = Array.Empty<ArtModelRecord>();
         public ArtMaterialRecord[] materials = Array.Empty<ArtMaterialRecord>();
         public ArtTextureRecord[] textures = Array.Empty<ArtTextureRecord>();
         public ArtClipRecord[] clips = Array.Empty<ArtClipRecord>();
@@ -184,6 +231,15 @@ namespace Mmorpg.Client.Editor
         public string baseMap = string.Empty;
         public float metallic = -1f;
         public float smoothness = -1f;
+    }
+
+    // A garment's model for one body: the body's label, such as Male, and the model.
+    [Serializable]
+    public sealed class ArtModelRecord
+    {
+        public string body = string.Empty;
+        public string target = string.Empty;
+        public string sha256 = string.Empty;
     }
 
     [Serializable]

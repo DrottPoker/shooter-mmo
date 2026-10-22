@@ -14,7 +14,8 @@ from io_scene_fbx import export_fbx_bin
 from .scene import EXPORT_COLLECTION, ArtPipelineError, export_objects
 from .validate import principled_inputs
 
-OBJECT_TYPES = {"static": {"EMPTY", "MESH"}, "skinned": {"ARMATURE", "MESH"}, "animations": {"ARMATURE"}}
+OBJECT_TYPES = {"static": {"EMPTY", "MESH"}, "skinned": {"ARMATURE", "MESH"}, "animations": {"ARMATURE"},
+                "garment": {"ARMATURE", "MESH"}}
 # Kinds whose FBX carries an armature and its clips.
 ANIMATED_KINDS = {"skinned", "animations"}
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -27,8 +28,8 @@ def _linear_to_srgb(value: float) -> float:
     return value * 12.92 if value <= 0.0031308 else 1.055 * value ** (1.0 / 2.4) - 0.055
 
 
-def _exported_materials() -> list[bpy.types.Material]:
-    materials = {slot.material for obj in export_objects() if obj.type == "MESH"
+def _exported_materials(objects: list[bpy.types.Object] | None = None) -> list[bpy.types.Material]:
+    materials = {slot.material for obj in (objects if objects is not None else export_objects()) if obj.type == "MESH"
                  for slot in obj.material_slots if slot.material is not None}
     return sorted(materials, key=lambda m: m.name)
 
@@ -38,13 +39,13 @@ def _base_image(material: bpy.types.Material) -> bpy.types.Image | None:
     return images[0] if images else None
 
 
-def material_records() -> list[dict[str, object]]:
+def material_records(objects: list[bpy.types.Object] | None = None) -> list[dict[str, object]]:
     """The approved look of every exported material, as Unity URP Lit values: the sRGB
     Base Color, Metallic, and Smoothness (1 - Roughness), and for a painted material the name of
     the image that gives its Base Color, in which case the Base Color is white. Unity tests compare
     the project materials with this record."""
     records = []
-    for material in _exported_materials():
+    for material in _exported_materials(objects):
         bsdf = next((n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
         if bsdf is None:
             raise ArtPipelineError(f'Material "{material.name}" has no Principled BSDF.')
@@ -107,13 +108,14 @@ def _write_image(image: bpy.types.Image, folder: str, owner: str) -> tuple[str, 
     return image.name, path
 
 
-def export_textures(folder: str, variants: dict[str, list[str]] | None = None) -> list[tuple[str, str]]:
+def export_textures(folder: str, variants: dict[str, list[str]] | None = None,
+                    objects: list[bpy.types.Object] | None = None) -> list[tuple[str, str]]:
     """Writes the packed image of every painted material and every variant image as
     <folder>/<image>.png, byte for byte as it is packed, and returns the names and paths, once per
     image also when materials share it."""
     written = []
     images = set()
-    for material in _exported_materials():
+    for material in _exported_materials(objects):
         image = _base_image(material)
         if image is None or image.name in images:
             continue
@@ -133,9 +135,9 @@ def clip_records() -> list[dict[str, object]]:
             for a in sorted(bpy.data.actions, key=lambda a: a.name)]
 
 
-def _activate_export_collection() -> None:
+def _activate_export_collection(name: str = EXPORT_COLLECTION) -> None:
     def find(layer: bpy.types.LayerCollection) -> bpy.types.LayerCollection | None:
-        if layer.collection.name == EXPORT_COLLECTION:
+        if layer.collection.name == name:
             return layer
         for child in layer.children:
             found = find(child)
@@ -145,7 +147,7 @@ def _activate_export_collection() -> None:
 
     layer = find(bpy.context.view_layer.layer_collection)
     if layer is None:
-        raise ArtPipelineError(f'The file has no "{EXPORT_COLLECTION}" collection in the view layer.')
+        raise ArtPipelineError(f'The file has no "{name}" collection in the view layer.')
     bpy.context.view_layer.active_layer_collection = layer
 
 
@@ -179,15 +181,17 @@ def _reproducible_fbx():
         export_fbx_bin.fbx_header_elements, export_fbx_bin.bpy = header, module_bpy
 
 
-def export_fbx(kind: str, target: str) -> None:
+def export_fbx(kind: str, target: str, collection: str = EXPORT_COLLECTION) -> None:
+    """Exports one collection, the Export collection unless another is named, such as the version
+    of a garment for one body."""
     if kind not in OBJECT_TYPES:
         raise ArtPipelineError(f'Assets of kind "{kind}" cannot be exported.')
     with _reproducible_fbx():
-        _export_fbx(kind, target)
+        _export_fbx(kind, target, collection)
 
 
-def _export_fbx(kind: str, target: str) -> None:
-    _activate_export_collection()
+def _export_fbx(kind: str, target: str, collection: str) -> None:
+    _activate_export_collection(collection)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     animated = kind in ANIMATED_KINDS
     # Blender's own axes go into the file unchanged and the Unity importer bakes the axis

@@ -4,7 +4,9 @@ Last updated: 2026-10-22
 
 Status: accepted by Victor on 2026-10-22, with the support of future races added.
 It is implemented in the order of [Delivery Plan](#delivery-plan); steps 1 and 2,
-this document and the cloth chains with their solver, are done.
+this document and the cloth chains with their solver, are done, and of step 3 the
+garment kind with its fitting, weights, bands, review, export, and Unity import,
+with the leather jerkin as its first garment.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -308,18 +310,22 @@ A garment is an art asset of kind `garment` below `art/Garments/<Name>`:
 | `hides` | Visual slots it hides, such as `["legs"]` for a floor-length robe. |
 | `hair` | Headwear only: `hide`, `compress`, or `show`. |
 | `cloth` | The cloth profile of its loose parts, or none. |
-| `dyes` | The number of dye channels, 0 to 3. |
+| `dyes` | The number of dye channels, 0 to 3. It stays 0 until the garment shader brings dyes in step 4. |
 | `triangleBudget` | The most triangles of one body type's version. |
 
-Its file holds the garment made on the first body in the `Source` collection,
-every body's fitted version with its corrections, and the bodies in a
-`Reference` collection. Export writes one FBX per body type, the garment skinned
-to that body's rig, with its textures and a data file with the cover mask,
-underlay, and pull-in, all recorded with their hashes like every export.
+Its file holds, per body type, a collection `Export_<Label>` with the body's
+armature and the garment's version on it: the version on the first body is the
+garment a person makes, and every other version is fitted from it with the
+person's corrections kept. The bodies themselves are in a `Reference`
+collection. Export writes one FBX per body type, the garment skinned to that
+body's rig, with its textures and a data file with the cover mask, underlay, and
+pull-in, all recorded with their hashes like every export.
 
 ### Making A Garment
 
-1. `New-ArtAsset.ps1 -Kind garment` creates the asset with the bodies.
+1. `New-ArtAsset.ps1 -Kind garment` creates the asset with the bodies and a
+   starting shell in its band, from the body parts of its slot or from a paint
+   layer.
 2. A person models the garment on the male body in Blender and paints its
    textures and dye mask.
 3. `Sync-GarmentAsset.ps1` fits it to the other bodies, transfers the weights,
@@ -373,7 +379,9 @@ quarter of the triangles come with the first crowd measurement that needs them.
    garment made in code.
 3. The garment kind: `New-ArtAsset.ps1 -Kind garment`, `Sync-GarmentAsset.ps1`
    with fitting, weights, masks, pull-in, bands, and the clipping report, the
-   review sheet, the export, the Unity import rules, and their tests.
+   review sheet, the export, the Unity import rules, and their tests. Done
+   without the masks, underlay, pull-in, and clipping report, which come next;
+   the leather jerkin is its first garment, still the shell of its paint layer.
 4. Putting a character together in Unity: masks, garment layers, pull-in, the
    garment shader with clipping and dyes, the Wardrobe preview, and trying
    garments on in F2.

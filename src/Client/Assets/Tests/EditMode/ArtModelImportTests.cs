@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Editor;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -47,9 +49,17 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(importer.importVisibility, Is.False, path);
                 Assert.That(importer.importBlendShapes, Is.False, path);
                 Assert.That(importer.addCollider, Is.False, path);
-                Assert.That(importer.isReadable, Is.EqualTo(manifest.IsSkinned), path);
+                Assert.That(importer.isReadable, Is.EqualTo(manifest.IsSkinned || manifest.IsGarment), path);
                 Assert.That(importer.importNormals, Is.EqualTo(ModelImporterNormals.Import), path);
-                if (manifest.HasSkeleton)
+                if (manifest.IsGarment)
+                {
+                    // The character's skeleton animates a garment, so it has no avatar or clips.
+                    Assert.That(importer.importAnimation, Is.False, path);
+                    Assert.That(importer.animationType, Is.EqualTo(ModelImporterAnimationType.Generic), path);
+                    Assert.That(importer.avatarSetup, Is.EqualTo(ModelImporterAvatarSetup.NoAvatar), path);
+                    Assert.That(importer.optimizeGameObjects, Is.False, path);
+                }
+                else if (manifest.HasSkeleton)
                 {
                     // A body without clips of its own plays the clips of animation libraries.
                     Assert.That(importer.importAnimation, Is.EqualTo(manifest.clips.Length > 0), path);
@@ -131,6 +141,61 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void EveryGarmentModelIsSkinnedToTheRigOfItsBody()
+        {
+            // A garment deforms like the body it was fitted to: its armature is the body's, and its
+            // bones have the body's bind poses, so the character's skeleton moves it with the body.
+            foreach (var manifest in ExportedManifests().Where(manifest => manifest.IsGarment))
+            {
+                Assert.That(
+                    manifest.export.models.Select(model => model.body),
+                    Is.EqualTo(manifest.bodies.Select(ArtAssetManifests.BodyLabel)),
+                    manifest.path);
+                foreach (var record in manifest.export.models)
+                {
+                    var path = ArtAssetManifests.ToUnityPath(record.target);
+                    var garment = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    Assert.That(garment, Is.Not.Null, path);
+                    var body = ArtAssetManifests.LoadAsset(
+                        manifest.bodies.Single(asset => ArtAssetManifests.BodyLabel(asset) == record.body));
+                    var skeleton = ArtAssetManifests.LoadSkeleton(body.skeleton);
+                    var armature = garment.transform.Find(record.body);
+                    Assert.That(armature, Is.Not.Null, path + " lacks the armature " + record.body);
+                    var bones = armature.GetComponentsInChildren<Transform>(true).Select(bone => bone.name).ToArray();
+                    Assert.That(skeleton.bones.Select(bone => bone.name), Is.SubsetOf(bones), path);
+
+                    var renderers = garment.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                    Assert.That(renderers.Select(renderer => renderer.name), Is.EqualTo(new[] { manifest.Name + "_" + record.body }), path);
+                    var mesh = renderers[0].sharedMesh;
+                    Assert.That(mesh.isReadable, Is.True, path);
+                    Assert.That(mesh.GetBonesPerVertex().ToArray().All(count => count >= 1 && count <= 4), Is.True, path);
+
+                    var bindposes = new Dictionary<string, Matrix4x4>();
+                    foreach (var part in AssetDatabase.LoadAssetAtPath<GameObject>(body.UnityTargetPath)
+                                 .GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                    {
+                        for (var i = 0; i < part.bones.Length; i++)
+                        {
+                            bindposes[part.bones[i].name] = part.sharedMesh.bindposes[i];
+                        }
+                    }
+
+                    for (var i = 0; i < renderers[0].bones.Length; i++)
+                    {
+                        var bone = renderers[0].bones[i];
+                        var where = path + " " + bone.name;
+                        Assert.That(bindposes.TryGetValue(bone.name, out var expected), Is.True, where);
+                        var actual = mesh.bindposes[i];
+                        for (var cell = 0; cell < 16; cell++)
+                        {
+                            Assert.That(actual[cell], Is.EqualTo(expected[cell]).Within(1e-4f), where);
+                        }
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void EveryArtModelUsesProjectMaterials()
         {
             foreach (var path in ModelPaths())
@@ -175,27 +240,35 @@ namespace Mmorpg.Client.Tests.EditMode
             foreach (var manifest in manifests.Where(manifest => !manifest.IsPaint))
             {
                 // A paint layer exports images only; ArtAppearanceCatalogTests covers it.
-                Assert.That(manifest.UnityTargetPath, Is.Not.Null, manifest.path);
-                var model = AssetDatabase.LoadAssetAtPath<GameObject>(manifest.UnityTargetPath);
                 if (!manifest.IsExported)
                 {
                     // An asset in review, such as a skinned model before its rig, is not exported yet.
-                    Assert.That(model, Is.Null, manifest.path + " has a model but no export record");
+                    var models = manifest.IsGarment
+                        ? ModelPaths().Where(path => path.StartsWith(
+                            ArtModelImportRules.ModelFolder + "/Garments/" + manifest.Name + "_", StringComparison.Ordinal))
+                        : ModelPaths().Where(path => path == manifest.UnityTargetPath);
+                    Assert.That(models, Is.Empty, manifest.path + " has a model but no export record");
                     continue;
                 }
 
-                // Every material the model renders with has an approved record, and no record is stale.
-                Assert.That(model, Is.Not.Null, manifest.path);
-                Assert.That(
-                    model.GetComponentsInChildren<Renderer>(true)
-                        .SelectMany(renderer => renderer.sharedMaterials)
-                        .Select(material => material.name)
-                        .Distinct()
-                        .OrderBy(name => name, StringComparer.Ordinal),
-                    Is.EqualTo(manifest.export.materials
-                        .Select(record => record.name)
-                        .OrderBy(name => name, StringComparer.Ordinal)),
-                    manifest.path);
+                // Every material the models render with has an approved record, and no record is stale.
+                Assert.That(manifest.UnityModelPaths, Is.Not.Empty, manifest.path);
+                foreach (var modelPath in manifest.UnityModelPaths)
+                {
+                    var model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
+                    Assert.That(model, Is.Not.Null, modelPath);
+                    Assert.That(
+                        model.GetComponentsInChildren<Renderer>(true)
+                            .SelectMany(renderer => renderer.sharedMaterials)
+                            .Select(material => material.name)
+                            .Distinct()
+                            .OrderBy(name => name, StringComparer.Ordinal),
+                        Is.EqualTo(manifest.export.materials
+                            .Select(record => record.name)
+                            .OrderBy(name => name, StringComparer.Ordinal)),
+                        modelPath);
+                }
+
                 foreach (var record in manifest.export.materials)
                 {
                     var where = manifest.path + " " + record.name;
@@ -208,6 +281,16 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(actual.b, Is.EqualTo(approved.b).Within(1.5f / 255f), where);
                     Assert.That(material.GetFloat("_Metallic"), Is.EqualTo(record.metallic).Within(0.01f), where);
                     Assert.That(material.GetFloat("_Smoothness"), Is.EqualTo(record.smoothness).Within(0.01f), where);
+                    // A garment is cut at its texture's alpha and drawn from both sides.
+                    var alphaClip = material.HasProperty("_AlphaClip") ? material.GetFloat("_AlphaClip") : 0f;
+                    Assert.That(alphaClip, Is.EqualTo(manifest.IsGarment ? 1f : 0f), where);
+                    Assert.That(material.IsKeywordEnabled("_ALPHATEST_ON"), Is.EqualTo(manifest.IsGarment), where);
+                    if (manifest.IsGarment)
+                    {
+                        Assert.That(material.GetFloat("_Cutoff"), Is.EqualTo(ArtMaterialCreator.GarmentAlphaCutoff), where);
+                        Assert.That(material.GetFloat("_Cull"), Is.EqualTo((float)CullMode.Off), where);
+                        Assert.That(material.renderQueue, Is.EqualTo((int)RenderQueue.AlphaTest), where);
+                    }
 
                     var baseMap = material.GetTexture("_BaseMap");
                     if (string.IsNullOrEmpty(record.baseMap))
@@ -246,13 +329,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(importer.mipmapEnabled, Is.True, path);
                 Assert.That(importer.isReadable, Is.False, path);
                 Assert.That(importer.maxTextureSize, Is.EqualTo(ArtModelImportRules.MaximumTextureSize), path);
-                // Paint layers keep their alpha, where the paint covers the skin.
-                var paint = ArtModelImportRules.IsPaintTexture(path);
+                // Paint layers keep their alpha, where the paint covers the skin, and garments theirs,
+                // where they are cut.
+                var alpha = ArtModelImportRules.KeepsAlpha(path);
                 Assert.That(
                     importer.alphaSource,
-                    Is.EqualTo(paint ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None),
+                    Is.EqualTo(alpha ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None),
                     path);
-                Assert.That(importer.alphaIsTransparency, Is.EqualTo(paint), path);
+                Assert.That(importer.alphaIsTransparency, Is.EqualTo(alpha), path);
             }
         }
 
@@ -264,6 +348,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 var manifest = ArtAssetManifests.ForModel(path);
                 Assert.That(manifest, Is.Not.Null, path);
+                var roots = manifest.RootObjectsOf(path);
                 // Blender root objects sit at the origin unrotated, so a baked axis conversion
                 // leaves identity transforms; a -90 degree X rotation means the rules did not
                 // apply. The meshes of a skinned model are siblings of its armature, and a rigid
@@ -272,7 +357,7 @@ namespace Mmorpg.Client.Tests.EditMode
                              .Concat(model.transform.Cast<Transform>()))
                 {
                     var where = path + " " + transform.name;
-                    if (transform == model.transform || manifest.rootObjects.Contains(transform.name))
+                    if (transform == model.transform || roots.Contains(transform.name))
                     {
                         Assert.That(transform.localPosition.magnitude, Is.LessThan(0.0001f), where);
                     }
@@ -284,8 +369,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That((transform.localScale - Vector3.one).magnitude, Is.LessThan(0.0001f), where);
                 }
 
+                Assert.That(roots, Is.Not.Empty, path);
                 Assert.That(
-                    manifest.rootObjects.All(root => model.transform.Find(root) != null),
+                    roots.All(root => model.transform.Find(root) != null),
                     Is.True,
                     path + " lacks a root object of its manifest");
                 Assert.That(model.GetComponentsInChildren<Collider>(true), Is.Empty, path);

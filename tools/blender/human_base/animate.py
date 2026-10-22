@@ -16,7 +16,7 @@ import bpy
 from bpy_extras import anim_utils
 from mathutils import Matrix, Quaternion, Vector
 
-from . import poses
+from art_pipeline import poses
 
 FPS = 30
 # The game's speeds: the jog is the full movement speed, the walk a heavy load.
