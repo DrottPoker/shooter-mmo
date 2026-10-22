@@ -541,9 +541,6 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
             @($clips | Sort-Object -Unique).Count -ne $clips.Count) {
             $problems.Add("clips must list unique animation clip names")
         }
-        elseif ($kind -eq "animations" -and $clips.Count -eq 0) {
-            $problems.Add("an animation library must list one or more clips")
-        }
         elseif ($kind -eq "skinned" -and $clips.Count -eq 0 -and $null -ne $json.PSObject.Properties['clips']) {
             $problems.Add("a skinned asset without clips leaves clips out")
         }

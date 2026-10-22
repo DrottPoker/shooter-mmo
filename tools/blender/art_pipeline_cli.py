@@ -3,8 +3,8 @@
     blender --background --factory-startup <asset.blend> --python-exit-code 1 \
         --python tools/blender/art_pipeline_cli.py -- <validate|export|preview> [options]
 
-library-sync builds or updates an animation library and paint-sync a paint layer; both run without
-an open file. Every result line starts with ART_ so the PowerShell scripts can read it from
+new-static writes the first file of a static asset, library-sync builds or updates an animation
+library, and paint-sync a paint layer; they run without an open file. Every result line starts with ART_ so the PowerShell scripts can read it from
 Blender's log.
 """
 
@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from art_pipeline import library, paint, preview  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
-from art_pipeline.scene import ArtPipelineError, parse_args  # noqa: E402
+from art_pipeline.scene import ArtPipelineError, new_static_file, parse_args  # noqa: E402
 from art_pipeline.validate import validate  # noqa: E402
 
 
@@ -54,6 +54,9 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--rig-root", required=True)
     command.add_argument("--preview", action="append", default=[], help="<file.blend>=<armature> of a body that shows the clips.")
     command.add_argument("--force", action="store_true")
+    command = commands.add_parser("new-static")
+    command.add_argument("--file", required=True, help="The .blend file of the new static asset.")
+    command.add_argument("--roots", required=True, help="Comma-separated root object names.")
     command = commands.add_parser("paint-sync")
     command.add_argument("--file", required=True, help="The paint layer .blend to build or update.")
     command.add_argument("--paint", required=True)
@@ -92,6 +95,10 @@ def main() -> int:
         changed = paint.sync(os.path.abspath(args.file), args.paint, args.part,
                              [(os.path.abspath(path), root) for path, root in bodies], args.force)
         print(f"ART_PAINT_SYNC {'synced' if changed else 'up-to-date'} {args.file}")
+        return 0
+    if args.command == "new-static":
+        new_static_file(os.path.abspath(args.file), args.roots.split(","))
+        print(f"ART_NEW {args.file}")
         return 0
     if args.command == "library-sync":
         previews = [tuple(p.rsplit("=", 1)) for p in args.preview]

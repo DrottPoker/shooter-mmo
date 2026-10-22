@@ -118,6 +118,6 @@ else {
     }
 }
 
-if ($changed) {
+if ($changed -and @($manifest.Clips).Count -gt 0) {
     Write-Host "Review the clips, then record the approval with tools/Approve-ArtAsset.ps1 -Stage animation."
 }

@@ -5,8 +5,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
-    # Review stages of a static asset: model. Of a skinned asset: model, rig, animation. Of an
-    # animation library: animation.
+    # Review stages of a static asset: model. Of a skinned asset: model, rig, and animation when it
+    # has clips of its own. Of an animation library: animation. Of a paint layer: paint.
     [string]$Stage = "model",
     [string]$BlenderPath
 )
@@ -22,6 +22,11 @@ if ($stageIndex -lt 0) {
 
 if ($manifest.ImplementedStages -notcontains $Stage) {
     throw "The '$Stage' stage of a $($manifest.Kind) asset cannot be checked yet, so it cannot be approved."
+}
+
+# A new library has no clips until the first is made.
+if ($manifest.Kind -eq "animations" -and @($manifest.Clips).Count -eq 0) {
+    throw "$($manifest.Name) has no clips yet; make one in $($manifest.SourcePath) and add its name to clips in asset.json."
 }
 
 for ($i = 0; $i -lt $stageIndex; $i++) {

@@ -222,13 +222,24 @@ def head_target(obj):
     return Vector((obj.matrix_world.translation.x, eye.y - 0.05, eye.z - 0.03))
 
 
-# Face and eye texture pairs shown on the faces sheet, per body type.
-FACE_SETS = (
-    ("Male", "T_Face_Male_Stubble", "T_Eye_Male_Teal"),
-    ("Male", "T_Face_Male_Scarred", "T_Eye_Male_Brown"),
-    ("Female", "T_Face_Female_Blush", "T_Eye_Female_Teal"),
-    ("Female", "T_Face_Female_Freckles", "T_Eye_Female_Hazel"),
-)
+def _images(material, prefix):
+    """The material's own image first, then every other image of the file named with the prefix."""
+    own = next(n.image.name for n in bpy.data.materials[material].node_tree.nodes
+               if n.type == "TEX_IMAGE" and n.image is not None)
+    return [own] + sorted(i.name for i in bpy.data.images if i.name.startswith(prefix) and i.name != own)
+
+
+def face_sets():
+    """The faces and eyes the faces sheet shows: per body, the materials' own images, then every
+    variant T_Face_<Label>_* and T_Eye_<Label>_* the file holds, paired in order, so a new variant
+    shows without a change here."""
+    sets = []
+    for label in BODIES:
+        faces = _images(f"M_Face_{label}", f"T_Face_{label}_")
+        eyes = _images(f"M_Eye_{label}", f"T_Eye_{label}_")
+        for i in range(max(len(faces), len(eyes))):
+            sets.append((label, faces[min(i, len(faces) - 1)], eyes[min(i, len(eyes) - 1)]))
+    return sets
 
 
 def set_texture(mat_name, image_name):
@@ -267,7 +278,8 @@ def overview(out, cam):
 def faces(out, cam):
     setup((640, 640))
     shots = []
-    for body, face_img, eye_img in FACE_SETS:
+    sets = face_sets()
+    for body, face_img, eye_img in sets:
         obj = bpy.data.objects[body]
         label = body
         for yaw, pitch in ((0, 2), (30, 4), (75, 2)):
@@ -277,9 +289,9 @@ def faces(out, cam):
                 aim(cam, head_target(obj), yaw, pitch, 0.62)
             shots.append(shot)
     path = render_grid(shots, 3, out)
-    for label in ("Male", "Female"):
-        set_texture(f"M_Face_{label}", next(f for b, f, _e in FACE_SETS if b.startswith(label)))
-        set_texture(f"M_Eye_{label}", next(e for b, _f, e in FACE_SETS if b.startswith(label)))
+    for label in BODIES:
+        set_texture(f"M_Face_{label}", next(f for b, f, _e in sets if b == label))
+        set_texture(f"M_Eye_{label}", next(e for b, _f, e in sets if b == label))
     return path
 
 

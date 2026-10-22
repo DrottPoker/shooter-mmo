@@ -10,15 +10,24 @@ namespace Mmorpg.Client.Editor
     // Writes the appearance catalog of every exported skinned model that names variants in its
     // asset.json or that a paint layer fits: one slot per painted material with variants, its own
     // image first, and the paint layers of the body in the order they are drawn, as
-    // Assets/Art/Appearance/<Model>_Appearance.asset. ArtAppearanceCatalogTests fails when a
-    // catalog differs from what this writes. See docs/ART_PIPELINE.md.
+    // Assets/Art/Appearance/<Model>_Appearance.asset. It writes only catalogs that differ, and
+    // ArtExportFollowUp runs it after every export. ArtAppearanceCatalogTests fails when a catalog
+    // differs from what this writes. See docs/ART_PIPELINE.md.
     public static class ArtAppearanceCatalogs
     {
         public const string Folder = "Assets/Art/Appearance";
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Update Appearance Catalogs";
 
         [MenuItem(MenuPath)]
-        public static void UpdateAll()
+        public static void UpdateAllMenu()
+        {
+            var written = UpdateAll();
+            Debug.Log(written == 0 ? "Every appearance catalog is up to date." : "Wrote " + written + " appearance catalog(s).");
+        }
+
+        // Writes every catalog that is missing or differs from its body's export, and returns how
+        // many it wrote.
+        public static int UpdateAll()
         {
             var written = 0;
             foreach (var manifest in ManifestsWithLooks())
@@ -27,6 +36,11 @@ namespace Mmorpg.Client.Editor
                 var slots = SlotsFor(manifest);
                 var paints = PaintsFor(manifest);
                 var catalog = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(path);
+                if (catalog != null && Matches(catalog, slots, paints))
+                {
+                    continue;
+                }
+
                 if (catalog == null)
                 {
                     Directory.CreateDirectory(Folder);
@@ -46,8 +60,32 @@ namespace Mmorpg.Client.Editor
                         .Concat(paints.Select(paint => "Paint " + paint.Name))));
             }
 
-            AssetDatabase.SaveAssets();
-            Debug.Log(written == 0 ? "No art asset names variants or paint layers." : "Wrote " + written + " appearance catalog(s).");
+            if (written > 0)
+            {
+                AssetDatabase.SaveAssets();
+            }
+
+            return written;
+        }
+
+        public static bool Matches(BodyAppearanceCatalog catalog, BodyAppearanceCatalog.Slot[] slots, BodyAppearanceCatalog.Paint[] paints)
+        {
+            return catalog.Slots.Count == slots.Length
+                && catalog.Slots.Zip(slots, (actual, expected) =>
+                    actual.Name == expected.Name
+                    && actual.Material == expected.Material
+                    && actual.Options.Select(option => option.Name).SequenceEqual(expected.Options.Select(option => option.Name))
+                    && actual.Options.Select(option => option.Texture).SequenceEqual(expected.Options.Select(option => option.Texture)))
+                    .All(same => same)
+                && catalog.Paints.Count == paints.Length
+                && catalog.Paints.Zip(paints, (actual, expected) =>
+                    actual.Name == expected.Name
+                    && actual.Material == expected.Material
+                    && actual.Texture == expected.Texture
+                    && actual.Layer == expected.Layer
+                    && actual.Smoothness.Equals(expected.Smoothness)
+                    && actual.Metallic.Equals(expected.Metallic))
+                    .All(same => same);
         }
 
         // Every exported body with variants or with a paint layer that fits it.

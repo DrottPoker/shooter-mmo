@@ -36,6 +36,26 @@ Scripts only write what follows from the source, such as the body parts of the
 starting points that a person then edits, such as the gait model's clips in an
 [animation library](#animation-libraries). No script replaces handmade work.
 
+## What To Do
+
+Every kind of art has one short recipe in
+[Local Development](LOCAL_DEVELOPMENT.md#art-pipeline-with-blender). After an
+export, Unity creates the project materials an export lacks and updates the
+appearance catalogs by itself when it gets focus, so no menu command stands
+between the export and the game.
+
+| To | Start with | Recipe |
+| --- | --- | --- |
+| Add a model for the world, such as a resource node or a prop | `New-ArtAsset.ps1 -Kind static` | [Add A New Asset](LOCAL_DEVELOPMENT.md#add-a-new-asset) |
+| Change a human body: its shape, skin texture, or weights | the body's `.blend` file, then `Sync-HumanBase.ps1` | [Edit The Human Base Characters](LOCAL_DEVELOPMENT.md#edit-the-human-base-characters) |
+| Add a face or an eye color | an image packed into the body's `.blend` file | [Add A Face Or Eye Variant](LOCAL_DEVELOPMENT.md#add-a-face-or-eye-variant) |
+| Change a clip or add one | the library's `.blend` file, or `Sync-AnimationLibrary.ps1 -Generate` for a gait | [Make A Clip](LOCAL_DEVELOPMENT.md#make-a-clip) |
+| Start an animation library | `New-ArtAsset.ps1 -Kind animations` | [Make A Clip](LOCAL_DEVELOPMENT.md#make-a-clip) |
+| Paint clothes or armor onto the skin | `New-ArtAsset.ps1 -Kind paint`, then `Sync-PaintAsset.ps1` | [Make A Paint Layer](LOCAL_DEVELOPMENT.md#make-a-paint-layer) |
+| Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](LOCAL_DEVELOPMENT.md#review-approve-and-export-an-asset) |
+
+Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers).
+
 ## Layout
 
 | Path | Responsibility |
@@ -52,6 +72,7 @@ starting points that a person then edits, such as the gait model's clips in an
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
 | `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, and in `bodies.py` the body parts of a skinned character written from its editable body. |
 | `tools/blender/art_pipeline_cli.py` | Blender entry point for the scripts below. |
+| `tools/New-ArtAsset.ps1` | Creates a new static model, animation library, or paint layer: its folder, `asset.json`, and first `.blend` file. |
 | `tools/Render-ArtPreview.ps1`, `tools/Approve-ArtAsset.ps1`, `tools/Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/ArtPipelineCommon.ps1`. |
 | `tools/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/Sync-AnimationLibrary.ps1`, `tools/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
@@ -60,6 +81,7 @@ starting points that a person then edits, such as the gait model's clips in an
 | `src/Client/Assets/Editor/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
 | `src/Client/Assets/Editor/ArtAssetManifests.cs` | Reads `asset.json` and the skeleton definitions for the import rules, the material command, and the tests. |
 | `src/Client/Assets/Editor/ArtMaterialCreator.cs` | `MMORPG > Tools > Art Pipeline > Create Missing Materials`: creates the project material of every exported material that has none, from its export record. |
+| `src/Client/Assets/Editor/ArtExportFollowUp.cs` | After an import of exported art, creates the missing project materials and updates the appearance catalogs, once, outside batch mode. |
 | `.mcp.json` | The Blender MCP server for live work in Blender from Claude Code. |
 
 ## Asset Manifest
@@ -306,16 +328,22 @@ without alpha, not readable, clamped, trilinear, at most 2048 px, with high
 quality compression.
 
 `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs` writes the
-appearance catalog of every exported skinned model with `variants`, as
-`Assets/Art/Appearance/<Model>_Appearance.asset`; see
-[Appearance Layers](#appearance-layers). `ArtAppearanceCatalogTests` fails when
-a catalog differs from what the command writes from `asset.json`.
+appearance catalog of every exported skinned model with `variants` or a paint
+layer that fits it, as `Assets/Art/Appearance/<Model>_Appearance.asset`, when it
+is missing or differs; see [Appearance Layers](#appearance-layers).
+`ArtAppearanceCatalogTests` fails when a catalog differs from what the command
+writes from `asset.json`.
 
 A project material is never changed by the import. When an export adds a
 material, `MMORPG > Tools > Art Pipeline > Create Missing Materials` creates it
 as a URP Lit material from its export record, with its texture for a painted
 material, below `Assets/Art/Materials/<Category>`, and reimports the models that
-use it. When a Blender material changes, set the Unity material from its new
+use it.
+
+`ArtExportFollowUp` runs both commands once after Unity imports exported models
+or textures, when the Editor next updates, so an export reaches the game without
+a menu command. It does nothing in batch mode, so the CI tests check the
+committed materials and catalogs as they are. When a Blender material changes, set the Unity material from its new
 record by hand; the tests below compare them.
 
 `ArtModelImportTests` fails when a model has other import settings than its
