@@ -14,7 +14,7 @@ motion in the test poses and the clips hides as well. See docs/EQUIPMENT_VISUALS
 - In motion, the mask also hides the visible skin that comes out of the garment over it. Each
   visible vertex that the garment is over at rest keeps the point of the garment over it, its
   cover. The body, with the pull-in applied as the game applies it, takes every test pose and
-  sampled frames of the clips, and every face of a vertex that comes out of its cover by more than
+  every frame of the clips, and every face of a vertex that comes out of its cover by more than
   the tolerance is hidden too. Skinning blends the bones of a fold, such as an armpit, so the gap
   between the skin and the cloth there closes in motion, whatever the weights; the hidden faces
   lie under the garment, so only a look into an opening sees past them, at the garment's inside.
@@ -48,7 +48,6 @@ PULL_IN_MAX = 0.003
 PULL_IN_CLEARANCE = 0.003
 # Visible skin may come this far out of the garment that covers it in motion, in meters.
 CLIP_TOLERANCE = 0.001
-CLIP_FRAMES = 8
 DATA_SCHEMA = 1
 
 
@@ -336,7 +335,8 @@ class Motion:
 
 
 def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action]):
-    """Sets the armature to every test pose and to sampled frames of every clip, naming each."""
+    """Sets the armature to every test pose and to every frame of every clip, naming each. The last
+    frame of a looping clip repeats its first, so it is left out."""
     scene = bpy.context.scene
     for pose_name, _description, pose in poses.POSES:
         poses.apply(arm, pose)
@@ -347,8 +347,7 @@ def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action]):
         arm.animation_data.action = action
         arm.animation_data.action_slot = action.slots[0]
         last = int(action.frame_range[1])
-        for step in range(CLIP_FRAMES):
-            frame = round(step * last / CLIP_FRAMES)
+        for frame in range(last if action.get("loop") else last + 1):
             scene.frame_set(frame)
             yield f"{action.name} frame {frame}"
 

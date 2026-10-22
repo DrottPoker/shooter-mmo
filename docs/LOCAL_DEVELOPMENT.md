@@ -3193,7 +3193,7 @@ controller, and prefabs are committed.
 16. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/LeatherJerkin`.
     Expected result: `LeatherJerkin_Male: 1124 triangles, 5.3 to 17.7 mm from
     the skin, median 10.0 mm`, the same for the female, `LeatherJerkin is up to
-    date: ...`, `LeatherJerkin_Male: covers 485 of 4358 body faces, 20 of them
+    date: ...`, `LeatherJerkin_Male: covers 487 of 4358 body faces, 22 of them
     for motion, and pulls in 0 visible vertices`, `LeatherJerkin_Female: covers
     488 of 4358 body faces, 18 of them for motion, ...`, and `LeatherJerkin meets
     every rule, and both stages are approved for this file.` Open

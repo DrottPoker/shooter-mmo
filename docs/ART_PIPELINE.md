@@ -600,7 +600,7 @@ alike:
   3 mm.
 - **Motion**: every visible vertex that the garment is over at rest keeps the
   point of the garment over it. The body, with the pull-in applied, takes every
-  test pose and eight frames of every clip of the skeleton's animation libraries,
+  test pose and every frame of every clip of the skeleton's animation libraries,
   and every face of a vertex that comes more than 1 mm out of its point is hidden
   as well. Skinning blends the bones of a fold, such as an armpit, so the gap
   between skin and cloth closes there in motion whatever the weights; the

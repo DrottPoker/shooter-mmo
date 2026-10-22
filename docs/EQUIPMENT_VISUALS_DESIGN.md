@@ -351,7 +351,7 @@ The sync stops on a broken rule and reports the rest:
 - Every version has the garment's topology and stays within its triangle budget.
 - Every vertex and every face centre lies within its band on every body type, so
   a flat face over a round shoulder cannot dip under the skin.
-- In the rig review's test poses and at sampled frames of `Idle`, `Walk`, `Jog`,
+- In the rig review's test poses and at every frame of `Idle`, `Walk`, `Jog`,
   and `Death`, no visible body vertex comes out of the garment where it is under
   it: such a vertex has its faces hidden for motion, and the report names how
   many and the deepest place. No garment of a lower layer reaches through a
