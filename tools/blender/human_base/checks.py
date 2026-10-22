@@ -10,8 +10,9 @@ report lines and the rules it found broken:
 - parts: the body parts written from the source bodies, where every body part of the male and the
   female has the same topology, the parts close up into one watertight body (every open edge of a
   part is matched by an edge of a neighbouring part), and the normals agree across the cuts.
-- rig: a character after a rig step against its file before the step: the meshes at rest are
-  unchanged, the art pipeline's rig rules hold, and the weights are mirror symmetric.
+- rig: a character after a step against its file before the step: the source body, eyeballs, teeth
+  and tongue are unchanged at rest, the body parts are what the source body gives, the art
+  pipeline's rig rules hold, and the weights are mirror symmetric.
 - clips: in the Idle, Walk and Jog clips of an animation library, a foot on the ground keeps its
   place when the character moves at the clip's speed."""
 
@@ -292,11 +293,12 @@ def parts(male_path, female_path):
 # -------------------------------------------------------------------------------------- rig
 
 def _rest_meshes(label):
-    """Evaluated meshes of a character's children by name: positions, corner normals and UVs."""
+    """Evaluated meshes of a character's children by name: positions, corner normals and UVs. The
+    body parts are left out: they are written from the source body, so they follow its edits."""
     depsgraph = bpy.context.evaluated_depsgraph_get()
     found = {}
     for o in bpy.data.objects[label].children:
-        if o.type != "MESH":
+        if o.type != "MESH" or "zone" in o:
             continue
         evaluated = o.evaluated_get(depsgraph)
         me = evaluated.to_mesh()
@@ -342,6 +344,7 @@ def rig(model_path, rigged_path, label, skeleton_path):
     lines.append(f"{label}: at rest, largest change of a position {moved:.2e} m and of a normal {turned:.2e}")
     if moved > REST_POSITION_TOLERANCE or turned > NORMAL_TOLERANCE:
         failures.append(f"{label}: the rig changes the model at rest ({moved:.2e} m, normals {turned:.2e})")
+    failures += [f"{label}: {e}" for e in bodies.part_errors(label)]
 
     skeleton = skeleton_definition.load(skeleton_path)
     exported = [o for o in bpy.data.objects if o == bpy.data.objects[label] or o.parent == bpy.data.objects[label]]

@@ -20,6 +20,9 @@ param(
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "ArtPipelineCommon.ps1")
 
+# A clip asked for twice is added once.
+$Generate = @($Generate | Select-Object -Unique)
+
 $manifest = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Asset) -AllowMissingSource
 if ($manifest.Kind -ne "animations") {
     throw "$($manifest.Name) is a $($manifest.Kind) asset; only an animation library is synced from its rig."
