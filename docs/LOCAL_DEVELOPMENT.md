@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-21
+Last updated: 2026-10-22
 
 ## Requirements
 
@@ -3040,6 +3040,68 @@ bodies. `art/Paint/LeatherJerkin` is the paint of the leather jerkin.
    the paint layer is new. Commit the `.blend` file, `asset.json`, the PNG files,
    the catalogs, and their `.meta` files together.
 
+### Make A Garment
+
+[Garments](ART_PIPELINE.md#garments) describes clothes, armor, and hair as meshes
+of their own, made on the male body and fitted to the female.
+`art/Garments/LeatherJerkin` is the leather jerkin.
+
+1. Create a new garment with its visual slot and its band from the skin. Its
+   layer and triangle budget default to the slot's typical values; headwear
+   also needs `-Hair`. With `-FromPaint` the starting shell covers the faces a
+   paint layer covers and takes its image; without it, the body parts of the
+   slot:
+
+   ```powershell
+   .\tools\New-ArtAsset.ps1 -Kind garment -Asset art/Garments/LinenShirt -Slot body -Band tight -Layer 100
+   ```
+
+   Expected result: one report line per body, `LinenShirt_Male: <n> triangles,
+   <near> to <far> mm from the skin, median <m> mm`, and `Created
+   art/Garments/LinenShirt with asset.json and LinenShirt.blend.`
+2. Open the file in Blender. Expected result: the male body in the starting
+   shell `LinenShirt_Male`; the female and `LinenShirt_Female` are hidden in the
+   Outliner. Shape `LinenShirt_Male` in Edit Mode, and paint its texture or its
+   weights by hand if it needs it. Correct `LinenShirt_Female` only where the
+   fitting needs help. Save, then fit and check it:
+
+   ```powershell
+   .\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/LinenShirt
+   ```
+
+   Expected result: the report lines, `Synced LinenShirt: ...`, the paths of the
+   review sheet and the review file, and `LinenShirt meets every rule. Review
+   it, ...`. A second run prints `LinenShirt is up to date: ...` and leaves the
+   file as it is. A broken rule stops it with the list of rules, such as a
+   version that leaves its band, with the body parts where it does. The starting
+   shell keeps its band where the body allows it; in tight places, such as the
+   armpits or between the toes, shape it into the band. `-Weights` transfers
+   every weight from the bodies again, also the weights painted by hand.
+3. Look at `artifacts\art-previews\LinenShirt.png` and open
+   `artifacts\art-previews\LinenShirt_poses.blend` in Blender and play the
+   timeline. Expected result: both bodies side by side in the garment, stepping
+   through the test poses, with the garment following the arms, the torso, and
+   the legs without the body showing through. Close the review file without
+   saving.
+4. Approve both stages, export, and verify:
+
+   ```powershell
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Garments/LinenShirt -Stage model
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Garments/LinenShirt -Stage rig
+   .\tools\Export-ArtAsset.ps1 -Asset art/Garments/LinenShirt
+   .\tools\Verify-ArtAssets.ps1
+   ```
+
+   Expected result: `Approved the 'model' stage of LinenShirt (triangles=...)`,
+   the same for `rig`, `Exported LinenShirt to
+   src/Client/Assets/Art/Models/Garments/LinenShirt_Male.fbx,
+   src/Client/Assets/Art/Models/Garments/LinenShirt_Female.fbx (...)`, and
+   `Verified <n> art asset(s).` When Unity gets focus, it creates
+   `Assets/Art/Materials/Garments/M_Garment_LinenShirt.mat`. Commit the
+   `.blend` file, `asset.json`, the FBX and PNG files, the material, and their
+   `.meta` files together. Putting garments on a character in the game comes
+   with delivery step 4 of [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md).
+
 ### Manual Test Of The Human Base Characters
 
 No manual Unity Editor steps are required: the models, textures, materials,
@@ -3122,6 +3184,17 @@ controller, and prefabs are committed.
     In Unity, run the EditMode tests in `ClothChainSolverTests`. Expected result:
     every test passes, among them a robe that stays outside the legs while the
     body jogs. No garment uses the chains yet, so nothing changes in the game.
+16. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/LeatherJerkin`.
+    Expected result: `LeatherJerkin_Male: 1124 triangles, 6.0 to 17.7 mm from
+    the skin, median 9.9 mm`, the same for the female, `LeatherJerkin is up to
+    date: ...`, and `LeatherJerkin meets every rule, and both stages are
+    approved for this file.` Open
+    `artifacts\art-previews\LeatherJerkin.png`. Expected result: the jerkin on
+    both bodies from four sides, the torso up close, and the test poses. Open
+    `artifacts\art-previews\LeatherJerkin_poses.blend` and play the timeline.
+    Expected result: the jerkin follows both bodies through the poses. In Unity,
+    run the EditMode test `EveryGarmentModelIsSkinnedToTheRigOfItsBody`.
+    Expected result: it passes. No character wears the garment in the game yet.
 
 ## One-Time Unity World Scene Authoring
 

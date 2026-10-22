@@ -12,15 +12,19 @@ namespace Mmorpg.Client.Editor
     // remapped to the project material of the same name below Assets/Art/Materials; a model
     // without a matching material keeps an embedded one, which the EditMode tests reject.
     // A skinned model and an animation library get a Humanoid avatar mapped from their skeleton
-    // definition and one animation clip per exported clip, as asset.json records them.
+    // definition and one animation clip per exported clip, as asset.json records them. A garment's
+    // model is skinned to its body's armature without an avatar of its own, because the character
+    // it is put on animates it.
     public sealed class ArtModelImportRules : AssetPostprocessor
     {
         public const string ModelFolder = "Assets/Art/Models";
         public const string MaterialFolder = "Assets/Art/Materials";
         public const string TextureFolder = "Assets/Art/Textures";
 
-        // Paint layers keep their alpha, which says where the paint covers the skin.
+        // Paint layers keep their alpha, which says where the paint covers the skin, and garments
+        // theirs, which cuts holes, lace, and torn edges.
         public const string PaintTextureFolder = TextureFolder + "/Paint";
+        public const string GarmentTextureFolder = TextureFolder + "/Garments";
         public const int MaximumTextureSize = 2048;
 
         // Blender writes every clip at this rate; the animation rules require it.
@@ -28,7 +32,7 @@ namespace Mmorpg.Client.Editor
 
         public override uint GetVersion()
         {
-            return 6;
+            return 7;
         }
 
         public static bool AppliesTo(string assetPath)
@@ -54,6 +58,19 @@ namespace Mmorpg.Client.Editor
         {
             ApplyHumanoidSettings(importer, manifest, skeleton);
             // The game combines the visible body parts into one mesh, which reads the parts.
+            importer.isReadable = true;
+        }
+
+        // A garment's model: its mesh skinned to the armature of its body, which the game replaces
+        // with the character's own skeleton, so it needs no avatar and no clips. The game combines
+        // it with the visible body parts, which reads it.
+        public static void ApplyGarmentModelSettings(ModelImporter importer)
+        {
+            ApplySharedModelSettings(importer);
+            importer.animationType = ModelImporterAnimationType.Generic;
+            importer.avatarSetup = ModelImporterAvatarSetup.NoAvatar;
+            importer.importAnimation = false;
+            importer.optimizeGameObjects = false;
             importer.isReadable = true;
         }
 
@@ -138,15 +155,26 @@ namespace Mmorpg.Client.Editor
             return assetPath.StartsWith(PaintTextureFolder + "/", StringComparison.Ordinal);
         }
 
-        public static void ApplyTextureSettings(TextureImporter importer, bool paint = false)
+        public static bool IsGarmentTexture(string assetPath)
+        {
+            return assetPath.StartsWith(GarmentTextureFolder + "/", StringComparison.Ordinal);
+        }
+
+        // Whether a texture's alpha is used: a paint layer's or a garment's.
+        public static bool KeepsAlpha(string assetPath)
+        {
+            return IsPaintTexture(assetPath) || IsGarmentTexture(assetPath);
+        }
+
+        public static void ApplyTextureSettings(TextureImporter importer, bool alpha = false)
         {
             importer.textureType = TextureImporterType.Default;
             importer.textureShape = TextureImporterShape.Texture2D;
             importer.sRGBTexture = true;
-            // A paint layer's transparent texels take the color of their neighbors, so filtering
-            // at its edges never darkens the skin.
-            importer.alphaSource = paint ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None;
-            importer.alphaIsTransparency = paint;
+            // Transparent texels take the color of their neighbors, so filtering at the edges of a
+            // paint layer never darkens the skin and the cut edges of a garment keep its color.
+            importer.alphaSource = alpha ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None;
+            importer.alphaIsTransparency = alpha;
             importer.mipmapEnabled = true;
             importer.isReadable = false;
             importer.wrapMode = TextureWrapMode.Clamp;
@@ -209,6 +237,10 @@ namespace Mmorpg.Client.Editor
             {
                 ApplyAnimationLibrarySettings(importer, manifest, ArtAssetManifests.LoadSkeleton(manifest.skeleton));
             }
+            else if (manifest != null && manifest.IsGarment)
+            {
+                ApplyGarmentModelSettings(importer);
+            }
             else
             {
                 ApplyStaticModelSettings(importer);
@@ -219,7 +251,7 @@ namespace Mmorpg.Client.Editor
         {
             if (AppliesToTexture(assetPath))
             {
-                ApplyTextureSettings((TextureImporter)assetImporter, IsPaintTexture(assetPath));
+                ApplyTextureSettings((TextureImporter)assetImporter, KeepsAlpha(assetPath));
             }
         }
 

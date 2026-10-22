@@ -46,8 +46,8 @@ operations, and future design do not drift into duplicate descriptions.
     asset layout, the review stages and approvals, the shared skeletons, the
     export and import rules for static and skinned models and their textures,
     the modeling conventions, the human base characters edited in Blender with
-    their rig, the animation libraries and paint layers, and the Blender MCP
-    server for live work.
+    their rig, the animation libraries, paint layers, and garments, and the
+    Blender MCP server for live work.
 
 ## Foundation Hardening
 
@@ -81,7 +81,7 @@ operations, and future design do not drift into duplicate descriptions.
   truth for how clothes, armor, hair, and carried equipment look on the bodies:
   garments as meshes with cover masks, fitting every body type and future races,
   cloth chains, the garment art kind, and how Unity puts a character together.
-  It is accepted and not implemented yet.
+  It is accepted; the cloth chains and the garment kind are implemented.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) is the
   product and domain source of truth for items, equipment, slot inventory, Bags,
   the Secure Container, carry weight, death loot, corpses, insurance, and

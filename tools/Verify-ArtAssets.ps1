@@ -21,13 +21,15 @@ foreach ($directory in $directories) {
     }
 
     $where = $manifest.RelativeDirectory
-    # A paint layer exports images only, so it has no model target.
-    if ($null -ne $manifest.Target) {
-        if ($targets.ContainsKey($manifest.Target)) {
-            $problems.Add("${where}: $($manifest.Target) is also the target of $($targets[$manifest.Target]).")
+    # A paint layer exports images only, so it has no model target, and a garment one per body.
+    $modelTargets = if ($manifest.Kind -eq "garment") { @($manifest.Models | ForEach-Object { $_.Target }) }
+    elseif ($null -ne $manifest.Target) { @($manifest.Target) } else { @() }
+    foreach ($target in $modelTargets) {
+        if ($targets.ContainsKey($target)) {
+            $problems.Add("${where}: $target is also the target of $($targets[$target]).")
         }
 
-        $targets[$manifest.Target] = $where
+        $targets[$target] = $where
     }
 
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
@@ -41,8 +43,10 @@ foreach ($directory in $directories) {
             $problems.Add("${where}: an asset in review has no export; export it after its last review stage.")
         }
 
-        if ($null -ne $manifest.TargetPath -and (Test-Path -LiteralPath $manifest.TargetPath)) {
-            $problems.Add("${where}: $($manifest.Target) exists although the asset is still in review.")
+        foreach ($target in $modelTargets) {
+            if (Test-Path -LiteralPath (Join-Path $script:ArtRepositoryRoot $target)) {
+                $problems.Add("${where}: $target exists although the asset is still in review.")
+            }
         }
 
         continue
@@ -66,7 +70,18 @@ foreach ($directory in $directories) {
         $problems.Add("${where}: the export comes from another version of $($manifest.Name).blend; run tools/Export-ArtAsset.ps1.")
     }
 
-    if ($null -eq $manifest.Target) {
+    if ($manifest.Kind -eq "garment") {
+        foreach ($model in @($manifest.Export.models)) {
+            $modelPath = Join-Path $script:ArtRepositoryRoot $model.target
+            if (-not (Test-Path -LiteralPath $modelPath -PathType Leaf)) {
+                $problems.Add("${where}: $($model.target) is missing; run tools/Export-ArtAsset.ps1.")
+            }
+            elseif ((Get-ArtFileSha256 $modelPath) -ne $model.sha256) {
+                $problems.Add("${where}: $($model.target) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
+            }
+        }
+    }
+    elseif ($null -eq $manifest.Target) {
         # Only the images below.
     }
     elseif (-not (Test-Path -LiteralPath $manifest.TargetPath -PathType Leaf)) {

@@ -2,7 +2,8 @@
 sides at the game camera pitch, plus a fifth view with a 1.8 m mannequin for scale. Only
 the Export collection is rendered, on a dark green ground. The sheet of an animation library
 shows every clip on the bodies of its Reference collection instead: two rows of frames per clip,
-from the front right and from the back left."""
+from the front right and from the back left. The sheet of a garment shows it on every body, at rest
+and in the test poses."""
 
 import math
 import os
@@ -13,6 +14,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
+from . import poses
 from .scene import descendants, export_objects, root_objects
 
 YAWS = (35.0, 125.0, 215.0, 305.0)
@@ -218,6 +220,53 @@ def render_paint_sheet(output: str, cell: int) -> str:
             torso = Vector((body.location.x, body.location.y, 1.2))
             _aim(camera, sun, torso, 0.5, yaw)
             sheet[:cell, column * cell:(column + 1) * cell] = _render(scene, os.path.join(scratch, f"b{column}.png"))
+    return _save(sheet, output)
+
+
+# The test poses of a garment's rig review, seen from the front right; an asset faces +Y, so a
+# yaw of 0 looks at its back.
+GARMENT_POSES = ("t_pose", "arms_up", "arms_forward", "torso", "stride", "sit")
+GARMENT_POSE_YAW = 215.0
+
+
+def render_garment_sheet(output: str, cell: int) -> str:
+    """A garment on every body of its file, two rows per body: the body in the garment from four
+    sides with its torso from the front and from the back, then the test poses that bend it."""
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    scene = bpy.context.scene
+    armatures = sorted((o for o in scene.objects if o.type == "ARMATURE"), key=lambda o: o.name)
+    camera, sun = _studio(scene, cell)
+    columns = max(len(YAWS) + 2, len(GARMENT_POSES))
+    rows = 2 * len(armatures)
+    sheet = np.zeros((cell * rows, cell * columns, 4), dtype=np.float32)
+
+    def place(row: int, column: int, path: str) -> None:
+        top = (rows - 1 - row) * cell
+        sheet[top:top + cell, column * cell:(column + 1) * cell] = _render(scene, path)
+
+    with tempfile.TemporaryDirectory() as scratch:
+        for index, arm in enumerate(armatures):
+            shown = set(descendants(arm))
+            for obj in scene.objects:
+                if obj.type == "MESH":
+                    obj.hide_render = obj not in shown or "zone" in obj
+            poses.rest(arm)
+            low, high = _bounds([o for o in shown if o.type == "MESH"])
+            center = (low + high) / 2.0
+            radius = max((high - low).length / 2.0, 0.1)
+            for column, yaw in enumerate(YAWS):
+                _aim(camera, sun, center, radius, yaw)
+                place(2 * index, column, os.path.join(scratch, f"{index}_{column}.png"))
+            torso = Vector((center.x, center.y, low.z + (high.z - low.z) * 0.68))
+            for column, yaw in enumerate((180.0, 0.0), len(YAWS)):
+                _aim(camera, sun, torso, (high.z - low.z) * 0.22, yaw)
+                place(2 * index, column, os.path.join(scratch, f"{index}_c{column}.png"))
+            for column, name in enumerate(GARMENT_POSES):
+                poses.apply(arm, next(p for n, _d, p in poses.POSES if n == name))
+                # Raised arms reach above the rest pose's bounds.
+                _aim(camera, sun, center, radius * 1.2, GARMENT_POSE_YAW)
+                place(2 * index + 1, column, os.path.join(scratch, f"{index}_p{column}.png"))
+            poses.rest(arm)
     return _save(sheet, output)
 
 

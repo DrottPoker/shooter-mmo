@@ -1,0 +1,54 @@
+{
+    "schemaVersion": 1,
+    "kind": "garment",
+    "slot": "body",
+    "layer": 200,
+    "band": "mid",
+    "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
+    "hides": [],
+    "hair": null,
+    "cloth": null,
+    "dyes": 0,
+    "triangleBudget": 3000,
+    "approvals": {
+        "model": {
+            "date": "2026-10-22",
+            "sourceSha256": "c03ddbcf8caaa81c7ebee9b8cf783a8fbc69dc1bb45ae5f842360525438ebf6d"
+        },
+        "rig": {
+            "date": "2026-10-22",
+            "sourceSha256": "c03ddbcf8caaa81c7ebee9b8cf783a8fbc69dc1bb45ae5f842360525438ebf6d"
+        }
+    },
+    "export": {
+        "sourceSha256": "c03ddbcf8caaa81c7ebee9b8cf783a8fbc69dc1bb45ae5f842360525438ebf6d",
+        "models": [
+            {
+                "body": "Male",
+                "target": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.fbx",
+                "sha256": "8cb8b8d898e2dea677f97511d0d3ffe9931469326ae7d23eb31fff98cfcfef4a"
+            },
+            {
+                "body": "Female",
+                "target": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.fbx",
+                "sha256": "98b6499fcc16edb8bcadc87040723157bf336061de35a5f557936602ef1af38a"
+            }
+        ],
+        "materials": [
+            {
+                "name": "M_Garment_LeatherJerkin",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Garment_LeatherJerkin",
+                "metallic": 0.0,
+                "smoothness": 0.38
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Garment_LeatherJerkin",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_LeatherJerkin.png",
+                "sha256": "07a03fa204395787fcee5685d1979ed249ec1f451e490c2ec00cc438f1f3a0d5"
+            }
+        ]
+    }
+}

@@ -4,8 +4,9 @@
 # animation clips in asset.json. An asset
 # whose review stages are not all approved for the current .blend file is refused. An animation
 # library exports its armature and clips only, and records the export of the rig it was authored
-# on, so it is exported after that rig. Unity imports the FBX with the rules in
-# ArtModelImportRules. See docs/ART_PIPELINE.md.
+# on, so it is exported after that rig. A paint layer exports its images only, and a garment one
+# model per body below src/Client/Assets/Art/Models/Garments. Unity imports the FBX with the rules
+# in ArtModelImportRules. See docs/ART_PIPELINE.md.
 param(
     [string[]]$Asset,
     # Export every asset below art/.
@@ -62,6 +63,68 @@ function Export-ArtPaint([string]$Blender, $Manifest, [string]$SourceSha256) {
     Write-Host "Exported $($Manifest.Name) to $folder ($(@($textures | ForEach-Object { $_.name }) -join ', '))."
 }
 
+function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
+    # A file that an earlier export wrote and this one no longer does is removed with its Unity
+    # .meta file, so nothing stale stays in the project.
+    foreach ($target in @($Old | Where-Object { $Written -cnotcontains $_ })) {
+        foreach ($path in @($target, "$target.meta")) {
+            $full = Join-Path $script:ArtRepositoryRoot $path
+            if (Test-Path -LiteralPath $full -PathType Leaf) {
+                Remove-Item -LiteralPath $full
+            }
+        }
+    }
+}
+
+function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
+    # A garment exports one model per body, each with that body's armature, and its images.
+    $folder = $script:ArtGarmentTextureFolder
+    $results = Invoke-ArtBlender $Blender $Manifest (
+        @("export") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1]) + @(
+            "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder),
+            "--textures", (Join-Path $script:ArtRepositoryRoot $folder)))
+    $reported = @($results | Where-Object { $_ -like "ART_GARMENT_FBX *" } |
+            ForEach-Object { $_.Substring("ART_GARMENT_FBX ".Length) | ConvertFrom-Json })
+    $models = @($Manifest.Models | ForEach-Object {
+            $model = $_
+            $record = @($reported | Where-Object { [string]$_.label -ceq $model.Body })
+            if ($record.Count -ne 1 -or (Get-ArtRelativePath $record[0].path) -cne $model.Target) {
+                throw "Blender did not report the model $($model.Target) of $($Manifest.Name) once."
+            }
+
+            [ordered]@{ body = $model.Body; target = $model.Target; sha256 = Get-ArtFileSha256 $model.TargetPath }
+        })
+    $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
+            ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
+    $textures = ConvertTo-ArtTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
+            ForEach-Object {
+                $texture = $_.Substring("ART_TEXTURE ".Length) | ConvertFrom-Json
+                [pscustomobject]@{
+                    name = $texture.name
+                    target = Get-ArtRelativePath $texture.path
+                    sha256 = Get-ArtFileSha256 $texture.path
+                }
+            }) $folder
+    if ($null -eq $materials -or $null -eq $textures) {
+        throw "Blender reported invalid material or texture records for $($Manifest.Name)."
+    }
+
+    if ($null -ne $Manifest.Export) {
+        Remove-ArtStaleFiles @($Manifest.Export.models | ForEach-Object { $_.target }) @($models | ForEach-Object { $_.target })
+        Remove-ArtStaleFiles @($Manifest.Export.textures | ForEach-Object { $_.target }) @($textures | ForEach-Object { $_.target })
+    }
+
+    $Manifest.Export = [ordered]@{
+        sourceSha256 = $SourceSha256
+        models = $models
+        materials = $materials
+        textures = $textures
+    }
+    Write-ArtAssetManifest $Manifest
+    $triangles = ($results | Where-Object { $_ -like "ART_VALIDATION *" }) -replace '^ART_VALIDATION ', ''
+    Write-Host "Exported $($Manifest.Name) to $(@($models | ForEach-Object { $_.target }) -join ', ') ($triangles)."
+}
+
 $blender = Resolve-ArtBlender $BlenderPath
 foreach ($manifest in $manifests) {
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
@@ -77,6 +140,11 @@ foreach ($manifest in $manifests) {
 
     if ($manifest.Kind -eq "paint") {
         Export-ArtPaint $blender $manifest $sourceSha256
+        continue
+    }
+
+    if ($manifest.Kind -eq "garment") {
+        Export-ArtGarment $blender $manifest $sourceSha256
         continue
     }
 
@@ -120,18 +188,8 @@ foreach ($manifest in $manifests) {
         }
     }
 
-    # A texture that an earlier export wrote and this one no longer does is removed with its
-    # Unity .meta file, so no stale image stays in the project.
     if ($null -ne $manifest.Export) {
-        $written = @($textures | ForEach-Object { $_.target })
-        foreach ($old in @($manifest.Export.textures | Where-Object { $written -cnotcontains $_.target })) {
-            foreach ($path in @($old.target, "$($old.target).meta")) {
-                $full = Join-Path $script:ArtRepositoryRoot $path
-                if (Test-Path -LiteralPath $full -PathType Leaf) {
-                    Remove-Item -LiteralPath $full
-                }
-            }
-        }
+        Remove-ArtStaleFiles @($manifest.Export.textures | ForEach-Object { $_.target }) @($textures | ForEach-Object { $_.target })
     }
 
     $manifest.Export = [ordered]@{

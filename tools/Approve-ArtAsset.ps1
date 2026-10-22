@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
     # Review stages of a static asset: model. Of a skinned asset: model, rig, and animation when it
-    # has clips of its own. Of an animation library: animation. Of a paint layer: paint.
+    # has clips of its own. Of an animation library: animation. Of a paint layer: paint. Of a
+    # garment: model and rig.
     [string]$Stage = "model",
     [string]$BlenderPath
 )
