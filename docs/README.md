@@ -1,6 +1,6 @@
 # Documentation
 
-Last updated: 2026-10-20
+Last updated: 2026-10-22
 
 This directory is the documentation entry point for MMORPG. Each active
 document has one clear responsibility so architecture, implemented behavior,
@@ -77,6 +77,11 @@ operations, and future design do not drift into duplicate descriptions.
   source of truth for the implemented scalable world-actor model, NPC and Mob
   distinction, composable NPC capabilities, visual spawn authoring, click
   interaction, runtime ownership, and actor scaling rules.
+- [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md) is the source of
+  truth for how clothes, armor, hair, and carried equipment look on the bodies:
+  garments as meshes with cover masks, fitting every body type and future races,
+  cloth chains, the garment art kind, and how Unity puts a character together.
+  It is accepted and not implemented yet.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) is the
   product and domain source of truth for items, equipment, slot inventory, Bags,
   the Secure Container, carry weight, death loot, corpses, insurance, and
