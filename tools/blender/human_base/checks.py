@@ -1,19 +1,20 @@
-"""Quality checks of the base characters. Each check returns its report lines and the rules it
-found broken:
+"""Quality checks of the base characters, run on their art asset files. Each check returns its
+report lines and the rules it found broken:
 
-- mesh: open edges, edges shared by more than two faces, tiny and sliver faces, mirror error,
-  loose parts, identical body topology, and the triangles of each character (body with its
-  eyeballs, teeth and tongue). Teeth and tongue sit inside the closed mouth cavity and may be
+- mesh: the source bodies and their eyeballs, teeth and tongue: open edges, edges shared by more
+  than two faces, tiny and sliver faces, mirror error, loose parts, identical body topology, and
+  the triangles of each character. Teeth and tongue sit inside the closed mouth cavity and may be
   open at the back.
 - seams: the colour difference across every UV seam of the bodies, sampled through the UVs of
   both faces that share the seam edge (sRGB, 0..255). It is a report and breaks no rule.
-- parts: the split characters, where every body part of the male and the female has the same
-  topology, the parts close up into one watertight body (every open edge of a part is matched
-  by an edge of a neighbouring part), and the normals agree across the cuts.
-- rig: a rigged character against the model it was rigged from: the meshes at rest are the
-  model's meshes, the art pipeline's rig rules hold, and the weights are mirror symmetric.
-- animation: the clips of an animated character follow the art pipeline's animation rules, and a
-  foot on the ground keeps its place when the character moves at the clip's speed."""
+- parts: the body parts written from the source bodies, where every body part of the male and the
+  female has the same topology, the parts close up into one watertight body (every open edge of a
+  part is matched by an edge of a neighbouring part), and the normals agree across the cuts.
+- rig: a character after a step against its file before the step: the source body, eyeballs, teeth
+  and tongue are unchanged at rest, the body parts are what the source body gives, the art
+  pipeline's rig rules hold, and the weights are mirror symmetric.
+- clips: in the Idle, Walk and Jog clips of an animation library, a foot on the ground keeps its
+  place when the character moves at the clip's speed."""
 
 import math
 
@@ -24,8 +25,12 @@ from bpy_extras import anim_utils
 from mathutils import Vector
 from mathutils.kdtree import KDTree
 
-BODIES = ("Male_Body", "Female_Body")
+from art_pipeline import bodies
+
+from . import files
+
 CHARACTERS = ("Male", "Female")
+BODIES = tuple(f"{label}_Body" for label in CHARACTERS)
 MAX_TRIS = 10000
 TINY_AREA = 1e-6        # m^2 (1 mm^2)
 TINY_AREA_HIDDEN = 2.5e-7  # m^2, eye sockets and mouth cavity (small by design, never seen)
@@ -97,42 +102,50 @@ def _analyse(obj):
     }
 
 
-def mesh(path):
-    """Checks the textured bodies with their eyeballs, teeth and tongue."""
-    bpy.ops.wm.open_mainfile(filepath=path)
+def extras(label):
+    """The eyeballs, teeth and tongue of a character."""
+    return sorted((o for o in bpy.data.objects[label].children
+                   if o.type == "MESH" and "zone" not in o and not bodies.is_source_body(o)), key=lambda o: o.name)
+
+
+def mesh(male_path, female_path):
+    """Checks the source bodies with their eyeballs, teeth and tongue."""
+    files.open_both(male_path, female_path)
     lines = [f"{'object':<26}{'tris':>6}{'open':>6}{'>2':>4}{'tiny':>6}{'sliv':>6}{'minang':>8}"
              f"{'mirror mm':>11}{'pieces':>7}{'sharp':>6}"]
     failures = []
     results = {}
-    for obj in sorted((o for o in bpy.data.objects if o.type == "MESH"), key=lambda o: (o.parent is not None, o.name)):
-        r = _analyse(obj)
-        results[obj.name] = r
-        lines.append(f"{obj.name:<26}{r['tris']:>6}{r['open']:>6}{r['over_shared']:>4}{r['tiny']:>6}{r['slivers']:>6}"
-                     f"{r['min_angle']:>8.1f}{r['mirror'] * 1000:>11.4f}{r['pieces']:>7}{r['sharp']:>6}")
-        if obj.name in BODIES:
-            for key in ("open", "over_shared", "wire", "tiny", "slivers"):
-                if r[key] > 0:
-                    failures.append(f"{obj.name}: {key} = {r[key]}")
-            if r["mirror"] > 1e-6:
-                failures.append(f"{obj.name}: mirror error {r['mirror']}")
-            if r["pieces"] != 1:
-                failures.append(f"{obj.name}: {r['pieces']} loose pieces")
-        else:
-            open_bad = r["open"] and not any(k in obj.name for k in OPEN_ALLOWED)
-            if open_bad or r["over_shared"] or r["tiny"] or r["slivers"] or r["mirror"] > 1e-5:
-                failures.append(f"{obj.name}: open {r['open']}, >2 {r['over_shared']}, tiny {r['tiny']}, "
-                                f"slivers {r['slivers']}, mirror {r['mirror']}")
+    for label, body in zip(CHARACTERS, BODIES):
+        if body not in bpy.data.objects:
+            return lines, [f"{label}: the file has no source body {body}"]
+        for obj in [bpy.data.objects[body]] + extras(label):
+            r = _analyse(obj)
+            results[obj.name] = r
+            lines.append(f"{obj.name:<26}{r['tris']:>6}{r['open']:>6}{r['over_shared']:>4}{r['tiny']:>6}{r['slivers']:>6}"
+                         f"{r['min_angle']:>8.1f}{r['mirror'] * 1000:>11.4f}{r['pieces']:>7}{r['sharp']:>6}")
+            if obj.name == body:
+                for key in ("open", "over_shared", "wire", "tiny", "slivers"):
+                    if r[key] > 0:
+                        failures.append(f"{obj.name}: {key} = {r[key]}")
+                if r["mirror"] > 1e-6:
+                    failures.append(f"{obj.name}: mirror error {r['mirror']}")
+                if r["pieces"] != 1:
+                    failures.append(f"{obj.name}: {r['pieces']} loose pieces")
+            else:
+                open_bad = r["open"] and not any(k in obj.name for k in OPEN_ALLOWED)
+                if open_bad or r["over_shared"] or r["tiny"] or r["slivers"] or r["mirror"] > 1e-5:
+                    failures.append(f"{obj.name}: open {r['open']}, >2 {r['over_shared']}, tiny {r['tiny']}, "
+                                    f"slivers {r['slivers']}, mirror {r['mirror']}")
     a, b = (bpy.data.objects[n].data for n in BODIES)
     same = [tuple(p.vertices) for p in a.polygons] == [tuple(p.vertices) for p in b.polygons]
-    lines += ["", f"Identical topology Male_Body / Female_Body: {'yes' if same else 'NO'}"]
+    lines += ["", f"Identical topology {BODIES[0]} / {BODIES[1]}: {'yes' if same else 'NO'}"]
     if not same:
         failures.append("bodies differ in topology")
-    for body in BODIES:
-        extras = sorted((o for o in bpy.data.objects if o.get("body") == body), key=lambda o: o.name)
-        total = results[body]["tris"] + sum(results[o.name]["tris"] for o in extras)
-        lines.append(f"{body} character: {total} triangles ({body} + {', '.join(o.name for o in extras)})")
+    for label, body in zip(CHARACTERS, BODIES):
+        total = results[body]["tris"] + sum(results[o.name]["tris"] for o in extras(label))
+        lines.append(f"{label} character: {total} triangles ({body} + {', '.join(o.name for o in extras(label))})")
         if total > MAX_TRIS:
-            failures.append(f"{body}: character has {total} triangles (max {MAX_TRIS})")
+            failures.append(f"{label}: character has {total} triangles (max {MAX_TRIS})")
     return lines, failures
 
 
@@ -197,9 +210,9 @@ def _seam_differences(obj):
     return np.array(diffs), worst
 
 
-def seams(path):
+def seams(male_path, female_path):
     """Reports the texture colour difference across the UV seams of both bodies."""
-    bpy.ops.wm.open_mainfile(filepath=path)
+    files.open_both(male_path, female_path)
     lines = []
     for name in BODIES:
         diffs, worst = _seam_differences(bpy.data.objects[name])
@@ -217,9 +230,9 @@ def _key(co):
 def _check_character(label, lines, failures):
     root = bpy.data.objects[label]
     parts = [c for c in root.children if c.type == "MESH" and "zone" in c]
-    extras = [c for c in root.children if c.type == "MESH" and "zone" not in c]
-    tris = sum(len(p.vertices) - 2 for o in root.children if o.type == "MESH" for p in o.data.polygons)
-    lines.append(f"{label}: {len(parts)} body parts, {len(extras)} eyes/teeth/tongue, {tris} triangles")
+    others = extras(label)
+    tris = sum(len(p.vertices) - 2 for o in parts + others for p in o.data.polygons)
+    lines.append(f"{label}: {len(parts)} body parts, {len(others)} eyes/teeth/tongue, {tris} triangles")
     if tris > MAX_TRIS:
         failures.append(f"{label}: {tris} triangles (max {MAX_TRIS})")
     # Open edges of all parts, by position: each must be shared by exactly two parts.
@@ -264,9 +277,9 @@ def _check_character(label, lines, failures):
     return {o["zone"]: o for o in parts}
 
 
-def parts(path):
-    """Checks the organized characters and their body parts."""
-    bpy.ops.wm.open_mainfile(filepath=path)
+def parts(male_path, female_path):
+    """Checks the body parts of both characters."""
+    files.open_both(male_path, female_path)
     lines, failures = [], []
     found = {label: _check_character(label, lines, failures) for label in CHARACTERS}
     differing = [zone for zone, a in found["Male"].items()
@@ -280,11 +293,12 @@ def parts(path):
 # -------------------------------------------------------------------------------------- rig
 
 def _rest_meshes(label):
-    """Evaluated meshes of a character's children by name: positions, corner normals and UVs."""
+    """Evaluated meshes of a character's children by name: positions, corner normals and UVs. The
+    body parts are left out: they are written from the source body, so they follow its edits."""
     depsgraph = bpy.context.evaluated_depsgraph_get()
     found = {}
     for o in bpy.data.objects[label].children:
-        if o.type != "MESH":
+        if o.type != "MESH" or "zone" in o:
             continue
         evaluated = o.evaluated_get(depsgraph)
         me = evaluated.to_mesh()
@@ -306,7 +320,7 @@ def _mirror_name(name):
 
 
 def rig(model_path, rigged_path, label, skeleton_path):
-    """Checks a rigged character against the model file it was rigged from."""
+    """Checks a character after a rig step against its file before the step."""
     from art_pipeline import skeleton as skeleton_definition
     from art_pipeline import skinned
     from . import rig as rigging
@@ -330,6 +344,7 @@ def rig(model_path, rigged_path, label, skeleton_path):
     lines.append(f"{label}: at rest, largest change of a position {moved:.2e} m and of a normal {turned:.2e}")
     if moved > REST_POSITION_TOLERANCE or turned > NORMAL_TOLERANCE:
         failures.append(f"{label}: the rig changes the model at rest ({moved:.2e} m, normals {turned:.2e})")
+    failures += [f"{label}: {e}" for e in bodies.part_errors(label)]
 
     skeleton = skeleton_definition.load(skeleton_path)
     exported = [o for o in bpy.data.objects if o == bpy.data.objects[label] or o.parent == bpy.data.objects[label]]
@@ -364,22 +379,19 @@ def rig(model_path, rigged_path, label, skeleton_path):
     return lines, failures
 
 
-# -------------------------------------------------------------------------------- animation
+# ------------------------------------------------------------------------------------ clips
 
-def animation(path, label, skeleton_path):
-    """Checks the clips of an animated character: the art pipeline's animation rules, and that a
-    foot on the ground keeps its place when the character moves at the clip's speed."""
+def clips(path, label):
+    """Checks that a foot on the ground keeps its place in the Idle, Walk and Jog clips of an
+    animation library on the armature label, when the character moves at the clip's speed. The art
+    pipeline checks the rules of every clip at its approval."""
     from mathutils import Vector
 
-    from art_pipeline import skeleton as skeleton_definition
-    from art_pipeline import skinned
     from . import animate
 
     bpy.ops.wm.open_mainfile(filepath=path)
     lines, failures = [], []
     arm = bpy.data.objects[label]
-    skeleton = skeleton_definition.load(skeleton_path)
-    failures += [f"{label}: {e}" for e in skinned.animation_errors(arm, list(animate.CLIPS), skeleton)]
     scene = bpy.context.scene
     arm.animation_data_create()
     heels, ground = {}, {}

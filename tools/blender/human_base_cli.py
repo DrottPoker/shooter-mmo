@@ -1,31 +1,27 @@
-"""Blender entry point of the human base character build. tools/Build-HumanBase.ps1 runs each
-step in its own Blender:
+"""Blender entry point of the human base character tools. tools/Sync-HumanBase.ps1 and
+tools/Sync-AnimationLibrary.ps1 run each step in its own Blender:
 
     blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
         --python tools/blender/human_base_cli.py -- <step> <arguments>
 
 Steps:
-    references <bundle.blend> <refs.blend>
-    geometry <refs.blend> <geometry.blend>
-    textures <geometry.blend> <refs.blend> <textured.blend> <texture dir>
-    check-mesh <textured.blend>
-    check-seams <textured.blend>
-    characters <textured.blend> <characters.blend>
-    check-parts <characters.blend>
-    asset <characters.blend> <Male|Female> <asset.blend>
-    rig <asset.blend> <Male|Female> <skeleton.json> <rigged.blend>
-    check-rig <asset.blend> <rigged.blend> <Male|Female> <skeleton.json>
-    animate <rigged.blend> <Male|Female> <animated.blend>
-    check-animation <animated.blend> <Male|Female> <skeleton.json>
-    review <characters.blend> <output dir> <prefix>
-    review-rig <rigged.blend> <Male|Female> <output dir> <prefix>
-    rig-review-file <male.blend> <female.blend> <review.blend>
-    review-animation <animated.blend> <Male|Female> <output dir> <prefix>
-    animation-review-file <male.blend> <female.blend> <review.blend>
+    sync <asset.blend> <Male|Female> <skeleton.json> <out.blend>
+    weights <asset.blend> <Male|Female> <skeleton.json> <out.blend>
+    rig <asset.blend> <Male|Female> <skeleton.json> <out.blend>
+    check-mesh <male.blend> <female.blend>
+    check-seams <male.blend> <female.blend>
+    check-parts <male.blend> <female.blend>
+    check-rig <before.blend> <after.blend> <Male|Female> <skeleton.json>
     compare <a.blend> <b.blend>
+    review-file <male.blend> <female.blend> <review.blend>
+    review <review.blend> <output dir> <prefix>
+    review-rig <asset.blend> <Male|Female> <output dir> <prefix>
+    rig-review-file <male.blend> <female.blend> <review.blend>
+    generate-clips <library.blend> <armature> <Idle,Walk,Jog>
+    check-clips <library.blend> <armature>
 
 Report lines start with HUMAN_BASE_REPORT, broken rules with HUMAN_BASE_FAILED, and the result
-of compare is HUMAN_BASE_SAME yes or no, so the PowerShell script can read them from Blender's
+of compare is HUMAN_BASE_SAME yes or no, so the PowerShell scripts can read them from Blender's
 log.
 """
 
@@ -36,18 +32,34 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from human_base import anim_review, animate, characters, checks, geometry, references, review, rig, rig_review, textures  # noqa: E402
+from human_base import animate, checks, review, rig, rig_review  # noqa: E402
 
 STEPS = {
-    "references": (2, references.prepare),
-    "geometry": (2, geometry.build),
-    "textures": (4, textures.run),
-    "characters": (2, characters.organize),
-    "asset": (3, characters.write_asset),
+    "sync": (4, rig.sync),
+    "weights": (4, rig.weights),
     "rig": (4, rig.rig),
-    "animate": (3, animate.animate),
+    "review-file": (3, review.review_file),
+    "generate-clips": (3, lambda path, armature, names: animate.generate(path, armature, names.split(","))),
 }
-CHECKS = {"check-mesh": checks.mesh, "check-seams": checks.seams, "check-parts": checks.parts}
+CHECKS = {
+    "check-mesh": (2, checks.mesh),
+    "check-seams": (2, checks.seams),
+    "check-parts": (2, checks.parts),
+    "check-rig": (4, checks.rig),
+    "check-clips": (2, checks.clips),
+    "compare": (2, checks.compare),
+}
+RENDERS = {
+    "review": (3, review.render),
+    "review-rig": (4, rig_review.render),
+}
+
+
+def _count(step: str, args: list[str], count: int) -> bool:
+    if len(args) != count:
+        print(f"HUMAN_BASE_FAILED {step} takes {count} arguments")
+        return False
+    return True
 
 
 def main(argv: list[str]) -> int:
@@ -57,61 +69,34 @@ def main(argv: list[str]) -> int:
     step, args = argv[0], argv[1:]
     if step in STEPS:
         count, run = STEPS[step]
-        if len(args) != count:
-            print(f"HUMAN_BASE_FAILED {step} takes {count} arguments")
+        if not _count(step, args, count):
             return 2
         run(*args)
         return 0
     if step in CHECKS:
-        lines, failures = CHECKS[step](*args)
-        for line in lines:
-            print(f"HUMAN_BASE_REPORT {line}")
-        for failure in failures:
-            print(f"HUMAN_BASE_FAILED {failure}")
-        return 1 if failures else 0
-    if step == "check-rig":
-        if len(args) != 4:
-            print("HUMAN_BASE_FAILED check-rig takes 4 arguments")
+        count, run = CHECKS[step]
+        if not _count(step, args, count):
             return 2
-        lines, failures = checks.rig(*args)
+        lines, failures = run(*args)
         for line in lines:
             print(f"HUMAN_BASE_REPORT {line}")
+        if step == "compare":
+            print(f"HUMAN_BASE_SAME {'no' if failures else 'yes'}")
+            return 0
         for failure in failures:
             print(f"HUMAN_BASE_FAILED {failure}")
         return 1 if failures else 0
-    if step == "check-animation":
-        if len(args) != 3:
-            print("HUMAN_BASE_FAILED check-animation takes 3 arguments")
+    if step in RENDERS:
+        count, run = RENDERS[step]
+        if not _count(step, args, count):
             return 2
-        lines, failures = checks.animation(*args)
-        for line in lines:
-            print(f"HUMAN_BASE_REPORT {line}")
-        for failure in failures:
-            print(f"HUMAN_BASE_FAILED {failure}")
-        return 1 if failures else 0
-    if step == "compare":
-        lines, differences = checks.compare(*args)
-        for line in lines:
-            print(f"HUMAN_BASE_REPORT {line}")
-        print(f"HUMAN_BASE_SAME {'no' if differences else 'yes'}")
-        return 0
-    if step == "review":
-        for path in review.render(*args):
+        for path in run(*args):
             print(f"HUMAN_BASE_REPORT review sheet {path}")
-        return 0
-    if step == "review-animation":
-        for path in anim_review.render(*args):
-            print(f"HUMAN_BASE_REPORT review sheet {path}")
-        return 0
-    if step == "animation-review-file":
-        print(f"HUMAN_BASE_REPORT review file {anim_review.review_file(*args)}")
         return 0
     if step == "rig-review-file":
+        if not _count(step, args, 3):
+            return 2
         print(f"HUMAN_BASE_REPORT review file {rig_review.review_file(*args)}")
-        return 0
-    if step == "review-rig":
-        for path in rig_review.render(*args):
-            print(f"HUMAN_BASE_REPORT review sheet {path}")
         return 0
     print(f"HUMAN_BASE_FAILED unknown step {step}")
     return 2

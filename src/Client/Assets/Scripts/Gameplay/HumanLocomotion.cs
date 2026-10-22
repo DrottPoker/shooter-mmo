@@ -2,9 +2,10 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // How the human body animates at a ground speed. The Walk and Jog clips are authored for
-    // these speeds by tools/blender/human_base/animate.py (WALK_SPEED and JOG_SPEED), so their
-    // feet stay planted when the clip plays at its speed. Between them the Animator blends the
+    // How the human body animates at a ground speed. Every clip comes from the Human_Actions
+    // animation library. The Walk and Jog clips are authored for these speeds, which the gait
+    // model tools/blender/human_base/animate.py starts them at (WALK_SPEED and JOG_SPEED), so
+    // their feet stay planted when the clip plays at its speed. Between them the Animator blends the
     // two clips, and the playback rate is set so the blended stride matches the speed. Below
     // the walk speed, as when a character is encumbered, the walk plays slower. A dead body
     // plays Death instead.
@@ -29,8 +30,8 @@ namespace Mmorpg.Client.Gameplay
         public const string WalkClip = "Walk";
         public const string JogClip = "Jog";
 
-        // Death is a handmade clip of the Human_Actions animation library. Any state crossfades
-        // into it while Dead is true, and it holds its last pose, lying on the ground.
+        // Any state crossfades into Death while Dead is true, and it holds its last pose, lying
+        // on the ground.
         public const string DeadParameter = "Dead";
         public const string DeathState = "Death";
         public const string DeathClip = "Death";

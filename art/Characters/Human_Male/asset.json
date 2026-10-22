@@ -7,28 +7,23 @@
     ],
     "triangleBudget": 10000,
     "skeleton": "Humanoid",
-    "clips": ["Idle", "Walk", "Jog"],
     "variants": [
         { "material": "M_Eye_Male", "images": ["T_Eye_Male_Brown"] },
         { "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-21",
-            "sourceSha256": "6b53b0929902d679ef08bd944f037b87e47f943595a330c171a1dbccfcd4f1d1"
+            "date": "2026-10-22",
+            "sourceSha256": "01237a4cb2f93c0ed2d2f2b8588f40de82e60c8f6bb8d790d2215f7fcec60029"
         },
         "rig": {
-            "date": "2026-10-21",
-            "sourceSha256": "70587c76a6e2e27929a5baaf62bf769a21c061fa6b09da1699faaab83535dd37"
-        },
-        "animation": {
-            "date": "2026-10-21",
-            "sourceSha256": "70587c76a6e2e27929a5baaf62bf769a21c061fa6b09da1699faaab83535dd37"
+            "date": "2026-10-22",
+            "sourceSha256": "01237a4cb2f93c0ed2d2f2b8588f40de82e60c8f6bb8d790d2215f7fcec60029"
         }
     },
     "export": {
-        "sourceSha256": "70587c76a6e2e27929a5baaf62bf769a21c061fa6b09da1699faaab83535dd37",
-        "targetSha256": "d213c13590452d103cf4ab4502dc84a03be8b5e9240726f82a56eedf0eb4d80d",
+        "sourceSha256": "01237a4cb2f93c0ed2d2f2b8588f40de82e60c8f6bb8d790d2215f7fcec60029",
+        "targetSha256": "33343fc587ff66f2a4c5b1b26df6d0a514bac4e6076fb3dfed88067cebe63805",
         "materials": [
             {
                 "name": "M_Body_Male",
@@ -90,11 +85,6 @@
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Male_Scarred.png",
                 "sha256": "6e6f27f3ced9130a265b0555b2bdb95728d4e3f2d746afd4406229b214fec684"
             }
-        ],
-        "clips": [
-            { "name": "Idle", "frames": 120, "loop": true },
-            { "name": "Walk", "frames": 28, "loop": true },
-            { "name": "Jog", "frames": 19, "loop": true }
         ]
     }
 }

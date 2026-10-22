@@ -2773,7 +2773,7 @@ Resource_IronVein.blend changed after the 'model' approval.`, and
    BSDF with a flat Base Color, Metallic, and Roughness, or for a skinned asset
    a Base Color from one packed Image Texture.
 3. Write `asset.json` with `schemaVersion`, `kind`, `target`, `rootObjects`, and
-   `triangleBudget`, and for a skinned asset `skeleton` and `clips`, as
+   `triangleBudget`, and for a skinned asset `skeleton` and any `clips` of its own, as
    described in [Asset Manifest](ART_PIPELINE.md#asset-manifest),
    `"approvals": {}`, and `"export": null`.
 4. Render the review sheet, review, approve every stage, export, and verify as
@@ -2808,84 +2808,93 @@ Prefab Variant, and the registry entry are committed.
 3. Mine a vein until it depletes. Expected result: it switches to the depleted
    model and returns with ore about 30 seconds later.
 
-### Rebuild The Human Base Characters
+### Edit The Human Base Characters
 
 [Human Base Characters](ART_PIPELINE.md#human-base-characters) describes the two
-characters and how the build makes them. Rebuild them after a change to
-`tools/blender/human_base`. A change to the rig or the animations only, in
-`rig.py`, `poses.py`, `animate.py`, or their checks and reviews, needs no
-download:
+characters and what their files hold. Their `.blend` files are the source, edited
+by hand:
 
-```powershell
-.\tools\Build-HumanBase.ps1 -SkipModel
-```
-
-A change to the model needs the Human Base Meshes bundle:
-
-1. Download `human-base-meshes-bundle-v1.4.1.zip` from Blender's
-   [asset bundles](https://www.blender.org/download/demo-files/) page (Human Base
-   Meshes, 49 MB, CC0) into a new folder of its own outside the repository, and
-   extract it there.
-2. Run the build with the path of the extracted `human_base_meshes_bundle.blend`:
+1. Open a character in Blender:
 
    ```powershell
-   .\tools\Build-HumanBase.ps1 -ReferenceBundle D:\Downloads\human-base-meshes\human_base_meshes_bundle.blend
+   & $env:BLENDER_PATH art\Characters\Human_Male\Human_Male.blend
    ```
 
-Expected result: one line per step with its time, about eight minutes with the
-bundle and two without it, then the paths of the review files
-`artifacts\human-base\Human_Base_Rig.blend` (the test poses as an animation) and
-`artifacts\human-base\Human_Base_Animation.blend` (the clips on a moving floor),
-with `Human_Base.blend` for a full build, the review sheets in
-`artifacts\human-base\review`, and `artifacts\human-base\report.txt` with the
-largest foot slip of every clip, and for each asset either `Human_Male:
-unchanged, the committed file is kept; its approval covers the file.` or
-`Human_Male: rebuilt with changes; Human_Male.blend changed after the 'rig'
-approval.` A step that finds a broken rule stops the build and names the rule
-and the step's log. Another bundle stops it with `... is not
-human_base_meshes_bundle.blend of Human Base Meshes v1.4.1`.
+   Expected result: the viewport shows `Male_Body` from the `Source` collection,
+   the eyes, teeth, and tongue, and the armature `Male`; the ten parts
+   `Male_Head` to `Male_Feet` in `Export > Male` are hidden.
+2. Edit `Male_Body`: shape it in Edit Mode or Sculpt Mode with X mirror on,
+   paint `T_Body_Male` in Texture Paint, or paint its weights in Weight Paint.
+   Make every change of topology on `Female_Body` in `Human_Female.blend` too.
+   Never edit the hidden parts. Save.
+3. Write the parts from the bodies and check both characters:
 
-Review the sheets and the review files; press Space in Blender to play them:
+   ```powershell
+   .\tools\Sync-HumanBase.ps1
+   ```
 
-```powershell
-& $env:BLENDER_PATH artifacts\human-base\Human_Base_Animation.blend
-```
+   Add `-Weights` to solve the skin weights again from the joints, for example
+   after adding vertices without weights; it replaces weights painted by hand.
+   Add `-Rig` to place the joints again from the model first, after a change of
+   the proportions.
 
-When the reviewer approves the changed characters, record every changed stage
-in order, `model` only after a full build, then export and verify:
+   Expected result: one line per step with its time, about two minutes in all,
+   then the paths of the review files `artifacts\human-base\Human_Base.blend`,
+   both characters side by side, and `artifacts\human-base\Human_Base_Rig.blend`,
+   the test poses as an animation, the review sheets in
+   `artifacts\human-base\review`, and `artifacts\human-base\report.txt`, and for
+   each asset either `Human_Male: unchanged, the committed file is kept; its
+   approval covers the file.` or `Human_Male: updated; Human_Male.blend changed
+   after the 'rig' approval.` A step that finds a broken rule stops the script
+   and names the rule and the step's log, such as `bodies differ in topology`
+   or `Male_Body: mirror error ...`.
+4. Review the sheets and the review files; press Space in Blender to play the
+   test poses:
 
-```powershell
-foreach ($asset in "art/Characters/Human_Male", "art/Characters/Human_Female") {
-    .\tools\Approve-ArtAsset.ps1 -Asset $asset -Stage rig
-    .\tools\Approve-ArtAsset.ps1 -Asset $asset -Stage animation
-}
-.\tools\Export-ArtAsset.ps1 -Asset art/Characters/Human_Male, art/Characters/Human_Female
-.\tools\Verify-ArtAssets.ps1
-```
+   ```powershell
+   & $env:BLENDER_PATH artifacts\human-base\Human_Base_Rig.blend
+   ```
 
-Expected result: `Approved the 'rig' stage of Human_Male (triangles=9202).` and
-the same for `animation` and `Human_Female`, `Exported Human_Male to
-src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
-the same for the female, and `Verified 5 art asset(s).` The export also writes
-the textures below `src/Client/Assets/Art/Textures/Characters`, the face and eye
-variants that `variants` in `asset.json` names among them. When Unity gets
-focus it imports the models; if the export added a material, run `MMORPG >
-Tools > Art Pipeline > Create Missing Materials`. Expected result: the Console
-lists the created materials, or says every exported art material has a project
-material. If the export added or removed a variant, run `MMORPG > Tools > Art
-Pipeline > Update Appearance Catalogs`. Expected result: the Console lists each
-catalog with its slots, such as `Eye (Teal, Brown), Face (Stubble, Scarred)`.
-Exporting the characters again also needs a new export of the animation library,
-as described in [Make A Handmade Clip](#make-a-handmade-clip). Commit the
-`.blend` files, `asset.json`, the FBX and texture files, the catalogs, and their
-`.meta` files together. An export of unchanged sources leaves every file as it
-is.
+   When the reviewer approves the changed characters, record both stages in
+   order, then export the characters and the animation library and verify:
 
-### Make A Handmade Clip
+   ```powershell
+   foreach ($asset in "art/Characters/Human_Male", "art/Characters/Human_Female") {
+       .\tools\Approve-ArtAsset.ps1 -Asset $asset -Stage model
+       .\tools\Approve-ArtAsset.ps1 -Asset $asset -Stage rig
+   }
+   .\tools\Export-ArtAsset.ps1 -Asset art/Characters/Human_Male, art/Characters/Human_Female, art/Animations/Human_Actions
+   .\tools\Verify-ArtAssets.ps1
+   ```
+
+   Expected result: `Approved the 'model' stage of Human_Male (triangles=9202).`
+   and the same for `rig` and `Human_Female`, `Exported Human_Male to
+   src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
+   the same for the female, `Exported Human_Actions to
+   src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
+   (clips=Death,Idle,Walk,Jog).`, and `Verified 5 art asset(s).` The library is
+   exported with the characters because it records the export of its rig;
+   `Verify-ArtAssets.ps1` otherwise stops with `was exported against another
+   export of its rig`. After `-Rig`, sync the library first and review its clips
+   on the new rig, as described in [Make A Clip](#make-a-clip).
+
+The export also writes the textures below
+`src/Client/Assets/Art/Textures/Characters`, the face and eye variants that
+`variants` in `asset.json` names among them. When Unity gets focus it imports the
+models; if the export added a material, run `MMORPG > Tools > Art Pipeline >
+Create Missing Materials`. Expected result: the Console lists the created
+materials, or says every exported art material has a project material. If the
+export added or removed a variant, run `MMORPG > Tools > Art Pipeline > Update
+Appearance Catalogs`. Expected result: the Console lists each catalog with its
+slots, such as `Eye (Teal, Brown), Face (Stubble, Scarred)`. Commit the `.blend`
+files, `asset.json`, the FBX and texture files, the catalogs, and their `.meta`
+files together. An export of unchanged sources leaves every file as it is.
+
+### Make A Clip
 
 [Animation Libraries](ART_PIPELINE.md#animation-libraries) describes where
-handmade clips live and the rules they follow. `art/Animations/Human_Actions`
-holds the handmade clips of the human bodies.
+clips live and the rules they follow. `art/Animations/Human_Actions` holds every
+clip of the human bodies: `Idle`, `Walk`, `Jog`, and `Death`.
 
 1. Bring the library up to date with the rig it is keyed on:
 
@@ -2896,7 +2905,14 @@ holds the handmade clips of the human bodies.
    Expected result: `Human_Actions is up to date: its armature is the current
    rig of art/Characters/Human_Male.`, or after a rig change `Synced
    Human_Actions from art/Characters/Human_Male: ...` followed by the reminder to
-   review and approve the clips again. A new library starts from an
+   review and approve the clips again, and one line per locomotion clip with how
+   far a foot on the ground slides, such as `Humanoid Walk: 28 frames, 1.4 m/s,
+   hips 0.810 to 0.824 m, largest slip of a foot on the ground 8.4 mm`. To start
+   a locomotion clip from the gait model instead of an empty action, add
+   `-Generate Walk` (or `Idle`, `Jog`). Expected result: `Added Walk to
+   Human_Actions and its asset.json; ...` when the library lacks it, or `Walk:
+   the library has the clip already` when it has it, which leaves the clip as it
+   is. A new library starts from an
    `asset.json` with `kind` `animations`, `target`, `rootObjects` (the armature
    name, such as `["Humanoid"]`), `skeleton`, `rig`, `previews`, `clips`,
    `"approvals": {}`, and `"export": null`, and the first sync creates its
@@ -2908,8 +2924,11 @@ holds the handmade clips of the human bodies.
    ```
 
    Expected result: the male body stands at the origin and the female body 2 m to
-   his right on a checkered ground. Select `Humanoid`, enter Pose Mode, create an
-   action for the new clip in the Dope Sheet's Action Editor, and key poses on its
+   his right on a checkered ground. To see a clip, select `Humanoid`, switch the
+   Timeline at the bottom to the Dope Sheet's Action Editor, pick the clip, such
+   as `Walk`, set the Timeline's End to its last frame, and press Space. To make a
+   clip, select `Humanoid`, enter Pose Mode, create an action for the new clip in
+   the Action Editor, or change the keys of an existing one, and key poses on its
    bones. Both bodies follow every pose.
 3. Give the action the custom property `loop` (true or false), a manual frame
    range from frame 0 in the Action properties, and add its name to `clips` in
@@ -2927,18 +2946,19 @@ holds the handmade clips of the human bodies.
 
    Expected result: `Review sheet for Human_Actions:
    artifacts\art-previews\Human_Actions.png` with two rows of eight frames per
-   clip, `Approved the 'animation' stage of Human_Actions (clips=Death).`,
-   `Exported Human_Actions to
-   src/Client/Assets/Art/Models/Animations/Human_Actions.fbx (clips=Death).`,
+   clip, `Approved the 'animation' stage of Human_Actions
+   (clips=Death,Idle,Walk,Jog).`, `Exported Human_Actions to
+   src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
+   (clips=Death,Idle,Walk,Jog).`,
    and `Verified 5 art asset(s).` Unity imports the clips as Humanoid motion when
    it gets focus. A library whose armature is not the current rig stops the
    approval and the export with `The armature "Humanoid" is not the current rig
    "Male" ...`; sync it first. Commit the `.blend` file, `asset.json`, the FBX,
    and its `.meta` file together.
 
-When the characters are exported again, for example after a rebuild, export the
+When the characters are exported again, for example after an edit, export the
 library again too. `Verify-ArtAssets.ps1` otherwise stops with `was exported
-against another export of its rig`. If the rebuild changed the rig, the sync
+against another export of its rig`. If the edit changed the rig, the sync
 changes the library, and it needs a new review and approval first.
 
 ### Make A Paint Layer
@@ -2985,21 +3005,16 @@ bodies. `art/Paint/LeatherJerkin` is the paint of the leather jerkin.
 No manual Unity Editor steps are required: the models, textures, materials,
 controller, and prefabs are committed.
 
-1. Open the animation review file:
-
-   ```powershell
-   & $env:BLENDER_PATH artifacts\anim-review-7\Human_Base_Animation_7.blend
-   ```
-
-   On a fresh checkout, build it first with `.\tools\Build-HumanBase.ps1
-   -SkipModel` and open `artifacts\human-base\Human_Base_Animation.blend`.
-   Press Space. Expected result: the male and the female stand, walk, and jog in
-   turn on a checkered floor that moves at the clip's speed, with the feet
-   planted on it, the pelvis turning, and the arms and hands following the swing.
+1. Open the animation library in Blender and play `Walk`, `Jog`, and `Idle` as
+   described in [Make A Clip](#make-a-clip), step 2. Expected result: the male
+   and the female stand, walk, and jog in place on the checkered ground, the
+   pelvis turning and the arms and hands following the swing. Revert the file
+   without saving.
 2. Open `art\Characters\Human_Male\Human_Male.blend`. Expected result: the
-   Outliner holds `Export > Male`, the armature, with the ten body parts from
-   `Male_Head` to `Male_Feet`, the eyes, teeth, and tongue as its children, and
-   the actions `Idle`, `Jog`, and `Walk`. Revert the file without saving.
+   Outliner holds `Source > Male_Body`, shown in the viewport, and `Export >
+   Male`, the armature, with `Male_Body`, the ten hidden body parts from
+   `Male_Head` to `Male_Feet`, and the eyes, teeth, and tongue as its children,
+   and the file has no actions. Revert the file without saving.
 3. In Unity, open `Assets/Prefabs/Player/HumanMaleBody.prefab`. Expected result:
    the Inspector names it a Prefab Variant of `Human_Male`, with an `Animator`
    using `HumanLocomotion` and the avatar `Human_MaleAvatar`, a
@@ -3029,9 +3044,9 @@ controller, and prefabs are committed.
    .\tools\Render-ArtPreview.ps1 -Asset art/Animations/Human_Actions
    ```
 
-   Expected result: two rows of frames show `Death` on both bodies: a hit, the
-   knees buckle, the body tips over to its right and backward, and it lies on its
-   back with the arms out.
+   Expected result: two rows of frames per clip show it on both bodies, among
+   them `Death`: a hit, the knees buckle, the body tips over to its right and
+   backward, and it lies on its back with the arms out.
 10. Back on `local-shard-1`, walk to the Feral Wolves around `(-105, 0, -105)`
     without a weapon and let them kill your character. Expected result: when the
     death overlay appears, your body falls into `Death` and lies on its back

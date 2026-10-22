@@ -45,8 +45,9 @@ operations, and future design do not drift into duplicate descriptions.
 15. [Art Pipeline](ART_PIPELINE.md) for 3D models from Blender to Unity: the
     asset layout, the review stages and approvals, the shared skeletons, the
     export and import rules for static and skinned models and their textures,
-    the modeling conventions, the human base characters with their scripted
-    build, rig, and animations, and the Blender MCP server for live work.
+    the modeling conventions, the human base characters edited in Blender with
+    their rig, the animation libraries and paint layers, and the Blender MCP
+    server for live work.
 
 ## Foundation Hardening
 

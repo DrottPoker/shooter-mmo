@@ -1,5 +1,6 @@
-"""Animation clips of the base characters, made by script on the approved rig: Idle, Walk and Jog.
-Each clip is one action of the armature, loops seamlessly, and stays in place: the game moves the
+"""The gait model of the base characters: Idle, Walk and Jog made by script on the rig of an
+animation library, as starting points that are then edited by hand. Each clip is one action of the
+armature, loops seamlessly, and stays in place: the game moves the
 character, so during a step the foot on the ground slides back at exactly the clip's speed and stays
 put when the game moves the character at that speed. The legs are solved from the feet: every frame
 places both ankles and turns the thigh and the shin to reach them, with the knee over the toes.
@@ -407,23 +408,36 @@ def bake(arm, name, frames, frame_fn):
     return action
 
 
-def animate(path, label, out):
-    """Adds the Idle, Walk and Jog clips to a rigged character (replacing earlier clips) and saves it."""
+def generate(path, label, names):
+    """Adds the named clips of the gait model (Idle, Walk, Jog) to an animation library on its
+    armature label, as starting points to edit by hand, and saves it. A clip the library already
+    has is kept as it is, so handmade keys are never replaced."""
+    unknown = [name for name in names if name not in CLIPS]
+    if unknown:
+        raise RuntimeError(f"The gait model makes the clips {list(CLIPS)}, not {unknown}.")
     bpy.ops.wm.open_mainfile(filepath=path)
-    for action in list(bpy.data.actions):
-        bpy.data.actions.remove(action)
     arm = bpy.data.objects[label]
+    arm.animation_data_create()
+    active = arm.animation_data.action
     rig = Rig(arm)
     scene = bpy.context.scene
     scene.render.fps, scene.render.fps_base = FPS, 1.0
-    bake(arm, "Idle", IDLE_FRAMES, lambda f: idle_frame(rig, IDLE_FRAMES, f))
-    for name, gait in (("Walk", WALK), ("Jog", JOG)):
-        frames = gait_frames(rig, gait)
-        bake(arm, name, frames, lambda f, gait=gait, frames=frames: gait_frame(rig, gait, frames, f))
-    # The armature keeps its animation data without an active action: the FBX export bakes every
-    # action as a take only for an object that has animation data.
-    arm.animation_data.action = None
-    scene.frame_start, scene.frame_end = 0, IDLE_FRAMES
-    bpy.ops.wm.save_as_mainfile(filepath=out, compress=True, relative_remap=False)
-    lengths = {a.name: int(a.frame_range[1]) for a in bpy.data.actions}
-    print(f"ANIMATED {label}: {lengths} frames at {FPS} fps -> {out}")
+    made = []
+    for name in names:
+        if name in bpy.data.actions:
+            print(f"KEPT {name}: the library has the clip already")
+            continue
+        if name == "Idle":
+            bake(arm, name, IDLE_FRAMES, lambda f: idle_frame(rig, IDLE_FRAMES, f))
+        else:
+            gait = WALK if name == "Walk" else JOG
+            frames = gait_frames(rig, gait)
+            bake(arm, name, frames, lambda f, gait=gait, frames=frames: gait_frame(rig, gait, frames, f))
+        made.append(name)
+    if not made:
+        return
+    # The FBX export bakes every action as a take only for an object that has animation data.
+    arm.animation_data.action = active
+    scene.frame_start, scene.frame_end = 0, max(int(a.frame_range[1]) for a in bpy.data.actions)
+    bpy.ops.wm.save_as_mainfile(filepath=path, compress=True, relative_remap=False)
+    print(f"GENERATED {label}: {made} at {FPS} fps -> {path}")

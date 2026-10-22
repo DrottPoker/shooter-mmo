@@ -13,7 +13,8 @@ $script:ArtBlenderCli = Join-Path $PSScriptRoot "blender/art_pipeline_cli.py"
 
 # The review stages each asset kind passes in order. The last stage is the export gate.
 # An animation library holds handmade clips of one skeleton, without meshes, so its only stage is
-# the animation.
+# the animation. A skinned asset without clips of its own, such as a body whose clips come from
+# animation libraries, ends with its rig.
 $script:ArtReviewStages = @{
     static = @("model")
     skinned = @("model", "rig", "animation")
@@ -486,6 +487,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
     }
 
     $stages = $script:ArtReviewStages[[string]$json.kind]
+    $implementedStages = $script:ArtImplementedStages[[string]$json.kind]
     if ($null -eq $stages) {
         $problems.Add("kind must be one of: $(($script:ArtReviewStages.Keys | Sort-Object) -join ', ')")
     }
@@ -522,7 +524,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
     $clips = @()
     if ($script:ArtAnimatedKinds -contains $kind) {
         $skeleton = [string]$json.skeleton
-        $clips = @($json.clips | ForEach-Object { [string]$_ })
+        $clips = @($json.clips | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
         if ($skeleton -cnotmatch $script:ArtNamePattern) {
             $problems.Add("skeleton must name a skeleton definition in art/Skeletons")
         }
@@ -535,13 +537,24 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
             }
         }
 
-        if ($clips.Count -eq 0 -or @($clips | Where-Object { $_ -cnotmatch $script:ArtNamePattern }).Count -gt 0 -or
+        if (@($clips | Where-Object { $_ -cnotmatch $script:ArtNamePattern }).Count -gt 0 -or
             @($clips | Sort-Object -Unique).Count -ne $clips.Count) {
-            $problems.Add("clips must list one or more unique animation clip names")
+            $problems.Add("clips must list unique animation clip names")
+        }
+        elseif ($kind -eq "animations" -and $clips.Count -eq 0) {
+            $problems.Add("an animation library must list one or more clips")
+        }
+        elseif ($kind -eq "skinned" -and $clips.Count -eq 0 -and $null -ne $json.PSObject.Properties['clips']) {
+            $problems.Add("a skinned asset without clips leaves clips out")
         }
     }
     elseif ($null -ne $json.skeleton -or $null -ne $json.clips) {
         $problems.Add("only a skinned asset or an animation library has a skeleton and clips")
+    }
+
+    if ($kind -eq "skinned" -and $clips.Count -eq 0) {
+        $stages = @($stages | Where-Object { $_ -ne "animation" })
+        $implementedStages = @($implementedStages | Where-Object { $_ -ne "animation" })
     }
 
     # A skinned asset may name other images that its painted materials take in the game, such as
@@ -707,7 +720,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         SourcePath = $sourcePath
         Kind = [string]$json.kind
         Stages = $stages
-        ImplementedStages = $script:ArtImplementedStages[[string]$json.kind]
+        ImplementedStages = $implementedStages
         Target = $target
         TargetPath = Join-Path $script:ArtRepositoryRoot $target
         RootObjects = [string[]]$roots
@@ -767,7 +780,7 @@ function Write-ArtAssetManifest($Manifest) {
         $lines.Add("    `"previews`": [$previews],")
     }
 
-    if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
+    if ($script:ArtAnimatedKinds -contains $Manifest.Kind -and @($Manifest.Clips).Count -gt 0) {
         $clips = (@($Manifest.Clips) | ForEach-Object { '"' + $_ + '"' }) -join ", "
         $lines.Add("    `"clips`": [$clips],")
     }
@@ -1003,7 +1016,11 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
     }
 
     if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
-        $arguments += @("--skeleton", $Manifest.SkeletonPath, "--clips", ($Manifest.Clips -join ","))
+        $arguments += @("--skeleton", $Manifest.SkeletonPath)
+        # Windows PowerShell drops an empty argument, so a body without clips passes none.
+        if (@($Manifest.Clips).Count -gt 0) {
+            $arguments += @("--clips", ($Manifest.Clips -join ","))
+        }
     }
 
     if ($Manifest.Kind -eq "animations") {

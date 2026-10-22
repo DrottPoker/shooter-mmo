@@ -4,8 +4,8 @@ import re
 
 import bpy
 
+from . import bodies, skinned
 from . import skeleton as skeleton_definition
-from . import skinned
 from .scene import EXPORT_COLLECTION, export_collection, export_objects, root_objects, triangle_count
 
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -144,6 +144,8 @@ def validate(kind: str, roots: list[str], triangle_budget: int | None, stage: st
         if not _is_at_origin(root):
             errors.append(f'Root object "{root.name}" must sit at the origin without rotation, '
                           "because its origin is the actor position in the game.")
+        if kind == "skinned":
+            errors += bodies.part_errors(root.name)
 
     if rigged:
         skeleton = skeleton_definition.load(skeleton_path)

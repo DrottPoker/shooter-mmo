@@ -14,6 +14,7 @@ import tempfile
 import bpy
 import numpy as np
 
+from . import bodies
 from .scene import ArtPipelineError, relative_image_paths
 
 REFERENCE_COLLECTION = "Reference"
@@ -51,11 +52,13 @@ def _joined_body(path: str, root: str, label: str, collection: bpy.types.Collect
             raise ArtPipelineError(f'{path} has no object "{root}".')
         target.objects = list(source.objects)
     loaded = [o for o in target.objects if o is not None]
-    parts = sorted((o for o in loaded if o.type == "MESH"), key=lambda o: _suffix(o, label))
+    # The parts are the body the game shows; the editable source body is the same surface again.
+    parts = sorted((o for o in loaded if o.type == "MESH" and not bodies.is_source_body(o)), key=lambda o: _suffix(o, label))
     for obj in loaded:
         collection.objects.link(obj)
     for obj in parts:
         obj.modifiers.clear()
+        obj.hide_select = False
         world = obj.matrix_world.copy()
         obj.parent = None
         obj.matrix_world = world

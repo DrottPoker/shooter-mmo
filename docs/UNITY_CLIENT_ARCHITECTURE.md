@@ -1218,8 +1218,11 @@ they were.
 
 The body's Animator uses its Humanoid avatar,
 `Assets/Art/Animation/HumanLocomotion.controller`, no root motion, and
-`Cull Update Transforms`, so a body off screen skips its pose. The controller
-moves between two states: `Idle`, and `Locomotion`, a 1D blend tree on `Speed` with `Walk` at
+`Cull Update Transforms`, so a body off screen skips its pose. Every clip it plays
+comes from `Assets/Art/Models/Animations/Human_Actions.fbx`, the
+[animation library](ART_PIPELINE.md#animation-libraries) of the human bodies, as
+Humanoid motion that fits every body; the body's own model has no clips. The
+controller moves between two states: `Idle`, and `Locomotion`, a 1D blend tree on `Speed` with `Walk` at
 1.4 m/s and `Jog` at 5.0 m/s, the speeds the clips were authored for, played at
 the rate `LocomotionRate`. The bool `Moving` switches between them with short
 fixed crossfades. `CharacterLocomotionAnimator` drives these parameters from how
@@ -1235,10 +1238,8 @@ speed, from the lengths of both cycles; and above the jog speed the jog plays
 faster. `PlayerBodyAssetTests` checks that the two speeds match
 `tools/blender/human_base/animate.py`.
 
-The controller's third state, `Death`, plays the handmade `Death` clip of
-`Assets/Art/Models/Animations/Human_Actions.fbx`, the
-[animation library](ART_PIPELINE.md#animation-libraries) of the human bodies.
-An Any State transition crossfades into it in 0.15 s while the bool `Dead` is
+The controller's third state, `Death`, plays the handmade `Death` clip of the
+library. An Any State transition crossfades into it in 0.15 s while the bool `Dead` is
 true, from any state, and it holds its last frame, the body lying on its back.
 `CombatDeathPresentation` in `Mmorpg.Client.Combat`, which the bootstrap creates
 in every World scene, tells every player body in view each frame whether its

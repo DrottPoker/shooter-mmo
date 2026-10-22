@@ -1,15 +1,17 @@
 """The rig of a base character: an armature with the shared Humanoid skeleton
-(art/Skeletons/Humanoid.json) replaces the character's root empty, with its joints placed from
-the character's own geometry, and every body part, eyeball, tooth row and the tongue is bound to
-it.
+(art/Skeletons/Humanoid.json) with its joints placed from the character's own geometry, and every
+body part, eyeball, tooth row and the tongue bound to it. The character's file is the source: rig
+places the joints again and solves the weights, weights only solves the weights from the joints the
+file has, and sync only writes the body parts from the source body (art_pipeline.bodies). Each of
+them writes the weights into the source body and its parts.
 
 The character faces +Y, so its right side is +X: the bones ending in _R sit at +X.
 
-Joints come from the build's cuts and landmarks: the elbow, wrist, knee and ankle from the rings
-where two body parts meet, the shoulder joint at the centre of the shoulder's round cap, the joints of the
-fingers, the thumb and the toes from the rings of each digit, the jaw hinge in front of the ears
-where the model review's mouth preview put it, and the spine at fixed shares of the torso between
-the hip joints and the base of the neck.
+Joints come from the cuts between the body parts and the landmarks the armature carries: the
+elbow, wrist, knee and ankle from the rings where two body parts meet, the shoulder joint at the
+centre of the shoulder's round cap, the joints of the fingers, the thumb and the toes from the rings
+of each digit, the jaw hinge in front of the ears where the model review's mouth preview put it, and
+the spine at fixed shares of the torso between the hip joints and the base of the neck.
 
 Skin weights are solved once on the whole body, the parts joined at their cuts, by Blender's bone
 heat. They are then limited per zone and per digit and shaped where the arms meet the torso; the
@@ -27,11 +29,10 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
+from art_pipeline import bodies
 from art_pipeline import skeleton as skeleton_definition
 
-from . import body, proportions
-
-ZONES = ("Head", "Neck", "Torso", "Pelvis", "UpperArms", "Forearms", "Hands", "Thighs", "Shins", "Feet")
+ZONES = bodies.ZONES
 SIDES = (("R", 1.0), ("L", -1.0))
 # The landmark digits from the little finger to the index finger, then the thumb.
 DIGITS = ("Little", "Ring", "Middle", "Index", "Thumb")
@@ -221,11 +222,11 @@ def _shoulder_joint(label, guess, s):
     return c
 
 
-def joints(label):
+def joints(label, shoulder_guess):
     """Head, tail and roll direction (the bone's Z axis) of every deform bone and socket, and the
-    vertices of every digit, in the character's coordinates (root at the origin)."""
+    vertices of every digit, in the character's coordinates (root at the origin). The search for
+    the right shoulder joint starts at shoulder_guess, such as where the rig had it."""
     root = bpy.data.objects[label]
-    sex = label.lower()
     head_co = _world(_part(label, "Head"))
     height = float(head_co[:, 2].max())
     s = height / REFERENCE_HEIGHT
@@ -268,8 +269,7 @@ def joints(label):
         bones[f"Eye_{side}"] = (c, c + fwd * 0.025, up)
 
     # Right arm and leg; the left side mirrors them.
-    guess = Vector(proportions.warp(np.array([body.LANDMARKS[sex]["shoulder_joint"]]), sex)[0])
-    shoulder = _shoulder_joint(label, guess, s)
+    shoulder = _shoulder_joint(label, Vector(shoulder_guess), s)
     clavicle = Vector((0.022 * s, neck_base.y + 0.05 * s, neck_base.z - 0.035 * s))
     elbow = _cut(label, "UpperArms", "Forearms", 1.0)
     wrist = _cut(label, "Forearms", "Hands", 1.0)
@@ -348,8 +348,15 @@ def joints(label):
 
 # ----------------------------------------------------------------------------------- armature
 
-def characters_children(root):
+def meshes(root):
+    """Every mesh of a character, its source body with them."""
     return sorted((o for o in root.children if o.type == "MESH"), key=lambda o: o.name)
+
+
+def characters_children(root):
+    """The meshes of a character that the rig binds: its parts, eyeballs, teeth, and tongue, without
+    the source body, which takes the weights of the parts afterwards."""
+    return [o for o in meshes(root) if not bodies.is_source_body(o)]
 
 
 def normalize(label):
@@ -367,7 +374,7 @@ def strip(label):
     """Takes a rig off a character, if it has one: the root is an empty again, with the
     landmarks, and the meshes lose their weights and armature modifiers. Returns the root."""
     root = bpy.data.objects[label]
-    children = characters_children(root)
+    children = meshes(root)
     for o in children:
         for md in [m for m in o.modifiers if m.type == "ARMATURE"]:
             o.modifiers.remove(md)
@@ -411,7 +418,7 @@ def make_armature(label, skeleton, bones):
     root = bpy.data.objects[label]
     collection = root.users_collection[0]
     props = {k: root[k] for k in root.keys()}
-    children = characters_children(root)
+    children = meshes(root)
     root.name = f"{label}_empty"
     data = bpy.data.armatures.new(label)
     data.display_type = "OCTAHEDRAL"
@@ -788,33 +795,64 @@ def bind(label, arm, skeleton, digit_verts):
             else:
                 rigid[o.name] = "Jaw"
     for o in characters_children(arm):
-        o.vertex_groups.clear()
         if o.name in rigid:
+            o.vertex_groups.clear()
             group = o.vertex_groups.new(name=rigid[o.name])
             group.add(list(range(len(o.data.vertices))), 1.0, "REPLACE")
         else:
-            w = weights[index[o["zone"]]]
-            for i in np.where(w.max(0) > 0)[0]:
-                group = o.vertex_groups.new(name=names[i])
-                for v in np.where(w[:, i] > 0)[0]:
-                    group.add([int(v)], float(w[v, i]), "REPLACE")
-        md = o.modifiers.new("Armature", "ARMATURE")
-        md.object = arm
-        md.use_vertex_groups = True
-        md.use_bone_envelopes = False
-        md.use_deform_preserve_volume = False
+            bodies.set_weights(o, weights[index[o["zone"]]], names)
+        bodies.bind(o, arm)
 
 
-def rig(path, label, skeleton_path, out):
-    """Rigs one character of an asset file (or rigs it again) and saves it."""
-    bpy.ops.wm.open_mainfile(filepath=path)
-    skeleton = skeleton_definition.load(skeleton_path)
-    normalize(label)
-    strip(label)
-    bones, digit_verts = joints(label)
-    arm = make_armature(label, skeleton, bones)
-    bind(label, arm, skeleton, digit_verts)
+def _save(out):
     _select_only()
     bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
     bpy.ops.wm.save_as_mainfile(filepath=out, compress=True, relative_remap=False)
+
+
+def sync(path, label, skeleton_path, out):
+    """Writes the body parts of a character from its source body, with the body's weights, and
+    saves the file."""
+    bpy.ops.wm.open_mainfile(filepath=path)
+    skeleton = skeleton_definition.load(skeleton_path)
+    parts = bodies.write_parts(label, skeleton.deform_bones)
+    _save(out)
+    print(f"SYNCED {label}: {len(parts)} parts -> {out}")
+
+
+def weights(path, label, skeleton_path, out):
+    """Solves the skin weights of a character again from the joints of its rig, writes them into
+    its source body and its parts, and saves the file."""
+    bpy.ops.wm.open_mainfile(filepath=path)
+    skeleton = skeleton_definition.load(skeleton_path)
+    names = skeleton.deform_bones
+    normalize(label)
+    bodies.write_parts(label, names)
+    arm = bpy.data.objects[label]
+    _bones, digit_verts = joints(label, arm.data.bones["UpperArm_R"].head_local)
+    bind(label, arm, skeleton, digit_verts)
+    bodies.body_weights_from_parts(label, names)
+    bodies.write_parts(label, names)
+    _save(out)
+    print(f"WEIGHTED {label}: {len(arm.data.bones)} bones -> {out}")
+
+
+def rig(path, label, skeleton_path, out):
+    """Places the joints of a character again from its model, starting the shoulder's search where
+    the rig had it, solves the skin weights, writes them into its source body and its parts, and
+    saves the file. The clips of animation libraries keyed on the old rig need a new review."""
+    bpy.ops.wm.open_mainfile(filepath=path)
+    skeleton = skeleton_definition.load(skeleton_path)
+    names = skeleton.deform_bones
+    normalize(label)
+    shoulder_guess = bpy.data.objects[label].data.bones["UpperArm_R"].head_local.copy()
+    bodies.write_parts(label, names)
+    strip(label)
+    bones, digit_verts = joints(label, shoulder_guess)
+    arm = make_armature(label, skeleton, bones)
+    bind(label, arm, skeleton, digit_verts)
+    bodies.body_weights_from_parts(label, names)
+    bodies.bind(bodies.source_body(label), arm)
+    bodies.write_parts(label, names)
+    _save(out)
     print(f"RIGGED {label}: {len(arm.data.bones)} bones -> {out}")
