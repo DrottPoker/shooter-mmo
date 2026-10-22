@@ -1,7 +1,8 @@
 """Review sheets of the base characters, lit like Blender's Material Preview (studio HDRI):
-overview, parts, faces, eyes, mouth, hands, feet, seams and wireframe. Each character is a root
-object (Male, Female) whose children are the body parts, eyeballs, teeth and tongue; landmarks
-are custom properties of the root."""
+overview, parts, faces, eyes, mouth, hands, feet, seams and wireframe. Each character is an
+armature (Male, Female) whose children are its source body, the body parts written from it,
+eyeballs, teeth and tongue; landmarks are custom properties of the armature. Renders show the body
+parts, which are what the game gets."""
 
 import math
 import os
@@ -10,6 +11,10 @@ import tempfile
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
+
+from art_pipeline import bodies
+
+from . import files
 
 
 def srgb_to_linear(c):
@@ -194,7 +199,8 @@ def landmark(obj, key, index=None):
 
 def extras(body):
     """Eyeballs, teeth and tongue of a character."""
-    return [o for o in bpy.data.objects[body].children if o.type == "MESH" and "zone" not in o]
+    return [o for o in bpy.data.objects[body].children
+            if o.type == "MESH" and "zone" not in o and not bodies.is_source_body(o)]
 
 
 def parts(body):
@@ -450,6 +456,15 @@ def seams(out, cam):
 
 
 SHEETS = ("overview", "parts", "faces", "eyes", "mouth", "hands", "feet", "seams", "wire")
+# The characters stand this far left and right of the centre.
+REVIEW_OFFSET = 0.5
+
+
+def review_file(male_path, female_path, out):
+    """Both characters side by side, as the review sheets show them, for the reviewer to open."""
+    files.open_both(male_path, female_path, REVIEW_OFFSET)
+    bpy.ops.wm.save_as_mainfile(filepath=out, compress=True, relative_remap=False)
+    return out
 
 
 def render(path, out_dir, prefix, sheets=SHEETS):

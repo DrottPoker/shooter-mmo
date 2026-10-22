@@ -12,7 +12,9 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
-from . import poses, review
+from art_pipeline import bodies
+
+from . import files, poses, review
 
 # Bone colours of the skeleton sheet: the character's right, left, centre, and the sockets.
 BONE_COLOURS = {"R": (0.95, 0.30, 0.25), "L": (0.25, 0.55, 0.95), "C": (0.95, 0.80, 0.25), "S": (0.25, 0.90, 0.40)}
@@ -97,7 +99,7 @@ def _grid(cells, columns, output):
 def _xray(arm, path, overlay, strength=XRAY):
     """Renders the body, then the bones alone, and lays the bones over the body."""
     scene = bpy.context.scene
-    meshes = [o for o in arm.children if o.type == "MESH"]
+    meshes = [o for o in arm.children if o.type == "MESH" and not bodies.is_source_body(o)]
     overlay.hide_render = True
     body = _render(path + "_body.png")
     overlay.hide_render = False
@@ -267,15 +269,10 @@ REVIEW_OFFSET = 0.5
 def review_file(male_path, female_path, out):
     """Both rigged characters side by side, with an action "RigTest" on each armature that steps
     through the test poses, for the reviewer to play in Blender."""
-    bpy.ops.wm.open_mainfile(filepath=male_path)
-    with bpy.data.libraries.load(female_path, link=False) as (source, target):
-        target.collections = ["Female"]
-    export = bpy.data.collections["Export"]
-    export.children.link(bpy.data.collections["Female"])
+    files.open_both(male_path, female_path, REVIEW_OFFSET)
     scene = bpy.context.scene
-    for label, x in (("Male", -REVIEW_OFFSET), ("Female", REVIEW_OFFSET)):
+    for label in files.LABELS:
         arm = bpy.data.objects[label]
-        arm.location.x = x
         action = bpy.data.actions.new(f"RigTest_{label}")
         arm.animation_data_create()
         arm.animation_data.action = action
@@ -317,7 +314,7 @@ def weights_sheet(arm, out, cam):
     review.setup((420, 420))
     cam.data.lens = 85
     poses.rest(arm)
-    meshes = [o for o in arm.children if o.type == "MESH"]
+    meshes = [o for o in arm.children if o.type == "MESH" and not bodies.is_source_body(o)]
     mat = bpy.data.materials.new("RigWeights")
     mat.use_nodes = True
     nt = mat.node_tree

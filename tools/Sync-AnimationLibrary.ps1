@@ -3,12 +3,17 @@
 # to key the clips on, and in the Reference collection the rig's body bound to it, every preview
 # character copying its pose, and a ground grid. A library whose armature is already the current
 # rig is left as it is. Otherwise its armature and bodies are replaced and every action is kept,
-# so the file changes and needs a new review and approval. See docs/ART_PIPELINE.md.
+# so the file changes and needs a new review and approval. -Generate adds clips of the human gait
+# model that the library lacks, as starting points to edit by hand, and never replaces a clip. A
+# library on the Humanoid skeleton then gets a report of how far a foot on the ground slides in its
+# Idle, Walk, and Jog clips. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
     # Rebuilds the armature and the bodies even when the rig did not change.
     [switch]$Force,
+    # Clips of the gait model to add when the library lacks them: Idle, Walk, Jog.
+    [string[]]$Generate = @(),
     [string]$BlenderPath
 )
 
@@ -55,10 +60,61 @@ if ($script:ArtNativeExitCode -ne 0 -or $null -eq $result) {
     throw "Blender failed with exit code $script:ArtNativeExitCode for $($manifest.Name):`n$(($output | Select-Object -Last 30) -join "`n")"
 }
 
-if ($result -like "ART_LIBRARY up-to-date *") {
-    Write-Host "$($manifest.Name) is up to date: its armature is the current rig of $($manifest.Rig.Asset)."
+$changed = $result -notlike "ART_LIBRARY up-to-date *"
+if ($changed) {
+    Write-Host "Synced $($manifest.Name) from $($manifest.Rig.Asset): $($manifest.SourcePath)"
 }
 else {
-    Write-Host "Synced $($manifest.Name) from $($manifest.Rig.Asset): $($manifest.SourcePath)"
-    Write-Host "Review the clips on the new rig, then record the approval with tools/Approve-ArtAsset.ps1 -Stage animation."
+    Write-Host "$($manifest.Name) is up to date: its armature is the current rig of $($manifest.Rig.Asset)."
+}
+
+if ($manifest.Skeleton -ne "Humanoid") {
+    if ($Generate.Count -gt 0) {
+        throw "The gait model makes clips of the Humanoid skeleton only; $($manifest.Name) has the $($manifest.Skeleton) skeleton."
+    }
+}
+else {
+    $humanBase = Join-Path $PSScriptRoot "blender/human_base_cli.py"
+    function Invoke-HumanBaseLibraryStep([string[]]$StepArguments) {
+        $stepOutput = Invoke-ArtNative $blender (@(
+                "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
+                "--python", $humanBase, "--") + $StepArguments)
+        $failures = @($stepOutput | Where-Object { $_ -like "HUMAN_BASE_FAILED *" } |
+            ForEach-Object { $_.Substring("HUMAN_BASE_FAILED ".Length) })
+        if ($failures.Count -gt 0 -or $script:ArtNativeExitCode -ne 0) {
+            throw "The '$($StepArguments[0])' step failed for $($manifest.Name):`n - $(@($failures + @($stepOutput | Select-Object -Last 20)) -join "`n - ")"
+        }
+
+        return $stepOutput
+    }
+
+    $generated = @()
+    if ($Generate.Count -gt 0) {
+        $stepOutput = Invoke-HumanBaseLibraryStep @("generate-clips", $manifest.SourcePath, $manifest.RootObjects[0], ($Generate -join ","))
+        foreach ($line in @($stepOutput | Where-Object { $_ -like "KEPT *" })) {
+            Write-Host $line.Substring("KEPT ".Length)
+        }
+
+        $generated = @($Generate | Where-Object { $manifest.Clips -cnotcontains $_ })
+        if ($generated.Count -gt 0) {
+            # The record of the last export no longer lists every clip; the next export writes it.
+            $manifest.Clips = [string[]](@($manifest.Clips) + $generated)
+            $manifest.Export = $null
+            Write-ArtAssetManifest $manifest
+            Write-Host "Added $($generated -join ', ') to $($manifest.Name) and its asset.json; edit them in Blender as you like."
+        }
+
+        if (@($stepOutput | Where-Object { $_ -like "GENERATED *" }).Count -gt 0) {
+            $changed = $true
+        }
+    }
+
+    $stepOutput = Invoke-HumanBaseLibraryStep @("check-clips", $manifest.SourcePath, $manifest.RootObjects[0])
+    foreach ($line in @($stepOutput | Where-Object { $_ -like "HUMAN_BASE_REPORT *" })) {
+        Write-Host $line.Substring("HUMAN_BASE_REPORT ".Length)
+    }
+}
+
+if ($changed) {
+    Write-Host "Review the clips, then record the approval with tools/Approve-ArtAsset.ps1 -Stage animation."
 }

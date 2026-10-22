@@ -177,7 +177,8 @@ namespace Mmorpg.Client.Tests.EditMode
             var clip = motion as AnimationClip;
             Assert.That(clip, Is.Not.Null, name);
             Assert.That(clip.name, Is.EqualTo(name));
-            Assert.That(AssetDatabase.GetAssetPath(clip), Is.EqualTo(BodyModelPath), name);
+            // Every clip comes from the animation library, which no rebuild of the body writes.
+            Assert.That(AssetDatabase.GetAssetPath(clip), Is.EqualTo(ActionsModelPath), name);
         }
 
         private static void AssertTransition(AnimatorState from, AnimatorState to, AnimatorConditionMode mode)

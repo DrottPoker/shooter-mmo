@@ -9,7 +9,7 @@ import os
 
 import bpy
 
-from . import skinned
+from . import bodies, skinned
 from .scene import EXPORT_COLLECTION, ArtPipelineError, relative_image_paths
 
 REFERENCE_COLLECTION = "Reference"
@@ -38,7 +38,8 @@ def _descendants(obj: bpy.types.Object) -> list[bpy.types.Object]:
 
 
 def _append(path: str, root: str) -> list[bpy.types.Object]:
-    """The root object of another file and everything below it, appended without a collection."""
+    """The root object of another file and everything below it but its source body, appended without
+    a collection."""
     with bpy.data.libraries.load(path, link=False) as (source, target):
         if root not in source.objects:
             raise ArtPipelineError(f'{path} has no object "{root}".')
@@ -47,7 +48,8 @@ def _append(path: str, root: str) -> list[bpy.types.Object]:
     top = next(o for o in loaded if o.name == root)
     if top.type != "ARMATURE":
         raise ArtPipelineError(f'"{root}" in {path} is not an armature.')
-    keep = _descendants(top)
+    # The parts show the body as the game does; the editable source body would cover them.
+    keep = [o for o in _descendants(top) if not bodies.is_source_body(o)]
     for obj in loaded:
         if obj not in keep:
             bpy.data.objects.remove(obj, do_unlink=True)

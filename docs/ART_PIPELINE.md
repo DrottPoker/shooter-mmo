@@ -1,6 +1,6 @@
 # Art Pipeline
 
-Last updated: 2026-10-21
+Last updated: 2026-10-22
 
 This document describes how 3D models travel from Blender to the Unity client:
 where the files live, the review stages an asset passes before it may reach the
@@ -30,11 +30,11 @@ Assets/Prefabs/... Prefab Variant of the model -> presentation registry or playe
 Nothing reaches Unity without an approval of the exact source file that was
 exported, and CI checks the whole chain without Blender.
 
-Scripted assets, such as the [human base characters](#human-base-characters),
-are rebuilt from their scripts, and a rebuild replaces their `.blend` files.
-Everything made by hand lives in assets of its own that no build writes, such as
-the handmade clips of an [animation library](#animation-libraries), so a rebuild
-never overwrites handmade work.
+Every asset's `.blend` file is its source, and a person edits it in Blender.
+Scripts only write what follows from the source, such as the body parts of the
+[human base characters](#human-base-characters) from their editable bodies, and
+starting points that a person then edits, such as the gait model's clips in an
+[animation library](#animation-libraries). No script replaces handmade work.
 
 ## Layout
 
@@ -50,13 +50,13 @@ never overwrites handmade work.
 | `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers. |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
-| `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, and the review sheet. |
+| `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, and in `bodies.py` the body parts of a skinned character written from its editable body. |
 | `tools/blender/art_pipeline_cli.py` | Blender entry point for the scripts below. |
 | `tools/Render-ArtPreview.ps1`, `tools/Approve-ArtAsset.ps1`, `tools/Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/ArtPipelineCommon.ps1`. |
 | `tools/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/Sync-AnimationLibrary.ps1`, `tools/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
 | `tools/Sync-PaintAsset.ps1`, `tools/blender/art_pipeline/paint.py` | Builds a paint layer file from its bodies, or updates it, and moves the paint of the first body to the others. |
-| `tools/Build-HumanBase.ps1`, `tools/blender/human_base`, `tools/blender/human_base_cli.py` | The scripted build of the [human base characters](#human-base-characters) from the Human Base Meshes bundle. |
+| `tools/Sync-HumanBase.ps1`, `tools/blender/human_base`, `tools/blender/human_base_cli.py` | The tools of the [human base characters](#human-base-characters): their body parts written from their editable bodies, their rig and weights, their checks and review sheets, and the gait model that starts clips in an animation library. |
 | `src/Client/Assets/Editor/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
 | `src/Client/Assets/Editor/ArtAssetManifests.cs` | Reads `asset.json` and the skeleton definitions for the import rules, the material command, and the tests. |
 | `src/Client/Assets/Editor/ArtMaterialCreator.cs` | `MMORPG > Tools > Art Pipeline > Create Missing Materials`: creates the project material of every exported material that has none, from its export record. |
@@ -66,7 +66,7 @@ never overwrites handmade work.
 
 `asset.json` sits next to the `.blend` file. The scripts write it; only `kind`,
 `target`, `rootObjects`, `triangleBudget`, and for a skinned asset `skeleton` and
-`clips` are written by hand when an asset is created.
+any `clips` of its own are written by hand when an asset is created.
 
 | Field | Meaning |
 | --- | --- |
@@ -78,7 +78,7 @@ never overwrites handmade work.
 | `skeleton` | Skinned assets and animation libraries: the name of the skeleton definition in `art/Skeletons`, such as `Humanoid`. |
 | `rig` | Animation libraries only: the skinned asset whose rig the clips are keyed on, such as `art/Characters/Human_Male`. |
 | `previews` | Animation libraries only: other skinned assets of the skeleton whose bodies show the clips in the library, such as `["art/Characters/Human_Female"]`. |
-| `clips` | Skinned assets and animation libraries: the names of the animation clips the asset exports, such as `["Idle", "Walk", "Jog"]`. Each is one Blender action. |
+| `clips` | Animation libraries, and skinned assets with clips of their own: the names of the animation clips the asset exports, such as `["Death", "Idle", "Walk", "Jog"]`. Each is one Blender action. A skinned asset whose clips come from animation libraries, such as the human bodies, leaves `clips` out. |
 | `part` | Paint layers only: the part of the painted material `M_<Part>_<Label>`, such as `Body`. |
 | `bodies` | Paint layers only: the skinned assets the paint fits, the body it is painted on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. |
 | `layer` | Paint layers only: the order paint layers are drawn in, from 0 to 1000, the lowest first, such as `30` for a chest piece over a shirt at `10`. |
@@ -96,15 +96,17 @@ saving the file again, even without a visible change, needs a new approval.
 | Kind | Stages | Status |
 | --- | --- | --- |
 | `static` | `model` | Implemented. |
-| `skinned` (characters, creatures) | `model`, then `rig`, then `animation` | Implemented. |
+| `skinned` (characters, creatures) | `model`, then `rig`, then `animation` when it has clips of its own | Implemented. |
 | `animations` (animation libraries) | `animation` | Implemented. |
 | `paint` (paint layers) | `paint` | Implemented. |
 
 The `rig` review looks at the skeleton and the weights: test poses that raise
 the arms, bend the elbows and knees, stride, sit, close the hands, open the jaw,
 and turn the eyes, with close-ups of the shoulders, hips, knees, and hands and a
-weight view. The `animation` review looks at every clip in motion, on a floor
-that moves at the clip's speed, so a sliding foot shows at once.
+weight view. The `animation` review looks at every clip in motion, in the library
+file on a checkered ground and on its review sheet, and
+`Sync-AnimationLibrary.ps1` reports how far a foot on the ground slides in the
+`Idle`, `Walk`, and `Jog` clips when the game moves the body at their speeds.
 
 Stages are approved in order, and a new approval of an earlier stage reopens
 every later stage. `Export-ArtAsset.ps1` exports only when every stage is
@@ -353,14 +355,14 @@ prefabs.
 
 ## Animation Libraries
 
-The clips of the human base characters are made by script, so a rebuild makes
-them again. A clip made by hand, such as `Death`, lives in an animation library
-instead: an art asset of kind `animations` below `art/Animations` that no build
-writes. `art/Animations/Human_Actions` is the library of the human bodies:
+Clips live in animation libraries: art assets of kind `animations` below
+`art/Animations`, keyed on the rig of one character and played on every body of
+the skeleton. `art/Animations/Human_Actions` holds every clip of the human bodies,
+`Idle`, `Walk`, `Jog`, and `Death`, and the bodies hold none:
 
 - The `Export` collection holds the armature `Humanoid`, a copy of the rig of
-  `Human_Male` named after its skeleton. Every handmade clip is an action keyed
-  on it, at 30 frames per second, like the scripted clips.
+  `Human_Male` named after its skeleton. Every clip is an action keyed on it, at
+  30 frames per second.
 - The `Reference` collection, which is never exported, holds what shows the
   clips: the male body bound to `Humanoid`, so it moves with every key, the
   female body 2 m to its right on an armature of her own whose bones copy the
@@ -369,8 +371,8 @@ writes. `art/Animations/Human_Actions` is the library of the human bodies:
   quarter-meter squares, so a body that slides or sinks shows at once.
 
 `tools/Sync-AnimationLibrary.ps1` builds the library file from the manifest's
-`rig` and `previews`. When the rig changes, such as after a rebuild of the
-characters with another rig, it replaces the armature and the bodies and keeps
+`rig` and `previews`. When the rig changes, such as after
+`Sync-HumanBase.ps1 -Rig`, it replaces the armature and the bodies and keeps
 every action, so the clips play on the new rig and are reviewed and approved
 again. A library whose armature is already the current rig is left as it is.
 The approval and the export refuse a library whose armature is not the current
@@ -380,13 +382,28 @@ exporting it again is enough when the rig itself did not change.
 A clip is made by hand in the library file, in the reviewer's Blender, through
 the [Blender MCP server](#live-work-with-the-blender-mcp-server) or the
 reviewer's own keys: key poses on `Humanoid`, smoothed by Blender's curves, with
-the custom property `loop` and a manual frame range from frame 0. Before the
+the custom property `loop` and a manual frame range from frame 0. A locomotion
+clip may start from the gait model instead: `Sync-AnimationLibrary.ps1
+-Generate Walk` adds the model's `Walk` when the library lacks it, and the same
+for `Idle` and `Jog`, and never replaces a clip the library has.
+
+The gait model, `tools/blender/human_base/animate.py`, makes its clips with the
+strides matched to the game: `Walk` at 1.4 m/s and `Jog` at 5.0 m/s, the
+movement speed of players, and a 4 s breathing `Idle` with a slow weight shift
+and a look around. Each foot follows a contact model with a heel strike, a roll
+over the ball, and a planned swing, and the legs reach it with analytic two-bone
+IK while the hips sink where a leg cannot reach. The pelvis turns, drops, and
+tilts with the steps, the lower back takes up the tilt, the shoulders turn
+against the pelvis, and the arms, forearms, hands, and fingers follow the swing a
+little later. A planted foot slips at most 8 to 13 mm in the walk and about 1 mm
+in the jog. The clips of `Human_Actions` are the model's clips as approved; edit
+them by hand from there. Before the
 approval, the file is saved with `Humanoid` in its rest pose and without an
 active action. The library's review sheet shows every clip as eight frames on
 both bodies, from the front right and from the back left.
 
 In Unity, `Human_Actions.fbx` brings its clips as Humanoid motion, and
-`HumanLocomotion.controller` plays `Death` on every player body; see
+`HumanLocomotion.controller` plays them on every player body; see
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 
 ## Appearance Layers
@@ -394,9 +411,9 @@ In Unity, `Human_Actions.fbx` brings its clips as Humanoid motion, and
 Players change how their bodies look in the style of World of Warcraft: other
 paint on the same model, such as another face or eye color, equipment painted
 onto the skin, often together with a modeled part, hair as a mesh with paint on
-the scalp, and later skin colors. The same rule as for clips holds: what is made
-by hand lives in assets of its own, and nothing that a build rebuilds holds
-handmade work.
+the scalp, and later skin colors. As with clips, each layer is made by hand in
+an asset of its own or in the character's file, so a change to one layer leaves
+the others as they are.
 
 | Layer | Made as | In the game | Status |
 | --- | --- | --- | --- |
@@ -404,9 +421,9 @@ handmade work.
 | Paint layers | Transparent paint over the skin in the body texture's UV layout, such as the paint of a leather jerkin or a scalp, in a [paint layer](#paint-layers) asset of its own. Painted once on the male body and moved to every body of the same topology. | The skin shader lays it over the skin when the body is drawn. | Implemented. |
 | Attachments | Meshes skinned to the shared skeleton, such as hair, beards, and the modeled parts of armor, in appearance assets of their own, fitted to every body type from one design. | Combined with the visible body parts into the body's one mesh. | Planned with the first hair or armor part. |
 
-The faces and eyes of the human base characters are variants: the build paints
-them, the model review shows them, and `variants` in `asset.json` exports them
-with the model. In Unity, the body's `BodyAppearanceCatalog` lists one slot per
+The faces and eyes of the human base characters are variants: images packed into
+the character's file, shown by the model review, and exported with the model
+through `variants` in `asset.json`. In Unity, the body's `BodyAppearanceCatalog` lists one slot per
 material with variants, such as `Face` and `Eye`, with its options, the
 material's own image first, and a look picks one option per slot; see
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
@@ -482,29 +499,40 @@ For models this means:
 ## Human Base Characters
 
 `art/Characters/Human_Male` and `art/Characters/Human_Female` are the base bodies
-of the playable humans, rigged with the `Humanoid` skeleton and animated with
-`Idle`, `Walk`, and `Jog`. Their handmade clips, such as `Death`, come from the
-[animation library](#animation-libraries) `art/Animations/Human_Actions`. Hair, brows, beards, clothes, and equipment are
-modeled on top of them later, and faces are painted on them. A script builds both from the realistic bodies and the
-Generic Topology head of the
+of the playable humans, rigged with the `Humanoid` skeleton. Their clips come
+from the [animation library](#animation-libraries) `art/Animations/Human_Actions`.
+Hair, brows, beards, clothes, and equipment are modeled on top of them later, and
+faces are painted on them. A script first built both in October 2026 from the
+realistic bodies and the Generic Topology head of the
 [Human Base Meshes](https://www.blender.org/download/demo-files/) bundle v1.4.1
-by Blender Studio (CC0), so they can be rebuilt and refined.
+by Blender Studio (CC0). Since 2026-10-22 their files are the source: a person
+edits them in Blender, and `tools/Sync-HumanBase.ps1` keeps everything that
+follows from them up to date.
 
-Each file holds one character in the `Export` collection:
+Each file holds one character:
 
-- The armature (`Male` or `Female`) at the origin as the only root object, with
-  the bones of the `Humanoid` skeleton. It carries the build's landmarks as
-  custom properties, such as the eyes, lips, wrists, finger tips, and toes, for
-  placing attachments.
-- Ten body parts as children of the armature, named `<Label>_<Zone>`: `Head`,
+- The armature (`Male` or `Female`) at the origin, the only root object of the
+  `Export` collection, with the bones of the `Humanoid` skeleton. It carries
+  landmarks as custom properties, such as the eyes, lips, wrists, finger tips,
+  and toes, which placing the joints again uses and attachments may use.
+- The source body `<Label>_Body` in the `Source` collection, bound to the
+  armature: the whole body as one mesh, the surface a person edits, with smooth
+  shading, the ear rims as sharp edges, the face attribute `zone` that names the
+  body part of every face, and the skin weights. It shows in the viewport, and
+  renders and the export leave it out.
+- Ten body parts in the `Export` collection, named `<Label>_<Zone>`: `Head`,
   `Neck`, `Torso`, `Pelvis`, `UpperArms`, `Forearms`, `Hands`, `Thighs`,
-  `Shins`, and `Feet`, so equipment can hide whole parts. The parts keep the
-  whole body's corner normals as custom normals and meet without visible seams.
+  `Shins`, and `Feet`, so equipment can hide whole parts. The sync writes them
+  from the source body, with its corner normals as custom normals, so they meet
+  without visible seams, and with its weights. They are hidden in the viewport
+  and never edited by hand; the approval and the export refuse parts that differ
+  from the source body.
 - Two eyeballs (`<Label>_Eye_L` and `_R`) for gaze animation, and upper and lower
-  teeth and a tongue inside a closed mouth cavity for jaw animation.
+  teeth and a tongue inside a closed mouth cavity for jaw animation, edited where
+  they are.
 - 9,202 triangles: 8,692 for the body and 510 for the eyeballs, teeth, and
-  tongue. Both bodies are exactly mirror symmetric and have identical topology
-  part by part, so armor and clothes fitted to one body transfer to the other.
+  tongue. Both bodies are exactly mirror symmetric and have identical topology,
+  so paint, armor, and clothes fitted to one body transfer to the other.
 - Smooth shading, with hard edges only on the ear rims, and the form painted into
   the textures: `M_Body_<Label>` uses the 2048 px body texture
   `T_Body_<Label>` with the underwear, `M_Face_<Label>` a 1024 px face texture,
@@ -516,52 +544,44 @@ Each file holds one character in the `Export` collection:
   `T_Face_Female_Freckles`, `T_Eye_Female_Teal`, and `T_Eye_Female_Hazel` for
   the female. Another face is the face or eye material with another image.
 
-`tools/Build-HumanBase.ps1` runs the build, one Blender process per step:
+An edit keeps both bodies alike: the same change of topology on both, so they keep
+identical topology, made with X mirror, so they stay symmetric, and with every new
+face in the zone of its neighbours. Moving vertices changes neither the topology
+nor the weights; new vertices need weights, painted by hand on the source body or
+solved with `-Weights`.
 
-1. `references`: the realistic bodies at their full multires level, centered and
-   facing +Y, and the Generic Topology head in its realistic male and female
-   shapes.
-2. `geometry`: per body a designed coarse quad cage of the torso, arms, legs, and
-   neck base, joined with hand and foot cages fitted to the digits traced on the
-   reference, subdivided once and cast onto the reference from ray origins inside
-   the body, with the armpits softened; the head opened at the eyes, the mouth,
-   and the neck, with eye pockets and a mouth cavity; heroic proportions, about
-   1.79 m with broader shoulders for the male and 1.70 m with a fuller bust for
-   the female. Topology decisions are made on the first body and reused, so both
-   bodies match.
-3. `textures`: Cycles bakes the surface position, normals, the detail normals of
-   the reference sculpt, and ambient occlusion per texel, and the textures are
-   painted from the 3D surface, so colors match across UV seams. Sculpt detail
-   fades where the build moved the surface off the sculpt on purpose, where the
-   bake rays would miss it, and where a ray met the far wall of a narrow fold.
-4. `check-mesh`, `check-seams`, and `check-parts`: no open or over-shared edges,
-   tiny faces, slivers, or loose pieces on the bodies, exact mirror symmetry,
-   identical topology, at most 10,000 triangles per character, matching cuts and
-   normals between the parts, and a report of the color difference across the UV
-   seams.
-5. `characters` and `asset`: the split into parts and one model file per
-   character.
-6. `rig` and `check-rig`: the skeleton placed from the model, its weights, and
-   the binding, then the rig rules, an unchanged rest pose, and exact mirror
-   symmetry of the weights.
-7. `animate` and `check-animation`: the clips, then the animation rules and the
-   largest slip of a planted foot per clip, which the quality report lists.
-8. `compare` and the reviews: the content comparison with the committed asset
+`tools/Sync-HumanBase.ps1` brings both characters up to date after an edit, one
+Blender process per step:
+
+1. `sync`: the body parts of each character from its source body. With
+   `-Weights` the skin weights are first solved again from the joints of the
+   rig, which replaces weights painted by hand, and with `-Rig` the joints are
+   first placed again from the model. A new rig needs a new sync and review of
+   the animation libraries keyed on it.
+2. `check-rig`: the step changes no mesh at rest, the art pipeline's rig rules
+   hold, and the weights are mirror symmetric.
+3. `check-mesh`, `check-seams`, and `check-parts`: no open or over-shared edges,
+   tiny faces, slivers, or loose pieces on the source bodies, exact mirror
+   symmetry, identical topology of both bodies and of every part, at most 10,000
+   triangles per character, matching cuts and normals between the parts, and a
+   report of the color difference across the UV seams.
+4. `compare`: the content of each updated character against the committed file
    (objects with their modifiers, constraints, and visibility, the evaluated
    meshes with UVs, normals, and edge flags, vertex weights, the armature with
-   its bones and pose, the actions with their curves, materials with their node
-   links, textures with whether they are packed, and custom properties), and
-   the review files and sheets of the model, the rig, and the animations, with
-   both characters side by side.
+   its bones and pose, materials with their node links, textures with whether
+   they are packed, and custom properties). Blender's files differ in their bytes
+   from run to run, so the script replaces a committed file only when its
+   content changed, and an unchanged file keeps its approval.
+5. The review files `Human_Base.blend`, both characters side by side, and
+   `Human_Base_Rig.blend`, with the test poses as an animation, and the review
+   sheets of the models and the rigs.
 
-`Build-HumanBase.ps1 -SkipModel` builds only steps 6 to 8 again, on the
-committed models, without the bundle.
-
-The rig places every joint from the model: the hips from the crotch and the leg
-cut, the spine at fixed shares between the hips and the neck, the shoulder in
-the deltoid cap found by ray casts, the elbows, knees, wrists, and ankles at the
-cuts between the parts, the finger and toe joints from rings of the digit
-meshes, and the jaw hinge from the lip line. Bone heat gives the first weights,
+Placing the joints puts every joint where the model has it: the hips from the
+crotch and the leg cut, the spine at fixed shares between the hips and the neck,
+the shoulder in the deltoid cap found by ray casts from where the rig had it, the
+elbows, knees, wrists, and ankles at the cuts between the parts, the finger and
+toe joints from rings of the digit meshes, and the jaw hinge from the lip line
+landmarks. Bone heat gives the first weights,
 limited per body zone and per digit, and anatomical rules shape them where it
 matters: the shoulder blends over the deltoid and leaves the chest in place; the
 thigh takes the skin below a boundary that runs through the groin crease, over
@@ -570,45 +590,24 @@ the buttock and the underwear line and a radial fade at the crotch, so a raised
 thigh leaves no notch; and the knee and elbow blend across the joint. The jaw
 takes the lower face, the eyes, the upper teeth, the lower teeth, and the tongue
 are rigid on their bones, and the weights are mirrored so both sides match
-exactly.
-
-The clips are made by script from one gait model, with the strides matched to
-the game: `Walk` at 1.4 m/s, `Jog` at 5.0 m/s, the movement speed of players,
-and a 4 s breathing `Idle` with a slow weight shift and a look around. Each foot
-follows a contact model with a heel strike, a roll over the ball, and a planned
-swing, and the legs reach it with analytic two-bone IK while the hips sink where
-a leg cannot reach. The pelvis turns, drops, and tilts with the steps, the lower
-back takes up the tilt, the shoulders turn against the pelvis, and the arms,
-forearms, hands, and fingers follow the swing a little later. A planted foot
-slips at most 8 to 13 mm in the walk and about 1 mm in the jog.
-
-The build is deterministic: the same bundle and scripts give the same geometry,
-UVs, normals, and texture pixels. Blender's files still differ in their bytes
-from run to run, so the build compares the content of each rebuilt character
-with the committed file and replaces it only when something changed; a rebuild
-without changes keeps the files and their approvals. No file of the build
-records the folder it ran in. The build is pinned to the SHA-256 of
-`human_base_meshes_bundle.blend` in v1.4.1,
-`3c121505651140ceb4d69fd1d8923f7788ffadd81672f5be14845a5f2c75c137`. The bundle is
-a download: keep it in a folder of its own outside the repository. The build
-opens it as data only, with factory settings and its scripts disabled, and it is
-never committed.
+exactly. Solving the weights again on an unchanged character gives the same
+weights.
 
 ## Assets
 
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
-| `art/Animations/Human_Actions` | `animations` | `Humanoid` | The handmade clips of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Death`, 2 s, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-21. |
+| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. |
 | `art/Paint/LeatherJerkin` | `paint` | none | The paint of the leather jerkin over `M_Body`, painted on the male and moved to the female, layer 30: warm brown leather with large soft blotches, fine grain, and worn lighter high points, darker trim with stitches along every edge, side and shoulder seams, short sleeves to a little less than half the upper arm, a round collar that stands 2 cm up the neck, and a V at the front laced across. Smoothness 0.38. Approved 2026-10-21; the female's bra straps are painted up her neck, above any collar, until the base body is fixed. |
-| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, the `Humanoid` rig, and the clips `Idle`, `Walk`, and `Jog`, built by `tools/Build-HumanBase.ps1`. Model, rig, and animations approved 2026-10-21. |
-| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, 9,202 triangles, the `Humanoid` rig, and the clips `Idle`, `Walk`, and `Jog`, built by `tools/Build-HumanBase.ps1`. Model, rig, and animations approved 2026-10-21. The game shows it for every player. |
+| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. |
+| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. The game shows it for every player. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |
 
 ## Planned
 
 - The body type at character creation, which shows the female body for female
-  characters, through an `AnimatorOverrideController` with her own clips, and
-  the look chosen there, saved with the character and sent to every client.
+  characters with the clips of the library, and the look chosen there, saved
+  with the character and sent to every client.
 - Eyelid bones for blinking and forearm twist bones.
 - A model fix of the low armpits, where the triceps meet the torso, and of the
   female's bra straps, which are painted up her neck, above the collar of chest

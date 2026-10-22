@@ -28,7 +28,7 @@ namespace Mmorpg.Client.Editor
 
         public override uint GetVersion()
         {
-            return 5;
+            return 6;
         }
 
         public static bool AppliesTo(string assetPath)
@@ -74,9 +74,11 @@ namespace Mmorpg.Client.Editor
             importer.humanDescription = HumanDescriptionFor(skeleton);
             // The sockets must stay transforms, so equipment can be attached to them.
             importer.optimizeGameObjects = false;
-            importer.importAnimation = true;
+            var clips = ClipsFor(manifest);
+            // A body without clips of its own plays the clips of animation libraries.
+            importer.importAnimation = clips.Length > 0;
             importer.animationCompression = ModelImporterAnimationCompression.Off;
-            importer.clipAnimations = ClipsFor(manifest);
+            importer.clipAnimations = clips;
         }
 
         // Maps every bone of the skeleton definition that names a HumanBodyBones bone, with
@@ -111,7 +113,7 @@ namespace Mmorpg.Client.Editor
         public static ModelImporterClipAnimation[] ClipsFor(ArtAssetManifest manifest)
         {
             var armature = manifest.rootObjects.Length > 0 ? manifest.rootObjects[0] : string.Empty;
-            return manifest.export.clips
+            return (manifest.export?.clips ?? Array.Empty<ArtClipRecord>())
                 .Select(clip => new ModelImporterClipAnimation
                 {
                     name = clip.name,

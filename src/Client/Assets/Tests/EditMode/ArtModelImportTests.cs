@@ -51,7 +51,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(importer.importNormals, Is.EqualTo(ModelImporterNormals.Import), path);
                 if (manifest.HasSkeleton)
                 {
-                    Assert.That(importer.importAnimation, Is.True, path);
+                    // A body without clips of its own plays the clips of animation libraries.
+                    Assert.That(importer.importAnimation, Is.EqualTo(manifest.clips.Length > 0), path);
                     Assert.That(importer.animationType, Is.EqualTo(ModelImporterAnimationType.Human), path);
                     Assert.That(importer.avatarSetup, Is.EqualTo(ModelImporterAvatarSetup.CreateFromThisModel), path);
                     Assert.That(importer.optimizeGameObjects, Is.False, path);
