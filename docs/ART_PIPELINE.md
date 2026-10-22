@@ -235,10 +235,10 @@ with the rotation applied before review.
 A skeleton definition in `art/Skeletons/<Name>.json` lists the bones that every
 skinned asset of that skeleton has, so equipment, animations, and game code can
 rely on them across bodies. Each bone has a `name`, its `parent` (null for the
-one root), the Unity `human` bone it maps to (a `HumanBodyBones` name), and
-whether it should `deform` the skin.
+one root), the Unity `human` bone it maps to (a `HumanBodyBones` name), whether
+it should `deform` the skin, and for a bone of a cloth chain its `chain`.
 
-`Humanoid` is the skeleton of the playable bodies: 55 deforming bones, from
+`Humanoid` is the skeleton of the playable bodies: 55 deforming body bones, from
 `Hips` through `Spine`, `Chest`, `UpperChest`, `Neck`, and `Head` with `Jaw` and
 the eyes `Eye_L` and `Eye_R`, a `Shoulder`, `UpperArm`, `LowerArm`, and `Hand`
 with three bones per finger and thumb on each side, and an `UpperLeg`,
@@ -247,6 +247,19 @@ avatar. Three sockets deform nothing and carry equipment: `Socket_MainHand` on
 the right hand, `Socket_OffHand` on the left, and `Socket_Back` on the upper
 chest. In Unity a socket's local Z is the forward direction of the item it holds
 and its local Y is up, which are Blender's bone Y and Z axes.
+
+Fifty-nine more bones form the cloth chains that loose garments hang on, outside
+the Humanoid avatar, so Humanoid clips never move them; the body is not weighted
+to them, and the runtime cloth solver moves them for the garments that use them
+(see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#cloth-chains)):
+
+| Chain | Bones | Parent | Placed |
+| --- | --- | --- | --- |
+| `skirt` | `SkirtFront1` to `4`, `SkirtFrontSide1_L` to `4_L` and `_R`, `SkirtSide`, `SkirtBackSide`, and `SkirtBack`, eight chains of four | `Hips` | On a ring just above the hip joints, 1 cm out from the body, hanging to the ankles. |
+| `cloak` | `CloakCenter1` to `5`, `CloakInner1_L` to `5_L` and `_R`, and `CloakOuter`, five chains of five | `UpperChest` | Across the shoulder blades, 4 cm below the base of the neck and 1.5 cm behind the body, hanging to the knees. |
+| `hood` | `Hood1`, `Hood2` | `Head` | Behind the head at eye height, stepping down and back. |
+
+A chain bone's Z axis points away from the body, the way its cloth faces.
 
 The character faces +Y and its right is +X, so the `_R` bones sit at +X. Limbs
 bend about their bone X axis, arms rise about Z, and every bone twists about Y.
@@ -400,9 +413,10 @@ the skeleton. `art/Animations/Human_Actions` holds every clip of the human bodie
 
 `tools/Sync-AnimationLibrary.ps1` builds the library file from the manifest's
 `rig` and `previews`. When the rig changes, such as after
-`Sync-HumanBase.ps1 -Rig`, it replaces the armature and the bodies and keeps
-every action, so the clips play on the new rig and are reviewed and approved
-again. A library whose armature is already the current rig is left as it is.
+`Sync-HumanBase.ps1 -Rig` or new bones in the skeleton, it replaces the armature
+and the bodies and keeps every action, so the clips play on the new rig and are
+reviewed and approved again. It names every clip's slot after the armature, so
+Blender binds a clip to it when a person picks the clip in the Action Editor. A library whose armature is already the current rig is left as it is.
 The approval and the export refuse a library whose armature is not the current
 rig, and CI refuses one that was exported against an older export of its rig;
 exporting it again is enough when the rig itself did not change.
@@ -602,14 +616,17 @@ Blender process per step:
    content changed, and an unchanged file keeps its approval.
 5. The review files `Human_Base.blend`, both characters side by side, and
    `Human_Base_Rig.blend`, with the test poses as an animation, and the review
-   sheets of the models and the rigs.
+   sheets of the models and the rigs, with the cloth chains on a sheet of their
+   own.
 
 Placing the joints puts every joint where the model has it: the hips from the
 crotch and the leg cut, the spine at fixed shares between the hips and the neck,
 the shoulder in the deltoid cap found by ray casts from where the rig had it, the
 elbows, knees, wrists, and ankles at the cuts between the parts, the finger and
-toe joints from rings of the digit meshes, and the jaw hinge from the lip line
-landmarks. Bone heat gives the first weights,
+toe joints from rings of the digit meshes, the jaw hinge from the lip line
+landmarks, and the cloth chains from the body's surface, so they fit every body.
+The sync adds bones the skeleton has and a rig lacks, such as new cloth chains,
+and leaves every other bone as it is. Bone heat gives the first weights,
 limited per body zone and per digit, and anatomical rules shape them where it
 matters: the shoulder blends over the deltoid and leaves the chest in place; the
 thigh takes the skin below a boundary that runs through the groin crease, over

@@ -93,7 +93,7 @@ else {
 
     $generated = @()
     if ($Generate.Count -gt 0) {
-        $stepOutput = Invoke-HumanBaseLibraryStep @("generate-clips", $manifest.SourcePath, $manifest.RootObjects[0], ($Generate -join ","))
+        $stepOutput = Invoke-HumanBaseLibraryStep @("generate-clips", $manifest.SourcePath, $manifest.RootObjects[0], ($Generate -join ","), $manifest.SkeletonPath)
         foreach ($line in @($stepOutput | Where-Object { $_ -like "KEPT *" })) {
             Write-Host $line.Substring("KEPT ".Length)
         }

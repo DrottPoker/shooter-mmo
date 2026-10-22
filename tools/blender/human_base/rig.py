@@ -22,6 +22,7 @@ vertices from the whole body, so both sides of a cut carry the same weights and 
 open. Eyeballs follow their eye bone, the upper teeth the head, and the lower teeth and the tongue
 the jaw."""
 
+import math
 from collections import deque
 
 import bpy
@@ -105,6 +106,23 @@ CROTCH_SMOOTHING = 6
 HINGES = (("UpperLeg", "LowerLeg", ("Thighs", "Shins"), (0.0, -1.0, 0.0), 0.04, 0.08, 0.14),
           ("UpperArm", "LowerArm", ("UpperArms", "Forearms"), (0.0, 1.0, 0.0), 0.03, 0.05, 0.10))
 SMOOTH_ITERATIONS = 6
+# The cloth chains. Skirt chains around the hips, by their angle from the front toward the right
+# side; their tops sit this far above the hip joints and this far out from the body, and they hang
+# to the ankles in four bones.
+SKIRT_CHAINS = (("SkirtFront", 0.0, ""), ("SkirtFrontSide", 45.0, "_R"), ("SkirtSide", 90.0, "_R"),
+                ("SkirtBackSide", 135.0, "_R"), ("SkirtBack", 180.0, ""))
+SKIRT_ABOVE_HIP = 0.02
+SKIRT_GAP = 0.01
+SKIRT_BONES = 4
+# Cloak chains across the back, by their distance from the centre line; their tops sit this far
+# below the base of the neck and this far behind the body, and they hang to the knees in five bones.
+CLOAK_CHAINS = (("CloakCenter", 0.0, ""), ("CloakInner", 0.09, "_R"), ("CloakOuter", 0.18, "_R"))
+CLOAK_BELOW_NECK = 0.04
+CLOAK_GAP = 0.015
+CLOAK_BONES = 5
+# The hood chain starts this far behind the back of the head at eye height and steps down and back.
+HOOD_GAP = 0.02
+HOOD_STEPS = ((-0.03, -0.07), (-0.02, -0.07))
 
 
 # ----------------------------------------------------------------------------------- geometry
@@ -343,7 +361,66 @@ def joints(label, shoulder_guess):
     back_y, _f, _x = _section(label, ("Torso",), spine[2].z, 0.10)
     socket = Vector((0.0, back_y - 0.045 * s, spine[2].z))
     bones["Socket_Back"] = (socket, socket + up * 0.10, -fwd)
+    eye_z = bones["Eye_R"][0].z
+    bones.update(_chain_bones(label, s, hip_y, hip_z, knee, ankle, neck_base, head, eye_z))
     return bones, digit_verts
+
+
+def _surface_tree(label, zones):
+    points, faces = [], []
+    for zone in zones:
+        obj = _part(label, zone)
+        faces += [[v + len(points) for v in p.vertices] for p in obj.data.polygons]
+        points += [Vector(p) for p in _world(obj)]
+    return BVHTree.FromPolygons(points, faces)
+
+
+def _hit(label, tree, origin, direction, what):
+    found = tree.ray_cast(origin, direction, 1.0)[0]
+    if found is None:
+        raise RuntimeError(f"{label}: no body surface for the {what} chain {tuple(direction)} of {tuple(origin)}")
+    return found
+
+
+def _hanging(head, end_z, count, roll):
+    """A chain of count bones hanging straight down from head to the height end_z."""
+    step = (head.z - end_z) / count
+    joints_ = [head - Vector((0.0, 0.0, step * i)) for i in range(count + 1)]
+    return [(a, b, roll) for a, b in zip(joints_, joints_[1:])]
+
+
+def _chain_bones(label, s, hip_y, hip_z, knee, ankle, neck_base, head, eye_z):
+    """The cloth chains, placed from the body: the skirt chains on a ring around the hips that
+    hangs to the ankles, the cloak chains from the shoulder blades to the knees, and the hood chain
+    behind the head. Each bone's Z axis points away from the body, the way its cloth faces."""
+    bones = {}
+    fwd = Vector((0.0, 1.0, 0.0))
+    hips = _surface_tree(label, ("Pelvis", "Thighs", "Torso"))
+    centre = Vector((0.0, hip_y, hip_z + SKIRT_ABOVE_HIP * s))
+    for name, degrees, suffix in SKIRT_CHAINS:
+        angle = math.radians(degrees)
+        out = Vector((math.sin(angle), math.cos(angle), 0.0))
+        top = _hit(label, hips, centre, out, name) + out * (SKIRT_GAP * s)
+        for i, bone in enumerate(_hanging(top, ankle.z, SKIRT_BONES, out), 1):
+            bones[f"{name}{i}{suffix}"] = bone
+    back = _surface_tree(label, ("Torso", "Neck", "UpperArms"))
+    z = neck_base.z - CLOAK_BELOW_NECK * s
+    for name, x, suffix in CLOAK_CHAINS:
+        origin = Vector((x * s, neck_base.y + 0.05 * s, z))
+        top = _hit(label, back, origin, -fwd, name) - fwd * (CLOAK_GAP * s)
+        for i, bone in enumerate(_hanging(top, knee.z, CLOAK_BONES, -fwd), 1):
+            bones[f"{name}{i}{suffix}"] = bone
+    skull = _surface_tree(label, ("Head",))
+    top = _hit(label, skull, Vector((0.0, head.y, eye_z)), -fwd, "Hood") - fwd * (HOOD_GAP * s)
+    previous = top
+    for i, (dy, dz) in enumerate(HOOD_STEPS, 1):
+        point = previous + Vector((0.0, dy * s, dz * s))
+        bones[f"Hood{i}"] = (previous, point, -fwd)
+        previous = point
+    for name in [n for n in bones if n.endswith("_R")]:
+        a, b, roll = bones[name]
+        bones[name[:-2] + "_L"] = (_mirror(a), _mirror(b), _mirror(roll))
+    return bones
 
 
 # ----------------------------------------------------------------------------------- armature
@@ -447,12 +524,45 @@ def make_armature(label, skeleton, bones):
             bone.parent = edit[spec.parent]
             bone.use_connect = False
     bpy.ops.object.mode_set(mode="OBJECT")
-    deform = data.collections.new("Deform")
-    sockets = data.collections.new("Sockets")
-    for spec in skeleton.bones:
-        (deform if spec.deform else sockets).assign(data.bones[spec.name])
-        arm.pose.bones[spec.name].rotation_mode = "QUATERNION"
+    _assign_collections(arm, skeleton, skeleton.bones)
     return arm
+
+
+def _assign_collections(arm, skeleton, specs):
+    """Puts bones into the Deform, Sockets, and Cloth bone collections, which only sort them in
+    Blender, and makes them turn by quaternions."""
+    data = arm.data
+    collections = {name: data.collections.get(name) or data.collections.new(name)
+                   for name in ("Deform", "Sockets", "Cloth")}
+    for spec in specs:
+        kind = "Cloth" if spec.chain else "Deform" if spec.deform else "Sockets"
+        collections[kind].assign(data.bones[spec.name])
+        arm.pose.bones[spec.name].rotation_mode = "QUATERNION"
+
+
+def add_missing_bones(label, skeleton):
+    """Adds the bones the skeleton has and the rig lacks, such as new cloth chains, placed by the rig
+    rules, and leaves every other bone where it is. Returns their names."""
+    arm = bpy.data.objects[label]
+    missing = [spec for spec in skeleton.bones if spec.name not in arm.data.bones]
+    if not missing:
+        return []
+    bones, _digits = joints(label, arm.data.bones["UpperArm_R"].head_local)
+    _select_only(arm)
+    bpy.ops.object.mode_set(mode="EDIT")
+    edit = arm.data.edit_bones
+    for spec in missing:
+        head, tail, z_axis = bones[spec.name]
+        bone = edit.new(spec.name)
+        bone.head, bone.tail = head, tail
+        bone.align_roll(z_axis)
+        bone.use_deform = spec.deform
+        if spec.parent is not None:
+            bone.parent = edit[spec.parent]
+            bone.use_connect = False
+    bpy.ops.object.mode_set(mode="OBJECT")
+    _assign_collections(arm, skeleton, missing)
+    return [spec.name for spec in missing]
 
 
 # ------------------------------------------------------------------------------------ weights
@@ -671,8 +781,10 @@ def solve_weights(label, arm, skeleton, digit_verts):
     mesh.from_pydata([tuple(p) for p in points], [], faces)
     temp = bpy.data.objects.new(f"{label}_weights", mesh)
     bpy.context.scene.collection.objects.link(temp)
+    # The cloth chains move garments only, never the body.
     for bone in arm.data.bones:
-        bone.use_deform = bone.name in column and bone.name not in RULE_BONES
+        bone.use_deform = (bone.name in column and bone.name not in RULE_BONES
+                           and bone.name not in skeleton.chain_bones)
     _select_only(arm, temp)
     bpy.ops.object.parent_set(type="ARMATURE_AUTO")
     weights = np.zeros((len(points), len(names)))
@@ -811,13 +923,14 @@ def _save(out):
 
 
 def sync(path, label, skeleton_path, out):
-    """Writes the body parts of a character from its source body, with the body's weights, and
-    saves the file."""
+    """Writes the body parts of a character from its source body, with the body's weights, adds the
+    bones the skeleton has and the rig lacks, and saves the file."""
     bpy.ops.wm.open_mainfile(filepath=path)
     skeleton = skeleton_definition.load(skeleton_path)
     parts = bodies.write_parts(label, skeleton.deform_bones)
+    added = add_missing_bones(label, skeleton)
     _save(out)
-    print(f"SYNCED {label}: {len(parts)} parts -> {out}")
+    print(f"SYNCED {label}: {len(parts)} parts, {len(added)} new bones -> {out}")
 
 
 def weights(path, label, skeleton_path, out):
@@ -828,6 +941,7 @@ def weights(path, label, skeleton_path, out):
     names = skeleton.deform_bones
     normalize(label)
     bodies.write_parts(label, names)
+    add_missing_bones(label, skeleton)
     arm = bpy.data.objects[label]
     _bones, digit_verts = joints(label, arm.data.bones["UpperArm_R"].head_local)
     bind(label, arm, skeleton, digit_verts)

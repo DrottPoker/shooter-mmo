@@ -226,7 +226,8 @@ function ConvertTo-ArtVariantRecords($Records) {
 
 function Read-ArtSkeleton([string]$Name) {
     # Returns the path of art/Skeletons/<Name>.json after checking its bones: unique names, one
-    # root, every parent before its children, and a deform flag on every bone.
+    # root, every parent before its children, a deform flag on every bone, and cloth chain bones
+    # that deform, of a known chain, outside the Humanoid avatar and the sockets.
     $path = Join-Path $script:ArtSkeletonFolder "$Name.json"
     $where = Get-ArtRelativePath $path
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -246,6 +247,11 @@ function Read-ArtSkeleton([string]$Name) {
         $boneName = [string]$bone.name
         if ($boneName -cnotmatch $script:ArtNamePattern -or -not ($bone.deform -is [bool])) {
             throw "${where}: every bone needs a name of letters, digits, and underscores and a deform flag."
+        }
+
+        if ($null -ne $bone.chain -and (@("skirt", "cloak", "hood") -cnotcontains [string]$bone.chain -or
+                -not $bone.deform -or $null -ne $bone.human -or $null -ne $bone.socket)) {
+            throw "${where}: bone '$boneName' must be a deforming bone of the chain skirt, cloak, or hood, outside the Humanoid avatar and the sockets."
         }
 
         if ($null -eq $bone.parent) {

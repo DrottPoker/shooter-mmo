@@ -368,8 +368,9 @@ def idle_frame(rig, frames, frame):
     return local, hips_loc
 
 
-def bake(arm, name, frames, frame_fn):
-    """Writes one looping clip as an action: every frame keyed, and the last frame the first."""
+def bake(arm, name, frames, frame_fn, skip=frozenset()):
+    """Writes one looping clip as an action: every frame keyed, and the last frame the first. The
+    bones in skip, such as the cloth chains that the runtime solver moves, get no keys."""
     keys = [frame_fn(f) for f in range(frames)]
     action = bpy.data.actions.new(name)
     action.use_fake_user = True
@@ -379,6 +380,8 @@ def bake(arm, name, frames, frame_fn):
     for f in range(frames + 1):
         local, hips_loc = keys[f % frames]
         for pb in arm.pose.bones:
+            if pb.name in skip:
+                continue
             q = local.get(pb.name, Quaternion())
             if pb.name in previous and previous[pb.name].dot(q) < 0:
                 q = -q
@@ -408,13 +411,16 @@ def bake(arm, name, frames, frame_fn):
     return action
 
 
-def generate(path, label, names):
+def generate(path, label, names, skeleton_path):
     """Adds the named clips of the gait model (Idle, Walk, Jog) to an animation library on its
     armature label, as starting points to edit by hand, and saves it. A clip the library already
     has is kept as it is, so handmade keys are never replaced."""
     unknown = [name for name in names if name not in CLIPS]
     if unknown:
         raise RuntimeError(f"The gait model makes the clips {list(CLIPS)}, not {unknown}.")
+    from art_pipeline import skeleton as skeleton_definition
+
+    skip = frozenset(skeleton_definition.load(skeleton_path).chain_bones)
     bpy.ops.wm.open_mainfile(filepath=path)
     arm = bpy.data.objects[label]
     arm.animation_data_create()
@@ -428,11 +434,11 @@ def generate(path, label, names):
             print(f"KEPT {name}: the library has the clip already")
             continue
         if name == "Idle":
-            bake(arm, name, IDLE_FRAMES, lambda f: idle_frame(rig, IDLE_FRAMES, f))
+            bake(arm, name, IDLE_FRAMES, lambda f: idle_frame(rig, IDLE_FRAMES, f), skip)
         else:
             gait = WALK if name == "Walk" else JOG
             frames = gait_frames(rig, gait)
-            bake(arm, name, frames, lambda f, gait=gait, frames=frames: gait_frame(rig, gait, frames, f))
+            bake(arm, name, frames, lambda f, gait=gait, frames=frames: gait_frame(rig, gait, frames, f), skip)
         made.append(name)
     if not made:
         return

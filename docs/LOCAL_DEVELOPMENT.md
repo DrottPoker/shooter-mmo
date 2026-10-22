@@ -2839,8 +2839,10 @@ by hand:
    .\tools\Sync-HumanBase.ps1
    ```
 
-   Add `-Weights` to solve the skin weights again from the joints, for example
-   after adding vertices without weights; it replaces weights painted by hand.
+   The sync also adds bones that the skeleton has and the rigs lack, such as new
+   cloth chains, placed by the rig rules. Add `-Weights` to solve the skin
+   weights again from the joints, for example after adding vertices without
+   weights; it replaces weights painted by hand.
    Add `-Rig` to place the joints again from the model first, after a change of
    the proportions.
 
@@ -3112,6 +3114,14 @@ controller, and prefabs are committed.
     close. Expected result: the bots show both faces and both eye colors in every
     combination, and each bot keeps its look while it stays. Real players show
     the stubble face and teal eyes until looks are saved with characters.
+15. Run `.\tools\Sync-HumanBase.ps1` and open
+    `artifacts\human-base\review\Human_Male_rig_chains.png`. Expected result:
+    the cloth chains alone over the body: eight skirt chains on a ring at the hips
+    hanging to the ankles, five cloak chains down the back to the knees, and the
+    hood chain behind the head, and the same on the female, shorter and narrower.
+    In Unity, run the EditMode tests in `ClothChainSolverTests`. Expected result:
+    every test passes, among them a robe that stays outside the legs while the
+    body jogs. No garment uses the chains yet, so nothing changes in the game.
 
 ## One-Time Unity World Scene Authoring
 

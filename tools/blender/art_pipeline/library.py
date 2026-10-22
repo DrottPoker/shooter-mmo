@@ -121,12 +121,28 @@ def _material_preview() -> None:
                     space.shading.type = "MATERIAL"
 
 
+def _slots_named(armature_name: str) -> bool:
+    return all(slot.name_display == armature_name for action in bpy.data.actions for slot in action.slots)
+
+
+def _name_slots(armature_name: str) -> None:
+    """Names every clip's slot after the armature, so Blender binds a clip to it when a person
+    picks the clip, also after the armature was replaced."""
+    for action in bpy.data.actions:
+        for slot in action.slots:
+            if slot.target_id_type == "OBJECT" and slot.name_display != armature_name:
+                slot.name_display = armature_name
+
+
 def is_up_to_date(armature_name: str, rig_path: str, rig_root: str, previews: list[tuple[str, str]]) -> bool:
-    """Whether the open library's armature is the current rig and every preview body is there."""
+    """Whether the open library's armature is the current rig, every preview body is there, and
+    every clip's slot is named after the armature."""
     arm = bpy.data.objects.get(armature_name)
     if arm is None or arm.type != "ARMATURE":
         return False
     if any(bpy.data.objects.get(PREVIEW_PREFIX + root) is None for _path, root in previews):
+        return False
+    if not _slots_named(armature_name):
         return False
     return not skinned.rig_source_errors(arm, rig_path, rig_root)
 
@@ -156,6 +172,7 @@ def sync(library: str, armature_name: str, rig_path: str, rig_root: str, preview
         reference.objects.link(obj)
     arm.animation_data_create()
     arm.animation_data.action = None
+    _name_slots(armature_name)
 
     for index, (path, root) in enumerate(previews):
         preview_body = _append(path, root)

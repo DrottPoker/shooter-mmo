@@ -699,6 +699,16 @@ ModelImporter:
       position: {x: -0.030949516, y: 0.09620203, z: 0.06665596}
       rotation: {x: 0.00000009415697, y: 0.7071067, z: 0.7071068, w: -0.00000009415696}
       scale: {x: 0.99999994, y: 1, z: 1}
+    - name: Hood1
+      parentName: Head
+      position: {x: 0.0000000069849193, y: -0.08904868, z: 0.06665614}
+      rotation: {x: 0.9795777, y: -0.000000033001083, z: 0.000000024540961, w: 0.20106603}
+      scale: {x: 0.99999994, y: 0.9999981, z: 0.99999994}
+    - name: Hood2
+      parentName: Hood1
+      position: {x: 0.000000009313226, y: 0.000000009662472, z: 0.07615218}
+      rotation: {x: 0.063253924, y: -0.0000000088653165, z: -0.0000000013997871, w: 0.99799746}
+      scale: {x: 1, y: 1, z: 1}
     - name: Shoulder_L
       parentName: UpperChest
       position: {x: 0.021998363, y: 0.057073683, z: 0.16171993}
@@ -904,6 +914,131 @@ ModelImporter:
       position: {x: 0.000000008896176, y: -0.10176043, z: -0.025849279}
       rotation: {x: 0.000000008754044, y: -0.12405918, z: 0.9922748, w: -0.00000013310026}
       scale: {x: 1, y: 0.99999994, z: 1}
+    - name: CloakCenter1
+      parentName: UpperChest
+      position: {x: 0.00000000686283, y: -0.07850166, z: 0.122122414}
+      rotation: {x: 0.9922748, y: 0.00000008674733, z: -1.3565706e-14, w: -0.12405929}
+      scale: {x: 1, y: 0.99999744, z: 0.99999994}
+    - name: CloakCenter2
+      parentName: CloakCenter1
+      position: {x: -7.771561e-16, y: 4.1633363e-17, z: 0.19103509}
+      rotation: {x: -4.656613e-10, y: 1.6930901e-15, z: 5.0671273e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakCenter3
+      parentName: CloakCenter2
+      position: {x: -8.6042284e-16, y: -0.0000000018626451, z: 0.1910351}
+      rotation: {x: -4.656613e-10, y: -8.3266733e-17, z: 1.4988011e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakCenter4
+      parentName: CloakCenter3
+      position: {x: -9.15934e-16, y: 0.000000008381903, z: 0.19103505}
+      rotation: {x: -4.656613e-10, y: -8.3266733e-17, z: 1.4988011e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakCenter5
+      parentName: CloakCenter4
+      position: {x: -1.2212453e-15, y: 0.0000000055879354, z: 0.19103506}
+      rotation: {x: -4.656613e-10, y: -8.3266733e-17, z: 1.4988011e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakInner1_L
+      parentName: UpperChest
+      position: {x: 0.08999333, y: -0.09449105, z: 0.11806077}
+      rotation: {x: 0.9922748, y: 0.00000008783135, z: -0.0000000086712655, w: -0.12405929}
+      scale: {x: 1, y: 0.99999744, z: 0.99999994}
+    - name: CloakInner2_L
+      parentName: CloakInner1_L
+      position: {x: -0.0000000052467932, y: -0.00000001076551, z: 0.19103506}
+      rotation: {x: -4.656616e-10, y: 0.000000008738752, z: 7.039508e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakInner3_L
+      parentName: CloakInner2_L
+      position: {x: -0.000000005569952, y: -0.000000014490802, z: 0.19103508}
+      rotation: {x: -4.656613e-10, y: -1.110223e-16, z: 1.7008964e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakInner4_L
+      parentName: CloakInner3_L
+      position: {x: -0.000000005278797, y: -0.000000010765512, z: 0.1910352}
+      rotation: {x: -4.656613e-10, y: -1.110223e-16, z: 1.7008964e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakInner5_L
+      parentName: CloakInner4_L
+      position: {x: -0.0000000049876427, y: -0.00000001355948, z: 0.19103503}
+      rotation: {x: -4.656613e-10, y: -1.110223e-16, z: 1.7008964e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakInner1_R
+      parentName: UpperChest
+      position: {x: -0.08999331, y: -0.094491065, z: 0.11806076}
+      rotation: {x: 0.9922748, y: 0.00000008783135, z: -0.0000000086712655, w: -0.12405929}
+      scale: {x: 1, y: 0.99999744, z: 0.99999994}
+    - name: CloakInner2_R
+      parentName: CloakInner1_R
+      position: {x: 0.000000009654368, y: 0.0000000033149297, z: 0.19103506}
+      rotation: {x: -4.656616e-10, y: 0.000000008738752, z: 7.039508e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakInner3_R
+      parentName: CloakInner2_R
+      position: {x: 0.0000000018806285, y: -4.1035886e-10, z: 0.19103508}
+      rotation: {x: -4.656613e-10, y: -1.110223e-16, z: 1.7008964e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakInner4_R
+      parentName: CloakInner3_R
+      position: {x: 0.0000000021717834, y: 0.0000000033149314, z: 0.1910352}
+      rotation: {x: -4.656613e-10, y: -1.110223e-16, z: 1.7008964e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakInner5_R
+      parentName: CloakInner4_R
+      position: {x: 0.0000000024629379, y: 5.209637e-10, z: 0.19103503}
+      rotation: {x: -4.656613e-10, y: -1.110223e-16, z: 1.7008964e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakOuter1_L
+      parentName: UpperChest
+      position: {x: 0.17998664, y: -0.073638156, z: 0.12335794}
+      rotation: {x: 0.9922748, y: 0.000000085412324, z: 0.000000010678679, w: -0.12405929}
+      scale: {x: 1, y: 0.99999744, z: 0.99999994}
+    - name: CloakOuter2_L
+      parentName: CloakOuter1_L
+      position: {x: -0.000000029366056, y: 8.2085805e-10, z: 0.19103503}
+      rotation: {x: -4.6566082e-10, y: -0.0000000107618146, z: -9.7647584e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakOuter3_L
+      parentName: CloakOuter2_L
+      position: {x: -0.000000011141167, y: -0.0000000010417835, z: 0.19103505}
+      rotation: {x: -4.656613e-10, y: 8.3266727e-16, z: 1.232521e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakOuter4_L
+      parentName: CloakOuter3_L
+      position: {x: -0.000000010850011, y: 0.0000000017521842, z: 0.1910351}
+      rotation: {x: -4.656613e-10, y: -5.551115e-17, z: 1.2247148e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakOuter5_L
+      parentName: CloakOuter4_L
+      position: {x: -0.000000010558856, y: -1.10460974e-10, z: 0.19103506}
+      rotation: {x: -4.656613e-10, y: -5.551115e-17, z: 1.2247148e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakOuter1_R
+      parentName: UpperChest
+      position: {x: -0.17998664, y: -0.073638186, z: 0.12335794}
+      rotation: {x: 0.9922748, y: 0.000000085412324, z: 0.000000010678679, w: -0.12405929}
+      scale: {x: 1, y: 0.99999744, z: 0.99999994}
+    - name: CloakOuter2_R
+      parentName: CloakOuter1_R
+      position: {x: 4.3626525e-10, y: -8.2085805e-10, z: 0.19103503}
+      rotation: {x: -4.6566082e-10, y: -0.0000000107618146, z: -9.7647584e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakOuter3_R
+      parentName: CloakOuter2_R
+      position: {x: 0.000000018661154, y: -0.0000000026835068, z: 0.19103505}
+      rotation: {x: -4.656613e-10, y: 8.3266727e-16, z: 1.232521e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakOuter4_R
+      parentName: CloakOuter3_R
+      position: {x: 0.000000018952312, y: 1.10460974e-10, z: 0.1910351}
+      rotation: {x: -4.656613e-10, y: -5.551115e-17, z: 1.2247148e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: CloakOuter5_R
+      parentName: CloakOuter4_R
+      position: {x: 0.000000019243465, y: -0.0000000017521842, z: 0.19103506}
+      rotation: {x: -4.656613e-10, y: -5.551115e-17, z: 1.2247148e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
     - name: UpperLeg_L
       parentName: Hips
       position: {x: 0.097571895, y: 0.000000011007656, z: 0.00000007613562}
@@ -944,6 +1079,166 @@ ModelImporter:
       position: {x: 0.000000014021224, y: -0.0000000018626451, z: 0.1614162}
       rotation: {x: -0.22242045, y: -0.039244242, z: 0.00896069, w: 0.9741195}
       scale: {x: 0.99999994, y: 1, z: 0.99999994}
+    - name: SkirtFront1
+      parentName: Hips
+      position: {x: -0.000000019463787, y: 0.12890282, z: -0.014518861}
+      rotation: {x: -0.00000013197369, y: 0.99110556, z: -0.13307835, w: 0.000000017720454}
+      scale: {x: 1, y: 1.0000008, z: 1}
+    - name: SkirtFront2
+      parentName: SkirtFront1
+      position: {x: 1.799945e-21, y: 0, z: 0.19771881}
+      rotation: {x: -1.5146114e-28, y: 1.7763575e-15, z: -4.2632523e-14, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtFront3
+      parentName: SkirtFront2
+      position: {x: 7.53736e-23, y: 0, z: 0.19771878}
+      rotation: {x: 0, y: -2.1174531e-22, z: -4.0657562e-20, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtFront4
+      parentName: SkirtFront3
+      position: {x: 5.2950635e-23, y: 0, z: 0.19771872}
+      rotation: {x: 0, y: -2.1174531e-22, z: -1.9387029e-26, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtFrontSide1_L
+      parentName: Hips
+      position: {x: 0.11105926, y: 0.11240098, z: -0.010006007}
+      rotation: {x: 0.37927967, y: 0.91566217, z: -0.122948274, w: 0.05092688}
+      scale: {x: 1, y: 1.0000001, z: 0.99999994}
+    - name: SkirtFrontSide2_L
+      parentName: SkirtFrontSide1_L
+      position: {x: -4.2013681e-10, y: -0.000000013546927, z: 0.19771878}
+      rotation: {x: 0.000000012259369, y: -0.0000000088140535, z: -0.00000008940698, w: 1}
+      scale: {x: 0.99999994, y: 0.99999994, z: 1}
+    - name: SkirtFrontSide3_L
+      parentName: SkirtFrontSide2_L
+      position: {x: 0.000000002793967, y: 5.828671e-16, z: 0.1977187}
+      rotation: {x: -1.3007083e-16, y: -5.7416007e-16, z: -3.6631087e-23, w: 1}
+      scale: {x: 0.99999994, y: 0.99999994, z: 1}
+    - name: SkirtFrontSide4_L
+      parentName: SkirtFrontSide3_L
+      position: {x: 0.0000000027939677, y: 0, z: 0.19771872}
+      rotation: {x: -4.4408926e-16, y: -8.881785e-16, z: -1.0916915e-30, w: 1}
+      scale: {x: 0.99999994, y: 0.99999994, z: 1}
+    - name: SkirtFrontSide1_R
+      parentName: Hips
+      position: {x: -0.11105929, y: 0.112400964, z: -0.0100060105}
+      rotation: {x: -0.37927967, y: 0.91566217, z: -0.122948274, w: -0.05092688}
+      scale: {x: 1, y: 1.0000001, z: 1}
+    - name: SkirtFrontSide2_R
+      parentName: SkirtFrontSide1_R
+      position: {x: -0.000000008335686, y: -0.0000000018191999, z: 0.19771872}
+      rotation: {x: -0.0000000069910127, y: -0.00000001408241, z: -0.000000044703484, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtFrontSide3_R
+      parentName: SkirtFrontSide2_R
+      position: {x: -0.0000000027939675, y: 3.0531133e-16, z: 0.1977187}
+      rotation: {x: -1.1752585e-15, y: -6.0109847e-16, z: 1.2099514e-23, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtFrontSide4_R
+      parentName: SkirtFrontSide3_R
+      position: {x: -0.0000000027939677, y: 0, z: 0.1977187}
+      rotation: {x: -1.3322676e-15, y: -4.4408918e-16, z: -7.722274e-31, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtSide1_L
+      parentName: Hips
+      position: {x: 0.19104496, y: 0.005275407, z: 0.019290226}
+      rotation: {x: 0.70081735, y: 0.7008175, z: -0.09410095, w: 0.09410043}
+      scale: {x: 1.0000001, y: 1.0000035, z: 1.0000001}
+    - name: SkirtSide2_L
+      parentName: SkirtSide1_L
+      position: {x: -7.3268824e-10, y: -2.9774072e-10, z: 0.19771881}
+      rotation: {x: 0.000000009886735, y: 9.223406e-16, z: 0.000000017792399, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtSide3_L
+      parentName: SkirtSide2_L
+      position: {x: -0.0000000013849961, y: 9.713824e-10, z: 0.19771872}
+      rotation: {x: -1.4210856e-14, y: -8.4703295e-22, z: 5.684342e-14, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtSide4_L
+      parentName: SkirtSide3_L
+      position: {x: -0.0000000013849748, y: 9.713806e-10, z: 0.19771875}
+      rotation: {x: -1.4210856e-14, y: -8.4703295e-22, z: -1.4e-43, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtSide1_R
+      parentName: Hips
+      position: {x: -0.19104496, y: 0.0052753473, z: 0.019290226}
+      rotation: {x: 0.7008176, y: -0.70081735, z: 0.094100885, w: 0.09409994}
+      scale: {x: 1, y: 1.0000035, z: 1.0000001}
+    - name: SkirtSide2_R
+      parentName: SkirtSide1_R
+      position: {x: 0.0000000019597106, y: 0.000000003332546, z: 0.19771884}
+      rotation: {x: -0.000000009886752, y: 0.000000014901159, z: -0.000000019091104, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtSide3_R
+      parentName: SkirtSide2_R
+      position: {x: 0.0000000013850011, y: 9.800031e-10, z: 0.19771871}
+      rotation: {x: -2.2500217e-15, y: 1.3649458e-15, z: -6.217249e-14, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtSide4_R
+      parentName: SkirtSide3_R
+      position: {x: 0.0000000013849757, y: 9.800012e-10, z: 0.19771871}
+      rotation: {x: -2.2500217e-15, y: 1.6911589e-15, z: 1.7763568e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtBackSide1_L
+      parentName: Hips
+      position: {x: 0.11769076, y: -0.108246766, z: 0.050335765}
+      rotation: {x: 0.9156621, y: 0.3792797, z: -0.050926786, w: 0.12294838}
+      scale: {x: 1, y: 1.0000001, z: 1}
+    - name: SkirtBackSide2_L
+      parentName: SkirtBackSide1_L
+      position: {x: 0.0000000013528476, y: -0.000000020067572, z: 0.1977188}
+      rotation: {x: 0.0000000017226572, y: -0.0000000017226583, z: -0.000000044703484, w: 1}
+      scale: {x: 1, y: 1, z: 1.0000001}
+    - name: SkirtBackSide3_L
+      parentName: SkirtBackSide2_L
+      position: {x: 0.0000000018626451, y: -0.000000022351742, z: 0.19771874}
+      rotation: {x: 5.225938e-16, y: 4.440892e-16, z: 0.000000044703484, w: 1}
+      scale: {x: 1, y: 1, z: 1.0000001}
+    - name: SkirtBackSide4_L
+      parentName: SkirtBackSide3_L
+      position: {x: 0.0000000018626451, y: -0.000000022351742, z: 0.1977188}
+      rotation: {x: -4.440892e-16, y: 2.3173244e-31, z: -0.000000044703484, w: 1}
+      scale: {x: 1, y: 1, z: 1.0000001}
+    - name: SkirtBackSide1_R
+      parentName: Hips
+      position: {x: -0.11769071, y: -0.108246796, z: 0.05033576}
+      rotation: {x: 0.91566217, y: -0.3792797, z: 0.050926875, w: 0.12294828}
+      scale: {x: 1, y: 1.0000002, z: 1}
+    - name: SkirtBackSide2_R
+      parentName: SkirtBackSide1_R
+      position: {x: 0.0000000055431055, y: -0.000000025100881, z: 0.19771874}
+      rotation: {x: 0.0000000035456982, y: 0.000000003545699, z: -2.6417518e-17, w: 1}
+      scale: {x: 0.9999999, y: 0.9999999, z: 1}
+    - name: SkirtBackSide3_R
+      parentName: SkirtBackSide2_R
+      position: {x: 0.0000000037252903, y: -0.000000029802322, z: 0.19771877}
+      rotation: {x: 1.4354003e-16, y: -1.8952692e-16, z: 1.1698103e-24, w: 1}
+      scale: {x: 0.9999999, y: 0.9999999, z: 1}
+    - name: SkirtBackSide4_R
+      parentName: SkirtBackSide3_R
+      position: {x: 0.0000000037252903, y: -0.000000029802322, z: 0.19771874}
+      rotation: {x: 2.2204463e-16, y: -1.1102232e-16, z: 1.929057e-39, w: 1}
+      scale: {x: 0.9999999, y: 0.9999999, z: 1}
+    - name: SkirtBack1
+      parentName: Hips
+      position: {x: 0.000000013536378, y: -0.08964737, z: 0.045249276}
+      rotation: {x: 0.9911056, y: 0.00000011814927, z: 0.0000000042300576, w: 0.13307796}
+      scale: {x: 1, y: 1.0000033, z: 1}
+    - name: SkirtBack2
+      parentName: SkirtBack1
+      position: {x: 2.9343042e-16, y: -0.0000000048570676, z: 0.19771872}
+      rotation: {x: -0.000000014901122, y: -4.855415e-15, z: -3.5527128e-15, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtBack3
+      parentName: SkirtBack2
+      position: {x: 5.166979e-16, y: 1.6514567e-15, z: 0.1977187}
+      rotation: {x: -1.3322678e-14, y: -1.5634793e-21, z: 1.49333e-29, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: SkirtBack4
+      parentName: SkirtBack3
+      position: {x: 5.1669814e-16, y: 0, z: 0.19771872}
+      rotation: {x: -1.4210853e-14, y: -1.6940659e-21, z: -7.046403e-36, w: 1}
+      scale: {x: 1, y: 1, z: 1}
     armTwist: 0.5
     foreArmTwist: 0.5
     upperLegTwist: 0.5

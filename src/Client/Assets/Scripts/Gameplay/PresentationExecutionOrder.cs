@@ -10,6 +10,9 @@ namespace Mmorpg.Client.Gameplay
         // character moved and before the Animator evaluates.
         public const int Locomotion = 50;
 
+        // Cloth chains move in LateUpdate, after the Animator posed the bodies.
+        public const int Cloth = 60;
+
         public const int Camera = 100;
 
         public const int ScreenAnchoredInterface = 200;

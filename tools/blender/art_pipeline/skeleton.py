@@ -1,12 +1,15 @@
 """Shared skeleton definitions, art/Skeletons/<Name>.json: the bones of an armature with their
-parents, which bones deform the skin, the Unity Humanoid bone each maps to, and the attachment
-sockets. Every playable body of a skeleton has exactly these bones, so animations and equipment
-fit all of them."""
+parents, which bones deform the skin, the Unity Humanoid bone each maps to, the attachment
+sockets, and the cloth chains that loose garments hang on. Every playable body of a skeleton has
+exactly these bones, so animations and equipment fit all of them."""
 
 import json
 from dataclasses import dataclass
 
 from .scene import ArtPipelineError
+
+# The cloth chains a skeleton may have.
+CHAINS = ("skirt", "cloak", "hood")
 
 
 @dataclass(frozen=True)
@@ -16,6 +19,9 @@ class SkeletonBone:
     deform: bool
     human: str | None
     socket: str | None
+    # The cloth chain the bone belongs to, such as skirt, cloak, or hood. The body is never
+    # weighted to it, and clips leave it to the runtime cloth solver.
+    chain: str | None = None
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,10 @@ class Skeleton:
         return [b.name for b in self.bones if b.deform]
 
     @property
+    def chain_bones(self) -> set[str]:
+        return {b.name for b in self.bones if b.chain}
+
+    @property
     def root(self) -> SkeletonBone:
         return next(b for b in self.bones if b.parent is None)
 
@@ -42,11 +52,15 @@ def load(path: str) -> Skeleton:
     except (OSError, ValueError) as error:
         raise ArtPipelineError(f"Cannot read the skeleton definition {path}: {error}") from error
     bones = tuple(SkeletonBone(name=b["name"], parent=b.get("parent"), deform=bool(b["deform"]),
-                               human=b.get("human"), socket=b.get("socket")) for b in data["bones"])
+                               human=b.get("human"), socket=b.get("socket"), chain=b.get("chain"))
+                  for b in data["bones"])
     names = [b.name for b in bones]
     if len(set(names)) != len(names) or sum(b.parent is None for b in bones) != 1:
         raise ArtPipelineError(f"The skeleton definition {path} needs unique bone names and one root bone.")
     for index, b in enumerate(bones):
+        if b.chain is not None and (b.chain not in CHAINS or not b.deform or b.human or b.socket):
+            raise ArtPipelineError(f'Bone "{b.name}" in {path} must be a deforming bone of one of the chains {CHAINS}, '
+                                   "outside the Humanoid avatar and the sockets.")
         if b.parent is not None and b.parent not in names[:index]:
             raise ArtPipelineError(f'Bone "{b.name}" in {path} must follow its parent "{b.parent}".')
     return Skeleton(name=data["name"], bones=bones)
