@@ -93,14 +93,14 @@ def main() -> int:
                              [(os.path.abspath(path), root) for path, root in bodies], args.force)
         print(f"ART_PAINT_SYNC {'synced' if changed else 'up-to-date'} {args.file}")
         return 0
-    if args.kind == "paint":
-        return _paint(args)
     if args.command == "library-sync":
         previews = [tuple(p.rsplit("=", 1)) for p in args.preview]
         changed = library.sync(os.path.abspath(args.library), args.armature, os.path.abspath(args.rig_source),
                                args.rig_root, [(os.path.abspath(path), root) for path, root in previews], args.force)
         print(f"ART_LIBRARY {'synced' if changed else 'up-to-date'} {args.library}")
         return 0
+    if args.kind == "paint":
+        return _paint(args)
 
     errors, triangles = validate(args.kind, args.roots.split(","), args.triangle_budget, args.stage, args.skeleton,
                                  [c for c in args.clips.split(",") if c],
