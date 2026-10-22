@@ -14,16 +14,16 @@
     "approvals": {
         "model": {
             "date": "2026-10-22",
-            "sourceSha256": "01237a4cb2f93c0ed2d2f2b8588f40de82e60c8f6bb8d790d2215f7fcec60029"
+            "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf"
         },
         "rig": {
             "date": "2026-10-22",
-            "sourceSha256": "01237a4cb2f93c0ed2d2f2b8588f40de82e60c8f6bb8d790d2215f7fcec60029"
+            "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf"
         }
     },
     "export": {
-        "sourceSha256": "01237a4cb2f93c0ed2d2f2b8588f40de82e60c8f6bb8d790d2215f7fcec60029",
-        "targetSha256": "33343fc587ff66f2a4c5b1b26df6d0a514bac4e6076fb3dfed88067cebe63805",
+        "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf",
+        "targetSha256": "708f96a22618b1df52bc1807e3f15bc5b752de63260859da95171aab34afd8d1",
         "materials": [
             {
                 "name": "M_Body_Male",

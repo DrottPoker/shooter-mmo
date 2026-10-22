@@ -3,7 +3,8 @@
 Last updated: 2026-10-22
 
 Status: accepted by Victor on 2026-10-22, with the support of future races added.
-It is implemented in the order of [Delivery Plan](#delivery-plan).
+It is implemented in the order of [Delivery Plan](#delivery-plan); steps 1 and 2,
+this document and the cloth chains with their solver, are done.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -217,11 +218,14 @@ weighted to them.
 
 | Chains | Parent | Bones | For |
 | --- | --- | --- | --- |
-| `Skirt_<Side>_1` to `_4`, eight sides around the hips (front, front left, left, back left, back, back right, right, front right) | `Hips` | 32 | skirts, robes, coat tails, tabards |
-| `Cloak_<Column>_1` to `_5`, five columns across the back | `UpperChest` | 25 | cloaks and capes |
-| `Hood_1`, `Hood_2` | `Head` | 2 | the back and tip of a hood |
+| `SkirtFront1` to `4`, `SkirtFrontSide1_L` to `4_L` and `_R`, `SkirtSide`, `SkirtBackSide`, and `SkirtBack`: eight chains around the hips | `Hips` | 32 | skirts, robes, coat tails, tabards |
+| `CloakCenter1` to `5`, `CloakInner1_L` to `5_L` and `_R`, and `CloakOuter`: five columns across the back | `UpperChest` | 25 | cloaks and capes |
+| `Hood1`, `Hood2` | `Head` | 2 | the back and tip of a hood |
 
-The rig places them from each body: the skirt chains on a ring at the hips that
+They are implemented: [Skeletons](ART_PIPELINE.md#skeletons) lists them, and
+`ClothChainSolver` moves them; see
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies). The rig
+places them from each body: the skirt chains on a ring at the hips that
 hangs to that body's ankles, the cloak chains from its shoulders down its back,
 the hood chain behind its head. The solver's profiles give lengths as shares of
 the chains, so the same cloth behaves alike on a dwarf and an elf. Adding them changes the rig, so the bodies and the

@@ -406,6 +406,7 @@ def clips(path, label):
         if action is None:
             continue
         arm.animation_data.action = action
+        arm.animation_data.action_slot = action.slots[0]
         frames = int(action.frame_range[1])
         tracks = {}
         hips = []

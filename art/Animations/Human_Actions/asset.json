@@ -12,13 +12,13 @@
     "approvals": {
         "animation": {
             "date": "2026-10-22",
-            "sourceSha256": "6cd668cf32796e12d1e8854601991ddb80df813834f3055a64176e259b3df166"
+            "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c"
         }
     },
     "export": {
-        "sourceSha256": "6cd668cf32796e12d1e8854601991ddb80df813834f3055a64176e259b3df166",
-        "targetSha256": "099dbe22a55da22b796041dc6c22bdb2b00fa5bd0209dcbfa30b5ec480d8d30f",
-        "rigSourceSha256": "01237a4cb2f93c0ed2d2f2b8588f40de82e60c8f6bb8d790d2215f7fcec60029",
+        "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c",
+        "targetSha256": "51ac0c68ef8135fefee68e0ecaeb5860acbf997e5a3d60324c81dbcc1faffc81",
+        "rigSourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf",
         "clips": [
             { "name": "Death", "frames": 60, "loop": false },
             { "name": "Idle", "frames": 120, "loop": true },

@@ -32,11 +32,21 @@ def _joint(arm, bone, t=0.0):
     return arm.matrix_world @ pb.head.lerp(pb.tail, t)
 
 
-def bone_overlay(arm):
-    """A mesh of one octahedron per bone, like Blender's bone display, posed with the armature."""
+def chain_bones(arm):
+    """The names of the armature's cloth chain bones, which the rig keeps in its Cloth collection."""
+    collection = arm.data.collections.get("Cloth")
+    return {b.name for b in collection.bones} if collection is not None else set()
+
+
+def bone_overlay(arm, chains=False):
+    """A mesh of one octahedron per bone, like Blender's bone display, posed with the armature: the
+    skeleton without its cloth chains, or the cloth chains alone."""
     bm = bmesh.new()
     colours = []
+    cloth = chain_bones(arm)
     for pb in arm.pose.bones:
+        if (pb.name in cloth) != chains:
+            continue
         side = "S" if pb.name.startswith("Socket_") else pb.name[-1] if pb.name[-2:] in ("_L", "_R") else "C"
         m = arm.matrix_world @ pb.matrix
         length = pb.length
@@ -159,6 +169,29 @@ def skeleton(arm, out, cam):
         return draw
 
     path = _grid([cell(v) for v in views], 4, out)
+    bpy.data.objects.remove(overlay)
+    return path
+
+
+def chains_sheet(arm, out, cam):
+    """The cloth chains in the bind pose, seen through the body from four sides and from above the
+    hips: the skirt ring hanging to the ankles, the cloak columns down the back, and the hood."""
+    review.setup((520, 700))
+    poses.rest(arm)
+    overlay = bone_overlay(arm, chains=True)
+    mid = Vector((0, 0, _joint(arm, "Hips").z + 0.05))
+    views = [(mid, yaw, 3, 3.1, 50) for yaw in (0, 45, 90, 180)]
+    views += [(_joint(arm, "Hips"), 0, 70, 1.6, 50), (_joint(arm, "Head", 0.25), 120, 5, 0.8, 85)]
+
+    def cell(view):
+        def draw(path):
+            target, yaw, pitch, dist, lens = view
+            cam.data.lens = lens
+            review.aim(cam, target, yaw, pitch, dist)
+            return _xray(arm, path, overlay)
+        return draw
+
+    path = _grid([cell(v) for v in views], 3, out)
     bpy.data.objects.remove(overlay)
     return path
 
@@ -363,7 +396,7 @@ def weights_sheet(arm, out, cam):
         bpy.data.materials.remove(mat)
 
 
-SHEETS = {"skeleton": skeleton, "shoulders": shoulders_sheet, "legs": legs_sheet, "poses": pose_sheet,
+SHEETS = {"skeleton": skeleton, "chains": chains_sheet, "shoulders": shoulders_sheet, "legs": legs_sheet, "poses": pose_sheet,
           "joints": joints_sheet, "hands": hands_sheet, "face": face_sheet, "weights": weights_sheet}
 
 

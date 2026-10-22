@@ -17,7 +17,7 @@ Steps:
     review <review.blend> <output dir> <prefix>
     review-rig <asset.blend> <Male|Female> <output dir> <prefix>
     rig-review-file <male.blend> <female.blend> <review.blend>
-    generate-clips <library.blend> <armature> <Idle,Walk,Jog>
+    generate-clips <library.blend> <armature> <Idle,Walk,Jog> <skeleton.json>
     check-clips <library.blend> <armature>
 
 Report lines start with HUMAN_BASE_REPORT, broken rules with HUMAN_BASE_FAILED, and the result
@@ -39,7 +39,7 @@ STEPS = {
     "weights": (4, rig.weights),
     "rig": (4, rig.rig),
     "review-file": (3, review.review_file),
-    "generate-clips": (3, lambda path, armature, names: animate.generate(path, armature, names.split(","))),
+    "generate-clips": (4, lambda path, armature, names, skeleton: animate.generate(path, armature, names.split(","), skeleton)),
 }
 CHECKS = {
     "check-mesh": (2, checks.mesh),

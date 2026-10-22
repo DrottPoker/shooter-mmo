@@ -226,5 +226,7 @@ namespace Mmorpg.Client.Editor
         // The HumanBodyBones name of the bone, empty for a bone outside the Humanoid avatar.
         public string human = string.Empty;
         public bool deform;
+        // The cloth chain of the bone, such as skirt, cloak, or hood, empty for every other bone.
+        public string chain = string.Empty;
     }
 }

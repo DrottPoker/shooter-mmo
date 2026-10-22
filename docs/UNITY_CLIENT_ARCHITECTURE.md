@@ -1238,6 +1238,27 @@ speed, from the lengths of both cycles; and above the jog speed the jog plays
 faster. `PlayerBodyAssetTests` checks that the two speeds match
 `tools/blender/human_base/animate.py`.
 
+The body's skeleton also has the cloth chains of
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#cloth-chains), which
+`ClothChains` lists: eight skirt chains on the hips, five cloak chains on the
+upper chest, and a hood chain on the head. `ClothChainSolver` moves the chains of
+the kinds a garment activates, with a `ClothProfile` for its stiffness, damping,
+gravity, and margin, in `LateUpdate` after the Animator posed the body
+(`PresentationExecutionOrder.Cloth`). Each step puts the chain bones back to
+their rest rotations, lets every chain particle spring toward hanging from its
+animated parent with inertia and gravity, keeps the bone lengths, pushes the
+particles out of capsules around the hips, spine, neck, head, thighs, and shins,
+and turns the bones to point at them. The capsule radii are the middle distance
+of the body vertices that each bone moves most, measured once from the body's
+own mesh in the bind pose, so the cloth lies on every body type's shape. Within
+25 m of the camera the springs run, to 60 m the chains follow their targets
+without inertia, and beyond they rest; a root that jumps more than 2 m in one
+step, as in a teleport, starts its chain again. With no garment the solver does
+nothing. `ClothChainSolverTests` poses the body with its Animator step by step
+and checks that a robe stays outside the legs while jogging and swings with
+them, that the chains settle when the body stands, a teleport, the levels of
+detail, and the capsule radii.
+
 The controller's third state, `Death`, plays the handmade `Death` clip of the
 library. An Any State transition crossfades into it in 0.15 s while the bool `Dead` is
 true, from any state, and it holds its last frame, the body lying on its back.
