@@ -2766,23 +2766,29 @@ Resource_IronVein.blend changed after the 'model' approval.`, and
 
 ### Add A New Asset
 
-1. Create `art/<Category>/<Name>/` and save `<Name>.blend` in it. Put everything
-   that goes to Unity in a collection named `Export`, give the top-level objects
-   the names the game code expects, and face the front toward Blender's +Y.
-2. Give every Blender material a name that starts with `M_` and one Principled
-   BSDF with a flat Base Color, Metallic, and Roughness, or for a skinned asset
-   a Base Color from one packed Image Texture.
-3. Write `asset.json` with `schemaVersion`, `kind`, `target`, `rootObjects`, and
-   `triangleBudget`, and for a skinned asset `skeleton` and any `clips` of its own, as
-   described in [Asset Manifest](ART_PIPELINE.md#asset-manifest),
-   `"approvals": {}`, and `"export": null`.
-4. Render the review sheet, review, approve every stage, export, and verify as
-   above. Then run `MMORPG > Tools > Art Pipeline > Create Missing Materials` in
-   Unity. Expected result: the Console lists one URP Lit material per exported
-   material below `Assets/Art/Materials/<Category>`, with the `baseColor`,
-   `baseMap`, `metallic`, and `smoothness` that the export recorded under
-   `export.materials` in `asset.json`, and the model renders with them.
-5. In Unity, select the imported model in `Assets/Art/Models/<Category>`, choose
+1. Create the asset with the names of the top-level objects the game code
+   expects and its triangle budget:
+
+   ```powershell
+   .\tools\New-ArtAsset.ps1 -Kind static -Asset art/WorldActors/Resource_CopperVein -Roots Available, Depleted -TriangleBudget 1000
+   ```
+
+   Expected result: `Created art/WorldActors/Resource_CopperVein with asset.json
+   and Resource_CopperVein.blend.` and the next steps. `asset.json` names the
+   target `src/Client/Assets/Art/Models/WorldActors/Resource_CopperVein.fbx`, and
+   the file holds the `Export` collection with an empty root object per name at
+   the origin. An existing folder stops the command with `... exists already`.
+2. Open the file in Blender and model below the roots, with the front toward
+   Blender's +Y. Give every Blender material a name that starts with `M_` and
+   one Principled BSDF with a flat Base Color, Metallic, and Roughness.
+3. Render the review sheet, review, approve every stage, export, and verify as
+   above. When Unity gets focus, it imports the model and creates one URP Lit
+   material per exported material below `Assets/Art/Materials/<Category>`, with
+   the `baseColor`, `baseMap`, `metallic`, and `smoothness` that the export
+   recorded under `export.materials` in `asset.json`. Expected result: the
+   Console lists the created materials and the model renders with them. `MMORPG
+   > Tools > Art Pipeline > Create Missing Materials` does the same by hand.
+4. In Unity, select the imported model in `Assets/Art/Models/<Category>`, choose
    `Assets > Create > Prefab Variant`, move the variant to its prefab folder, and
    reference it from the presentation registry. To replace an existing
    placeholder prefab and keep its GUID and registry entry, save an instance of
@@ -2881,14 +2887,37 @@ by hand:
 The export also writes the textures below
 `src/Client/Assets/Art/Textures/Characters`, the face and eye variants that
 `variants` in `asset.json` names among them. When Unity gets focus it imports the
-models; if the export added a material, run `MMORPG > Tools > Art Pipeline >
-Create Missing Materials`. Expected result: the Console lists the created
-materials, or says every exported art material has a project material. If the
-export added or removed a variant, run `MMORPG > Tools > Art Pipeline > Update
-Appearance Catalogs`. Expected result: the Console lists each catalog with its
-slots, such as `Eye (Teal, Brown), Face (Stubble, Scarred)`. Commit the `.blend`
-files, `asset.json`, the FBX and texture files, the catalogs, and their `.meta`
-files together. An export of unchanged sources leaves every file as it is.
+models, creates any material the export added, and updates the appearance
+catalogs. Expected result: the Console lists created materials and each changed
+catalog with its slots, such as `Eye (Teal, Brown), Face (Stubble, Scarred)`, and
+nothing when nothing changed. Commit the `.blend` files, `asset.json`, the FBX and
+texture files, the catalogs, and their `.meta` files together. An export of
+unchanged sources leaves every file as it is.
+
+### Add A Face Or Eye Variant
+
+A face or an eye color is another image of a body's face or eye material; see
+[Appearance Layers](ART_PIPELINE.md#appearance-layers).
+
+1. Open the body, such as `art\Characters\Human_Male\Human_Male.blend`, in
+   Blender. In the Image Editor, duplicate the material's own image, such as
+   `T_Face_Male_Stubble`, name the copy `T_Face_Male_<Option>`, such as
+   `T_Face_Male_Bearded`, paint it in Texture Paint on the face with the copy
+   shown, then show the material's own image again, pack the copy into the file
+   (`Image > Pack`), and save.
+2. Add the image to the material's entry in `variants` in `asset.json`, such as
+   `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred",
+   "T_Face_Male_Bearded"] }`.
+3. Run `.\tools\Sync-HumanBase.ps1`. Expected result: every check passes, and
+   the faces sheet `artifacts\human-base\review\Human_Base_faces.png` shows the
+   new option next to the others.
+4. When the reviewer approves, approve the `model` and `rig` stages of the body,
+   export it with the animation library, and verify, as in
+   [Edit The Human Base Characters](#edit-the-human-base-characters), step 4.
+   Expected result: the export writes `T_Face_Male_Bearded.png` below
+   `src/Client/Assets/Art/Textures/Characters`, and when Unity gets focus the
+   Console lists the catalog with `Face (Stubble, Scarred, Bearded)`. In the game,
+   F2 offers the new face under `Your face`.
 
 ### Make A Clip
 
@@ -2912,11 +2941,11 @@ clip of the human bodies: `Idle`, `Walk`, `Jog`, and `Death`.
    `-Generate Walk` (or `Idle`, `Jog`). Expected result: `Added Walk to
    Human_Actions and its asset.json; ...` when the library lacks it, or `Walk:
    the library has the clip already` when it has it, which leaves the clip as it
-   is. A new library starts from an
-   `asset.json` with `kind` `animations`, `target`, `rootObjects` (the armature
-   name, such as `["Humanoid"]`), `skeleton`, `rig`, `previews`, `clips`,
-   `"approvals": {}`, and `"export": null`, and the first sync creates its
-   `.blend` file.
+   is. A new library starts with
+   `.\tools\New-ArtAsset.ps1 -Kind animations -Asset art/Animations/<Name>`,
+   keyed on `art/Characters/Human_Male` and shown on
+   `art/Characters/Human_Female` unless `-Rig` and `-Previews` say otherwise; it
+   takes `-Generate` too. A library cannot be approved before it has a clip.
 2. Open the library in Blender:
 
    ```powershell
@@ -2966,9 +2995,18 @@ changes the library, and it needs a new review and approval first.
 [Paint Layers](ART_PIPELINE.md#paint-layers) describes paint over the skin of the
 bodies. `art/Paint/LeatherJerkin` is the paint of the leather jerkin.
 
-1. A new paint layer starts from an `asset.json` with `kind` `paint`, `part`
-   (`Body`), `bodies` (the body it is painted on first), `layer`,
-   `"approvals": {}`, and `"export": null`. Build or update its file:
+1. Create a new paint layer with the order it is drawn in, from 0 to 1000, the
+   lowest first, such as 10 for a shirt and 30 for a jerkin over it:
+
+   ```powershell
+   .\tools\New-ArtAsset.ps1 -Kind paint -Asset art/Paint/ChainShirt -Layer 25
+   ```
+
+   Expected result: `Synced ChainShirt: ...` and `Created art/Paint/ChainShirt
+   with asset.json and ChainShirt.blend.` It paints `M_Body` of
+   `art/Characters/Human_Male` and moves the paint to `art/Characters/Human_Female`
+   unless `-Part` and `-Bodies` say otherwise. An existing paint layer is built
+   or updated with:
 
    ```powershell
    .\tools\Sync-PaintAsset.ps1 -Asset art/Paint/LeatherJerkin
@@ -2995,10 +3033,10 @@ bodies. `art/Paint/LeatherJerkin` is the paint of the leather jerkin.
    the front and the back, `Approved the 'paint' stage of LeatherJerkin (paint).`,
    `Exported LeatherJerkin to src/Client/Assets/Art/Textures/Paint
    (T_Paint_LeatherJerkin_Male, T_Paint_LeatherJerkin_Female).`, and `Verified
-   5 art asset(s).` In Unity, run `MMORPG > Tools > Art Pipeline > Update
-   Appearance Catalogs`. Expected result: the Console lists `Paint
-   LeatherJerkin` in both catalogs. Commit the `.blend` file, `asset.json`, the
-   PNG files, the catalogs, and their `.meta` files together.
+   5 art asset(s).` When Unity gets focus, it updates the appearance catalogs.
+   Expected result: the Console lists `Paint LeatherJerkin` in both catalogs when
+   the paint layer is new. Commit the `.blend` file, `asset.json`, the PNG files,
+   the catalogs, and their `.meta` files together.
 
 ### Manual Test Of The Human Base Characters
 

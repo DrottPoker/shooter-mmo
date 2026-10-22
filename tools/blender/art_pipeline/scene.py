@@ -63,3 +63,21 @@ def relative_image_paths() -> None:
     for image in bpy.data.images:
         if image.packed_file is not None and image.filepath_raw and not image.filepath_raw.startswith("//"):
             image.filepath_raw = f"//{image.name}.png"
+
+
+def new_static_file(path: str, roots: list[str]) -> None:
+    """Writes the first file of a static asset: an empty scene in meters with the Export collection
+    and one empty root object per name at the origin, for the model's parts to go under."""
+    if not roots or any(not name.replace("_", "").isalnum() or not name[0].isalpha() for name in roots):
+        raise ArtPipelineError(f"The root objects {roots} must be names of letters, digits, and underscores.")
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scene = bpy.context.scene
+    scene.unit_settings.system = "METRIC"
+    scene.unit_settings.scale_length = 1.0
+    export = bpy.data.collections.new(EXPORT_COLLECTION)
+    scene.collection.children.link(export)
+    for name in roots:
+        root = bpy.data.objects.new(name, None)
+        root.empty_display_type = "PLAIN_AXES"
+        export.objects.link(root)
+    bpy.ops.wm.save_as_mainfile(filepath=path, compress=True, relative_remap=False)
