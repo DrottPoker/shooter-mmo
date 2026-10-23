@@ -70,6 +70,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: ad1d81bb85620b54cbff743b760a7404, type: 3}
       insertIndex: -1
       addedObject: {fileID: 6162777922117315621}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: ad1d81bb85620b54cbff743b760a7404, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3638059495511072494}
   m_SourcePrefab: {fileID: 100100000, guid: ad1d81bb85620b54cbff743b760a7404, type: 3}
 --- !u!1 &1726161477007348377 stripped
 GameObject:
@@ -104,3 +107,15 @@ MonoBehaviour:
   - {fileID: 2100000, guid: 684061e19042ab2478c742aeb3099b22, type: 2}
   - {fileID: 2100000, guid: bc8c0d7966ea127409c7b30e9d77f0f1, type: 2}
   catalog: {fileID: 11400000, guid: 8c84088feaea20e46b6cfccb98677847, type: 2}
+--- !u!114 &3638059495511072494
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1726161477007348377}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f3be855547f7cbc499b3ba2efc31db3e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Mmorpg.Client.Gameplay::Mmorpg.Client.Gameplay.ClothChainSolver

@@ -81,8 +81,9 @@ operations, and future design do not drift into duplicate descriptions.
   truth for how clothes, armor, hair, and carried equipment look on the bodies:
   garments as meshes with cover masks, fitting every body type and future races,
   cloth chains, the garment art kind, and how Unity puts a character together.
-  It is accepted; the cloth chains, the garment kind, and characters wearing
-  garments are implemented.
+  It is accepted; delivery steps 1 to 4, the cloth chains, the garment kind,
+  characters wearing garments with the garment shader, and the Wardrobe preview,
+  are implemented.
 - [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) is the
   product and domain source of truth for items, equipment, slot inventory, Bags,
   the Secure Container, carry weight, death loot, corpses, insurance, and

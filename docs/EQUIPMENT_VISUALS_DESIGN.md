@@ -3,11 +3,12 @@
 Last updated: 2026-10-23
 
 Status: accepted by Victor on 2026-10-22, with the support of future races added.
-It is implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 3,
-this document, the cloth chains with their solver, and the garment kind with its
-fitting, weights, bands, masks, review, export, and Unity import, are done, with
-the leather jerkin as the first garment. Of step 4, putting a character together
-with its garments and trying them on in F2 is done.
+It is implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 4
+are done: this document; the cloth chains with their solver; the garment kind
+with its fitting, weights, bands, masks, review, export, and Unity import, with the
+leather jerkin as the first garment; and putting a character together with its
+garments, with the garment shader, the Wardrobe preview, and trying garments on in
+F2.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -160,8 +161,12 @@ as a veil, needs dithered transparency and comes when a garment needs it.
 
 A garment may carry a dye mask, an image whose red, green, and blue channels mark
 up to three regions that a dye color tints, such as cloth, trim, and leather. The
-undyed garment shows its painted colors. Which colors an item has, per definition
-or per item, is decided with the items in delivery step 6.
+garment shader `Mmorpg/Garment` multiplies the painted color by the dye color as
+far as the region's channel reaches, so a dyeable region is painted in a light,
+neutral color with its folds and wear, and the dye gives it its hue. The undyed
+garment, with white dyes or no mask, shows its painted colors. Which colors an
+item has, per definition or per item, is decided with the items in delivery step
+6; the dye mask comes with the first garment that has one.
 
 ## Fitting Every Body Type
 
@@ -407,8 +412,7 @@ quarter of the triangles come with the first crowd measurement that needs them.
    leather jerkin is its first garment, still the shell of its paint layer.
 4. Putting a character together in Unity: masks, garment layers, pull-in, the
    garment shader with clipping and dyes, the Wardrobe preview, and trying
-   garments on in F2. Putting the character together and trying garments on are
-   done; the garment shader and the Wardrobe preview come next.
+   garments on in F2. Done.
 5. The proof set, each approved by Victor: the leather jerkin as a garment with
    its collar, trousers, boots, a garment that shows skin (a crop top or a net
    shirt) over a tattoo paint layer, a robe with a hood, a cloak, and one hair
