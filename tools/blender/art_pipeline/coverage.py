@@ -66,6 +66,8 @@ PULL_IN_MAX = 0.003
 PULL_IN_CLEARANCE = 0.003
 # Visible skin may come this far through the garment over it in motion, in meters.
 CLIP_TOLERANCE = 0.001
+# The name of the rest pose in the motion and pair reports.
+REST = "the rest pose"
 DATA_SCHEMA = 2
 
 
@@ -223,6 +225,20 @@ def _opaque_hit(cloth: _Cloth, origin: Vector, direction: Vector, distance: floa
             return travelled + hit, normal
         travelled += hit + RAY_OFFSET
         start = location + direction * RAY_OFFSET
+    return None
+
+
+def _rest_cover(cloth: _Cloth, point: Vector, direction: Vector, reach: float, depth: float) -> tuple[Vector, float] | None:
+    """Where the garment covers a point at rest, and how deep the point already lies through it: going
+    out along the point's normal, the first place a ray meets the garment's inner side where it is
+    opaque, or, for a point that lies outside the garment, the place on its outer side inward of it
+    within depth."""
+    hit = _opaque_hit(cloth, point, direction, reach)
+    if hit is not None and hit[1].dot(direction) > 0.0:
+        return point + direction * hit[0], 0.0
+    hit = _opaque_hit(cloth, point, -direction, depth)
+    if hit is not None and hit[1].dot(direction) > 0.0:
+        return point - direction * hit[0], hit[0]
     return None
 
 
@@ -469,8 +485,9 @@ def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action]):
 
 
 def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action]) -> Motion:
-    """Finds the visible skin that comes through the garment over it in the test poses and the
-    clips and marks its faces. Such skin lies at an opening that shows it, so it is not hidden."""
+    """Finds the visible skin that comes through the garment over it at rest, in the test poses, and
+    in the clips and marks its faces. Such skin lies at an opening that shows it, so it is not
+    hidden."""
     label = coverage.label
     arm = bpy.data.objects[label]
     body = bodies.source_body(label)
@@ -484,26 +501,28 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     pulled = rest.reshape(-1, 3).copy()
     pulled[coverage.pull_vertices] -= normals[coverage.pull_vertices] * coverage.pull_distances[:, None]
     # The visible skin the garment is over at rest: going out from it, a ray meets the garment's
-    # inner side where it is opaque. That point of the garment is the skin's cover.
+    # inner side where it is opaque, or the skin already lies outside it. That point of the garment
+    # is the skin's cover.
     cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
     shell = garment.Surface(garment.cage_object(label), []).tree
-    vertices, corners, weights = [], [], []
+    vertices, corners, weights, deepest = [], [], [], []
     for vertex in coverage.visible_vertices(body):
         direction = Vector(normals[vertex]).normalized()
         reach = _cage_gap(shell, Vector(pulled[vertex]), direction) + REACH[coverage.band]
-        hit = _opaque_hit(cloth, Vector(pulled[vertex]), direction, reach)
-        if hit is not None and hit[1].dot(direction) > 0.0:
-            location = Vector(pulled[vertex]) + direction * hit[0]
+        cover = _rest_cover(cloth, Vector(pulled[vertex]), direction, reach, REACH[coverage.band])
+        if cover is not None:
+            location, depth = cover
             triangle = cloth.triangles[cloth.tree.find_nearest(location)[2]][1]
             vertices.append(int(vertex))
             corners.append(triangle)
             weights.append(poly_3d_calc([Vector(cloth.co[c]) for c in triangle], location))
+            deepest.append(depth)
     vertices = np.array(vertices, np.int64)
     corners = np.array(corners, np.int64).reshape(-1, 3)
     weights = np.array(weights).reshape(-1, 3)
-    deepest = np.zeros(len(vertices))
-    where = [""] * len(vertices)
-    checked = 0
+    deepest = np.array(deepest)
+    where = [REST if depth > 0.0 else "" for depth in deepest]
+    checked = 1
     had_animation = arm.animation_data is not None
     previous = arm.animation_data.action if had_animation else None
     body.data.vertices.foreach_set("co", pulled.reshape(-1))
@@ -555,9 +574,10 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
 
 def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_underlay: np.ndarray,
                actions: list[bpy.types.Action]) -> Motion:
-    """Finds the vertices of an inner garment, worn under this one, that come through this one in
-    the test poses and the clips: of the inner garment's faces that stay drawn, those whose body face
-    this one leaves visible, every vertex that this one is over at rest."""
+    """Finds the vertices of an inner garment, worn under this one, that come through this one at
+    rest, in the test poses, and in the clips: of the inner garment's faces that stay drawn, those
+    whose body face this one leaves visible, every vertex that this one is over at rest, or that
+    already lies outside it."""
     label = coverage.label
     arm = bpy.data.objects[label]
     version = bpy.data.objects[garment.version_name(name, label)]
@@ -568,23 +588,24 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
     normals = normals.reshape(-1, 3) @ np.array(inner.matrix_world.to_3x3()).T
     cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
     shell = garment.Surface(garment.cage_object(label), []).tree
-    vertices, corners, weights = [], [], []
+    vertices, corners, weights, deepest = [], [], [], []
     for vertex in sorted({v for p in drawn for v in p.vertices}):
         direction = Vector(normals[vertex]).normalized()
         reach = _cage_gap(shell, Vector(rest[vertex]), direction) + REACH[coverage.band]
-        hit = _opaque_hit(cloth, Vector(rest[vertex]), direction, reach)
-        if hit is not None and hit[1].dot(direction) > 0.0:
-            location = Vector(rest[vertex]) + direction * hit[0]
+        cover = _rest_cover(cloth, Vector(rest[vertex]), direction, reach, REACH[coverage.band])
+        if cover is not None:
+            location, depth = cover
             triangle = cloth.triangles[cloth.tree.find_nearest(location)[2]][1]
             vertices.append(int(vertex))
             corners.append(triangle)
             weights.append(poly_3d_calc([Vector(cloth.co[c]) for c in triangle], location))
+            deepest.append(depth)
     vertices = np.array(vertices, np.int64)
     corners = np.array(corners, np.int64).reshape(-1, 3)
     weights = np.array(weights).reshape(-1, 3)
-    deepest = np.zeros(len(vertices))
-    where = [""] * len(vertices)
-    checked = 0
+    deepest = np.array(deepest)
+    where = [REST if depth > 0.0 else "" for depth in deepest]
+    checked = 1
     had_animation = arm.animation_data is not None
     previous = arm.animation_data.action if had_animation else None
     try:

@@ -751,9 +751,9 @@ the pair check: every exported template of another visual slot and a lower
 layer of the cage, such as the trousers under a shirt, is put on the bodies from
 its own file, and of its faces that stay drawn, those whose body face this
 template leaves visible at its openings, every vertex that this template is over
-at rest is followed through the test poses and the clips. The report names how
-many come out through this template and the deepest place, as the motion check
-does. A body wears one garment per visual slot, so templates of the same slot,
+at rest, or that already lies outside it, is followed through the rest pose, the
+test poses, and the clips. The report names how many come out through this
+template and the deepest place, as the motion check does. A body wears one garment per visual slot, so templates of the same slot,
 such as a shirt and a jerkin, are not checked against each other.
 A template is approved and exported only on an approved cage whose bodies still
 have the exports the cage was approved on, so it is never fitted to an obsolete
@@ -784,8 +784,10 @@ vertices of the body's editable mesh:
   smallest distance, and at least 3 mm, moves inward by the difference, at most
   3 mm.
 - **Motion**: every visible vertex that the garment is over at rest keeps the
-  point of the garment over it. The body, with the pull-in applied, takes every
-  test pose and every frame of every clip of the skeleton's animation libraries.
+  point of the garment over it, and so does one that already lies outside the
+  garment at rest, with the point of the garment just inward of it. The body,
+  with the pull-in applied, is measured at rest and takes every test pose and
+  every frame of every clip of the skeleton's animation libraries.
   A vertex comes through the garment when it lies more than 1 mm outside the
   cloth at its point with the cloth between it and the inside; skin that passes
   a hem's edge has no cloth there and does not come through. Skinning blends the

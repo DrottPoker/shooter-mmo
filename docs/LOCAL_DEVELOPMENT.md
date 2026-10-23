@@ -3133,6 +3133,9 @@ so a shirt and a jerkin replace each other.
    review sheet and the review file, how much skin comes through it in motion,
    what it covers on each body, such as `Tunic_Male: covers <n> of 4358 body
    faces, leaves <m> at its edges visible, and pulls in <k> visible vertices`,
+   the pair check over every exported template of another slot and a lower
+   layer, such as `Trousers under Tunic_Male: none of the <n> vertices of it that
+   stay drawn under Tunic_Male comes through it in 239 poses and clip frames`,
    and `Tunic meets every rule. Review it, ...`. A second run prints `Tunic is
    up to date: ...` and leaves the file as it is. A broken rule stops it with the
    list of rules, such as a version that leaves its band, with the body parts
@@ -3315,13 +3318,13 @@ controller, and prefabs are committed.
     Expected result: `Shirt_Male: 1536 triangles, 0.0 to 6.9 mm from the cage,
     median 2.0 mm`, the same for the female, `Shirt is up to date: ...`,
     `Shirt_Male: none of the 163 visible vertices under it comes through it in
-    238 poses and clip frames`, `Shirt_Male: covers 418 of 4358 body faces,
+    239 poses and clip frames`, `Shirt_Male: covers 418 of 4358 body faces,
     leaves 114 at its edges visible, and pulls in 31 visible vertices by at most
-    2.5 mm`, for the female 29 vertices by at most 9.5 mm at the hips in `Death`,
-    `Trousers under Shirt_Male: none of the 34 vertices of it that stay drawn
-    under Shirt_Male comes through it in 238 poses and clip frames`, the same for
-    the female, and `Shirt meets every rule, and both stages are approved for
-    this file.` Open `artifacts\art-previews\Shirt.png`. Expected result: the
+    2.5 mm`, for the female 31 vertices by at most 9.5 mm at the hips in `Death`,
+    `Trousers under Shirt_Male: of the 36 vertices of it that stay drawn under
+    Shirt_Male, 2 come through it in 239 poses and clip frames, by at most 1.2 mm
+    (Torso in Death frame 14)`, for the female none, and `Shirt meets every
+    rule, and both stages are approved for this file.` Open `artifacts\art-previews\Shirt.png`. Expected result: the
     shirt with a grid in its UVs on both bodies from four sides, close to the
     body and following its figure, ending at the base of the neck, with short
     sleeves over half the upper arm and the hem over the hips, the test poses,

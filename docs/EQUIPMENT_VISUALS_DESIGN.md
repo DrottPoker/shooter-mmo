@@ -228,7 +228,8 @@ tests every template over every exported template of another visual slot and a
 lower layer of its cage, such as a shirt over the trousers, at rest, in the test
 poses, and in the clips: of the inner garment's faces that stay drawn, those
 whose body face the outer one leaves visible at its openings, no vertex that the
-outer one is over at rest may come out through it. It reports like the motion
+outer one is over at rest may come out through it, and none may already lie
+outside it at rest. It reports like the motion
 check, and the outer template's export records the inner templates' exports it
 was checked over. Templates of the same slot are never worn together, so they are
 not checked against each other.
