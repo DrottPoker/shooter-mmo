@@ -764,12 +764,18 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtGarmentTextureFolder
         $records = @($Json.export.models | Where-Object { $null -ne $_ })
         $cageSourceSha256 = [string]$Json.export.cageSourceSha256
-        $modelsMatch = $records.Count -eq $models.Count
-        for ($i = 0; $modelsMatch -and $i -lt $models.Count; $i++) {
-            $modelsMatch = [string]$records[$i].body -ceq $models[$i].Body -and [string]$records[$i].target -ceq $models[$i].Target -and
-                [string]$records[$i].sha256 -cmatch $script:ArtShaPattern -and [string]$records[$i].data -ceq $models[$i].Data -and
-                [string]$records[$i].dataSha256 -cmatch $script:ArtShaPattern -and
-                [string]$records[$i].bodySourceSha256 -cmatch $script:ArtShaPattern
+        # The export may name other bodies than the cage has now, after a body joined or left the
+        # cage: it is then stale, which Verify-ArtAssets.ps1 reports, and a new export replaces it.
+        $modelsMatch = $records.Count -gt 0 -and
+            @($records | ForEach-Object { [string]$_.body } | Sort-Object -Unique).Count -eq $records.Count
+        foreach ($record in $records) {
+            $label = [string]$record.body
+            $modelsMatch = $modelsMatch -and $label -cmatch $script:ArtNamePattern -and
+                [string]$record.target -ceq (Get-ArtGarmentModelTarget $name $label) -and
+                [string]$record.sha256 -cmatch $script:ArtShaPattern -and
+                [string]$record.data -ceq (Get-ArtGarmentDataTarget $name $label) -and
+                [string]$record.dataSha256 -cmatch $script:ArtShaPattern -and
+                [string]$record.bodySourceSha256 -cmatch $script:ArtShaPattern
         }
 
         $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
@@ -783,7 +789,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
             $problems.Add("export needs a sourceSha256 and the cageSourceSha256 of the approved cage file it was fitted to")
         }
         elseif (-not $modelsMatch) {
-            $problems.Add("export.models must list the model of every body in order with its body, the bodySourceSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
+            $problems.Add("export.models must list the model of each body once with its body, the bodySourceSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
         }
         elseif (-not $clipSourcesMatch) {
             $problems.Add("export.clipSources must list every animation library the garment was checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export")
@@ -1181,15 +1187,21 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
     if ($null -ne $Json.export) {
         $materials = ConvertTo-ArtMaterialRecords $Json.export.materials
         $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtGarmentTextureFolder
+        # The masks may name other bodies than the template has now, after a body joined or left its
+        # cage: they are then stale, which Verify-ArtAssets.ps1 reports, and a new export replaces them.
         $maskRecords = @($Json.export.masks | Where-Object { $null -ne $_ })
-        $masksMatch = $maskRecords.Count -eq 0 -or $maskRecords.Count -eq $masks.Count
-        for ($i = 0; $masksMatch -and $i -lt $maskRecords.Count; $i++) {
-            $masksMatch = [string]$maskRecords[$i].body -ceq $masks[$i].Body -and [string]$maskRecords[$i].data -ceq $masks[$i].Data -and
-                [string]$maskRecords[$i].dataSha256 -cmatch $script:ArtShaPattern
+        $masksMatch = @($maskRecords | ForEach-Object { [string]$_.body } | Sort-Object -Unique).Count -eq $maskRecords.Count
+        foreach ($record in $maskRecords) {
+            $label = [string]$record.body
+            $masksMatch = $masksMatch -and $label -cmatch $script:ArtNamePattern -and
+                [string]$record.data -ceq (Get-ArtGarmentDataTarget $name $label) -and
+                [string]$record.dataSha256 -cmatch $script:ArtShaPattern
         }
 
+        # Masks are checked in the clips of every animation library of the skeleton, which may have
+        # none; an opaque texture has neither masks nor clip sources.
         $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
-        $clipSourcesMatch = ($clipSources.Count -gt 0) -eq ($maskRecords.Count -gt 0) -and
+        $clipSourcesMatch = ($maskRecords.Count -gt 0 -or $clipSources.Count -eq 0) -and
             @($clipSources | Where-Object {
                     [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
                     [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
@@ -1198,7 +1210,7 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
             $problems.Add("export needs a sourceSha256 and the garmentSourceSha256 of its template's export")
         }
         elseif (-not $masksMatch) {
-            $problems.Add("export.masks must be empty for an opaque texture, or list the masks of every body of its template in order with its body and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
+            $problems.Add("export.masks must be empty for an opaque texture, or list the masks of each body once with its body and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
         }
         elseif (-not $clipSourcesMatch) {
             $problems.Add("export.clipSources must list, for a texture with masks, every animation library its masks were checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export, and be empty without masks")

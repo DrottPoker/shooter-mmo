@@ -188,15 +188,19 @@ namespace Mmorpg.Client.Editor
         // exported template that fits the body, named after the texture, with the texture's
         // material and the template's version for the body: its model, and its data with the
         // underlay of every triangle of the model. A texture with transparent parts brings its own
-        // data for the body, since its holes change what the body shows.
+        // data for the body, since its holes change what the body shows. A template or a texture
+        // whose export has no version for the body, such as one not exported again since the body
+        // joined its cage, is left out for that body.
         public static BodyAppearanceCatalog.Garment[] GarmentsFor(ArtAssetManifest body)
         {
             var label = body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
             var templates = ArtAssetManifests.Garments()
-                .Where(garment => ArtAssetManifests.BodiesOf(garment).Contains(body.AssetPath))
+                .Where(garment => ArtAssetManifests.BodiesOf(garment).Contains(body.AssetPath)
+                    && garment.export.models.Any(model => model.body == label))
                 .ToDictionary(garment => garment.AssetPath, StringComparer.Ordinal);
             return ArtAssetManifests.Textures()
-                .Where(texture => templates.ContainsKey(texture.garment))
+                .Where(texture => templates.ContainsKey(texture.garment)
+                    && (texture.export.masks.Length == 0 || texture.export.masks.Any(mask => mask.body == label)))
                 .Select(texture => (texture, garment: templates[texture.garment]))
                 .OrderBy(pair => pair.garment.layer)
                 .ThenBy(pair => pair.texture.Name, StringComparer.Ordinal)

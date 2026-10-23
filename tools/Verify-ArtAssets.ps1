@@ -22,8 +22,12 @@ foreach ($directory in $directories) {
 
     $where = $manifest.RelativeDirectory
     # A paint layer exports images only, so it has no model target, a garment a model and its data
-    # per body, and a texture with transparent parts its masks per body of its template.
-    $modelTargets = @(if ($manifest.Kind -eq "garment") { @($manifest.Models | ForEach-Object { $_.Target; $_.Data }) }
+    # per body, also of a body that left its cage until it is exported again, and a texture with
+    # transparent parts its masks per body of its template.
+    $modelTargets = @(if ($manifest.Kind -eq "garment") {
+            @(@($manifest.Models | ForEach-Object { $_.Target; $_.Data }) +
+                @($manifest.Export.models | Where-Object { $null -ne $_ } | ForEach-Object { $_.target; $_.data }) | Sort-Object -Unique)
+        }
         elseif ($manifest.Kind -eq "texture") {
             if ($null -ne $manifest.Export) { @($manifest.Export.masks | Where-Object { $null -ne $_ } | ForEach-Object { $_.data }) }
             else { @($manifest.Masks | ForEach-Object { $_.Data }) }
@@ -108,6 +112,13 @@ foreach ($directory in $directories) {
             $problems.Add("${where}: was exported against another export of its template $($manifest.Garment.RelativeDirectory); run tools/Sync-TextureAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1.")
         }
 
+        # A texture with masks has them for exactly the bodies of its template.
+        $masked = @($manifest.Export.masks | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_.body } | Sort-Object)
+        $roots = @($manifest.Masks | ForEach-Object { $_.Body } | Sort-Object)
+        if ($masked.Count -gt 0 -and ($masked -join ",") -cne ($roots -join ",")) {
+            $problems.Add("${where}: has masks for other bodies ($($masked -join ', ')) than its template has ($($roots -join ', ')); run tools/Sync-TextureAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
+        }
+
         foreach ($mask in @($manifest.Export.masks | Where-Object { $null -ne $_ })) {
             $maskPath = Join-Path $script:ArtRepositoryRoot $mask.data
             if (-not (Test-Path -LiteralPath $maskPath -PathType Leaf)) {
@@ -137,6 +148,13 @@ foreach ($directory in $directories) {
             $problems.Add("${where}: was fitted to another file of its cage $($manifest.Cage.RelativeDirectory); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
         }
 
+        # The template was exported for exactly the bodies of its cage.
+        $exported = @($manifest.Export.models | ForEach-Object { [string]$_.body } | Sort-Object)
+        $current = @($manifest.Models | ForEach-Object { $_.Body } | Sort-Object)
+        if (($exported -join ",") -cne ($current -join ",")) {
+            $problems.Add("${where}: was exported for other bodies ($($exported -join ', ')) than its cage has ($($current -join ', ')); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
+        }
+
         foreach ($model in @($manifest.Export.models)) {
             foreach ($file in @(@($model.target, $model.sha256), @($model.data, $model.dataSha256))) {
                 $filePath = Join-Path $script:ArtRepositoryRoot $file[0]
@@ -148,8 +166,13 @@ foreach ($directory in $directories) {
                 }
             }
 
-            # The garment was fitted and checked against the export of its body.
+            # The garment was fitted and checked against the export of its body; a body that left
+            # the cage is reported above.
             $body = @($manifest.Models | Where-Object { $_.Body -ceq $model.body }) | Select-Object -First 1
+            if ($null -eq $body) {
+                continue
+            }
+
             $bodyExport = $null
             try {
                 $bodyExport = (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $body.BodyAsset)).Export
