@@ -87,18 +87,31 @@ function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
     }
 }
 
+function Get-ArtClipSourceProblem($Manifest) {
+    # Returns $null when every animation library of the skeleton is exported from its current file,
+    # otherwise the reason it is not. Blender reads the libraries' current files for the motion
+    # check, so each must be the file of its export.
+    foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) {
+        if ($null -eq $library.Export) {
+            return "the animation library $($library.Asset) is not exported"
+        }
+
+        if ((Get-ArtFileSha256 $library.SourcePath) -ne [string]$library.Export.sourceSha256) {
+            return "the animation library $($library.Asset) has changed since its export; review, approve, and export it first"
+        }
+    }
+
+    return $null
+}
+
 function Get-ArtClipSourceRecords($Manifest) {
-    # The exports of the animation libraries whose clips a garment or a texture's masks are checked
-    # in. Blender reads the libraries' current files, so each must be the file of its export.
+    # The exports of the animation libraries whose clips a garment or a texture's masks are checked in.
+    $problem = Get-ArtClipSourceProblem $Manifest
+    if ($null -ne $problem) {
+        throw "$($Manifest.Name) cannot be exported while $problem."
+    }
+
     return @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
-            if ($null -eq $_.Export) {
-                throw "$($Manifest.Name) cannot be exported before the animation library $($_.Asset) is exported."
-            }
-
-            if ((Get-ArtFileSha256 $_.SourcePath) -ne [string]$_.Export.sourceSha256) {
-                throw "$($Manifest.Name) cannot be exported while the animation library $($_.Asset) has changed since its export; review, approve, and export it first."
-            }
-
             [ordered]@{ library = $_.Asset; sourceSha256 = [string]$_.Export.sourceSha256 }
         })
 }
@@ -136,12 +149,17 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
         throw "$($Manifest.Name) cannot be exported: $reviewProblem."
     }
 
-    $clipSources = Get-ArtClipSourceRecords $Manifest
+    # Only the masks of a texture with transparent parts are checked in the clips, so a library that
+    # is not exported from its current file stops only such a texture, in Blender, before anything
+    # is written; whether the texture has them shows only there.
+    $clipProblem = Get-ArtClipSourceProblem $Manifest
+    $clipSources = if ($null -eq $clipProblem) { Get-ArtClipSourceRecords $Manifest } else { @() }
+    $opaqueOnly = if ($null -ne $clipProblem) { @("--opaque-only", $clipProblem) } else { @() }
     $folder = $script:ArtGarmentTextureFolder
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest "texture") + @(
             "--textures", (Join-Path $script:ArtRepositoryRoot $folder),
-            "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder)))
+            "--target", (Join-Path $script:ArtRepositoryRoot $script:ArtGarmentModelFolder)) + $opaqueOnly)
     $reported = @($results | Where-Object { $_ -like "ART_TEXTURE_MASK *" } |
             ForEach-Object { $_.Substring("ART_TEXTURE_MASK ".Length) | ConvertFrom-Json })
     $masks = @(if ($reported.Count -gt 0) {

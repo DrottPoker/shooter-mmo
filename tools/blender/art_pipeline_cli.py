@@ -58,6 +58,8 @@ def _parser() -> argparse.ArgumentParser:
         if name == "export":
             command.add_argument("--target", help="Absolute FBX path; a paint layer has none.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
+            command.add_argument("--opaque-only", help="Why a garment texture may be exported only when it has no "
+                                                       "transparent parts, whose masks would be checked in clips.")
     command = commands.add_parser("preview")
     command.add_argument("--output", required=True, help="PNG file to write.")
     command.add_argument("--cell-size", type=int, default=420)
@@ -159,6 +161,8 @@ def _texture(args) -> int:
     if errors:
         return 1
     holes = texture.has_holes(bpy.data.images[texture.image_name(args.texture)])
+    if holes and getattr(args, "opaque_only", None):
+        raise ArtPipelineError(f"{args.texture} has transparent parts, so its masks are checked in the clips: {args.opaque_only}.")
     exported = None
     if args.command == "export":
         exported = texture.export(args.texture, args.textures)
