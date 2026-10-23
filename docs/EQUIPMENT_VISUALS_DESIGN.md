@@ -116,17 +116,27 @@ can refer to. For every body type a garment fits, the pipeline computes:
   garment. A ray that leaves through a hole, a crop top's open belly, or a
   transparent part of a lace texture leaves the face visible, with its skin and
   everything painted on it.
-- **In motion**, the mask also hides the visible skin under the garment that
-  comes out of it in the test poses and the clips. Skinning blends the bones of
-  a fold, such as an armpit, so the gap between skin and cloth closes there in
-  motion whatever the weights, and the skin there would show through. The hidden
-  faces lie under the garment; a look into an opening sees the garment's inside.
+- **The skin at the garment's edges is never hidden.** A look into a sleeve, under
+  a hem, or into a laced neckline sees farther than the cone of rays, and a
+  hidden face there shows as a hole in the body. A face within the band's edge
+  reach of an open edge of the garment, a border of its mesh or a line where its
+  texture is cut, stays visible: 20 mm for `tight`, 40 mm for `mid`, 80 mm for
+  `outer`, and 120 mm for `loose`, about four times the band's gap between skin
+  and cloth.
 - **The underlay**: for every face of the garment, the index of the body face
   under it, the closest body face along the garment's inward normal.
 - **The pull-in**: for every body vertex that stays visible but lies closer to
   the garment than its band allows, such as the skin right at a tight collar or a
   sleeve hem, how far to move it inward, at most 3 mm, so it cannot poke through
-  the hem in motion.
+  the hem.
+- **In motion**, visible skin under the garment can come through it in the test
+  poses and the clips. Skinning blends the bones of a fold, such as an armpit, so
+  the gap between skin and cloth closes there in motion whatever the weights.
+  Such skin lies at an opening that shows it, and hiding it would leave a hole
+  there in every pose, so the pipeline reports it instead, and the garment's
+  shape or weights fix it. A fold also turns the skin along the cloth, so moving
+  it inward along its normal does not keep it under. Skin that only passes a
+  hem's edge, with no cloth over it, does not come through.
 
 A mask is 545 bytes for the human bodies (4,358 faces). When Unity puts a
 character together, it removes every body face that a worn garment covers, moves
@@ -365,22 +375,25 @@ The sync stops on a broken rule and reports the rest:
 - Every vertex and every face centre lies within its band on every body type, so
   a flat face over a round shoulder cannot dip under the skin.
 - In the rig review's test poses and at every frame of `Idle`, `Walk`, `Jog`,
-  and `Death`, no visible body vertex comes out of the garment where it is under
-  it: such a vertex has its faces hidden for motion, and the report names how
-  many and the deepest place. No garment of a lower layer reaches through a
-  higher one; this is checked when a character wears garments together, in
-  step 4.
+  and `Death`, no visible body vertex under the garment comes through the cloth.
+  The report names how many do and the deepest place, and the review sheet
+  shows their faces red, for the reviewer to weigh and the garment's shape or
+  weights to fix. No garment of a lower layer reaches through a higher one; this
+  is checked when a character wears garments together, in step 4.
 - The faces that only the cone of rays leaves visible are the garment's
-  openings, and the review sheet shows the mask, so a mask that is too small
-  shows there; a check that the faces under opaque cloth are covered would only
-  repeat the rays.
+  openings, and the review sheet shows the mask with the skin kept visible at
+  the garment's edges, so a mask that is too small or too large shows there; a
+  check that the faces under opaque cloth are covered would only repeat the
+  rays.
 - Only a garment whose texture has an alpha channel is clipped.
 
 ### Review
 
 The review sheet shows the garment on every body type from four sides, the
-garment in the test poses, and the body without it, the faces covered at rest
-orange, those hidden for motion red, and the pulled-in vertices blue. Cloth motion is reviewed in the Wardrobe preview, a
+garment in the test poses, and the body without it, the covered faces orange,
+the skin kept visible at the garment's edges yellow, the pulled-in vertices
+blue, and skin that comes through the garment in motion red.
+Cloth motion is reviewed in the Wardrobe preview, a
 Unity Editor window that dresses a body in chosen garments, plays a clip on a
 moving ground, and runs the cloth solver.
 

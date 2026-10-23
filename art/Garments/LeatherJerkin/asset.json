@@ -29,7 +29,7 @@
                 "target": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.fbx",
                 "sha256": "51360fbfdbad4854f1aee162497e2fdc5bc9756a107bf0b9a395a98fb939eb1f",
                 "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json",
-                "dataSha256": "bb16e981321c75557ba1f62c942e1d813bbbb47bd49332d27f92e6a0619b6035"
+                "dataSha256": "13aeb578d7b1bbe843df1afd26e2bac7821f9fba37a2fbc31612ffdf0c117272"
             },
             {
                 "body": "Female",
@@ -37,7 +37,7 @@
                 "target": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.fbx",
                 "sha256": "9e7ede01b0a7ec544b4f7dfe4c1b9630b911ad1507bfa3530d9b0519ac9c5a3e",
                 "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json",
-                "dataSha256": "a50489adad2cff756a413f56900ebd4894b0d47090ae60abcb84af47f45274a4"
+                "dataSha256": "b2fb87ef60ace3a3a37a14b7263803310fae655d46b7e9f9b4dc6e22ec169415"
             }
         ],
         "clipSources": [

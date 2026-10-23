@@ -285,10 +285,9 @@ namespace Mmorpg.Client.Editor
     }
 
     // What a garment's model covers on its body, in the faces and vertices of the body's editable
-    // mesh, which every body of the shared topology numbers alike: the body faces it hides at rest
-    // and in motion, the body face under each of its faces, and how far to move visible body
-    // vertices inward. Export-ArtAsset.ps1 writes it next to the model; see
-    // docs/EQUIPMENT_VISUALS_DESIGN.md.
+    // mesh, which every body of the shared topology numbers alike: the body faces it hides, the
+    // body face under each of its faces, and how far to move visible body vertices inward.
+    // Export-ArtAsset.ps1 writes it next to the model; see docs/EQUIPMENT_VISUALS_DESIGN.md.
     [Serializable]
     public sealed class ArtGarmentData
     {

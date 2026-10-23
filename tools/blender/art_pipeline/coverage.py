@@ -1,25 +1,27 @@
 """What a garment covers on each body it fits, in the body's faces and vertices, which every body of
-the shared topology numbers alike: the cover mask, the underlay, the pull-in, and the faces that
-motion in the test poses and the clips hides as well. See docs/EQUIPMENT_VISUALS_DESIGN.md.
+the shared topology numbers alike: the cover mask, the underlay, the pull-in, and the skin that
+comes through the garment in the test poses and the clips. See docs/EQUIPMENT_VISUALS_DESIGN.md.
 
 - The cover mask holds the body faces the garment hides. From sample points on a face, rays go out
   in a cone around the face normal; a face is covered when every ray hits the garment where its
   texture is opaque, or the body itself, before it gets out of the garment's reach, and at least one
   hits the garment. A ray that leaves through a hole, an open hem, or a transparent part of the
   texture leaves the face visible, and so does a face that only the body hides, such as the inside
-  of the mouth.
+  of the mouth. The skin at the garment's edges stays visible as well: a look into a sleeve or under
+  a hem sees past the cone, so a face within the band's edge reach of an open edge of the garment,
+  a border of its mesh or a line where its texture is cut, is never hidden.
 - The underlay holds, for every garment face, the body face under it.
 - The pull-in holds how far to move visible body vertices inward that lie closer to the garment
   than its band allows, such as the skin at a hem, so they stay under it in motion.
-- In motion, the mask also hides the visible skin that comes out of the garment over it. Each
-  visible vertex that the garment is over at rest keeps the point of the garment over it, its
-  cover. The body, with the pull-in applied as the game applies it, takes every test pose and
-  every frame of the clips, and every face of a vertex that comes out of its cover by more than
-  the tolerance is hidden too. Skinning blends the bones of a fold, such as an armpit, so the gap
-  between the skin and the cloth there closes in motion, whatever the weights; the hidden faces
-  lie under the garment, so only a look into an opening sees past them, at the garment's inside.
-  A garment that runs into another body part, such as a hem into a thigh when the body folds, is
-  not skin coming out of its cover."""
+- In motion, visible skin under the garment can come through it: skinning blends the bones of a
+  fold, such as an armpit, so the gap between the skin and the cloth there closes, whatever the
+  weights. Each visible vertex that the garment is over at rest keeps the point of the garment over
+  it, its cover. The body, with the pull-in applied as the game applies it, takes every test pose
+  and every frame of the clips, and a vertex that lies outside the cloth at its cover, with the
+  cloth between it and the inside, comes through. Such skin lies at an opening that shows it, so
+  it is reported, not hidden; the garment's shape or weights fix it. Skin that passes a hem's edge
+  without the cloth over it does not come through, and neither does a garment that runs into
+  another body part, such as a hem into a thigh when the body folds."""
 
 import math
 from dataclasses import dataclass
@@ -29,12 +31,18 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.interpolate import poly_3d_calc
+from mathutils.kdtree import KDTree
 
 from . import bodies, garment, poses
 from .scene import ArtPipelineError
 
 # How far rays look for the garment from the skin, per band, in meters.
 REACH = {"tight": 0.03, "mid": 0.05, "outer": 0.10, "loose": 0.30}
+# How far from an open edge of the garment the skin stays visible, per band, in meters: a look
+# into an opening reaches about four times the band's gap between skin and cloth.
+EDGE_REACH = {"tight": 0.02, "mid": 0.04, "outer": 0.08, "loose": 0.12}
+# The open edges are sampled this densely.
+EDGE_SPACING = 0.005
 CONE_ANGLE = math.radians(25.0)
 CONE_RAYS = 6
 SAMPLE_SPREAD = 0.6
@@ -46,7 +54,7 @@ RAY_OFFSET = 1e-4
 SKIN_OFFSET = 0.001
 PULL_IN_MAX = 0.003
 PULL_IN_CLEARANCE = 0.003
-# Visible skin may come this far out of the garment that covers it in motion, in meters.
+# Visible skin may come this far through the garment over it in motion, in meters.
 CLIP_TOLERANCE = 0.001
 DATA_SCHEMA = 2
 
@@ -57,14 +65,15 @@ class Coverage:
 
     label: str
     band: str
-    covered: np.ndarray  # bool per body face, at rest and in motion
+    covered: np.ndarray  # bool per body face
     underlay: np.ndarray  # body face per garment face
     pull_vertices: np.ndarray  # body vertices to move inward
     pull_distances: np.ndarray  # meters, per pulled vertex
     body_faces: int
     body_vertices: int
     garment_faces: int
-    moved: np.ndarray | None = None  # bool per body face hidden for motion
+    edge: np.ndarray | None = None  # bool per body face the rays cover but an open edge shows
+    through: np.ndarray | None = None  # bool per body face whose skin comes through it in motion
 
     def visible_vertices(self, body: bpy.types.Object) -> np.ndarray:
         """The body vertices of every face the garment leaves visible."""
@@ -87,25 +96,82 @@ class _Cloth:
             for i in range(1, len(vertices) - 1):
                 self.triangles.append((polygon.index, (vertices[0], vertices[i], vertices[i + 1]),
                                        (loops[0], loops[i], loops[i + 1])))
-        self.co = positions
-        self.tree = BVHTree.FromPolygons([tuple(c) for c in positions], [t[1] for t in self.triangles])
+        counts: dict[tuple[int, int], int] = {}
+        for polygon in mesh.polygons:
+            for key in polygon.edge_keys:
+                counts[key] = counts.get(key, 0) + 1
+        # The edges of only one face: the borders of the mesh.
+        self.border = {key for key, count in counts.items() if count == 1}
         self.uv = None
         if mesh.uv_layers.active is not None:
             uv = np.empty(len(mesh.loops) * 2, np.float32)
             mesh.uv_layers.active.data.foreach_get("uv", uv)
             self.uv = uv.reshape(-1, 2)
         self.alpha = alpha
+        self.place(positions)
+
+    def place(self, positions: np.ndarray) -> "_Cloth":
+        """Moves the cloth to these positions of its vertices, as a pose does."""
+        self.co = positions
+        self.tree = BVHTree.FromPolygons([tuple(c) for c in positions], [t[1] for t in self.triangles])
+        return self
+
+    def opaque_uv(self, uv: np.ndarray) -> np.ndarray:
+        """Whether the texture is opaque at these UV coordinates."""
+        if self.alpha is None:
+            return np.ones(len(uv), bool)
+        height, width = self.alpha.shape
+        x = np.clip((uv[:, 0] * width).astype(np.int64), 0, width - 1)
+        y = np.clip((uv[:, 1] * height).astype(np.int64), 0, height - 1)
+        return self.alpha[y, x] >= ALPHA_CUT
 
     def opaque(self, triangle: int, location: Vector) -> bool:
         if self.alpha is None or self.uv is None:
             return True
         _polygon, vertices, loops = self.triangles[triangle]
         weights = poly_3d_calc([Vector(self.co[v]) for v in vertices], location)
-        u, v = sum(self.uv[loop] * w for loop, w in zip(loops, weights))
-        height, width = self.alpha.shape
-        x = min(max(int(u * width), 0), width - 1)
-        y = min(max(int(v * height), 0), height - 1)
-        return bool(self.alpha[y, x] >= ALPHA_CUT)
+        uv = sum(self.uv[loop] * w for loop, w in zip(loops, weights))
+        return bool(self.opaque_uv(np.array([uv]))[0])
+
+    def edges(self) -> KDTree | None:
+        """Points every EDGE_SPACING along the open edges of the cloth where it is opaque: the
+        borders of its mesh and the lines where its texture is cut. None when it has no edge."""
+        opaque, clear, border = [], [], []
+        for _polygon, vertices, loops in self.triangles:
+            corners = self.co[list(vertices)]
+            longest = max(np.linalg.norm(corners[i] - corners[i - 1]) for i in range(3))
+            steps = max(1, math.ceil(longest / EDGE_SPACING))
+            # Barycentric weights of a grid over the triangle, with the side each point lies on:
+            # side 0 joins corners 0 and 1, side 1 corners 1 and 2, side 2 corners 2 and 0.
+            grid = np.array([(i, j, steps - i - j) for i in range(steps + 1) for j in range(steps + 1 - i)],
+                            np.float64) / steps
+            points = grid @ corners
+            shown = (self.opaque_uv(grid @ self.uv[list(loops)]) if self.uv is not None
+                     else np.ones(len(grid), bool))
+            on_border = np.zeros(len(grid), bool)
+            for side, weight in ((0, 2), (1, 0), (2, 1)):
+                key = tuple(sorted((vertices[side], vertices[(side + 1) % 3])))
+                if key in self.border:
+                    on_border |= grid[:, weight] == 0.0
+            opaque.append(points[shown])
+            clear.append(points[~shown])
+            border.append(points[shown & on_border])
+        opaque, clear, border = np.concatenate(opaque), np.concatenate(clear), np.concatenate(border)
+        found = list(border)
+        if len(clear):
+            near = KDTree(len(clear))
+            for index, point in enumerate(clear):
+                near.insert(point, index)
+            near.balance()
+            # An opaque point next to a transparent one lies on a line where the texture is cut.
+            found += [p for p in opaque if near.find(p)[2] <= 1.5 * EDGE_SPACING]
+        if not found:
+            return None
+        tree = KDTree(len(found))
+        for index, point in enumerate(found):
+            tree.insert(point, index)
+        tree.balance()
+        return tree
 
 
 def _alpha(obj: bpy.types.Object) -> np.ndarray | None:
@@ -204,8 +270,10 @@ def compute(name: str, label: str, band: str) -> Coverage:
     reach = REACH[band]
     surface = garment.Surface(body, [])
     cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
+    edges = cloth.edges()
     rotation = body.matrix_world.to_3x3()
     covered = np.zeros(len(body.data.polygons), bool)
+    edge = np.zeros(len(body.data.polygons), bool)
     for polygon in body.data.polygons:
         corners = [Vector(surface.co[v]) for v in polygon.vertices]
         centre = sum(corners, Vector()) / len(corners)
@@ -214,7 +282,12 @@ def compute(name: str, label: str, band: str) -> Coverage:
         # with its centre.
         samples = [surface.tree.find_nearest(p)[0] for p in [centre] + [centre.lerp(c, SAMPLE_SPREAD) for c in corners]]
         rays = [(sample + normal * SKIN_OFFSET, d) for sample in samples for d in _cone(normal)]
-        covered[polygon.index] = _covers(cloth, surface, polygon.index, rays, reach)
+        if not _covers(cloth, surface, polygon.index, rays, reach):
+            continue
+        if edges is not None and min(edges.find(p)[2] for p in [centre] + corners) <= EDGE_REACH[band]:
+            edge[polygon.index] = True
+        else:
+            covered[polygon.index] = True
 
     garment_rotation = version.matrix_world.to_3x3()
     underlay = np.empty(len(version.data.polygons), np.int64)
@@ -229,7 +302,7 @@ def compute(name: str, label: str, band: str) -> Coverage:
     low = garment.BANDS[band][0]
     clearance = max(low, PULL_IN_CLEARANCE)
     result = Coverage(label, band, covered, underlay, np.empty(0, np.int64), np.empty(0), len(body.data.polygons),
-                      len(body.data.vertices), len(version.data.polygons))
+                      len(body.data.vertices), len(version.data.polygons), edge)
     pulled, distances = [], []
     for vertex in result.visible_vertices(body):
         found = cloth.tree.find_nearest(Vector(surface.co[vertex]))
@@ -244,9 +317,10 @@ def compute(name: str, label: str, band: str) -> Coverage:
 def summary(name: str, coverage: Coverage) -> str:
     pulled = len(coverage.pull_vertices)
     most = f" by at most {coverage.pull_distances.max() * 1000:.1f} mm" if pulled else ""
-    moved = f", {int(coverage.moved.sum())} of them for motion," if coverage.moved is not None else ""
+    edge = int(coverage.edge.sum()) if coverage.edge is not None else 0
     return (f"{garment.version_name(name, coverage.label)}: covers {int(coverage.covered.sum())} of "
-            f"{coverage.body_faces} body faces{moved} and pulls in {pulled} visible vertices{most}")
+            f"{coverage.body_faces} body faces, leaves {edge} at its edges visible, and pulls in {pulled} "
+            f"visible vertices{most}")
 
 
 def record(name: str, coverage: Coverage) -> dict:
@@ -332,8 +406,8 @@ class Motion:
 
     label: str
     vertices: int  # visible vertices under the garment at rest
-    hidden: int  # of them, how many come out of their cover
-    depth: float  # the deepest any of them comes out
+    through: int  # of them, how many come through it
+    depth: float  # the deepest any of them comes through
     where: str
     zone: str
     checked: int  # poses and clip frames
@@ -357,9 +431,9 @@ def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action]):
             yield f"{action.name} frame {frame}"
 
 
-def settle_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action]) -> Motion:
-    """Hides every face of the visible skin that comes out of the garment over it in the test poses
-    and the clips, and drops the pull-in of vertices that are no longer visible."""
+def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action]) -> Motion:
+    """Finds the visible skin that comes through the garment over it in the test poses and the
+    clips and marks its faces. Such skin lies at an opening that shows it, so it is not hidden."""
     label = coverage.label
     arm = bpy.data.objects[label]
     body = bodies.source_body(label)
@@ -374,21 +448,21 @@ def settle_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action]
     pulled[coverage.pull_vertices] -= normals[coverage.pull_vertices] * coverage.pull_distances[:, None]
     # The visible skin the garment is over at rest: going out from it, a ray meets the garment's
     # inner side where it is opaque. That point of the garment is the skin's cover.
-    rest_cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
+    cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
     vertices, corners, weights = [], [], []
     for vertex in coverage.visible_vertices(body):
         direction = Vector(normals[vertex]).normalized()
-        hit = _opaque_hit(rest_cloth, Vector(pulled[vertex]), direction, REACH[coverage.band])
+        hit = _opaque_hit(cloth, Vector(pulled[vertex]), direction, REACH[coverage.band])
         if hit is not None and hit[1].dot(direction) > 0.0:
             location = Vector(pulled[vertex]) + direction * hit[0]
-            triangle = rest_cloth.triangles[rest_cloth.tree.find_nearest(location)[2]][1]
+            triangle = cloth.triangles[cloth.tree.find_nearest(location)[2]][1]
             vertices.append(int(vertex))
             corners.append(triangle)
-            weights.append(poly_3d_calc([Vector(rest_cloth.co[c]) for c in triangle], location))
+            weights.append(poly_3d_calc([Vector(cloth.co[c]) for c in triangle], location))
     vertices = np.array(vertices, np.int64)
     corners = np.array(corners, np.int64).reshape(-1, 3)
     weights = np.array(weights).reshape(-1, 3)
-    deepest = np.full(len(vertices), -np.inf)
+    deepest = np.zeros(len(vertices))
     where = [""] * len(vertices)
     checked = 0
     had_animation = arm.animation_data is not None
@@ -398,16 +472,20 @@ def settle_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action]
     try:
         for name_of_frame in _frames(arm, actions):
             co = _posed(body)[0][vertices]
-            cloth = _posed(version)[0]
-            a, b, c = cloth[corners[:, 0]], cloth[corners[:, 1]], cloth[corners[:, 2]]
+            cloth.place(_posed(version)[0])
+            a, b, c = (cloth.co[corners[:, k]] for k in range(3))
             cover = a * weights[:, :1] + b * weights[:, 1:2] + c * weights[:, 2:]
             outward = np.cross(b - a, c - a)
             outward /= np.maximum(np.linalg.norm(outward, axis=1, keepdims=True), 1e-12)
-            # How far the skin lies outside its cover, along the garment's outer side there.
-            depth = np.einsum("ij,ij->i", co - cover, outward)
-            for i in np.nonzero(depth > deepest)[0]:
-                where[i] = name_of_frame
-            deepest = np.maximum(deepest, depth)
+            # How far the skin lies outside the cloth's plane at its cover.
+            plane = np.einsum("ij,ij->i", co - cover, outward)
+            for i in np.nonzero(plane > deepest)[0]:
+                # The skin comes through only where the cloth lies between it and the inside: skin
+                # that passes a hem's edge has no cloth there.
+                direction = Vector(-outward[i])
+                hit = _opaque_hit(cloth, Vector(co[i]), direction, float(plane[i]) + 2.0 * CLIP_TOLERANCE)
+                if hit is not None and hit[1].dot(direction) < 0.0 and hit[0] > deepest[i]:
+                    deepest[i], where[i] = hit[0], name_of_frame
             checked += 1
     finally:
         if had_animation:
@@ -419,30 +497,28 @@ def settle_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action]
         body.data.vertices.foreach_set("co", rest)
         body.data.update()
 
-    out = set(int(v) for v in vertices[deepest > CLIP_TOLERANCE])
-    moved = np.zeros(coverage.body_faces, bool)
+    through = deepest > CLIP_TOLERANCE
+    out = set(int(v) for v in vertices[through])
+    coverage.through = np.zeros(coverage.body_faces, bool)
     for polygon in body.data.polygons:
-        if not coverage.covered[polygon.index] and out.intersection(polygon.vertices):
-            moved[polygon.index] = True
-    coverage.covered = coverage.covered | moved
-    coverage.moved = moved
-    visible = set(int(v) for v in coverage.visible_vertices(body))
-    keep = np.array([int(v) in visible for v in coverage.pull_vertices], bool)
-    coverage.pull_vertices = coverage.pull_vertices[keep]
-    coverage.pull_distances = coverage.pull_distances[keep]
+        if out.intersection(polygon.vertices):
+            coverage.through[polygon.index] = True
     vertex_zone = np.zeros(coverage.body_vertices, np.int64)
     for polygon in body.data.polygons:
         vertex_zone[list(polygon.vertices)] = zones[polygon.index]
     result = Motion(label, len(vertices), len(out), 0.0, "", "", checked)
-    if len(vertices):
+    if out:
         worst = int(np.argmax(deepest))
-        result.depth, result.where = float(max(deepest[worst], 0.0)), where[worst]
+        result.depth, result.where = float(deepest[worst]), where[worst]
         result.zone = bodies.ZONES[vertex_zone[vertices[worst]]]
     return result
 
 
 def motion_summary(name: str, result: Motion) -> str:
-    worst = f", at most {result.depth * 1000:.1f} mm ({result.zone} in {result.where})" if result.hidden else ""
-    return (f"{garment.version_name(name, result.label)}: of the {result.vertices} visible vertices under it, "
-            f"{result.hidden} come out of it in {result.checked} poses and clip frames{worst}, so their faces are "
-            f"hidden too")
+    version = garment.version_name(name, result.label)
+    if not result.through:
+        return (f"{version}: none of the {result.vertices} visible vertices under it comes through it in "
+                f"{result.checked} poses and clip frames")
+    return (f"{version}: of the {result.vertices} visible vertices under it, {result.through} come through it in "
+            f"{result.checked} poses and clip frames, by at most {result.depth * 1000:.1f} mm ({result.zone} in "
+            f"{result.where}), red on the review sheet")

@@ -3071,8 +3071,9 @@ of their own, made on the male body and fitted to the female.
 
    Expected result: the report lines, `Synced LinenShirt: ...`, the paths of the
    review sheet and the review file, what it covers on each body, such as
-   `LinenShirt_Male: covers <n> of 4358 body faces, <m> of them for motion, and
-   pulls in <k> visible vertices`, and `LinenShirt meets every rule. Review
+   `LinenShirt_Male: covers <n> of 4358 body faces, leaves <m> at its edges
+   visible, and pulls in <k> visible vertices`, how much skin comes through it
+   in motion, and `LinenShirt meets every rule. Review
    it, ...`. A second run prints `LinenShirt is up to date: ...` and leaves the
    file as it is. A broken rule stops it with the list of rules, such as a
    version that leaves its band, with the body parts where it does. The starting
@@ -3082,8 +3083,9 @@ of their own, made on the male body and fitted to the female.
 3. Look at `artifacts\art-previews\LinenShirt.png` and open
    `artifacts\art-previews\LinenShirt_poses.blend` in Blender and play the
    timeline. Expected result: on the sheet, each body's third row shows it
-   without the garment, orange where the garment covers it, red where it is
-   hidden for motion, and blue where it is pulled in; in the review file, both
+   without the garment, orange where the garment covers it, yellow at its
+   edges, where the skin stays visible, blue where it is pulled in, and red
+   where skin comes through it in motion; in the review file, both
    bodies side by side in the garment, stepping through the test poses, with the
    garment following the arms, the torso, and the legs without the body showing
    through. Close the review file without saving. After an export, look at the
@@ -3196,15 +3198,19 @@ controller, and prefabs are committed.
 16. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/LeatherJerkin`.
     Expected result: `LeatherJerkin_Male: 1124 triangles, 5.3 to 17.7 mm from
     the skin, median 10.0 mm`, the same for the female, `LeatherJerkin is up to
-    date: ...`, `LeatherJerkin_Male: covers 487 of 4358 body faces, 22 of them
-    for motion, and pulls in 0 visible vertices`, `LeatherJerkin_Female: covers
-    488 of 4358 body faces, 18 of them for motion, ...`, and `LeatherJerkin meets
-    every rule, and both stages are approved for this file.` Open
-    `artifacts\art-previews\LeatherJerkin.png`. Expected result: the jerkin on
-    both bodies from four sides, the torso up close, the test poses, and each
-    body without it, orange in the jerkin's shape with the laced V and the
-    arms below the sleeves left visible and a few red faces at the front of the
-    armpits. Open
+    date: ...`, `LeatherJerkin_Male: of the 253 visible vertices under it, 4
+    come through it in 238 poses and clip frames, by at most 9.7 mm (UpperArms
+    in Jog frame 12), red on the review sheet`, `LeatherJerkin_Male: covers 338
+    of 4358 body faces, leaves 127 at its edges visible, and pulls in 2 visible
+    vertices by at most 0.2 mm`, for the female 4 vertices by at most 12.0 mm
+    and `covers 326 of 4358 body faces, leaves 144 at its edges visible, ...`,
+    and `LeatherJerkin meets every rule, and both stages are approved for this
+    file.` Open `artifacts\art-previews\LeatherJerkin.png`. Expected result: the
+    jerkin on both bodies from four sides, the torso up close, the test poses,
+    and each body without it, orange in the jerkin's shape, a yellow band of
+    visible skin along the collar, the laced V, the sleeve openings, and the hem,
+    the arms below the sleeves left visible, and a few red faces at the front of
+    the armpits, where the skin comes through the jerkin in the jog. Open
     `artifacts\art-previews\LeatherJerkin_poses.blend` and play the timeline.
     Expected result: the jerkin follows both bodies through the poses. In Unity,
     run the EditMode tests `EveryGarmentModelIsSkinnedToTheRigOfItsBody` and
@@ -3212,8 +3218,10 @@ controller, and prefabs are committed.
 17. In a World scene, press F2 and in the Presentation section turn on
     `Try on garment: LeatherJerkin`. Expected result: your body wears the
     leather jerkin as a mesh of its own, standing a little off the skin with its
-    short sleeves and the laced V, and the skin under it is gone, so nothing shows
-    through when you walk, jog, and turn; turn it off and the bare body is back.
+    short sleeves and the laced V, and the skin under it is gone except near its
+    edges, so nothing shows through when you walk and turn, and a look into a
+    sleeve or at the hips below the hem shows skin, never a hole in the body;
+    turn it off and the bare body is back.
     Turn on `Try on paint: LeatherJerkin` as well: the paint shows only at the V
     and below the hem, because the garment covers the rest. The choice is kept
     between sessions like the face and the eyes; other players and bots wear no
@@ -3223,9 +3231,12 @@ controller, and prefabs are committed.
     `Human_Male` in `Body` and tick `LeatherJerkin`. Expected result: the body
     wears the jerkin, and `Drawn` reads `LeatherJerkin`. Press `Jog`. Expected
     result: the body jogs, the ground moves along under it at 5.0 m/s, and the
-    jerkin follows the arms and the torso without skin showing through; drag in
-    the view to see the body from every side and scroll to come closer. Press
-    `Death`. Expected result: the body falls and lies on its back in the jerkin.
+    jerkin follows the arms and the torso; only at the front of the armpits can
+    a little skin come through it as the arms swing, where the review sheet
+    shows red. Drag in the view to see the body from every side and scroll to
+    come closer: below the hem, the hips are whole, and a look up into a sleeve
+    shows the arm going on into it. Press `Death`. Expected result: the body
+    falls and lies on its back in the jerkin.
 
 ## One-Time Unity World Scene Authoring
 

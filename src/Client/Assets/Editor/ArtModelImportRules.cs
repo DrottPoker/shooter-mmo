@@ -47,6 +47,13 @@ namespace Mmorpg.Client.Editor
                 && assetPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
         }
 
+        // The data an export writes next to a model: a body's topology or a garment's masks.
+        public static bool AppliesToData(string assetPath)
+        {
+            return assetPath.StartsWith(ModelFolder + "/", StringComparison.Ordinal)
+                && assetPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+        }
+
         public static void ApplyStaticModelSettings(ModelImporter importer)
         {
             ApplySharedModelSettings(importer);

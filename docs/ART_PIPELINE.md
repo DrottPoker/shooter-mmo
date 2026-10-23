@@ -85,7 +85,7 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `src/Client/Assets/Editor/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
 | `src/Client/Assets/Editor/ArtAssetManifests.cs` | Reads `asset.json` and the skeleton definitions for the import rules, the material command, and the tests. |
 | `src/Client/Assets/Editor/ArtMaterialCreator.cs` | `MMORPG > Tools > Art Pipeline > Create Missing Materials`: creates the project material of every exported material that has none, from its export record. |
-| `src/Client/Assets/Editor/ArtExportFollowUp.cs` | After an import of exported art, creates the missing project materials and updates the appearance catalogs, once, outside batch mode. |
+| `src/Client/Assets/Editor/ArtExportFollowUp.cs` | After an import of exported models, their data, or textures, creates the missing project materials and updates the appearance catalogs, once, outside batch mode. |
 | `.mcp.json` | The Blender MCP server for live work in Blender from Claude Code. |
 
 ## Asset Manifest
@@ -386,9 +386,10 @@ drawn. Like the skin shader, it is a copy of URP's `Lit.shader` and
 differ; when URP is upgraded, it is made again from the new files with the same
 changes.
 
-`ArtExportFollowUp` runs both commands once after Unity imports exported models
-or textures, when the Editor next updates, so an export reaches the game without
-a menu command. It does nothing in batch mode, so the CI tests check the
+`ArtExportFollowUp` runs both commands once after Unity imports exported models,
+their data, or textures, when the Editor next updates, so an export reaches the
+game without a menu command, also when only a garment's masks change. It does
+nothing in batch mode, so the CI tests check the
 committed materials and catalogs as they are. When a Blender material changes, set the Unity material from its new
 record by hand; the tests below compare them.
 
@@ -585,8 +586,9 @@ they stand at the same place.
 The sync then writes the review sheet `artifacts/art-previews/<Name>.png`. Per
 body it shows three rows: the body in the garment from four sides with its torso
 from the front and the back, the garment in the test poses of `poses.py`, and
-the body without the garment, its covered faces orange, the faces hidden for
-motion red, and the pulled-in vertices blue. The review file
+the body without the garment, its covered faces orange, the skin kept visible
+at the garment's edges yellow, the pulled-in vertices blue, and the skin that
+comes through the garment in motion red. The review file
 `artifacts/art-previews/<Name>_poses.blend` places the bodies side by side with an
 action that steps through the test poses. Last, the sync checks every rule and
 reports what the garment covers. The `model` stage checks that every body has a
@@ -607,7 +609,12 @@ alike:
   body, within the band's reach (30, 50, 100, or 300 mm), and at least one meets
   the garment. A hole, an open hem, or a transparent part of the texture lets a
   ray out and leaves the face visible; a face that only the body hides, such as
-  the inside of the mouth, stays visible too.
+  the inside of the mouth, stays visible too. The skin at the garment's edges
+  stays visible as well, since a look into a sleeve or under a hem sees past the
+  cone: a face whose centre or a corner lies within the band's edge reach (20,
+  40, 80, or 120 mm) of an open edge of the garment is never covered. The open
+  edges are the borders of its mesh and the lines where its texture is cut,
+  sampled every 5 mm where the garment is opaque.
 - **The underlay**, the body face under each garment face, along its inward
   normal, or the nearest one.
 - **The pull-in**: a visible body vertex closer to the garment than the band's
@@ -615,13 +622,16 @@ alike:
   3 mm.
 - **Motion**: every visible vertex that the garment is over at rest keeps the
   point of the garment over it. The body, with the pull-in applied, takes every
-  test pose and every frame of every clip of the skeleton's animation libraries,
-  and every face of a vertex that comes more than 1 mm out of its point is hidden
-  as well. Skinning blends the bones of a fold, such as an armpit, so the gap
-  between skin and cloth closes there in motion whatever the weights; the
-  hidden faces lie under the garment, and only a look into an opening sees past
-  them, at the garment's inside. The rule needs the clips, so a garment's masks
-  are complete only at its `rig` stage, which its export runs.
+  test pose and every frame of every clip of the skeleton's animation libraries.
+  A vertex comes through the garment when it lies more than 1 mm outside the
+  cloth at its point with the cloth between it and the inside; skin that passes
+  a hem's edge has no cloth there and does not come through. Skinning blends the
+  bones of a fold, such as an armpit, so the gap between skin and cloth closes
+  there in motion whatever the weights. A vertex that comes through lies at an
+  opening that shows it, so it is not hidden: the report names how many come
+  through and the deepest place, the review sheet shows their faces red, and the
+  garment's shape or weights fix them. The rule needs the clips, so it runs at
+  the garment's `rig` stage, which its export runs.
 
 `New-ArtAsset.ps1 -Kind garment` starts a garment with a shell on the first body,
 so there is something to shape: the body faces of the slot's body parts, or
