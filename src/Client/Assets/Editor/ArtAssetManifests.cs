@@ -89,6 +89,16 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
         }
 
+        // The materials of exported garments, M_Garment_<Name>, which draw with the garment shader.
+        public static string[] GarmentMaterialNames()
+        {
+            return Garments()
+                .SelectMany(garment => garment.export.materials.Select(material => material.name))
+                .Distinct()
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+        }
+
         public static ArtSkeleton LoadSkeleton(string name)
         {
             var path = Path.Combine(RepositoryLayout.FindRoot(), "art", "Skeletons", name + ".json");

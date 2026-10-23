@@ -69,7 +69,8 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, and a garment one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it. |
 | `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint` and garments to `Textures/Garments`. |
-| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers. |
+| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers; `Garment.shader` and `GarmentInput.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels. |
+| `src/Client/Assets/Editor/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`: a body dressed in chosen garments, playing its clips on a moving ground with the cloth solver running. |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
 | `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, in `bodies.py` the body parts of a skinned character written from its editable body, and in `poses.py` the test poses of the `Humanoid` skeleton that the rig reviews use. |
@@ -376,8 +377,14 @@ A project material is never changed by the import. When an export adds a
 material, `MMORPG > Tools > Art Pipeline > Create Missing Materials` creates it
 as a URP Lit material from its export record, with its texture for a painted
 material, below `Assets/Art/Materials/<Category>`, and reimports the models that
-use it. A garment's material cuts its texture at alpha 0.5 and draws both faces,
-so holes, lace, and torn edges show sharp and the inside of a sleeve is drawn.
+use it. A garment's material draws with the garment shader `Mmorpg/Garment`,
+URP Lit with three dye channels, and cuts its texture at alpha 0.5 and draws both
+faces, so holes, lace, and torn edges show sharp and the inside of a sleeve is
+drawn. Like the skin shader, it is a copy of URP's `Lit.shader` and
+`LitInput.hlsl` in which only the include, the dye properties `_DyeMask`,
+`_DyeColor1` to `_DyeColor3`, and `_DyeCount`, and the dyeing of the albedo
+differ; when URP is upgraded, it is made again from the new files with the same
+changes.
 
 `ArtExportFollowUp` runs both commands once after Unity imports exported models
 or textures, when the Editor next updates, so an export reaches the game without
@@ -643,6 +650,13 @@ garment again.
 
 Garments of different layers check each other when a character wears them
 together, which comes with putting characters together in Unity.
+
+Cloth in motion is reviewed in Unity with `MMORPG > Tools > Art Pipeline >
+Wardrobe`: pick a body, tick the garments it wears, and play `Idle`, `Walk`,
+`Jog`, or `Death`. The body is put together as the game puts it together, walks
+and jogs forward at the clips' speeds over a checkered ground that the camera
+follows, so loose cloth lags as in the game, and the cloth solver runs. Drag in
+the view to turn the camera and scroll to come closer.
 
 ## Live Work With The Blender MCP Server
 

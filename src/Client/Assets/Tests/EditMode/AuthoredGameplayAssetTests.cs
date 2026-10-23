@@ -509,9 +509,11 @@ namespace Mmorpg.Client.Tests.EditMode
         // URP Lit everywhere, except the body materials that paint layers paint over, which use
         // the skin shader, URP Lit with paint layers.
         [Test]
-        public void EveryProjectMaterialUsesTheUrpLitShader()
+        public void EveryProjectMaterialUsesTheUrpShaderOfItsKind()
         {
+            // URP Lit, or its copies for painted skin and for garments.
             var painted = ArtAssetManifests.PaintedMaterialNames();
+            var garments = ArtAssetManifests.GarmentMaterialNames();
             var materialGuids = AssetDatabase.FindAssets("t:Material", new[] { "Assets" });
             Assert.That(materialGuids, Is.Not.Empty);
             foreach (var materialGuid in materialGuids)
@@ -522,7 +524,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(material.shader, Is.Not.Null, path);
                 Assert.That(
                     material.shader.name,
-                    Is.EqualTo(painted.Contains(material.name) ? ArtMaterialCreator.SkinShader : ArtMaterialCreator.LitShader),
+                    Is.EqualTo(garments.Contains(material.name)
+                        ? ArtMaterialCreator.GarmentShader
+                        : painted.Contains(material.name) ? ArtMaterialCreator.SkinShader : ArtMaterialCreator.LitShader),
                     path);
             }
         }

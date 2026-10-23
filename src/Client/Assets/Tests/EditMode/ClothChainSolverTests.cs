@@ -185,7 +185,7 @@ namespace Mmorpg.Client.Tests.EditMode
         public void ABodyWithoutClothLeavesItsChainsAlone()
         {
             SpawnBody();
-            var solver = body.AddComponent<ClothChainSolver>();
+            var solver = body.GetComponent<ClothChainSolver>();
             var rest = ClothChains.All.SelectMany(chain => chain.Bones).ToDictionary(bone => bone, bone => Bone(bone).localRotation);
             solver.Simulate(Step, body.transform.position);
             Assert.That(solver.IsActive, Is.False);
@@ -207,6 +207,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(prefab, Is.Not.Null, BodyPrefabPath);
             body = Object.Instantiate(prefab);
             body.hideFlags = HideFlags.HideAndDontSave;
+            // The body moves the chains of the garments it wears.
+            Assert.That(body.GetComponent<ClothChainSolver>(), Is.Not.Null);
         }
 
         private (Animator Animator, ClothChainSolver Solver) Dress(params ClothChainKind[] kinds)
@@ -216,7 +218,7 @@ namespace Mmorpg.Client.Tests.EditMode
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             animator.Rebind();
             animator.Update(0f);
-            var solver = body.AddComponent<ClothChainSolver>();
+            var solver = body.GetComponent<ClothChainSolver>();
             foreach (var kind in kinds)
             {
                 solver.Activate(kind, ClothProfile.For(kind));

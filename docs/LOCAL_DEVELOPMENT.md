@@ -3086,7 +3086,10 @@ of their own, made on the male body and fitted to the female.
    hidden for motion, and blue where it is pulled in; in the review file, both
    bodies side by side in the garment, stepping through the test poses, with the
    garment following the arms, the torso, and the legs without the body showing
-   through. Close the review file without saving.
+   through. Close the review file without saving. After an export, look at the
+   garment in motion in Unity with `MMORPG > Tools > Art Pipeline > Wardrobe`, as
+   in [Manual Test Of The Human Base Characters](#manual-test-of-the-human-base-characters),
+   step 18.
 4. Approve both stages, export, and verify:
 
    ```powershell
@@ -3215,6 +3218,14 @@ controller, and prefabs are committed.
     and below the hem, because the garment covers the rest. The choice is kept
     between sessions like the face and the eyes; other players and bots wear no
     garments.
+18. In the Unity Editor, open `MMORPG > Tools > Art Pipeline > Wardrobe`.
+    Expected result: the window shows `Human_Female` on a checkered ground; pick
+    `Human_Male` in `Body` and tick `LeatherJerkin`. Expected result: the body
+    wears the jerkin, and `Drawn` reads `LeatherJerkin`. Press `Jog`. Expected
+    result: the body jogs, the ground moves along under it at 5.0 m/s, and the
+    jerkin follows the arms and the torso without skin showing through; drag in
+    the view to see the body from every side and scroll to come closer. Press
+    `Death`. Expected result: the body falls and lies on its back in the jerkin.
 
 ## One-Time Unity World Scene Authoring
 

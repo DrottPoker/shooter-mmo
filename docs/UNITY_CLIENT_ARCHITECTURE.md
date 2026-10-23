@@ -1359,10 +1359,14 @@ describes, in `PlayerBodyMeshes`:
    bound by name to the body's skeleton, whose bind poses they share, and the
    vertices no triangle uses are left out.
 
-The combined mesh is shared by every body with the same parts and garments. A
-garment with loose cloth lets the body's `ClothChainSolver` move the chains of
-its profile: a robe the skirt chains, a cloak the cloak chains, and a hood the
-hood chain. Until items show garments, the Presentation section of the World
+The combined mesh is shared by every body with the same parts and garments.
+Garment materials draw with the garment shader `Mmorpg/Garment`, URP Lit with
+three dye channels, cut at alpha 0.5 and drawn from both sides; see
+[Art Pipeline](ART_PIPELINE.md#unity-import-rules). The body prefab carries a
+`ClothChainSolver`, and a garment with loose cloth lets it move the chains of its
+profile: a robe the skirt chains, a cloak the cloak chains, and a hood the hood
+chain. In the Editor, `MMORPG > Tools > Art Pipeline > Wardrobe` shows a body in
+chosen garments playing its clips, and `WardrobePreviewTests` covers it. Until items show garments, the Presentation section of the World
 Debug panel has `Try on garment: <Name>` for every garment of the local body's
 catalog. Other players and bots wear none, and a corpse shows the bare body.
 `PlayerBodyGarmentTests` covers what a worn garment hides and adds, layers, hidden

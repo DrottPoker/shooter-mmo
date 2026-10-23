@@ -10,8 +10,9 @@ namespace Mmorpg.Client.Editor
     // Creates the project material of every exported Blender material that has none yet, as a
     // URP Lit material, or a CharacterSkin material when a paint layer paints it, with the values
     // of its export record, below
-    // Assets/Art/Materials/<Category>, the category folder of its model. A garment's material cuts
-    // its texture at alpha 0.5 and draws both faces, so holes and the inside of a sleeve show. An
+    // Assets/Art/Materials/<Category>, the category folder of its model. A garment's material draws
+    // with the garment shader, which takes dyes, cuts its texture at alpha 0.5, and draws both
+    // faces, so holes and the inside of a sleeve show. An
     // existing material is never changed, so a material whose Blender look changed is updated by
     // hand from its record; ArtModelImportTests compares every material with its record.
     public static class ArtMaterialCreator
@@ -20,6 +21,7 @@ namespace Mmorpg.Client.Editor
 
         public const string LitShader = "Universal Render Pipeline/Lit";
         public const string SkinShader = "Mmorpg/Character Skin";
+        public const string GarmentShader = "Mmorpg/Garment";
 
         // Where a garment's texture cuts, as the cover masks read it.
         public const float GarmentAlphaCutoff = 0.5f;
@@ -75,7 +77,9 @@ namespace Mmorpg.Client.Editor
 
         private static Material CreateMaterial(ArtAssetManifest manifest, ArtMaterialRecord record)
         {
-            var shader = ArtAssetManifests.PaintedMaterialNames().Contains(record.name) ? SkinShader : LitShader;
+            var shader = manifest.IsGarment
+                ? GarmentShader
+                : ArtAssetManifests.PaintedMaterialNames().Contains(record.name) ? SkinShader : LitShader;
             var material = new Material(Shader.Find(shader)) { name = record.name };
             if (!ColorUtility.TryParseHtmlString(record.baseColor, out var baseColor))
             {
