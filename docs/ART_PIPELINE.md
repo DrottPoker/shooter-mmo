@@ -836,11 +836,12 @@ the same name.
   surface, looking 60 mm both ways for the other mesh.
 - `tools/Sync-TextureAsset.ps1` moves the texture to the template's new UVs the
   same way, from the old `Preview`, when the template's UVs changed, such as
-  after a rebuild of its recipe, and leaves the file as it was otherwise. It then
-  writes the review sheet and checks every rule.
+  after a rebuild of its recipe, or when `Preview`'s own faces or UVs were
+  edited, and leaves the file as it was otherwise. It then writes the review
+  sheet and checks every rule.
 - The `texture` stage checks that the image is packed, of a known size, with its
   roughness and metallic, that `Preview` shows it, and that it was painted in the
-  template's current UVs. A texture with transparent parts, such as the
+  template's current UVs, which `Preview` still has. A texture with transparent parts, such as the
   jerkin's laced V, also gets masks of its own on every body, because its holes
   change what the body shows: the template's file is opened with the texture on
   every version, and `coverage.py` computes the cover mask, underlay, and

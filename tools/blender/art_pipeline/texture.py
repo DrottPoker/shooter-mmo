@@ -246,15 +246,16 @@ def create(file: str, name: str, template_file: str, template: str, label: str, 
 
 def sync(file: str, name: str, template_file: str, template: str, label: str) -> bool:
     """Moves the texture to the template's UVs by projection from its preview when the template's
-    UVs changed. Returns whether the file changed; an unchanged file is not saved, so its approval
-    stays valid."""
+    UVs changed, or when the preview's own faces or UVs were edited, so the image is always in the
+    UVs of the model Unity draws. Returns whether the file changed; an unchanged file is not saved,
+    so its approval stays valid."""
     bpy.ops.wm.open_mainfile(filepath=file)
     preview = bpy.data.objects.get(PREVIEW)
     image = bpy.data.images.get(image_name(name))
     if preview is None or image is None:
         raise ArtPipelineError(f'The texture needs its image "{image_name(name)}" and its "{PREVIEW}".')
     current = current_template_uvs(template_file, template, label)
-    if preview.get(TEMPLATE_UVS) == current:
+    if preview.get(TEMPLATE_UVS) == current and uv_fingerprint(preview.data) == current:
         return False
     old = preview
     old.name = f"{PREVIEW}_old"
@@ -295,8 +296,14 @@ def texture_errors(name: str, template_file: str, template: str, label: str) -> 
     if preview is None or preview.type != "MESH" or not preview.data.materials or \
             preview.data.materials[0] is None or preview.data.materials[0].name != material_name(name):
         errors.append(f'The texture needs its "{PREVIEW}" with the material "{material_name(name)}".')
-    elif preview.get(TEMPLATE_UVS) != current_template_uvs(template_file, template, label):
-        errors.append(f"The template {template} has other UVs than the texture was painted in; run tools/Sync-TextureAsset.ps1.")
+    else:
+        # The image is painted in the preview's UVs, which must be the template's as they are now.
+        current = current_template_uvs(template_file, template, label)
+        if preview.get(TEMPLATE_UVS) != current:
+            errors.append(f"The template {template} has other UVs than the texture was painted in; run tools/Sync-TextureAsset.ps1.")
+        elif uv_fingerprint(preview.data) != current:
+            errors.append(f'"{PREVIEW}" has other faces or UVs than the template {template}; run tools/Sync-TextureAsset.ps1, '
+                          "which moves the texture to the template's UVs.")
     return errors
 
 
