@@ -227,10 +227,11 @@ def render_paint_sheet(output: str, cell: int) -> str:
 # yaw of 0 looks at its back.
 GARMENT_POSES = ("t_pose", "arms_up", "arms_forward", "torso", "stride", "sit")
 GARMENT_POSE_YAW = 215.0
-# The mask view: body faces the garment covers at rest and for motion, the vertices it pulls in,
-# and the visible skin.
+# The mask view: body faces the garment covers, the skin at its edges that stays visible, the
+# vertices it pulls in, the skin that comes through it in motion even so, and the other skin.
 COVERED_SRGB = (0.95, 0.45, 0.10)
-MOVED_SRGB = (0.85, 0.10, 0.20)
+EDGE_SRGB = (0.98, 0.84, 0.40)
+THROUGH_SRGB = (0.85, 0.10, 0.20)
 PULLED_SRGB = (0.15, 0.45, 0.95)
 VISIBLE_SRGB = (0.78, 0.74, 0.70)
 
@@ -240,16 +241,18 @@ def _mask_material(body: bpy.types.Object, result) -> bpy.types.Material:
     attribute = body.data.color_attributes.new("CoverPreview", "BYTE_COLOR", "CORNER")
     pulled = set(int(v) for v in result.pull_vertices)
     colors = {key: tuple(_srgb_to_linear(c) for c in srgb) + (1.0,)
-              for key, srgb in (("covered", COVERED_SRGB), ("moved", MOVED_SRGB), ("pulled", PULLED_SRGB),
-                                ("visible", VISIBLE_SRGB))}
+              for key, srgb in (("covered", COVERED_SRGB), ("edge", EDGE_SRGB), ("through", THROUGH_SRGB),
+                                ("pulled", PULLED_SRGB), ("visible", VISIBLE_SRGB))}
     for polygon in body.data.polygons:
         for loop in polygon.loop_indices:
-            if result.moved is not None and result.moved[polygon.index]:
-                color = colors["moved"]
+            if result.through is not None and result.through[polygon.index]:
+                color = colors["through"]
             elif result.covered[polygon.index]:
                 color = colors["covered"]
             elif body.data.loops[loop].vertex_index in pulled:
                 color = colors["pulled"]
+            elif result.edge is not None and result.edge[polygon.index]:
+                color = colors["edge"]
             else:
                 color = colors["visible"]
             attribute.data[loop].color = color
@@ -269,8 +272,9 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
                          libraries: list[tuple[str, list[str]]] | None = None) -> str:
     """A garment on every body of its file, rows per body: the body in the garment from four sides
     with its torso from the front and from the back, then the test poses that bend it, and with the
-    garment's name and band the body without it, its covered faces and pulled-in vertices colored:
-    orange the faces covered at rest, red those hidden for motion in the clips of the libraries."""
+    garment's name and band the body without it, colored: orange the covered faces, yellow the skin
+    at the garment's edges that stays visible, blue the pulled-in vertices, and red the skin that
+    comes through the garment in the test poses and the clips of the libraries."""
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
     armatures = sorted((o for o in scene.objects if o.type == "ARMATURE"), key=lambda o: o.name)
@@ -317,7 +321,7 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
                 version = bpy.data.objects[garment.version_name(name, arm.name)]
                 materials = list(body.data.materials)
                 result = coverage.compute(name, arm.name, band)
-                coverage.settle_motion(name, result, actions)
+                coverage.check_motion(name, result, actions)
                 mask = _mask_material(body, result)
                 for slot in range(len(body.data.materials)):
                     body.data.materials[slot] = mask

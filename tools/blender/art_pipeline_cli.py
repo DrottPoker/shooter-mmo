@@ -124,9 +124,9 @@ def _clip_libraries(args) -> list[tuple[str, list[str]]]:
 def _garment(args) -> int:
     """Validation and export of a garment: one version per body, each exported with its body's
     armature from its own collection and with its data: the cover mask, underlay, and pull-in. The
-    model stage checks the shape, the fitting, and the band, and reports the mask at rest; the rig
-    stage checks the armature and the weights, and hides the skin that comes out of the garment in
-    the test poses and the clips. The export needs the rig stage."""
+    model stage checks the shape, the fitting, and the band, and reports the mask; the rig stage
+    checks the armature and the weights, and reports the skin that comes through the garment in the
+    test poses and the clips. The export needs the rig stage."""
     body_list = _bodies(args)
     labels = args.roots.split(",")
     if [root for _path, root in body_list] != labels:
@@ -153,7 +153,7 @@ def _garment(args) -> int:
     if not errors and args.stage == "rig":
         actions = coverage.load_actions(_clip_libraries(args))
         for label in labels:
-            motion = coverage.settle_motion(args.garment, coverages[label], actions)
+            motion = coverage.check_motion(args.garment, coverages[label], actions)
             print(f"ART_REPORT {coverage.motion_summary(args.garment, motion)}")
             print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
         for library_data in {a.library for a in actions if a.library is not None}:
@@ -166,7 +166,7 @@ def _garment(args) -> int:
     print(f"ART_VALIDATION triangles={triangles}")
     if args.command == "export":
         if args.stage != "rig":
-            raise ArtPipelineError("A garment is exported with its rig stage, whose motion completes its masks.")
+            raise ArtPipelineError("A garment is exported with its rig stage, which checks it in motion.")
         for label, target in garment.export_paths(args.garment, labels, args.target):
             export_fbx("garment", target, garment.collection_name(label))
             data = os.path.splitext(target)[0] + ".json"

@@ -209,6 +209,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     var path = record.UnityDataPath;
                     var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
                     Assert.That(asset, Is.Not.Null, manifest.path + " " + record.data);
+                    // A new import of the data alone updates the appearance catalogs.
+                    Assert.That(ArtModelImportRules.AppliesToData(path), Is.True, path);
                     var data = ArtGarmentData.FromJson(asset.text);
                     Assert.That(data.schemaVersion, Is.EqualTo(ArtGarmentData.SchemaVersion), path);
                     Assert.That(data.garment, Is.EqualTo(manifest.Name), path);

@@ -75,6 +75,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(bodies, Is.Not.Empty);
             foreach (var body in bodies)
             {
+                // A new import of the topology alone updates the appearance catalogs.
+                Assert.That(ArtModelImportRules.AppliesToData(body.UnityDataPath), Is.True, body.path);
                 var topology = ArtAppearanceCatalogs.TopologyFor(body);
                 var parts = ArtAppearanceCatalogs.PartsFor(body);
                 Assert.That(parts.Length, Is.EqualTo(10), body.path);
