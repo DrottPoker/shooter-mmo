@@ -52,6 +52,7 @@ between the export and the game.
 | Change a clip or add one | the library's `.blend` file, or `Sync-AnimationLibrary.ps1 -Generate` for a gait | [Make A Clip](LOCAL_DEVELOPMENT.md#make-a-clip) |
 | Start an animation library | `New-ArtAsset.ps1 -Kind animations` | [Make A Clip](LOCAL_DEVELOPMENT.md#make-a-clip) |
 | Paint onto the skin, such as a tattoo or scars | `New-ArtAsset.ps1 -Kind paint`, then `Sync-PaintAsset.ps1` | [Make A Paint Layer](LOCAL_DEVELOPMENT.md#make-a-paint-layer) |
+| Fit the garment cage to the bodies, or move a standard line | `Sync-CageAsset.ps1` | [Fit The Garment Cage](LOCAL_DEVELOPMENT.md#fit-the-garment-cage) |
 | Make clothes or armor as a 3D garment | `New-ArtAsset.ps1 -Kind garment`, then `Sync-GarmentAsset.ps1` | [Make A Garment](LOCAL_DEVELOPMENT.md#make-a-garment) |
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](LOCAL_DEVELOPMENT.md#review-approve-and-export-an-asset) |
 
@@ -66,6 +67,7 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `art/Animations/<Name>/<Name>.blend` | An [animation library](#animation-libraries): handmade clips of one skeleton, keyed on the rig of one character, with the bodies that show them. |
 | `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the first body and moved to the others. |
 | `art/Garments/<Name>/<Name>.blend` | A [garment](#garments): clothes or armor made on the first body and fitted to the others, one version per body. |
+| `art/Cages/<Skeleton>/<Skeleton>.blend` | The [garment cage](#garment-cage) of a skeleton: the net of fixed topology that garments are made on, fitted to every body of the skeleton, with its standard lines. |
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, and a garment one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it. |
 | `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint` and garments to `Textures/Garments`. |
@@ -75,11 +77,13 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
 | `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, in `bodies.py` the body parts of a skinned character written from its editable body, and in `poses.py` the test poses of the `Humanoid` skeleton that the rig reviews use. |
 | `tools/blender/art_pipeline_cli.py` | Blender entry point for the scripts below. |
-| `tools/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, or garment: its folder, `asset.json`, and first `.blend` file. |
+| `tools/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment, or garment cage: its folder, `asset.json`, and first `.blend` file. |
 | `tools/Render-ArtPreview.ps1`, `tools/Approve-ArtAsset.ps1`, `tools/Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/ArtPipelineCommon.ps1`. |
 | `tools/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/Sync-AnimationLibrary.ps1`, `tools/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
 | `tools/Sync-PaintAsset.ps1`, `tools/blender/art_pipeline/paint.py` | Builds a paint layer file from its bodies, or updates it, and moves the paint of the first body to the others. |
+| `tools/Sync-CageAsset.ps1`, `tools/blender/art_pipeline/cage.py` | Fits the garment cage to every body from its reference, writes its review sheet, and checks it. |
+| `tools/blender/art_pipeline/body_files.py` | Appends the bodies a garment or the cage is fitted to from their own files, and appends them again when they change. |
 | `tools/Sync-GarmentAsset.ps1`, `tools/blender/art_pipeline/garment.py`, `coverage.py` | Fits a garment to every body from the version on the first body, gives every version the weights of its body, computes what it covers on every body, writes its review sheet and review file, and checks it. |
 | `tools/Sync-HumanBase.ps1`, `tools/blender/human_base`, `tools/blender/human_base_cli.py` | The tools of the [human base characters](#human-base-characters): their body parts written from their editable bodies, their rig and weights, their checks and review sheets, and the gait model that starts clips in an animation library. |
 | `src/Client/Assets/Editor/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
@@ -97,7 +101,7 @@ any `clips` of its own are written by hand when an asset is created.
 | Field | Meaning |
 | --- | --- |
 | `schemaVersion` | Always `1`. |
-| `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries), `paint` for a [paint layer](#paint-layers), `garment` for a [garment](#garments). A paint layer has no `target`, `rootObjects`, or `triangleBudget`, and a garment no `target` or `rootObjects`: its models and roots follow from its bodies. |
+| `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries), `paint` for a [paint layer](#paint-layers), `garment` for a [garment](#garments), `cage` for the [garment cage](#garment-cage). A paint layer has no `target`, `rootObjects`, or `triangleBudget`, a garment no `target` or `rootObjects`: its models and roots follow from its bodies, and a cage none of them and no `export`. |
 | `target` | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx`, where `<Name>` is the folder name. |
 | `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. The one root object of an animation library is its armature, named after its skeleton. |
 | `triangleBudget` | The maximum number of exported triangles, after modifiers. An animation library exports no meshes and has none. A garment's budget holds for each body's version. |
@@ -106,7 +110,9 @@ any `clips` of its own are written by hand when an asset is created.
 | `previews` | Animation libraries only: other skinned assets of the skeleton whose bodies show the clips in the library, such as `["art/Characters/Human_Female"]`. |
 | `clips` | Animation libraries, and skinned assets with clips of their own: the names of the animation clips the asset exports, such as `["Death", "Idle", "Walk", "Jog"]`. Each is one Blender action. A skinned asset whose clips come from animation libraries, such as the human bodies, leaves `clips` out. |
 | `part` | Paint layers only: the part of the painted material `M_<Part>_<Label>`, such as `Body`. |
-| `bodies` | Paint layers and garments: the skinned assets the paint or the garment fits, the body it is made on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. |
+| `bodies` | Paint layers and garments: the skinned assets the paint or the garment fits, the body it is made on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology. |
+| `figure` | The cage only: the figure scale in meters, the radius of the ball that rolls over the skin, from 0.01 to 0.2. |
+| `lines` | The cage only: the standard lines, each with its `name`, its `region` (`neck`, `trunk`, `arms`, or `legs`), its `bone`, without the side `_L` or `_R` for the arms and legs, and its `share` of the bone's length, from 0 to 1. |
 | `layer` | Paint layers: the order paint layers are drawn in, from 0 to 1000, the lowest first, such as `30` for a chest piece over a shirt at `10`. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `200` for a jerkin over a shirt at `100`. |
 | `slot` | Garments only: the visual slot, `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
 | `band` | Garments only: how far from the skin the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), or `loose` (from 10 mm). |
@@ -132,6 +138,7 @@ saving the file again, even without a visible change, needs a new approval.
 | `animations` (animation libraries) | `animation` | Implemented. |
 | `paint` (paint layers) | `paint` | Implemented. |
 | `garment` (garments) | `model`, then `rig` | Implemented. |
+| `cage` (the garment cage) | `model` | Implemented. It has no export. |
 
 The `rig` review looks at the skeleton and the weights: test poses that raise
 the arms, bend the elbows and knees, stride, sit, close the hands, open the jaw,
@@ -153,7 +160,8 @@ states: work on the next stage stays on its branch until that stage is approved.
 
 `Verify-ArtAssets.ps1` runs in the CI backend job and fails when an approval is
 missing or stale, when an animation library was exported against another export
-of its rig, when an asset in review has an export or an FBX, when the
+of its rig, when an asset in review has an export or an FBX, when the garment
+cage's approval does not cover its committed file, when the
 committed FBX or a committed texture differs from the recorded export, or when a
 model below `src/Client/Assets/Art/Models` or a texture below
 `src/Client/Assets/Art/Textures` has no asset. It reads the SHA-256 of a `.blend`
@@ -544,6 +552,96 @@ URP is upgraded, the shader is made again from the new `Lit.shader` and
 `LitInput.hlsl` with the same changes. The appearance catalog of every body lists
 the paint layers that fit it, in the order of their `layer`.
 
+## Garment Cage
+
+`art/Cages/Humanoid` is the garment cage of the `Humanoid` skeleton: a sparse net
+of fixed topology that lies over every body of the skeleton, smooth over the
+body's pits and following its figure, on which garments are made and fitted; the
+design is in
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-garment-cage). It has
+1,576 faces over the neck, the trunk, the arms to the wrists, and the legs to the
+ankles, in four regions: `neck`, `trunk`, `arms`, and `legs`.
+
+Its file holds:
+
+- The reference in the `CageReference` collection: the armature `CageRig`, a
+  copy of the male body's rig when the cage was made, and on it the mesh `Cage`,
+  the male body's faces of its `Neck`, `Torso`, `Pelvis`, `UpperArms`,
+  `Forearms`, `Thighs`, and `Shins` parts, with their weights and the face
+  attribute `region`. It never changes: a new base model changes the bodies, not
+  the cage. The figure scale and the lines it was last fitted with are custom
+  properties of `Cage`, so changing them in `asset.json` changes the file and
+  needs a new approval.
+- Per body, the collection `Fit_<Label>` with the body's armature and the cage's
+  version `Cage_<Label>` on it, and in the `Reference` collection the body's
+  source body, eyes, teeth, and tongue. The file opens with the male and its
+  cage shown and the others hidden, because they stand at the same place.
+
+`tools/Sync-CageAsset.ps1` fits every version from the reference alone, so a body
+of any topology gets one:
+
+1. The reference moves with the rig from `CageRig` to the body's armature, every
+   bone with its length, blended by the reference's weights.
+2. Every vertex is drawn to the skin of its region: to the nearest skin within
+   2 mm, otherwise along the cage's normal to whichever side meets the skin
+   first, within 80 mm and at most 10 mm farther than the nearest skin.
+3. A ball whose radius is the figure scale, 60 mm, rolls over the skin of the
+   region along normals smoothed 25 times: a vertex where the ball does not fit,
+   in a pit narrower than the ball, is lifted until it does, by at most 0.6 of
+   the radius. The waist and the small of the back keep the ball touching the
+   skin and are followed. The lift fades in over three edges from the cage's
+   open ends and from the borders between its regions, so an arm's cage never
+   webs into the trunk and the crotch stays a crotch.
+4. The rings around the trunk, the neck, the arms, and the legs are drawn taut
+   like a band, outward only and in the ring's plane, 200 steps: each edge counts
+   toward a ring by the fourth power of the sine of its angle to the ring's axis,
+   which is up for the trunk and the bone a vertex follows most for the neck and
+   the limbs. A groove across a ring is spanned, such as the buttock cleft, the
+   spine groove, the navel, and the cleavage, while the figure from top to
+   bottom stays. The tension fades in over three edges from the open ends.
+5. Eight Taubin steps fair the cage, and no vertex and no face centre stays
+   closer to the skin than 1 mm.
+
+A version corrected by hand keeps its corrections, because the point attribute
+`fitted` holds the shape the last fitting gave, and the difference to it is
+applied again. A file that a sync leaves as it was is not saved, so its approval
+stays valid.
+
+Its `model` stage checks that the bodies are the current ones of their files,
+that the cage was fitted with the figure scale and the lines of `asset.json` and
+is fitted as the fitting gives it now, that every version has the reference's
+topology, that no vertex or face centre lies closer to the skin than 1 mm, that
+no two faces cross each other, and that every line crosses its region on every
+body. The report names how far each version lies from the skin and how many
+vertices span pits more than 5 mm deep.
+
+The standard lines are planes at a `share` of a bone's length, at right angles
+to the bone, or level across the trunk, which stands upright at rest while its
+bones lean:
+
+| Line | Region | Bone and share | Where |
+| --- | --- | --- | --- |
+| `CollarStand` | `neck` | `Neck` 0.3 | a stand collar's top, about 3 cm up the neck |
+| `HemCrop` | `trunk` | `Chest` 0.5 | under the bust |
+| `Waist` | `trunk` | `Spine` 0.1 | the trousers' waistband, at the hip bones |
+| `HemHip` | `trunk` | `Hips` 0.72 | a top's hem, about 5 cm under `Waist` |
+| `SleeveShort` | `arms` | `UpperArm` 0.45 | a short sleeve |
+| `SleeveElbow` | `arms` | `LowerArm` 0.05 | just below the elbow |
+| `GloveCuff` | `arms` | `LowerArm` 0.65 | a glove's cuff, about 5 cm up from `SleeveLong` |
+| `SleeveLong` | `arms` | `LowerArm` 0.92 | a long sleeve, at the wrist |
+| `LegShorts` | `legs` | `UpperLeg` 0.5 | shorts |
+| `LegKnee` | `legs` | `LowerLeg` 0.1 | below the knee |
+| `BootCalf` | `legs` | `LowerLeg` 0.55 | a boot's top |
+| `LegAnkle` | `legs` | `LowerLeg` 0.9 | a trouser hem |
+
+The review sheet `artifacts/art-previews/Humanoid.png` shows each body in three
+rows: the cage from the front, the right side, the back, and the back left,
+colored by its distance from the skin, blue at the skin, yellow at 15 mm, and
+red from 30 mm, with the lines drawn on it in colors; the cage in one cloth
+color from the same sides; and the torso up close in the cloth color from the
+front right, the back left, the back, and the back right. The cage is drawn 4 mm
+off its place, so the skin does not shine through.
+
 ## Garments
 
 A garment below `art/Garments` is clothes, armor, or hair as a mesh of its own,
@@ -807,6 +905,7 @@ weights.
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
 | `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. |
+| `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the twelve standard lines of [Garment Cage](#garment-cage). |
 | `art/Paint/LeatherJerkin` | `paint` | none | The paint of the leather jerkin over `M_Body`, painted on the male and moved to the female, layer 30: warm brown leather with large soft blotches, fine grain, and worn lighter high points, darker trim with stitches along every edge, side and shoulder seams, short sleeves to a little less than half the upper arm, a round collar that stands 2 cm up the neck, and a V at the front laced across. Smoothness 0.38. Approved 2026-10-21; the female's bra straps are painted up her neck, above any collar, until the base body is fixed. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. The game shows it for every player. |

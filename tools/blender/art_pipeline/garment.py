@@ -27,10 +27,9 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.interpolate import poly_3d_calc
 
-from . import bodies, poses, skinned
+from . import bodies, body_files, poses
 from .scene import ArtPipelineError, relative_image_paths
 
-REFERENCE_COLLECTION = "Reference"
 FITTED = "fitted"
 TRANSFERRED = "transferred_weights"
 MAX_INFLUENCES = 4
@@ -74,15 +73,6 @@ def material_name(name: str) -> str:
 
 def image_name(name: str) -> str:
     return f"T_Garment_{name}"
-
-
-def _collection(name: str) -> bpy.types.Collection:
-    collection = bpy.data.collections.get(name)
-    if collection is None:
-        collection = bpy.data.collections.new(name)
-    if collection.name not in bpy.context.scene.collection.children:
-        bpy.context.scene.collection.children.link(collection)
-    return collection
 
 
 def _triangles(mesh: bpy.types.Mesh) -> list[tuple[int, int, int, int]]:
@@ -190,105 +180,6 @@ def _checksum(row: np.ndarray, names: list[str]) -> int:
     text = ";".join(f"{names[i]}:{row[i]:.4f}" for i in np.nonzero(row > 0)[0])
     value = zlib.crc32(text.encode("utf-8"))
     return value - (1 << 32) if value >= 1 << 31 else value
-
-
-def _references(arm: bpy.types.Object) -> list[bpy.types.Object]:
-    """The body's meshes in the Reference collection: its source body, eyes, teeth, and tongue."""
-    reference = bpy.data.collections.get(REFERENCE_COLLECTION)
-    return [o for o in arm.children_recursive if reference is not None and o.name in reference.objects]
-
-
-def _append_body(path: str, root: str) -> bpy.types.Object:
-    """The body's armature and everything below it but its parts, appended: the source body shows
-    the body in the viewport and in renders, and the fitting reads it."""
-    with bpy.data.libraries.load(path, link=False) as (source, target):
-        if root not in source.objects:
-            raise ArtPipelineError(f'{path} has no object "{root}".')
-        target.objects = list(source.objects)
-        target.images = list(source.images)
-    loaded = [o for o in target.objects if o is not None]
-    arm = next(o for o in loaded if o.name == root)
-    keep = {arm}
-    stack = list(arm.children)
-    while stack:
-        child = stack.pop()
-        if "zone" not in child:
-            keep.add(child)
-            stack.extend(child.children)
-    for obj in loaded:
-        if obj not in keep:
-            bpy.data.objects.remove(obj, do_unlink=True)
-    for image in target.images:
-        if image is not None and image.users == 0:
-            bpy.data.images.remove(image)
-    if bodies.source_body(root) is None:
-        raise ArtPipelineError(f'{path} has no source body "{bodies.body_name(root)}".')
-    export = _collection(collection_name(root))
-    reference = _collection(REFERENCE_COLLECTION)
-    export.objects.link(arm)
-    for obj in keep - {arm}:
-        reference.objects.link(obj)
-        obj.hide_render = False
-        obj.hide_select = True
-    return arm
-
-
-def _body_fingerprint(arm: bpy.types.Object, body: bpy.types.Object) -> str:
-    """SHA-256 of what the fitting reads from a body: its rig, its surface, and its weights."""
-    names = sorted(g.name for g in body.vertex_groups)
-    digest = hashlib.sha256(skinned.rig_fingerprint(arm).encode("utf-8"))
-    digest.update(";".join(names).encode("utf-8"))
-    digest.update((np.round(bodies.world_positions(body), 6) + 0.0).tobytes())
-    digest.update((np.round(bodies.weights_of(body, names), 5) + 0.0).tobytes())
-    return digest.hexdigest()
-
-
-def _current_fingerprint(path: str, root: str) -> str:
-    """The fingerprint of the body as its own file holds it now, read through a link that is
-    removed again, so nothing of it stays in this file."""
-    names = [root, bodies.body_name(root)]
-    with bpy.data.libraries.load(path, link=True) as (source, target):
-        missing = [n for n in names if n not in source.objects]
-        if missing:
-            raise ArtPipelineError(f"{path} has no objects {missing}.")
-        target.objects = names
-    library = target.objects[0].library
-    try:
-        return _body_fingerprint(target.objects[0], target.objects[1])
-    finally:
-        bpy.data.libraries.remove(library)
-
-
-def _stale_bodies(body_list: list[tuple[str, str]]) -> list[str]:
-    stale = []
-    for path, root in body_list:
-        arm = bpy.data.objects.get(root)
-        body = bodies.source_body(root)
-        here = _body_fingerprint(arm, body) if arm is not None and arm.type == "ARMATURE" and body is not None else None
-        if here != _current_fingerprint(path, root):
-            stale.append(root)
-    return stale
-
-
-def _replace_body(path: str, root: str) -> None:
-    """Appends the body again from its file, keeping the garment's version on it."""
-    old = bpy.data.objects.get(root)
-    versions = []
-    if old is not None:
-        references = _references(old)
-        versions = [o for o in old.children if o not in references]
-        for obj in references:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        old.name = f"{root}_replaced"
-        if old.data is not None:
-            old.data.name = f"{root}_replaced"
-        bpy.data.orphans_purge(do_recursive=True)
-    arm = _append_body(path, root)
-    for version in versions:
-        version.parent = arm
-    if old is not None:
-        bpy.data.objects.remove(old, do_unlink=True)
-        bpy.data.orphans_purge(do_recursive=True)
 
 
 def _shell(body: bpy.types.Object, keep: list[bool], band: str) -> bpy.types.Mesh:
@@ -401,7 +292,7 @@ def create(file: str, name: str, slot: str, band: str, body_list: list[tuple[str
     """Writes the first file of a garment: the bodies, and on the first body a starting shell in its
     band of the faces its paint covers, or of the faces of its slot's body parts."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    arms = [_append_body(path, root) for path, root in body_list]
+    arms = [body_files.append_body(path, root, collection_name(root)) for path, root in body_list]
     first = arms[0]
     body = bodies.source_body(first.name)
     image = None
@@ -557,7 +448,7 @@ def _state(name: str, labels: list[str]) -> str:
         body = bodies.source_body(label)
         digest.update(label.encode("utf-8"))
         if arm is not None and arm.type == "ARMATURE" and body is not None:
-            digest.update(_body_fingerprint(arm, body).encode("utf-8"))
+            digest.update(body_files.fingerprint(arm, body).encode("utf-8"))
         obj = bpy.data.objects.get(version_name(name, label))
         if obj is None or obj.type != "MESH":
             continue
@@ -580,10 +471,10 @@ def sync(file: str, name: str, band: str, body_list: list[tuple[str, str]], tran
     bpy.ops.wm.open_mainfile(filepath=file)
     labels = [root for _path, root in body_list]
     before = _state(name, labels)
-    stale = set(_stale_bodies(body_list))
+    stale = set(body_files.stale_bodies(body_list))
     for path, root in body_list:
         if root in stale:
-            _replace_body(path, root)
+            body_files.replace_body(path, root, collection_name(root))
     arms = [bpy.data.objects[label] for label in labels]
     for obj in [o for o in bpy.data.objects if o.type == "ARMATURE" and o.name not in labels]:
         for child in list(obj.children_recursive):
@@ -605,7 +496,7 @@ def stale_errors(name: str, band: str, body_list: list[tuple[str, str]]) -> list
     files, every fitted version is fitted to the current first version, and every version has the
     weights a sync gives it."""
     labels = [root for _path, root in body_list]
-    stale = _stale_bodies(body_list)
+    stale = body_files.stale_bodies(body_list)
     if stale:
         return [f"The bodies {stale} of the garment changed in their own files; run tools/Sync-GarmentAsset.ps1."]
     arms = [bpy.data.objects[label] for label in labels]

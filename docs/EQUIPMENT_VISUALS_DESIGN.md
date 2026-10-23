@@ -6,13 +6,13 @@ Status: accepted by Victor on 2026-10-22, with the support of future races added
 Extended on 2026-10-23, accepted by Victor, with the garment cage, garment
 templates, and garment textures, so that clothes keep a shape of their own and
 everything adapts to new body types and a replaced base model. It is
-implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 4 are
-done: this document; the cloth chains with their solver; the garment kind with
-its fitting, weights, bands, masks, review, export, and Unity import, with the
-leather jerkin as the first garment; and putting a character together with its
+implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 4 and
+5a are done: this document; the cloth chains with their solver; the garment kind
+with its fitting, weights, bands, masks, review, export, and Unity import, with
+the leather jerkin as the first garment; putting a character together with its
 garments, with the garment shader, the Wardrobe preview, and trying garments on
-in F2. The garment cage, templates, and textures are designed here and not
-implemented yet.
+in F2; and the garment cage with its standard lines, approved by Victor on
+2026-10-23. Templates and textures are designed here and not implemented yet.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -138,25 +138,30 @@ the first gloves, boots, and hoods come; they add faces and change none.
   1. The reference shape moves with the rig: every cage vertex follows the
      bones of the reference rig to the body's rig, with each bone's length, so
      a dwarf's shorter arms and an elf's longer legs carry the cage with them.
-  2. Every vertex is drawn to the body's skin along the cage's normal.
-  3. The cage is smoothed against that pull: details smaller than the cage's
-     figure scale are spanned, larger forms are followed. The cage spans the
-     buttock cleft, the spine groove, the navel, the abdominal muscles, the
-     cleavage, and the crease under the bust, and follows the waist, the small
-     of the back, the bust, the buttocks, and the shoulders a little, so the
-     figure shows. It never webs between an arm and the trunk or between the
-     legs.
-  4. No vertex and no face centre lies inside the skin; a vertex that would is
-     moved out along the skin's normal.
-- **Its figure scale** is one number of the cage asset, in meters: the size of a
-  detail the cage still spans. The reviewer judges it on the cage's review sheet
-  and asks for more or less figure.
+  2. Every vertex is drawn to the skin of its region.
+  3. A ball whose radius is the figure scale rolls over the skin: where it does
+     not fit, in a pit narrower than the ball, the cage is lifted until it does,
+     so creases such as the one under the bust are softened, while larger forms
+     keep the ball touching the skin and are followed.
+  4. The rings around the trunk, the neck, the arms, and the legs are drawn taut
+     like a band around the body, outward only and in their own plane, as cloth
+     is held taut around a body: every groove across a ring is spanned, such as
+     the buttock cleft above the hips, the spine groove, the hollow between the
+     shoulder blades, the navel, the abdominal muscles, and the cleavage, while
+     the figure from top to bottom, the waist, the small of the back, the bust,
+     the buttocks, and the shoulders, stays. The cage never webs between an arm
+     and the trunk or between the legs, since the lift and the tension fade in
+     from the borders between its regions and from its open ends.
+  5. The cage is faired, and no vertex and no face centre lies closer to the
+     skin than 1 mm; one that would is moved out along the skin's normal.
+- **Its figure scale** is one number of the cage asset, in meters, the radius of
+  the ball: 60 mm. The reviewer judges it on the cage's review sheet and asks for
+  more or less figure. Not every groove has to go: Victor approved the cage with
+  the lower end of the buttock cleft, below the hip line, spanned only in part,
+  also for trousers.
 - **Corrections** that a person sculpts on the cage of one body are kept as a
   difference to the fitted shape, like the corrections of a garment, so the next
   fit keeps them.
-- **Seams** are marked on the cage where clothes have their seams: down the sides
-  of the trunk, under the arms, and along the inside of the legs. Templates
-  unfold their textures along them.
 
 The cage is an art asset of its own, reviewed and approved by Victor like every
 other. It has no export, so garments record the hash of the approved cage
@@ -167,14 +172,15 @@ garments.
 
 A standard line is a place where clothes end: a short sleeve, a long sleeve, a
 trouser hem, or a top's hem. Each line is a plane across one region of the cage,
-at right angles to a bone of the skeleton, at a share of that bone's length,
-such as the short sleeve at a share of the upper arm. A line therefore lies at
+at a share of a bone's length, at right angles to the bone, or level across the
+trunk, which stands upright at rest while its bones lean, such as the short
+sleeve at a share of the upper arm. A line therefore lies at
 the corresponding place on every body: a dwarf's short sleeve ends where it
 ends on a dwarf's arm. Moving a line means changing its share.
 
 | Line | Region | Where | Used by |
 | --- | --- | --- | --- |
-| `CollarStand` | `neck` | on the neck, about 2 cm above its base | a stand collar's top |
+| `CollarStand` | `neck` | on the neck, 2 to 3 cm above its base | a stand collar's top |
 | `HemCrop` | `trunk` | under the bust, above the navel | a crop top's hem |
 | `Waist` | `trunk` | at the hip bones | the trousers' waistband |
 | `HemHip` | `trunk` | below `Waist` by the overlap | a top's hem, over the trousers |
@@ -244,7 +250,9 @@ A template is built by the pipeline from its recipe:
 
 The pipeline cuts the cage's faces at the lines, keeps the faces of the
 template, offsets them into its band, adds the ease and the turned edges, and
-unfolds its UVs along the cage's seams and its own edges. The result is the
+unfolds its UVs along its own edges and along seams that the pipeline places
+where clothes have them: down the sides of the trunk, under the arms, along the
+inside of the legs, and at the back of a collar. The result is the
 template's version on the first body, the male; every other body's version is
 fitted from it. A person may then shape the first version by hand, such as
 folds or a flared hem; the pipeline keeps that shape as a difference over the
@@ -698,7 +706,7 @@ quarter of the triangles come with the first crowd measurement that needs them.
    garment shader with clipping and dyes, the Wardrobe preview, and trying
    garments on in F2. Done.
 5. The garment cage, templates, and textures, each approved by Victor:
-   - 5a. The garment cage: the `cage` kind, its fitting to every body, its
+   - 5a. Done. The garment cage: the `cage` kind, its fitting to every body, its
      standard lines, its checks, and its review sheet.
    - 5b. Templates and textures: the `garment` kind built from recipes on the
      cage, with its bands, weights, and masks from the cage, ease, turned

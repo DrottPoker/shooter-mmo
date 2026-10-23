@@ -1,0 +1,26 @@
+{
+    "schemaVersion": 1,
+    "kind": "cage",
+    "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
+    "figure": 0.06,
+    "lines": [
+        { "name": "CollarStand", "region": "neck", "bone": "Neck", "share": 0.3 },
+        { "name": "HemCrop", "region": "trunk", "bone": "Chest", "share": 0.5 },
+        { "name": "Waist", "region": "trunk", "bone": "Spine", "share": 0.1 },
+        { "name": "HemHip", "region": "trunk", "bone": "Hips", "share": 0.72 },
+        { "name": "SleeveShort", "region": "arms", "bone": "UpperArm", "share": 0.45 },
+        { "name": "SleeveElbow", "region": "arms", "bone": "LowerArm", "share": 0.05 },
+        { "name": "GloveCuff", "region": "arms", "bone": "LowerArm", "share": 0.65 },
+        { "name": "SleeveLong", "region": "arms", "bone": "LowerArm", "share": 0.92 },
+        { "name": "LegShorts", "region": "legs", "bone": "UpperLeg", "share": 0.5 },
+        { "name": "LegKnee", "region": "legs", "bone": "LowerLeg", "share": 0.1 },
+        { "name": "BootCalf", "region": "legs", "bone": "LowerLeg", "share": 0.55 },
+        { "name": "LegAnkle", "region": "legs", "bone": "LowerLeg", "share": 0.9 }
+    ],
+    "approvals": {
+        "model": {
+            "date": "2026-10-23",
+            "sourceSha256": "e2de2ea9850e720b20fd66d8856f526acba35ae25238e161f3a42628aefc1201"
+        }
+    }
+}

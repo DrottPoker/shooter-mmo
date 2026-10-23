@@ -4,8 +4,9 @@
         --python tools/blender/art_pipeline_cli.py -- <validate|export|preview> [options]
 
 new-static writes the first file of a static asset, library-sync builds or updates an animation
-library, paint-sync a paint layer, garment-create and garment-sync a garment, and
-garment-review-file writes a garment's review file; they run without an open file. Every result
+library, paint-sync a paint layer, garment-create and garment-sync a garment,
+garment-review-file writes a garment's review file, and cage-create and cage-sync the garment
+cage; they run without an open file. Every result
 line starts with ART_ so the PowerShell scripts can read it from Blender's log.
 """
 
@@ -20,7 +21,7 @@ import bpy
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from art_pipeline import bodies, coverage, garment, library, paint, preview, skinned  # noqa: E402
+from art_pipeline import bodies, cage, coverage, garment, library, paint, preview, skinned  # noqa: E402
 from art_pipeline import skeleton as skeleton_definition  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
@@ -50,6 +51,7 @@ def _parser() -> argparse.ArgumentParser:
                              help="<file.blend>=<armature> of a body a garment fits, the first body first.")
         command.add_argument("--clip-library", action="append", default=[],
                              help="<file.blend>=<Clip>+<Clip> of an animation library whose clips a garment is checked in.")
+        command.add_argument("--manifest", help="The asset.json of a cage, with its figure scale and lines.")
         if name == "export":
             command.add_argument("--target", help="Absolute FBX path; a paint layer has none.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
@@ -61,6 +63,8 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--band", help="The band of a garment.")
     command.add_argument("--clip-library", action="append", default=[],
                          help="<file.blend>=<Clip>+<Clip> of an animation library whose clips complete a garment's mask.")
+    command.add_argument("--roots", help="Comma-separated armatures of a cage's bodies, in order.")
+    command.add_argument("--manifest", help="The asset.json of a cage, with its standard lines.")
     command = commands.add_parser("library-sync")
     command.add_argument("--library", required=True, help="The animation library .blend to build or update.")
     command.add_argument("--armature", required=True, help="The name of the armature the clips are keyed on.")
@@ -88,6 +92,11 @@ def _parser() -> argparse.ArgumentParser:
                                  help="Transfer every weight from the bodies again, also those painted by hand.")
         else:
             command.add_argument("--output", required=True, help="The review .blend to write.")
+    for name in ("cage-create", "cage-sync"):
+        command = commands.add_parser(name)
+        command.add_argument("--file", required=True, help="The cage .blend to create or update.")
+        command.add_argument("--manifest", required=True, help="The cage's asset.json, with its figure scale and lines.")
+        command.add_argument("--body", action="append", default=[], help="<file.blend>=<armature>, the first body first.")
     command = commands.add_parser("paint-sync")
     command.add_argument("--file", required=True, help="The paint layer .blend to build or update.")
     command.add_argument("--paint", required=True)
@@ -181,9 +190,39 @@ def _garment(args) -> int:
     return 0
 
 
+def _cage(args) -> int:
+    """Validation of the garment cage, which has one review stage and no export: its bodies and
+    fitting are as a sync leaves them, and its versions keep the cage's rules on every body."""
+    body_list = _bodies(args)
+    labels = args.roots.split(",")
+    if [root for _path, root in body_list] != labels:
+        raise ArtPipelineError("A cage is checked against its bodies; pass one --body per root, in order.")
+    if args.stage != "model":
+        raise ArtPipelineError(f'A cage has the review stage model, not "{args.stage}".')
+    if args.command == "export":
+        raise ArtPipelineError("A cage has no export; garments record its approved file.")
+    figure, lines = cage.read_manifest(args.manifest)
+    errors = cage.stale_errors(body_list, figure, lines)
+    if not errors:
+        errors = cage.cage_errors(labels, lines)
+    for line in cage.report(labels):
+        print(f"ART_REPORT {line}")
+    for error in errors:
+        print(f"ART_PIPELINE_ERROR {error}")
+    if errors:
+        return 1
+    print(f"ART_VALIDATION faces={len(bpy.data.objects[cage.REFERENCE].data.polygons)}")
+    return 0
+
+
 def main() -> int:
     args = parse_args(_parser())
     if args.command == "preview":
+        if args.kind == "cage":
+            _figure, lines = cage.read_manifest(args.manifest)
+            path = preview.render_cage_sheet(os.path.abspath(args.output), args.cell_size, args.roots.split(","), lines)
+            print(f"ART_PREVIEW {path}")
+            return 0
         if args.kind == "garment":
             path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size, args.garment, args.band,
                                                 _clip_libraries(args))
@@ -223,6 +262,18 @@ def main() -> int:
             print(f"ART_REPORT {line}")
         print(f"ART_GARMENT {state} {args.file}")
         return 0
+    if args.command in ("cage-create", "cage-sync"):
+        body_list = _bodies(args)
+        figure, lines = cage.read_manifest(args.manifest)
+        state = "created"
+        if args.command == "cage-create":
+            cage.create(os.path.abspath(args.file), body_list, figure, lines)
+        else:
+            state = "synced" if cage.sync(os.path.abspath(args.file), body_list, figure, lines) else "up-to-date"
+        for line in cage.report([r for _p, r in body_list]):
+            print(f"ART_REPORT {line}")
+        print(f"ART_CAGE {state} {args.file}")
+        return 0
     if args.command == "library-sync":
         previews = [tuple(p.rsplit("=", 1)) for p in args.preview]
         changed = library.sync(os.path.abspath(args.library), args.armature, os.path.abspath(args.rig_source),
@@ -233,6 +284,8 @@ def main() -> int:
         return _paint(args)
     if args.kind == "garment":
         return _garment(args)
+    if args.kind == "cage":
+        return _cage(args)
 
     errors, triangles = validate(args.kind, args.roots.split(","), args.triangle_budget, args.stage, args.skeleton,
                                  [c for c in args.clips.split(",") if c],

@@ -13,8 +13,9 @@ import bmesh
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
+from mathutils.kdtree import KDTree
 
-from . import bodies, coverage, garment, poses
+from . import bodies, cage, coverage, garment, poses
 from .scene import descendants, export_objects, root_objects
 
 YAWS = (35.0, 125.0, 215.0, 305.0)
@@ -331,6 +332,126 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
                 for slot, material in enumerate(materials):
                     body.data.materials[slot] = material
                 body.data.color_attributes.remove(body.data.color_attributes["CoverPreview"])
+    return _save(sheet, output)
+
+
+# The cage's sheet: each body from the front, the right side, the back, and the back left, once
+# colored by the cage's distance from the skin with the standard lines on it, once in one cloth
+# color, and its torso up close in the cloth color. A view from low down shows the figure.
+CAGE_YAWS = (180.0, 90.0, 0.0, 35.0)
+# The torso up close from the front right, the back left, the back, and the back right, where the arms
+# hide nothing.
+CAGE_TORSO_YAWS = (145.0, 35.0, 0.0, 325.0)
+CAGE_ROWS = 3
+CAGE_PITCH = 8.0
+# Shown this far off the cage, which lies 1 mm from the skin, so the skin does not shine through.
+CAGE_DISPLAY_OFFSET = 0.004
+CAGE_LINE_OFFSET = 0.007
+CAGE_LINE_RADIUS = 0.003
+# The distance colors: at the skin, at the middle, and at the far end of the scale and beyond.
+CAGE_GAP_SCALE = 0.03
+CAGE_GAP_SRGB = ((0.32, 0.46, 0.86), (0.96, 0.86, 0.32), (0.88, 0.18, 0.14))
+CAGE_CLOTH_SRGB = (0.42, 0.30, 0.22)
+CAGE_LINE_SRGB = ((0.98, 0.98, 0.98), (0.10, 0.10, 0.10), (0.10, 0.85, 0.35), (0.95, 0.20, 0.75),
+                  (0.10, 0.80, 0.95), (1.00, 0.55, 0.00))
+
+
+def _gap_color(distance: float) -> tuple[float, float, float, float]:
+    t = min(max(distance / CAGE_GAP_SCALE, 0.0), 1.0) * 2.0
+    low, high = (CAGE_GAP_SRGB[0], CAGE_GAP_SRGB[1]) if t <= 1.0 else (CAGE_GAP_SRGB[1], CAGE_GAP_SRGB[2])
+    t = t if t <= 1.0 else t - 1.0
+    return tuple(_srgb_to_linear(a + (b - a) * t) for a, b in zip(low, high)) + (1.0,)
+
+
+def _aim_low(camera: bpy.types.Object, sun: bpy.types.Object, center: Vector, radius: float, yaw: float) -> None:
+    distance = radius / math.sin(camera.data.angle / 2.0) * 1.05
+    pitch = math.radians(CAGE_PITCH)
+    direction = Vector((math.sin(math.radians(yaw)) * math.cos(pitch), -math.cos(math.radians(yaw)) * math.cos(pitch),
+                        math.sin(pitch)))
+    camera.location = center + direction * distance
+    camera.rotation_euler = (center - camera.location).to_track_quat("-Z", "Y").to_euler()
+    sun.rotation_euler = (math.radians(50.0), 0.0, math.radians(yaw - 45.0))
+
+
+def render_cage_sheet(output: str, cell: int, labels: list[str], lines: list[dict]) -> str:
+    """The garment cage on every body: per body a row colored by the cage's distance from the skin,
+    blue at the skin, yellow at 15 mm, and red from 30 mm, with the standard lines drawn on it, a
+    row in one cloth color, each from the front, the right side, the back, and the back left, and a
+    row of the torso up close in the cloth color from the front right, the back left, the back, and
+    the back right."""
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    scene = bpy.context.scene
+    for obj in scene.objects:
+        obj.hide_render = True
+    camera, sun = _studio(scene, cell)
+    cloth = _flat_material("PreviewCageCloth", CAGE_CLOTH_SRGB)
+    gap = bpy.data.materials.new("PreviewCageGap")
+    if gap.node_tree is None:
+        gap.use_nodes = True
+    bsdf = next(n for n in gap.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Roughness"].default_value = 0.8
+    source = gap.node_tree.nodes.new("ShaderNodeAttribute")
+    source.attribute_name = "CageGap"
+    gap.node_tree.links.new(source.outputs["Color"], bsdf.inputs["Base Color"])
+    line_materials = [_flat_material(f"PreviewCageLine{i}", srgb) for i, srgb in enumerate(CAGE_LINE_SRGB)]
+
+    rows = CAGE_ROWS * len(labels)
+    sheet = np.zeros((cell * rows, cell * len(CAGE_YAWS), 4), dtype=np.float32)
+    with tempfile.TemporaryDirectory() as scratch:
+        for index, label in enumerate(labels):
+            version = bpy.data.objects[cage.version_name(label)]
+            body = bodies.source_body(label)
+            co = bodies.world_positions(version)
+            normals = cage.Net(version.data).normals(co)
+            mesh = version.data.copy()
+            mesh.name = f"PreviewCage_{label}"
+            mesh.vertices.foreach_set("co", (co + normals * CAGE_DISPLAY_OFFSET).reshape(-1))
+            colors = mesh.color_attributes.new("CageGap", "FLOAT_COLOR", "POINT")
+            for i, distance in enumerate(cage.distances(label)):
+                colors.data[i].color = _gap_color(float(distance))
+            shown = _add_object(scene, mesh.name, mesh)
+            shown.data.materials.clear()
+            shown.data.materials.append(gap)
+
+            drawn = []
+            near = KDTree(len(co))
+            for i, point in enumerate(co):
+                near.insert(point, i)
+            near.balance()
+            for number, line in enumerate(lines):
+                curve = bpy.data.curves.new(f"PreviewLine_{label}_{line['name']}", "CURVE")
+                curve.dimensions = "3D"
+                curve.bevel_depth = CAGE_LINE_RADIUS
+                for _side, segments in cage.line_segments(label, line):
+                    for a, b in segments:
+                        spline = curve.splines.new("POLY")
+                        spline.points.add(1)
+                        for point, end in zip(spline.points, (a, b)):
+                            offset = Vector(normals[near.find(end)[1]]) * CAGE_LINE_OFFSET
+                            point.co = tuple(end + offset) + (1.0,)
+                curve.materials.append(line_materials[number % len(line_materials)])
+                drawn.append(_add_object(scene, curve.name, curve))
+
+            body.hide_render = False
+            low, high = _bounds([body])
+            height = high.z - low.z
+            whole = (Vector(((low.x + high.x) / 2.0, (low.y + high.y) / 2.0, low.z + height * 0.56)), height * 0.5)
+            torso = (Vector(((low.x + high.x) / 2.0, (low.y + high.y) / 2.0, low.z + height * 0.6)), height * 0.23)
+            views = ((CAGE_ROWS * index, gap, True, whole, CAGE_YAWS), (CAGE_ROWS * index + 1, cloth, False, whole, CAGE_YAWS),
+                     (CAGE_ROWS * index + 2, cloth, False, torso, CAGE_TORSO_YAWS))
+            for row, material, show_lines, (center, radius), yaws in views:
+                shown.data.materials[0] = material
+                for obj in drawn:
+                    obj.hide_render = not show_lines
+                for column, yaw in enumerate(yaws):
+                    _aim_low(camera, sun, center, radius, yaw)
+                    top = (rows - 1 - row) * cell
+                    sheet[top:top + cell, column * cell:(column + 1) * cell] = _render(
+                        scene, os.path.join(scratch, f"{label}_{row}_{column}.png"))
+            body.hide_render = True
+            shown.hide_render = True
+            for obj in drawn:
+                obj.hide_render = True
     return _save(sheet, output)
 
 
