@@ -625,7 +625,7 @@ bones lean:
 | `HemCrop` | `trunk` | `Chest` 0.5 | under the bust |
 | `Waist` | `trunk` | `Spine` 0.1 | the trousers' waistband, at the hip bones |
 | `HemHip` | `trunk` | `Hips` 0.72 | a top's hem, about 5 cm under `Waist` |
-| `SleeveShort` | `arms` | `UpperArm` 0.45 | a short sleeve |
+| `SleeveShort` | `arms` | `UpperArm` 0.6 | a short sleeve, about 9 cm long under the arm |
 | `SleeveElbow` | `arms` | `LowerArm` 0.05 | just below the elbow |
 | `GloveCuff` | `arms` | `LowerArm` 0.65 | a glove's cuff, about 5 cm up from `SleeveLong` |
 | `SleeveLong` | `arms` | `LowerArm` 0.92 | a long sleeve, at the wrist |

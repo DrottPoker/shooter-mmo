@@ -162,7 +162,7 @@ switch ($Kind) {
             @("HemCrop", "trunk", "Chest", 0.5),
             @("Waist", "trunk", "Spine", 0.1),
             @("HemHip", "trunk", "Hips", 0.72),
-            @("SleeveShort", "arms", "UpperArm", 0.45),
+            @("SleeveShort", "arms", "UpperArm", 0.6),
             @("SleeveElbow", "arms", "LowerArm", 0.05),
             @("GloveCuff", "arms", "LowerArm", 0.65),
             @("SleeveLong", "arms", "LowerArm", 0.92),

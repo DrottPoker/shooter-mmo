@@ -184,7 +184,7 @@ ends on a dwarf's arm. Moving a line means changing its share.
 | `HemCrop` | `trunk` | under the bust, above the navel | a crop top's hem |
 | `Waist` | `trunk` | at the hip bones | the trousers' waistband |
 | `HemHip` | `trunk` | below `Waist` by the overlap | a top's hem, over the trousers |
-| `SleeveShort` | `arms` | a little less than half the upper arm | a short sleeve |
+| `SleeveShort` | `arms` | over half the upper arm, about 9 cm below the armpit | a short sleeve |
 | `SleeveElbow` | `arms` | at the elbow | an elbow sleeve |
 | `GloveCuff` | `arms` | on the forearm, toward the elbow from `SleeveLong` by the overlap | a glove's cuff, over the sleeve |
 | `SleeveLong` | `arms` | at the wrist | a long sleeve |

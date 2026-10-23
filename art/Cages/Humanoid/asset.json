@@ -8,7 +8,7 @@
         { "name": "HemCrop", "region": "trunk", "bone": "Chest", "share": 0.5 },
         { "name": "Waist", "region": "trunk", "bone": "Spine", "share": 0.1 },
         { "name": "HemHip", "region": "trunk", "bone": "Hips", "share": 0.72 },
-        { "name": "SleeveShort", "region": "arms", "bone": "UpperArm", "share": 0.45 },
+        { "name": "SleeveShort", "region": "arms", "bone": "UpperArm", "share": 0.6 },
         { "name": "SleeveElbow", "region": "arms", "bone": "LowerArm", "share": 0.05 },
         { "name": "GloveCuff", "region": "arms", "bone": "LowerArm", "share": 0.65 },
         { "name": "SleeveLong", "region": "arms", "bone": "LowerArm", "share": 0.92 },
@@ -20,7 +20,7 @@
     "approvals": {
         "model": {
             "date": "2026-10-23",
-            "sourceSha256": "e2de2ea9850e720b20fd66d8856f526acba35ae25238e161f3a42628aefc1201"
+            "sourceSha256": "56c444388010fa9205ba1c82c7cec32921153c2baa29adbfdebb9e6d60a93adb"
         }
     }
 }
