@@ -23,8 +23,9 @@ if ($All -eq ($Asset.Count -gt 0)) {
 }
 
 $directories = if ($All) { Get-ArtAssetDirectories } else { @($Asset | ForEach-Object { Resolve-ArtAssetDirectory $_ }) }
-# Animation libraries come after the rigs they record the export of, and garments last, because
-# they record the exports of their bodies and of the libraries they were checked in.
+# Animation libraries come after the rigs they record the export of, garments after them, because
+# they record the exports of their bodies and of the libraries they were checked in, and textures
+# last, because they record the exports of their templates.
 $read = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
 $cages = @($read | Where-Object { $_.Kind -eq "cage" })
 if (-not $All -and $cages.Count -gt 0) {
@@ -32,8 +33,9 @@ if (-not $All -and $cages.Count -gt 0) {
 }
 
 $read = @($read | Where-Object { $_.Kind -ne "cage" })
-$manifests = @($read | Where-Object { @("animations", "garment") -notcontains $_.Kind }) +
-    @($read | Where-Object { $_.Kind -eq "animations" }) + @($read | Where-Object { $_.Kind -eq "garment" })
+$manifests = @($read | Where-Object { @("animations", "garment", "texture") -notcontains $_.Kind }) +
+    @($read | Where-Object { $_.Kind -eq "animations" }) + @($read | Where-Object { $_.Kind -eq "garment" }) +
+    @($read | Where-Object { $_.Kind -eq "texture" })
 foreach ($manifest in $manifests) {
     $problem = Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)
     if ($null -ne $problem) {
@@ -85,10 +87,48 @@ function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
     }
 }
 
+function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
+    # A garment texture exports its image and its material. It records its template's export, so a
+    # new export of the template needs a new export of the texture.
+    $templateExport = (Read-ArtAssetManifest $Manifest.Garment.Directory).Export
+    if ($null -eq $templateExport) {
+        throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is exported."
+    }
+
+    $folder = $script:ArtGarmentTextureFolder
+    $results = Invoke-ArtBlender $Blender $Manifest (
+        @("export") + (Get-ArtValidationArguments $Manifest "texture") + @("--textures", (Join-Path $script:ArtRepositoryRoot $folder)))
+    $materials = ConvertTo-ArtMaterialRecords @($results | Where-Object { $_ -like "ART_MATERIAL *" } |
+            ForEach-Object { $_.Substring("ART_MATERIAL ".Length) | ConvertFrom-Json })
+    $textures = ConvertTo-ArtTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
+            ForEach-Object {
+                $texture = $_.Substring("ART_TEXTURE ".Length) | ConvertFrom-Json
+                [pscustomobject]@{ name = $texture.name; target = Get-ArtRelativePath $texture.path; sha256 = Get-ArtFileSha256 $texture.path }
+            }) $folder
+    if ($null -eq $materials -or $null -eq $textures -or $textures.Count -ne 1) {
+        throw "Blender reported invalid material or texture records for $($Manifest.Name)."
+    }
+
+    $Manifest.Export = [ordered]@{
+        sourceSha256 = $SourceSha256
+        garmentSourceSha256 = [string]$templateExport.sourceSha256
+        materials = $materials
+        textures = $textures
+    }
+    Write-ArtAssetManifest $Manifest
+    Write-Host "Exported $($Manifest.Name) to $($textures[0].target) with its material $($materials[0].name)."
+}
+
 function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
-    # A garment exports one model per body, each with that body's armature and its data, and its
-    # images. It records the exports of the bodies and the animation libraries it was checked
-    # against, so a change of either needs a new export of the garment.
+    # A garment template exports one model per body, each with that body's armature and its data.
+    # It records the approved file of its cage and the exports of the bodies and the animation
+    # libraries it was checked against, so a change of any of them needs a new export of the
+    # template.
+    $cageProblem = Get-ArtExportGateProblem $Manifest.Cage (Get-ArtFileSha256 $Manifest.Cage.SourcePath)
+    if ($null -ne $cageProblem) {
+        throw "$($Manifest.Name) cannot be exported before its cage $($Manifest.Cage.RelativeDirectory) is approved: $cageProblem."
+    }
+
     $bodyExports = @{}
     foreach ($body in @($Manifest.Bodies)) {
         $bodyExport = (Read-ArtAssetManifest (Split-Path -Parent $body.ManifestPath)).Export
@@ -152,6 +192,7 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
 
     $Manifest.Export = [ordered]@{
         sourceSha256 = $SourceSha256
+        cageSourceSha256 = Get-ArtFileSha256 $Manifest.Cage.SourcePath
         models = $models
         clipSources = $clipSources
         materials = $materials
@@ -186,6 +227,11 @@ foreach ($manifest in $manifests) {
 
     if ($manifest.Kind -eq "garment") {
         Export-ArtGarment $blender $manifest $sourceSha256
+        continue
+    }
+
+    if ($manifest.Kind -eq "texture") {
+        Export-ArtTexture $blender $manifest $sourceSha256
         continue
     }
 

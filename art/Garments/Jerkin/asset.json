@@ -1,0 +1,25 @@
+{
+    "schemaVersion": 2,
+    "kind": "garment",
+    "cage": "art/Cages/Humanoid",
+    "slot": "body",
+    "layer": 200,
+    "band": "mid",
+    "recipe": {
+        "regions": ["neck", "trunk", "arms"],
+        "cuts": [
+            { "line": "CollarStand", "keep": "head" },
+            { "line": "HemHip", "keep": "tail" },
+            { "line": "SleeveShort", "keep": "head" }
+        ],
+        "ease": 0.0,
+        "hem": 0.004
+    },
+    "hides": [],
+    "hair": null,
+    "cloth": null,
+    "dyes": 0,
+    "triangleBudget": 3000,
+    "approvals": {},
+    "export": null
+}

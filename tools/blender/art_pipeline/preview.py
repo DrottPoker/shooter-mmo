@@ -269,6 +269,20 @@ def _mask_material(body: bpy.types.Object, result) -> bpy.types.Material:
     return material
 
 
+def _review_grid(versions: list[bpy.types.Object]) -> None:
+    """A template without a texture shows a grid in its UVs, so the sheet shows how they stretch."""
+    grid = bpy.data.images.new("PreviewGrid", 1024, 1024)
+    grid.generated_type = "UV_GRID"
+    for material in {m for v in versions for m in v.data.materials if m is not None and m.use_nodes}:
+        nodes = material.node_tree.nodes
+        if any(n.type == "TEX_IMAGE" for n in nodes):
+            continue
+        texture = nodes.new("ShaderNodeTexImage")
+        texture.image = grid
+        bsdf = next(n for n in nodes if n.type == "BSDF_PRINCIPLED")
+        material.node_tree.links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
+
+
 def render_garment_sheet(output: str, cell: int, name: str | None = None, band: str | None = None,
                          libraries: list[tuple[str, list[str]]] | None = None) -> str:
     """A garment on every body of its file, rows per body: the body in the garment from four sides
@@ -279,6 +293,8 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
     armatures = sorted((o for o in scene.objects if o.type == "ARMATURE"), key=lambda o: o.name)
+    if name:
+        _review_grid([bpy.data.objects[garment.version_name(name, arm.name)] for arm in armatures])
     camera, sun = _studio(scene, cell)
     columns = max(len(YAWS) + 2, len(GARMENT_POSES))
     per_body = 3 if name else 2

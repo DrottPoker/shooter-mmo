@@ -7,7 +7,7 @@ param(
     [string]$Asset,
     # Review stages of a static asset: model. Of a skinned asset: model, rig, and animation when it
     # has clips of its own. Of an animation library: animation. Of a paint layer: paint. Of a
-    # garment: model and rig. Of the garment cage: model.
+    # garment template: model and rig. Of the garment cage: model. Of a garment texture: texture.
     [string]$Stage = "model",
     [string]$BlenderPath
 )
@@ -33,6 +33,14 @@ if ($manifest.Kind -eq "animations" -and @($manifest.Clips).Count -eq 0) {
 for ($i = 0; $i -lt $stageIndex; $i++) {
     if (-not $manifest.Approvals.Contains($manifest.Stages[$i])) {
         throw "Approve the '$($manifest.Stages[$i])' stage of $($manifest.Name) before '$Stage'."
+    }
+}
+
+# A template is approved only on an approved cage.
+if ($manifest.Kind -eq "garment") {
+    $cageProblem = Get-ArtExportGateProblem $manifest.Cage (Get-ArtFileSha256 $manifest.Cage.SourcePath)
+    if ($null -ne $cageProblem) {
+        throw "Approve the cage $($manifest.Cage.RelativeDirectory) of $($manifest.Name) first: $cageProblem."
     }
 }
 

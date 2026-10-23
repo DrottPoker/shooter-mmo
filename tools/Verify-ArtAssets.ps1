@@ -85,7 +85,27 @@ foreach ($directory in $directories) {
         $problems.Add("${where}: the export comes from another version of $($manifest.Name).blend; run tools/Export-ArtAsset.ps1.")
     }
 
+    if ($manifest.Kind -eq "texture") {
+        # The texture was exported against the current export of its template.
+        $templateExport = $null
+        try {
+            $templateExport = (Read-ArtAssetManifest $manifest.Garment.Directory).Export
+        }
+        catch {
+            # The template's own problems are reported with the template.
+        }
+
+        if ($null -eq $templateExport -or $templateExport.sourceSha256 -ne $manifest.Export.garmentSourceSha256) {
+            $problems.Add("${where}: was exported against another export of its template $($manifest.Garment.RelativeDirectory); run tools/Sync-TextureAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1.")
+        }
+    }
+
     if ($manifest.Kind -eq "garment") {
+        # The template was fitted to the approved file of its cage.
+        if ((Get-ArtFileSha256 $manifest.Cage.SourcePath) -ne $manifest.Export.cageSourceSha256) {
+            $problems.Add("${where}: was fitted to another file of its cage $($manifest.Cage.RelativeDirectory); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
+        }
+
         foreach ($model in @($manifest.Export.models)) {
             foreach ($file in @(@($model.target, $model.sha256), @($model.data, $model.dataSha256))) {
                 $filePath = Join-Path $script:ArtRepositoryRoot $file[0]
