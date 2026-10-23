@@ -1365,7 +1365,9 @@ describes, in `PlayerBodyMeshes`:
    vertices no triangle uses are left out.
 
 The combined mesh is shared by every body with the same parts, garments, and
-garment materials.
+garment materials. A body wears one texture of a template at a time: of two that
+its look names, the first in the catalog is worn, and trying one on in F2 or the
+Wardrobe takes off the others.
 Garment materials draw with the garment shader `Mmorpg/Garment`, URP Lit with
 three dye channels, cut at alpha 0.5 and drawn from both sides; see
 [Art Pipeline](ART_PIPELINE.md#unity-import-rules). The body prefab carries a

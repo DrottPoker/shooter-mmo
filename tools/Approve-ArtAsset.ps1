@@ -36,9 +36,9 @@ for ($i = 0; $i -lt $stageIndex; $i++) {
     }
 }
 
-# A template is approved only on an approved cage.
+# A template is approved only on an approved cage that was fitted to the current bodies.
 if ($manifest.Kind -eq "garment") {
-    $cageProblem = Get-ArtExportGateProblem $manifest.Cage (Get-ArtFileSha256 $manifest.Cage.SourcePath)
+    $cageProblem = Get-ArtCageGateProblem $manifest.Cage
     if ($null -ne $cageProblem) {
         throw "Approve the cage $($manifest.Cage.RelativeDirectory) of $($manifest.Name) first: $cageProblem."
     }

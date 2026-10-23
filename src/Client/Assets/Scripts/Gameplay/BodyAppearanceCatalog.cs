@@ -63,6 +63,24 @@ namespace Mmorpg.Client.Gameplay
             return null;
         }
 
+        // The other garments of the catalog that are textures of the same template as this one,
+        // which a body never wears together with it.
+        public IEnumerable<Garment> OtherTexturesOf(Garment garment)
+        {
+            if (garment == null || garment.Template.Length == 0)
+            {
+                yield break;
+            }
+
+            foreach (var other in garments)
+            {
+                if (other != null && other != garment && other.Template == garment.Template)
+                {
+                    yield return other;
+                }
+            }
+        }
+
         public Garment GarmentNamed(string name)
         {
             foreach (var garment in garments)

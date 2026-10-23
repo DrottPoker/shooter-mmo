@@ -175,7 +175,7 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
     # It records the approved file of its cage and the exports of the bodies and the animation
     # libraries it was checked against, so a change of any of them needs a new export of the
     # template.
-    $cageProblem = Get-ArtExportGateProblem $Manifest.Cage (Get-ArtFileSha256 $Manifest.Cage.SourcePath)
+    $cageProblem = Get-ArtCageGateProblem $Manifest.Cage
     if ($null -ne $cageProblem) {
         throw "$($Manifest.Name) cannot be exported before its cage $($Manifest.Cage.RelativeDirectory) is approved: $cageProblem."
     }

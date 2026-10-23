@@ -180,6 +180,35 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void ABodyWearsOneTextureOfATemplateAtATime()
+        {
+            Wear((appearance, meshes, materials) =>
+            {
+                var jerkin = appearance.Catalog.GarmentNamed(Jerkin);
+                var dyed = CopyOf(jerkin, "DyedJerkin", jerkin.Slot, jerkin.Layer, jerkin.Hides);
+                var catalog = Object.Instantiate(appearance.Catalog);
+                try
+                {
+                    catalog.Configure(catalog.Slots.ToArray(), catalog.Paints.ToArray(), catalog.Parts.ToArray(),
+                        catalog.Garments.Concat(new[] { dyed }).ToArray());
+                    var serialized = new SerializedObject(appearance);
+                    serialized.FindProperty("catalog").objectReferenceValue = catalog;
+                    serialized.ApplyModifiedPropertiesWithoutUndo();
+                    Assert.That(catalog.OtherTexturesOf(catalog.GarmentNamed(Jerkin)).Select(garment => garment.Name),
+                        Is.EqualTo(new[] { "DyedJerkin" }));
+
+                    // Both textures of the template in the look: the first in the catalog is worn.
+                    appearance.ApplyLook(BodyLook.Default.WithGarment(Jerkin, true).WithGarment("DyedJerkin", true), materials);
+                    Assert.That(appearance.Worn.Select(garment => garment.Name), Is.EqualTo(new[] { Jerkin }));
+                }
+                finally
+                {
+                    Object.DestroyImmediate(catalog);
+                }
+            });
+        }
+
+        [Test]
         public void LooseClothHangsOnItsChains()
         {
             Assert.That(PlayerBodyAppearance.ChainsOf("robe"), Is.EqualTo(ClothChainKind.Skirt));

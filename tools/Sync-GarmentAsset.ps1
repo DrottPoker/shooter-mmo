@@ -92,7 +92,7 @@ foreach ($line in @($validation | Where-Object { $_ -like "ART_REPORT *" })) {
     Write-Host $line.Substring("ART_REPORT ".Length)
 }
 
-$cageProblem = Get-ArtExportGateProblem $manifest.Cage (Get-ArtFileSha256 $manifest.Cage.SourcePath)
+$cageProblem = Get-ArtCageGateProblem $manifest.Cage
 if ($null -ne $cageProblem) {
     Write-Host "Its cage $($manifest.Cage.RelativeDirectory) waits for its approval: $cageProblem."
 }

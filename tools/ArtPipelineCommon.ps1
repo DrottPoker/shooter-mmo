@@ -1749,6 +1749,17 @@ function Get-ArtCageBodyProblem($Manifest) {
     return $null
 }
 
+function Get-ArtCageGateProblem($Cage) {
+    # Returns $null when garment templates may be approved and exported on the cage: its stage is
+    # approved for its current file, and its bodies still have the exports it was approved on.
+    $problem = Get-ArtExportGateProblem $Cage (Get-ArtFileSha256 $Cage.SourcePath)
+    if ($null -eq $problem) {
+        $problem = Get-ArtCageBodyProblem $Cage
+    }
+
+    return $problem
+}
+
 function Get-ArtCageBodies($Manifest) {
     # The exports of the cage's bodies as an approval records them.
     return @($Manifest.Bodies | ForEach-Object {

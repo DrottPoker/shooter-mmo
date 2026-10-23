@@ -740,6 +740,9 @@ the first version's topology and one material, within the triangle budget and
 with every vertex and every face centre in its band from the cage, and that the
 fitting and the weights are as a sync leaves them. The `rig` stage adds the rig
 rules of skinned assets for each version on its armature, and the motion check.
+A template is approved and exported only on an approved cage whose bodies still
+have the exports the cage was approved on, so it is never fitted to an obsolete
+cage.
 
 `coverage.py` computes what a template covers on each body, in the faces and
 vertices of the body's editable mesh:
@@ -867,7 +870,10 @@ template that fits the body as a garment named after the texture: the
 template's model for the body and its slot, layer, and hides, the texture's
 material, which the template's model draws with instead of its own, and the
 texture's masks, or else the template's. A character wears a garment by the
-texture's name, such as `LeatherJerkin`, in F2 and in the Wardrobe.
+texture's name, such as `LeatherJerkin`, in F2 and in the Wardrobe, and one
+texture of a template at a time: trying one on takes off the template's other
+textures, and of two that a look names, the first in the catalog is worn, so the
+template's mesh is never drawn twice.
 
 ## Live Work With The Blender MCP Server
 
