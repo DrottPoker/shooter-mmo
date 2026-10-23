@@ -738,14 +738,21 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     first = bpy.data.objects.get(version_name(name, labels[0]))
     if bpy.context.scene.get(CAGE_SHA) != file_sha256(cage_file) or any(
             bpy.data.objects.get(cage.version_name(label)) is None for label in labels):
-        binding = None
+        binding = built_binding = None
         if first is not None and bpy.data.objects.get(cage.version_name(labels[0])) is not None:
             old = Surface(cage_object(labels[0]), [])
             binding = [old.bind(Vector(p)) for p in bodies.world_positions(first)]
+            # The shape the recipe gave moves with the cage too, so a later rebuild carries over
+            # only the handmade shape, not the cage's change.
+            built = _attribute(first.data, BUILT)
+            if built is not None:
+                built_binding = [old.bind(Vector(p)) for p in built]
         append_cages(cage_file, labels)
         if binding is not None:
             own = Surface(cage_object(labels[0]), [])
             first.data.vertices.foreach_set("co", np.array([own.place(t, w, o) for t, w, o in binding]).reshape(-1))
+            if built_binding is not None:
+                _store(first.data, BUILT, np.array([tuple(own.place(t, w, o)) for t, w, o in built_binding]))
             first.data.update()
             notes.append(f"{first.name} moved with its changed cage.")
 
