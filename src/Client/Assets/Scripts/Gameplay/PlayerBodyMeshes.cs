@@ -11,7 +11,8 @@ namespace Mmorpg.Client.Gameplay
     // renderer with one submesh per material. Putting a body together with garments leaves out
     // the body faces the worn garments cover, moves the pulled-in body vertices inward, leaves out
     // the garment faces whose underlay a garment of a higher layer covers, and leaves out every
-    // garment of a slot another worn garment hides; see docs/EQUIPMENT_VISUALS_DESIGN.md. Every
+    // garment of a slot that a worn garment of a higher layer hides; see
+    // docs/EQUIPMENT_VISUALS_DESIGN.md. Every
     // body with the same visible parts of the same model and the same garments shares one mesh.
     // The owner destroys the meshes.
     public sealed class PlayerBodyMeshes : IDisposable
@@ -77,22 +78,29 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // The garments a body draws: the worn ones from the lowest layer up, without those of a slot
-        // another worn garment hides.
+        // that a worn garment of a higher layer hides, such as trousers under a floor-length robe;
+        // leg armor over the robe stays.
         public static List<BodyAppearanceCatalog.Garment> Drawn(IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
         {
-            var hidden = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var garment in garments)
-            {
-                if (garment != null)
-                {
-                    hidden.UnionWith(garment.Hides);
-                }
-            }
-
             var drawn = new List<BodyAppearanceCatalog.Garment>();
             foreach (var garment in garments)
             {
-                if (garment != null && garment.Model != null && !hidden.Contains(garment.Slot))
+                if (garment == null || garment.Model == null)
+                {
+                    continue;
+                }
+
+                var hidden = false;
+                foreach (var other in garments)
+                {
+                    if (other != null && other != garment && other.Layer > garment.Layer && Contains(other.Hides, garment.Slot))
+                    {
+                        hidden = true;
+                        break;
+                    }
+                }
+
+                if (!hidden)
                 {
                     drawn.Add(garment);
                 }
@@ -167,6 +175,19 @@ namespace Mmorpg.Client.Gameplay
             }
 
             return builder.Finish(parts[0].sharedMesh.name + " combined");
+        }
+
+        private static bool Contains(IReadOnlyList<string> names, string name)
+        {
+            foreach (var candidate in names)
+            {
+                if (string.Equals(candidate, name, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static Transform FindDescendant(Transform parent, string name)

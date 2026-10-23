@@ -104,7 +104,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void AGarmentThatHidesASlotLeavesTheGarmentsOfThatSlotOut()
+        public void AGarmentThatHidesASlotLeavesTheGarmentsOfThatSlotUnderItOut()
         {
             Wear((appearance, meshes, materials) =>
             {
@@ -115,6 +115,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(
                     PlayerBodyMeshes.Drawn(new[] { robe, CopyOf(jerkin, "Vest", jerkin.Slot, 50, new string[0]) }).Select(garment => garment.Name),
                     Is.EqualTo(new[] { "Robe" }));
+                // Armor of the hidden slot over the robe stays.
+                var armor = CopyOf(jerkin, "Armor", jerkin.Slot, robe.Layer + 100, new string[0]);
+                Assert.That(PlayerBodyMeshes.Drawn(new[] { jerkin, robe, armor }).Select(garment => garment.Name),
+                    Is.EqualTo(new[] { "Robe", "Armor" }));
                 var dressed = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { jerkin, robe });
                 var robeAlone = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { robe });
                 try

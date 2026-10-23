@@ -236,6 +236,9 @@ foreach ($manifest in $manifests) {
 
         $dataSha256 = Get-ArtFileSha256 $data[0].path
     }
+    elseif ($null -ne $manifest.Export -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
+        Remove-ArtStaleFiles @(Get-ArtDataTarget $manifest.Target) @()
+    }
 
     $manifest.Export = [ordered]@{
         sourceSha256 = $sourceSha256

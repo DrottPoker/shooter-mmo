@@ -1347,8 +1347,9 @@ look's garments change, `PlayerBodyAppearance` puts the body together again as
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#putting-a-character-together-in-unity)
 describes, in `PlayerBodyMeshes`:
 
-1. The garments of a slot that a worn garment hides are left out; the others are
-   drawn from the lowest layer up.
+1. The garments of a slot that a worn garment of a higher layer hides are left
+   out, such as trousers under a floor-length robe, while leg armor over the robe
+   stays; the others are drawn from the lowest layer up.
 2. A body triangle is left out when a drawn garment covers its face, and a
    garment triangle when a garment of a higher layer covers the body face under
    it.
