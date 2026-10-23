@@ -24,8 +24,9 @@ if ($All -eq ($Asset.Count -gt 0)) {
 
 $directories = if ($All) { Get-ArtAssetDirectories } else { @($Asset | ForEach-Object { Resolve-ArtAssetDirectory $_ }) }
 # Animation libraries come after the rigs they record the export of, garments after them, because
-# they record the exports of their bodies and of the libraries they were checked in, and textures
-# last, because they record the exports of their templates.
+# they record the exports of their bodies and of the libraries they were checked in, from the lowest
+# layer up, because a template records the exports of the lower templates it was checked over, and
+# textures last, because they record the exports of their templates.
 $read = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
 $cages = @($read | Where-Object { $_.Kind -eq "cage" })
 if (-not $All -and $cages.Count -gt 0) {
@@ -34,7 +35,8 @@ if (-not $All -and $cages.Count -gt 0) {
 
 $read = @($read | Where-Object { $_.Kind -ne "cage" })
 $manifests = @($read | Where-Object { @("animations", "garment", "texture") -notcontains $_.Kind }) +
-    @($read | Where-Object { $_.Kind -eq "animations" }) + @($read | Where-Object { $_.Kind -eq "garment" }) +
+    @($read | Where-Object { $_.Kind -eq "animations" }) +
+    @($read | Where-Object { $_.Kind -eq "garment" } | Sort-Object -Property Layer, Name) +
     @($read | Where-Object { $_.Kind -eq "texture" })
 foreach ($manifest in $manifests) {
     $problem = Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)
