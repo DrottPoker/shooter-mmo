@@ -1,0 +1,30 @@
+{
+    "schemaVersion": 1,
+    "kind": "paint",
+    "part": "Body",
+    "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
+    "layer": 10,
+    "approvals": {
+        "paint": {
+            "date": "2026-10-23",
+            "sourceSha256": "9da34f920e1d5b12ab0666cec162c0072284f52b5ac3b27c01f2d6d436fd20af"
+        }
+    },
+    "export": {
+        "sourceSha256": "9da34f920e1d5b12ab0666cec162c0072284f52b5ac3b27c01f2d6d436fd20af",
+        "textures": [
+            {
+                "name": "T_Paint_Tattoo_Male",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Tattoo_Male.png",
+                "sha256": "67cc45498608a0a99dfb4dbf4b0dffa45d2e11cd0d30f170ee8480e944868d1f"
+            },
+            {
+                "name": "T_Paint_Tattoo_Female",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Tattoo_Female.png",
+                "sha256": "82a8735bd8e4759cd1ba07a6e1ec06a2b87e8d8c4885564e4879451f5684c02d"
+            }
+        ],
+        "smoothness": 0.4,
+        "metallic": 0.0
+    }
+}

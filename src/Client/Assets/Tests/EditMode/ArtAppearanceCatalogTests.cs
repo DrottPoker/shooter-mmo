@@ -101,6 +101,8 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EveryGarmentOfABodyHasItsDataForEveryTriangle()
         {
+            var ownMasks = ArtAssetManifests.Textures().Where(texture => texture.export.masks.Length > 0)
+                .Select(texture => texture.Name).ToHashSet();
             foreach (var body in ArtAppearanceCatalogs.ManifestsWithLooks())
             {
                 foreach (var garment in ArtAppearanceCatalogs.GarmentsFor(body))
@@ -108,7 +110,12 @@ namespace Mmorpg.Client.Tests.EditMode
                     var where = body.path + " " + garment.Name;
                     var renderer = garment.Model.GetComponentInChildren<SkinnedMeshRenderer>();
                     Assert.That(garment.Underlay.Count, Is.EqualTo(renderer.sharedMesh.triangles.Length / 3), where);
-                    Assert.That(garment.Covered, Is.Not.Empty, where);
+                    // A texture with masks of its own, such as a net, may leave every body face visible.
+                    if (!ownMasks.Contains(garment.Name))
+                    {
+                        Assert.That(garment.Covered, Is.Not.Empty, where);
+                    }
+
                     Assert.That(garment.Slot, Is.Not.Empty, where);
                     // A garment is a texture on its template, and draws with the texture's material.
                     Assert.That(garment.Template, Is.Not.Empty, where);
@@ -142,9 +149,13 @@ namespace Mmorpg.Client.Tests.EditMode
                 .Single(candidate => candidate.UnityTargetPath == "Assets/Art/Models/Characters/Human_Male.fbx");
             Assert.That(AssetDatabase.GetAssetPath(catalog), Is.EqualTo(ArtAppearanceCatalogs.PathFor(manifest)));
             Assert.That(catalog.Slots.Select(slot => slot.Name), Is.EquivalentTo(new[] { "Eye", "Face" }));
-            Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EquivalentTo(new[] { "LeatherJerkin" }));
-            Assert.That(catalog.Garments.Select(garment => garment.Name), Is.EquivalentTo(new[] { "LeatherJerkin" }));
-            Assert.That(catalog.GarmentNamed("LeatherJerkin").Template, Is.EqualTo("Jerkin"));
+            Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EquivalentTo(new[] { "Tattoo" }));
+            // The garments from the lowest layer up, and by name within a layer.
+            Assert.That(catalog.Garments.Select(garment => garment.Name),
+                Is.EqualTo(new[] { "WoolTrousers", "LeatherJerkin", "LinenLongShirt", "LinenShirt", "NetShirt" }));
+            Assert.That(catalog.GarmentNamed("WoolTrousers").Template, Is.EqualTo("Trousers"));
+            Assert.That(catalog.GarmentNamed("LeatherJerkin").Template, Is.EqualTo("Shirt"));
+            Assert.That(catalog.GarmentNamed("LinenLongShirt").Template, Is.EqualTo("LongShirt"));
         }
     }
 }

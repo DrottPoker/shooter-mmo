@@ -1,0 +1,32 @@
+{
+    "schemaVersion": 1,
+    "kind": "texture",
+    "garment": "art/Garments/Shirt",
+    "approvals": {
+        "texture": {
+            "date": "2026-10-23",
+            "sourceSha256": "9dfcada8cdc4dd084153c341f5c28be94f2e5673fc3d9980130ef1cfbef715ee",
+            "garmentSourceSha256": "7b4aceba2dfddcf7efdc1ab659852a487002ff14262edff90d1e147151cc81db"
+        }
+    },
+    "export": {
+        "sourceSha256": "9dfcada8cdc4dd084153c341f5c28be94f2e5673fc3d9980130ef1cfbef715ee",
+        "garmentSourceSha256": "7b4aceba2dfddcf7efdc1ab659852a487002ff14262edff90d1e147151cc81db",
+        "materials": [
+            {
+                "name": "M_Garment_LinenShirt",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Garment_LinenShirt",
+                "metallic": 0.0,
+                "smoothness": 0.18
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Garment_LinenShirt",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_LinenShirt.png",
+                "sha256": "81e544cd4430c8b84ccdbe1fae08fbdb062e18034a10943381bbeea70496c5c3"
+            }
+        ]
+    }
+}

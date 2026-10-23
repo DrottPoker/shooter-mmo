@@ -24,8 +24,9 @@ if ($All -eq ($Asset.Count -gt 0)) {
 
 $directories = if ($All) { Get-ArtAssetDirectories } else { @($Asset | ForEach-Object { Resolve-ArtAssetDirectory $_ }) }
 # Animation libraries come after the rigs they record the export of, garments after them, because
-# they record the exports of their bodies and of the libraries they were checked in, and textures
-# last, because they record the exports of their templates.
+# they record the exports of their bodies and of the libraries they were checked in, from the lowest
+# layer up, because a template records the exports of the lower templates it was checked over, and
+# textures last, because they record the exports of their templates.
 $read = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
 $cages = @($read | Where-Object { $_.Kind -eq "cage" })
 if (-not $All -and $cages.Count -gt 0) {
@@ -34,7 +35,8 @@ if (-not $All -and $cages.Count -gt 0) {
 
 $read = @($read | Where-Object { $_.Kind -ne "cage" })
 $manifests = @($read | Where-Object { @("animations", "garment", "texture") -notcontains $_.Kind }) +
-    @($read | Where-Object { $_.Kind -eq "animations" }) + @($read | Where-Object { $_.Kind -eq "garment" }) +
+    @($read | Where-Object { $_.Kind -eq "animations" }) +
+    @($read | Where-Object { $_.Kind -eq "garment" } | Sort-Object -Property Layer, Name) +
     @($read | Where-Object { $_.Kind -eq "texture" })
 foreach ($manifest in $manifests) {
     $problem = Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)
@@ -218,14 +220,23 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
     $bodyExports = @{}
     foreach ($body in @($Manifest.Bodies)) {
         $bodyExport = (Read-ArtAssetManifest (Split-Path -Parent $body.ManifestPath)).Export
-        if ($null -eq $bodyExport) {
-            throw "$($Manifest.Name) cannot be exported before its body $($body.Asset) is exported."
+        if ($null -eq $bodyExport -or [string]::IsNullOrEmpty($bodyExport.fitSha256)) {
+            throw "$($Manifest.Name) cannot be exported before its body $($body.Asset) is exported with the fingerprint of its fit; export the body again."
         }
 
-        $bodyExports[$body.Root] = [string]$bodyExport.sourceSha256
+        $bodyExports[$body.Root] = [string]$bodyExport.fitSha256
     }
 
     $clipSources = Get-ArtClipSourceRecords $Manifest
+    # The templates of a lower layer it is checked over, each exported from its current file, since
+    # Blender reads their current files.
+    $pairSources = @(Get-ArtGarmentPairs $Manifest | ForEach-Object {
+            if ((Get-ArtFileSha256 $_.SourcePath) -ne [string]$_.Export.sourceSha256) {
+                throw "$($Manifest.Name) cannot be exported while the template $($_.RelativeDirectory) of a lower layer has changed since its export; review, approve, and export it first."
+            }
+
+            [ordered]@{ garment = $_.RelativeDirectory; sourceSha256 = [string]$_.Export.sourceSha256 }
+        })
     $folder = $script:ArtGarmentTextureFolder
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest $Manifest.Stages[-1]) + @(
@@ -243,7 +254,7 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
 
             [ordered]@{
                 body = $model.Body
-                bodySourceSha256 = $bodyExports[$model.Body]
+                bodyFitSha256 = $bodyExports[$model.Body]
                 target = $model.Target
                 sha256 = Get-ArtFileSha256 $model.TargetPath
                 data = $model.Data
@@ -275,6 +286,7 @@ function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {
         cageSourceSha256 = Get-ArtFileSha256 $Manifest.Cage.SourcePath
         models = $models
         clipSources = $clipSources
+        pairSources = $pairSources
         materials = $materials
         textures = $textures
     }
@@ -359,15 +371,21 @@ foreach ($manifest in $manifests) {
         Remove-ArtStaleFiles @($manifest.Export.textures | ForEach-Object { $_.target }) @($textures | ForEach-Object { $_.target })
     }
 
-    # A body with an editable mesh exports its topology next to the model.
+    # A body with an editable mesh exports its topology next to the model, and records the
+    # fingerprint of what the garment cage and garments read from it: its rig, its surface with its
+    # faces and their body parts, and its weights.
     $dataSha256 = $null
+    $fitSha256 = $null
     $data = @($results | Where-Object { $_ -like "ART_DATA *" } | ForEach-Object { $_.Substring("ART_DATA ".Length) | ConvertFrom-Json })
     if ($data.Count -gt 0) {
-        if ($data.Count -ne 1 -or (Get-ArtRelativePath $data[0].path) -cne (Get-ArtDataTarget $manifest.Target)) {
+        $fits = @($results | Where-Object { $_ -like "ART_FIT *" } | ForEach-Object { $_.Substring("ART_FIT ".Length).Trim() })
+        if ($data.Count -ne 1 -or (Get-ArtRelativePath $data[0].path) -cne (Get-ArtDataTarget $manifest.Target) -or
+            $fits.Count -ne 1 -or $fits[0] -cnotmatch $script:ArtShaPattern) {
             throw "Blender reported unexpected data for $($manifest.Name)."
         }
 
         $dataSha256 = Get-ArtFileSha256 $data[0].path
+        $fitSha256 = $fits[0]
     }
     elseif ($null -ne $manifest.Export -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
         Remove-ArtStaleFiles @(Get-ArtDataTarget $manifest.Target) @()
@@ -377,6 +395,7 @@ foreach ($manifest in $manifests) {
         sourceSha256 = $sourceSha256
         targetSha256 = Get-ArtFileSha256 $manifest.TargetPath
         dataSha256 = $dataSha256
+        fitSha256 = $fitSha256
         rigSourceSha256 = $rigSourceSha256
         materials = $materials
         textures = $textures

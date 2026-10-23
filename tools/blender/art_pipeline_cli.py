@@ -21,7 +21,7 @@ import bpy
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from art_pipeline import bodies, cage, coverage, garment, library, paint, preview, skinned, texture  # noqa: E402
+from art_pipeline import bodies, body_files, cage, coverage, garment, library, paint, preview, skinned, texture  # noqa: E402
 from art_pipeline import skeleton as skeleton_definition  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
@@ -55,6 +55,8 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--cage-manifest", help="The asset.json of a garment template's cage.")
         command.add_argument("--texture", help="The name of a garment texture.")
         command.add_argument("--garment-file", help="The .blend file of a texture's template.")
+        command.add_argument("--pair", action="append", default=[],
+                             help="<file.blend>=<Template>:<band> of a template of a lower layer that a garment is checked over.")
         if name == "export":
             command.add_argument("--target", help="Absolute FBX path; a paint layer has none.")
             command.add_argument("--textures", help="Folder for the images of painted materials.")
@@ -142,6 +144,15 @@ def _bodies(args) -> list[tuple[str, str]]:
     return [(os.path.abspath(path), root) for path, root in (b.rsplit("=", 1) for b in args.body)]
 
 
+def _pairs(args) -> list[tuple[str, str, str]]:
+    found = []
+    for entry in args.pair:
+        path, rest = entry.rsplit("=", 1)
+        name, band = rest.split(":", 1)
+        found.append((os.path.abspath(path), name, band))
+    return found
+
+
 def _clip_libraries(args) -> list[tuple[str, list[str]]]:
     return [(os.path.abspath(path), clips.split("+")) for path, clips in (e.rsplit("=", 1) for e in args.clip_library)]
 
@@ -198,11 +209,11 @@ def _garment(args) -> int:
     labels = args.roots.split(",")
     if [root for _path, root in body_list] != labels:
         raise ArtPipelineError("A garment is checked against its bodies; pass one --body per root, in order.")
-    band, recipe, _lines, cage_file = garment.read_manifests(args.manifest, args.cage_manifest)
+    band, recipe, lines, cage_file = garment.read_manifests(args.manifest, args.cage_manifest)
     if band != args.band:
         raise ArtPipelineError(f'The band "{args.band}" is not the band of {args.manifest}.')
-    errors = garment.stale_errors(args.garment, args.band, recipe, body_list, cage_file)
-    errors += garment.garment_errors(args.garment, labels, args.band, args.triangle_budget)
+    errors = garment.stale_errors(args.garment, args.band, recipe, lines, body_list, cage_file)
+    errors += garment.garment_errors(args.garment, labels, args.band, args.triangle_budget, recipe, lines)
     versions = [v for v in (bpy.data.objects.get(garment.version_name(args.garment, label)) for label in labels)
                 if v is not None]
     if args.stage == "rig":
@@ -226,6 +237,13 @@ def _garment(args) -> int:
             motion = coverage.check_motion(args.garment, coverages[label], actions)
             print(f"ART_REPORT {coverage.motion_summary(args.garment, motion)}")
             print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
+        # Every template of a lower layer worn under this one, at this one's openings.
+        for path, inner, inner_band in _pairs(args):
+            versions_inner = garment.append_inner(path, inner, labels)
+            for label, obj in zip(labels, versions_inner):
+                underlay = coverage.compute(inner, label, inner_band).underlay
+                result = coverage.check_pair(args.garment, coverages[label], obj, underlay, actions)
+                print(f"ART_REPORT {coverage.pair_summary(args.garment, inner, result)}")
         for library_data in {a.library for a in actions if a.library is not None}:
             bpy.data.libraries.remove(library_data)
     for error in errors:
@@ -384,10 +402,15 @@ def main() -> int:
         return 1
     print(f"ART_VALIDATION triangles={triangles}")
     if args.command == "export":
+        roots = args.roots.split(",")
+        editable = args.kind == "skinned" and len(roots) == 1 and bodies.source_body(roots[0]) is not None
+        if editable:
+            # What the garment cage and garments read from the body, so a change of only its images
+            # leaves them as they are.
+            print(f"ART_FIT {body_files.fingerprint(bpy.data.objects[roots[0]], bodies.source_body(roots[0]))}")
         export_fbx(args.kind, args.target)
         # A body with an editable mesh exports its topology, which garments refer to.
-        roots = args.roots.split(",")
-        if args.kind == "skinned" and len(roots) == 1 and bodies.source_body(roots[0]) is not None:
+        if editable:
             data = os.path.splitext(args.target)[0] + ".json"
             coverage.write_record(data, bodies.topology(roots[0]))
             print(f"ART_DATA {json.dumps({'path': data}, separators=(',', ':'))}")

@@ -10,7 +10,11 @@ keeps. The first body's version is the template a person shapes.
 
 A recipe builds the first version from the first body's cage: the faces of its regions, cut at its
 standard lines, offset into the band along the cage's normals, with more room at the armpits, its
-UVs unfolded along seams where clothes have them, and every open edge turned inward. A modeled
+UVs unfolded along seams where clothes have them, and every open edge turned inward. Where the
+recipe says the template lies over an inner garment beyond a standard line, such as a top over the
+trousers below the waistband, its band there is measured from the inner garment's surface: it is
+lifted by the inner band's distance from the cage, fading in over a few centimeters before the
+line. A modeled
 template's first version is modeled by hand instead. Every other version is fitted from the first
 through the cage: each vertex is bound to a triangle of the first body's cage, by barycentric
 coordinates and an offset in the triangle's frame, and placed at the same triangle and offset of the
@@ -59,8 +63,8 @@ WEIGHT_TOLERANCE = 1e-4
 # The distance from the cage each band allows, in meters: the smallest and the largest.
 BANDS = {"tight": (0.0, 0.008), "mid": (0.005, 0.025), "outer": (0.010, 0.060), "loose": (0.010, None)}
 SLOTS = ("head", "body", "legs", "hands", "feet", "back", "hair")
-# A recipe builds a template this far from the cage.
-OFFSETS = {"tight": 0.004, "mid": 0.010, "outer": 0.020, "loose": 0.020}
+# A recipe builds a template this far from the cage: clothes lie as close to the body as they can.
+OFFSETS = {"tight": 0.002, "mid": 0.010, "outer": 0.020, "loose": 0.020}
 # The ease of a recipe fades out over this distance from the lower half of an armhole, the part of
 # the border between the trunk and an arm that lies this far or more below the shoulder joint.
 EASE_REACH = 0.06
@@ -70,11 +74,18 @@ HEM_FLAP = 0.012
 # A cage vertex this close to a line moves onto it before the cut, so the cut leaves no slivers and
 # the edge runs straight.
 LINE_SNAP = 0.008
+# A template that lies over an inner garment beyond a line rises to it over this distance before
+# the line.
+OVER_FADE = 0.03
 UV_MARGIN = 0.02
 # A vertex or a face centre that leaves its band moves back into it by the difference and this
 # margin, a few times over, because moving one face moves the corners it shares.
 SETTLE_MARGIN = 0.0005
 SETTLE_PASSES = 4
+# A point that a push along the nearest normal cannot settle moves along the mean of the cage's
+# normals this close around it, by at most this much.
+SETTLE_AROUND = 0.02
+SETTLE_REACH = 0.01
 ALPHA_CUT = 0.5
 REVIEW_GREY = (0.62, 0.62, 0.62, 1.0)
 # The review file places the bodies side by side, this far apart.
@@ -114,10 +125,54 @@ def file_sha256(path: str) -> str:
 
 
 def recipe_text(recipe) -> str:
-    """A recipe as the file keeps it, with its numbers as floats, so 0 and 0.0 read alike."""
+    """A recipe as the file keeps it, with its numbers as floats, so 0 and 0.0 read alike, and
+    without an empty list of what it lies over, so a recipe from before that field reads alike."""
     if isinstance(recipe, dict):
         recipe = {**recipe, "ease": float(recipe["ease"]), "hem": float(recipe["hem"])}
+        if not recipe.get("over"):
+            recipe.pop("over", None)
     return json.dumps(recipe, sort_keys=True, separators=(",", ":"))
+
+
+def over_lift(recipe, lines: list[dict], label: str, points: np.ndarray) -> np.ndarray:
+    """How far each point of a template on a body lies farther from the cage than its band, because
+    the recipe says the template lies over an inner garment beyond a standard line there: the inner
+    band's distance from the cage on the line's side the inner garment keeps, fading in over
+    OVER_FADE before the line, and only in the line's region of the cage."""
+    lift = np.zeros(len(points))
+    entries = recipe.get("over", []) if isinstance(recipe, dict) else []
+    if not entries:
+        return lift
+    shell = cage_object(label)
+    surface = Surface(shell, [])
+    keys = cage_keys(shell, surface)
+    nearest = [surface.tree.find_nearest(Vector(p))[2] for p in points]
+    by_name = {line["name"]: line for line in lines}
+    for entry in entries:
+        line = by_name[entry["line"]]
+        for side, point, normal in cage.line_planes(label, line):
+            inside = np.array([t is not None and keys[t][0] == line["region"] and (not side or keys[t][1] == side)
+                               for t in nearest])
+            # The side a cut keeping the bone's head keeps lies behind the plane's normal.
+            signed = (points - np.array(point)) @ np.array(normal)
+            beyond = -signed if entry["keep"] == "head" else signed
+            share = np.clip(1.0 + beyond / OVER_FADE, 0.0, 1.0)
+            share = share * share * (3.0 - 2.0 * share)
+            lift = np.maximum(lift, np.where(inside, share * OFFSETS[entry["band"]], 0.0))
+    return lift
+
+
+def band_limits(recipe, lines: list[dict], label: str, points: np.ndarray, band: str) -> tuple[np.ndarray, np.ndarray | None]:
+    """The band of each point of a template on a body, from the cage: the recipe's band, measured
+    from the inner garment's surface where the template lies over one."""
+    low, high = BANDS[band]
+    lift = over_lift(recipe, lines, label, points)
+    return low + lift, (high + lift if high is not None else None)
+
+
+def _points(co: np.ndarray, polygons: list[tuple[int, ...]]) -> np.ndarray:
+    """Every vertex and the centre of every face, the points a band holds for."""
+    return np.concatenate([co, np.array([co[list(p)].mean(axis=0) for p in polygons]).reshape(-1, 3)])
 
 
 def _triangles(mesh: bpy.types.Mesh) -> list[tuple[int, int, int, int]]:
@@ -229,23 +284,47 @@ def cage_keys(cage_obj: bpy.types.Object, surface: Surface) -> list[tuple[str, s
     return keys
 
 
-def _settle(positions: np.ndarray, polygons: list[tuple[int, ...]], surface: Surface, low: float,
-            high: float | None) -> np.ndarray:
+def _settle(positions: np.ndarray, polygons: list[tuple[int, ...]], surface: Surface, low, high) -> np.ndarray:
     """The positions with every vertex, and the corners of every face whose centre, that lies closer
     to the surface than low or farther than high moved along the surface's normal there into the
-    band, so the whole surface keeps it, not only its corners."""
+    band, so the whole surface keeps it, not only its corners. low and high hold for every point, or
+    per vertex and then per face, as band_limits gives them."""
     co = positions.copy()
     points = [(i,) for i in range(len(co))] + list(polygons)
+    lows = np.broadcast_to(np.asarray(low, float), (len(points),))
+    highs = None if high is None else np.broadcast_to(np.asarray(high, float), (len(points),))
     for _ in range(SETTLE_PASSES):
         settled = True
-        for polygon in points:
+        for index, polygon in enumerate(points):
             corners = list(polygon)
             distance, normal, _p = surface.nearest(Vector(co[corners].mean(axis=0)))
-            if distance < low:
-                co[corners] += np.array(normal) * (low + SETTLE_MARGIN - distance)
+            if distance < lows[index]:
+                co[corners] += np.array(normal) * (lows[index] + SETTLE_MARGIN - distance)
                 settled = False
-            elif high is not None and distance > high:
-                co[corners] -= np.array(normal) * (distance - high + SETTLE_MARGIN)
+            elif highs is not None and distance > highs[index]:
+                co[corners] -= np.array(normal) * (distance - highs[index] + SETTLE_MARGIN)
+                settled = False
+        if settled:
+            return co
+    # Where the cage's normals point against each other, such as across the crotch between the
+    # thighs, a push along the nearest one moves the point toward the other. Such a point moves along
+    # the mean of the cage's normals around it instead, which points away from both, by at most
+    # SETTLE_REACH in all.
+    moved = np.zeros(len(points))
+    for _ in range(SETTLE_PASSES * 2):
+        settled = True
+        for index, polygon in enumerate(points):
+            corners = list(polygon)
+            centre = Vector(co[corners].mean(axis=0))
+            distance, _normal, _p = surface.nearest(centre)
+            if distance < lows[index] and moved[index] < SETTLE_REACH:
+                around = surface.tree.find_nearest_range(centre, SETTLE_AROUND)
+                mean = sum((n for _c, n, _i, _d in around), Vector())
+                if mean.length < 1e-6:
+                    continue
+                step = min(lows[index] + SETTLE_MARGIN - distance, SETTLE_REACH - moved[index])
+                co[corners] += np.array(mean.normalized()) * step
+                moved[index] += step
                 settled = False
         if settled:
             break
@@ -325,6 +404,32 @@ def append_cages(cage_file: str, labels: list[str]) -> None:
     bpy.context.scene[CAGE_SHA] = file_sha256(cage_file)
 
 
+PAIR_COLLECTION = "Pairs"
+
+
+def append_inner(template_file: str, template: str, labels: list[str]) -> list[bpy.types.Object]:
+    """The versions of another template, of a lower layer, from its own file, put on the bodies of
+    this file for the pair check and the review sheet: each skinned to the armature of its body
+    here, in the collection Pairs, which a sync never saves because it only appears in a check."""
+    wanted = [version_name(template, label) for label in labels]
+    with bpy.data.libraries.load(template_file, link=False) as (source, target):
+        missing = [n for n in wanted if n not in source.objects]
+        if missing:
+            raise ArtPipelineError(f"{template_file} has no versions {missing}.")
+        target.objects = wanted
+    collection = bpy.data.collections.get(PAIR_COLLECTION) or bpy.data.collections.new(PAIR_COLLECTION)
+    if collection.name not in bpy.context.scene.collection.children:
+        bpy.context.scene.collection.children.link(collection)
+    found = []
+    for obj, label in zip(target.objects, labels):
+        collection.objects.link(obj)
+        obj.parent = bpy.data.objects[label]
+        obj.matrix_parent_inverse = Matrix.Identity(4)
+        bodies.bind(obj, bpy.data.objects[label])
+        found.append(obj)
+    return found
+
+
 def _first_version(name: str, labels: list[str]) -> bpy.types.Object:
     obj = bpy.data.objects.get(version_name(name, labels[0]))
     if obj is None or obj.type != "MESH":
@@ -398,23 +503,32 @@ def _cut(cage_obj: bpy.types.Object, arm: bpy.types.Object, recipe: dict, lines:
 
 def _mark_seams(bm: bmesh.types.BMesh, arm: bpy.types.Object) -> None:
     """Seams where clothes have them: between the front and the back of the trunk and the neck,
-    down the sides and over the shoulders, along the underside of each arm, and where an arm or the
-    neck meets the trunk."""
+    down the sides and over the shoulders, along the underside of each arm, along the inside of each
+    leg, and where an arm, a leg, or the neck meets the trunk."""
     region_layer = bm.faces.layers.int.get("region")
-    trunk, neck, arms = (cage.REGIONS.index(r) for r in ("trunk", "neck", "arms"))
+    trunk, neck, arms, legs = (cage.REGIONS.index(r) for r in ("trunk", "neck", "arms", "legs"))
     middle = float(np.mean([v.co.y for v in bm.verts]))
 
-    def angle(face) -> float:
-        # Around the arm's upper bone, measured so it wraps at the underside of the arm.
-        side = cage.side_of(face.calc_center_median().x)
-        bone = arm.data.bones[f"UpperArm_{side}"]
+    def angle(face, bone_name: str, seam_side: Vector) -> float:
+        # Around a limb's bone, measured so it wraps where the seam runs.
+        bone = arm.data.bones[bone_name]
         head, tail = arm.matrix_world @ bone.head_local, arm.matrix_world @ bone.tail_local
         axis = (tail - head).normalized()
-        down = Vector((0.0, 0.0, -1.0))
-        under = (down - axis * down.dot(axis)).normalized()
-        across = axis.cross(under)
+        toward = (seam_side - axis * seam_side.dot(axis)).normalized()
+        across = axis.cross(toward)
         offset = face.calc_center_median() - head
-        return math.atan2(offset.dot(across), -offset.dot(under))
+        return math.atan2(offset.dot(across), -offset.dot(toward))
+
+    def limb_angle(face, region: int) -> float:
+        side = cage.side_of(face.calc_center_median().x)
+        if region == arms:
+            # Under the arm.
+            return angle(face, f"UpperArm_{side}", Vector((0.0, 0.0, -1.0)))
+        # On the inside of the leg, toward the other one, around the bone of the thigh or the shin.
+        knee = arm.matrix_world @ arm.data.bones[f"LowerLeg_{side}"].head_local
+        bone = f"UpperLeg_{side}" if face.calc_center_median().z > knee.z else f"LowerLeg_{side}"
+        inward = Vector((-1.0 if face.calc_center_median().x > 0.0 else 1.0, 0.0, 0.0))
+        return angle(face, bone, inward)
 
     for edge in bm.edges:
         faces = list(edge.link_faces)
@@ -426,8 +540,8 @@ def _mark_seams(bm: bmesh.types.BMesh, arm: bpy.types.Object) -> None:
             edge.seam = True
         elif ra in (trunk, neck):
             edge.seam = (a.calc_center_median().y < middle) != (b.calc_center_median().y < middle)
-        elif ra == arms:
-            ta, tb = angle(a), angle(b)
+        elif ra in (arms, legs):
+            ta, tb = limb_angle(a, ra), limb_angle(b, ra)
             edge.seam = (ta < 0.0) != (tb < 0.0) and abs(ta) > math.pi / 2 and abs(tb) > math.pi / 2
 
 
@@ -512,7 +626,7 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
     normals = np.empty(len(mesh.vertices) * 3)
     mesh.vertex_normals.foreach_get("vector", normals)
     normals = normals.reshape(-1, 3)
-    offset = np.full(len(co), OFFSETS[band])
+    offset = np.full(len(co), OFFSETS[band]) + over_lift(recipe, lines, label, co)
     armpits = _armpits(cage_obj, arm)
     if recipe.get("ease", 0.0) > 0.0 and len(armpits):
         near = KDTree(len(armpits))
@@ -525,7 +639,8 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
             offset[i] += recipe["ease"] * share * share * (3.0 - 2.0 * share)
     co = co + normals * offset[:, None]
     surface = Surface(cage_obj, [])
-    co = _settle(co, [tuple(p.vertices) for p in mesh.polygons], surface, *BANDS[band])
+    polygons = [tuple(p.vertices) for p in mesh.polygons]
+    co = _settle(co, polygons, surface, *band_limits(recipe, lines, label, _points(co, polygons), band))
     mesh.vertices.foreach_set("co", co.reshape(-1))
     mesh.update()
     if recipe.get("hem", 0.0) > 0.0:
@@ -533,14 +648,16 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
         # The turned edges keep the band too.
         co = np.empty(len(mesh.vertices) * 3)
         mesh.vertices.foreach_get("co", co)
-        co = _settle(co.reshape(-1, 3), [tuple(p.vertices) for p in mesh.polygons], surface, *BANDS[band])
+        co = co.reshape(-1, 3)
+        polygons = [tuple(p.vertices) for p in mesh.polygons]
+        co = _settle(co, polygons, surface, *band_limits(recipe, lines, label, _points(co, polygons), band))
         mesh.vertices.foreach_set("co", co.reshape(-1))
         mesh.update()
     mesh.validate()
     return mesh
 
 
-def _plan(name: str, arms: list[bpy.types.Object], band: str, transfer_all: bool = False) -> dict:
+def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: list[dict], transfer_all: bool = False) -> dict:
     """What a sync gives every version: its positions, its weights over the first body's bones,
     the binding of the first version to its cage, and the checksums of the transferred weights of
     the first version, with the number of vertices painted by hand."""
@@ -576,7 +693,8 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, transfer_all: bool
             "versions": {first.name: {"positions": None, "weights": first_weights, "checksums": checksums}}}
     for arm in arms[1:]:
         own = Surface(cage_object(arm.name), [])
-        positions = _settle(np.array([own.place(t, w, o) for t, w, o in binding]), polygons, own, *BANDS[band])
+        placed = np.array([own.place(t, w, o) for t, w, o in binding])
+        positions = _settle(placed, polygons, own, *band_limits(recipe, lines, arm.name, _points(placed, polygons), band))
         weights = weights_on(arm.name, positions, own)
         plan["versions"][version_name(name, arm.name)] = {
             "positions": positions, "weights": np.where(hand[:, None], first_weights, weights), "checksums": None}
@@ -682,7 +800,7 @@ def create(file: str, name: str, band: str, recipe, lines: list[dict], body_list
     append_cages(cage_file, [a.name for a in arms])
     if recipe != MODELED:
         _new_first_version(name, band, recipe, lines, arms[0])
-        _apply(_plan(name, arms, band, transfer_all=True), name, arms)
+        _apply(_plan(name, arms, band, recipe, lines, transfer_all=True), name, arms)
     _show_first(arms)
     relative_image_paths()
     bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
@@ -773,7 +891,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     if first is None:
         raise ArtPipelineError(f'Model the template "{version_name(name, labels[0])}" on the first body first.')
 
-    plan = _plan(name, arms, band, transfer_all)
+    plan = _plan(name, arms, band, recipe, lines, transfer_all)
     _apply(plan, name, arms)
     if not removed and _state(name, labels) == before:
         return False, plan["hand"], notes
@@ -783,7 +901,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
     return True, plan["hand"], notes
 
 
-def stale_errors(name: str, band: str, recipe, body_list: list[tuple[str, str]], cage_file: str) -> list[str]:
+def stale_errors(name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]], cage_file: str) -> list[str]:
     """A template is checked as a sync would leave it: its bodies and its cages are the current ones
     of their files, its first version was built from the recipe of its asset.json, every fitted
     version is fitted to the current first version, and every version has the weights a sync gives
@@ -800,7 +918,7 @@ def stale_errors(name: str, band: str, recipe, body_list: list[tuple[str, str]],
                 "tools/Sync-GarmentAsset.ps1 -Rebuild."]
     arms = [bpy.data.objects[label] for label in labels]
     try:
-        plan = _plan(name, arms, band)
+        plan = _plan(name, arms, band, recipe, lines)
     except ArtPipelineError:
         # garment_errors reports the missing first version or cage.
         return []
@@ -822,11 +940,12 @@ def stale_errors(name: str, band: str, recipe, body_list: list[tuple[str, str]],
     return errors
 
 
-def garment_errors(name: str, labels: list[str], band: str, budget: int) -> list[str]:
+def garment_errors(name: str, labels: list[str], band: str, budget: int, recipe=None, lines: list[dict] | None = None) -> list[str]:
     """The model rules of a template: a version per body with the first version's topology and one
     material, within the triangle budget and its band from the cage, at every vertex and at the
     centre of every face, so a large flat face over a round shoulder cannot dip under the cage
-    between its corners and cloth cannot sink into a pit, and UVs on the first version."""
+    between its corners and cloth cannot sink into a pit, and UVs on the first version. Where the
+    template lies over an inner garment, its band is measured from that garment's surface."""
     errors = []
     try:
         first = _first_version(name, labels)
@@ -853,8 +972,9 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int) -> list
         except ArtPipelineError as error:
             errors.append(str(error))
             continue
-        near = distances < low - 1e-4
-        far = distances > high + 1e-4 if high is not None else np.zeros_like(near)
+        lows, highs = band_limits(recipe, lines or [], label, _points(bodies.world_positions(obj), polygons), band)
+        near = distances < lows - 1e-4
+        far = distances > highs + 1e-4 if highs is not None else np.zeros_like(near)
         if near.any() or far.any():
             # Where they are, so a person knows where to shape the garment.
             zones = bodies.zones_of(bodies.source_body(label))
@@ -865,7 +985,8 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int) -> list
                 worst.append(f"the closest {distances[near].min() * 1000:.1f} mm")
             if far.any():
                 worst.append(f"the farthest {distances[far].max() * 1000:.1f} mm")
-            errors.append(f'"{obj.name}" leaves its {band} band of {low * 1000:.0f} to '
+            over = " (measured from the inner garment where it lies over one)" if (lows > low).any() else ""
+            errors.append(f'"{obj.name}" leaves its {band} band{over} of {low * 1000:.0f} to '
                           f'{"any" if high is None else f"{high * 1000:.0f}"} mm from the cage at {int((near | far).sum())} '
                           f"vertices and face centres ({int(near.sum())} too close, {int(far.sum())} too far; "
                           f"{', '.join(worst)}), over {places}.")

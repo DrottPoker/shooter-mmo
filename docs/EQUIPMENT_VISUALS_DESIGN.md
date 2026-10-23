@@ -14,7 +14,10 @@ Wardrobe preview, and trying garments on in F2; the garment cage with its
 standard lines, approved by Victor on 2026-10-23; and templates built from
 recipes on the cage with textures of their own, with the template `Jerkin` and
 its texture `LeatherJerkin`, approved by Victor on 2026-10-23, in place of the
-first leather jerkin.
+first leather jerkin. Step 5c's first step adds `Shirt`, `LongShirt`, and
+`Trousers` with their textures, the tattoo, and the pair check; `Jerkin` had
+become the same form as `Shirt` once both lay as close to the body as they can,
+so `LeatherJerkin` is a texture of `Shirt` and `Jerkin` is removed.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -85,23 +88,26 @@ From the inside out:
 
 Paint layers stay for skin-level detail. The leather jerkin, painted first as a
 proof of paint layers, became the first garment template, `Jerkin`, with its
-leather texture, `LeatherJerkin`, in step 5b; its paint layer is removed in step
-5c, when a tattoo paint layer takes over as the proof of paint layers.
+leather texture, `LeatherJerkin`, in step 5b, and a texture of `Shirt` in step
+5c; its paint layer is removed in step 5c, when the tattoo paint layer `Tattoo`
+takes over as the proof of paint layers.
 
 ## Garments
 
 ### Slots And Layers
 
 A garment has one visual slot and a layer, a number from 0 to 1000 that orders
-the garments of a character from the inside out. Where garments meet at a
-[standard line](#standard-lines), the layers give the order that
-[How Garments Meet](#how-garments-meet) fixes.
+the garments of a character from the inside out. A body wears one garment per
+visual slot: a shirt and a jerkin are both chest pieces and replace each other,
+never one over the other, as Victor decided on 2026-10-23. Where garments of
+different slots meet at a [standard line](#standard-lines), the layers give the
+order that [How Garments Meet](#how-garments-meet) fixes.
 
 | Visual slot | Covers | Typical layers |
 | --- | --- | --- |
 | `legs` | trousers, skirts, leggings | 100 |
 | `feet` | shoes, boots, over the trouser legs | 120 |
-| `body` | shirts, tops, jerkins, chest armor, robes, coats | 150 shirt, over the trousers; 200 jerkin or chest armor; 300 robe or coat |
+| `body` | shirts, tops, jerkins, chest armor, robes, coats | 150 a top, over the trousers; 300 a robe or coat, over the boots |
 | `hands` | gloves, gauntlets, over every sleeve | 350 |
 | `head` | hoods, hats, helmets, masks | 400 |
 | `back` | cloaks, capes | 500 |
@@ -114,13 +120,13 @@ name. A cloak needs a `back` equipment slot, which the catalog does not have yet
 it comes with the first cloak item. `neck`, `ring_1`, and `ring_2` show nothing,
 and `main_hand`, `off_hand`, and `bag` show attachments.
 
-A visual slot holds every worn garment of that slot, ordered by layer, and no two
-of them share a layer. One equipment slot holds one item, so the garments of a
-visual slot come from the items that show them: one item can be several garments
-of a slot, such as a brigand's outfit made of a shirt at 150 and a vest at 200,
-and garments of other items join them, such as a robe's hood in `head` under a
-helmet from the `head` item. Sleeves are part of a `body` garment, and gloves
-sit over them.
+One equipment slot holds one item, and a visual slot shows one garment: of two
+garments of a slot that a look names, the first in the catalog is worn, and
+trying one on takes off the other. An item may show garments of several slots,
+such as a robe with its hood in `head`; when another item's garment, such as a
+helmet, fills that slot too, the equipment decides which one is worn, which comes
+with the items in delivery step 6. Sleeves are part of a `body` garment, and
+gloves sit over them.
 
 ### The Garment Cage
 
@@ -214,13 +220,19 @@ lines.
 | Calf | trousers, to `LegAnkle` | a boot, to `BootCalf` |
 
 Over the overlap, the outer garment lies outside the inner one: its band there is
-measured from the inner garment's surface instead of the cage. A pair check in
-the pipeline tests every pair of templates of different layers whose garments
-overlap on the body, those that meet at a line and those worn over each other,
-such as a shirt under a jerkin, at rest, in the test poses, and in the clips,
-from the first such pair on: the higher one never lies inside the lower one
-where the lower one is drawn, also at the openings where the lower one's faces
-are kept.
+measured from the inner garment's surface instead of the cage. A template's
+recipe says this with `over`: beyond a line, on the side the inner garment
+keeps, it lies over a garment of a given band, such as a top over the trousers
+below `Waist`, and it rises to it over 30 mm before the line. The pair check
+tests every template over every exported template of another visual slot and a
+lower layer of its cage, such as a shirt over the trousers, at rest, in the test
+poses, and in the clips: of the inner garment's faces that stay drawn, those
+whose body face the outer one leaves visible at its openings, no vertex that the
+outer one is over at rest may come out through it, and none may already lie
+outside it at rest. It reports like the motion
+check, and the outer template's export records the inner templates' exports it
+was checked over. Templates of the same slot are never worn together, so they are
+not checked against each other.
 
 ### Templates
 
@@ -341,9 +353,9 @@ type a garment fits, the pipeline computes:
 A mask is 545 bytes for the human bodies (4,358 faces). When Unity puts a
 character together, it removes every body face that a worn garment covers, moves
 the pull-in vertices, and removes every garment face whose underlay face is
-covered by a garment of a higher layer. A vest over a shirt thereby hides the
-shirt's torso but keeps its sleeves, and a robe over trousers hides the
-trousers where the robe is.
+covered by a garment of a higher layer. A shirt over trousers thereby hides the
+trousers' waist under its hem but keeps their legs, and a robe over trousers
+hides the trousers where the robe is.
 
 ### Layer Bands
 
@@ -353,10 +365,14 @@ every body type. The cage lies on the skin at the body's high points and over
 its pits, so a band measured from it lets cloth span a pit, and cloth that sinks
 into a pit leaves its band.
 
+Clothes lie as close to the body as they can, without air between them and the
+skin, as Victor decided on 2026-10-23: a recipe builds a `tight` template 2 mm
+from the cage, which itself lies on the skin at the body's high points.
+
 | Band | Distance from the cage | For |
 | --- | --- | --- |
-| `tight` | 0 to 8 mm | leggings, a shirt, gloves |
-| `mid` | 5 to 25 mm | a jerkin, trousers, boots, padded armor |
+| `tight` | 0 to 8 mm | shirts, a jerkin, trousers, leggings, gloves |
+| `mid` | 5 to 25 mm | boots, padded armor |
 | `outer` | 10 to 60 mm | plate armor, a coat's upper body |
 | `loose` | from 10 mm, no limit | skirts, robes, cloaks, hoods |
 
@@ -657,6 +673,8 @@ The sync stops on a broken rule and reports the rest:
   cloth cannot sink into a pit.
 - In the rig review's test poses and at every frame of `Idle`, `Walk`, `Jog`,
   and `Death`, no visible body vertex under the garment comes through the cloth.
+  Skin that comes through at the armpits is weighed later: the base bodies'
+  armpits are to be fixed, as Victor said on 2026-10-23.
   The report names how many do and the deepest place, and the review sheet
   shows their faces red, for the reviewer to weigh and the template's ease,
   shape, or weights to fix. No garment of a lower layer reaches through a higher
@@ -727,10 +745,18 @@ quarter of the triangles come with the first crowd measurement that needs them.
      jerkin as the first template, `Jerkin`, with its old look moved to the
      template's UVs as its first texture, `LeatherJerkin`, with its laced V
      transparent. The first leather jerkin garment is removed.
-   - 5c. The proof set: a shirt and a long-sleeved shirt, trousers, boots, and
-     gloves with their textures and the pair checks where they overlap, a net
-     texture with transparent parts over a tattoo paint layer, a robe with a
-     hood, a cloak, and one hair with its compressed form.
+   - 5c. The proof set, in four steps, as Victor accepted on 2026-10-23:
+     1. Shirts, trousers, and a tattoo: the templates `Shirt` and `LongShirt`
+        over `Trousers` at the waist, the textures `LinenShirt`,
+        `LinenLongShirt`, `WoolTrousers`, and `NetShirt`, a coarse net with
+        transparent meshes over the tattoo paint layer `Tattoo`, which replaces
+        the leather jerkin paint layer, `LeatherJerkin` as a texture of `Shirt`,
+        and the pair check.
+     2. Boots and five-finger gloves, with the cage's regions for the feet and
+        the hands.
+     3. A robe with the skirt chains and a cloak with the cloak chains.
+     4. The cage's head region, a shoulder-length hairstyle with its compressed
+        form, and the robe's hood up and down.
    - 5d. Paint layers independent of the bodies' topology, moved between bodies
      by projection.
 6. Items: items show their garments as templates with textures, the `back` slot,

@@ -52,6 +52,9 @@ param(
     [string]$Cage = "art/Cages/Humanoid",
     [string[]]$Regions = @(),
     [string[]]$Cuts = @(),
+    # garment: what it lies over beyond a line, each <Line>:<head|tail>:<band>, the side the inner
+    # garment keeps and its band, such as Waist:head:mid for a top over trousers.
+    [string[]]$Over = @(),
     [double]$Ease = 0.0,
     [double]$Hem = 0.004,
     [switch]$Modeled,
@@ -185,13 +188,21 @@ switch ($Kind) {
 
                         [ordered]@{ line = $parts[0]; keep = $parts[1] }
                     })
+                over = @($Over | ForEach-Object {
+                        $parts = $_.Split(":")
+                        if ($parts.Count -ne 3) {
+                            throw "Pass each -Over as <Line>:<head|tail>:<band>, such as Waist:head:mid."
+                        }
+
+                        [ordered]@{ line = $parts[0]; keep = $parts[1]; band = $parts[2] }
+                    })
                 ease = $Ease
                 hem = $Hem
             }
         }
 
         if ($null -eq (ConvertTo-ArtGarmentRecipe ([pscustomobject]$recipe) $cageManifest) -and -not $Modeled) {
-            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
+            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
         }
 
         Add-ArtRecipeLines $lines $recipe
@@ -346,7 +357,7 @@ switch ($Kind) {
         Write-Host "Shape ${name}_$($manifest.RootObjects[0]) on the first body where it needs more than its recipe, run tools/Sync-GarmentAsset.ps1, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment."
     }
     "texture" {
-        Write-Host "Paint T_Garment_$name on Preview in Texture Paint mode, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment."
+        Write-Host "Paint T_Garment_$name on Preview in Texture Paint mode, run tools/Sync-TextureAsset.ps1, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment Texture."
     }
     "cage" {
         Write-Host "Run tools/Sync-CageAsset.ps1 for its review sheet and checks, then review and approve it as docs/LOCAL_DEVELOPMENT.md describes under Fit The Garment Cage."

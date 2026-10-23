@@ -163,6 +163,13 @@ def _bake(source: bpy.types.Object, target: bpy.types.Object, image: bpy.types.I
     link = _alpha_link(source)
     if link is None:
         _bake_pass(source, target, image, "COLOR")
+        # An opaque look stays opaque: the bake leaves the texels outside the UV islands clear.
+        width, height = image.size
+        pixels = np.empty(width * height * 4, np.float32)
+        image.pixels.foreach_get(pixels)
+        pixels[3::4] = 1.0
+        image.pixels.foreach_set(pixels)
+        image.update()
         return
     links = source.data.materials[0].node_tree.links
     from_node, to_socket = link.from_node, link.to_socket

@@ -104,7 +104,7 @@ Expected result:
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, and the absence of tracked
   client builds.
-- Art asset verification reports `Verified 8 art asset(s).`: every asset below
+- Art asset verification reports `Verified 14 art asset(s).`: every asset below
   `art/` is approved for its current `.blend` file, every model below
   `src/Client/Assets/Art/Models` is the recorded export of one of them, and an
   asset in review, such as a character before its rig, has no model yet. It needs
@@ -2754,7 +2754,7 @@ When the reviewer approves the model, record the approval and export:
 Expected result: `Approved the 'model' stage of Resource_IronVein
 (triangles=878).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified 8 art asset(s).` Unity imports the model the
+(triangles=878).`, and `Verified 14 art asset(s).` Unity imports the model the
 next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
 its `.meta` file together.
 
@@ -2880,7 +2880,7 @@ by hand:
    src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
    the same for the female, `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
-   (clips=Death,Idle,Walk,Jog).`, and `Verified 8 art asset(s).` The library is
+   (clips=Death,Idle,Walk,Jog).`, and `Verified 14 art asset(s).` The library is
    exported with the characters because it records the export of its rig;
    `Verify-ArtAssets.ps1` otherwise stops with `was exported against another
    export of its rig`. After `-Rig`, sync the library first and review its clips
@@ -2981,7 +2981,7 @@ clip of the human bodies: `Idle`, `Walk`, `Jog`, and `Death`.
    (clips=Death,Idle,Walk,Jog).`, `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
    (clips=Death,Idle,Walk,Jog).`,
-   and `Verified 8 art asset(s).` Unity imports the clips as Humanoid motion when
+   and `Verified 14 art asset(s).` Unity imports the clips as Humanoid motion when
    it gets focus. A library whose armature is not the current rig stops the
    approval and the export with `The armature "Humanoid" is not the current rig
    "Male" ...`; sync it first. Commit the `.blend` file, `asset.json`, the FBX,
@@ -2995,7 +2995,7 @@ changes the library, and it needs a new review and approval first.
 ### Make A Paint Layer
 
 [Paint Layers](ART_PIPELINE.md#paint-layers) describes paint over the skin of the
-bodies. `art/Paint/LeatherJerkin` is the paint of the leather jerkin.
+bodies. `art/Paint/Tattoo` is a tattoo on the chest and the upper arms.
 
 1. Create a new paint layer with the order it is drawn in, from 0 to 1000, the
    lowest first, such as 10 for a shirt and 30 for a jerkin over it:
@@ -3011,32 +3011,33 @@ bodies. `art/Paint/LeatherJerkin` is the paint of the leather jerkin.
    or updated with:
 
    ```powershell
-   .\tools\Sync-PaintAsset.ps1 -Asset art/Paint/LeatherJerkin
+   .\tools\Sync-PaintAsset.ps1 -Asset art/Paint/Tattoo
    ```
 
-   Expected result: `LeatherJerkin is up to date: every body is there and shows
-   the current paint.`, or `Synced LeatherJerkin: ...` for a new or changed file.
+   Expected result: `Tattoo is up to date: every body is there and shows the
+   current paint.`, or `Synced Tattoo: ...` for a new or changed file.
 2. Open the file in Blender, select `Paint_Male`, switch to Texture Paint, and
-   paint into `T_Paint_LeatherJerkin_Male`, or change its custom properties
-   `roughness` and `metallic`. Save, then run the sync again. Expected result:
-   `Synced LeatherJerkin`, and `Paint_Female` shows the same paint when the file
-   is opened again.
+   paint into `T_Paint_Tattoo_Male`, or change its custom properties
+   `roughness` and `metallic`. The body's UVs are mirrored, so a stroke on one
+   side shows on both. Save, then run the sync again. Expected result:
+   `Synced Tattoo`, and `Paint_Female` shows the same paint when the file is
+   opened again.
 3. Render the review sheet, review it and the file, then approve, export, and
    verify:
 
    ```powershell
-   .\tools\Render-ArtPreview.ps1 -Asset art/Paint/LeatherJerkin
-   .\tools\Approve-ArtAsset.ps1 -Asset art/Paint/LeatherJerkin -Stage paint
-   .\tools\Export-ArtAsset.ps1 -Asset art/Paint/LeatherJerkin
+   .\tools\Render-ArtPreview.ps1 -Asset art/Paint/Tattoo
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Paint/Tattoo -Stage paint
+   .\tools\Export-ArtAsset.ps1 -Asset art/Paint/Tattoo
    .\tools\Verify-ArtAssets.ps1
    ```
 
    Expected result: a sheet with both bodies from four sides and each torso from
-   the front and the back, `Approved the 'paint' stage of LeatherJerkin (paint).`,
-   `Exported LeatherJerkin to src/Client/Assets/Art/Textures/Paint
-   (T_Paint_LeatherJerkin_Male, T_Paint_LeatherJerkin_Female).`, and `Verified
+   the front and the back, `Approved the 'paint' stage of Tattoo (paint).`,
+   `Exported Tattoo to src/Client/Assets/Art/Textures/Paint
+   (T_Paint_Tattoo_Male, T_Paint_Tattoo_Female).`, and `Verified
    8 art asset(s).` When Unity gets focus, it updates the appearance catalogs.
-   Expected result: the Console lists `Paint LeatherJerkin` in both catalogs when
+   Expected result: the Console lists `Paint Tattoo` in both catalogs when
    the paint layer is new. Commit the `.blend` file, `asset.json`, the PNG files,
    the catalogs, and their `.meta` files together.
 
@@ -3088,7 +3089,7 @@ its `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
    ```
 
    Expected result: `Approved the 'model' stage of Humanoid (faces=1576).` and
-   `Verified 8 art asset(s).` The cage has no export; commit the `.blend` file
+   `Verified 14 art asset(s).` The cage has no export; commit the `.blend` file
    and `asset.json` together.
 
 ### Make A Garment
@@ -3096,46 +3097,53 @@ its `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
 [Garments](ART_PIPELINE.md#garments) describes garment templates, the form of
 clothes and armor, built from a recipe on the
 [garment cage](ART_PIPELINE.md#garment-cage) and fitted to every body of it.
-`art/Garments/Jerkin` is the jerkin, a short-sleeved top. A template shows in
-the game only with a [texture](#make-a-garment-texture).
+`art/Garments/Shirt` is a short-sleeved top that lies over `art/Garments/Trousers`
+at the waist. A template shows in the game only with a
+[texture](#make-a-garment-texture), and a body wears one garment per visual slot,
+so a shirt and a jerkin replace each other.
 
 1. Create a new template with its visual slot, its band from the cage, and its
    recipe: the cage regions it covers and the standard lines where it ends, each
    as `<Line>:head` or `<Line>:tail` for the side it keeps. Its layer and
    triangle budget default to the slot's typical values; headwear also needs
-   `-Hair`. `-Modeled` makes a template whose first version you model by hand
-   instead:
+   `-Hair`. `-Over` says where it lies over a garment of another slot, as
+   `<Line>:<head|tail>:<band>` for the side of the line the inner garment keeps
+   and its band, such as `Waist:head:tight` for a top over trousers. `-Modeled`
+   makes a template whose first version you model by hand instead:
 
    ```powershell
-   .\tools\New-ArtAsset.ps1 -Kind garment -Asset art/Garments/Shirt -Slot body -Band tight -Layer 150 -Regions trunk,arms -Cuts HemHip:tail,SleeveLong:head
+   .\tools\New-ArtAsset.ps1 -Kind garment -Asset art/Garments/Tunic -Slot body -Band tight -Layer 150 -Regions trunk,arms -Cuts HemHip:tail,SleeveElbow:head -Over Waist:head:tight
    ```
 
-   Expected result: one report line per body, `Shirt_Male: <n> triangles,
+   Expected result: one report line per body, `Tunic_Male: <n> triangles,
    <near> to <far> mm from the cage, median <m> mm`, and `Created
-   art/Garments/Shirt with asset.json and Shirt.blend.`
-2. Open the file in Blender. Expected result: the male body in `Shirt_Male`,
+   art/Garments/Tunic with asset.json and Tunic.blend.`
+2. Open the file in Blender. Expected result: the male body in `Tunic_Male`,
    with the cage's versions in the `Cage` collection; the female and
-   `Shirt_Female` are hidden in the Outliner. Shape `Shirt_Male` in Edit Mode
+   `Tunic_Female` are hidden in the Outliner. Shape `Tunic_Male` in Edit Mode
    where it needs more than the recipe gives, such as folds or a flared hem, and
-   paint its weights by hand if it needs it. Correct `Shirt_Female` only where the
+   paint its weights by hand if it needs it. Correct `Tunic_Female` only where the
    fitting needs help. Save, then fit and check it:
 
    ```powershell
-   .\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Shirt
+   .\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Tunic
    ```
 
-   Expected result: the report lines, `Synced Shirt: ...`, the paths of the
+   Expected result: the report lines, `Synced Tunic: ...`, the paths of the
    review sheet and the review file, how much skin comes through it in motion,
-   what it covers on each body, such as `Shirt_Male: covers <n> of 4358 body
+   what it covers on each body, such as `Tunic_Male: covers <n> of 4358 body
    faces, leaves <m> at its edges visible, and pulls in <k> visible vertices`,
-   and `Shirt meets every rule. Review it, ...`. A second run prints `Shirt is
+   the pair check over every exported template of another slot and a lower
+   layer, such as `Trousers under Tunic_Male: none of the <n> vertices of it that
+   stay drawn under Tunic_Male comes through it in 239 poses and clip frames`,
+   and `Tunic meets every rule. Review it, ...`. A second run prints `Tunic is
    up to date: ...` and leaves the file as it is. A broken rule stops it with the
    list of rules, such as a version that leaves its band, with the body parts
    where it does. After a change of the recipe in `asset.json`, run it with
    `-Rebuild`, which builds the first version again and keeps its handmade shape.
    `-Weights` transfers every weight from the bodies again, also the weights
    painted by hand.
-3. Look at `artifacts\art-previews\Shirt.png` and open
+3. Look at `artifacts\art-previews\Tunic.png` and open
    `artifacts\art-previews\Shirt_poses.blend` in Blender and play the timeline.
    Expected result: on the sheet, the template with a grid in its UVs, square
    where they do not stretch, and each body's third row shows it without the
@@ -3148,18 +3156,18 @@ the game only with a [texture](#make-a-garment-texture).
 4. Approve both stages, export, and verify:
 
    ```powershell
-   .\tools\Approve-ArtAsset.ps1 -Asset art/Garments/Shirt -Stage model
-   .\tools\Approve-ArtAsset.ps1 -Asset art/Garments/Shirt -Stage rig
-   .\tools\Export-ArtAsset.ps1 -Asset art/Garments/Shirt
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Garments/Tunic -Stage model
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Garments/Tunic -Stage rig
+   .\tools\Export-ArtAsset.ps1 -Asset art/Garments/Tunic
    .\tools\Verify-ArtAssets.ps1
    ```
 
-   Expected result: `Approved the 'model' stage of Shirt (triangles=...)`, the
-   same for `rig`, `Exported Shirt to
-   src/Client/Assets/Art/Models/Garments/Shirt_Male.fbx,
-   src/Client/Assets/Art/Models/Garments/Shirt_Female.fbx with their data
+   Expected result: `Approved the 'model' stage of Tunic (triangles=...)`, the
+   same for `rig`, `Exported Tunic to
+   src/Client/Assets/Art/Models/Garments/Tunic_Male.fbx,
+   src/Client/Assets/Art/Models/Garments/Tunic_Female.fbx with their data
    (...)`, and `Verified <n> art asset(s).` When Unity gets focus, it creates
-   `Assets/Art/Materials/Garments/M_Garment_Shirt.mat`. Commit the `.blend`
+   `Assets/Art/Materials/Garments/M_Garment_Tunic.mat`. Commit the `.blend`
    file, `asset.json`, the FBX and JSON files, the material, and their `.meta`
    files together. A template is exported after its cage is approved and after
    its bodies and the animation library are exported, and again whenever one of
@@ -3176,26 +3184,26 @@ the laces.
    the look of another mesh moved over by projection:
 
    ```powershell
-   .\tools\New-ArtAsset.ps1 -Kind texture -Asset art/GarmentTextures/LinenShirt -Garment art/Garments/Shirt -Size 1024
+   .\tools\New-ArtAsset.ps1 -Kind texture -Asset art/GarmentTextures/WoolTunic -Garment art/Garments/Tunic -Size 1024
    ```
 
-   Expected result: `Created art/GarmentTextures/LinenShirt with asset.json and
-   LinenShirt.blend.`
-2. Open the file in Blender and paint `T_Garment_LinenShirt` on `Preview` in
+   Expected result: `Created art/GarmentTextures/WoolTunic with asset.json and
+   WoolTunic.blend.`
+2. Open the file in Blender and paint `T_Garment_WoolTunic` on `Preview` in
    Texture Paint mode, with its custom properties `roughness` and `metallic`.
    Paint the alpha below 0.5 where the skin should show, such as a net or a laced
    opening; an opaque texture has none. Save, then check it:
 
    ```powershell
-   .\tools\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/LinenShirt
+   .\tools\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/WoolTunic
    ```
 
-   Expected result: the path of the review sheet and `LinenShirt meets every
+   Expected result: the path of the review sheet and `WoolTunic meets every
    rule. Review it, then record the approval with tools/Approve-ArtAsset.ps1
-   -Asset art/GarmentTextures/LinenShirt -Stage texture.` After the template's
-   UVs changed, such as after a rebuild, it first prints `Moved LinenShirt to
-   the new UVs of Shirt: ...`.
-3. Look at `artifacts\art-previews\LinenShirt.png`. Expected result: the
+   -Asset art/GarmentTextures/WoolTunic -Stage texture.` After the template's
+   UVs changed, such as after a rebuild, it first prints `Moved WoolTunic to
+   the new UVs of Tunic: ...`.
+3. Look at `artifacts\art-previews\WoolTunic.png`. Expected result: the
    template with the texture on both bodies from four sides, the torso up close,
    and the test poses; for a texture with transparent parts also each body
    without it in the colors of the template's sheet, with the skin under the
@@ -3203,24 +3211,24 @@ the laces.
 4. Approve, export, and verify:
 
    ```powershell
-   .\tools\Approve-ArtAsset.ps1 -Asset art/GarmentTextures/LinenShirt -Stage texture
-   .\tools\Export-ArtAsset.ps1 -Asset art/GarmentTextures/LinenShirt
+   .\tools\Approve-ArtAsset.ps1 -Asset art/GarmentTextures/WoolTunic -Stage texture
+   .\tools\Export-ArtAsset.ps1 -Asset art/GarmentTextures/WoolTunic
    .\tools\Verify-ArtAssets.ps1
    ```
 
-   Expected result: `Approved the 'texture' stage of LinenShirt
-   (texture=T_Garment_LinenShirt).`, `Exported LinenShirt to
-   src/Client/Assets/Art/Textures/Garments/T_Garment_LinenShirt.png with its
-   material M_Garment_LinenShirt.`, for a texture with transparent parts with
-   `and its masks src/Client/Assets/Art/Models/Garments/LinenShirt_Male.json,
+   Expected result: `Approved the 'texture' stage of WoolTunic
+   (texture=T_Garment_WoolTunic).`, `Exported WoolTunic to
+   src/Client/Assets/Art/Textures/Garments/T_Garment_WoolTunic.png with its
+   material M_Garment_WoolTunic.`, for a texture with transparent parts with
+   `and its masks src/Client/Assets/Art/Models/Garments/WoolTunic_Male.json,
    ...` and the report of what it covers and how much skin comes through it in
    motion, and `Verified <n> art asset(s).` When Unity gets focus, it creates
-   `Assets/Art/Materials/Garments/M_Garment_LinenShirt.mat` and updates the
-   appearance catalogs: the Console lists `Garment LinenShirt` in both. Commit the
+   `Assets/Art/Materials/Garments/M_Garment_WoolTunic.mat` and updates the
+   appearance catalogs: the Console lists `Garment WoolTunic` in both. Commit the
    `.blend` file, `asset.json`, the PNG and JSON files, the material, the
    catalogs, and their `.meta` files together. A texture is exported again after
    every export of its template. Wear it in the game with `Try on garment:
-   LinenShirt` in F2, as in
+   WoolTunic` in F2, as in
    [Manual Test Of The Human Base Characters](#manual-test-of-the-human-base-characters).
 
 ### Manual Test Of The Human Base Characters
@@ -3289,10 +3297,11 @@ controller, and prefabs are committed.
     them. Leave the shard and join again. Expected result: your body keeps the
     scar and the brown eyes. Press `>` twice more. Expected result: the stubble
     face and teal eyes are back.
-13. Still in the F2 Presentation section, turn on `Try on paint: LeatherJerkin`.
-    Expected result: your body wears the brown leather jerkin at once, with short
-    sleeves, stitched trim, and the laced V at the front; turn it off and it is
-    gone. The choice is kept between sessions like the face and the eyes.
+13. Still in the F2 Presentation section, turn on `Try on paint: Tattoo`.
+    Expected result: your body shows the tattoo at once, a round rune emblem on
+    the upper breastbone and an armband around each upper arm, in dark
+    blue-black ink; turn it off and it is gone. The choice is kept between
+    sessions like the face and the eyes.
 14. With ActiveSimulationBots on the shard, as in step 7, look at the bots up
     close. Expected result: the bots show both faces and both eye colors in every
     combination, and each bot keeps its look while it stays. Real players show
@@ -3305,49 +3314,48 @@ controller, and prefabs are committed.
     In Unity, run the EditMode tests in `ClothChainSolverTests`. Expected result:
     every test passes, among them a robe that stays outside the legs while the
     body jogs. No garment uses the chains yet, so nothing changes in the game.
-16. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Jerkin`.
-    Expected result: `Jerkin_Male: 1536 triangles, 5.1 to 12.7 mm from the
-    cage, median 9.8 mm`, the same for the female, `Jerkin is up to date: ...`,
-    `Jerkin_Male: of the 227 visible vertices under it, 8 come through it in 238
-    poses and clip frames, by at most 11.9 mm (UpperArms in Idle frame 62), red
-    on the review sheet`, `Jerkin_Male: covers 354 of 4358 body faces, leaves 172
-    at its edges visible, and pulls in 0 visible vertices`, for the female 27
-    vertices by at most 20.1 mm and `covers 310 of 4358 body faces, leaves 192 at
-    its edges visible, ...`, and `Jerkin meets every rule, and both stages are
-    approved for this file.` Open `artifacts\art-previews\Jerkin.png`. Expected
-    result: the jerkin with a grid in its UVs on both bodies from four sides,
-    ending at the base of the neck, with short sleeves over half the upper arm
-    and the hem over the hips, the torso up close, the test poses, and each body
-    without it, orange in the jerkin's shape, a yellow band of visible skin along
-    the neckline, the sleeve openings, and the hem, the arms below the sleeves
-    left visible, and a few red faces at the armpits and, on the female, at the
-    front of the hips, where the skin comes through the jerkin in the clips.
-    Open `artifacts\art-previews\Jerkin_poses.blend` and play the timeline.
-    Expected result: the jerkin follows both bodies through the poses. Then run
-    `.\tools\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/LeatherJerkin` and
-    open `artifacts\art-previews\LeatherJerkin.png`. Expected result: the jerkin
-    in brown leather with dark trim and stitches along every edge and an open V
-    at the front, laced across, where the skin shows between the laces; on the
-    mask rows, the skin in the V and along its edges stays visible. In Unity, run
-    the EditMode tests `EveryGarmentModelIsSkinnedToTheRigOfItsBody` and
-    `EveryGarmentModelHasItsData`. Expected result: both pass.
+16. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Shirt`.
+    Expected result: `Shirt_Male: 1536 triangles, 0.0 to 6.9 mm from the cage,
+    median 2.0 mm`, the same for the female, `Shirt is up to date: ...`,
+    `Shirt_Male: none of the 163 visible vertices under it comes through it in
+    239 poses and clip frames`, `Shirt_Male: covers 418 of 4358 body faces,
+    leaves 114 at its edges visible, and pulls in 31 visible vertices by at most
+    2.5 mm`, for the female 31 vertices by at most 9.5 mm at the hips in `Death`,
+    `Trousers under Shirt_Male: of the 36 vertices of it that stay drawn under
+    Shirt_Male, 2 come through it in 239 poses and clip frames, by at most 1.2 mm
+    (Torso in Death frame 14)`, for the female none, and `Shirt meets every
+    rule, and both stages are approved for this file.` Open `artifacts\art-previews\Shirt.png`. Expected result: the
+    shirt with a grid in its UVs on both bodies from four sides, close to the
+    body and following its figure, ending at the base of the neck, with short
+    sleeves over half the upper arm and the hem over the hips, the test poses,
+    and each body without it, orange in the shirt's shape and a yellow band of
+    visible skin along the neckline, the sleeve openings, and the hem. Then run
+    `.\tools\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/NetShirt` and open
+    `artifacts\art-previews\NetShirt.png`. Expected result: the coarse net on
+    both bodies, the skin showing through its meshes, and on the mask rows the
+    skin under the meshes left visible. In Unity, run the EditMode tests
+    `EveryGarmentModelIsSkinnedToTheRigOfItsBody` and `EveryGarmentModelHasItsData`.
+    Expected result: both pass.
 17. In a World scene, press F2 and in the Presentation section turn on
-    `Try on garment: LeatherJerkin`. Expected result: your body wears the
-    leather jerkin as a mesh of its own, standing a little off the skin with its
-    short sleeves, no collar, and the open V laced across, where the skin shows
-    between the laces; the skin under the leather is gone except near its edges,
-    so nothing shows through when you walk and turn, and a look into a sleeve,
-    into the V, or at the hips below the hem shows skin, never a hole in the
-    body; turn it off and the bare body is back.
-    Turn on `Try on paint: LeatherJerkin` as well: the paint shows only in the V
-    and below the hem, because the garment covers the rest. The choice is kept
-    between sessions like the face and the eyes; other players and bots wear no
-    garments.
+    `Try on garment: WoolTrousers`, then `Try on garment: LeatherJerkin`.
+    Expected result: your body wears the brown wool trousers and the leather
+    jerkin over them at the waist, both as meshes of their own close to the skin,
+    the jerkin with its short sleeves, no collar, and the open V laced across,
+    where the skin shows between the laces. The skin under the garments is gone
+    except near their edges, so nothing shows through when you walk and turn,
+    and a look into a sleeve, into the V, or at the hips below the hem shows
+    skin, never a hole in the body. Turn on `Try on garment: LinenShirt`.
+    Expected result: the linen shirt takes the jerkin's place, since a body wears
+    one chest piece. Turn on `Try on paint: Tattoo` and `Try on garment:
+    NetShirt`. Expected result: the tattoo and the skin show through the net's
+    meshes. Turn the garments off and the bare body is back.
+    The choice is kept between sessions like the face and the eyes; other
+    players and bots wear no garments.
 18. In the Unity Editor, open `MMORPG > Tools > Art Pipeline > Wardrobe`.
     Expected result: the window shows `Human_Female` on a checkered ground; pick
-    `Human_Male` in `Body` and tick `LeatherJerkin`. Expected result: the body
-    wears the jerkin, and `Drawn` reads `LeatherJerkin`. Press `Jog`. Expected
-    result: the body jogs, the ground moves along under it at 5.0 m/s, and the
+    `Human_Male` in `Body` and tick `WoolTrousers` and `LeatherJerkin`. Expected
+    result: the body wears both, and `Drawn` reads `WoolTrousers, LeatherJerkin`.
+    Press `Jog`. Expected result: the body jogs, the ground moves along under it at 5.0 m/s, and the
     jerkin follows the arms and the torso; only at the armpits can a little skin
     come through it as the arms swing, where the review sheet shows red. Drag in
     the view to see the body from every side and scroll to come closer: below

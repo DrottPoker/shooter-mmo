@@ -1,0 +1,39 @@
+{
+    "schemaVersion": 1,
+    "kind": "texture",
+    "garment": "art/Garments/Shirt",
+    "approvals": {
+        "texture": {
+            "date": "2026-10-23",
+            "sourceSha256": "02a4f1e8b5d867866553ac5bfd3cc5f00a8f2abcb79565063b457303c179bebb",
+            "garmentSourceSha256": "7b4aceba2dfddcf7efdc1ab659852a487002ff14262edff90d1e147151cc81db"
+        }
+    },
+    "export": {
+        "sourceSha256": "02a4f1e8b5d867866553ac5bfd3cc5f00a8f2abcb79565063b457303c179bebb",
+        "garmentSourceSha256": "7b4aceba2dfddcf7efdc1ab659852a487002ff14262edff90d1e147151cc81db",
+        "masks": [
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Male.json", "dataSha256": "53d8c499800f5d3244574e74ab6b90bc1c9b26497c6132ee7c1528e5d78328d1" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "63fac0422c64a9326423b694808369be18c1bc77c50860fe0949d6b3678be0ba" }
+        ],
+        "clipSources": [
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c" }
+        ],
+        "materials": [
+            {
+                "name": "M_Garment_NetShirt",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Garment_NetShirt",
+                "metallic": 0.0,
+                "smoothness": 0.12
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Garment_NetShirt",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_NetShirt.png",
+                "sha256": "87d7354861fb4ff648a3a9fb07f3a8b50ea8e3b14b562ac393cfb95a56c15b60"
+            }
+        ]
+    }
+}

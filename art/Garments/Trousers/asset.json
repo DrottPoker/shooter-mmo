@@ -1,0 +1,66 @@
+{
+    "schemaVersion": 2,
+    "kind": "garment",
+    "cage": "art/Cages/Humanoid",
+    "slot": "legs",
+    "layer": 100,
+    "band": "tight",
+    "recipe": {
+        "regions": ["trunk", "legs"],
+        "cuts": [
+            { "line": "Waist", "keep": "head" },
+            { "line": "LegAnkle", "keep": "head" }
+        ],
+        "ease": 0,
+        "hem": 0.002
+    },
+    "hides": [],
+    "hair": null,
+    "cloth": null,
+    "dyes": 0,
+    "triangleBudget": 2000,
+    "approvals": {
+        "model": {
+            "date": "2026-10-23",
+            "sourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca"
+        },
+        "rig": {
+            "date": "2026-10-23",
+            "sourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca"
+        }
+    },
+    "export": {
+        "sourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca",
+        "cageSourceSha256": "56c444388010fa9205ba1c82c7cec32921153c2baa29adbfdebb9e6d60a93adb",
+        "models": [
+            {
+                "body": "Male",
+                "bodyFitSha256": "3f384ad10189db1c3a3c70d88cc0c6f1adcdd19cb715ef51af687bc1c2996695",
+                "target": "src/Client/Assets/Art/Models/Garments/Trousers_Male.fbx",
+                "sha256": "29a74d9929976fa2a9873109d0df70e80d9046de262b2d6ed8289c1338fe9c68",
+                "data": "src/Client/Assets/Art/Models/Garments/Trousers_Male.json",
+                "dataSha256": "7c46a5873ac99f66c1cf90d29073dc40b14ccc3d7142c2be13ea1152cdb13ac7"
+            },
+            {
+                "body": "Female",
+                "bodyFitSha256": "6d6123be26f47d604aa2e0c2b03fec2679fce235dd0faf34b722d377328a8317",
+                "target": "src/Client/Assets/Art/Models/Garments/Trousers_Female.fbx",
+                "sha256": "56edec4b15b1f0e887177c78849b0fa9ccb858baf70b6800d26e885226fc37ce",
+                "data": "src/Client/Assets/Art/Models/Garments/Trousers_Female.json",
+                "dataSha256": "4e4fa2f961a9e91ac8638d4447d550db435dd1639b72be6844b83b2174f1a9e9"
+            }
+        ],
+        "clipSources": [
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c" }
+        ],
+        "materials": [
+            {
+                "name": "M_Garment_Trousers",
+                "baseColor": "#CECECE",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            }
+        ],
+        "textures": []
+    }
+}

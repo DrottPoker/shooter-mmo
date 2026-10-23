@@ -63,18 +63,18 @@ namespace Mmorpg.Client.Gameplay
             return null;
         }
 
-        // The other garments of the catalog that are textures of the same template as this one,
-        // which a body never wears together with it.
-        public IEnumerable<Garment> OtherTexturesOf(Garment garment)
+        // The other garments of the catalog in the same visual slot as this one, such as another
+        // chest piece, which a body never wears together with it.
+        public IEnumerable<Garment> OthersInSlot(Garment garment)
         {
-            if (garment == null || garment.Template.Length == 0)
+            if (garment == null)
             {
                 yield break;
             }
 
             foreach (var other in garments)
             {
-                if (other != null && other != garment && other.Template == garment.Template)
+                if (other != null && other != garment && other.Slot == garment.Slot)
                 {
                     yield return other;
                 }
@@ -209,7 +209,7 @@ namespace Mmorpg.Client.Gameplay
                 this.metallic = metallic;
             }
 
-            // Such as LeatherJerkin, from the paint layer art/Paint/LeatherJerkin.
+            // Such as Tattoo, from the paint layer art/Paint/Tattoo.
             public string Name
             {
                 get { return name; }
