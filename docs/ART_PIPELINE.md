@@ -366,7 +366,14 @@ A skinned model also gets:
 An animation library gets the same Humanoid avatar and clip settings, from its
 own armature, and imports no materials. Its clips become Humanoid muscle motion,
 so an Animator plays them on every body of the skeleton, next to the clips of
-the body's own model.
+the body's own model. A library has no mesh and so no bind pose, and Unity would
+make its avatar from the first frame of its first clip, such as the bent knees
+at the start of `Death`, which shifted every clip on every body: the feet stood
+wide and slid. So the library's avatar is made on the pose that the avatar of its
+`rig`, whose armature the library's armature is, was made on: the rig's rest
+pose with the arms raised to a T-pose, as Unity makes a body's avatar. The rig
+then plays every clip exactly as the library's own armature has it, and a new
+import of the rig's model imports the library again.
 
 A garment's model gets a generic rig without an avatar of its own and without
 clips, because the character it is put on animates it: its armature is the
@@ -427,7 +434,10 @@ approved Blender material recorded at export, so the game shows the colors and
 the painted textures the reviewer approved. For a skinned model and an animation
 library it fails when the avatar is not a valid Humanoid, a human bone maps to another bone than the
 skeleton definition says, a bone or socket is missing or has another parent, or
-a clip is missing, has another length, or loops differently than recorded. For a
+a clip is missing, has another length, or loops differently than recorded. For
+an animation library it also fails when its avatar is not made on the pose of
+its rig's avatar, or when the rig's model shows a clip with the hips, the head, a
+foot, or a hand more than 2 mm from where the library's own armature has it. For a
 garment it fails when a model lacks its body's armature or a skeleton bone, has
 another renderer than `<Name>_<Label>`, a vertex without weights or with more
 than four bones, or a bone whose bind pose differs from the body's, and when

@@ -5,6 +5,8 @@ using Mmorpg.Client.Editor;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 using UnityEngine.Rendering;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -114,6 +116,97 @@ namespace Mmorpg.Client.Tests.EditMode
                         Assert.That(found[0].parent.name, Is.EqualTo(bone.parent), path + " " + bone.name);
                     }
                 }
+            }
+        }
+
+        [Test]
+        public void EveryAnimationLibraryIsMadeOnThePoseOfItsRigsAvatar()
+        {
+            // A library has no bind pose, so its avatar is made on the pose its rig's avatar was
+            // made on, not on the first frame of its first clip.
+            var libraries = ExportedManifests().Where(manifest => manifest.IsAnimationLibrary).ToArray();
+            Assert.That(libraries, Is.Not.Empty);
+            foreach (var library in libraries)
+            {
+                var path = library.UnityTargetPath;
+                var rig = ArtAssetManifests.LoadAsset(library.rig);
+                var rigPose = AssetDatabase.LoadAllAssetsAtPath(rig.UnityTargetPath).OfType<Avatar>().Single()
+                    .humanDescription.skeleton.ToDictionary(bone => bone.name);
+                var avatar = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Avatar>().Single();
+                Assert.That(avatar.isValid, Is.True, path);
+                var pose = avatar.humanDescription.skeleton.ToDictionary(bone => bone.name);
+                foreach (var bone in ArtAssetManifests.LoadSkeleton(library.skeleton).bones)
+                {
+                    var where = path + " " + bone.name;
+                    Assert.That(pose.TryGetValue(bone.name, out var recorded), Is.True, where);
+                    Assert.That((recorded.position - rigPose[bone.name].position).magnitude, Is.LessThan(1e-5f), where);
+                    Assert.That(Quaternion.Angle(recorded.rotation, rigPose[bone.name].rotation), Is.LessThan(0.01f), where);
+                }
+            }
+        }
+
+        [Test]
+        public void TheRigOfAnAnimationLibraryPlaysItsClipsAsTheLibraryDoes()
+        {
+            // The library's armature is its rig's, so the rig's model shows every clip exactly as the
+            // library's own armature does, its hips, head, feet, and hands at the same places.
+            var limbs = new[]
+            {
+                HumanBodyBones.Hips, HumanBodyBones.Head, HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot, HumanBodyBones.LeftHand,
+                HumanBodyBones.RightHand,
+            };
+            foreach (var library in ExportedManifests().Where(manifest => manifest.IsAnimationLibrary))
+            {
+                var rig = ArtAssetManifests.LoadAsset(library.rig);
+                var clips = AssetDatabase.LoadAllAssetsAtPath(library.UnityTargetPath)
+                    .OfType<AnimationClip>()
+                    .Where(clip => !clip.name.StartsWith("__preview", StringComparison.Ordinal))
+                    .ToArray();
+                Assert.That(clips, Is.Not.Empty, library.path);
+                foreach (var clip in clips)
+                {
+                    for (var share = 0f; share < 1f; share += 0.25f)
+                    {
+                        var time = share * clip.length;
+                        var own = Sample(library.UnityTargetPath, clip, time, limbs);
+                        var shown = Sample(rig.UnityTargetPath, clip, time, limbs);
+                        for (var limb = 0; limb < limbs.Length; limb++)
+                        {
+                            var where = $"{clip.name} at {time:0.00} s {limbs[limb]}";
+                            Assert.That((shown[limb] - own[limb]).magnitude, Is.LessThan(0.002f), where);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Where these human bones of a model stand at a time of a clip, in the model's own space.
+        private static Vector3[] Sample(string modelPath, AnimationClip clip, float time, HumanBodyBones[] bones)
+        {
+            var body = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(modelPath));
+            var graph = default(PlayableGraph);
+            try
+            {
+                var animator = body.GetComponent<Animator>();
+                animator.applyRootMotion = false;
+                // Unseen, a model with renderers is culled and would not animate.
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                graph = PlayableGraph.Create("Sample");
+                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
+                var playable = AnimationClipPlayable.Create(graph, clip);
+                AnimationPlayableOutput.Create(graph, "Sample", animator).SetSourcePlayable(playable);
+                playable.SetTime(time);
+                graph.Evaluate();
+                return bones.Select(bone => body.transform.InverseTransformPoint(animator.GetBoneTransform(bone).position)).ToArray();
+            }
+            finally
+            {
+                if (graph.IsValid())
+                {
+                    graph.Destroy();
+                }
+
+                UnityEngine.Object.DestroyImmediate(body);
             }
         }
 

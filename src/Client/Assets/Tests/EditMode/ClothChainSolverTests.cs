@@ -139,10 +139,13 @@ namespace Mmorpg.Client.Tests.EditMode
                     reach += Vector3.Distance(Bone(chain.Bones[index - 1]).position, Bone(chain.Bones[index]).position);
                 }
 
-                var before = tip.position;
+                // The tip rests on the bone the chain hangs from, which breathing still moves, and
+                // the farther it hangs, the more: so it is measured in that bone's frame.
+                var anchor = root.parent;
+                var before = anchor.InverseTransformPoint(tip.position);
                 Run(animator, solver, 30);
-                // Breathing still moves the hips a little.
-                Assert.That(Vector3.Distance(before, tip.position) / (30 * Step), Is.LessThan(0.05f), chain.Bones[0]);
+                Assert.That(Vector3.Distance(before, anchor.InverseTransformPoint(tip.position)) / (30 * Step), Is.LessThan(0.02f),
+                    chain.Bones[0]);
                 // The chain hangs down from its root, not out to the side.
                 Assert.That(root.position.y - tip.position.y, Is.GreaterThan(0.6f * reach), chain.Bones[0]);
             }

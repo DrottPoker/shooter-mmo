@@ -3255,7 +3255,9 @@ controller, and prefabs are committed.
    log in, and join a shard. Expected result: your character is the male body
    in underwear and stands in `Idle`, breathing.
 5. Click the ground 15 m away. Expected result: the body jogs there at 5 m/s
-   with its feet on the ground, and stands again when it arrives.
+   with its feet on the ground, landing near the centre line under the hips as
+   in the animation library rather than wide apart, without sliding, and stands
+   again when it arrives.
 6. Carry more than the encumbered limit, as described in
    [Carry Weight And Encumbrance](GAME_FEATURES.md#carry-weight-and-encumbrance),
    and walk. Expected result: the body walks slower, without sliding.
@@ -3355,8 +3357,9 @@ controller, and prefabs are committed.
     Expected result: the window shows `Human_Female` on a checkered ground; pick
     `Human_Male` in `Body` and tick `WoolTrousers` and `LeatherJerkin`. Expected
     result: the body wears both, and `Drawn` reads `WoolTrousers, LeatherJerkin`.
-    Press `Jog`. Expected result: the body jogs, the ground moves along under it at 5.0 m/s, and the
-    jerkin follows the arms and the torso; only at the armpits can a little skin
+    Press `Jog`. Expected result: the body jogs, the ground moves along under it at 5.0 m/s with
+    its feet planted on it as long as they are down, each cycle runs to its end before the next,
+    and the jerkin follows the arms and the torso; only at the armpits can a little skin
     come through it as the arms swing, where the review sheet shows red. Drag in
     the view to see the body from every side and scroll to come closer: below
     the hem, the hips are whole, the V shows the chest between the laces, and a

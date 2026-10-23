@@ -146,6 +146,9 @@ namespace Mmorpg.Client.Editor
         public string[] rootObjects = Array.Empty<string>();
         public string skeleton = string.Empty;
         public string[] clips = Array.Empty<string>();
+        // An animation library: the character whose armature it is keyed on, such as
+        // art/Characters/Human_Male.
+        public string rig = string.Empty;
         public ArtMaterialVariants[] variants = Array.Empty<ArtMaterialVariants>();
         // A paint layer: the painted material part, the bodies, the painted one first, and the
         // order paint layers are drawn in.
