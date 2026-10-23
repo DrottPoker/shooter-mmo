@@ -37,6 +37,25 @@ def source_body(root: str) -> bpy.types.Object | None:
     return body if body is not None and body.type == "MESH" else None
 
 
+TOPOLOGY_SCHEMA = 1
+
+
+def topology(root: str) -> dict:
+    """The editable body's vertices in Blender's world space and its faces with their body parts,
+    as the export writes it next to the model. Garments name body faces and vertices by these
+    indices, and Unity finds the faces of its own triangles by the positions."""
+    body = source_body(root)
+    co = world_positions(body)
+    return {
+        "schemaVersion": TOPOLOGY_SCHEMA,
+        "body": root,
+        "vertices": [round(float(c), 5) for c in co.reshape(-1)],
+        "faceSizes": [len(p.vertices) for p in body.data.polygons],
+        "faceVertices": [int(v) for p in body.data.polygons for v in p.vertices],
+        "faceZones": [int(z) for z in zones_of(body)],
+    }
+
+
 def is_source_body(obj: bpy.types.Object) -> bool:
     """Whether the object is the editable body of the armature it belongs to."""
     return obj.type == "MESH" and obj.parent is not None and obj.name == body_name(obj.parent.name)

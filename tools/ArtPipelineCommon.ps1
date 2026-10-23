@@ -524,6 +524,11 @@ function Get-ArtGarmentModelTarget([string]$Name, [string]$Label) {
     return "$script:ArtGarmentModelFolder/${Name}_$Label.fbx"
 }
 
+function Get-ArtDataTarget([string]$Target) {
+    # The data a model exports next to it, such as a body's topology.
+    return $Target -replace '\.fbx$', '.json'
+}
+
 function Get-ArtGarmentDataTarget([string]$Name, [string]$Label) {
     # The cover mask, underlay, and pull-in of a garment's model for one body.
     return "$script:ArtGarmentModelFolder/${Name}_$Label.json"
@@ -1049,10 +1054,15 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         elseif ([string]$json.kind -ne "skinned" -and $null -ne $json.export.clips) {
             $problems.Add("only the export of a skinned asset has clips")
         }
+        elseif ($null -ne $json.export.PSObject.Properties["dataSha256"] -and
+            ([string]$json.kind -ne "skinned" -or [string]$json.export.dataSha256 -cnotmatch $script:ArtShaPattern)) {
+            $problems.Add("only the export of a skinned asset with an editable body has a dataSha256, the hash of its topology $(Get-ArtDataTarget $target)")
+        }
         else {
             $export = [ordered]@{
                 sourceSha256 = [string]$json.export.sourceSha256
                 targetSha256 = [string]$json.export.targetSha256
+                dataSha256 = if ($null -ne $json.export.dataSha256) { [string]$json.export.dataSha256 } else { $null }
                 materials = $materials
                 textures = $textures
                 clips = $clipRecords
@@ -1183,6 +1193,9 @@ function Write-ArtAssetManifest($Manifest) {
         $lines.Add('    "export": {')
         $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
         $lines.Add("        `"targetSha256`": `"$($Manifest.Export.targetSha256)`",")
+        if ($Manifest.Export.Contains("dataSha256") -and $null -ne $Manifest.Export.dataSha256) {
+            $lines.Add("        `"dataSha256`": `"$($Manifest.Export.dataSha256)`",")
+        }
         $textures = @($Manifest.Export.textures)
         $clipRecords = @($Manifest.Export.clips | Where-Object { $null -ne $_ })
         # Only painted materials have textures and only skinned assets have clips, so the

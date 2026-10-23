@@ -414,6 +414,22 @@ namespace Mmorpg.Client.Ui
                     bodyLook.Look = bodyLook.Look.WithPaint(paint.Name, wear);
                 }
             }
+
+            // So are garments, until items show them.
+            foreach (var garment in catalog.Garments)
+            {
+                if (garment == null)
+                {
+                    continue;
+                }
+
+                var worn = bodyLook.Look.HasGarment(garment.Name);
+                var wear = GUILayout.Toggle(worn, " Try on garment: " + garment.Name);
+                if (wear != worn)
+                {
+                    bodyLook.Look = bodyLook.Look.WithGarment(garment.Name, wear);
+                }
+            }
         }
 
         private void DrawStatusAndLeave()

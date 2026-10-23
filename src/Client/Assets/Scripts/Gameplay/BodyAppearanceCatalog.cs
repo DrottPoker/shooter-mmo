@@ -6,13 +6,17 @@ namespace Mmorpg.Client.Gameplay
 {
     // The looks a body model offers, from the approved exports of its art assets: one slot per
     // painted material that can show other images, such as the Face and the Eye, with its
-    // options, the material's own image first, and the paint layers that fit the body, such as
-    // the paint of a leather jerkin, in the order they are drawn. MMORPG > Tools > Art Pipeline >
-    // Update Appearance Catalogs writes it from asset.json; see docs/ART_PIPELINE.md.
+    // options, the material's own image first, the paint layers that fit the body, such as the
+    // paint of a leather jerkin, in the order they are drawn, and the garments that fit it, with
+    // the faces of the body's editable mesh that each part's triangles come from. MMORPG > Tools >
+    // Art Pipeline > Update Appearance Catalogs writes it from asset.json; see
+    // docs/ART_PIPELINE.md and docs/EQUIPMENT_VISUALS_DESIGN.md.
     public sealed class BodyAppearanceCatalog : ScriptableObject
     {
         [SerializeField] private Slot[] slots = Array.Empty<Slot>();
         [SerializeField] private Paint[] paints = Array.Empty<Paint>();
+        [SerializeField] private Part[] parts = Array.Empty<Part>();
+        [SerializeField] private Garment[] garments = Array.Empty<Garment>();
 
         public IReadOnlyList<Slot> Slots
         {
@@ -25,10 +29,51 @@ namespace Mmorpg.Client.Gameplay
             get { return paints; }
         }
 
-        public void Configure(Slot[] catalogSlots, Paint[] catalogPaints = null)
+        // The body parts whose faces garments can cover, such as Male_Torso.
+        public IReadOnlyList<Part> Parts
+        {
+            get { return parts; }
+        }
+
+        // From the lowest layer up.
+        public IReadOnlyList<Garment> Garments
+        {
+            get { return garments; }
+        }
+
+        public void Configure(Slot[] catalogSlots, Paint[] catalogPaints = null, Part[] catalogParts = null,
+            Garment[] catalogGarments = null)
         {
             slots = catalogSlots ?? Array.Empty<Slot>();
             paints = catalogPaints ?? Array.Empty<Paint>();
+            parts = catalogParts ?? Array.Empty<Part>();
+            garments = catalogGarments ?? Array.Empty<Garment>();
+        }
+
+        public Part PartNamed(string name)
+        {
+            foreach (var part in parts)
+            {
+                if (part != null && string.Equals(part.Name, name, StringComparison.Ordinal))
+                {
+                    return part;
+                }
+            }
+
+            return null;
+        }
+
+        public Garment GarmentNamed(string name)
+        {
+            foreach (var garment in garments)
+            {
+                if (garment != null && string.Equals(garment.Name, name, StringComparison.Ordinal))
+                {
+                    return garment;
+                }
+            }
+
+            return null;
         }
 
         // The paint layers of the look on the material, in the order they are drawn.
@@ -178,6 +223,138 @@ namespace Mmorpg.Client.Gameplay
             public float Metallic
             {
                 get { return metallic; }
+            }
+        }
+
+        // A body part's mesh in the faces of the body's editable mesh: the face each of its triangles
+        // comes from, over its submeshes in order, and the vertex each of its vertices is.
+        [Serializable]
+        public sealed class Part
+        {
+            [SerializeField] private string name;
+            [SerializeField] private int[] triangleFaces;
+            [SerializeField] private int[] vertexSources;
+
+            public Part(string name, int[] triangleFaces, int[] vertexSources)
+            {
+                this.name = name;
+                this.triangleFaces = triangleFaces ?? Array.Empty<int>();
+                this.vertexSources = vertexSources ?? Array.Empty<int>();
+            }
+
+            // The name of the part's renderer, such as Male_Torso.
+            public string Name
+            {
+                get { return name; }
+            }
+
+            public IReadOnlyList<int> TriangleFaces
+            {
+                get { return triangleFaces ?? Array.Empty<int>(); }
+            }
+
+            public IReadOnlyList<int> VertexSources
+            {
+                get { return vertexSources ?? Array.Empty<int>(); }
+            }
+        }
+
+        // A garment's version for the body: its model, skinned to the body's armature; its visual
+        // slot and layer; the slots it hides; the body faces it covers; the body face under each of
+        // its triangles; and how far it moves visible body vertices inward.
+        [Serializable]
+        public sealed class Garment
+        {
+            [SerializeField] private string name;
+            [SerializeField] private string slot;
+            [SerializeField] private int layer;
+            [SerializeField] private string[] hides;
+            [SerializeField] private string hair;
+            [SerializeField] private string cloth;
+            [SerializeField] private GameObject model;
+            [SerializeField] private int[] covered;
+            [SerializeField] private int[] underlay;
+            [SerializeField] private int[] pullInVertices;
+            [SerializeField] private float[] pullInDistances;
+
+            public Garment(string name, string slot, int layer, string[] hides, string hair, string cloth, GameObject model,
+                int[] covered, int[] underlay, int[] pullInVertices, float[] pullInDistances)
+            {
+                this.name = name;
+                this.slot = slot;
+                this.layer = layer;
+                this.hides = hides ?? Array.Empty<string>();
+                this.hair = hair ?? string.Empty;
+                this.cloth = cloth ?? string.Empty;
+                this.model = model;
+                this.covered = covered ?? Array.Empty<int>();
+                this.underlay = underlay ?? Array.Empty<int>();
+                this.pullInVertices = pullInVertices ?? Array.Empty<int>();
+                this.pullInDistances = pullInDistances ?? Array.Empty<float>();
+            }
+
+            // Such as LeatherJerkin, from the garment art/Garments/LeatherJerkin.
+            public string Name
+            {
+                get { return name; }
+            }
+
+            // The visual slot, such as body.
+            public string Slot
+            {
+                get { return slot; }
+            }
+
+            // Garments of a character are ordered by layer, from the inside out.
+            public int Layer
+            {
+                get { return layer; }
+            }
+
+            public IReadOnlyList<string> Hides
+            {
+                get { return hides ?? Array.Empty<string>(); }
+            }
+
+            // Headwear only: hide, compress, or show the hair under it; empty otherwise.
+            public string Hair
+            {
+                get { return hair ?? string.Empty; }
+            }
+
+            // The cloth profile of its loose parts, robe, cloak, or hood, or empty.
+            public string Cloth
+            {
+                get { return cloth ?? string.Empty; }
+            }
+
+            // The garment's model for this body, with its renderer and the body's armature.
+            public GameObject Model
+            {
+                get { return model; }
+            }
+
+            // The faces of the body's editable mesh it hides, sorted.
+            public IReadOnlyList<int> Covered
+            {
+                get { return covered ?? Array.Empty<int>(); }
+            }
+
+            // For each triangle of its renderer, over the submeshes in order, the body face under it.
+            public IReadOnlyList<int> Underlay
+            {
+                get { return underlay ?? Array.Empty<int>(); }
+            }
+
+            public IReadOnlyList<int> PullInVertices
+            {
+                get { return pullInVertices ?? Array.Empty<int>(); }
+            }
+
+            // In meters, per pulled-in vertex.
+            public IReadOnlyList<float> PullInDistances
+            {
+                get { return pullInDistances ?? Array.Empty<float>(); }
             }
         }
 

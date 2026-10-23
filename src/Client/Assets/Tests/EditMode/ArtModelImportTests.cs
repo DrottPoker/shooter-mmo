@@ -218,6 +218,10 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(data.covered, Is.Ordered.And.Unique, path);
                     Assert.That(data.covered.All(face => face >= 0 && face < data.bodyFaces), Is.True, path);
                     Assert.That(data.underlay, Has.Length.EqualTo(data.garmentFaces), path);
+                    // The garment's own faces, so the catalog finds the face of every triangle.
+                    Assert.That(data.garmentFaceSizes, Has.Length.EqualTo(data.garmentFaces), path);
+                    Assert.That(data.garmentFaceVertices, Has.Length.EqualTo(data.garmentFaceSizes.Sum()), path);
+                    Assert.That(data.garmentVertices.Length % 3, Is.Zero, path);
                     Assert.That(data.underlay.All(face => face >= 0 && face < data.bodyFaces), Is.True, path);
                     Assert.That(data.pullInDistances, Has.Length.EqualTo(data.pullInVertices.Length), path);
                     Assert.That(data.pullInVertices, Is.Ordered.And.Unique, path);

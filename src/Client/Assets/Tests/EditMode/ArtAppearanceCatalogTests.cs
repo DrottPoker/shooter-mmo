@@ -52,12 +52,64 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(actual.Smoothness, Is.EqualTo(paints[index].Smoothness), where);
                     Assert.That(actual.Metallic, Is.EqualTo(paints[index].Metallic), where);
                 }
+
+                // The parts and the garments of the body, as the exports give them.
+                Assert.That(
+                    ArtAppearanceCatalogs.Matches(catalog, ArtAppearanceCatalogs.PartsFor(manifest), ArtAppearanceCatalogs.GarmentsFor(manifest)),
+                    Is.True,
+                    path + " has other parts or garments than the exports give; run " + ArtAppearanceCatalogs.MenuPath);
             }
 
             Assert.That(
                 AssetDatabase.FindAssets("t:BodyAppearanceCatalog", new[] { ArtAppearanceCatalogs.Folder })
                     .Select(AssetDatabase.GUIDToAssetPath),
                 Is.EquivalentTo(manifests.Select(ArtAppearanceCatalogs.PathFor)));
+        }
+
+        [Test]
+        public void EveryFaceOfAnEditableBodyIsDrawnByItsPartsOnce()
+        {
+            // Every triangle of a part comes from one face of the editable mesh, and every face is
+            // drawn by as many triangles as it has corners less two, so garments can hide any face.
+            var bodies = ArtAppearanceCatalogs.ManifestsWithLooks().Where(manifest => manifest.UnityDataPath != null).ToArray();
+            Assert.That(bodies, Is.Not.Empty);
+            foreach (var body in bodies)
+            {
+                var topology = ArtAppearanceCatalogs.TopologyFor(body);
+                var parts = ArtAppearanceCatalogs.PartsFor(body);
+                Assert.That(parts.Length, Is.EqualTo(10), body.path);
+                var triangles = new int[topology.FaceCount];
+                foreach (var part in parts)
+                {
+                    foreach (var face in part.TriangleFaces)
+                    {
+                        triangles[face]++;
+                    }
+
+                    Assert.That(part.VertexSources.All(vertex => vertex >= 0 && vertex < topology.VertexCount), Is.True, part.Name);
+                }
+
+                for (var face = 0; face < triangles.Length; face++)
+                {
+                    Assert.That(triangles[face], Is.EqualTo(topology.SizeOf(face) - 2), body.path + " face " + face);
+                }
+            }
+        }
+
+        [Test]
+        public void EveryGarmentOfABodyHasItsDataForEveryTriangle()
+        {
+            foreach (var body in ArtAppearanceCatalogs.ManifestsWithLooks())
+            {
+                foreach (var garment in ArtAppearanceCatalogs.GarmentsFor(body))
+                {
+                    var where = body.path + " " + garment.Name;
+                    var renderer = garment.Model.GetComponentInChildren<SkinnedMeshRenderer>();
+                    Assert.That(garment.Underlay.Count, Is.EqualTo(renderer.sharedMesh.triangles.Length / 3), where);
+                    Assert.That(garment.Covered, Is.Not.Empty, where);
+                    Assert.That(garment.Slot, Is.Not.Empty, where);
+                }
+            }
         }
 
         [Test]
@@ -84,6 +136,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(AssetDatabase.GetAssetPath(catalog), Is.EqualTo(ArtAppearanceCatalogs.PathFor(manifest)));
             Assert.That(catalog.Slots.Select(slot => slot.Name), Is.EquivalentTo(new[] { "Eye", "Face" }));
             Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EquivalentTo(new[] { "LeatherJerkin" }));
+            Assert.That(catalog.Garments.Select(garment => garment.Name), Is.EquivalentTo(new[] { "LeatherJerkin" }));
         }
     }
 }

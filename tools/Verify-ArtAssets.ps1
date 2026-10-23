@@ -23,8 +23,12 @@ foreach ($directory in $directories) {
     $where = $manifest.RelativeDirectory
     # A paint layer exports images only, so it has no model target, and a garment a model and its
     # data per body.
-    $modelTargets = if ($manifest.Kind -eq "garment") { @($manifest.Models | ForEach-Object { $_.Target; $_.Data }) }
-    elseif ($null -ne $manifest.Target) { @($manifest.Target) } else { @() }
+    $modelTargets = @(if ($manifest.Kind -eq "garment") { @($manifest.Models | ForEach-Object { $_.Target; $_.Data }) }
+        elseif ($null -ne $manifest.Target) { @($manifest.Target) })
+    # A body with an editable mesh exports its topology next to its model.
+    if ($null -ne $manifest.Export -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
+        $modelTargets += Get-ArtDataTarget $manifest.Target
+    }
     foreach ($target in $modelTargets) {
         if ($targets.ContainsKey($target)) {
             $problems.Add("${where}: $target is also the target of $($targets[$target]).")
@@ -115,6 +119,17 @@ foreach ($directory in $directories) {
     }
     elseif ((Get-ArtFileSha256 $manifest.TargetPath) -ne $manifest.Export.targetSha256) {
         $problems.Add("${where}: $($manifest.Target) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
+    }
+
+    if ($null -ne $manifest.Target -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
+        $dataTarget = Get-ArtDataTarget $manifest.Target
+        $dataPath = Join-Path $script:ArtRepositoryRoot $dataTarget
+        if (-not (Test-Path -LiteralPath $dataPath -PathType Leaf)) {
+            $problems.Add("${where}: $dataTarget is missing; run tools/Export-ArtAsset.ps1.")
+        }
+        elseif ((Get-ArtFileSha256 $dataPath) -ne $manifest.Export.dataSha256) {
+            $problems.Add("${where}: $dataTarget differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
+        }
     }
 
     # An animation library was exported against the current export of its rig; the export itself

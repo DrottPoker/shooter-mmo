@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 ## Requirements
 
@@ -3205,7 +3205,16 @@ controller, and prefabs are committed.
     `artifacts\art-previews\LeatherJerkin_poses.blend` and play the timeline.
     Expected result: the jerkin follows both bodies through the poses. In Unity,
     run the EditMode tests `EveryGarmentModelIsSkinnedToTheRigOfItsBody` and
-    `EveryGarmentModelHasItsData`. Expected result: both pass. No character wears the garment in the game yet.
+    `EveryGarmentModelHasItsData`. Expected result: both pass.
+17. In a World scene, press F2 and in the Presentation section turn on
+    `Try on garment: LeatherJerkin`. Expected result: your body wears the
+    leather jerkin as a mesh of its own, standing a little off the skin with its
+    short sleeves and the laced V, and the skin under it is gone, so nothing shows
+    through when you walk, jog, and turn; turn it off and the bare body is back.
+    Turn on `Try on paint: LeatherJerkin` as well: the paint shows only at the V
+    and below the hem, because the garment covers the rest. The choice is kept
+    between sessions like the face and the eyes; other players and bots wear no
+    garments.
 
 ## One-Time Unity World Scene Authoring
 

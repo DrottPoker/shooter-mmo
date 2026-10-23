@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-21
+Last updated: 2026-10-23
 
 ## Purpose
 
@@ -1336,6 +1336,36 @@ tint draws with the body's own materials. The look is applied to the combined
 renderer, so bodies with other faces still share one combined mesh.
 `PlayerBodyAppearanceTests`, `BodyLookTests`, and `ArtAppearanceCatalogTests`
 cover the looks, their materials, and the catalogs.
+
+A look also names the [garments](ART_PIPELINE.md#garments) its body wears, such as
+`Garment=LeatherJerkin` in its key. The catalog lists every garment that fits the
+body with its model for that body, its visual slot, layer, the slots it hides,
+the body faces it covers, the body face under each of its triangles, and its
+pull-in, and every body part with the face of the body's editable mesh that each
+of its triangles comes from and the vertex each of its vertices is. When the
+look's garments change, `PlayerBodyAppearance` puts the body together again as
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#putting-a-character-together-in-unity)
+describes, in `PlayerBodyMeshes`:
+
+1. The garments of a slot that a worn garment hides are left out; the others are
+   drawn from the lowest layer up.
+2. A body triangle is left out when a drawn garment covers its face, and a
+   garment triangle when a garment of a higher layer covers the body face under
+   it.
+3. A pulled-in body vertex moves inward along its normal by its distance, the
+   largest any drawn garment asks for.
+4. The drawn garments' meshes join the body's in one mesh, with their bones
+   bound by name to the body's skeleton, whose bind poses they share, and the
+   vertices no triangle uses are left out.
+
+The combined mesh is shared by every body with the same parts and garments. A
+garment with loose cloth lets the body's `ClothChainSolver` move the chains of
+its profile: a robe the skirt chains, a cloak the cloak chains, and a hood the
+hood chain. Until items show garments, the Presentation section of the World
+Debug panel has `Try on garment: <Name>` for every garment of the local body's
+catalog. Other players and bots wear none, and a corpse shows the bare body.
+`PlayerBodyGarmentTests` covers what a worn garment hides and adds, layers, hidden
+slots, pull-in, and sharing.
 
 ## World Actor And Interaction Client
 
