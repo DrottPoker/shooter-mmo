@@ -113,6 +113,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `bodies` | Paint layers and garments: the skinned assets the paint or the garment fits, the body it is made on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology. |
 | `figure` | The cage only: the figure scale in meters, the radius of the ball that rolls over the skin, from 0.01 to 0.2. |
 | `lines` | The cage only: the standard lines, each with its `name`, its `region` (`neck`, `trunk`, `arms`, or `legs`), its `bone`, without the side `_L` or `_R` for the arms and legs, and its `share` of the bone's length, from 0 to 1. |
+| `fittedTo` | The cage only, written by its approval: every body with the `sourceSha256` of the body's export the cage was approved on. |
 | `layer` | Paint layers: the order paint layers are drawn in, from 0 to 1000, the lowest first, such as `30` for a chest piece over a shirt at `10`. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `200` for a jerkin over a shirt at `100`. |
 | `slot` | Garments only: the visual slot, `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
 | `band` | Garments only: how far from the skin the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), or `loose` (from 10 mm). |
@@ -161,7 +162,8 @@ states: work on the next stage stays on its branch until that stage is approved.
 `Verify-ArtAssets.ps1` runs in the CI backend job and fails when an approval is
 missing or stale, when an animation library was exported against another export
 of its rig, when an asset in review has an export or an FBX, when the garment
-cage's approval does not cover its committed file, when the
+cage's approval does not cover its committed file or one of its bodies has
+another export than the cage was approved on, when the
 committed FBX or a committed texture differs from the recorded export, or when a
 model below `src/Client/Assets/Art/Models` or a texture below
 `src/Client/Assets/Art/Textures` has no asset. It reads the SHA-256 of a `.blend`

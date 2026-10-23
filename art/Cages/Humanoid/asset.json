@@ -17,6 +17,10 @@
         { "name": "BootCalf", "region": "legs", "bone": "LowerLeg", "share": 0.55 },
         { "name": "LegAnkle", "region": "legs", "bone": "LowerLeg", "share": 0.9 }
     ],
+    "fittedTo": [
+        { "body": "art/Characters/Human_Male", "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf" },
+        { "body": "art/Characters/Human_Female", "sourceSha256": "56ada98f9e810992eb62668b62af0691a9f2a81b471b9b99032e71bd97a5ed73" }
+    ],
     "approvals": {
         "model": {
             "date": "2026-10-23",

@@ -38,9 +38,14 @@ foreach ($directory in $directories) {
     }
 
     $sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
-    # The garment cage has no export: it is complete when its stage is approved for its file.
+    # The garment cage has no export: it is complete when its stage is approved for its file and its
+    # bodies still have the exports it was approved on.
     if ($manifest.Kind -eq "cage") {
         $problem = if (Test-ArtAssetInReview $manifest) { Get-ArtReviewProblem $manifest $sourceSha256 } else { Get-ArtExportGateProblem $manifest $sourceSha256 }
+        if ($null -eq $problem -and -not (Test-ArtAssetInReview $manifest)) {
+            $problem = Get-ArtCageBodyProblem $manifest
+        }
+
         if ($null -ne $problem) {
             $problems.Add("${where}: $problem.")
         }
