@@ -853,9 +853,11 @@ the same name.
 - The export writes the image to `Textures/Garments/T_Garment_<Name>.png` and the
   material `M_Garment_<Name>` with it as `baseMap`, and for a texture with
   transparent parts its masks per body, `Models/Garments/<Name>_<Label>.json`, in
-  the format of the template's data. It records the `export.sourceSha256` of the
-  template's export it was checked against, so `Verify-ArtAssets.ps1` fails when
-  the template has a newer export: sync, review, and export the texture again.
+  the format of the template's data. It runs only when the template is approved
+  and exported from its current file, since the masks are computed in that file,
+  and it records the `export.sourceSha256` of the template's export it was
+  checked against, so `Verify-ArtAssets.ps1` fails when the template has a newer
+  export: sync, review, and export the texture again.
 
 In Unity, `Create Missing Materials` creates
 `Assets/Art/Materials/Garments/M_Garment_<Name>.mat` with the garment shader, and

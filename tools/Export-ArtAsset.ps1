@@ -101,10 +101,22 @@ function Get-ArtClipSourceRecords($Manifest) {
 function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
     # A garment texture exports its image and its material, and with transparent parts its masks
     # per body of its template, checked in the clips of the skeleton's libraries. It records its
-    # template's export, so a new export of the template needs a new export of the texture.
-    $templateExport = (Read-ArtAssetManifest $Manifest.Garment.Directory).Export
+    # template's export, so a new export of the template needs a new export of the texture. The
+    # masks are computed in the template's file, so that file must be the one its export came from.
+    $template = Read-ArtAssetManifest $Manifest.Garment.Directory
+    $templateExport = $template.Export
     if ($null -eq $templateExport) {
         throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is exported."
+    }
+
+    $templateSha256 = Get-ArtFileSha256 $template.SourcePath
+    $templateProblem = Get-ArtExportGateProblem $template $templateSha256
+    if ($null -eq $templateProblem -and $templateExport.sourceSha256 -ne $templateSha256) {
+        $templateProblem = "$($template.Name).blend changed after its export"
+    }
+
+    if ($null -ne $templateProblem) {
+        throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is approved and exported again: $templateProblem."
     }
 
     $clipSources = Get-ArtClipSourceRecords $Manifest
