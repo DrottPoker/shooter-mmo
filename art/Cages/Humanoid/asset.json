@@ -18,8 +18,8 @@
         { "name": "LegAnkle", "region": "legs", "bone": "LowerLeg", "share": 0.9 }
     ],
     "fittedTo": [
-        { "body": "art/Characters/Human_Male", "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf" },
-        { "body": "art/Characters/Human_Female", "sourceSha256": "56ada98f9e810992eb62668b62af0691a9f2a81b471b9b99032e71bd97a5ed73" }
+        { "body": "art/Characters/Human_Male", "fitSha256": "3f384ad10189db1c3a3c70d88cc0c6f1adcdd19cb715ef51af687bc1c2996695" },
+        { "body": "art/Characters/Human_Female", "fitSha256": "6d6123be26f47d604aa2e0c2b03fec2679fce235dd0faf34b722d377328a8317" }
     ],
     "approvals": {
         "model": {

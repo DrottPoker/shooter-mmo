@@ -415,8 +415,8 @@ namespace Mmorpg.Client.Ui
                 }
             }
 
-            // So are garments, until items show them. Trying on a texture takes off the other
-            // textures of its template.
+            // So are garments, until items show them. Trying one on takes off the other garment of
+            // its visual slot, since a body wears one per slot.
             foreach (var garment in catalog.Garments)
             {
                 if (garment == null)
@@ -431,7 +431,7 @@ namespace Mmorpg.Client.Ui
                     var look = bodyLook.Look.WithGarment(garment.Name, wear);
                     if (wear)
                     {
-                        foreach (var other in catalog.OtherTexturesOf(garment))
+                        foreach (var other in catalog.OthersInSlot(garment))
                         {
                             look = look.WithGarment(other.Name, false);
                         }

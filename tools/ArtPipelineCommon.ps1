@@ -623,8 +623,8 @@ function Get-ArtGarmentDependencyProblems($Manifest) {
             # The body's own problems are reported with the body.
         }
 
-        if ($null -eq $bodyExport -or $bodyExport.sourceSha256 -ne $model.bodySourceSha256) {
-            $problems.Add("was exported against another export of its body $($body.BodyAsset); run tools/Sync-GarmentAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1")
+        if ($null -eq $bodyExport -or [string]::IsNullOrEmpty($bodyExport.fitSha256) -or $bodyExport.fitSha256 -ne $model.bodyFitSha256) {
+            $problems.Add("was fitted to another rig, surface, or weights of its body $($body.BodyAsset); run tools/Sync-GarmentAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1")
         }
     }
 
@@ -633,7 +633,49 @@ function Get-ArtGarmentDependencyProblems($Manifest) {
         $problems.Add($clipProblem)
     }
 
+    $pairProblem = Get-ArtPairSourcesProblem $Manifest
+    if ($null -ne $pairProblem) {
+        $problems.Add($pairProblem)
+    }
+
     return $problems.ToArray()
+}
+
+function Get-ArtGarmentPairs($Manifest) {
+    # The exported templates of the same cage, another visual slot, and a lower layer, which a
+    # template is checked over: worn under it, they must not come through it at its openings. A
+    # body wears one garment per visual slot, so templates of the same slot are never worn together.
+    return @(Get-ArtAssetDirectories | Where-Object { (Split-Path -Leaf (Split-Path -Parent $_)) -ceq "Garments" } | ForEach-Object {
+            $other = $null
+            try {
+                $other = Read-ArtAssetManifest $_
+            }
+            catch {
+                # Its own problems are reported with it.
+            }
+
+            if ($null -ne $other -and $other.Kind -eq "garment" -and $other.Name -cne $Manifest.Name -and $null -ne $other.Export -and
+                $null -ne $other.Cage -and $other.Cage.RelativeDirectory -ceq $Manifest.Cage.RelativeDirectory -and
+                $other.Slot -cne $Manifest.Slot -and $other.Layer -lt $Manifest.Layer) {
+                $other
+            }
+        } | Sort-Object Name)
+}
+
+function Get-ArtGarmentPairArguments($Manifest) {
+    return @(Get-ArtGarmentPairs $Manifest | ForEach-Object { @("--pair", "$($_.SourcePath)=$($_.Name):$($_.Band)") })
+}
+
+function Get-ArtPairSourcesProblem($Manifest) {
+    # Returns $null when the template's export was checked over the current exports of every template
+    # of another visual slot and a lower layer of its cage, otherwise the reason it was not.
+    $current = @(Get-ArtGarmentPairs $Manifest | ForEach-Object { "$($_.RelativeDirectory)=$($_.Export.sourceSha256)" } | Sort-Object)
+    $recorded = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.garment)=$($_.sourceSha256)" } | Sort-Object)
+    if (($current -join ",") -cne ($recorded -join ",")) {
+        return "was checked over other templates of a lower layer than the current exports of its cage's templates; run tools/Sync-GarmentAsset.ps1, review it, then run tools/Export-ArtAsset.ps1"
+    }
+
+    return $null
 }
 
 function Get-ArtGarmentClipArguments($Manifest) {
@@ -648,9 +690,9 @@ function Get-ArtGarmentClipArguments($Manifest) {
 }
 
 function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
-    # Returns a template's recipe, "modeled" or its regions, cuts, ease, and hem, or $null when it
-    # names a region or a line its cage does not have, a line outside its regions, or a value out of
-    # range.
+    # Returns a template's recipe, "modeled" or its regions, cuts, what it lies over, ease, and hem,
+    # or $null when it names a region or a line its cage does not have, a line outside its regions,
+    # a band that is not one, or a value out of range.
     if ($Recipe -is [string]) {
         if ($Recipe -ceq "modeled") {
             return "modeled"
@@ -681,6 +723,20 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
         $cuts.Add([ordered]@{ line = [string]$cut.line; keep = [string]$cut.keep })
     }
 
+    # Beyond a standard line, on the side an inner garment keeps, the template lies over a garment of
+    # the given band, such as a top over the trousers below Waist.
+    $over = New-Object System.Collections.Generic.List[object]
+    $overLines = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($entry in @($Recipe.over | Where-Object { $null -ne $_ })) {
+        $line = @($Cage.Lines | Where-Object { $_.name -ceq [string]$entry.line }) | Select-Object -First 1
+        if ($null -eq $line -or $regions -cnotcontains $line.region -or $script:ArtGarmentKeeps -cnotcontains [string]$entry.keep -or
+            $script:ArtGarmentBands -cnotcontains [string]$entry.band -or -not $overLines.Add([string]$entry.line)) {
+            return $null
+        }
+
+        $over.Add([ordered]@{ line = [string]$entry.line; keep = [string]$entry.keep; band = [string]$entry.band })
+    }
+
     $ease = $Recipe.ease
     $hem = $Recipe.hem
     if (-not (Test-ArtNumber $ease) -or $ease -lt 0 -or $ease -gt $script:ArtGarmentEaseLimit -or
@@ -688,7 +744,14 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
         return $null
     }
 
-    return [ordered]@{ regions = [string[]]$regions; cuts = $cuts.ToArray(); ease = [double]$ease; hem = [double]$hem }
+    $result = [ordered]@{ regions = [string[]]$regions; cuts = $cuts.ToArray() }
+    if ($over.Count -gt 0) {
+        $result.over = $over.ToArray()
+    }
+
+    $result.ease = [double]$ease
+    $result.hem = [double]$hem
+    return $result
 }
 
 function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
@@ -787,7 +850,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
 
     $recipe = ConvertTo-ArtGarmentRecipe $Json.recipe $cage
     if ($null -ne $cage -and $null -eq $recipe) {
-        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
+        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), optionally what it lies over, each a line of those regions with the side the inner garment keeps and the inner garment's band, its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
     }
 
     $stages = $script:ArtReviewStages["garment"]
@@ -839,7 +902,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
                 [string]$record.sha256 -cmatch $script:ArtShaPattern -and
                 [string]$record.data -ceq (Get-ArtGarmentDataTarget $name $label) -and
                 [string]$record.dataSha256 -cmatch $script:ArtShaPattern -and
-                [string]$record.bodySourceSha256 -cmatch $script:ArtShaPattern
+                ([string]$record.bodyFitSha256 -cmatch $script:ArtShaPattern -or [string]$record.bodySourceSha256 -cmatch $script:ArtShaPattern)
         }
 
         $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
@@ -847,16 +910,25 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
                 [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
                 [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
             @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
+        # The templates of a lower layer it was checked over, with the sourceSha256 of their exports.
+        $pairSources = @($Json.export.pairSources | Where-Object { $null -ne $_ })
+        $pairSourcesMatch = @($pairSources | Where-Object {
+                [string]$_.garment -cnotmatch '^art/Garments/[A-Za-z][A-Za-z0-9]*$' -or
+                [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+            @($pairSources | ForEach-Object { [string]$_.garment } | Sort-Object -Unique).Count -eq $pairSources.Count
 
         $baseMaps = (@($materials | Where-Object { $null -ne $_ -and $_.Contains("baseMap") } | ForEach-Object { $_.baseMap }) | Sort-Object) -join ","
         if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or $cageSourceSha256 -cnotmatch $script:ArtShaPattern) {
             $problems.Add("export needs a sourceSha256 and the cageSourceSha256 of the approved cage file it was fitted to")
         }
         elseif (-not $modelsMatch) {
-            $problems.Add("export.models must list the model of each body once with its body, the bodySourceSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
+            $problems.Add("export.models must list the model of each body once with its body, the bodyFitSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
         }
         elseif (-not $clipSourcesMatch) {
             $problems.Add("export.clipSources must list every animation library the garment was checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export")
+        }
+        elseif (-not $pairSourcesMatch) {
+            $problems.Add("export.pairSources must list every template of a lower layer the garment was checked over once, with its garment (art/Garments/<Name>) and the sourceSha256 of its export")
         }
         elseif ($null -eq $materials -or @($materials | Where-Object { $_.name -cne "M_Garment_$name" }).Count -gt 0) {
             $problems.Add("export.materials must hold the one material M_Garment_$name with its baseColor (#RRGGBB), metallic, and smoothness")
@@ -869,9 +941,12 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
                 sourceSha256 = [string]$Json.export.sourceSha256
                 cageSourceSha256 = $cageSourceSha256
                 models = @($records | ForEach-Object {
+                        # A record from before the fingerprint names the body's export sourceSha256
+                        # instead; it is stale, which Get-ArtGarmentDependencyProblems reports.
                         [ordered]@{
                             body = [string]$_.body
-                            bodySourceSha256 = [string]$_.bodySourceSha256
+                            bodyFitSha256 = if ($null -ne $_.bodyFitSha256) { [string]$_.bodyFitSha256 } else { $null }
+                            bodySourceSha256 = if ($null -ne $_.bodySourceSha256) { [string]$_.bodySourceSha256 } else { $null }
                             target = [string]$_.target
                             sha256 = [string]$_.sha256
                             data = [string]$_.data
@@ -879,6 +954,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
                         }
                     })
                 clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; sourceSha256 = [string]$_.sourceSha256 } })
+                pairSources = @($pairSources | ForEach-Object { [ordered]@{ garment = [string]$_.garment; sourceSha256 = [string]$_.sourceSha256 } })
                 materials = $materials
                 textures = $textures
             }
@@ -952,6 +1028,16 @@ function Add-ArtRecipeLines($Lines, $Recipe) {
         $Lines.Add('        ],')
     }
 
+    $over = @($Recipe.over | Where-Object { $null -ne $_ })
+    if ($over.Count -gt 0) {
+        $Lines.Add('        "over": [')
+        for ($i = 0; $i -lt $over.Count; $i++) {
+            $comma = if ($i -lt $over.Count - 1) { "," } else { "" }
+            $Lines.Add("            { `"line`": `"$($over[$i].line)`", `"keep`": `"$($over[$i].keep)`", `"band`": `"$($over[$i].band)`" }$comma")
+        }
+        $Lines.Add('        ],')
+    }
+
     $Lines.Add("        `"ease`": $(Format-ArtShare $Recipe.ease),")
     $Lines.Add("        `"hem`": $(Format-ArtShare $Recipe.hem)")
     $Lines.Add('    },')
@@ -987,7 +1073,12 @@ function Write-ArtGarmentManifest($Manifest) {
             $comma = if ($i -lt $models.Count - 1) { "," } else { "" }
             $lines.Add("            {")
             $lines.Add("                `"body`": `"$($models[$i].body)`",")
-            $lines.Add("                `"bodySourceSha256`": `"$($models[$i].bodySourceSha256)`",")
+            if (-not [string]::IsNullOrEmpty($models[$i].bodyFitSha256)) {
+                $lines.Add("                `"bodyFitSha256`": `"$($models[$i].bodyFitSha256)`",")
+            }
+            else {
+                $lines.Add("                `"bodySourceSha256`": `"$($models[$i].bodySourceSha256)`",")
+            }
             $lines.Add("                `"target`": `"$($models[$i].target)`",")
             $lines.Add("                `"sha256`": `"$($models[$i].sha256)`",")
             $lines.Add("                `"data`": `"$($models[$i].data)`",")
@@ -1002,6 +1093,16 @@ function Write-ArtGarmentManifest($Manifest) {
             $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"sourceSha256`": `"$($sources[$i].sourceSha256)`" }$comma")
         }
         $lines.Add('        ],')
+        $pairs = @($Manifest.Export.pairSources | Where-Object { $null -ne $_ })
+        if ($pairs.Count -gt 0) {
+            $lines.Add('        "pairSources": [')
+            for ($i = 0; $i -lt $pairs.Count; $i++) {
+                $comma = if ($i -lt $pairs.Count - 1) { "," } else { "" }
+                $lines.Add("            { `"garment`": `"$($pairs[$i].garment)`", `"sourceSha256`": `"$($pairs[$i].sourceSha256)`" }$comma")
+            }
+            $lines.Add('        ],')
+        }
+
         Add-ArtMaterialLines $lines @($Manifest.Export.materials) ","
         Add-ArtTextureLines $lines @($Manifest.Export.textures) ""
         $lines.Add("    }")
@@ -1079,19 +1180,22 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
         $problems.Add("lines must list the standard lines of the cage")
     }
 
-    # The exports of the bodies the approved cage was fitted to, so a body that changes, joins, or
-    # leaves after the approval makes the cage stale until it is synced and approved again. A record
-    # of a body that left is kept for that, and Get-ArtCageBodyProblem reports it.
+    # The fit of every body the approved cage was fitted to, the fitSha256 of the body's export, so
+    # a body whose rig, surface, or weights change, or that joins or leaves, makes the cage stale
+    # until it is synced and approved again; a change of only its images does not. A record of a
+    # body that left is kept for that, and Get-ArtCageBodyProblem reports it, as it reports a record
+    # from before the fingerprint, which names the body's export sourceSha256 instead.
     $fittedTo = New-Object System.Collections.Generic.List[object]
     foreach ($record in @($Json.fittedTo | Where-Object { $null -ne $_ })) {
+        $key = if ($null -ne $record.fitSha256) { "fitSha256" } else { "sourceSha256" }
         if ([string]$record.body -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
-            [string]$record.sourceSha256 -cnotmatch $script:ArtShaPattern -or
+            [string]$record.$key -cnotmatch $script:ArtShaPattern -or
             @($fittedTo | Where-Object { $_.body -ceq [string]$record.body }).Count -gt 0) {
-            $problems.Add("fittedTo must list bodies once each with the sourceSha256 of the body's export the cage was approved on")
+            $problems.Add("fittedTo must list bodies once each with the fitSha256 of the body's export the cage was approved on")
             break
         }
 
-        $fittedTo.Add([ordered]@{ body = [string]$record.body; sourceSha256 = [string]$record.sourceSha256 })
+        $fittedTo.Add([ordered]@{ body = [string]$record.body; $key = [string]$record.$key })
     }
 
     $stages = $script:ArtReviewStages["cage"]
@@ -1172,7 +1276,8 @@ function Write-ArtCageManifest($Manifest) {
         $lines.Add('    "fittedTo": [')
         for ($i = 0; $i -lt $fitted.Count; $i++) {
             $comma = if ($i -lt $fitted.Count - 1) { "," } else { "" }
-            $lines.Add("        { `"body`": `"$($fitted[$i].body)`", `"sourceSha256`": `"$($fitted[$i].sourceSha256)`" }$comma")
+            $key = if ($fitted[$i].Contains("fitSha256")) { "fitSha256" } else { "sourceSha256" }
+            $lines.Add("        { `"body`": `"$($fitted[$i].body)`", `"$key`": `"$($fitted[$i].$key)`" }$comma")
         }
         $lines.Add('    ],')
     }
@@ -1620,11 +1725,18 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
             ([string]$json.kind -ne "skinned" -or [string]$json.export.dataSha256 -cnotmatch $script:ArtShaPattern)) {
             $problems.Add("only the export of a skinned asset with an editable body has a dataSha256, the hash of its topology $(Get-ArtDataTarget $target)")
         }
+        elseif ($null -ne $json.export.PSObject.Properties["fitSha256"] -and
+            ($null -eq $json.export.dataSha256 -or [string]$json.export.fitSha256 -cnotmatch $script:ArtShaPattern)) {
+            $problems.Add("only the export of a skinned asset with an editable body has a fitSha256, the fingerprint of its rig, surface, and weights")
+        }
         else {
             $export = [ordered]@{
                 sourceSha256 = [string]$json.export.sourceSha256
                 targetSha256 = [string]$json.export.targetSha256
                 dataSha256 = if ($null -ne $json.export.dataSha256) { [string]$json.export.dataSha256 } else { $null }
+                # An export from before the fingerprint has none; the garment cage and garments then
+                # wait for the body's next export.
+                fitSha256 = if ($null -ne $json.export.fitSha256) { [string]$json.export.fitSha256 } else { $null }
                 materials = $materials
                 textures = $textures
                 clips = $clipRecords
@@ -1768,6 +1880,9 @@ function Write-ArtAssetManifest($Manifest) {
         if ($Manifest.Export.Contains("dataSha256") -and $null -ne $Manifest.Export.dataSha256) {
             $lines.Add("        `"dataSha256`": `"$($Manifest.Export.dataSha256)`",")
         }
+        if ($Manifest.Export.Contains("fitSha256") -and $null -ne $Manifest.Export.fitSha256) {
+            $lines.Add("        `"fitSha256`": `"$($Manifest.Export.fitSha256)`",")
+        }
         $textures = @($Manifest.Export.textures)
         $clipRecords = @($Manifest.Export.clips | Where-Object { $null -ne $_ })
         # Only painted materials have textures and only skinned assets have clips, so the
@@ -1812,8 +1927,9 @@ function Get-ArtCageBodyProblem($Manifest) {
             return "its body $($body.Asset) joined after the cage was approved; run tools/Sync-CageAsset.ps1, review and approve it again"
         }
 
-        if ($null -eq $export -or $export.sourceSha256 -ne $record.sourceSha256) {
-            return "its body $($body.Asset) changed after the cage was approved; run tools/Sync-CageAsset.ps1, review and approve it again"
+        if ($null -eq $export -or [string]::IsNullOrEmpty($export.fitSha256) -or -not $record.Contains("fitSha256") -or
+            $export.fitSha256 -ne $record.fitSha256) {
+            return "its body $($body.Asset) changed after the cage was approved, or was approved before bodies recorded their fit; run tools/Sync-CageAsset.ps1, review and approve it again"
         }
     }
 
@@ -1844,14 +1960,14 @@ function Get-ArtCageGateProblem($Cage) {
 }
 
 function Get-ArtCageBodies($Manifest) {
-    # The exports of the cage's bodies as an approval records them.
+    # The fit of the cage's bodies as an approval records it.
     return @($Manifest.Bodies | ForEach-Object {
             $export = (Read-ArtAssetManifest (Split-Path -Parent $_.ManifestPath)).Export
-            if ($null -eq $export) {
-                throw "The cage cannot be approved before its body $($_.Asset) is exported."
+            if ($null -eq $export -or [string]::IsNullOrEmpty($export.fitSha256)) {
+                throw "The cage cannot be approved before its body $($_.Asset) is exported with the fingerprint of its fit; export the body again."
             }
 
-            [ordered]@{ body = $_.Asset; sourceSha256 = [string]$export.sourceSha256 }
+            [ordered]@{ body = $_.Asset; fitSha256 = [string]$export.fitSha256 }
         })
 }
 
@@ -1997,6 +2113,10 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
             "--cage-manifest", $Manifest.Cage.ManifestPath)
         foreach ($body in @($Manifest.Bodies)) {
             $arguments += @("--body", "$($body.SourcePath)=$($body.Root)")
+        }
+
+        if ($Stage -eq "rig") {
+            $arguments += Get-ArtGarmentPairArguments $Manifest
         }
 
         return $arguments + (Get-ArtGarmentClipArguments $Manifest)

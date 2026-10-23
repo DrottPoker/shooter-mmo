@@ -1,0 +1,72 @@
+{
+    "schemaVersion": 2,
+    "kind": "garment",
+    "cage": "art/Cages/Humanoid",
+    "slot": "body",
+    "layer": 150,
+    "band": "tight",
+    "recipe": {
+        "regions": ["trunk", "arms"],
+        "cuts": [
+            { "line": "HemHip", "keep": "tail" },
+            { "line": "SleeveShort", "keep": "head" }
+        ],
+        "over": [
+            { "line": "Waist", "keep": "head", "band": "tight" }
+        ],
+        "ease": 0,
+        "hem": 0.002
+    },
+    "hides": [],
+    "hair": null,
+    "cloth": null,
+    "dyes": 0,
+    "triangleBudget": 3000,
+    "approvals": {
+        "model": {
+            "date": "2026-10-23",
+            "sourceSha256": "7b4aceba2dfddcf7efdc1ab659852a487002ff14262edff90d1e147151cc81db"
+        },
+        "rig": {
+            "date": "2026-10-23",
+            "sourceSha256": "7b4aceba2dfddcf7efdc1ab659852a487002ff14262edff90d1e147151cc81db"
+        }
+    },
+    "export": {
+        "sourceSha256": "7b4aceba2dfddcf7efdc1ab659852a487002ff14262edff90d1e147151cc81db",
+        "cageSourceSha256": "56c444388010fa9205ba1c82c7cec32921153c2baa29adbfdebb9e6d60a93adb",
+        "models": [
+            {
+                "body": "Male",
+                "bodyFitSha256": "3f384ad10189db1c3a3c70d88cc0c6f1adcdd19cb715ef51af687bc1c2996695",
+                "target": "src/Client/Assets/Art/Models/Garments/Shirt_Male.fbx",
+                "sha256": "7bbd4e6106077f9d0db0baeea26ee0289d146d5fd7ad2f2fca5afbe7e2c6e31e",
+                "data": "src/Client/Assets/Art/Models/Garments/Shirt_Male.json",
+                "dataSha256": "e632fae5863aa8534d545b73a4a7e55b9076690fe3e7479449722c4a44a20e0a"
+            },
+            {
+                "body": "Female",
+                "bodyFitSha256": "6d6123be26f47d604aa2e0c2b03fec2679fce235dd0faf34b722d377328a8317",
+                "target": "src/Client/Assets/Art/Models/Garments/Shirt_Female.fbx",
+                "sha256": "a3f9001f2b45311f55a8bbd5e667ce3cf765630c8c416be6fdc08374631a6839",
+                "data": "src/Client/Assets/Art/Models/Garments/Shirt_Female.json",
+                "dataSha256": "33004643ff46c618c35bc6b4632bd62e7469cc5be9d57368a5a2659c38b21eb9"
+            }
+        ],
+        "clipSources": [
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c" }
+        ],
+        "pairSources": [
+            { "garment": "art/Garments/Trousers", "sourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca" }
+        ],
+        "materials": [
+            {
+                "name": "M_Garment_Shirt",
+                "baseColor": "#CECECE",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            }
+        ],
+        "textures": []
+    }
+}

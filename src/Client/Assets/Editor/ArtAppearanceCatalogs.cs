@@ -270,7 +270,7 @@ namespace Mmorpg.Client.Editor
         }
 
         // The paint layers that fit the body, drawn from the lowest layer up: the paint layer
-        // LeatherJerkin over M_Body_Male is the image T_Paint_LeatherJerkin_Male.
+        // Tattoo over M_Body_Male is the image T_Paint_Tattoo_Male.
         public static BodyAppearanceCatalog.Paint[] PaintsFor(ArtAssetManifest body)
         {
             var label = body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;

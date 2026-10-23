@@ -116,11 +116,11 @@ any `clips` of its own are written by hand when an asset is created.
 | `bodies` | Paint layers: the skinned assets the paint fits, the body it is painted on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology; its garment templates fit them. |
 | `cage` | Garment templates only: the garment cage it is made on, such as `art/Cages/Humanoid`. |
 | `recipe` | Garment templates only: its `regions`, `cuts`, `ease`, and `hem`, as [Garments](#garments) describes, or `"modeled"`. |
-| `garment` | Garment textures only: the template it is the look of, such as `art/Garments/Jerkin`. |
+| `garment` | Garment textures only: the template it is the look of, such as `art/Garments/Shirt`. |
 | `figure` | The cage only: the figure scale in meters, the radius of the ball that rolls over the skin, from 0.01 to 0.2. |
 | `lines` | The cage only: the standard lines, each with its `name`, its `region` (`neck`, `trunk`, `arms`, or `legs`), its `bone`, without the side `_L` or `_R` for the arms and legs, and its `share` of the bone's length, from 0 to 1. |
-| `fittedTo` | The cage only, written by its approval: every body with the `sourceSha256` of the body's export the cage was approved on. |
-| `layer` | Paint layers: the order paint layers are drawn in, from 0 to 1000, the lowest first, such as `30` for a chest piece over a shirt at `10`. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `200` for a jerkin over a shirt at `100`. |
+| `fittedTo` | The cage only, written by its approval: every body with the `fitSha256` of the body's export the cage was approved on, the fingerprint of the body's rig, surface, and weights, so a change of only a body's images leaves the cage as it is. |
+| `layer` | Paint layers: the order paint layers are drawn in, from 0 to 1000, the lowest first, such as `30` for a scar over the tattoo at `10`. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `150` for a shirt over trousers at `100`. |
 | `slot` | Garments only: the visual slot, `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
 | `band` | Garments only: how far from the garment cage the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), or `loose` (from 10 mm). |
 | `hides` | Garments only: the other visual slots it hides, such as `["legs"]` for a floor-length robe, or `[]`. |
@@ -129,7 +129,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `dyes` | Garments only: the number of dye channels. It is `0` until the garment shader brings dyes. |
 | `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
 | `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. A garment texture's approval also records the `garmentSourceSha256` of its template's file, since it is reviewed on the template. |
-| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment template records the `cageSourceSha256` of the approved cage file it was fitted to; its `models`, one per body of the cage in order with its `body` label, the `bodySourceSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips it was checked in; its one material `M_Garment_<Name>` without an image; and no `textures`. The export of a garment texture records the `garmentSourceSha256` of its template's export, its `masks` with their `body`, `data`, and `dataSha256` and their `clipSources` when it has transparent parts, its material `M_Garment_<Name>`, and its image `T_Garment_<Name>` below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
+| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology and the `fitSha256`, the fingerprint of what the garment cage and the garments read from it, its rig, its surface with its faces and their body parts, and its weights, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment template records the `cageSourceSha256` of the approved cage file it was fitted to; its `models`, one per body of the cage in order with its `body` label, the `bodyFitSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips it was checked in; its `pairSources`, every template of another visual slot and a lower layer of its cage with the `sourceSha256` of the export it was checked over, when there are any; its one material `M_Garment_<Name>` without an image; and no `textures`. The export of a garment texture records the `garmentSourceSha256` of its template's export, its `masks` with their `body`, `data`, and `dataSha256` and their `clipSources` when it has transparent parts, its material `M_Garment_<Name>`, and its image `T_Garment_<Name>` below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
 
 ## Review Stages
 
@@ -525,7 +525,7 @@ the others as they are.
 | Layer | Made as | In the game | Status |
 | --- | --- | --- | --- |
 | Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Scarred` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
-| Paint layers | Transparent paint over the skin in the body texture's UV layout, such as the paint of a leather jerkin or a scalp, in a [paint layer](#paint-layers) asset of its own. Painted once on the male body and moved to every body of the same topology. | The skin shader lays it over the skin when the body is drawn. | Implemented. |
+| Paint layers | Transparent paint over the skin in the body texture's UV layout, such as a tattoo or a scalp, in a [paint layer](#paint-layers) asset of its own. Painted once on the male body and moved to every body of the same topology. | The skin shader lays it over the skin when the body is drawn. | Implemented. |
 | Garments | Meshes skinned to the shared skeleton, such as clothes, armor, and hair: [garment templates](#garments) built on the [garment cage](#garment-cage) and fitted to every body of it, each worn with a [garment texture](#garment-textures) of its own asset. | Combined with the visible body parts into the body's one mesh; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md). | Implemented, with the Wardrobe preview and trying garments on in F2. |
 
 The faces and eyes of the human base characters are variants: images packed into
@@ -538,13 +538,18 @@ material's own image first, and a look picks one option per slot; see
 ## Paint Layers
 
 A paint layer below `art/Paint` is paint over the skin of the bodies, such as the
-painted leather jerkin `art/Paint/LeatherJerkin`. Its file holds, per body, the
+tattoo `art/Paint/Tattoo`. Its file holds, per body, the
 mesh `Paint_<Label>`, the body's parts joined in its rest pose, and the image
 `T_Paint_<Name>_<Label>` in the layout of the body texture `T_<Part>_<Label>`,
 transparent where the skin shows. A preview material lays the image over the
 skin by its alpha, with its roughness, so Blender's Material Preview shows the
 look. The paint is made on the first body, by hand in Texture Paint mode or by a
 script, and its image carries the custom properties `roughness` and `metallic`.
+The bodies' UVs are mirrored, so both sides of a body share their texels and
+paint on the skin is the same on both sides, and it lies over the underwear,
+which is painted into the body texture. A one-sided tattoo comes with paint
+layers that are independent of the bodies' topology, in delivery step 5d of
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#delivery-plan).
 
 Bodies of the same topology have the same faces in the same order, so
 `tools/Sync-PaintAsset.ps1` moves the paint from the first body to every other
@@ -662,8 +667,8 @@ off its place, so the skin does not shine through.
 ## Garments
 
 A garment template below `art/Garments` is the form of a garment kind without
-its look, a mesh skinned to the shared skeleton, such as the jerkin
-`art/Garments/Jerkin`. It is built from its recipe on the
+its look, a mesh skinned to the shared skeleton, such as the short-sleeved top
+`art/Garments/Shirt`. It is built from its recipe on the
 [garment cage](#garment-cage) named in `cage` and fitted to every body of the
 cage, and it is worn with a [garment texture](#garment-textures); the design is
 in [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#templates).
@@ -682,10 +687,11 @@ The recipe in `asset.json` says what the pipeline builds:
 
 | Field | Meaning |
 | --- | --- |
-| `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, and `legs`, such as `["trunk", "arms"]` for the jerkin. A region without a cut is covered whole. |
-| `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The jerkin keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder. |
-| `ease` | More room at the front and the back of the lower armholes, in meters, fading out over 60 mm. The jerkin has none, since ease there let more skin come through it in the clips. |
-| `hem` | How deep every open edge is turned inward, in meters, such as `0.004`. |
+| `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, and `legs`, such as `["trunk", "arms"]` for the shirt. A region without a cut is covered whole. |
+| `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`. |
+| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line. |
+| `ease` | More room at the front and the back of the lower armholes, in meters, fading out over 60 mm. The proof set has none, since ease there let more skin come through in the clips. |
+| `hem` | How deep every open edge is turned inward, in meters, such as `0.002`. |
 
 A recipe of `"modeled"` instead makes a template whose first version a person
 models by hand over the cage, such as a hairstyle or a helmet.
@@ -700,8 +706,9 @@ models by hand over the cage, such as a hairstyle or a helmet.
   regions, cut at its lines, every cage vertex within 8 mm of a line first moved
   onto it, so the edge runs straight; seams down the sides of the trunk, under
   the arms, and along the borders between regions, and UVs unfolded along them;
-  an offset from the cage into the band, 4 mm for `tight`, 10 mm for `mid`, and
-  20 mm for `outer` and `loose`; the ease; every open edge turned inward by the
+  an offset from the cage into the band, 2 mm for `tight`, so clothes lie as
+  close to the body as they can, 10 mm for `mid`, and 20 mm for `outer` and
+  `loose`, and more where `over` lifts it over an inner garment; the ease; every open edge turned inward by the
   `hem` depth with a 12 mm flap, whose faces take the look of the edge in the
   texture; and every vertex and face centre settled into the band from the cage.
   The point attribute `built` holds the shape the recipe gave, so a rebuild
@@ -739,7 +746,15 @@ their files and the cage the approved one, that every body has a version with
 the first version's topology and one material, within the triangle budget and
 with every vertex and every face centre in its band from the cage, and that the
 fitting and the weights are as a sync leaves them. The `rig` stage adds the rig
-rules of skinned assets for each version on its armature, and the motion check.
+rules of skinned assets for each version on its armature, the motion check, and
+the pair check: every exported template of another visual slot and a lower
+layer of the cage, such as the trousers under a shirt, is put on the bodies from
+its own file, and of its faces that stay drawn, those whose body face this
+template leaves visible at its openings, every vertex that this template is over
+at rest is followed through the test poses and the clips. The report names how
+many come out through this template and the deepest place, as the motion check
+does. A body wears one garment per visual slot, so templates of the same slot,
+such as a shirt and a jerkin, are not checked against each other.
 A template is approved and exported only on an approved cage whose bodies still
 have the exports the cage was approved on, so it is never fitted to an obsolete
 cage.
@@ -819,7 +834,7 @@ the view to turn the camera and scroll to come closer.
 
 A garment texture below `art/GarmentTextures` is the look of one template, named
 in `garment`, such as the leather `art/GarmentTextures/LeatherJerkin` of
-`art/Garments/Jerkin`; the design is in
+`art/Garments/Shirt`; the design is in
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#textures). Its file holds
 the image `T_Garment_<Name>`, packed, 512, 1024, or 2048 px square, with the
 custom properties `roughness` and `metallic`, and the mesh `Preview`, a copy of
@@ -877,9 +892,9 @@ template's model for the body and its slot, layer, and hides, the texture's
 material, which the template's model draws with instead of its own, and the
 texture's masks, or else the template's. A character wears a garment by the
 texture's name, such as `LeatherJerkin`, in F2 and in the Wardrobe, and one
-texture of a template at a time: trying one on takes off the template's other
-textures, and of two that a look names, the first in the catalog is worn, so the
-template's mesh is never drawn twice.
+garment per visual slot: trying one on takes off the other garment of its slot,
+such as another chest piece, and of two of a slot that a look names, the first
+in the catalog is worn.
 
 ## Live Work With The Blender MCP Server
 
@@ -1020,10 +1035,16 @@ weights.
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
 | `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. |
-| `art/GarmentTextures/LeatherJerkin` | `texture` | none | The leather of `Jerkin`, 1024 px: warm brown leather with blotches and grain, darker trim with stitches along the neckline, the hem, and the sleeve ends, and an open V at the front, laced across, where the skin shows between the laces. It has masks of its own. Roughness 0.62. Moved from the first leather jerkin garment by projection. |
-| `art/Garments/Jerkin` | `garment` | none | A short-sleeved top in the `mid` band, layer 200, from the recipe `trunk` and `arms`, cut at `HemHip` and `SleeveShort`, turned edges 4 mm deep, without ease or collar, 1,536 triangles per body, on `art/Cages/Humanoid`. |
+| `art/GarmentTextures/LeatherJerkin` | `texture` | none | The leather jerkin on `Shirt`, 1024 px: warm brown leather with blotches and grain, darker trim with stitches along the neckline, the hem, and the sleeve ends, and an open V at the front, laced across, where the skin shows between the laces. It has masks of its own. Roughness 0.62. Moved from the first leather jerkin garment and then from the template `Jerkin`, which became `Shirt`, by projection. |
+| `art/GarmentTextures/LinenLongShirt` | `texture` | none | Plain oatmeal linen on `LongShirt`, 1024 px, with a fine weave, soft wear, stitched hems at the neckline, the hem, and the cuffs, and stitched seams. Roughness 0.82. |
+| `art/GarmentTextures/LinenShirt` | `texture` | none | The same linen on `Shirt`. |
+| `art/GarmentTextures/NetShirt` | `texture` | none | A coarse hemp-colored net on `Shirt`, 1024 px: round cords of 2.4 mm in diamond meshes 25 mm apart around the trunk and each arm, transparent between them, with solid hems 14 mm wide at the neckline, the hem, and the sleeve ends. It has masks of its own, so the skin and its paint show through the meshes. Roughness 0.88. |
+| `art/GarmentTextures/WoolTrousers` | `texture` | none | Brown wool on `Trousers`, 1024 px, with a coarse weave, a darker waistband, stitched hems at the ankles, and stitched seams, among them a yoke across the hips. Roughness 0.9. |
+| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,176 triangles per body. |
+| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `trunk` and `arms`, cut at `HemHip` and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,536 triangles per body, on `art/Cages/Humanoid`. |
+| `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,496 triangles per body, with seams along the inside of the legs. |
 | `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the twelve standard lines of [Garment Cage](#garment-cage). |
-| `art/Paint/LeatherJerkin` | `paint` | none | The paint of the leather jerkin over `M_Body`, painted on the male and moved to the female, layer 30: warm brown leather with large soft blotches, fine grain, and worn lighter high points, darker trim with stitches along every edge, side and shoulder seams, short sleeves to a little less than half the upper arm, a round collar that stands 2 cm up the neck, and a V at the front laced across. Smoothness 0.38. Approved 2026-10-21; the female's bra straps are painted up her neck, above any collar, until the base body is fixed. |
+| `art/Paint/Tattoo` | `paint` | none | A tattoo over `M_Body`, painted on the male and moved to the female, layer 10: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. The game shows it for every player. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |

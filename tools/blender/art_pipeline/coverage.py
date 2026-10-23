@@ -15,6 +15,10 @@ comes through the garment in the test poses and the clips. See docs/EQUIPMENT_VI
 - The underlay holds, for every garment face, the body face under it.
 - The pull-in holds how far to move visible body vertices inward that lie closer to the garment
   than its band allows, such as the skin at a hem, so they stay under it in motion.
+- In the pair check, a template of a lower layer worn under this one keeps the faces whose body face
+  this one leaves visible, at this one's openings. Each of their vertices that this one is over at
+  rest keeps the point of this one over it, and a vertex that lies outside this one at its cover in
+  a test pose or a clip frame comes through it, which the report names.
 - In motion, visible skin under the garment can come through it: skinning blends the bones of a
   fold, such as an armpit, so the gap between the skin and the cloth there closes, whatever the
   weights. Each visible vertex that the garment is over at rest keeps the point of the garment over
@@ -334,9 +338,13 @@ def compute(name: str, label: str, band: str) -> Coverage:
     pulled, distances = [], []
     for vertex in result.visible_vertices(body):
         found = cloth.tree.find_nearest(Vector(surface.co[vertex]))
-        if found[0] is not None and found[3] < clearance:
+        if found[0] is None or found[3] >= clearance:
+            continue
+        # A distance that rounds to nothing moves nothing.
+        distance = round(min(PULL_IN_MAX, clearance - found[3]), 5)
+        if distance > 0.0:
             pulled.append(int(vertex))
-            distances.append(round(min(PULL_IN_MAX, clearance - found[3]), 5))
+            distances.append(distance)
     result.pull_vertices = np.array(pulled, np.int64)
     result.pull_distances = np.array(distances)
     return result
@@ -439,6 +447,7 @@ class Motion:
     where: str
     zone: str
     checked: int  # poses and clip frames
+    faces: np.ndarray | None = None  # bool per face of an inner garment whose vertices come through
 
 
 def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action]):
@@ -542,6 +551,87 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
         result.depth, result.where = float(deepest[worst]), where[worst]
         result.zone = bodies.ZONES[vertex_zone[vertices[worst]]]
     return result
+
+
+def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_underlay: np.ndarray,
+               actions: list[bpy.types.Action]) -> Motion:
+    """Finds the vertices of an inner garment, worn under this one, that come through this one in
+    the test poses and the clips: of the inner garment's faces that stay drawn, those whose body face
+    this one leaves visible, every vertex that this one is over at rest."""
+    label = coverage.label
+    arm = bpy.data.objects[label]
+    version = bpy.data.objects[garment.version_name(name, label)]
+    drawn = [p for p in inner.data.polygons if not coverage.covered[inner_underlay[p.index]]]
+    rest = bodies.world_positions(inner)
+    normals = np.empty(len(inner.data.vertices) * 3)
+    inner.data.vertex_normals.foreach_get("vector", normals)
+    normals = normals.reshape(-1, 3) @ np.array(inner.matrix_world.to_3x3()).T
+    cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
+    shell = garment.Surface(garment.cage_object(label), []).tree
+    vertices, corners, weights = [], [], []
+    for vertex in sorted({v for p in drawn for v in p.vertices}):
+        direction = Vector(normals[vertex]).normalized()
+        reach = _cage_gap(shell, Vector(rest[vertex]), direction) + REACH[coverage.band]
+        hit = _opaque_hit(cloth, Vector(rest[vertex]), direction, reach)
+        if hit is not None and hit[1].dot(direction) > 0.0:
+            location = Vector(rest[vertex]) + direction * hit[0]
+            triangle = cloth.triangles[cloth.tree.find_nearest(location)[2]][1]
+            vertices.append(int(vertex))
+            corners.append(triangle)
+            weights.append(poly_3d_calc([Vector(cloth.co[c]) for c in triangle], location))
+    vertices = np.array(vertices, np.int64)
+    corners = np.array(corners, np.int64).reshape(-1, 3)
+    weights = np.array(weights).reshape(-1, 3)
+    deepest = np.zeros(len(vertices))
+    where = [""] * len(vertices)
+    checked = 0
+    had_animation = arm.animation_data is not None
+    previous = arm.animation_data.action if had_animation else None
+    try:
+        for name_of_frame in _frames(arm, actions):
+            co = _posed(inner)[0][vertices]
+            cloth.place(_posed(version)[0])
+            a, b, c = (cloth.co[corners[:, k]] for k in range(3))
+            cover = a * weights[:, :1] + b * weights[:, 1:2] + c * weights[:, 2:]
+            outward = np.cross(b - a, c - a)
+            outward /= np.maximum(np.linalg.norm(outward, axis=1, keepdims=True), 1e-12)
+            plane = np.einsum("ij,ij->i", co - cover, outward)
+            for i in np.nonzero(plane > deepest)[0]:
+                direction = Vector(-outward[i])
+                hit = _opaque_hit(cloth, Vector(co[i]), direction, float(plane[i]) + 2.0 * CLIP_TOLERANCE)
+                if hit is not None and hit[1].dot(direction) < 0.0 and hit[0] > deepest[i]:
+                    deepest[i], where[i] = hit[0], name_of_frame
+            checked += 1
+    finally:
+        if had_animation:
+            arm.animation_data.action = previous
+        else:
+            arm.animation_data_clear()
+        poses.rest(arm)
+        bpy.context.scene.frame_set(0)
+    through = deepest > CLIP_TOLERANCE
+    out = set(int(v) for v in vertices[through])
+    body = bodies.source_body(label)
+    zones = bodies.zones_of(body)
+    result = Motion(label, len(vertices), len(out), 0.0, "", "", checked)
+    if out:
+        worst = int(np.argmax(deepest))
+        result.depth, result.where = float(deepest[worst]), where[worst]
+        # The body part under the deepest place, so a person knows where to look.
+        nearest = garment.Surface(body, []).signed_distance(Vector(rest[vertices[worst]]))[1]
+        result.zone = bodies.ZONES[zones[nearest]] if nearest >= 0 else ""
+    result.faces = np.array([any(v in out for v in p.vertices) for p in inner.data.polygons])
+    return result
+
+
+def pair_summary(name: str, inner: str, result: Motion) -> str:
+    version = garment.version_name(name, result.label)
+    if not result.through:
+        return (f"{inner} under {version}: none of the {result.vertices} vertices of it that stay drawn under {version} "
+                f"comes through it in {result.checked} poses and clip frames")
+    return (f"{inner} under {version}: of the {result.vertices} vertices of it that stay drawn under {version}, "
+            f"{result.through} come through it in {result.checked} poses and clip frames, by at most "
+            f"{result.depth * 1000:.1f} mm ({result.zone} in {result.where})")
 
 
 def motion_summary(name: str, result: Motion) -> str:

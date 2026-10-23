@@ -14,6 +14,7 @@ namespace Mmorpg.Client.Tests.EditMode
     {
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
         private const string Jerkin = "LeatherJerkin";
+        private const string Trousers = "WoolTrousers";
 
         [Test]
         public void AWornGarmentTakesThePlaceOfTheBodyFacesItCovers()
@@ -84,18 +85,23 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 var parts = Parts(appearance);
                 var jerkin = appearance.Catalog.GarmentNamed(Jerkin);
-                var under = CopyOf(jerkin, "Shirt", jerkin.Slot, jerkin.Layer - 100, jerkin.Hides);
+                var under = appearance.Catalog.GarmentNamed(Trousers);
+                Assert.That(under.Layer, Is.LessThan(jerkin.Layer));
                 var alone = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under });
-                var both = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { jerkin, under });
+                var both = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under, jerkin });
                 try
                 {
-                    // The shirt's faces over the body faces the jerkin covers go, and the body faces
-                    // neither covers stay as with the shirt alone.
+                    // The trousers' faces over the body faces the jerkin covers at the waist go, and
+                    // so do the body faces the jerkin covers beyond the trousers.
                     var covered = new HashSet<int>(jerkin.Covered);
-                    var shirtLost = under.Underlay.Count(face => covered.Contains(face));
+                    var underCovered = new HashSet<int>(under.Covered);
+                    var trousersLost = under.Underlay.Count(face => covered.Contains(face));
+                    var bodyLost = appearance.Catalog.Parts.Sum(part =>
+                        part.TriangleFaces.Count(face => covered.Contains(face) && !underCovered.Contains(face)));
                     var garmentTriangles = jerkin.Underlay.Count;
-                    Assert.That(shirtLost, Is.GreaterThan(0));
-                    Assert.That(TriangleCount(both.Mesh), Is.EqualTo(TriangleCount(alone.Mesh) - shirtLost + garmentTriangles));
+                    Assert.That(trousersLost, Is.GreaterThan(0));
+                    Assert.That(TriangleCount(both.Mesh),
+                        Is.EqualTo(TriangleCount(alone.Mesh) - trousersLost - bodyLost + garmentTriangles));
                 }
                 finally
                 {
@@ -112,16 +118,15 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 var parts = Parts(appearance);
                 var jerkin = appearance.Catalog.GarmentNamed(Jerkin);
-                var robe = CopyOf(jerkin, "Robe", "back", jerkin.Layer + 100, new[] { jerkin.Slot });
-                Assert.That(PlayerBodyMeshes.Drawn(new[] { jerkin, robe }).Select(garment => garment.Name), Is.EqualTo(new[] { "Robe" }));
-                Assert.That(
-                    PlayerBodyMeshes.Drawn(new[] { robe, CopyOf(jerkin, "Vest", jerkin.Slot, 50, new string[0]) }).Select(garment => garment.Name),
-                    Is.EqualTo(new[] { "Robe" }));
-                // Armor of the hidden slot over the robe stays.
-                var armor = CopyOf(jerkin, "Armor", jerkin.Slot, robe.Layer + 100, new string[0]);
-                Assert.That(PlayerBodyMeshes.Drawn(new[] { jerkin, robe, armor }).Select(garment => garment.Name),
-                    Is.EqualTo(new[] { "Robe", "Armor" }));
-                var dressed = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { jerkin, robe });
+                var trousers = appearance.Catalog.GarmentNamed(Trousers);
+                // A floor-length robe, a chest piece that hides the legs.
+                var robe = CopyOf(jerkin, "Robe", jerkin.Slot, 300, new[] { trousers.Slot });
+                Assert.That(PlayerBodyMeshes.Drawn(new[] { trousers, robe }).Select(garment => garment.Name), Is.EqualTo(new[] { "Robe" }));
+                // Leg armor over the robe stays.
+                var greaves = CopyOf(trousers, "Greaves", trousers.Slot, robe.Layer + 100, new string[0]);
+                Assert.That(PlayerBodyMeshes.Drawn(new[] { robe, greaves }).Select(garment => garment.Name),
+                    Is.EqualTo(new[] { "Robe", "Greaves" }));
+                var dressed = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { trousers, robe });
                 var robeAlone = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { robe });
                 try
                 {
@@ -180,31 +185,20 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void ABodyWearsOneTextureOfATemplateAtATime()
+        public void ABodyWearsOneGarmentPerSlot()
         {
             Wear((appearance, meshes, materials) =>
             {
-                var jerkin = appearance.Catalog.GarmentNamed(Jerkin);
-                var dyed = CopyOf(jerkin, "DyedJerkin", jerkin.Slot, jerkin.Layer, jerkin.Hides);
-                var catalog = Object.Instantiate(appearance.Catalog);
-                try
-                {
-                    catalog.Configure(catalog.Slots.ToArray(), catalog.Paints.ToArray(), catalog.Parts.ToArray(),
-                        catalog.Garments.Concat(new[] { dyed }).ToArray());
-                    var serialized = new SerializedObject(appearance);
-                    serialized.FindProperty("catalog").objectReferenceValue = catalog;
-                    serialized.ApplyModifiedPropertiesWithoutUndo();
-                    Assert.That(catalog.OtherTexturesOf(catalog.GarmentNamed(Jerkin)).Select(garment => garment.Name),
-                        Is.EqualTo(new[] { "DyedJerkin" }));
+                var catalog = appearance.Catalog;
+                Assert.That(catalog.OthersInSlot(catalog.GarmentNamed(Jerkin)).Select(garment => garment.Name),
+                    Is.EqualTo(new[] { "LinenLongShirt", "LinenShirt", "NetShirt" }));
+                Assert.That(catalog.OthersInSlot(catalog.GarmentNamed(Trousers)), Is.Empty);
 
-                    // Both textures of the template in the look: the first in the catalog is worn.
-                    appearance.ApplyLook(BodyLook.Default.WithGarment(Jerkin, true).WithGarment("DyedJerkin", true), materials);
-                    Assert.That(appearance.Worn.Select(garment => garment.Name), Is.EqualTo(new[] { Jerkin }));
-                }
-                finally
-                {
-                    Object.DestroyImmediate(catalog);
-                }
+                // Two chest pieces in the look: the first in the catalog is worn, with the trousers
+                // of their own slot.
+                appearance.ApplyLook(BodyLook.Default.WithGarment("LinenShirt", true).WithGarment(Jerkin, true)
+                    .WithGarment(Trousers, true), materials);
+                Assert.That(appearance.Worn.Select(garment => garment.Name), Is.EqualTo(new[] { Trousers, Jerkin }));
             });
         }
 

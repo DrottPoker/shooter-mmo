@@ -23,8 +23,9 @@
     },
     "export": {
         "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf",
-        "targetSha256": "708f96a22618b1df52bc1807e3f15bc5b752de63260859da95171aab34afd8d1",
+        "targetSha256": "4604679a1941e1d85e56de8dbccfe3b9bd049cb529fc5e71680a89e1e59749cf",
         "dataSha256": "bfea2e93621d75d7cde6bc9e1eefe3d4330a9a30e48bb27cce5322d7197f5f1b",
+        "fitSha256": "3f384ad10189db1c3a3c70d88cc0c6f1adcdd19cb715ef51af687bc1c2996695",
         "materials": [
             {
                 "name": "M_Body_Male",
