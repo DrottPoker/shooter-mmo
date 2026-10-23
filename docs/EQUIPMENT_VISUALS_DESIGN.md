@@ -246,7 +246,12 @@ folds or a flared hem; the pipeline keeps that shape as a difference over the
 cage, so it follows to every body and survives a refit. A recipe that changes
 builds the template anew, and its textures move to the new UVs by projection.
 
-Unique garments, such as a ceremonial robe, are templates with one texture.
+Unique garments, such as a ceremonial robe, are templates with one texture. A
+form that no recipe of lines gives, such as a hairstyle or a helmet, is a
+modeled template: its recipe is `modeled`, its first version is modeled by hand
+on the first body over the cage region it covers, and from then on it is bound
+to the cage, fitted, checked, approved, exported, and worn with textures like
+every other template.
 Loose parts, such as the skirt of a robe or a cloak, hang from a line instead of
 lying on the cage and take the cloth chains; their recipes come with the robe
 and the cloak in step 5c.
@@ -412,8 +417,10 @@ bodies, not code:
   and reviewed, and every template of the cage gets a version for it, fitted
   from the first body's version through the cage, with corrections where it
   needs them. Masks and the clipping checks run per body type, so a template is
-  exported for a race only when it passes on that race, and its textures need
-  nothing new.
+  exported for a race only when it passes on that race. Its textures keep their
+  images; a texture with transparent parts is checked and exported again, which
+  computes its masks for the new body, and an opaque one is exported again
+  against the new template export.
 - **Race features.** Headwear says per body type whether ears show or are
   covered, so an elf's hood is corrected around long ears or lets them through.
   Hair, such as a dwarf's beard, is a hair garment like any other.
@@ -423,7 +430,9 @@ bodies, not code:
 
 A new base model that replaces today's human bodies, with another topology, is
 handled the same way: the new bodies join the cage, the cage is fitted to them,
-the templates are fitted and their masks computed anew, and the textures stay.
+the templates are fitted and their masks computed anew, and the textures keep
+their images and are exported again, with new masks where they have
+transparent parts.
 A better cage of another topology is a new cage asset: the templates are built
 again from their recipes, and their textures move to the new UVs by projection.
 
@@ -483,7 +492,8 @@ hand like the hair itself. Headwear says what happens to the hair: `hide` for a
 closed helmet, `compress` for a hood or a hat, so the fringe and the neck hair
 show under it, and `show` for a circlet. Headwear covers the scalp like any
 garment covers the body. A hood that can be up or down is two garments of the
-same item. A hairstyle has a form of its own and is not a template.
+same item. A hairstyle is a modeled template of the `hair` slot with its
+textures, and it comes with the head region of the cage.
 
 ## Attachments
 
@@ -552,7 +562,7 @@ A garment template is an art asset of kind `garment` below `art/Garments/<Name>`
 | `slot` | The visual slot: `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
 | `layer` | 0 to 1000, the order from the inside out. |
 | `band` | `tight`, `mid`, `outer`, or `loose`. |
-| `recipe` | The regions and lines it covers, its ease, and its edges' thickness. |
+| `recipe` | The regions and lines it covers, its ease, and its edges' thickness, or `modeled` for a form modeled by hand, such as a hairstyle. |
 | `hides` | Visual slots it hides, such as `["legs"]` for a floor-length robe. |
 | `hair` | Headwear only: `hide`, `compress`, or `show`. |
 | `cloth` | The cloth profile of its loose parts, or none. |
