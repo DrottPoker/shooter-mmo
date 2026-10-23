@@ -222,6 +222,30 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void TheGarmentShaderIsLitWithDyes()
+        {
+            var shader = Shader.Find("Mmorpg/Garment");
+            Assert.That(shader, Is.Not.Null);
+            Assert.That(ShaderUtil.ShaderHasError(shader), Is.False);
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            for (var index = 0; index < lit.GetPropertyCount(); index++)
+            {
+                Assert.That(shader.FindPropertyIndex(lit.GetPropertyName(index)), Is.GreaterThanOrEqualTo(0), lit.GetPropertyName(index));
+            }
+
+            Assert.That(shader.FindPropertyIndex("_DyeMask"), Is.GreaterThanOrEqualTo(0));
+            for (var dye = 1; dye <= 3; dye++)
+            {
+                var index = shader.FindPropertyIndex("_DyeColor" + dye);
+                Assert.That(index, Is.GreaterThanOrEqualTo(0));
+                // Undyed, a garment shows its painted colors.
+                Assert.That(shader.GetPropertyDefaultVectorValue(index), Is.EqualTo(new Vector4(1f, 1f, 1f, 1f)));
+            }
+
+            Assert.That(shader.GetPropertyDefaultFloatValue(shader.FindPropertyIndex("_DyeCount")), Is.Zero);
+        }
+
+        [Test]
         public void TheTintIsFaint()
         {
             var tint = PlayerBodyAppearance.TintFor(PlayerBodyColors.Player);

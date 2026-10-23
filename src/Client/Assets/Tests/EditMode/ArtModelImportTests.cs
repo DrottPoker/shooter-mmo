@@ -326,6 +326,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(material.IsKeywordEnabled("_ALPHATEST_ON"), Is.EqualTo(manifest.IsGarment), where);
                     if (manifest.IsGarment)
                     {
+                        Assert.That(material.shader.name, Is.EqualTo(ArtMaterialCreator.GarmentShader), where);
                         Assert.That(material.GetFloat("_Cutoff"), Is.EqualTo(ArtMaterialCreator.GarmentAlphaCutoff), where);
                         Assert.That(material.GetFloat("_Cull"), Is.EqualTo((float)CullMode.Off), where);
                         Assert.That(material.renderQueue, Is.EqualTo((int)RenderQueue.AlphaTest), where);
