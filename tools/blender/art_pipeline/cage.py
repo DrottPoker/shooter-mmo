@@ -542,14 +542,16 @@ def sync(file: str, body_list: list[tuple[str, str]], figure: float, lines: list
     for path, root in body_list:
         if root in stale:
             body_files.replace_body(path, root, collection_name(root))
-    for obj in [o for o in bpy.data.objects if o.type == "ARMATURE" and o.name not in labels and o.name != REFERENCE_RIG]:
+    # A body no longer in the manifest leaves the file with its version, which is a change too.
+    removed = [o for o in bpy.data.objects if o.type == "ARMATURE" and o.name not in labels and o.name != REFERENCE_RIG]
+    for obj in removed:
         for child in list(obj.children_recursive):
             bpy.data.objects.remove(child, do_unlink=True)
         bpy.data.objects.remove(obj, do_unlink=True)
     _record(figure, lines)
     for label in labels:
         _apply(label, fit(label, figure))
-    if _state(labels) == before:
+    if not removed and _state(labels) == before:
         return False
     if stale:
         _show_first(labels)
