@@ -3,12 +3,16 @@
 Last updated: 2026-10-23
 
 Status: accepted by Victor on 2026-10-22, with the support of future races added.
-It is implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 4
-are done: this document; the cloth chains with their solver; the garment kind
-with its fitting, weights, bands, masks, review, export, and Unity import, with the
+Extended on 2026-10-23, accepted by Victor, with the garment cage, garment
+templates, and garment textures, so that clothes keep a shape of their own and
+everything adapts to new body types and a replaced base model. It is
+implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 4 are
+done: this document; the cloth chains with their solver; the garment kind with
+its fitting, weights, bands, masks, review, export, and Unity import, with the
 leather jerkin as the first garment; and putting a character together with its
-garments, with the garment shader, the Wardrobe preview, and trying garments on in
-F2.
+garments, with the garment shader, the Wardrobe preview, and trying garments on
+in F2. The garment cage, templates, and textures are designed here and not
+implemented yet.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -24,6 +28,10 @@ equipment slots in
 - Equipment looks like objects with volume, not paint on a body: a shirt does not
   show the abdominal muscles, trousers do not show the buttock cleft, and boots
   do not show toes.
+- Clothes keep the figure but not the body's small details: a top follows the
+  waist and the small of the back a little, so the body's shape shows, and spans
+  the buttock cleft, the spine groove, the navel, and the muscles, so it never
+  looks plastered to the skin like a wet shirt.
 - Skin shows wherever a garment leaves it open, with everything painted on the
   skin: a crop top shows the belly, a net shirt or a torn sleeve shows the skin
   through its holes, and a tattoo or scar under them shows too.
@@ -33,7 +41,11 @@ equipment slots in
   sway, in every clip, without anyone animating the cloth by hand.
 - One design fits every body type: a garment is made once and fitted to the
   others by the pipeline, with handmade corrections kept. This holds for future
-  races too, such as taller elves and shorter, broader dwarves.
+  races too, such as taller elves and shorter, broader dwarves, and for a base
+  model that replaces today's human bodies, with another topology.
+- New clothes cost a texture, not a model: standard garment templates per kind,
+  such as a short-sleeved top, a long-sleeved shirt, or trousers, end at
+  standard lines of the body and are reused with new textures.
 - A crowd stays cheap: a character with a full outfit draws with few draw calls
   and costs little CPU per frame.
 - Every garment goes through the same review, approval, and export as all other
@@ -44,13 +56,16 @@ equipment slots in
 | # | Decision | Choice |
 | --- | --- | --- |
 | E1 | What clothes and armor are made of | A 3D mesh per slot with its own volume and folds, skinned to the shared skeleton, as in The Elder Scrolls Online, Guild Wars 2, and New World. Paint over the skin is kept for what lies on the skin: tattoos, scars, makeup, and dirt. |
-| E2 | How a garment hides the body | A cover mask per garment and body type over the body's faces, computed by the pipeline from where the garment really covers the body, reading the garment's transparency. Not whole body zones. |
-| E3 | How loose cloth moves | Standard cloth chains in the skeleton, driven at runtime by a solver that follows the legs, adds springs, and collides with the body. Real cloth simulation may be added for the own character later, on the same chains. |
+| E2 | How a garment hides the body | A cover mask per garment and body type over the body's faces, computed by the pipeline from where the garment really covers the body, reading the garment's transparency. Not whole body zones. A garment texture with transparent parts gets masks of its own. |
+| E3 | How loose cloth moves | Standard cloth chains in the skeleton, driven at runtime by a solver that follows the legs, adds springs, and collides with the body. There is no cloth simulation, neither in the game nor in the pipeline: garments get their shape from the garment cage and from their makers. |
 | E4 | Hair under headwear | Every hair has a compressed under-headwear form; headwear says whether hair is hidden, compressed, or shown. |
 | E5 | Transparent fabric | Sharp holes now: lace, net, holes, and torn cloth with alpha clipping. Soft see-through fabric such as veils later. |
-| E6 | Body variety | Fixed body types, the male and female humans now and other races later as bodies of their own with the same topology. No body sliders. |
+| E6 | Body variety | Fixed body types, the male and female humans now and other races later as bodies of their own. No body sliders. |
 | E7 | Dyes | Prepared from the start: every garment can carry dye channels that tint its regions. |
-| E8 | Future races | Every playable humanoid race, such as elves and dwarves, is a fixed body type per sex with the human base topology, its own proportions, and its own rig. Garments, paint, masks, cloth chains, and clips work for it without changes to the system; see [Future Races](#future-races). |
+| E8 | Future races and base models | Every playable humanoid race, such as elves and dwarves, is a fixed body type per sex with its own proportions and its own rig on the shared skeleton. Garments, masks, cloth chains, and clips work for it without changes to the system, also when its body has a topology of its own and when a new base model replaces today's human bodies; see [Future Races And Base Models](#future-races-and-base-models). |
+| E9 | What garments are fitted to | The garment cage: a sparse net of fixed topology that the pipeline fits to every body, smooth over the body's pits and following its figure. Garments are made and fitted on it, not on the body's own faces, so no garment depends on the topology of a body. |
+| E10 | How new clothes are made | Garment templates: a garment kind's form, built by the pipeline from a recipe of standard lines on the cage, approved once, and worn with garment textures. A texture is an asset of its own and changes no template. |
+| E11 | How garments meet | At standard lines with a fixed overlap: a top over the trousers, the trouser legs in the boots, gloves over every sleeve, each layer with its fixed order. |
 
 ## Layers Of A Character
 
@@ -66,24 +81,27 @@ From the inside out:
    on `Socket_MainHand` and `Socket_OffHand`, and a quiver or a backpack on
    `Socket_Back`.
 
-Paint layers stay for skin-level detail. The leather jerkin, painted today as a
-proof of paint layers, becomes a garment in the proof set, and its paint layer
-is then removed.
+Paint layers stay for skin-level detail. The leather jerkin, painted first as a
+proof of paint layers, becomes the first garment template with its leather
+texture in step 5b; its paint layer is removed in step 5c, when a tattoo paint
+layer takes over as the proof of paint layers.
 
 ## Garments
 
 ### Slots And Layers
 
 A garment has one visual slot and a layer, a number from 0 to 1000 that orders
-the garments of a character from the inside out.
+the garments of a character from the inside out. Where garments meet at a
+[standard line](#standard-lines), the layers give the order that
+[How Garments Meet](#how-garments-meet) fixes.
 
 | Visual slot | Covers | Typical layers |
 | --- | --- | --- |
-| `head` | hoods, hats, helmets, masks | 400 |
-| `body` | shirts, tops, jerkins, chest armor, robes, coats | 100 shirt, 200 jerkin or chest armor, 300 robe or coat |
 | `legs` | trousers, skirts, leggings | 100 |
-| `hands` | gloves, gauntlets | 150 |
-| `feet` | shoes, boots | 120 |
+| `feet` | shoes, boots, over the trouser legs | 120 |
+| `body` | shirts, tops, jerkins, chest armor, robes, coats | 150 shirt, over the trousers; 200 jerkin or chest armor; 300 robe or coat |
+| `hands` | gloves, gauntlets, over every sleeve | 350 |
+| `head` | hoods, hats, helmets, masks | 400 |
 | `back` | cloaks, capes | 500 |
 
 An item names the garments it shows, so one item may show several garments,
@@ -97,20 +115,187 @@ and `main_hand`, `off_hand`, and `bag` show attachments.
 A visual slot holds every worn garment of that slot, ordered by layer, and no two
 of them share a layer. One equipment slot holds one item, so the garments of a
 visual slot come from the items that show them: one item can be several garments
-of a slot, such as a brigand's outfit made of a shirt at 100 and a vest at 200,
+of a slot, such as a brigand's outfit made of a shirt at 150 and a vest at 200,
 and garments of other items join them, such as a robe's hood in `head` under a
-helmet from the `head` item. Sleeves are part of a `body` garment; gloves sit
-over them (layer 150 over a shirt at 100) or under the sleeves of a coat (300).
+helmet from the `head` item. Sleeves are part of a `body` garment, and gloves
+sit over them.
+
+### The Garment Cage
+
+The garment cage is the surface that clothes are made on. It is a sparse net
+with a fixed topology of its own, the same on every body, that the pipeline
+lays around each body: over the neck, the trunk, the arms to the wrists, and the
+legs to the ankles. Regions for the hands, the feet, and the head are added when
+the first gloves, boots, and hoods come; they add faces and change none.
+
+- **Its topology** was taken once from the human base body as it was when the
+  cage was made, the faces of the neck, trunk, arms, and legs with their rings,
+  and is the cage's own from then on: a new base model changes the bodies, not
+  the cage. The cage keeps that first shape on a copy of that body's rig, its
+  reference, and its regions: `neck`, `trunk`, `arms`, and `legs`.
+- **Fitting it to a body** works for any body of the skeleton, whatever its
+  topology:
+  1. The reference shape moves with the rig: every cage vertex follows the
+     bones of the reference rig to the body's rig, with each bone's length, so
+     a dwarf's shorter arms and an elf's longer legs carry the cage with them.
+  2. Every vertex is drawn to the body's skin along the cage's normal.
+  3. The cage is smoothed against that pull: details smaller than the cage's
+     figure scale are spanned, larger forms are followed. The cage spans the
+     buttock cleft, the spine groove, the navel, the abdominal muscles, the
+     cleavage, and the crease under the bust, and follows the waist, the small
+     of the back, the bust, the buttocks, and the shoulders a little, so the
+     figure shows. It never webs between an arm and the trunk or between the
+     legs.
+  4. No vertex and no face centre lies inside the skin; a vertex that would is
+     moved out along the skin's normal.
+- **Its figure scale** is one number of the cage asset, in meters: the size of a
+  detail the cage still spans. The reviewer judges it on the cage's review sheet
+  and asks for more or less figure.
+- **Corrections** that a person sculpts on the cage of one body are kept as a
+  difference to the fitted shape, like the corrections of a garment, so the next
+  fit keeps them.
+- **Seams** are marked on the cage where clothes have their seams: down the sides
+  of the trunk, under the arms, and along the inside of the legs. Templates
+  unfold their textures along them.
+
+The cage is an art asset of its own, reviewed and approved by Victor like every
+other. It has no export, so garments record the hash of the approved cage
+file they were fitted to, and a change of the cage needs new exports of its
+garments.
+
+### Standard Lines
+
+A standard line is a place where clothes end: a short sleeve, a long sleeve, a
+trouser hem, or a top's hem. Each line is a plane across one region of the cage,
+at right angles to a bone of the skeleton, at a share of that bone's length,
+such as the short sleeve at a share of the upper arm. A line therefore lies at
+the corresponding place on every body: a dwarf's short sleeve ends where it
+ends on a dwarf's arm. Moving a line means changing its share.
+
+| Line | Region | Where | Used by |
+| --- | --- | --- | --- |
+| `CollarStand` | `neck` | on the neck, about 2 cm above its base | a stand collar's top |
+| `HemCrop` | `trunk` | under the bust, above the navel | a crop top's hem |
+| `Waist` | `trunk` | at the hip bones | the trousers' waistband |
+| `HemHip` | `trunk` | below `Waist` by the overlap | a top's hem, over the trousers |
+| `SleeveShort` | `arms` | a little less than half the upper arm | a short sleeve |
+| `SleeveElbow` | `arms` | at the elbow | an elbow sleeve |
+| `GloveCuff` | `arms` | on the forearm, toward the elbow from `SleeveLong` by the overlap | a glove's cuff, over the sleeve |
+| `SleeveLong` | `arms` | at the wrist | a long sleeve |
+| `LegShorts` | `legs` | at half the thigh | shorts |
+| `LegKnee` | `legs` | below the knee | knee breeches |
+| `BootCalf` | `legs` | at the calf | a boot's top, over the trouser leg |
+| `LegAnkle` | `legs` | at the ankle | a trouser hem, in the boot |
+
+The lines and their shares are part of the cage asset and are approved with it;
+the borders of the cage's regions are lines too, such as the neck's base for a
+round neckline and the trunk's edge at the shoulder for a sleeveless top.
+
+### How Garments Meet
+
+Where two garments meet, the outer one ends past the inner one's edge by a
+fixed overlap, about 50 mm, so no gap opens in motion, and the part of the
+inner garment under it is removed by its underlay when the character is put
+together, so no double layer shows. The overlap is the distance between their
+lines.
+
+| Where | Inner | Outer |
+| --- | --- | --- |
+| Waist | trousers, to `Waist` | a top, to `HemHip` |
+| Wrist | a long sleeve, to `SleeveLong` | a glove, to `GloveCuff` |
+| Calf | trousers, to `LegAnkle` | a boot, to `BootCalf` |
+
+Over the overlap, the outer garment lies outside the inner one: its band there is
+measured from the inner garment's surface instead of the cage. A pair check in
+the pipeline tests every pair of templates of different layers whose garments
+overlap on the body, those that meet at a line and those worn over each other,
+such as a shirt under a jerkin, at rest, in the test poses, and in the clips,
+from the first such pair on: the higher one never lies inside the lower one
+where the lower one is drawn, also at the openings where the lower one's faces
+are kept.
+
+### Templates
+
+A garment template is the form of a garment kind, without its look: a
+short-sleeved top with a stand collar, a long-sleeved shirt, or trousers. There
+may be several templates per kind, such as a fitted and a loose shirt. A new
+item of clothing is a template and a new [texture](#textures), so it fits every
+body without new modeling. What changes the silhouette or needs an edge with
+thickness is a template of its own: the length of a sleeve or a hem, a standing
+collar, a V-neck, the width. What only opens the surface with sharp edges, such
+as holes, net, lace, torn edges, or a laced opening, is the transparency of a
+texture; an edge cut by transparency has no thickness. Parts worn on top, such
+as a belt, shoulder guards, or a fur collar, are small templates of their own.
+
+A template is built by the pipeline from its recipe:
+
+- **The regions and lines**: the cage regions it covers and the lines where it
+  ends in them, each with the side it keeps, such as the `neck` to
+  `CollarStand`, the `trunk` above `HemHip`, and the `arms` toward the trunk
+  from `SleeveShort`. A region without a line is covered whole, and a region
+  that is not listed is left open, such as the arms of a sleeveless top.
+- **The band**: how far from the cage it lies, [below](#layer-bands).
+- **Ease**: more room where the body folds in motion, such as a few millimeters
+  more at the front and the back of the armpits, so the skin there stays under
+  the cloth when the arms swing.
+- **Edges with thickness**: every open edge of its mesh, the hems, the sleeve
+  ends, a neckline, and the top of a collar, is turned inward by a few millimeters, so a hem shows the
+  cloth's thickness instead of a paper edge.
+
+The pipeline cuts the cage's faces at the lines, keeps the faces of the
+template, offsets them into its band, adds the ease and the turned edges, and
+unfolds its UVs along the cage's seams and its own edges. The result is the
+template's version on the first body, the male; every other body's version is
+fitted from it. A person may then shape the first version by hand, such as
+folds or a flared hem; the pipeline keeps that shape as a difference over the
+cage, so it follows to every body and survives a refit. A recipe that changes
+builds the template anew: the handmade shape, the difference between the first
+version and the build it was shaped on, is carried over to the new build by
+projection, each new vertex taking the difference at its place on the cage, and
+the textures move to the new UVs by projection.
+
+Unique garments, such as a ceremonial robe, are templates with one texture. A
+form that no recipe of lines gives, such as a hairstyle or a helmet, is a
+modeled template: its recipe is `modeled`, its first version is modeled by hand
+on the first body over the cage region it covers, and from then on it is bound
+to the cage, fitted, checked, approved, exported, and worn with textures like
+every other template.
+Loose parts, such as the skirt of a robe or a cloak, hang from a line instead of
+lying on the cage and take the cloth chains; their recipes come with the robe
+and the cloak in step 5c.
+
+### Textures
+
+A garment texture is the look of a template: its painted image with color,
+folds, wear, trim, and stitches in the template's UVs, its dye mask, its
+smoothness and metallic, and its transparency. It is an asset of its own with
+one review stage, `texture`, so a new texture never changes the template's file
+and its approvals.
+
+- A texture belongs to one template, since the trim at a hem sits where that
+  template's hem is.
+- A texture with transparent parts, such as a net or a laced V, has a cover
+  mask, edges, and pull-in of its own per body, computed by the pipeline with
+  the same rules as the template's, because its holes change what the body
+  shows, and the skin its holes show is checked in motion like the template's,
+  in the test poses and the clips. An opaque texture uses the template's.
+- A texture records the template export it was checked against, so a new
+  export of the template needs a new export of its textures.
+- The template's UVs stay when its bodies, the cage, or the base model change,
+  so a texture is never painted again for a new body.
 
 ### Cover Masks
 
-The human bodies have identical topology, so every body face has the same index
-on every body type: the body's faces are a coordinate system that every garment
-can refer to. For every body type a garment fits, the pipeline computes:
+Every body exports its editable mesh, its vertices and faces, so the pipeline
+computes a garment's masks for each body in that body's own faces. Bodies need
+not share a topology: each gets the masks of its own faces. For every body
+type a garment fits, the pipeline computes:
 
 - **The cover mask**: one bit per body face, set when the garment covers the face.
   From sample points on the face, rays go outward in a cone around the face
-  normal up to the garment's reach. A sample is covered when every ray hits the
+  normal up to the garment's reach, which is the distance from the skin to the
+  cage there and the band's reach above it, so rays from the bottom of a spanned
+  pit reach the cloth over it. A sample is covered when every ray hits the
   garment where its texture is opaque, or the body itself, as in an armpit; a
   face is covered when all its samples are and at least one ray hits the
   garment. A ray that leaves through a hole, a crop top's open belly, or a
@@ -118,11 +303,12 @@ can refer to. For every body type a garment fits, the pipeline computes:
   everything painted on it.
 - **The skin at the garment's edges is never hidden.** A look into a sleeve, under
   a hem, or into a laced neckline sees farther than the cone of rays, and a
-  hidden face there shows as a hole in the body. A face within the band's edge
-  reach of an open edge of the garment, a border of its mesh or a line where its
-  texture is cut, stays visible: 20 mm for `tight`, 40 mm for `mid`, 80 mm for
-  `outer`, and 120 mm for `loose`, about four times the band's gap between skin
-  and cloth.
+  hidden face there shows as a hole in the body. A face within the edge reach of
+  an open edge of the garment, a border of its mesh or a line where its texture
+  is cut, stays visible. The edge reach is the band's, 20 mm for `tight`, 40 mm
+  for `mid`, 80 mm for `outer`, and 120 mm for `loose`, about four times the
+  band's gap between skin and cloth, or four times the gap at that edge where the
+  cloth spans a pit and hangs farther from the skin.
 - **The underlay**: for every face of the garment, the index of the body face
   under it, the closest body face along the garment's inward normal.
 - **The pull-in**: for every body vertex that stays visible but lies closer to
@@ -133,10 +319,10 @@ can refer to. For every body type a garment fits, the pipeline computes:
   poses and the clips. Skinning blends the bones of a fold, such as an armpit, so
   the gap between skin and cloth closes there in motion whatever the weights.
   Such skin lies at an opening that shows it, and hiding it would leave a hole
-  there in every pose, so the pipeline reports it instead, and the garment's
-  shape or weights fix it. A fold also turns the skin along the cloth, so moving
-  it inward along its normal does not keep it under. Skin that only passes a
-  hem's edge, with no cloth over it, does not come through.
+  there in every pose, so the pipeline reports it instead, and the template's
+  ease, shape, or weights fix it. A fold also turns the skin along the cloth, so
+  moving it inward along its normal does not keep it under. Skin that only passes
+  a hem's edge, with no cloth over it, does not come through.
 
 A mask is 545 bytes for the human bodies (4,358 faces). When Unity puts a
 character together, it removes every body face that a worn garment covers, moves
@@ -147,10 +333,13 @@ trousers where the robe is.
 
 ### Layer Bands
 
-Every garment declares a band: how far from the skin its surface lies. The
-pipeline checks every garment vertex against its band on every body type.
+Every garment declares a band: how far from the cage its surface lies. The
+pipeline checks every garment vertex and every face centre against its band on
+every body type. The cage lies on the skin at the body's high points and over
+its pits, so a band measured from it lets cloth span a pit, and cloth that sinks
+into a pit leaves its band.
 
-| Band | Distance from the skin | For |
+| Band | Distance from the cage | For |
 | --- | --- | --- |
 | `tight` | 0 to 8 mm | leggings, a shirt, gloves |
 | `mid` | 5 to 25 mm | a jerkin, trousers, boots, padded armor |
@@ -158,7 +347,9 @@ pipeline checks every garment vertex against its band on every body type.
 | `loose` | from 10 mm, no limit | skirts, robes, cloaks, hoods |
 
 A garment of a higher layer lies in an outer band, so an inner garment never
-reaches through an outer one where the outer one does not hide it.
+reaches through an outer one where the outer one does not hide it. Where garments
+overlap at a meeting line, the outer one's band is measured from the inner one,
+as [How Garments Meet](#how-garments-meet) says.
 
 ### Transparent Fabric
 
@@ -169,50 +360,58 @@ as a veil, needs dithered transparency and comes when a garment needs it.
 
 ### Dye Channels
 
-A garment may carry a dye mask, an image whose red, green, and blue channels mark
-up to three regions that a dye color tints, such as cloth, trim, and leather. The
-garment shader `Mmorpg/Garment` multiplies the painted color by the dye color as
-far as the region's channel reaches, so a dyeable region is painted in a light,
-neutral color with its folds and wear, and the dye gives it its hue. The undyed
-garment, with white dyes or no mask, shows its painted colors. Which colors an
-item has, per definition or per item, is decided with the items in delivery step
-6; the dye mask comes with the first garment that has one.
+A garment texture may carry a dye mask, an image whose red, green, and blue
+channels mark up to three regions that a dye color tints, such as cloth, trim,
+and leather. The garment shader `Mmorpg/Garment` multiplies the painted color by
+the dye color as far as the region's channel reaches, so a dyeable region is
+painted in a light, neutral color with its folds and wear, and the dye gives it
+its hue. The undyed garment, with white dyes or no mask, shows its painted
+colors. Which colors an item has, per definition or per item, is decided with
+the items in delivery step 6; the dye mask comes with the first texture that has
+one.
 
 ## Fitting Every Body Type
 
-A garment is made once, on the first body it fits, the male human. The pipeline
-fits it to every other body type of the same topology, also those of
-[future races](#future-races):
+A template is made once, on the first body of its cage, the male human. The
+pipeline fits it to every other body of the cage, also those of
+[future races](#future-races-and-base-models):
 
 - **Shape**: every garment vertex is bound to the closest point of the first
-  body's surface, as a face, barycentric coordinates, and an offset along the
-  surface normal and tangents, and placed at the same point and offset on the
-  other body. A vertex or a face centre that then leaves the garment's band,
-  because the other body curves differently, moves back into it. Garments stay
-  out of the body's armpits and crotch by the same rule as they do on the first
-  body.
+  body's cage, as a face, barycentric coordinates, and an offset along the
+  cage's normal and tangents, and placed at the same point and offset of the
+  other body's cage. Every body's cage has the same faces, so this needs nothing
+  of the bodies' own topology. The first version keeps its binding to the cage
+  too, so when the first body or its cage changes, the first version follows. A
+  vertex or a face centre that leaves the garment's band moves back into it.
+  Garments stay out of the body's armpits and crotch by the same rule as they do
+  on the first body.
 - **Corrections**: where the fitted shape needs a hand, a person sculpts it on the
-  other body's version. The pipeline keeps the correction as a difference to the
-  fitted shape, so the next fit after a change of the first version keeps it.
-- **Weights**: a garment vertex takes the skin weights of the body at its bound
-  point, not smoothed, so it moves like the skin it covers; measured on the
-  jerkin, smoothed weights let the skin under a sleeve come through further, 20
-  instead of 7 mm. Loose parts take the cloth chains instead. Weights painted by
-  hand on the first version are kept, and the other versions copy them, because
-  every version of a garment has the same topology.
+  other body's version. The pipeline keeps the correction as a difference over
+  the cage, so the next fit keeps it.
+- **Weights**: a garment vertex takes the skin weights of the body under it,
+  where a ray from the vertex inward along the cage's normal meets the skin, not
+  smoothed, so it moves like the skin it covers; measured on the jerkin,
+  smoothed weights let the skin under a sleeve come through further, 20 instead
+  of 7 mm. Cloth that spans a pit takes the weights of the pit's bottom, such as
+  the hips over the buttock cleft, so it moves as one piece and never tears
+  between the two sides. Loose parts take the cloth chains instead. Weights
+  painted by hand on the first version are kept, and the other versions copy
+  them, because every version of a garment has the same topology; rules in the
+  recipe, such as ease, are preferred to painted weights, since they carry over
+  to new bodies by themselves.
 
-## Future Races
+## Future Races And Base Models
 
 The system treats a race as more body types, so adding elves or dwarves adds
 bodies, not code:
 
-- **One topology for every humanoid race.** A new race starts as a copy of a
-  human body and is reshaped in Blender, taller and slender for an elf, shorter
-  and broader for a dwarf, longer ears and all, without adding or removing
-  vertices. Body faces keep their indices, so paint layers, cover masks,
-  underlays, and garment fitting work for it like for the humans, and the checks
-  hold every body of the topology to it. What a shape cannot give, such as tusks
-  or horns, is a separate mesh in the body's file, outside the shared topology.
+- **Its own body.** A new race starts as a copy of a human body and is reshaped
+  in Blender, taller and slender for an elf, shorter and broader for a dwarf,
+  longer ears and all. Keeping the human topology keeps its paint layers, which
+  still need it until step 5d; garments, cover masks, and underlays do not, since
+  they are fitted on the cage and computed in each body's own faces. What a
+  shape cannot give, such as tusks or horns, is a separate mesh in the body's
+  file.
 - **Its own rig.** The rig places the same `Humanoid` bones from the race's own
   model, so a dwarf's legs and arms are shorter and an elf's longer, and the cloth
   chains are placed from the model too: a dwarf's skirt chains end at a dwarf's
@@ -223,18 +422,32 @@ bodies, not code:
   legs. A race that should move differently, such as a heavier dwarf gait, gets
   clips of its own in a library keyed on its rig, chosen per body type by an
   override of the controller.
-- **Garments.** A garment's `bodies` list grows with the new body types. Each new
-  version is fitted from the body type closest in shape, a dwarf from a human,
-  which keeps the corrections small; a version can be fitted from another fitted
-  version, and a version that needs a different shape altogether can be modeled
-  by hand and keeps its own weights. Masks and the clipping checks run per body
-  type, so a garment is exported for a race only when it passes on that race.
+- **Garments.** The new body joins the cage's bodies. The cage is fitted to it
+  and reviewed, and every template of the cage gets a version for it, fitted
+  from the first body's version through the cage, with corrections where it
+  needs them. Masks and the clipping checks run per body type, so a template is
+  exported for a race only when it passes on that race. Its textures keep their
+  images; a texture with transparent parts is checked and exported again, which
+  computes its masks for the new body, and an opaque one is exported again
+  against the new template export.
 - **Race features.** Headwear says per body type whether ears show or are
   covered, so an elf's hood is corrected around long ears or lets them through.
   Hair, such as a dwarf's beard, is a hair garment like any other.
 - **Budgets and the game** are the same for every race. Equipment shows on every
   body type that has a version of its garments; the tools report a garment that
   lacks a version for a playable body type.
+
+A new base model that replaces today's human bodies, with another topology, is
+handled the same way: the new bodies join the cage, the cage is fitted to them,
+the templates are fitted and their masks computed anew, and the textures keep
+their images and are exported again, with new masks where they have
+transparent parts.
+A better cage of another topology is a new cage asset. Templates with a recipe of
+lines are built again from it, keeping their handmade shape by projection onto
+the new cage, and their textures move to the new UVs by projection. A modeled
+template keeps its mesh, its UVs, and its painted weights: each vertex is bound
+to the new cage at its place on the first body, and its textures stay as they
+are.
 
 ## Cloth Chains
 
@@ -281,7 +494,8 @@ before the bodies are drawn:
   for a special motion, and the solver blends toward the clip.
 
 The solver is presentation only. It runs the same for the local player, other
-players, and bots, and never reaches the server.
+players, and bots, and never reaches the server. It moves a few bones per chain
+and is not a cloth simulation; see E3.
 
 ## Hair And Headwear
 
@@ -291,7 +505,8 @@ hand like the hair itself. Headwear says what happens to the hair: `hide` for a
 closed helmet, `compress` for a hood or a hat, so the fringe and the neck hair
 show under it, and `show` for a circlet. Headwear covers the scalp like any
 garment covers the body. A hood that can be up or down is two garments of the
-same item.
+same item. A hairstyle is a modeled template of the `hair` slot with its
+textures, and it comes with the head region of the cage.
 
 ## Attachments
 
@@ -303,17 +518,19 @@ the back without weights.
 ## Putting A Character Together In Unity
 
 A character's look is its body type, its face, eyes, and paint, the garments per
-visual slot with their dye colors, its hair, and its attachments. When the look
-changes, such as when equipment changes, the client puts the character together:
+visual slot, each a template with its texture and dye colors, its hair, and its
+attachments. When the look changes, such as when equipment changes, the client
+puts the character together:
 
-1. The visible body faces: every face but those the worn garments cover. The
-   pull-in vertices move inward.
+1. The visible body faces: every face but those the worn garments cover, with
+   the masks of their textures where a texture has its own. The pull-in vertices
+   move inward.
 2. The visible garment faces: every face but those whose underlay a garment of a
    higher layer covers, and every slot a worn garment hides is left out.
 3. Hair in its normal or compressed form.
 4. One combined skinned mesh on the character's skeleton, the cloth chains with
    it, with one submesh per material. Materials are shared copies keyed by their
-   source, dye colors, and paint layers, so characters that look alike batch.
+   texture, dye colors, and paint layers, so characters that look alike batch.
 5. The combined mesh is cached by the look's key, so every character with the
    same look shares one mesh, as development bots do.
 
@@ -330,56 +547,101 @@ comes with the first hair garment, which brings the shape key.
 
 ## Art Pipeline
 
-### The Garment Kind
+### The Garment Cage Kind
 
-A garment is an art asset of kind `garment` below `art/Garments/<Name>`:
+The cage is an art asset of kind `cage` below `art/Cages/<Skeleton>`, one per
+skeleton, such as `art/Cages/Humanoid`:
 
 | Field | Meaning |
 | --- | --- |
+| `bodies` | The skinned assets it is fitted to, the first one first; every template of the cage fits them. |
+| `figure` | The figure scale in meters: the size of a detail the cage still spans. |
+| `lines` | The standard lines: per line its region, its bone, and its share of the bone. |
+
+Its file holds the reference shape on its reference rig, and per body the
+body's armature and source body as reference and the cage's version on that
+body. `New-ArtAsset.ps1 -Kind cage` makes it from the first body, and
+`Sync-CageAsset.ps1` fits it to every body, keeps the corrections, checks it, and
+writes its review sheet. It has one review stage, `model`, and no export: Unity
+never needs it, and garments record its approved file.
+
+### The Garment Kind
+
+A garment template is an art asset of kind `garment` below `art/Garments/<Name>`:
+
+| Field | Meaning |
+| --- | --- |
+| `cage` | The cage it is made on; it fits every body of the cage. |
 | `slot` | The visual slot: `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
 | `layer` | 0 to 1000, the order from the inside out. |
 | `band` | `tight`, `mid`, `outer`, or `loose`. |
-| `bodies` | The skinned assets it fits, the one it is made on first. |
+| `recipe` | The regions and lines it covers, its ease, and its edges' thickness, or `modeled` for a form modeled by hand, such as a hairstyle. |
 | `hides` | Visual slots it hides, such as `["legs"]` for a floor-length robe. |
 | `hair` | Headwear only: `hide`, `compress`, or `show`. |
 | `cloth` | The cloth profile of its loose parts, or none. |
-| `dyes` | The number of dye channels, 0 to 3. It stays 0 until the garment shader brings dyes in step 4. |
+| `dyes` | The number of dye channels its textures may use, 0 to 3. |
 | `triangleBudget` | The most triangles of one body type's version. |
 
 Its file holds, per body type, a collection `Export_<Label>` with the body's
-armature and the garment's version on it: the version on the first body is the
-garment a person makes, and every other version is fitted from it with the
-person's corrections kept. The bodies themselves are in a `Reference`
-collection. Export writes one FBX per body type, the garment skinned to that
-body's rig, with its textures and a data file with the cover mask, underlay, and
-pull-in, all recorded with their hashes like every export.
+armature and the template's version on it, the version on the first body being
+the one a person shapes, and the cage's versions it is fitted on. The bodies
+themselves are in a `Reference` collection. The template's own material is a
+neutral review material with a grid that shows how its UVs stretch. Export
+writes one FBX per body type, the template skinned to that body's rig, and a
+data file with the cover mask, underlay, and pull-in, all recorded with their
+hashes, with the hash of the cage's approved file, and with the bodies'
+exports, like every export.
+
+### The Texture Kind
+
+A garment texture is an art asset of kind `texture` below
+`art/GarmentTextures/<Name>`, with the template it belongs to in `garment`. Its
+file holds the template's first version as a preview and the texture's images,
+painted by hand in Texture Paint mode or by a script, with the custom
+properties `roughness` and `metallic`. Its one review stage, `texture`, checks
+that the images fit the template's UVs, and for a texture with transparent parts
+computes its masks and runs the template's motion check with them, in the rig
+review's test poses and at every frame of the clips, so skin that its holes show
+and that comes through the cloth around them is reported before the approval.
+Export writes its images and its material `M_Garment_<Name>`, and its masks per
+body when it has transparent parts.
 
 ### Making A Garment
 
-1. `New-ArtAsset.ps1 -Kind garment` creates the asset with the bodies and a
-   starting shell in its band, from the body parts of its slot or from a paint
-   layer.
-2. A person models the garment on the male body in Blender and paints its
-   textures and dye mask.
-3. `Sync-GarmentAsset.ps1` fits it to the other bodies, transfers the weights,
-   computes the masks, and runs the checks.
-4. The reviewer looks at the review sheet and the garment in the Wardrobe
+1. `New-ArtAsset.ps1 -Kind garment` creates a template from its recipe on the
+   cage: the template's version on the first body, in its band, with its ease,
+   turned edges, and UVs.
+2. A person shapes the first version in Blender where it needs more than the
+   recipe gives, such as folds or a flared hem.
+3. `Sync-GarmentAsset.ps1` fits it to the other bodies through the cage,
+   transfers the weights, computes the masks, and runs the checks.
+4. The reviewer looks at the review sheet and the template in the Wardrobe
    preview in Unity, then approves the `model` and `rig` stages, and the export
-   makes it ready for items.
+   makes it ready for textures.
+5. `New-ArtAsset.ps1 -Kind texture` creates a texture for the template, a person
+   or a script paints it, and the reviewer approves its `texture` stage on its
+   review sheet and in the Wardrobe; its export makes the template and the
+   texture ready for items.
 
 ### Checks
 
 The sync stops on a broken rule and reports the rest:
 
-- Every version has the garment's topology and stays within its triangle budget.
-- Every vertex and every face centre lies within its band on every body type, so
-  a flat face over a round shoulder cannot dip under the skin.
+- The cage of every body has the cage's topology, no vertex or face centre
+  inside the skin, and no face that crosses another, and every line crosses its
+  region on every body.
+- Every version of a template has the first version's topology and stays within
+  its triangle budget.
+- Every vertex and every face centre lies within its band from the cage on every
+  body type, so a flat face over a round shoulder cannot dip under the skin and
+  cloth cannot sink into a pit.
 - In the rig review's test poses and at every frame of `Idle`, `Walk`, `Jog`,
   and `Death`, no visible body vertex under the garment comes through the cloth.
   The report names how many do and the deepest place, and the review sheet
-  shows their faces red, for the reviewer to weigh and the garment's shape or
-  weights to fix. No garment of a lower layer reaches through a higher one; this
-  is checked when a character wears garments together, in step 4.
+  shows their faces red, for the reviewer to weigh and the template's ease,
+  shape, or weights to fix. No garment of a lower layer reaches through a higher
+  one where they overlap; the pair check tests this from the first pair of
+  templates that overlap.
 - The faces that only the cone of rays leaves visible are the garment's
   openings, and the review sheet shows the mask with the skin kept visible at
   the garment's edges, so a mask that is too small or too large shows there; a
@@ -389,13 +651,22 @@ The sync stops on a broken rule and reports the rest:
 
 ### Review
 
-The review sheet shows the garment on every body type from four sides, the
-garment in the test poses, and the body without it, the covered faces orange,
-the skin kept visible at the garment's edges yellow, the pulled-in vertices
-blue, and skin that comes through the garment in motion red.
-Cloth motion is reviewed in the Wardrobe preview, a
-Unity Editor window that dresses a body in chosen garments, plays a clip on a
-moving ground, and runs the cloth solver.
+The cage's review sheet shows every body from the front, the side, and the back
+with the cage over it, colored by its distance from the skin, and the standard
+lines drawn on it.
+
+The template's review sheet shows the template on every body type from four
+sides with its grid, the template in the test poses, and the body without it,
+the covered faces orange, the skin kept visible at the garment's edges yellow,
+the pulled-in vertices blue, and skin that comes through the garment in motion
+red. The texture's review sheet shows the template with the texture on every
+body type from four sides, and for a texture with transparent parts also the
+body without it in the colors of the template's sheet, with its own mask and
+the skin that comes through it in motion.
+
+Cloth motion is reviewed in the Wardrobe preview, a Unity Editor window that
+dresses a body in chosen garments with their textures, plays a clip on a moving
+ground, and runs the cloth solver.
 
 ## Budgets
 
@@ -426,15 +697,25 @@ quarter of the triangles come with the first crowd measurement that needs them.
 4. Putting a character together in Unity: masks, garment layers, pull-in, the
    garment shader with clipping and dyes, the Wardrobe preview, and trying
    garments on in F2. Done.
-5. The proof set, each approved by Victor: the leather jerkin as a garment with
-   its collar, trousers, boots, a garment that shows skin (a crop top or a net
-   shirt) over a tattoo paint layer, a robe with a hood, a cloak, and one hair
-   with its compressed form.
-6. Items: items show their garments, the `back` slot, dye colors on items, and
-   the look sent to every client with the body type.
+5. The garment cage, templates, and textures, each approved by Victor:
+   - 5a. The garment cage: the `cage` kind, its fitting to every body, its
+     standard lines, its checks, and its review sheet.
+   - 5b. Templates and textures: the `garment` kind built from recipes on the
+     cage, with its bands, weights, and masks from the cage, ease, turned
+     edges, and UVs; the `texture` kind with its own masks; the Unity catalog,
+     the Wardrobe, and F2 choosing a texture per template; and the leather
+     jerkin as the first template, `Jerkin`, with its paint moved to the
+     template's UVs as its first texture, `LeatherJerkin`.
+   - 5c. The proof set: a shirt and a long-sleeved shirt, trousers, boots, and
+     gloves with their textures and the pair checks where they overlap, a net
+     texture with transparent parts over a tattoo paint layer, a robe with a
+     hood, a cloak, and one hair with its compressed form.
+   - 5d. Paint layers independent of the bodies' topology, moved between bodies
+     by projection.
+6. Items: items show their garments as templates with textures, the `back` slot,
+   dye colors on items, and the look sent to every client with the body type.
 7. With the first new race: making a body type from a human body, generalizing
-   `Sync-HumanBase.ps1` to every body of the topology, and fitting the garments to
-   it.
+   `Sync-HumanBase.ps1` to every body of the race, and adding it to the cage.
 
 ## Open Questions
 
