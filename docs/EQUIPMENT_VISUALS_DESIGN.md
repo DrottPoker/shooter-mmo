@@ -249,7 +249,10 @@ template's version on the first body, the male; every other body's version is
 fitted from it. A person may then shape the first version by hand, such as
 folds or a flared hem; the pipeline keeps that shape as a difference over the
 cage, so it follows to every body and survives a refit. A recipe that changes
-builds the template anew, and its textures move to the new UVs by projection.
+builds the template anew: the handmade shape, the difference between the first
+version and the build it was shaped on, is carried over to the new build by
+projection, each new vertex taking the difference at its place on the cage, and
+the textures move to the new UVs by projection.
 
 Unique garments, such as a ceremonial robe, are templates with one texture. A
 form that no recipe of lines gives, such as a hairstyle or a helmet, is a
