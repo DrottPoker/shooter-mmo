@@ -66,11 +66,17 @@ def append_body(path: str, root: str, collection_name: str) -> bpy.types.Object:
 
 
 def fingerprint(arm: bpy.types.Object, body: bpy.types.Object) -> str:
-    """SHA-256 of what the fitting reads from a body: its rig, its surface, and its weights."""
+    """SHA-256 of what the fitting reads from a body: its rig, its surface with its faces and their
+    body parts, and its weights."""
     names = sorted(g.name for g in body.vertex_groups)
     digest = hashlib.sha256(skinned.rig_fingerprint(arm).encode("utf-8"))
     digest.update(";".join(names).encode("utf-8"))
     digest.update((np.round(bodies.world_positions(body), 6) + 0.0).tobytes())
+    digest.update(np.array([len(p.vertices) for p in body.data.polygons], np.int64).tobytes())
+    digest.update(np.array([v for p in body.data.polygons for v in p.vertices], np.int64).tobytes())
+    zone = body.data.attributes.get("zone")
+    if zone is not None and zone.domain == "FACE":
+        digest.update(bodies.zones_of(body).astype(np.int64).tobytes())
     digest.update((np.round(bodies.weights_of(body, names), 5) + 0.0).tobytes())
     return digest.hexdigest()
 
