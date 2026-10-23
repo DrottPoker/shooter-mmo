@@ -49,49 +49,71 @@ namespace Mmorpg.Client.Editor
         private Scene scene;
 
         public WardrobePreview(ArtAssetManifest body)
+            : this(
+                body.path,
+                AssetDatabase.LoadAssetAtPath<GameObject>(body.UnityTargetPath),
+                AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(ArtAppearanceCatalogs.PathFor(body)))
         {
-            var model = AssetDatabase.LoadAssetAtPath<GameObject>(body.UnityTargetPath);
-            Catalog = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(ArtAppearanceCatalogs.PathFor(body));
+        }
+
+        // A preview of this model with its appearance catalog; source names them in errors.
+        public WardrobePreview(string source, GameObject model, BodyAppearanceCatalog catalog)
+        {
+            Catalog = catalog;
             var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
             if (model == null || Catalog == null || controller == null)
             {
-                throw new InvalidOperationException(body.path + ": the model, its appearance catalog, or the locomotion controller is missing.");
+                throw new InvalidOperationException(source + ": the model, its appearance catalog, or the locomotion controller is missing.");
             }
 
             scene = EditorSceneManager.NewPreviewScene();
-            Body = (GameObject)PrefabUtility.InstantiatePrefab(model, scene);
-            Body.name = model.name;
-            animator = Body.GetComponent<Animator>();
-            animator.runtimeAnimatorController = controller;
-            animator.applyRootMotion = false;
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-            foreach (var clip in controller.animationClips)
+            try
             {
-                if (clip.name == HumanLocomotion.WalkClip)
+                Body = (GameObject)PrefabUtility.InstantiatePrefab(model, scene);
+                Body.name = model.name;
+                animator = Body.GetComponent<Animator>();
+                if (animator == null)
                 {
-                    walkCycleSeconds = clip.length;
+                    throw new InvalidOperationException(source + ": the model has no Animator.");
                 }
-                else if (clip.name == HumanLocomotion.JogClip)
+
+                animator.runtimeAnimatorController = controller;
+                animator.applyRootMotion = false;
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                foreach (var clip in controller.animationClips)
                 {
-                    jogCycleSeconds = clip.length;
+                    if (clip.name == HumanLocomotion.WalkClip)
+                    {
+                        walkCycleSeconds = clip.length;
+                    }
+                    else if (clip.name == HumanLocomotion.JogClip)
+                    {
+                        jogCycleSeconds = clip.length;
+                    }
                 }
+
+                appearance = Body.AddComponent<PlayerBodyAppearance>();
+                var properties = new SerializedObject(appearance);
+                properties.FindProperty("catalog").objectReferenceValue = Catalog;
+                properties.ApplyModifiedPropertiesWithoutUndo();
+                solver = Body.AddComponent<ClothChainSolver>();
+                appearance.CombineParts(meshes);
+
+                ground = CreateGround();
+                var lightObject = new GameObject("WardrobeLight");
+                SceneManager.MoveGameObjectToScene(lightObject, scene);
+                var light = lightObject.AddComponent<Light>();
+                light.type = LightType.Directional;
+                light.intensity = 1.2f;
+                lightObject.transform.rotation = Quaternion.Euler(45f, 150f, 0f);
+                Play(Motion.Idle);
             }
-
-            appearance = Body.AddComponent<PlayerBodyAppearance>();
-            var properties = new SerializedObject(appearance);
-            properties.FindProperty("catalog").objectReferenceValue = Catalog;
-            properties.ApplyModifiedPropertiesWithoutUndo();
-            solver = Body.AddComponent<ClothChainSolver>();
-            appearance.CombineParts(meshes);
-
-            ground = CreateGround();
-            var lightObject = new GameObject("WardrobeLight");
-            SceneManager.MoveGameObjectToScene(lightObject, scene);
-            var light = lightObject.AddComponent<Light>();
-            light.type = LightType.Directional;
-            light.intensity = 1.2f;
-            lightObject.transform.rotation = Quaternion.Euler(45f, 150f, 0f);
-            Play(Motion.Idle);
+            catch
+            {
+                // A model that cannot be shown leaves no scene or objects behind.
+                Dispose();
+                throw;
+            }
         }
 
         public BodyAppearanceCatalog Catalog { get; }

@@ -1,8 +1,10 @@
+using System;
 using System.Linq;
 using Mmorpg.Client.Editor;
 using Mmorpg.Client.Gameplay;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -13,6 +15,9 @@ namespace Mmorpg.Client.Tests.EditMode
     {
         private const string Jerkin = "LeatherJerkin";
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
+
+        // A model without an Animator.
+        private const string IronVeinPath = "Assets/Art/Models/WorldActors/Resource_IronVein.fbx";
 
         [Test]
         public void TheWardrobeDressesEveryBodyInItsGarments()
@@ -90,6 +95,18 @@ namespace Mmorpg.Client.Tests.EditMode
             preview.Dispose();
             Assert.That(scene.IsValid(), Is.False);
             Assert.That(body == null, Is.True);
+        }
+
+        [Test]
+        public void AModelThatCannotBeShownLeavesNoSceneBehind()
+        {
+            var vein = AssetDatabase.LoadAssetAtPath<GameObject>(IronVeinPath);
+            var catalog = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(ArtAppearanceCatalogs.PathFor(WardrobePreview.Bodies()[0]));
+            var scenes = EditorSceneManager.previewSceneCount;
+
+            var error = Assert.Throws<InvalidOperationException>(() => new WardrobePreview(IronVeinPath, vein, catalog));
+            Assert.That(error.Message, Does.Contain("has no Animator"));
+            Assert.That(EditorSceneManager.previewSceneCount, Is.EqualTo(scenes));
         }
 
         [Test]
