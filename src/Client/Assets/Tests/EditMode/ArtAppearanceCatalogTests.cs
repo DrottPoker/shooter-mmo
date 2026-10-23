@@ -110,6 +110,11 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(garment.Underlay.Count, Is.EqualTo(renderer.sharedMesh.triangles.Length / 3), where);
                     Assert.That(garment.Covered, Is.Not.Empty, where);
                     Assert.That(garment.Slot, Is.Not.Empty, where);
+                    // A garment is a texture on its template, and draws with the texture's material.
+                    Assert.That(garment.Template, Is.Not.Empty, where);
+                    Assert.That(garment.Material, Is.Not.Null, where);
+                    Assert.That(garment.Material.name, Is.EqualTo("M_Garment_" + garment.Name), where);
+                    Assert.That(garment.Material.shader.name, Is.EqualTo(ArtMaterialCreator.GarmentShader), where);
                 }
             }
         }
@@ -139,6 +144,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.Slots.Select(slot => slot.Name), Is.EquivalentTo(new[] { "Eye", "Face" }));
             Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EquivalentTo(new[] { "LeatherJerkin" }));
             Assert.That(catalog.Garments.Select(garment => garment.Name), Is.EquivalentTo(new[] { "LeatherJerkin" }));
+            Assert.That(catalog.GarmentNamed("LeatherJerkin").Template, Is.EqualTo("Jerkin"));
         }
     }
 }

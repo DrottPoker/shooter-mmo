@@ -130,15 +130,19 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // The garments of the catalog that the look names, from the lowest layer up; true when
-        // they changed.
+        // they changed. A template is worn with one texture: of two textures of one template that
+        // the look names, the first in the catalog is worn, so the template's mesh is never drawn
+        // twice.
         private bool WearLook()
         {
             worn.Clear();
             if (catalog != null)
             {
+                var templates = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var garment in catalog.Garments)
                 {
-                    if (garment != null && look.HasGarment(garment.Name))
+                    if (garment != null && look.HasGarment(garment.Name)
+                        && (garment.Template.Length == 0 || templates.Add(garment.Template)))
                     {
                         worn.Add(garment);
                     }

@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 $problems = New-Object System.Collections.Generic.List[string]
 $targets = @{}
 $textures = @{}
+$materials = @{}
 $directories = @(Get-ArtAssetDirectories)
 foreach ($directory in $directories) {
     try {
@@ -21,9 +22,17 @@ foreach ($directory in $directories) {
     }
 
     $where = $manifest.RelativeDirectory
-    # A paint layer exports images only, so it has no model target, and a garment a model and its
-    # data per body.
-    $modelTargets = @(if ($manifest.Kind -eq "garment") { @($manifest.Models | ForEach-Object { $_.Target; $_.Data }) }
+    # A paint layer exports images only, so it has no model target, a garment a model and its data
+    # per body, also of a body that left its cage until it is exported again, and a texture with
+    # transparent parts its masks per body of its template.
+    $modelTargets = @(if ($manifest.Kind -eq "garment") {
+            @(@($manifest.Models | ForEach-Object { $_.Target; $_.Data }) +
+                @($manifest.Export.models | Where-Object { $null -ne $_ } | ForEach-Object { $_.target; $_.data }) | Sort-Object -Unique)
+        }
+        elseif ($manifest.Kind -eq "texture") {
+            if ($null -ne $manifest.Export) { @($manifest.Export.masks | Where-Object { $null -ne $_ } | ForEach-Object { $_.data }) }
+            else { @($manifest.Masks | ForEach-Object { $_.Data }) }
+        }
         elseif ($null -ne $manifest.Target) { @($manifest.Target) })
     # A body with an editable mesh exports its topology next to its model.
     if ($null -ne $manifest.Export -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
@@ -90,7 +99,55 @@ foreach ($directory in $directories) {
         $problems.Add("${where}: the export comes from another version of $($manifest.Name).blend; run tools/Export-ArtAsset.ps1.")
     }
 
+    if ($manifest.Kind -eq "texture") {
+        # The texture was exported against the current export of its template.
+        $templateExport = $null
+        try {
+            $templateExport = (Read-ArtAssetManifest $manifest.Garment.Directory).Export
+        }
+        catch {
+            # The template's own problems are reported with the template.
+        }
+
+        if ($null -eq $templateExport -or $templateExport.sourceSha256 -ne $manifest.Export.garmentSourceSha256) {
+            $problems.Add("${where}: was exported against another export of its template $($manifest.Garment.RelativeDirectory); run tools/Sync-TextureAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1.")
+        }
+        elseif ($manifest.Approvals["texture"].garmentSourceSha256 -ne $manifest.Export.garmentSourceSha256) {
+            $problems.Add("${where}: was approved on another file of its template $($manifest.Garment.RelativeDirectory) than it was exported against; run tools/Sync-TextureAsset.ps1, review and approve it again, then run tools/Export-ArtAsset.ps1.")
+        }
+
+        # A texture with masks has them for exactly the bodies of its template.
+        $masked = @($manifest.Export.masks | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_.body } | Sort-Object)
+        $roots = @($manifest.Masks | ForEach-Object { $_.Body } | Sort-Object)
+        if ($masked.Count -gt 0 -and ($masked -join ",") -cne ($roots -join ",")) {
+            $problems.Add("${where}: has masks for other bodies ($($masked -join ', ')) than its template has ($($roots -join ', ')); run tools/Sync-TextureAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
+        }
+
+        foreach ($mask in @($manifest.Export.masks | Where-Object { $null -ne $_ })) {
+            $maskPath = Join-Path $script:ArtRepositoryRoot $mask.data
+            if (-not (Test-Path -LiteralPath $maskPath -PathType Leaf)) {
+                $problems.Add("${where}: $($mask.data) is missing; run tools/Export-ArtAsset.ps1.")
+            }
+            elseif ((Get-ArtFileSha256 $maskPath) -ne $mask.dataSha256) {
+                $problems.Add("${where}: $($mask.data) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
+            }
+        }
+    }
+
+    # A texture with masks of its own was checked in the clips of these libraries.
+    if ($manifest.Kind -eq "texture" -and @($manifest.Export.masks | Where-Object { $null -ne $_ }).Count -gt 0) {
+        $clipProblem = Get-ArtClipSourcesProblem $manifest "tools/Sync-TextureAsset.ps1"
+        if ($null -ne $clipProblem) {
+            $problems.Add("${where}: $clipProblem.")
+        }
+    }
+
     if ($manifest.Kind -eq "garment") {
+        # The template still matches its cage, the bodies of the cage, and the clips it was checked in.
+        foreach ($dependencyProblem in @(Get-ArtGarmentDependencyProblems $manifest)) {
+            $problems.Add("${where}: $dependencyProblem.")
+        }
+
         foreach ($model in @($manifest.Export.models)) {
             foreach ($file in @(@($model.target, $model.sha256), @($model.data, $model.dataSha256))) {
                 $filePath = Join-Path $script:ArtRepositoryRoot $file[0]
@@ -101,29 +158,6 @@ foreach ($directory in $directories) {
                     $problems.Add("${where}: $($file[0]) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
                 }
             }
-
-            # The garment was fitted and checked against the export of its body.
-            $body = @($manifest.Models | Where-Object { $_.Body -ceq $model.body }) | Select-Object -First 1
-            $bodyExport = $null
-            try {
-                $bodyExport = (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $body.BodyAsset)).Export
-            }
-            catch {
-                # The body's own problems are reported with the body.
-            }
-
-            if ($null -eq $bodyExport -or $bodyExport.sourceSha256 -ne $model.bodySourceSha256) {
-                $problems.Add("${where}: was exported against another export of its body $($body.BodyAsset); run tools/Sync-GarmentAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1.")
-            }
-        }
-
-        # Its masks hide the skin that comes out of it in the clips of these libraries.
-        $libraries = @(Get-ArtClipLibraries $manifest.Skeleton | ForEach-Object {
-                [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.sourceSha256 } else { "" })
-            } | Sort-Object)
-        $recorded = @($manifest.Export.clipSources | ForEach-Object { "$($_.library)=$($_.sourceSha256)" } | Sort-Object)
-        if (($libraries -join ",") -cne ($recorded -join ",")) {
-            $problems.Add("${where}: was checked in other clips than the current exports of the $($manifest.Skeleton) animation libraries; run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
         }
     }
     elseif ($null -eq $manifest.Target) {
@@ -161,6 +195,15 @@ foreach ($directory in $directories) {
         if ($null -eq $rigExport -or $rigExport.sourceSha256 -ne $manifest.Export.rigSourceSha256) {
             $problems.Add("${where}: was exported against another export of its rig $($manifest.Rig.Asset); run tools/Sync-AnimationLibrary.ps1, and if it changed the library, review and approve it again, then run tools/Export-ArtAsset.ps1.")
         }
+    }
+
+    # Unity finds a project material by its name, so no two assets export one of the same name.
+    foreach ($material in @($manifest.Export.materials | Where-Object { $null -ne $_ })) {
+        if ($materials.ContainsKey($material.name)) {
+            $problems.Add("${where}: the material $($material.name) is also a material of $($materials[$material.name]); give one of them another name.")
+        }
+
+        $materials[$material.name] = $where
     }
 
     foreach ($texture in @($manifest.Export.textures)) {

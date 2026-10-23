@@ -34,7 +34,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 var garmentTriangles = TriangleCount(jerkin.Model.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh);
                 Assert.That(hidden, Is.GreaterThan(0));
                 Assert.That(TriangleCount(dressed), Is.EqualTo(bare - hidden + garmentTriangles));
-                Assert.That(appearance.CombinedRenderer.sharedMaterials.Select(material => material.name), Does.Contain("M_Garment_" + Jerkin));
+                var drawn = appearance.CombinedRenderer.sharedMaterials.Select(material => material.name).ToArray();
+                Assert.That(drawn, Does.Contain("M_Garment_" + Jerkin));
+                Assert.That(drawn, Does.Not.Contain("M_Garment_" + jerkin.Template));
                 // Every bone of the combined mesh is the body's own.
                 Assert.That(appearance.CombinedRenderer.bones.All(bone => bone.IsChildOf(appearance.transform)), Is.True);
                 // No vertex is left that no triangle uses.
@@ -157,8 +159,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
 
                 const float distance = 0.002f;
-                var pulled = new BodyAppearanceCatalog.Garment(jerkin.Name, jerkin.Slot, jerkin.Layer, jerkin.Hides.ToArray(), jerkin.Hair,
-                    jerkin.Cloth, jerkin.Model, jerkin.Covered.ToArray(), jerkin.Underlay.ToArray(),
+                var pulled = new BodyAppearanceCatalog.Garment(jerkin.Name, jerkin.Template, jerkin.Material, jerkin.Slot, jerkin.Layer,
+                    jerkin.Hides.ToArray(), jerkin.Hair, jerkin.Cloth, jerkin.Model, jerkin.Covered.ToArray(), jerkin.Underlay.ToArray(),
                     new[] { map.VertexSources[visibleVertex] }, new[] { distance });
                 var combined = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { pulled });
                 try
@@ -178,6 +180,35 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void ABodyWearsOneTextureOfATemplateAtATime()
+        {
+            Wear((appearance, meshes, materials) =>
+            {
+                var jerkin = appearance.Catalog.GarmentNamed(Jerkin);
+                var dyed = CopyOf(jerkin, "DyedJerkin", jerkin.Slot, jerkin.Layer, jerkin.Hides);
+                var catalog = Object.Instantiate(appearance.Catalog);
+                try
+                {
+                    catalog.Configure(catalog.Slots.ToArray(), catalog.Paints.ToArray(), catalog.Parts.ToArray(),
+                        catalog.Garments.Concat(new[] { dyed }).ToArray());
+                    var serialized = new SerializedObject(appearance);
+                    serialized.FindProperty("catalog").objectReferenceValue = catalog;
+                    serialized.ApplyModifiedPropertiesWithoutUndo();
+                    Assert.That(catalog.OtherTexturesOf(catalog.GarmentNamed(Jerkin)).Select(garment => garment.Name),
+                        Is.EqualTo(new[] { "DyedJerkin" }));
+
+                    // Both textures of the template in the look: the first in the catalog is worn.
+                    appearance.ApplyLook(BodyLook.Default.WithGarment(Jerkin, true).WithGarment("DyedJerkin", true), materials);
+                    Assert.That(appearance.Worn.Select(garment => garment.Name), Is.EqualTo(new[] { Jerkin }));
+                }
+                finally
+                {
+                    Object.DestroyImmediate(catalog);
+                }
+            });
+        }
+
+        [Test]
         public void LooseClothHangsOnItsChains()
         {
             Assert.That(PlayerBodyAppearance.ChainsOf("robe"), Is.EqualTo(ClothChainKind.Skirt));
@@ -189,8 +220,9 @@ namespace Mmorpg.Client.Tests.EditMode
         private static BodyAppearanceCatalog.Garment CopyOf(BodyAppearanceCatalog.Garment garment, string name, string slot, int layer,
             IEnumerable<string> hides)
         {
-            return new BodyAppearanceCatalog.Garment(name, slot, layer, hides.ToArray(), garment.Hair, garment.Cloth, garment.Model,
-                garment.Covered.ToArray(), garment.Underlay.ToArray(), garment.PullInVertices.ToArray(), garment.PullInDistances.ToArray());
+            return new BodyAppearanceCatalog.Garment(name, garment.Template, garment.Material, slot, layer, hides.ToArray(), garment.Hair,
+                garment.Cloth, garment.Model, garment.Covered.ToArray(), garment.Underlay.ToArray(), garment.PullInVertices.ToArray(),
+                garment.PullInDistances.ToArray());
         }
 
         private static void Wear(System.Action<PlayerBodyAppearance, PlayerBodyMeshes, PlayerBodyMaterials> test)

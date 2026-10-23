@@ -7,7 +7,7 @@ param(
     [string]$Asset,
     # Review stages of a static asset: model. Of a skinned asset: model, rig, and animation when it
     # has clips of its own. Of an animation library: animation. Of a paint layer: paint. Of a
-    # garment: model and rig. Of the garment cage: model.
+    # garment template: model and rig. Of the garment cage: model. Of a garment texture: texture.
     [string]$Stage = "model",
     [string]$BlenderPath
 )
@@ -36,6 +36,14 @@ for ($i = 0; $i -lt $stageIndex; $i++) {
     }
 }
 
+# A template is approved only on an approved cage that was fitted to the current bodies.
+if ($manifest.Kind -eq "garment") {
+    $cageProblem = Get-ArtCageGateProblem $manifest.Cage
+    if ($null -ne $cageProblem) {
+        throw "Approve the cage $($manifest.Cage.RelativeDirectory) of $($manifest.Name) first: $cageProblem."
+    }
+}
+
 # Only an asset that meets the export rules can be approved.
 $blender = Resolve-ArtBlender $BlenderPath
 $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $Stage))
@@ -43,6 +51,11 @@ $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtVali
 $manifest.Approvals[$Stage] = [ordered]@{
     date = (Get-Date).ToString("yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)
     sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
+}
+
+# A texture is reviewed on its template, so its approval records the template's file.
+if ($manifest.Kind -eq "texture") {
+    $manifest.Approvals[$Stage].garmentSourceSha256 = Get-ArtFileSha256 $manifest.Garment.SourcePath
 }
 
 # An approved cage records the exports of the bodies it was fitted to.

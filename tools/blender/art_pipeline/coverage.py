@@ -5,11 +5,13 @@ comes through the garment in the test poses and the clips. See docs/EQUIPMENT_VI
 - The cover mask holds the body faces the garment hides. From sample points on a face, rays go out
   in a cone around the face normal; a face is covered when every ray hits the garment where its
   texture is opaque, or the body itself, before it gets out of the garment's reach, and at least one
-  hits the garment. A ray that leaves through a hole, an open hem, or a transparent part of the
+  hits the garment. The reach is the band's above the garment cage, so a ray from the bottom of a
+  pit that the cage spans reaches the cloth over it. A ray that leaves through a hole, an open hem, or a transparent part of the
   texture leaves the face visible, and so does a face that only the body hides, such as the inside
   of the mouth. The skin at the garment's edges stays visible as well: a look into a sleeve or under
-  a hem sees past the cone, so a face within the band's edge reach of an open edge of the garment,
-  a border of its mesh or a line where its texture is cut, is never hidden.
+  a hem sees past the cone, so a face within the edge reach of an open edge of the garment, a
+  border of its mesh or a line where its texture is cut, is never hidden. The edge reach is the
+  band's, or four times the gap between the skin and the edge where the cloth hangs farther off.
 - The underlay holds, for every garment face, the body face under it.
 - The pull-in holds how far to move visible body vertices inward that lie closer to the garment
   than its band allows, such as the skin at a hem, so they stay under it in motion.
@@ -39,8 +41,12 @@ from .scene import ArtPipelineError
 # How far rays look for the garment from the skin, per band, in meters.
 REACH = {"tight": 0.03, "mid": 0.05, "outer": 0.10, "loose": 0.30}
 # How far from an open edge of the garment the skin stays visible, per band, in meters: a look
-# into an opening reaches about four times the band's gap between skin and cloth.
+# into an opening reaches about four times the band's gap between skin and cloth, or four times the
+# gap at the edge where the cloth hangs farther off the skin, up to the largest band's reach.
 EDGE_REACH = {"tight": 0.02, "mid": 0.04, "outer": 0.08, "loose": 0.12}
+EDGE_GAPS = 4.0
+# How far from the skin a ray looks for the garment cage over it.
+CAGE_REACH = 0.1
 # The open edges are sampled this densely.
 EDGE_SPACING = 0.005
 CONE_ANGLE = math.radians(25.0)
@@ -133,9 +139,10 @@ class _Cloth:
         uv = sum(self.uv[loop] * w for loop, w in zip(loops, weights))
         return bool(self.opaque_uv(np.array([uv]))[0])
 
-    def edges(self) -> KDTree | None:
-        """Points every EDGE_SPACING along the open edges of the cloth where it is opaque: the
-        borders of its mesh and the lines where its texture is cut. None when it has no edge."""
+    def edges(self) -> tuple[KDTree, np.ndarray] | None:
+        """Points every EDGE_SPACING along the open edges of the cloth where it is opaque, the
+        borders of its mesh and the lines where its texture is cut, and the points themselves. None
+        when it has no edge."""
         opaque, clear, border = [], [], []
         for _polygon, vertices, loops in self.triangles:
             corners = self.co[list(vertices)]
@@ -171,7 +178,7 @@ class _Cloth:
         for index, point in enumerate(found):
             tree.insert(point, index)
         tree.balance()
-        return tree
+        return tree, np.array(found)
 
 
 def _alpha(obj: bpy.types.Object) -> np.ndarray | None:
@@ -261,6 +268,22 @@ def _covers(cloth: _Cloth, surface: "garment.Surface", polygon: int, rays: list[
     return hits_garment
 
 
+def _cage_gap(shell: BVHTree, point: Vector, normal: Vector) -> float:
+    """How far the garment cage lies off the skin at a point, along the skin's normal."""
+    hit = shell.ray_cast(point, normal, CAGE_REACH)
+    if hit[0] is not None:
+        return hit[3]
+    _location, _normal, _index, distance = shell.find_nearest(point)
+    return min(distance if distance is not None else 0.0, CAGE_REACH)
+
+
+def _edge_reach(edges, surface: "garment.Surface", band: str) -> np.ndarray:
+    """The edge reach at every edge point: the band's, or four times the gap between the skin and
+    the edge where the cloth hangs farther off."""
+    gaps = np.array([max(surface.nearest(Vector(p))[0], 0.0) for p in edges[1]])
+    return np.clip(gaps * EDGE_GAPS, EDGE_REACH[band], max(EDGE_REACH.values()))
+
+
 def compute(name: str, label: str, band: str) -> Coverage:
     """The cover mask, underlay, and pull-in of one version of the garment, at rest."""
     body = bodies.source_body(label)
@@ -269,8 +292,10 @@ def compute(name: str, label: str, band: str) -> Coverage:
         raise ArtPipelineError(f'The garment has no version "{garment.version_name(name, label)}" on a body.')
     reach = REACH[band]
     surface = garment.Surface(body, [])
+    shell = garment.Surface(garment.cage_object(label), []).tree
     cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
     edges = cloth.edges()
+    edge_reach = _edge_reach(edges, surface, band) if edges is not None else None
     rotation = body.matrix_world.to_3x3()
     covered = np.zeros(len(body.data.polygons), bool)
     edge = np.zeros(len(body.data.polygons), bool)
@@ -282,9 +307,12 @@ def compute(name: str, label: str, band: str) -> Coverage:
         # with its centre.
         samples = [surface.tree.find_nearest(p)[0] for p in [centre] + [centre.lerp(c, SAMPLE_SPREAD) for c in corners]]
         rays = [(sample + normal * SKIN_OFFSET, d) for sample in samples for d in _cone(normal)]
-        if not _covers(cloth, surface, polygon.index, rays, reach):
+        if not _covers(cloth, surface, polygon.index, rays, _cage_gap(shell, samples[0], normal) + reach):
             continue
-        if edges is not None and min(edges.find(p)[2] for p in [centre] + corners) <= EDGE_REACH[band]:
+        near_edge = edges is not None and any(
+            distance <= edge_reach[index] for p in [centre] + corners
+            for _co, index, distance in edges[0].find_range(p, float(edge_reach.max())))
+        if near_edge:
             edge[polygon.index] = True
         else:
             covered[polygon.index] = True
@@ -294,7 +322,7 @@ def compute(name: str, label: str, band: str) -> Coverage:
     for polygon in version.data.polygons:
         centre = Vector(np.mean([cloth.co[v] for v in polygon.vertices], axis=0))
         inward = -(garment_rotation @ polygon.normal).normalized()
-        hit = surface.tree.ray_cast(centre, inward, 2.0 * reach)
+        hit = surface.tree.ray_cast(centre, inward, CAGE_REACH + 2.0 * reach)
         if hit[0] is None:
             hit = surface.tree.find_nearest(centre)
         underlay[polygon.index] = surface.triangles[hit[2]][0]
@@ -449,10 +477,12 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     # The visible skin the garment is over at rest: going out from it, a ray meets the garment's
     # inner side where it is opaque. That point of the garment is the skin's cover.
     cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
+    shell = garment.Surface(garment.cage_object(label), []).tree
     vertices, corners, weights = [], [], []
     for vertex in coverage.visible_vertices(body):
         direction = Vector(normals[vertex]).normalized()
-        hit = _opaque_hit(cloth, Vector(pulled[vertex]), direction, REACH[coverage.band])
+        reach = _cage_gap(shell, Vector(pulled[vertex]), direction) + REACH[coverage.band]
+        hit = _opaque_hit(cloth, Vector(pulled[vertex]), direction, reach)
         if hit is not None and hit[1].dot(direction) > 0.0:
             location = Vector(pulled[vertex]) + direction * hit[0]
             triangle = cloth.triangles[cloth.tree.find_nearest(location)[2]][1]

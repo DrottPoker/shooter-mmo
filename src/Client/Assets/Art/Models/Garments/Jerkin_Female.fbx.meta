@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: d63e66fff82d36c40b5c1a063d6fdc46
+guid: 15f23328a43392b43ad32d2e871bc02e
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
@@ -7,8 +7,8 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: M_Garment_LeatherJerkin
-    second: {fileID: 2100000, guid: 3bf30e1fdbba75b42b6bec07853e7626, type: 2}
+      name: M_Garment_Jerkin
+    second: {fileID: 2100000, guid: 7e3f68e17a978f143ad544890882943b, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

@@ -1,21 +1,21 @@
 # Creates a new art asset: its folder below art/, its asset.json with the fields of its kind, and
 # its first .blend file, so the next step is the work in Blender. A static model starts as an
 # empty scene with the Export collection and its root objects, an animation library from the rig
-# it is keyed on, optionally with clips of the gait model, a paint layer from its bodies, a
-# garment from its bodies with a starting shell on the first body, and the garment cage of a
-# skeleton from the first of its bodies, fitted to all of them, with the standard lines. The asset
-# then goes through review, approval, and export like any other; the cage has no export. See
+# it is keyed on, optionally with clips of the gait model, a paint layer from its bodies, the
+# garment cage of a skeleton from the first of its bodies, fitted to all of them, with the standard
+# lines, a garment template on a cage from its recipe, and a garment texture for a template. The
+# asset then goes through review, approval, and export like any other; the cage has no export. See
 # docs/ART_PIPELINE.md.
 param(
     # static for a model without a skeleton, animations for an animation library, paint for a paint
-    # layer, garment for clothes or armor, cage for the garment cage of a skeleton. A new body type
-    # starts from a human base body and comes with body types.
+    # layer, cage for the garment cage of a skeleton, garment for a garment template, texture for the
+    # look of a template. A new body type starts from a human base body and comes with body types.
     [Parameter(Mandatory = $true)]
-    [ValidateSet("static", "animations", "paint", "garment", "cage")]
+    [ValidateSet("static", "animations", "paint", "garment", "cage", "texture")]
     [string]$Kind,
     # The new asset folder art/<Category>/<Name>, such as art/WorldActors/Resource_CopperVein,
-    # art/Animations/Human_Combat, art/Paint/ChainShirt, art/Garments/LinenShirt, or
-    # art/Cages/Humanoid.
+    # art/Animations/Human_Combat, art/Paint/ChainShirt, art/Cages/Humanoid, art/Garments/Shirt, or
+    # art/GarmentTextures/LinenShirt.
     [Parameter(Mandatory = $true)]
     [string]$Asset,
     # static: the names of the top-level objects the game code expects, such as Available, Depleted.
@@ -28,13 +28,13 @@ param(
     # animations: clips of the gait model to start with, from Idle, Walk, and Jog.
     [string[]]$Generate = @(),
     # paint: the painted material part, the bodies the paint fits with the painted one first, and
-    # the drawing order from 0 to 1000, the lowest first. garment: the bodies it fits with the one
-    # it is made on first, and its layer from the inside out, by default the slot's typical layer.
-    # cage: the bodies it is fitted to, the one it is made from first.
+    # the drawing order from 0 to 1000, the lowest first. garment: its layer from the inside out, by
+    # default the slot's typical layer. cage: the bodies it is fitted to, the one it is made from
+    # first.
     [string]$Part = "Body",
     [string[]]$Bodies = @("art/Characters/Human_Male", "art/Characters/Human_Female"),
     [int]$Layer = 20,
-    # garment: its visual slot, its band from the skin, the slots it hides, what happens to the hair
+    # garment: its visual slot, its band from the cage, the slots it hides, what happens to the hair
     # under headwear, and its cloth profile. Its -TriangleBudget is by default the slot's budget.
     [ValidateSet("head", "body", "legs", "hands", "feet", "back", "hair")]
     [string]$Slot,
@@ -45,9 +45,22 @@ param(
     [string]$Hair,
     [ValidateSet("robe", "cloak", "hood")]
     [string]$Cloth,
-    # garment: a paint layer art/Paint/<Name> whose paint on the first body shows where the starting
-    # shell goes; without it, the shell covers the body parts of the slot.
-    [string]$FromPaint,
+    # garment: the cage it is made on and its recipe: the cage regions it covers, its cuts as
+    # <Line>:head or <Line>:tail, the side of each line it keeps, its ease at the armpits, and the
+    # depth of its turned edges, in meters. -Modeled makes a template whose first version a person
+    # models by hand instead.
+    [string]$Cage = "art/Cages/Humanoid",
+    [string[]]$Regions = @(),
+    [string[]]$Cuts = @(),
+    [double]$Ease = 0.0,
+    [double]$Hem = 0.004,
+    [switch]$Modeled,
+    # texture: the template it belongs to, its size in pixels, and optionally a mesh of another
+    # .blend file, <file.blend>=<Object>, whose look it starts from by projection.
+    [string]$Garment,
+    [ValidateSet(512, 1024, 2048)]
+    [int]$Size = 1024,
+    [string]$ProjectFrom,
     # cage: the figure scale in meters, the size of a detail the cage still spans.
     [double]$Figure = 0.06,
     [string]$BlenderPath
@@ -63,7 +76,7 @@ if ($relative -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$') {
 
 $parts = $relative.Split('/')
 $category, $name = $parts[1], $parts[2]
-$expectedCategory = @{ animations = "Animations"; paint = "Paint"; garment = "Garments"; cage = "Cages" }[$Kind]
+$expectedCategory = @{ animations = "Animations"; paint = "Paint"; garment = "Garments"; cage = "Cages"; texture = "GarmentTextures" }[$Kind]
 if ($null -ne $expectedCategory -and $category -cne $expectedCategory) {
     throw "A new $Kind asset goes below art/$expectedCategory, such as art/$expectedCategory/$name."
 }
@@ -71,6 +84,13 @@ if ($null -ne $expectedCategory -and $category -cne $expectedCategory) {
 $directory = Join-Path $script:ArtRepositoryRoot $relative
 if (Test-Path -LiteralPath $directory) {
     throw "$relative exists already; a new asset needs a folder of its own."
+}
+
+# A garment template and a garment texture both export the material M_Garment_<Name> and data
+# Models/Garments/<Name>_<Label>.json, so no texture may share a template's name, nor the reverse.
+$other = @{ garment = "GarmentTextures"; texture = "Garments" }[$Kind]
+if ($null -ne $other -and (Test-Path -LiteralPath (Join-Path (Join-Path $script:ArtSourceRoot $other) $name))) {
+    throw "art/$other/$name exists; a garment template and a garment texture need different names, such as Shirt and LinenShirt."
 }
 
 function Format-ArtList([string[]]$Values) {
@@ -123,7 +143,7 @@ switch ($Kind) {
         }
 
         # The typical layers and triangle budgets of docs/EQUIPMENT_VISUALS_DESIGN.md.
-        $layers = @{ head = 400; body = 200; legs = 100; hands = 150; feet = 120; back = 500 }
+        $layers = @{ head = 400; body = 200; legs = 100; hands = 350; feet = 120; back = 500 }
         $budgets = @{ head = 1500; body = 3000; legs = 2000; hands = 800; feet = 1000; back = 1500; hair = 2500 }
         if (-not $PSBoundParameters.ContainsKey("Layer")) {
             if (-not $layers.ContainsKey($Slot)) {
@@ -141,16 +161,53 @@ switch ($Kind) {
             throw "Headwear needs -Hair: hide, compress, or show."
         }
 
-        $bodyPaths = @($Bodies | ForEach-Object { (Read-ArtAssetManifest (Resolve-ArtAssetDirectory $_)).RelativeDirectory })
+        $cageManifest = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Cage)
+        if ($cageManifest.Kind -ne "cage") {
+            throw "$Cage is a $($cageManifest.Kind) asset; a garment template is made on a garment cage."
+        }
+
+        $lines[1] = '    "schemaVersion": 2,'
+        $lines.Add("    `"cage`": `"$($cageManifest.RelativeDirectory)`",")
         $lines.Add("    `"slot`": `"$Slot`",")
         $lines.Add("    `"layer`": $Layer,")
         $lines.Add("    `"band`": `"$Band`",")
-        $lines.Add("    `"bodies`": [$(Format-ArtList $bodyPaths)],")
+        if ($Modeled) {
+            $recipe = "modeled"
+        }
+        else {
+            $recipe = [ordered]@{
+                regions = [string[]]$Regions
+                cuts = @($Cuts | ForEach-Object {
+                        $parts = $_.Split(":")
+                        if ($parts.Count -ne 2) {
+                            throw "Pass each cut as <Line>:head or <Line>:tail, such as HemHip:tail."
+                        }
+
+                        [ordered]@{ line = $parts[0]; keep = $parts[1] }
+                    })
+                ease = $Ease
+                hem = $Hem
+            }
+        }
+
+        if ($null -eq (ConvertTo-ArtGarmentRecipe ([pscustomobject]$recipe) $cageManifest) -and -not $Modeled) {
+            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
+        }
+
+        Add-ArtRecipeLines $lines $recipe
         $lines.Add("    `"hides`": [$(Format-ArtList $Hides)],")
         $lines.Add("    `"hair`": $(if ($Hair) { '"' + $Hair + '"' } else { 'null' }),")
         $lines.Add("    `"cloth`": $(if ($Cloth) { '"' + $Cloth + '"' } else { 'null' }),")
         $lines.Add('    "dyes": 0,')
         $lines.Add("    `"triangleBudget`": $TriangleBudget,")
+    }
+    "texture" {
+        $template = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Garment)
+        if ($template.Kind -ne "garment") {
+            throw "-Garment must name the garment template the texture belongs to, such as art/Garments/Jerkin."
+        }
+
+        $lines.Add("    `"garment`": `"$($template.RelativeDirectory)`",")
     }
     "cage" {
         $bodyPaths = @($Bodies | ForEach-Object { (Read-ArtAssetManifest (Resolve-ArtAssetDirectory $_)).RelativeDirectory })
@@ -215,17 +272,9 @@ try {
             $arguments = @(
                 "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
                 "--python", $script:ArtBlenderCli, "--", "garment-create",
-                "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--slot", $Slot, "--band", $Band)
+                "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--manifest", $manifest.ManifestPath,
+                "--cage-manifest", $manifest.Cage.ManifestPath)
             $arguments += @($manifest.Bodies | ForEach-Object { @("--body", "$($_.SourcePath)=$($_.Root)") })
-            if ($FromPaint) {
-                $paint = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $FromPaint)
-                if ($paint.Kind -ne "paint" -or $paint.Bodies[0].Root -cne $manifest.RootObjects[0]) {
-                    throw "$FromPaint must be a paint layer painted on $($manifest.RootObjects[0])."
-                }
-
-                $arguments += @("--paint-file", $paint.SourcePath, "--paint-name", $paint.Name, "--part", $paint.Part)
-            }
-
             $blender = Resolve-ArtBlender $BlenderPath
             $output = Invoke-ArtNative $blender $arguments
             if ($script:ArtNativeExitCode -ne 0 -or @($output | Where-Object { $_ -like "ART_GARMENT created *" }).Count -eq 0) {
@@ -234,6 +283,27 @@ try {
 
             foreach ($line in @($output | Where-Object { $_ -like "ART_REPORT *" })) {
                 Write-Host $line.Substring("ART_REPORT ".Length)
+            }
+        }
+        "texture" {
+            $arguments = @(
+                "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
+                "--python", $script:ArtBlenderCli, "--", "texture-create",
+                "--file", $manifest.SourcePath, "--texture", $manifest.Name, "--garment-file", $manifest.Garment.SourcePath,
+                "--garment", $manifest.Garment.Name, "--label", $manifest.RootObjects[0], "--size", [string]$Size)
+            if ($ProjectFrom) {
+                $source = $ProjectFrom.Split("=")
+                if ($source.Count -ne 2 -or -not (Test-Path -LiteralPath $source[0] -PathType Leaf)) {
+                    throw "Pass -ProjectFrom as <file.blend>=<Object>."
+                }
+
+                $arguments += @("--source-file", (Resolve-Path -LiteralPath $source[0]).Path, "--source-object", $source[1])
+            }
+
+            $blender = Resolve-ArtBlender $BlenderPath
+            $output = Invoke-ArtNative $blender $arguments
+            if ($script:ArtNativeExitCode -ne 0 -or @($output | Where-Object { $_ -like "ART_TEXTURE_FILE created *" }).Count -eq 0) {
+                throw "Blender could not write $($manifest.SourcePath):`n$(($output | Select-Object -Last 20) -join "`n")"
             }
         }
         "cage" {
@@ -273,7 +343,10 @@ switch ($Kind) {
         Write-Host "Paint T_Paint_${name}_$((Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Bodies[0])).RootObjects[0]) on the first body, run tools/Sync-PaintAsset.ps1 again, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Paint Layer."
     }
     "garment" {
-        Write-Host "Shape ${name}_$($manifest.RootObjects[0]) on the first body, run tools/Sync-GarmentAsset.ps1, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment."
+        Write-Host "Shape ${name}_$($manifest.RootObjects[0]) on the first body where it needs more than its recipe, run tools/Sync-GarmentAsset.ps1, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment."
+    }
+    "texture" {
+        Write-Host "Paint T_Garment_$name on Preview in Texture Paint mode, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment."
     }
     "cage" {
         Write-Host "Run tools/Sync-CageAsset.ps1 for its review sheet and checks, then review and approve it as docs/LOCAL_DEVELOPMENT.md describes under Fit The Garment Cage."

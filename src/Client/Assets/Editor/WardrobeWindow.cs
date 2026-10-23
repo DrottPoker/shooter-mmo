@@ -179,6 +179,12 @@ namespace Mmorpg.Client.Editor
                 {
                     if (wear)
                     {
+                        // A template is worn with one texture at a time.
+                        foreach (var other in preview.Catalog.OtherTexturesOf(garment))
+                        {
+                            chosen.Remove(other.Name);
+                        }
+
                         chosen.Add(garment.Name);
                     }
                     else

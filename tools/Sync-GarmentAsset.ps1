@@ -1,14 +1,17 @@
-# Fits a garment to every body its asset.json names and checks it: bodies that changed in their own
-# files are taken in again, every other body's version is fitted again from the first body's
-# version, keeping the corrections made on it by hand, and every version gets the weights of the
-# body under it, keeping weights painted by hand on the first version. A file that this leaves as it
-# was is not saved, so its approvals stay valid. Then it writes the review sheet and the review file
-# with the test poses, and checks every rule of the garment. See docs/ART_PIPELINE.md.
+# Fits a garment template to every body of its cage and checks it: bodies and cages that changed in
+# their own files are taken in again, the first version moving with its cage, every other body's
+# version is fitted again from the first body's version through the cage, keeping the corrections
+# made on it by hand, and every version gets the weights of the body under it, keeping weights
+# painted by hand on the first version. A file that this leaves as it was is not saved, so its
+# approvals stay valid. Then it writes the review sheet and the review file with the test poses, and
+# checks every rule of the template. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
     # Transfers every weight from the bodies again, also the weights painted by hand.
     [switch]$Weights,
+    # Builds the first version again from a changed recipe, keeping its handmade shape.
+    [switch]$Rebuild,
     [string]$BlenderPath
 )
 
@@ -32,9 +35,14 @@ $blender = Resolve-ArtBlender $BlenderPath
 $arguments = @(
     "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
     "--python", $script:ArtBlenderCli, "--", "garment-sync",
-    "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--band", $manifest.Band) + $bodyArguments
+    "--file", $manifest.SourcePath, "--garment", $manifest.Name, "--manifest", $manifest.ManifestPath,
+    "--cage-manifest", $manifest.Cage.ManifestPath) + $bodyArguments
 if ($Weights) {
     $arguments += "--weights"
+}
+
+if ($Rebuild) {
+    $arguments += "--rebuild"
 }
 
 $output = Invoke-ArtNative $blender $arguments
@@ -82,6 +90,11 @@ Write-Host "Review file with the test poses (play the timeline): $reviewFile"
 $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest $manifest.Stages[-1]))
 foreach ($line in @($validation | Where-Object { $_ -like "ART_REPORT *" })) {
     Write-Host $line.Substring("ART_REPORT ".Length)
+}
+
+$cageProblem = Get-ArtCageGateProblem $manifest.Cage
+if ($null -ne $cageProblem) {
+    Write-Host "Its cage $($manifest.Cage.RelativeDirectory) waits for its approval: $cageProblem."
 }
 
 if ($null -eq (Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath))) {

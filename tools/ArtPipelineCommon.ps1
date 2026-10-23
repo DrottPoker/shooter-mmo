@@ -15,7 +15,8 @@ $script:ArtBlenderCli = Join-Path $PSScriptRoot "blender/art_pipeline_cli.py"
 # An animation library holds handmade clips of one skeleton, without meshes, so its only stage is
 # the animation. A skinned asset without clips of its own, such as a body whose clips come from
 # animation libraries, ends with its rig. A garment is reviewed on its bodies at rest, then in the
-# test poses. The garment cage is reviewed once, on its bodies, and has no export.
+# test poses. The garment cage is reviewed once, on its bodies, and has no export. A garment
+# texture is reviewed on its template.
 $script:ArtReviewStages = @{
     static = @("model")
     skinned = @("model", "rig", "animation")
@@ -23,6 +24,7 @@ $script:ArtReviewStages = @{
     paint = @("paint")
     garment = @("model", "rig")
     cage = @("model")
+    texture = @("texture")
 }
 
 # The stages whose rules Blender can check, and so can be approved.
@@ -33,6 +35,7 @@ $script:ArtImplementedStages = @{
     paint = @("paint")
     garment = @("model", "rig")
     cage = @("model")
+    texture = @("texture")
 }
 
 # The regions of the garment cage and the range of its figure scale in meters; see
@@ -53,6 +56,11 @@ $script:ArtGarmentSlots = @("head", "body", "legs", "hands", "feet", "back", "ha
 $script:ArtGarmentBands = @("tight", "mid", "outer", "loose")
 $script:ArtGarmentHairForms = @("hide", "compress", "show")
 $script:ArtGarmentCloth = @("robe", "cloak", "hood")
+# A template's recipe: the side of a line it keeps, and the most ease and edge depth in meters.
+$script:ArtGarmentKeeps = @("head", "tail")
+$script:ArtGarmentEaseLimit = 0.03
+$script:ArtGarmentHemLimit = 0.01
+$script:ArtTextureSizes = @(512, 1024, 2048)
 
 # Kinds with a skeleton and animation clips.
 $script:ArtAnimatedKinds = @("skinned", "animations")
@@ -458,6 +466,11 @@ function Add-ArtMaterialLines($Lines, $Materials, [string]$Comma) {
 }
 
 function Add-ArtTextureLines($Lines, $Textures, [string]$Comma) {
+    if ($Textures.Count -eq 0) {
+        $Lines.Add("        `"textures`": []$Comma")
+        return
+    }
+
     $Lines.Add('        "textures": [')
     for ($i = 0; $i -lt $Textures.Count; $i++) {
         $texture = $Textures[$i]
@@ -484,7 +497,14 @@ function Add-ArtApprovalLines($Lines, $Manifest) {
         $comma = if ($i -lt $approvedStages.Count - 1) { "," } else { "" }
         $Lines.Add("        `"$($approvedStages[$i])`": {")
         $Lines.Add("            `"date`": `"$($approval.date)`",")
-        $Lines.Add("            `"sourceSha256`": `"$($approval.sourceSha256)`"")
+        if ($approval.Contains("garmentSourceSha256") -and -not [string]::IsNullOrEmpty($approval.garmentSourceSha256)) {
+            $Lines.Add("            `"sourceSha256`": `"$($approval.sourceSha256)`",")
+            $Lines.Add("            `"garmentSourceSha256`": `"$($approval.garmentSourceSha256)`"")
+        }
+        else {
+            $Lines.Add("            `"sourceSha256`": `"$($approval.sourceSha256)`"")
+        }
+
         $Lines.Add("        }$comma")
     }
     $Lines.Add("    },")
@@ -559,6 +579,63 @@ function Get-ArtClipLibraries([string]$Skeleton) {
         })
 }
 
+function Get-ArtClipSourcesProblem($Manifest, [string]$Sync) {
+    # Returns $null when the export of a garment template, or a texture's masks, was checked in the
+    # current exports of the animation libraries of its skeleton, otherwise the reason it was not.
+    $libraries = @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
+            [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.sourceSha256 } else { "" })
+        } | Sort-Object)
+    $recorded = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.library)=$($_.sourceSha256)" } | Sort-Object)
+    if (($libraries -join ",") -cne ($recorded -join ",")) {
+        return "was checked in other clips than the current exports of the $($Manifest.Skeleton) animation libraries; run $Sync, review and approve it, then run tools/Export-ArtAsset.ps1"
+    }
+
+    return $null
+}
+
+function Get-ArtGarmentDependencyProblems($Manifest) {
+    # The reasons the export of a garment template no longer matches what it was made from: the
+    # approved file of its cage, the bodies of the cage and their exports, and the exports of the
+    # animation libraries it was checked in. None when it matches.
+    $problems = New-Object System.Collections.Generic.List[string]
+    if ((Get-ArtFileSha256 $Manifest.Cage.SourcePath) -ne $Manifest.Export.cageSourceSha256) {
+        $problems.Add("was fitted to another file of its cage $($Manifest.Cage.RelativeDirectory); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1")
+    }
+
+    $exported = @($Manifest.Export.models | ForEach-Object { [string]$_.body } | Sort-Object)
+    $current = @($Manifest.Models | ForEach-Object { $_.Body } | Sort-Object)
+    if (($exported -join ",") -cne ($current -join ",")) {
+        $problems.Add("was exported for other bodies ($($exported -join ', ')) than its cage has ($($current -join ', ')); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1")
+    }
+
+    foreach ($model in @($Manifest.Export.models)) {
+        # A body that left the cage is reported above.
+        $body = @($Manifest.Models | Where-Object { $_.Body -ceq $model.body }) | Select-Object -First 1
+        if ($null -eq $body) {
+            continue
+        }
+
+        $bodyExport = $null
+        try {
+            $bodyExport = (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $body.BodyAsset)).Export
+        }
+        catch {
+            # The body's own problems are reported with the body.
+        }
+
+        if ($null -eq $bodyExport -or $bodyExport.sourceSha256 -ne $model.bodySourceSha256) {
+            $problems.Add("was exported against another export of its body $($body.BodyAsset); run tools/Sync-GarmentAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1")
+        }
+    }
+
+    $clipProblem = Get-ArtClipSourcesProblem $Manifest "tools/Sync-GarmentAsset.ps1"
+    if ($null -ne $clipProblem) {
+        $problems.Add($clipProblem)
+    }
+
+    return $problems.ToArray()
+}
+
 function Get-ArtGarmentClipArguments($Manifest) {
     $arguments = @()
     foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) {
@@ -570,20 +647,65 @@ function Get-ArtGarmentClipArguments($Manifest) {
     return $arguments
 }
 
+function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
+    # Returns a template's recipe, "modeled" or its regions, cuts, ease, and hem, or $null when it
+    # names a region or a line its cage does not have, a line outside its regions, or a value out of
+    # range.
+    if ($Recipe -is [string]) {
+        if ($Recipe -ceq "modeled") {
+            return "modeled"
+        }
+
+        return $null
+    }
+
+    if ($null -eq $Recipe -or $null -eq $Cage) {
+        return $null
+    }
+
+    $regions = @($Recipe.regions | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
+    if ($regions.Count -eq 0 -or @($regions | Sort-Object -Unique).Count -ne $regions.Count -or
+        @($regions | Where-Object { $script:ArtCageRegions -cnotcontains $_ }).Count -gt 0) {
+        return $null
+    }
+
+    $cuts = New-Object System.Collections.Generic.List[object]
+    $seen = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($cut in @($Recipe.cuts | Where-Object { $null -ne $_ })) {
+        $line = @($Cage.Lines | Where-Object { $_.name -ceq [string]$cut.line }) | Select-Object -First 1
+        if ($null -eq $line -or $regions -cnotcontains $line.region -or $script:ArtGarmentKeeps -cnotcontains [string]$cut.keep -or
+            -not $seen.Add([string]$cut.line)) {
+            return $null
+        }
+
+        $cuts.Add([ordered]@{ line = [string]$cut.line; keep = [string]$cut.keep })
+    }
+
+    $ease = $Recipe.ease
+    $hem = $Recipe.hem
+    if (-not (Test-ArtNumber $ease) -or $ease -lt 0 -or $ease -gt $script:ArtGarmentEaseLimit -or
+        -not (Test-ArtNumber $hem) -or $hem -lt 0 -or $hem -gt $script:ArtGarmentHemLimit) {
+        return $null
+    }
+
+    return [ordered]@{ regions = [string[]]$regions; cuts = $cuts.ToArray(); ease = [double]$ease; hem = [double]$hem }
+}
+
 function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
-    # A garment: a mesh made on the first body and fitted to the others, exported as one model per
-    # body, skinned to that body's rig. See docs/EQUIPMENT_VISUALS_DESIGN.md.
+    # A garment template: the form of a garment kind, made on the garment cage of its skeleton from a
+    # recipe or by hand, fitted to every body of the cage, and exported as one model per body,
+    # skinned to that body's rig. See docs/EQUIPMENT_VISUALS_DESIGN.md.
     $name = Split-Path -Leaf $AssetDirectory
     $problems = New-Object System.Collections.Generic.List[string]
     if ($name -notmatch '^[A-Za-z][A-Za-z0-9]*$') {
         $problems.Add("the folder name '$name' of a garment must use only letters and digits")
     }
 
-    if ($Json.schemaVersion -ne 1) {
-        $problems.Add("schemaVersion must be 1")
+    if ($Json.schemaVersion -ne 2) {
+        $problems.Add("schemaVersion must be 2")
     }
 
-    foreach ($field in @("target", "rootObjects", "skeleton", "clips", "rig", "previews", "variants", "part")) {
+    foreach ($field in @("target", "rootObjects", "skeleton", "clips", "rig", "previews", "variants", "part", "bodies")) {
         if ($null -ne $Json.PSObject.Properties[$field]) {
             $problems.Add("a garment has no $field")
         }
@@ -636,22 +758,36 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         $triangleBudget = [int]$Json.triangleBudget
     }
 
+    # The bodies are those of the cage.
+    $cage = $null
     $bodies = @()
     $skeleton = $null
     $skeletonPath = $null
-    try {
-        $first = @($Json.bodies)[0]
-        $skeleton = if ($null -ne $first) { [string](Get-Content -Raw -LiteralPath (Join-Path (Join-Path $script:ArtRepositoryRoot ([string]$first)) "asset.json") | ConvertFrom-Json).skeleton } else { "" }
-        $bodies = @(@($Json.bodies | Where-Object { $null -ne $_ }) | ForEach-Object { Read-ArtRigReference ([string]$_) $skeleton "bodies" })
-        $skeletonPath = Read-ArtSkeleton $skeleton
+    $cagePath = [string]$Json.cage
+    if ($cagePath -cnotmatch '^art/Cages/[A-Za-z][A-Za-z0-9]*$' -or
+        -not (Test-Path -LiteralPath (Join-Path (Join-Path $script:ArtRepositoryRoot $cagePath) "asset.json") -PathType Leaf)) {
+        $problems.Add("cage must name the garment cage the template is made on, art/Cages/<Skeleton>")
     }
-    catch {
-        $problems.Add($_.Exception.Message)
+    else {
+        try {
+            $cage = Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $cagePath)
+            if ($cage.Kind -ne "cage") {
+                throw "$cagePath is a $($cage.Kind) asset, not a garment cage"
+            }
+
+            $bodies = @($cage.Bodies)
+            $skeleton = $cage.Skeleton
+            $skeletonPath = $cage.SkeletonPath
+        }
+        catch {
+            $problems.Add($_.Exception.Message)
+            $cage = $null
+        }
     }
 
-    if ($bodies.Count -eq 0 -or @($bodies | ForEach-Object { $_.Asset } | Sort-Object -Unique).Count -ne $bodies.Count -or
-        @($bodies | ForEach-Object { $_.Root } | Sort-Object -Unique).Count -ne $bodies.Count) {
-        $problems.Add("bodies must name one or more skinned assets of one skeleton, each once, the body the garment is made on first")
+    $recipe = ConvertTo-ArtGarmentRecipe $Json.recipe $cage
+    if ($null -ne $cage -and $null -eq $recipe) {
+        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
     }
 
     $stages = $script:ArtReviewStages["garment"]
@@ -691,12 +827,19 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         $materials = ConvertTo-ArtMaterialRecords $Json.export.materials
         $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtGarmentTextureFolder
         $records = @($Json.export.models | Where-Object { $null -ne $_ })
-        $modelsMatch = $records.Count -eq $models.Count
-        for ($i = 0; $modelsMatch -and $i -lt $models.Count; $i++) {
-            $modelsMatch = [string]$records[$i].body -ceq $models[$i].Body -and [string]$records[$i].target -ceq $models[$i].Target -and
-                [string]$records[$i].sha256 -cmatch $script:ArtShaPattern -and [string]$records[$i].data -ceq $models[$i].Data -and
-                [string]$records[$i].dataSha256 -cmatch $script:ArtShaPattern -and
-                [string]$records[$i].bodySourceSha256 -cmatch $script:ArtShaPattern
+        $cageSourceSha256 = [string]$Json.export.cageSourceSha256
+        # The export may name other bodies than the cage has now, after a body joined or left the
+        # cage: it is then stale, which Verify-ArtAssets.ps1 reports, and a new export replaces it.
+        $modelsMatch = $records.Count -gt 0 -and
+            @($records | ForEach-Object { [string]$_.body } | Sort-Object -Unique).Count -eq $records.Count
+        foreach ($record in $records) {
+            $label = [string]$record.body
+            $modelsMatch = $modelsMatch -and $label -cmatch $script:ArtNamePattern -and
+                [string]$record.target -ceq (Get-ArtGarmentModelTarget $name $label) -and
+                [string]$record.sha256 -cmatch $script:ArtShaPattern -and
+                [string]$record.data -ceq (Get-ArtGarmentDataTarget $name $label) -and
+                [string]$record.dataSha256 -cmatch $script:ArtShaPattern -and
+                [string]$record.bodySourceSha256 -cmatch $script:ArtShaPattern
         }
 
         $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
@@ -706,24 +849,25 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
             @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
 
         $baseMaps = (@($materials | Where-Object { $null -ne $_ -and $_.Contains("baseMap") } | ForEach-Object { $_.baseMap }) | Sort-Object) -join ","
-        if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern) {
-            $problems.Add("export needs a sourceSha256")
+        if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or $cageSourceSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs a sourceSha256 and the cageSourceSha256 of the approved cage file it was fitted to")
         }
         elseif (-not $modelsMatch) {
-            $problems.Add("export.models must list the model of every body in order with its body, the bodySourceSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
+            $problems.Add("export.models must list the model of each body once with its body, the bodySourceSha256 of the body's export, its target ($script:ArtGarmentModelFolder/${name}_<Label>.fbx) and sha256, and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
         }
         elseif (-not $clipSourcesMatch) {
             $problems.Add("export.clipSources must list every animation library the garment was checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export")
         }
         elseif ($null -eq $materials -or @($materials | Where-Object { $_.name -cne "M_Garment_$name" }).Count -gt 0) {
-            $problems.Add("export.materials must hold the one material M_Garment_$name with its baseColor (#RRGGBB), optional baseMap, metallic, and smoothness")
+            $problems.Add("export.materials must hold the one material M_Garment_$name with its baseColor (#RRGGBB), metallic, and smoothness")
         }
-        elseif ($null -eq $textures -or ((@($textures | ForEach-Object { $_.name }) | Sort-Object) -join ",") -cne $baseMaps) {
-            $problems.Add("export.textures must hold the image its material names, with its target ($script:ArtGarmentTextureFolder/<name>.png) and sha256")
+        elseif ($baseMaps -ne "" -or $null -eq $textures -or $textures.Count -gt 0) {
+            $problems.Add("export.textures must be empty; a template's look comes from its garment textures")
         }
         else {
             $export = [ordered]@{
                 sourceSha256 = [string]$Json.export.sourceSha256
+                cageSourceSha256 = $cageSourceSha256
                 models = @($records | ForEach-Object {
                         [ordered]@{
                             body = [string]$_.body
@@ -759,6 +903,8 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         Kind = "garment"
         Stages = $stages
         ImplementedStages = $script:ArtImplementedStages["garment"]
+        Cage = $cage
+        Recipe = $recipe
         Target = $null
         TargetPath = $null
         RootObjects = [string[]]@($bodies | ForEach-Object { $_.Root })
@@ -784,16 +930,43 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
     }
 }
 
+function Add-ArtRecipeLines($Lines, $Recipe) {
+    if ($Recipe -is [string]) {
+        $Lines.Add("    `"recipe`": `"$Recipe`",")
+        return
+    }
+
+    $regions = (@($Recipe.regions) | ForEach-Object { '"' + $_ + '"' }) -join ", "
+    $Lines.Add('    "recipe": {')
+    $Lines.Add("        `"regions`": [$regions],")
+    $cuts = @($Recipe.cuts)
+    if ($cuts.Count -eq 0) {
+        $Lines.Add('        "cuts": [],')
+    }
+    else {
+        $Lines.Add('        "cuts": [')
+        for ($i = 0; $i -lt $cuts.Count; $i++) {
+            $comma = if ($i -lt $cuts.Count - 1) { "," } else { "" }
+            $Lines.Add("            { `"line`": `"$($cuts[$i].line)`", `"keep`": `"$($cuts[$i].keep)`" }$comma")
+        }
+        $Lines.Add('        ],')
+    }
+
+    $Lines.Add("        `"ease`": $(Format-ArtShare $Recipe.ease),")
+    $Lines.Add("        `"hem`": $(Format-ArtShare $Recipe.hem)")
+    $Lines.Add('    },')
+}
+
 function Write-ArtGarmentManifest($Manifest) {
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("{")
-    $lines.Add('    "schemaVersion": 1,')
+    $lines.Add('    "schemaVersion": 2,')
     $lines.Add('    "kind": "garment",')
+    $lines.Add("    `"cage`": `"$($Manifest.Cage.RelativeDirectory)`",")
     $lines.Add("    `"slot`": `"$($Manifest.Slot)`",")
     $lines.Add("    `"layer`": $($Manifest.Layer),")
     $lines.Add("    `"band`": `"$($Manifest.Band)`",")
-    $bodies = (@($Manifest.Bodies) | ForEach-Object { '"' + $_.Asset + '"' }) -join ", "
-    $lines.Add("    `"bodies`": [$bodies],")
+    Add-ArtRecipeLines $lines $Manifest.Recipe
     $hides = (@($Manifest.Hides) | ForEach-Object { '"' + $_ + '"' }) -join ", "
     $lines.Add("    `"hides`": [$hides],")
     $lines.Add("    `"hair`": $(if ($null -ne $Manifest.Hair) { '"' + $Manifest.Hair + '"' } else { 'null' }),")
@@ -807,6 +980,7 @@ function Write-ArtGarmentManifest($Manifest) {
     else {
         $lines.Add('    "export": {')
         $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
+        $lines.Add("        `"cageSourceSha256`": `"$($Manifest.Export.cageSourceSha256)`",")
         $lines.Add('        "models": [')
         $models = @($Manifest.Export.models)
         for ($i = 0; $i -lt $models.Count; $i++) {
@@ -1011,6 +1185,205 @@ function Write-ArtCageManifest($Manifest) {
     [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
+    # A garment texture: the look of one template, its image in the template's UVs, with one review
+    # stage, exported as its image and its material, and with transparent parts also as its own
+    # masks per body of the template. See docs/EQUIPMENT_VISUALS_DESIGN.md.
+    $name = Split-Path -Leaf $AssetDirectory
+    $problems = New-Object System.Collections.Generic.List[string]
+    if ($name -notmatch '^[A-Za-z][A-Za-z0-9]*$') {
+        $problems.Add("the folder name '$name' of a garment texture must use only letters and digits")
+    }
+
+    if ($Json.schemaVersion -ne 1) {
+        $problems.Add("schemaVersion must be 1")
+    }
+
+    foreach ($field in @("target", "rootObjects", "triangleBudget", "skeleton", "clips", "rig", "previews", "variants", "part", "bodies", "cage")) {
+        if ($null -ne $Json.PSObject.Properties[$field]) {
+            $problems.Add("a garment texture has no $field")
+        }
+    }
+
+    $template = $null
+    $garmentPath = [string]$Json.garment
+    if ($garmentPath -cnotmatch '^art/Garments/[A-Za-z][A-Za-z0-9]*$' -or
+        -not (Test-Path -LiteralPath (Join-Path (Join-Path $script:ArtRepositoryRoot $garmentPath) "asset.json") -PathType Leaf)) {
+        $problems.Add("garment must name the template the texture belongs to, art/Garments/<Name>")
+    }
+    else {
+        try {
+            $template = Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $garmentPath)
+            if ($template.Kind -ne "garment") {
+                throw "$garmentPath is a $($template.Kind) asset, not a garment template"
+            }
+        }
+        catch {
+            $problems.Add($_.Exception.Message)
+            $template = $null
+        }
+    }
+
+    # A texture with transparent parts has masks of its own per body of its template, next to the
+    # template's models.
+    $roots = if ($null -ne $template) { @($template.RootObjects) } else { @() }
+    $masks = @($roots | ForEach-Object {
+            $data = Get-ArtGarmentDataTarget $name $_
+            [pscustomobject]@{ Body = $_; Data = $data; DataPath = Join-Path $script:ArtRepositoryRoot $data }
+        })
+
+    $stages = $script:ArtReviewStages["texture"]
+    $approvals = [ordered]@{}
+    if ($null -ne $Json.approvals) {
+        foreach ($property in $Json.approvals.PSObject.Properties) {
+            $value = $property.Value
+            # A texture is reviewed on its template, so its approval records the template's file too;
+            # an approval without it is stale, which Get-ArtTextureTemplateProblem reports.
+            if ($stages -notcontains $property.Name -or [string]$value.date -notmatch $script:ArtDatePattern -or
+                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern -or
+                ($null -ne $value.garmentSourceSha256 -and [string]$value.garmentSourceSha256 -cnotmatch $script:ArtShaPattern)) {
+                $problems.Add("approvals of a garment texture hold its stage texture with a date (yyyy-MM-dd), a sourceSha256, and the garmentSourceSha256 of the template file it was reviewed on")
+                continue
+            }
+
+            $approvals[$property.Name] = [ordered]@{
+                date = [string]$value.date
+                sourceSha256 = [string]$value.sourceSha256
+                garmentSourceSha256 = [string]$value.garmentSourceSha256
+            }
+        }
+    }
+
+    $export = $null
+    if ($null -ne $Json.export) {
+        $materials = ConvertTo-ArtMaterialRecords $Json.export.materials
+        $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtGarmentTextureFolder
+        # The masks may name other bodies than the template has now, after a body joined or left its
+        # cage: they are then stale, which Verify-ArtAssets.ps1 reports, and a new export replaces them.
+        $maskRecords = @($Json.export.masks | Where-Object { $null -ne $_ })
+        $masksMatch = @($maskRecords | ForEach-Object { [string]$_.body } | Sort-Object -Unique).Count -eq $maskRecords.Count
+        foreach ($record in $maskRecords) {
+            $label = [string]$record.body
+            $masksMatch = $masksMatch -and $label -cmatch $script:ArtNamePattern -and
+                [string]$record.data -ceq (Get-ArtGarmentDataTarget $name $label) -and
+                [string]$record.dataSha256 -cmatch $script:ArtShaPattern
+        }
+
+        # Masks are checked in the clips of every animation library of the skeleton, which may have
+        # none; an opaque texture has neither masks nor clip sources.
+        $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
+        $clipSourcesMatch = ($maskRecords.Count -gt 0 -or $clipSources.Count -eq 0) -and
+            @($clipSources | Where-Object {
+                    [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
+                    [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+            @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
+        if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or [string]$Json.export.garmentSourceSha256 -cnotmatch $script:ArtShaPattern) {
+            $problems.Add("export needs a sourceSha256 and the garmentSourceSha256 of its template's export")
+        }
+        elseif (-not $masksMatch) {
+            $problems.Add("export.masks must be empty for an opaque texture, or list the masks of each body once with its body and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
+        }
+        elseif (-not $clipSourcesMatch) {
+            $problems.Add("export.clipSources must list, for a texture with masks, every animation library its masks were checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export, and be empty without masks")
+        }
+        elseif ($null -eq $materials -or $materials.Count -ne 1 -or $materials[0].name -cne "M_Garment_$name" -or $materials[0].baseMap -cne "T_Garment_$name") {
+            $problems.Add("export.materials must hold the one material M_Garment_$name with its baseMap T_Garment_$name, metallic, and smoothness")
+        }
+        elseif ($null -eq $textures -or $textures.Count -ne 1 -or $textures[0].name -cne "T_Garment_$name") {
+            $problems.Add("export.textures must hold the image T_Garment_$name with its target ($script:ArtGarmentTextureFolder/T_Garment_$name.png) and sha256")
+        }
+        else {
+            $export = [ordered]@{
+                sourceSha256 = [string]$Json.export.sourceSha256
+                garmentSourceSha256 = [string]$Json.export.garmentSourceSha256
+                masks = @($maskRecords | ForEach-Object { [ordered]@{ body = [string]$_.body; data = [string]$_.data; dataSha256 = [string]$_.dataSha256 } })
+                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; sourceSha256 = [string]$_.sourceSha256 } })
+                materials = $materials
+                textures = $textures
+            }
+        }
+    }
+
+    $sourcePath = Join-Path $AssetDirectory "$name.blend"
+    if (-not $AllowMissingSource -and -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        $problems.Add("the source file $name.blend is missing next to asset.json")
+    }
+
+    if ($problems.Count -gt 0) {
+        throw "${Where}: $($problems -join '; ')."
+    }
+
+    return [pscustomobject]@{
+        Name = $name
+        Directory = $AssetDirectory
+        ManifestPath = Join-Path $AssetDirectory "asset.json"
+        RelativeDirectory = Get-ArtRelativePath $AssetDirectory
+        SourcePath = $sourcePath
+        Kind = "texture"
+        Stages = $stages
+        ImplementedStages = $script:ArtImplementedStages["texture"]
+        Target = $null
+        TargetPath = $null
+        RootObjects = [string[]]@($template.RootObjects)
+        TriangleBudget = $null
+        Skeleton = $template.Skeleton
+        SkeletonPath = $template.SkeletonPath
+        Rig = $null
+        Previews = @()
+        Clips = [string[]]@()
+        Variants = @()
+        Garment = $template
+        Masks = $masks
+        Approvals = $approvals
+        Export = $export
+        ExportProblem = $null
+    }
+}
+
+function Write-ArtTextureManifest($Manifest) {
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("{")
+    $lines.Add('    "schemaVersion": 1,')
+    $lines.Add('    "kind": "texture",')
+    $lines.Add("    `"garment`": `"$($Manifest.Garment.RelativeDirectory)`",")
+    Add-ArtApprovalLines $lines $Manifest
+    if ($null -eq $Manifest.Export) {
+        $lines.Add('    "export": null')
+    }
+    else {
+        $lines.Add('    "export": {')
+        $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
+        $lines.Add("        `"garmentSourceSha256`": `"$($Manifest.Export.garmentSourceSha256)`",")
+        # An opaque texture uses its template's masks and has none of its own.
+        $masks = @($Manifest.Export.masks | Where-Object { $null -ne $_ })
+        if ($masks.Count -gt 0) {
+            $lines.Add('        "masks": [')
+            for ($i = 0; $i -lt $masks.Count; $i++) {
+                $comma = if ($i -lt $masks.Count - 1) { "," } else { "" }
+                $lines.Add("            { `"body`": `"$($masks[$i].body)`", `"data`": `"$($masks[$i].data)`", `"dataSha256`": `"$($masks[$i].dataSha256)`" }$comma")
+            }
+
+            $lines.Add('        ],')
+            $lines.Add('        "clipSources": [')
+            $sources = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ })
+            for ($i = 0; $i -lt $sources.Count; $i++) {
+                $comma = if ($i -lt $sources.Count - 1) { "," } else { "" }
+                $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"sourceSha256`": `"$($sources[$i].sourceSha256)`" }$comma")
+            }
+
+            $lines.Add('        ],')
+        }
+
+        Add-ArtMaterialLines $lines @($Manifest.Export.materials) ","
+        Add-ArtTextureLines $lines @($Manifest.Export.textures) ""
+        $lines.Add("    }")
+    }
+
+    $lines.Add("}")
+    $text = ($lines -join "`n") + "`n"
+    [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSource) {
     # AllowMissingSource reads the manifest of a new animation library, paint layer, or garment
     # before its first file is written.
@@ -1034,6 +1407,10 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
 
     if ([string]$json.kind -eq "cage") {
         return Read-ArtCageManifest $AssetDirectory $json $where -AllowMissingSource:$AllowMissingSource
+    }
+
+    if ([string]$json.kind -eq "texture") {
+        return Read-ArtTextureManifest $AssetDirectory $json $where -AllowMissingSource:$AllowMissingSource
     }
 
     $problems = New-Object System.Collections.Generic.List[string]
@@ -1326,6 +1703,11 @@ function Write-ArtAssetManifest($Manifest) {
         return
     }
 
+    if ($Manifest.Kind -eq "texture") {
+        Write-ArtTextureManifest $Manifest
+        return
+    }
+
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("{")
     $lines.Add('    "schemaVersion": 1,')
@@ -1436,6 +1818,29 @@ function Get-ArtCageBodyProblem($Manifest) {
     }
 
     return $null
+}
+
+function Get-ArtTextureTemplateProblem($Manifest) {
+    # Returns $null when the approved texture was reviewed on its template's current file, otherwise
+    # the reason it was not; a texture's fit and masks depend on the template's shape, not only on
+    # its UVs.
+    $approval = $Manifest.Approvals["texture"]
+    if ($null -ne $approval -and $approval.garmentSourceSha256 -ne (Get-ArtFileSha256 $Manifest.Garment.SourcePath)) {
+        return "it was approved on another file of its template $($Manifest.Garment.RelativeDirectory); run tools/Sync-TextureAsset.ps1, review and approve it again"
+    }
+
+    return $null
+}
+
+function Get-ArtCageGateProblem($Cage) {
+    # Returns $null when garment templates may be approved and exported on the cage: its stage is
+    # approved for its current file, and its bodies still have the exports it was approved on.
+    $problem = Get-ArtExportGateProblem $Cage (Get-ArtFileSha256 $Cage.SourcePath)
+    if ($null -eq $problem) {
+        $problem = Get-ArtCageBodyProblem $Cage
+    }
+
+    return $problem
 }
 
 function Get-ArtCageBodies($Manifest) {
@@ -1588,12 +1993,21 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
     if ($Manifest.Kind -eq "garment") {
         $arguments = @("--kind", "garment", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
             "--triangle-budget", [string]$Manifest.TriangleBudget, "--skeleton", $Manifest.SkeletonPath,
-            "--garment", $Manifest.Name, "--band", $Manifest.Band)
+            "--garment", $Manifest.Name, "--band", $Manifest.Band, "--manifest", $Manifest.ManifestPath,
+            "--cage-manifest", $Manifest.Cage.ManifestPath)
         foreach ($body in @($Manifest.Bodies)) {
             $arguments += @("--body", "$($body.SourcePath)=$($body.Root)")
         }
 
         return $arguments + (Get-ArtGarmentClipArguments $Manifest)
+    }
+
+    # A texture is checked against its template's current UVs, and one with transparent parts gets
+    # its masks in its template's band, checked in the clips of the skeleton's libraries.
+    if ($Manifest.Kind -eq "texture") {
+        return @("--kind", "texture", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
+            "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath,
+            "--band", $Manifest.Garment.Band) + (Get-ArtGarmentClipArguments $Manifest)
     }
 
     # A cage is checked against the current files of its bodies and against the figure scale and

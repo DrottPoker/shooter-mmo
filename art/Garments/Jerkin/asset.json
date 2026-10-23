@@ -1,0 +1,66 @@
+{
+    "schemaVersion": 2,
+    "kind": "garment",
+    "cage": "art/Cages/Humanoid",
+    "slot": "body",
+    "layer": 200,
+    "band": "mid",
+    "recipe": {
+        "regions": ["trunk", "arms"],
+        "cuts": [
+            { "line": "HemHip", "keep": "tail" },
+            { "line": "SleeveShort", "keep": "head" }
+        ],
+        "ease": 0,
+        "hem": 0.004
+    },
+    "hides": [],
+    "hair": null,
+    "cloth": null,
+    "dyes": 0,
+    "triangleBudget": 3000,
+    "approvals": {
+        "model": {
+            "date": "2026-10-23",
+            "sourceSha256": "90d995ec200626cbad37652130c642b84e6512e4e65338d05025a8be4b202904"
+        },
+        "rig": {
+            "date": "2026-10-23",
+            "sourceSha256": "90d995ec200626cbad37652130c642b84e6512e4e65338d05025a8be4b202904"
+        }
+    },
+    "export": {
+        "sourceSha256": "90d995ec200626cbad37652130c642b84e6512e4e65338d05025a8be4b202904",
+        "cageSourceSha256": "56c444388010fa9205ba1c82c7cec32921153c2baa29adbfdebb9e6d60a93adb",
+        "models": [
+            {
+                "body": "Male",
+                "bodySourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf",
+                "target": "src/Client/Assets/Art/Models/Garments/Jerkin_Male.fbx",
+                "sha256": "e408c1d5a0cb8fcfc7801e238bf54e6ac1b61e7b16c4fdf24bf4405473c9d367",
+                "data": "src/Client/Assets/Art/Models/Garments/Jerkin_Male.json",
+                "dataSha256": "d67a586bee978ab61037b45c2dcc7fc7f3f8822b62f1034943663bed9a8b4e4e"
+            },
+            {
+                "body": "Female",
+                "bodySourceSha256": "56ada98f9e810992eb62668b62af0691a9f2a81b471b9b99032e71bd97a5ed73",
+                "target": "src/Client/Assets/Art/Models/Garments/Jerkin_Female.fbx",
+                "sha256": "fb06d48bd5537547b2aa6890ff03c4e55877c3b2756b7d502f6fa1b94bf37900",
+                "data": "src/Client/Assets/Art/Models/Garments/Jerkin_Female.json",
+                "dataSha256": "419110f912207636d1904d62e2f402c4e006ea306b0acd942969dd22a9f759a4"
+            }
+        ],
+        "clipSources": [
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c" }
+        ],
+        "materials": [
+            {
+                "name": "M_Garment_Jerkin",
+                "baseColor": "#CECECE",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            }
+        ],
+        "textures": []
+    }
+}

@@ -171,7 +171,7 @@ namespace Mmorpg.Client.Gameplay
                     garmentRootBone, bodyRootBone,
                     // A garment face stays unless a garment of a higher layer covers the body face under it.
                     triangle => triangle >= underlay.Count || !coverLayer.TryGetValue(underlay[triangle], out var layer) || layer <= own,
-                    null);
+                    null, garment.Material);
             }
 
             return builder.Finish(parts[0].sharedMesh.name + " combined");
@@ -241,7 +241,8 @@ namespace Mmorpg.Client.Gameplay
 
             foreach (var garment in Drawn(garments))
             {
-                key.Append('|').Append(garment.Name).Append('@').Append(garment.Model.GetEntityId().ToString());
+                key.Append('|').Append(garment.Name).Append('@').Append(garment.Model.GetEntityId().ToString())
+                    .Append('/').Append(garment.Material != null ? garment.Material.GetEntityId().ToString() : "-");
             }
 
             return key.ToString();
@@ -291,9 +292,9 @@ namespace Mmorpg.Client.Gameplay
             // space of boundsFrom, its root bone, carried to boundsBone, the body's root bone or the
             // bone of its armature that stands where the body's root bone does. keep says which
             // triangles stay, over the submeshes in order; pull says how far each vertex moves
-            // inward.
+            // inward; a material, such as a garment texture's, replaces the renderer's own.
             public void Add(SkinnedMeshRenderer renderer, Matrix4x4 toRoot, Transform boundsFrom, Transform boundsBone,
-                Func<int, bool> keep, Func<int, float> pull)
+                Func<int, bool> keep, Func<int, float> pull, Material material = null)
             {
                 var mesh = renderer.sharedMesh;
                 if (mesh == null || !mesh.isReadable)
@@ -373,12 +374,12 @@ namespace Mmorpg.Client.Gameplay
                 var triangle = 0;
                 for (var submesh = 0; submesh < mesh.subMeshCount; submesh++)
                 {
-                    var material = submesh < meshMaterials.Length ? meshMaterials[submesh] : null;
-                    var slot = materials.IndexOf(material);
+                    var drawn = material != null ? material : submesh < meshMaterials.Length ? meshMaterials[submesh] : null;
+                    var slot = materials.IndexOf(drawn);
                     if (slot < 0)
                     {
                         slot = materials.Count;
-                        materials.Add(material);
+                        materials.Add(drawn);
                         triangles.Add(new List<int>());
                     }
 
