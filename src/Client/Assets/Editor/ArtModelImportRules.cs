@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -32,7 +34,7 @@ namespace Mmorpg.Client.Editor
 
         public override uint GetVersion()
         {
-            return 7;
+            return 9;
         }
 
         public static bool AppliesTo(string assetPath)
@@ -83,11 +85,61 @@ namespace Mmorpg.Client.Editor
 
         // An animation library has an armature and clips, without meshes. Its avatar is made
         // from its own armature, so its clips become muscle motion that plays on every body of
-        // the skeleton.
-        public static void ApplyAnimationLibrarySettings(ModelImporter importer, ArtAssetManifest manifest, ArtSkeleton skeleton)
+        // the skeleton. Without a mesh the file has no bind pose, and Unity would make the avatar
+        // from the first frame of the first clip, which shifts every clip on every body: the feet
+        // stand wide and slide. So the avatar is made on the pose its rig's avatar was made on,
+        // the rest pose with the arms raised to a T-pose, once the rig's model is imported: the
+        // library's armature is its rig's, so the rig plays every clip as the library has it.
+        public static void ApplyAnimationLibrarySettings(ModelImporter importer, ArtAssetManifest manifest, ArtSkeleton skeleton,
+            Avatar rigAvatar, string rigArmature)
         {
             ApplyHumanoidSettings(importer, manifest, skeleton);
             importer.materialImportMode = ModelImporterMaterialImportMode.None;
+            if (rigAvatar == null)
+            {
+                return;
+            }
+
+            var description = importer.humanDescription;
+            description.skeleton = ReferencePoseOf(rigAvatar, rigArmature, Path.GetFileNameWithoutExtension(importer.assetPath) + "(Clone)",
+                manifest.rootObjects[0], skeleton);
+            importer.humanDescription = description;
+        }
+
+        // The bones of the skeleton in the pose an avatar was made on, with its model root and
+        // armature named as another model's, whose armature is the same. Unity finds the
+        // transforms by name, the model root first, which it instantiates as <name>(Clone).
+        public static SkeletonBone[] ReferencePoseOf(Avatar avatar, string avatarArmature, string root, string armature,
+            ArtSkeleton skeleton)
+        {
+            var pose = avatar.humanDescription.skeleton;
+            if (pose.Length == 0)
+            {
+                throw new InvalidOperationException(avatar.name + " records no pose.");
+            }
+
+            var names = new HashSet<string>(skeleton.bones.Select(bone => bone.name), StringComparer.Ordinal);
+            var result = new List<SkeletonBone>();
+            for (var index = 0; index < pose.Length; index++)
+            {
+                var bone = pose[index];
+                if (index == 0)
+                {
+                    bone.name = root;
+                }
+                else if (bone.name == avatarArmature)
+                {
+                    bone.name = armature;
+                }
+                else if (!names.Contains(bone.name))
+                {
+                    continue;
+                }
+
+                result.Add(bone);
+            }
+
+            return result.ToArray();
         }
 
         private static void ApplyHumanoidSettings(ModelImporter importer, ArtAssetManifest manifest, ArtSkeleton skeleton)
@@ -242,7 +294,12 @@ namespace Mmorpg.Client.Editor
             }
             else if (manifest != null && manifest.IsAnimationLibrary)
             {
-                ApplyAnimationLibrarySettings(importer, manifest, ArtAssetManifests.LoadSkeleton(manifest.skeleton));
+                // A new import of the rig's model imports the library again, also when the rig's
+                // model is not imported yet.
+                var rig = ArtAssetManifests.LoadAsset(manifest.rig);
+                context.DependsOnArtifact(rig.UnityTargetPath);
+                ApplyAnimationLibrarySettings(importer, manifest, ArtAssetManifests.LoadSkeleton(manifest.skeleton),
+                    AssetDatabase.LoadAllAssetsAtPath(rig.UnityTargetPath).OfType<Avatar>().SingleOrDefault(), rig.rootObjects[0]);
             }
             else if (manifest != null && manifest.IsGarment)
             {
