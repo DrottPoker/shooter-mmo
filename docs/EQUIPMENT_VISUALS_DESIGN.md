@@ -277,7 +277,8 @@ and its approvals.
 - A texture with transparent parts, such as a net or a laced V, has a cover
   mask, edges, and pull-in of its own per body, computed by the pipeline with
   the same rules as the template's, because its holes change what the body
-  shows. An opaque texture uses the template's.
+  shows, and the skin its holes show is checked in motion like the template's,
+  in the test poses and the clips. An opaque texture uses the template's.
 - A texture records the template export it was checked against, so a new
   export of the template needs a new export of its textures.
 - The template's UVs stay when its bodies, the cage, or the base model change,
@@ -598,9 +599,12 @@ A garment texture is an art asset of kind `texture` below
 file holds the template's first version as a preview and the texture's images,
 painted by hand in Texture Paint mode or by a script, with the custom
 properties `roughness` and `metallic`. Its one review stage, `texture`, checks
-that the images fit the template's UVs and computes its masks when it has
-transparent parts. Export writes its images and its material `M_Garment_<Name>`,
-and its masks per body when it has transparent parts.
+that the images fit the template's UVs, and for a texture with transparent parts
+computes its masks and runs the template's motion check with them, in the rig
+review's test poses and at every frame of the clips, so skin that its holes show
+and that comes through the cloth around them is reported before the approval.
+Export writes its images and its material `M_Garment_<Name>`, and its masks per
+body when it has transparent parts.
 
 ### Making A Garment
 
@@ -656,7 +660,9 @@ sides with its grid, the template in the test poses, and the body without it,
 the covered faces orange, the skin kept visible at the garment's edges yellow,
 the pulled-in vertices blue, and skin that comes through the garment in motion
 red. The texture's review sheet shows the template with the texture on every
-body type from four sides.
+body type from four sides, and for a texture with transparent parts also the
+body without it in the colors of the template's sheet, with its own mask and
+the skin that comes through it in motion.
 
 Cloth motion is reviewed in the Wardrobe preview, a Unity Editor window that
 dresses a body in chosen garments with their textures, plays a clip on a moving
