@@ -88,10 +88,15 @@ function Remove-ArtStaleFiles([string[]]$Old, [string[]]$Written) {
 }
 
 function Get-ArtClipSourceRecords($Manifest) {
-    # The exports of the animation libraries whose clips a garment or a texture's masks are checked in.
+    # The exports of the animation libraries whose clips a garment or a texture's masks are checked
+    # in. Blender reads the libraries' current files, so each must be the file of its export.
     return @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
             if ($null -eq $_.Export) {
                 throw "$($Manifest.Name) cannot be exported before the animation library $($_.Asset) is exported."
+            }
+
+            if ((Get-ArtFileSha256 $_.SourcePath) -ne [string]$_.Export.sourceSha256) {
+                throw "$($Manifest.Name) cannot be exported while the animation library $($_.Asset) has changed since its export; review, approve, and export it first."
             }
 
             [ordered]@{ library = $_.Asset; sourceSha256 = [string]$_.Export.sourceSha256 }
@@ -117,6 +122,13 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
 
     if ($null -ne $templateProblem) {
         throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is approved and exported again: $templateProblem."
+    }
+
+    # The masks are computed with the template's bodies, cage, and clips, so its export must still
+    # match them.
+    $dependencyProblem = @(Get-ArtGarmentDependencyProblems $template) | Select-Object -First 1
+    if ($null -ne $dependencyProblem) {
+        throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is exported again: it $dependencyProblem."
     }
 
     $reviewProblem = Get-ArtTextureTemplateProblem $Manifest

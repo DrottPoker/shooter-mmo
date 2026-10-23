@@ -798,7 +798,7 @@ and vertices it names are those of the body's topology, which the body's export
 writes next to its model: its editable mesh's `vertices` in Blender's world
 space, `faceSizes`, `faceVertices`, and `faceZones`. A template is exported after
 its cage is approved and after its bodies and the animation libraries of its
-skeleton are exported, and it records the cage's approved file and their
+skeleton are exported from their current files, and it records the cage's approved file and their
 exports, so `Verify-ArtAssets.ps1` fails when the cage's file changed or a body
 or a library has a newer export than the one the template was fitted to and
 checked in: sync, review, and export the template again. Its material has no
@@ -858,7 +858,9 @@ the same name.
   material `M_Garment_<Name>` with it as `baseMap`, and for a texture with
   transparent parts its masks per body, `Models/Garments/<Name>_<Label>.json`, in
   the format of the template's data. It runs only when the template is approved
-  and exported from its current file, since the masks are computed in that file,
+  and exported from its current file, and its export still matches its cage,
+  its bodies, and the clips of its skeleton, since the masks are computed in that
+  file with them,
   and when the texture was approved on that file of the template, since its fit
   and masks change with the template's shape and not only with its UVs,
   and it records the `export.sourceSha256` of the template's export it was

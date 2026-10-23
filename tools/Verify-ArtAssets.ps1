@@ -134,29 +134,18 @@ foreach ($directory in $directories) {
         }
     }
 
-    # A garment, and a texture with masks of its own, was checked in the clips of these libraries.
-    if ($manifest.Kind -eq "garment" -or ($manifest.Kind -eq "texture" -and @($manifest.Export.masks | Where-Object { $null -ne $_ }).Count -gt 0)) {
-        $libraries = @(Get-ArtClipLibraries $manifest.Skeleton | ForEach-Object {
-                [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.sourceSha256 } else { "" })
-            } | Sort-Object)
-        $recorded = @($manifest.Export.clipSources | ForEach-Object { "$($_.library)=$($_.sourceSha256)" } | Sort-Object)
-        if (($libraries -join ",") -cne ($recorded -join ",")) {
-            $sync = if ($manifest.Kind -eq "garment") { "tools/Sync-GarmentAsset.ps1" } else { "tools/Sync-TextureAsset.ps1" }
-            $problems.Add("${where}: was checked in other clips than the current exports of the $($manifest.Skeleton) animation libraries; run $sync, review and approve it, then run tools/Export-ArtAsset.ps1.")
+    # A texture with masks of its own was checked in the clips of these libraries.
+    if ($manifest.Kind -eq "texture" -and @($manifest.Export.masks | Where-Object { $null -ne $_ }).Count -gt 0) {
+        $clipProblem = Get-ArtClipSourcesProblem $manifest "tools/Sync-TextureAsset.ps1"
+        if ($null -ne $clipProblem) {
+            $problems.Add("${where}: $clipProblem.")
         }
     }
 
     if ($manifest.Kind -eq "garment") {
-        # The template was fitted to the approved file of its cage.
-        if ((Get-ArtFileSha256 $manifest.Cage.SourcePath) -ne $manifest.Export.cageSourceSha256) {
-            $problems.Add("${where}: was fitted to another file of its cage $($manifest.Cage.RelativeDirectory); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
-        }
-
-        # The template was exported for exactly the bodies of its cage.
-        $exported = @($manifest.Export.models | ForEach-Object { [string]$_.body } | Sort-Object)
-        $current = @($manifest.Models | ForEach-Object { $_.Body } | Sort-Object)
-        if (($exported -join ",") -cne ($current -join ",")) {
-            $problems.Add("${where}: was exported for other bodies ($($exported -join ', ')) than its cage has ($($current -join ', ')); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
+        # The template still matches its cage, the bodies of the cage, and the clips it was checked in.
+        foreach ($dependencyProblem in @(Get-ArtGarmentDependencyProblems $manifest)) {
+            $problems.Add("${where}: $dependencyProblem.")
         }
 
         foreach ($model in @($manifest.Export.models)) {
@@ -169,27 +158,7 @@ foreach ($directory in $directories) {
                     $problems.Add("${where}: $($file[0]) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
                 }
             }
-
-            # The garment was fitted and checked against the export of its body; a body that left
-            # the cage is reported above.
-            $body = @($manifest.Models | Where-Object { $_.Body -ceq $model.body }) | Select-Object -First 1
-            if ($null -eq $body) {
-                continue
-            }
-
-            $bodyExport = $null
-            try {
-                $bodyExport = (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $body.BodyAsset)).Export
-            }
-            catch {
-                # The body's own problems are reported with the body.
-            }
-
-            if ($null -eq $bodyExport -or $bodyExport.sourceSha256 -ne $model.bodySourceSha256) {
-                $problems.Add("${where}: was exported against another export of its body $($body.BodyAsset); run tools/Sync-GarmentAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1.")
-            }
         }
-
     }
     elseif ($null -eq $manifest.Target) {
         # Only the images below.

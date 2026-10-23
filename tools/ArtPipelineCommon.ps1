@@ -579,6 +579,63 @@ function Get-ArtClipLibraries([string]$Skeleton) {
         })
 }
 
+function Get-ArtClipSourcesProblem($Manifest, [string]$Sync) {
+    # Returns $null when the export of a garment template, or a texture's masks, was checked in the
+    # current exports of the animation libraries of its skeleton, otherwise the reason it was not.
+    $libraries = @(Get-ArtClipLibraries $Manifest.Skeleton | ForEach-Object {
+            [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.sourceSha256 } else { "" })
+        } | Sort-Object)
+    $recorded = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.library)=$($_.sourceSha256)" } | Sort-Object)
+    if (($libraries -join ",") -cne ($recorded -join ",")) {
+        return "was checked in other clips than the current exports of the $($Manifest.Skeleton) animation libraries; run $Sync, review and approve it, then run tools/Export-ArtAsset.ps1"
+    }
+
+    return $null
+}
+
+function Get-ArtGarmentDependencyProblems($Manifest) {
+    # The reasons the export of a garment template no longer matches what it was made from: the
+    # approved file of its cage, the bodies of the cage and their exports, and the exports of the
+    # animation libraries it was checked in. None when it matches.
+    $problems = New-Object System.Collections.Generic.List[string]
+    if ((Get-ArtFileSha256 $Manifest.Cage.SourcePath) -ne $Manifest.Export.cageSourceSha256) {
+        $problems.Add("was fitted to another file of its cage $($Manifest.Cage.RelativeDirectory); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1")
+    }
+
+    $exported = @($Manifest.Export.models | ForEach-Object { [string]$_.body } | Sort-Object)
+    $current = @($Manifest.Models | ForEach-Object { $_.Body } | Sort-Object)
+    if (($exported -join ",") -cne ($current -join ",")) {
+        $problems.Add("was exported for other bodies ($($exported -join ', ')) than its cage has ($($current -join ', ')); run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1")
+    }
+
+    foreach ($model in @($Manifest.Export.models)) {
+        # A body that left the cage is reported above.
+        $body = @($Manifest.Models | Where-Object { $_.Body -ceq $model.body }) | Select-Object -First 1
+        if ($null -eq $body) {
+            continue
+        }
+
+        $bodyExport = $null
+        try {
+            $bodyExport = (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $body.BodyAsset)).Export
+        }
+        catch {
+            # The body's own problems are reported with the body.
+        }
+
+        if ($null -eq $bodyExport -or $bodyExport.sourceSha256 -ne $model.bodySourceSha256) {
+            $problems.Add("was exported against another export of its body $($body.BodyAsset); run tools/Sync-GarmentAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1")
+        }
+    }
+
+    $clipProblem = Get-ArtClipSourcesProblem $Manifest "tools/Sync-GarmentAsset.ps1"
+    if ($null -ne $clipProblem) {
+        $problems.Add($clipProblem)
+    }
+
+    return $problems.ToArray()
+}
+
 function Get-ArtGarmentClipArguments($Manifest) {
     $arguments = @()
     foreach ($library in @(Get-ArtClipLibraries $Manifest.Skeleton)) {
