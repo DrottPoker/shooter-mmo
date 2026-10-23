@@ -1,15 +1,18 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // The look of a player body. Its visible skinned parts are drawn as one combined renderer.
-    // A look from the body's appearance catalog shows other images on its painted materials,
-    // such as another face or eye color, and paint layers over its skin, and a tint multiplies the skin materials by a faint
-    // color and leaves the eyes, teeth, and tongue as they are. Both come from shared materials,
-    // so bodies that look the same draw with the same materials; the default look without a
-    // tint draws with the body's own materials.
+    // The look of a player body. Its visible skinned parts and the garments it wears are drawn as
+    // one combined renderer, put together again when the garments change. A look from the body's
+    // appearance catalog shows other images on its painted materials, such as another face or eye
+    // color, paint layers over its skin, and garments, and a tint multiplies the skin materials by
+    // a faint color and leaves the eyes, teeth, tongue, and garments as they are. Both come from
+    // shared materials, so bodies that look the same draw with the same materials; the default
+    // look without a tint draws with the body's own materials. A garment with loose cloth lets
+    // the body's ClothChainSolver move its chains.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -23,6 +26,10 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly Dictionary<Renderer, Material[]> ownMaterials = new Dictionary<Renderer, Material[]>();
         private readonly List<BodyAppearanceCatalog.Paint> paints = new List<BodyAppearanceCatalog.Paint>();
+        private readonly List<BodyAppearanceCatalog.Garment> worn = new List<BodyAppearanceCatalog.Garment>();
+        private SkinnedMeshRenderer[] parts = new SkinnedMeshRenderer[0];
+        private PlayerBodyMeshes meshes;
+        private string wornKey = string.Empty;
         private SkinnedMeshRenderer combinedRenderer;
         private PlayerBodyMaterials materials;
         private BodyLook look = BodyLook.Default;
@@ -51,18 +58,23 @@ namespace Mmorpg.Client.Gameplay
             get { return combinedRenderer; }
         }
 
-        // Draws the visible parts as one skinned renderer with the shared mesh of these parts,
-        // and hides the parts. Equipment that hides a zone combines the body again. The look
-        // and the tint stay.
-        public void CombineParts(PlayerBodyMeshes meshes)
+        // The garments the body wears, from the lowest layer up, as the look names them.
+        public IReadOnlyList<BodyAppearanceCatalog.Garment> Worn
         {
-            if (meshes == null || combinedRenderer != null)
+            get { return worn; }
+        }
+
+        // Draws the visible parts and the worn garments as one skinned renderer with the shared
+        // mesh of these parts and garments, and hides the parts. The look and the tint stay.
+        public void CombineParts(PlayerBodyMeshes bodyMeshes)
+        {
+            if (bodyMeshes == null || combinedRenderer != null)
             {
                 return;
             }
 
             RestoreOwnMaterials();
-            var parts = GetComponentsInChildren<SkinnedMeshRenderer>(false)
+            parts = GetComponentsInChildren<SkinnedMeshRenderer>(false)
                 .Where(part => part.enabled && part.sharedMesh != null)
                 .ToArray();
             if (parts.Length == 0)
@@ -70,23 +82,10 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            var combined = meshes.For(parts, transform);
-            var transforms = new Dictionary<string, Transform>();
-            foreach (var child in GetComponentsInChildren<Transform>(true))
-            {
-                transforms[child.name] = child;
-            }
-
+            meshes = bodyMeshes;
             var rendererObject = new GameObject(CombinedRendererName);
             rendererObject.transform.SetParent(transform, false);
             combinedRenderer = rendererObject.AddComponent<SkinnedMeshRenderer>();
-            combinedRenderer.sharedMesh = combined.Mesh;
-            combinedRenderer.bones = combined.BoneNames.Select(boneName => transforms[boneName]).ToArray();
-            combinedRenderer.rootBone = transforms.TryGetValue(combined.RootBoneName, out var rootBone)
-                ? rootBone
-                : transform;
-            combinedRenderer.localBounds = combined.LocalBounds;
-            combinedRenderer.sharedMaterials = combined.Materials.ToArray();
             combinedRenderer.shadowCastingMode = parts[0].shadowCastingMode;
             combinedRenderer.receiveShadows = parts[0].receiveShadows;
             combinedRenderer.quality = parts[0].quality;
@@ -97,7 +96,8 @@ namespace Mmorpg.Client.Gameplay
             }
 
             ownMaterials.Clear();
-            Refresh();
+            WearLook();
+            Assemble();
 
             // The Animator culls by its renderers, which changed.
             var animator = GetComponent<Animator>();
@@ -114,12 +114,102 @@ namespace Mmorpg.Client.Gameplay
             return tint;
         }
 
-        // Shows the look, drawn with materials from the shared set.
+        // Shows the look, drawn with materials from the shared set, and puts the body together
+        // again when the look wears other garments.
         public void ApplyLook(BodyLook bodyLook, PlayerBodyMaterials bodyMaterials)
         {
             look = bodyLook ?? BodyLook.Default;
             materials = bodyMaterials;
+            if (WearLook() && combinedRenderer != null)
+            {
+                Assemble();
+                return;
+            }
+
             Refresh();
+        }
+
+        // The garments of the catalog that the look names, from the lowest layer up; true when
+        // they changed.
+        private bool WearLook()
+        {
+            worn.Clear();
+            if (catalog != null)
+            {
+                foreach (var garment in catalog.Garments)
+                {
+                    if (garment != null && look.HasGarment(garment.Name))
+                    {
+                        worn.Add(garment);
+                    }
+                }
+            }
+
+            var key = string.Join("+", worn.Select(garment => garment.Name));
+            var changed = key != wornKey;
+            wornKey = key;
+            return changed;
+        }
+
+        // The combined renderer draws the shared mesh of the parts and the worn garments.
+        private void Assemble()
+        {
+            var combined = meshes.For(parts, transform, catalog, worn);
+            var transforms = new Dictionary<string, Transform>();
+            foreach (var child in GetComponentsInChildren<Transform>(true))
+            {
+                transforms[child.name] = child;
+            }
+
+            combinedRenderer.sharedMesh = combined.Mesh;
+            combinedRenderer.bones = combined.BoneNames.Select(boneName => transforms[boneName]).ToArray();
+            combinedRenderer.rootBone = transforms.TryGetValue(combined.RootBoneName, out var rootBone)
+                ? rootBone
+                : transform;
+            combinedRenderer.localBounds = combined.LocalBounds;
+            combinedRenderer.sharedMaterials = combined.Materials.ToArray();
+            ownMaterials[combinedRenderer] = combined.Materials.ToArray();
+            MoveCloth();
+            Refresh();
+        }
+
+        // The chains of the worn garments' cloth move; the others rest.
+        private void MoveCloth()
+        {
+            var solver = GetComponent<ClothChainSolver>();
+            if (solver == null)
+            {
+                return;
+            }
+
+            foreach (ClothChainKind kind in Enum.GetValues(typeof(ClothChainKind)))
+            {
+                var garment = PlayerBodyMeshes.Drawn(worn).LastOrDefault(candidate => ChainsOf(candidate.Cloth) == kind);
+                if (garment != null)
+                {
+                    solver.Activate(kind, ClothProfile.For(kind));
+                }
+                else
+                {
+                    solver.Deactivate(kind);
+                }
+            }
+        }
+
+        // A robe hangs on the skirt chains, a cloak on the cloak chains, and a hood on the hood chain.
+        public static ClothChainKind? ChainsOf(string cloth)
+        {
+            switch (cloth)
+            {
+                case "robe":
+                    return ClothChainKind.Skirt;
+                case "cloak":
+                    return ClothChainKind.Cloak;
+                case "hood":
+                    return ClothChainKind.Hood;
+                default:
+                    return null;
+            }
         }
 
         // Tints the skin toward the color, or takes the tint off when tinted is false.

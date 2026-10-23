@@ -20,7 +20,7 @@ import bpy
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from art_pipeline import coverage, garment, library, paint, preview, skinned  # noqa: E402
+from art_pipeline import bodies, coverage, garment, library, paint, preview, skinned  # noqa: E402
 from art_pipeline import skeleton as skeleton_definition  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
@@ -195,9 +195,9 @@ def main() -> int:
         print(f"ART_PREVIEW {path}")
         return 0
     if args.command == "paint-sync":
-        bodies = [tuple(b.rsplit("=", 1)) for b in args.body]
+        painted = [tuple(b.rsplit("=", 1)) for b in args.body]
         changed = paint.sync(os.path.abspath(args.file), args.paint, args.part,
-                             [(os.path.abspath(path), root) for path, root in bodies], args.force)
+                             [(os.path.abspath(path), root) for path, root in painted], args.force)
         print(f"ART_PAINT_SYNC {'synced' if changed else 'up-to-date'} {args.file}")
         return 0
     if args.command == "new-static":
@@ -246,6 +246,12 @@ def main() -> int:
     print(f"ART_VALIDATION triangles={triangles}")
     if args.command == "export":
         export_fbx(args.kind, args.target)
+        # A body with an editable mesh exports its topology, which garments refer to.
+        roots = args.roots.split(",")
+        if args.kind == "skinned" and len(roots) == 1 and bodies.source_body(roots[0]) is not None:
+            data = os.path.splitext(args.target)[0] + ".json"
+            coverage.write_record(data, bodies.topology(roots[0]))
+            print(f"ART_DATA {json.dumps({'path': data}, separators=(',', ':'))}")
         for record in material_records():
             print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
         if args.textures:

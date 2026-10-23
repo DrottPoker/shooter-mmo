@@ -5,13 +5,21 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // Combined meshes of player bodies. A body is made of skinned parts, one per equipment
-    // zone plus the eyes, teeth, and tongue, so equipment can hide a zone. Drawn as parts, a
-    // crowd paid for every part of every body; combined, a body is one skinned renderer with
-    // one submesh per material. Every body with the same visible parts of the same model shares
-    // one mesh. The owner destroys the meshes.
+    // Combined meshes of player bodies. A body is made of skinned parts, one per body zone plus
+    // the eyes, teeth, and tongue, and wears garments, meshes skinned to the same skeleton. Drawn
+    // as parts, a crowd paid for every part of every body; combined, a body is one skinned
+    // renderer with one submesh per material. Putting a body together with garments leaves out
+    // the body faces the worn garments cover, moves the pulled-in body vertices inward, leaves out
+    // the garment faces whose underlay a garment of a higher layer covers, and leaves out every
+    // garment of a slot that a worn garment of a higher layer hides; see
+    // docs/EQUIPMENT_VISUALS_DESIGN.md. Every
+    // body with the same visible parts of the same model and the same garments shares one mesh.
+    // The owner destroys the meshes.
     public sealed class PlayerBodyMeshes : IDisposable
     {
+        private static readonly IReadOnlyList<BodyAppearanceCatalog.Garment> NoGarments =
+            new BodyAppearanceCatalog.Garment[0];
+
         private readonly Dictionary<string, Combined> meshes = new Dictionary<string, Combined>();
 
         public int Count
@@ -23,10 +31,19 @@ namespace Mmorpg.Client.Gameplay
         // bound to one skeleton below the root, with readable meshes.
         public Combined For(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root)
         {
-            var key = KeyOf(parts);
+            return For(parts, root, null, NoGarments);
+        }
+
+        // Also wearing the garments of the catalog, whose models are skinned to bones of the same
+        // names as the parts' skeleton.
+        public Combined For(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
+            IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
+        {
+            garments = garments ?? NoGarments;
+            var key = KeyOf(parts, garments);
             if (!meshes.TryGetValue(key, out var combined) || combined.Mesh == null)
             {
-                combined = Build(parts, root);
+                combined = Build(parts, root, catalog, garments);
                 meshes[key] = combined;
             }
 
@@ -55,177 +72,135 @@ namespace Mmorpg.Client.Gameplay
             meshes.Clear();
         }
 
-        // Every part's mesh in the root's space, the bones of all parts in one list, and the
-        // triangles of each material in one submesh, in the order the materials first appear.
         public static Combined Build(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root)
+        {
+            return Build(parts, root, null, NoGarments);
+        }
+
+        // The garments a body draws: the worn ones from the lowest layer up, without those of a slot
+        // that a worn garment of a higher layer hides, such as trousers under a floor-length robe;
+        // leg armor over the robe stays.
+        public static List<BodyAppearanceCatalog.Garment> Drawn(IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
+        {
+            var drawn = new List<BodyAppearanceCatalog.Garment>();
+            foreach (var garment in garments)
+            {
+                if (garment == null || garment.Model == null)
+                {
+                    continue;
+                }
+
+                var hidden = false;
+                foreach (var other in garments)
+                {
+                    if (other != null && other != garment && other.Layer > garment.Layer && Contains(other.Hides, garment.Slot))
+                    {
+                        hidden = true;
+                        break;
+                    }
+                }
+
+                if (!hidden)
+                {
+                    drawn.Add(garment);
+                }
+            }
+
+            drawn.Sort((a, b) => a.Layer != b.Layer
+                ? a.Layer.CompareTo(b.Layer)
+                : string.CompareOrdinal(a.Name, b.Name));
+            return drawn;
+        }
+
+        // Every part's and every drawn garment's mesh in the root's space, the bones of all of them
+        // in one list by name, and the triangles of each material in one submesh, in the order the
+        // materials first appear; vertices no triangle uses are left out.
+        public static Combined Build(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
+            IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
         {
             if (parts == null || parts.Count == 0)
             {
                 throw new ArgumentException("A combined body needs at least one part.", nameof(parts));
             }
 
-            var bones = new List<Transform>();
-            var boneIndex = new Dictionary<Transform, int>();
-            var bindposes = new List<Matrix4x4>();
-            var materials = new List<Material>();
-            var triangles = new List<List<int>>();
-            var positions = new List<Vector3>();
-            var normals = new List<Vector3>();
-            var tangents = new List<Vector4>();
-            var uvs = new List<Vector2>();
-            var bonesPerVertex = new List<byte>();
-            var weights = new List<BoneWeight1>();
-            var partVertices = new List<Vector3>();
-            var partNormals = new List<Vector3>();
-            var partTangents = new List<Vector4>();
-            var partUvs = new List<Vector2>();
-            var partBindposes = new List<Matrix4x4>();
-            var partTriangles = new List<int>();
-            var bounds = new Bounds();
-            var hasBounds = false;
-            var rootBone = parts[0].rootBone != null ? parts[0].rootBone : root;
+            var drawn = Drawn(garments ?? NoGarments);
+            var coverLayer = new Dictionary<int, int>();
+            var pullIn = new Dictionary<int, float>();
+            foreach (var garment in drawn)
+            {
+                foreach (var face in garment.Covered)
+                {
+                    coverLayer[face] = coverLayer.TryGetValue(face, out var layer) ? Math.Max(layer, garment.Layer) : garment.Layer;
+                }
 
+                for (var index = 0; index < garment.PullInVertices.Count && index < garment.PullInDistances.Count; index++)
+                {
+                    var vertex = garment.PullInVertices[index];
+                    pullIn[vertex] = pullIn.TryGetValue(vertex, out var distance)
+                        ? Mathf.Max(distance, garment.PullInDistances[index])
+                        : garment.PullInDistances[index];
+                }
+            }
+
+            var builder = new Builder(parts[0].rootBone != null ? parts[0].rootBone : root);
             foreach (var part in parts)
             {
-                var mesh = part.sharedMesh;
-                if (mesh == null || !mesh.isReadable)
+                var map = catalog != null ? catalog.PartNamed(part.name) : null;
+                builder.Add(part, root.worldToLocalMatrix * part.transform.localToWorldMatrix,
+                    part.rootBone != null ? part.rootBone : part.transform, builder.RootBone,
+                    // A body face stays unless a drawn garment covers it.
+                    map != null && map.TriangleFaces.Count > 0 ? (Func<int, bool>)(triangle => !coverLayer.ContainsKey(map.TriangleFaces[triangle])) : null,
+                    map != null && pullIn.Count > 0 ? (Func<int, float>)(vertex => pullIn.TryGetValue(map.VertexSources[vertex], out var distance) ? distance : 0f) : null);
+            }
+
+            foreach (var garment in drawn)
+            {
+                var renderer = garment.Model.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                if (renderer == null || renderer.sharedMesh == null)
                 {
-                    throw new InvalidOperationException("Body part '" + part.name + "' has no readable mesh.");
+                    continue;
                 }
 
-                // The part's vertices in the root's space; a rigid part such as an eye has a
-                // pivot of its own.
-                var toRoot = root.worldToLocalMatrix * part.transform.localToWorldMatrix;
-                var fromRoot = toRoot.inverse;
-                var normalMatrix = fromRoot.transpose;
-                var first = positions.Count;
-                mesh.GetVertices(partVertices);
-                mesh.GetNormals(partNormals);
-                mesh.GetTangents(partTangents);
-                mesh.GetUVs(0, partUvs);
-                for (var index = 0; index < partVertices.Count; index++)
+                // The bones of the garment's own armature stand where the body's do, so its bounds
+                // carry over from its root bone to the body's root bone of the same name.
+                var garmentRootBone = renderer.rootBone != null ? renderer.rootBone : renderer.transform;
+                var bodyRootBone = FindDescendant(garment.Model.transform, builder.RootBoneName) ?? garmentRootBone;
+                var underlay = garment.Underlay;
+                var own = garment.Layer;
+                builder.Add(renderer, garment.Model.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix,
+                    garmentRootBone, bodyRootBone,
+                    // A garment face stays unless a garment of a higher layer covers the body face under it.
+                    triangle => triangle >= underlay.Count || !coverLayer.TryGetValue(underlay[triangle], out var layer) || layer <= own,
+                    null);
+            }
+
+            return builder.Finish(parts[0].sharedMesh.name + " combined");
+        }
+
+        private static bool Contains(IReadOnlyList<string> names, string name)
+        {
+            foreach (var candidate in names)
+            {
+                if (string.Equals(candidate, name, StringComparison.Ordinal))
                 {
-                    positions.Add(toRoot.MultiplyPoint3x4(partVertices[index]));
-                    normals.Add(index < partNormals.Count
-                        ? normalMatrix.MultiplyVector(partNormals[index]).normalized
-                        : Vector3.up);
-                    if (index < partTangents.Count)
-                    {
-                        var tangent = toRoot.MultiplyVector(partTangents[index]).normalized;
-                        tangents.Add(new Vector4(tangent.x, tangent.y, tangent.z, partTangents[index].w));
-                    }
-                    else
-                    {
-                        tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-                    }
-
-                    uvs.Add(index < partUvs.Count ? partUvs[index] : Vector2.zero);
-                }
-
-                // A bone keeps one bind pose for every part: the part's bind pose in the root's space.
-                mesh.GetBindposes(partBindposes);
-                var partBones = part.bones;
-                var remap = new int[partBones.Length];
-                for (var index = 0; index < partBones.Length; index++)
-                {
-                    var bone = partBones[index];
-                    if (!boneIndex.TryGetValue(bone, out var unified))
-                    {
-                        unified = bones.Count;
-                        boneIndex.Add(bone, unified);
-                        bones.Add(bone);
-                        bindposes.Add(partBindposes[index] * fromRoot);
-                    }
-
-                    remap[index] = unified;
-                }
-
-                var partBonesPerVertex = mesh.GetBonesPerVertex();
-                var partWeights = mesh.GetAllBoneWeights();
-                for (var index = 0; index < partBonesPerVertex.Length; index++)
-                {
-                    bonesPerVertex.Add(partBonesPerVertex[index]);
-                }
-
-                for (var index = 0; index < partWeights.Length; index++)
-                {
-                    var weight = partWeights[index];
-                    weight.boneIndex = remap[weight.boneIndex];
-                    weights.Add(weight);
-                }
-
-                var partMaterials = part.sharedMaterials;
-                for (var submesh = 0; submesh < mesh.subMeshCount; submesh++)
-                {
-                    var material = submesh < partMaterials.Length ? partMaterials[submesh] : null;
-                    var slot = materials.IndexOf(material);
-                    if (slot < 0)
-                    {
-                        slot = materials.Count;
-                        materials.Add(material);
-                        triangles.Add(new List<int>());
-                    }
-
-                    mesh.GetTriangles(partTriangles, submesh);
-                    foreach (var vertex in partTriangles)
-                    {
-                        triangles[slot].Add(first + vertex);
-                    }
-                }
-
-                // A skinned renderer's bounds are in its root bone's space, or its own without one.
-                var partBounds = BoundsIn(
-                    part.rootBone != null ? part.rootBone : part.transform,
-                    part.localBounds,
-                    rootBone);
-                if (hasBounds)
-                {
-                    bounds.Encapsulate(partBounds);
-                }
-                else
-                {
-                    bounds = partBounds;
-                    hasBounds = true;
+                    return true;
                 }
             }
 
-            var combinedMesh = new Mesh
+            return false;
+        }
+
+        private static Transform FindDescendant(Transform parent, string name)
+        {
+            foreach (var child in parent.GetComponentsInChildren<Transform>(true))
             {
-                name = parts[0].sharedMesh.name + " combined",
-                indexFormat = positions.Count > ushort.MaxValue
-                    ? UnityEngine.Rendering.IndexFormat.UInt32
-                    : UnityEngine.Rendering.IndexFormat.UInt16,
-            };
-            combinedMesh.SetVertices(positions);
-            combinedMesh.SetNormals(normals);
-            combinedMesh.SetTangents(tangents);
-            combinedMesh.SetUVs(0, uvs);
-            using (var perVertex = new NativeArray<byte>(bonesPerVertex.ToArray(), Allocator.Temp))
-            using (var allWeights = new NativeArray<BoneWeight1>(weights.ToArray(), Allocator.Temp))
-            {
-                combinedMesh.SetBoneWeights(perVertex, allWeights);
+                if (child.name == name)
+                {
+                    return child;
+                }
             }
 
-            combinedMesh.bindposes = bindposes.ToArray();
-            combinedMesh.subMeshCount = triangles.Count;
-            for (var submesh = 0; submesh < triangles.Count; submesh++)
-            {
-                combinedMesh.SetTriangles(triangles[submesh], submesh, false);
-            }
-
-            combinedMesh.RecalculateBounds();
-            var boneNames = new string[bones.Count];
-            for (var index = 0; index < bones.Count; index++)
-            {
-                boneNames[index] = bones[index].name;
-            }
-
-            return new Combined(
-                combinedMesh,
-                boneNames,
-                materials.ToArray(),
-                rootBone.name,
-                bounds);
+            return null;
         }
 
         // Bounds in the space of one transform, as bounds in the space of another.
@@ -250,7 +225,7 @@ namespace Mmorpg.Client.Gameplay
             return result;
         }
 
-        private static string KeyOf(IReadOnlyList<SkinnedMeshRenderer> parts)
+        private static string KeyOf(IReadOnlyList<SkinnedMeshRenderer> parts, IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
         {
             var key = new System.Text.StringBuilder();
             foreach (var part in parts)
@@ -264,7 +239,267 @@ namespace Mmorpg.Client.Gameplay
                 key.Append(';');
             }
 
+            foreach (var garment in Drawn(garments))
+            {
+                key.Append('|').Append(garment.Name).Append('@').Append(garment.Model.GetEntityId().ToString());
+            }
+
             return key.ToString();
+        }
+
+        // Collects the vertices, bones, and triangles of the meshes it is given.
+        private sealed class Builder
+        {
+            private readonly Transform rootBone;
+            private readonly List<string> bones = new List<string>();
+            private readonly Dictionary<string, int> boneIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+            private readonly List<Matrix4x4> bindposes = new List<Matrix4x4>();
+            private readonly List<Material> materials = new List<Material>();
+            private readonly List<List<int>> triangles = new List<List<int>>();
+            private readonly List<Vector3> positions = new List<Vector3>();
+            private readonly List<Vector3> normals = new List<Vector3>();
+            private readonly List<Vector4> tangents = new List<Vector4>();
+            private readonly List<Vector2> uvs = new List<Vector2>();
+            private readonly List<byte> bonesPerVertex = new List<byte>();
+            private readonly List<int> firstWeight = new List<int>();
+            private readonly List<BoneWeight1> weights = new List<BoneWeight1>();
+            private readonly List<Vector3> meshVertices = new List<Vector3>();
+            private readonly List<Vector3> meshNormals = new List<Vector3>();
+            private readonly List<Vector4> meshTangents = new List<Vector4>();
+            private readonly List<Vector2> meshUvs = new List<Vector2>();
+            private readonly List<Matrix4x4> meshBindposes = new List<Matrix4x4>();
+            private readonly List<int> meshTriangles = new List<int>();
+            private Bounds bounds;
+            private bool hasBounds;
+
+            public Builder(Transform rootBone)
+            {
+                this.rootBone = rootBone;
+            }
+
+            public Transform RootBone
+            {
+                get { return rootBone; }
+            }
+
+            public string RootBoneName
+            {
+                get { return rootBone.name; }
+            }
+
+            // One renderer's mesh, given in the root's space by toRoot, with its local bounds in the
+            // space of boundsFrom, its root bone, carried to boundsBone, the body's root bone or the
+            // bone of its armature that stands where the body's root bone does. keep says which
+            // triangles stay, over the submeshes in order; pull says how far each vertex moves
+            // inward.
+            public void Add(SkinnedMeshRenderer renderer, Matrix4x4 toRoot, Transform boundsFrom, Transform boundsBone,
+                Func<int, bool> keep, Func<int, float> pull)
+            {
+                var mesh = renderer.sharedMesh;
+                if (mesh == null || !mesh.isReadable)
+                {
+                    throw new InvalidOperationException("Body part '" + renderer.name + "' has no readable mesh.");
+                }
+
+                // A rigid part such as an eye has a pivot of its own.
+                var fromRoot = toRoot.inverse;
+                var normalMatrix = fromRoot.transpose;
+                var first = positions.Count;
+                mesh.GetVertices(meshVertices);
+                mesh.GetNormals(meshNormals);
+                mesh.GetTangents(meshTangents);
+                mesh.GetUVs(0, meshUvs);
+                for (var index = 0; index < meshVertices.Count; index++)
+                {
+                    var vertex = meshVertices[index];
+                    var normal = index < meshNormals.Count ? meshNormals[index] : Vector3.up;
+                    var distance = pull != null ? pull(index) : 0f;
+                    if (distance > 0f)
+                    {
+                        vertex -= normal.normalized * distance;
+                    }
+
+                    positions.Add(toRoot.MultiplyPoint3x4(vertex));
+                    normals.Add(index < meshNormals.Count ? normalMatrix.MultiplyVector(normal).normalized : Vector3.up);
+                    if (index < meshTangents.Count)
+                    {
+                        var tangent = toRoot.MultiplyVector(meshTangents[index]).normalized;
+                        tangents.Add(new Vector4(tangent.x, tangent.y, tangent.z, meshTangents[index].w));
+                    }
+                    else
+                    {
+                        tangents.Add(new Vector4(1f, 0f, 0f, 1f));
+                    }
+
+                    uvs.Add(index < meshUvs.Count ? meshUvs[index] : Vector2.zero);
+                }
+
+                // A bone keeps one bind pose for every mesh: its bind pose in the root's space.
+                mesh.GetBindposes(meshBindposes);
+                var meshBones = renderer.bones;
+                var remap = new int[meshBones.Length];
+                for (var index = 0; index < meshBones.Length; index++)
+                {
+                    var bone = meshBones[index].name;
+                    if (!boneIndex.TryGetValue(bone, out var unified))
+                    {
+                        unified = bones.Count;
+                        boneIndex.Add(bone, unified);
+                        bones.Add(bone);
+                        bindposes.Add(meshBindposes[index] * fromRoot);
+                    }
+
+                    remap[index] = unified;
+                }
+
+                var meshBonesPerVertex = mesh.GetBonesPerVertex();
+                var meshWeights = mesh.GetAllBoneWeights();
+                var next = weights.Count;
+                for (var index = 0; index < meshBonesPerVertex.Length; index++)
+                {
+                    bonesPerVertex.Add(meshBonesPerVertex[index]);
+                    firstWeight.Add(next);
+                    next += meshBonesPerVertex[index];
+                }
+
+                for (var index = 0; index < meshWeights.Length; index++)
+                {
+                    var weight = meshWeights[index];
+                    weight.boneIndex = remap[weight.boneIndex];
+                    weights.Add(weight);
+                }
+
+                var meshMaterials = renderer.sharedMaterials;
+                var triangle = 0;
+                for (var submesh = 0; submesh < mesh.subMeshCount; submesh++)
+                {
+                    var material = submesh < meshMaterials.Length ? meshMaterials[submesh] : null;
+                    var slot = materials.IndexOf(material);
+                    if (slot < 0)
+                    {
+                        slot = materials.Count;
+                        materials.Add(material);
+                        triangles.Add(new List<int>());
+                    }
+
+                    mesh.GetTriangles(meshTriangles, submesh);
+                    for (var corner = 0; corner < meshTriangles.Count; corner += 3, triangle++)
+                    {
+                        if (keep != null && !keep(triangle))
+                        {
+                            continue;
+                        }
+
+                        triangles[slot].Add(first + meshTriangles[corner]);
+                        triangles[slot].Add(first + meshTriangles[corner + 1]);
+                        triangles[slot].Add(first + meshTriangles[corner + 2]);
+                    }
+                }
+
+                var meshBounds = BoundsIn(boundsFrom, renderer.localBounds, boundsBone);
+                if (hasBounds)
+                {
+                    bounds.Encapsulate(meshBounds);
+                }
+                else
+                {
+                    bounds = meshBounds;
+                    hasBounds = true;
+                }
+            }
+
+            // The mesh of the vertices the triangles use, with the materials that kept triangles.
+            public Combined Finish(string name)
+            {
+                var used = new int[positions.Count];
+                for (var index = 0; index < used.Length; index++)
+                {
+                    used[index] = -1;
+                }
+
+                var keptMaterials = new List<Material>();
+                var keptTriangles = new List<List<int>>();
+                for (var slot = 0; slot < triangles.Count; slot++)
+                {
+                    if (triangles[slot].Count == 0)
+                    {
+                        continue;
+                    }
+
+                    keptMaterials.Add(materials[slot]);
+                    keptTriangles.Add(triangles[slot]);
+                    foreach (var vertex in triangles[slot])
+                    {
+                        used[vertex] = 0;
+                    }
+                }
+
+                var count = 0;
+                for (var index = 0; index < used.Length; index++)
+                {
+                    if (used[index] == 0)
+                    {
+                        used[index] = count++;
+                    }
+                }
+
+                var keptPositions = new List<Vector3>(count);
+                var keptNormals = new List<Vector3>(count);
+                var keptTangents = new List<Vector4>(count);
+                var keptUvs = new List<Vector2>(count);
+                var keptBonesPerVertex = new List<byte>(count);
+                var keptWeights = new List<BoneWeight1>();
+                for (var index = 0; index < used.Length; index++)
+                {
+                    if (used[index] < 0)
+                    {
+                        continue;
+                    }
+
+                    keptPositions.Add(positions[index]);
+                    keptNormals.Add(normals[index]);
+                    keptTangents.Add(tangents[index]);
+                    keptUvs.Add(uvs[index]);
+                    keptBonesPerVertex.Add(bonesPerVertex[index]);
+                    for (var weight = 0; weight < bonesPerVertex[index]; weight++)
+                    {
+                        keptWeights.Add(weights[firstWeight[index] + weight]);
+                    }
+                }
+
+                var combinedMesh = new Mesh
+                {
+                    name = name,
+                    indexFormat = count > ushort.MaxValue
+                        ? UnityEngine.Rendering.IndexFormat.UInt32
+                        : UnityEngine.Rendering.IndexFormat.UInt16,
+                };
+                combinedMesh.SetVertices(keptPositions);
+                combinedMesh.SetNormals(keptNormals);
+                combinedMesh.SetTangents(keptTangents);
+                combinedMesh.SetUVs(0, keptUvs);
+                using (var perVertex = new NativeArray<byte>(keptBonesPerVertex.ToArray(), Allocator.Temp))
+                using (var allWeights = new NativeArray<BoneWeight1>(keptWeights.ToArray(), Allocator.Temp))
+                {
+                    combinedMesh.SetBoneWeights(perVertex, allWeights);
+                }
+
+                combinedMesh.bindposes = bindposes.ToArray();
+                combinedMesh.subMeshCount = keptTriangles.Count;
+                for (var submesh = 0; submesh < keptTriangles.Count; submesh++)
+                {
+                    var remapped = new List<int>(keptTriangles[submesh].Count);
+                    foreach (var vertex in keptTriangles[submesh])
+                    {
+                        remapped.Add(used[vertex]);
+                    }
+
+                    combinedMesh.SetTriangles(remapped, submesh, false);
+                }
+
+                combinedMesh.RecalculateBounds();
+                return new Combined(combinedMesh, bones.ToArray(), keptMaterials.ToArray(), rootBone.name, bounds);
+            }
         }
 
         public sealed class Combined

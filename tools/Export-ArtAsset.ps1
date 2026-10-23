@@ -226,9 +226,24 @@ foreach ($manifest in $manifests) {
         Remove-ArtStaleFiles @($manifest.Export.textures | ForEach-Object { $_.target }) @($textures | ForEach-Object { $_.target })
     }
 
+    # A body with an editable mesh exports its topology next to the model.
+    $dataSha256 = $null
+    $data = @($results | Where-Object { $_ -like "ART_DATA *" } | ForEach-Object { $_.Substring("ART_DATA ".Length) | ConvertFrom-Json })
+    if ($data.Count -gt 0) {
+        if ($data.Count -ne 1 -or (Get-ArtRelativePath $data[0].path) -cne (Get-ArtDataTarget $manifest.Target)) {
+            throw "Blender reported unexpected data for $($manifest.Name)."
+        }
+
+        $dataSha256 = Get-ArtFileSha256 $data[0].path
+    }
+    elseif ($null -ne $manifest.Export -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
+        Remove-ArtStaleFiles @(Get-ArtDataTarget $manifest.Target) @()
+    }
+
     $manifest.Export = [ordered]@{
         sourceSha256 = $sourceSha256
         targetSha256 = Get-ArtFileSha256 $manifest.TargetPath
+        dataSha256 = $dataSha256
         rigSourceSha256 = $rigSourceSha256
         materials = $materials
         textures = $textures

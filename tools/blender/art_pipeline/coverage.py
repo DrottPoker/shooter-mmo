@@ -48,7 +48,7 @@ PULL_IN_MAX = 0.003
 PULL_IN_CLEARANCE = 0.003
 # Visible skin may come this far out of the garment that covers it in motion, in meters.
 CLIP_TOLERANCE = 0.001
-DATA_SCHEMA = 1
+DATA_SCHEMA = 2
 
 
 @dataclass
@@ -250,7 +250,9 @@ def summary(name: str, coverage: Coverage) -> str:
 
 
 def record(name: str, coverage: Coverage) -> dict:
-    """The garment's data for one body, as the export writes it next to the model."""
+    """The garment's data for one body, as the export writes it next to the model, with the
+    garment's own vertices and faces, so Unity finds the faces of its triangles."""
+    version = bpy.data.objects[garment.version_name(name, coverage.label)]
     return {
         "schemaVersion": DATA_SCHEMA,
         "garment": name,
@@ -262,6 +264,9 @@ def record(name: str, coverage: Coverage) -> dict:
         "underlay": [int(i) for i in coverage.underlay],
         "pullInVertices": [int(i) for i in coverage.pull_vertices],
         "pullInDistances": [float(d) for d in coverage.pull_distances],
+        "garmentVertices": [round(float(c), 5) for c in bodies.world_positions(version).reshape(-1)],
+        "garmentFaceSizes": [len(p.vertices) for p in version.data.polygons],
+        "garmentFaceVertices": [int(v) for p in version.data.polygons for v in p.vertices],
     }
 
 

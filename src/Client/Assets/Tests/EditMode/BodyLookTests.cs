@@ -35,6 +35,19 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void ALookWearsGarmentsInItsKey()
+        {
+            var look = BodyLook.Default.With("Face", "Scarred").WithGarment("LeatherJerkin", true).WithPaint("Tattoo", true);
+
+            Assert.That(look.Key, Is.EqualTo("Face=Scarred;Garment=LeatherJerkin;Paint=Tattoo"));
+            Assert.That(look.HasGarment("LeatherJerkin"), Is.True);
+            Assert.That(look.HasPaint("LeatherJerkin"), Is.False);
+            Assert.That(BodyLook.Parse(look.Key), Is.EqualTo(look));
+            Assert.That(look.WithGarment("LeatherJerkin", false).Key, Is.EqualTo("Face=Scarred;Paint=Tattoo"));
+            Assert.Throws<System.ArgumentException>(() => BodyLook.Default.With(BodyLook.GarmentKey, "LeatherJerkin"));
+        }
+
+        [Test]
         public void ALookComesBackFromItsKeyAndSkipsBrokenEntries()
         {
             var look = BodyLook.Parse("Eye=Brown;Face=Scarred");

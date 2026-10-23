@@ -1,6 +1,6 @@
 # Art Pipeline
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 This document describes how 3D models travel from Blender to the Unity client:
 where the files live, the review stages an asset passes before it may reach the
@@ -67,7 +67,7 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the first body and moved to the others. |
 | `art/Garments/<Name>/<Name>.blend` | A [garment](#garments): clothes or armor made on the first body and fitted to the others, one version per body. |
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
-| `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A garment exports one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it. |
+| `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, and a garment one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it. |
 | `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint` and garments to `Textures/Garments`. |
 | `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers. |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
@@ -115,7 +115,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `dyes` | Garments only: the number of dye channels. It is `0` until the garment shader brings dyes. |
 | `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
 | `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. |
-| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment records its `models`, one per body in the order of `bodies` with its `body` label, the `bodySourceSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips completed its masks; its one material `M_Garment_<Name>`; and its image below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
+| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment records its `models`, one per body in the order of `bodies` with its `body` label, the `bodySourceSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips completed its masks; its one material `M_Garment_<Name>`; and its image below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
 
 ## Review Stages
 
@@ -359,8 +359,16 @@ quality compression. The images of paint layers and garments, below
 
 `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs` writes the
 appearance catalog of every exported skinned model with `variants` or a paint
-layer that fits it, as `Assets/Art/Appearance/<Model>_Appearance.asset`, when it
-is missing or differs; see [Appearance Layers](#appearance-layers).
+layer or a garment that fits it, as `Assets/Art/Appearance/<Model>_Appearance.asset`,
+when it is missing or differs; see [Appearance Layers](#appearance-layers). For a
+body with an editable mesh, the catalog maps every triangle of its parts to the
+face of the editable mesh it comes from, and every garment's triangles to their
+underlay: `ArtTopologyMaps` finds each Unity vertex at the position of a vertex
+of the exported topology, Blender's (x, y, z) being Unity's (x, z, y), and each
+triangle in the one face that holds its three corners, so the order of Unity's
+vertices and triangles does not matter.
+`ArtAppearanceCatalogTests` also fails when a face of an editable body is not
+drawn by its size less two triangles.
 `ArtAppearanceCatalogTests` fails when a catalog differs from what the command
 writes from `asset.json`.
 
@@ -621,8 +629,13 @@ The export writes one model per body, `Models/Garments/<Name>_<Label>.fbx`, from
 its `Export_<Label>` collection, the garment skinned to that body's armature, its
 data `Models/Garments/<Name>_<Label>.json`, and its image to `Textures/Garments`.
 The data holds `bodyFaces`, `bodyVertices`, and `garmentFaces`, the `covered`
-body faces, the `underlay` of every garment face, and the `pullInVertices` with
-their `pullInDistances` in meters. A garment is exported after its bodies and the
+body faces, the `underlay` of every garment face, the `pullInVertices` with
+their `pullInDistances` in meters, and the garment's own `garmentVertices`,
+`garmentFaceSizes`, and `garmentFaceVertices`, by which Unity finds the face of
+each triangle. The faces and vertices it names are those of the body's topology,
+which the body's export writes next to its model: its editable mesh's
+`vertices` in Blender's world space, `faceSizes`, `faceVertices`, and
+`faceZones`. A garment is exported after its bodies and the
 animation libraries of its skeleton and records their exports, so
 `Verify-ArtAssets.ps1` fails when a body or a library has a newer export than
 the one the garment was fitted to and checked in: sync, review, and export the

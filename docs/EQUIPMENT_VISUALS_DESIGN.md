@@ -1,12 +1,13 @@
 # Equipment Visuals Design
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 Status: accepted by Victor on 2026-10-22, with the support of future races added.
 It is implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 3,
 this document, the cloth chains with their solver, and the garment kind with its
 fitting, weights, bands, masks, review, export, and Unity import, are done, with
-the leather jerkin as the first garment.
+the leather jerkin as the first garment. Of step 4, putting a character together
+with its garments and trying them on in F2 is done.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -305,6 +306,13 @@ Putting a character together happens on equipment changes, never per frame. If a
 crowd needs fewer draw calls than one per material, garment textures move into
 texture arrays that one garment material reads.
 
+Unity imports a model's triangles in an order of its own, so the body faces are
+found again in Unity by position: every body exports its editable mesh next to
+its model, and the appearance catalog maps every triangle of the body's parts and
+of each garment to the face it comes from when it is written, in the Editor; see
+[Art Pipeline](ART_PIPELINE.md#unity-import-rules). Hair in its compressed form
+comes with the first hair garment, which brings the shape key.
+
 ## Art Pipeline
 
 ### The Garment Kind
@@ -399,7 +407,8 @@ quarter of the triangles come with the first crowd measurement that needs them.
    leather jerkin is its first garment, still the shell of its paint layer.
 4. Putting a character together in Unity: masks, garment layers, pull-in, the
    garment shader with clipping and dyes, the Wardrobe preview, and trying
-   garments on in F2.
+   garments on in F2. Putting the character together and trying garments on are
+   done; the garment shader and the Wardrobe preview come next.
 5. The proof set, each approved by Victor: the leather jerkin as a garment with
    its collar, trousers, boots, a garment that shows skin (a crop top or a net
    shirt) over a tattoo paint layer, a robe with a hood, a cloak, and one hair

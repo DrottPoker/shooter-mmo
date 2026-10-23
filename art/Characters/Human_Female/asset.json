@@ -24,6 +24,7 @@
     "export": {
         "sourceSha256": "56ada98f9e810992eb62668b62af0691a9f2a81b471b9b99032e71bd97a5ed73",
         "targetSha256": "e64194cac1c0d73803c3a4b6be633aa6ce0e5fa3ea0e83d52ec342c54f840b77",
+        "dataSha256": "266ff259c4e0a3127f7c6d3e563c3e73c3861ee140b6d8df3562967385f61ae8",
         "materials": [
             {
                 "name": "M_Body_Female",

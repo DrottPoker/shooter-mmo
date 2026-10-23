@@ -50,6 +50,14 @@ namespace Mmorpg.Client.Editor
                 .FirstOrDefault(manifest => manifest.UnityModelPaths.Contains(assetPath, StringComparer.Ordinal));
         }
 
+        public static ArtAssetManifest[] Garments()
+        {
+            return ManifestPaths()
+                .Select(Load)
+                .Where(manifest => manifest.IsGarment && manifest.IsExported)
+                .ToArray();
+        }
+
         public static ArtAssetManifest[] PaintLayers()
         {
             return ManifestPaths()
@@ -112,9 +120,13 @@ namespace Mmorpg.Client.Editor
         public string[] bodies = Array.Empty<string>();
         public int layer;
         // A garment: its visual slot and its band from the skin; its bodies, the one it is made on
-        // first; and its layer from the inside out.
+        // first; its layer from the inside out; the slots it hides; what headwear does to the hair;
+        // and the cloth profile of its loose parts.
         public string slot = string.Empty;
         public string band = string.Empty;
+        public string[] hides = Array.Empty<string>();
+        public string hair = string.Empty;
+        public string cloth = string.Empty;
         public ArtAssetExport export = new ArtAssetExport();
 
         // The asset's name, its folder, such as LeatherJerkin.
@@ -147,6 +159,17 @@ namespace Mmorpg.Client.Editor
         public string UnityTargetPath
         {
             get { return ArtAssetManifests.ToUnityPath(target); }
+        }
+
+        // A body with an editable mesh exports its topology next to its model, or null.
+        public string UnityDataPath
+        {
+            get
+            {
+                return IsSkinned && export != null && !string.IsNullOrEmpty(export.dataSha256) && UnityTargetPath != null
+                    ? Path.ChangeExtension(UnityTargetPath, ".json")
+                    : null;
+            }
         }
 
         // The Unity paths of the asset's exported models: its target, or a garment's model per body.
@@ -213,6 +236,8 @@ namespace Mmorpg.Client.Editor
     [Serializable]
     public sealed class ArtAssetExport
     {
+        // A body's topology next to its model.
+        public string dataSha256 = string.Empty;
         // A garment's model per body.
         public ArtModelRecord[] models = Array.Empty<ArtModelRecord>();
         public ArtMaterialRecord[] materials = Array.Empty<ArtMaterialRecord>();
@@ -257,7 +282,7 @@ namespace Mmorpg.Client.Editor
     [Serializable]
     public sealed class ArtGarmentData
     {
-        public const int SchemaVersion = 1;
+        public const int SchemaVersion = 2;
 
         // The most a pulled-in vertex moves, in meters.
         public const float MaximumPullIn = 0.003f;
@@ -272,10 +297,35 @@ namespace Mmorpg.Client.Editor
         public int[] underlay = Array.Empty<int>();
         public int[] pullInVertices = Array.Empty<int>();
         public float[] pullInDistances = Array.Empty<float>();
+        // The garment's own vertices in Blender's world space and its faces, so the faces of the
+        // model's triangles can be found.
+        public float[] garmentVertices = Array.Empty<float>();
+        public int[] garmentFaceSizes = Array.Empty<int>();
+        public int[] garmentFaceVertices = Array.Empty<int>();
 
         public static ArtGarmentData FromJson(string json)
         {
             return JsonUtility.FromJson<ArtGarmentData>(json);
+        }
+    }
+
+    // A body's editable mesh: its vertices in Blender's world space, its faces, and the body part
+    // of each face. Export-ArtAsset.ps1 writes it next to the body's model.
+    [Serializable]
+    public sealed class ArtBodyTopology
+    {
+        public const int SchemaVersion = 1;
+
+        public int schemaVersion;
+        public string body = string.Empty;
+        public float[] vertices = Array.Empty<float>();
+        public int[] faceSizes = Array.Empty<int>();
+        public int[] faceVertices = Array.Empty<int>();
+        public int[] faceZones = Array.Empty<int>();
+
+        public static ArtBodyTopology FromJson(string json)
+        {
+            return JsonUtility.FromJson<ArtBodyTopology>(json);
         }
     }
 
