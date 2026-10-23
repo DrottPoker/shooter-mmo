@@ -1,18 +1,21 @@
 # Creates a new art asset: its folder below art/, its asset.json with the fields of its kind, and
 # its first .blend file, so the next step is the work in Blender. A static model starts as an
 # empty scene with the Export collection and its root objects, an animation library from the rig
-# it is keyed on, optionally with clips of the gait model, a paint layer from its bodies, and a
-# garment from its bodies with a starting shell on the first body. The asset then goes through
-# review, approval, and export like any other. See docs/ART_PIPELINE.md.
+# it is keyed on, optionally with clips of the gait model, a paint layer from its bodies, a
+# garment from its bodies with a starting shell on the first body, and the garment cage of a
+# skeleton from the first of its bodies, fitted to all of them, with the standard lines. The asset
+# then goes through review, approval, and export like any other; the cage has no export. See
+# docs/ART_PIPELINE.md.
 param(
     # static for a model without a skeleton, animations for an animation library, paint for a paint
-    # layer, garment for clothes or armor. A new body type starts from a human base body and comes
-    # with body types.
+    # layer, garment for clothes or armor, cage for the garment cage of a skeleton. A new body type
+    # starts from a human base body and comes with body types.
     [Parameter(Mandatory = $true)]
-    [ValidateSet("static", "animations", "paint", "garment")]
+    [ValidateSet("static", "animations", "paint", "garment", "cage")]
     [string]$Kind,
     # The new asset folder art/<Category>/<Name>, such as art/WorldActors/Resource_CopperVein,
-    # art/Animations/Human_Combat, art/Paint/ChainShirt, or art/Garments/LinenShirt.
+    # art/Animations/Human_Combat, art/Paint/ChainShirt, art/Garments/LinenShirt, or
+    # art/Cages/Humanoid.
     [Parameter(Mandatory = $true)]
     [string]$Asset,
     # static: the names of the top-level objects the game code expects, such as Available, Depleted.
@@ -27,6 +30,7 @@ param(
     # paint: the painted material part, the bodies the paint fits with the painted one first, and
     # the drawing order from 0 to 1000, the lowest first. garment: the bodies it fits with the one
     # it is made on first, and its layer from the inside out, by default the slot's typical layer.
+    # cage: the bodies it is fitted to, the one it is made from first.
     [string]$Part = "Body",
     [string[]]$Bodies = @("art/Characters/Human_Male", "art/Characters/Human_Female"),
     [int]$Layer = 20,
@@ -44,6 +48,8 @@ param(
     # garment: a paint layer art/Paint/<Name> whose paint on the first body shows where the starting
     # shell goes; without it, the shell covers the body parts of the slot.
     [string]$FromPaint,
+    # cage: the figure scale in meters, the size of a detail the cage still spans.
+    [double]$Figure = 0.06,
     [string]$BlenderPath
 )
 
@@ -57,7 +63,7 @@ if ($relative -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$') {
 
 $parts = $relative.Split('/')
 $category, $name = $parts[1], $parts[2]
-$expectedCategory = @{ animations = "Animations"; paint = "Paint"; garment = "Garments" }[$Kind]
+$expectedCategory = @{ animations = "Animations"; paint = "Paint"; garment = "Garments"; cage = "Cages" }[$Kind]
 if ($null -ne $expectedCategory -and $category -cne $expectedCategory) {
     throw "A new $Kind asset goes below art/$expectedCategory, such as art/$expectedCategory/$name."
 }
@@ -146,9 +152,40 @@ switch ($Kind) {
         $lines.Add('    "dyes": 0,')
         $lines.Add("    `"triangleBudget`": $TriangleBudget,")
     }
+    "cage" {
+        $bodyPaths = @($Bodies | ForEach-Object { (Read-ArtAssetManifest (Resolve-ArtAssetDirectory $_)).RelativeDirectory })
+        $lines.Add("    `"bodies`": [$(Format-ArtList $bodyPaths)],")
+        $lines.Add("    `"figure`": $(Format-ArtShare $Figure),")
+        # The standard lines of docs/EQUIPMENT_VISUALS_DESIGN.md, from the neck down.
+        $standard = @(
+            @("CollarStand", "neck", "Neck", 0.3),
+            @("HemCrop", "trunk", "Chest", 0.5),
+            @("Waist", "trunk", "Spine", 0.1),
+            @("HemHip", "trunk", "Hips", 0.72),
+            @("SleeveShort", "arms", "UpperArm", 0.6),
+            @("SleeveElbow", "arms", "LowerArm", 0.05),
+            @("GloveCuff", "arms", "LowerArm", 0.65),
+            @("SleeveLong", "arms", "LowerArm", 0.92),
+            @("LegShorts", "legs", "UpperLeg", 0.5),
+            @("LegKnee", "legs", "LowerLeg", 0.1),
+            @("BootCalf", "legs", "LowerLeg", 0.55),
+            @("LegAnkle", "legs", "LowerLeg", 0.9))
+        $lines.Add('    "lines": [')
+        for ($i = 0; $i -lt $standard.Count; $i++) {
+            $comma = if ($i -lt $standard.Count - 1) { "," } else { "" }
+            $line = $standard[$i]
+            $lines.Add("        { `"name`": `"$($line[0])`", `"region`": `"$($line[1])`", `"bone`": `"$($line[2])`", `"share`": $(Format-ArtShare $line[3]) }$comma")
+        }
+        $lines.Add('    ],')
+    }
 }
-$lines.Add('    "approvals": {},')
-$lines.Add('    "export": null')
+if ($Kind -eq "cage") {
+    $lines.Add('    "approvals": {}')
+}
+else {
+    $lines.Add('    "approvals": {},')
+    $lines.Add('    "export": null')
+}
 $lines.Add("}")
 
 New-Item -ItemType Directory -Path $directory | Out-Null
@@ -199,6 +236,22 @@ try {
                 Write-Host $line.Substring("ART_REPORT ".Length)
             }
         }
+        "cage" {
+            $arguments = @(
+                "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
+                "--python", $script:ArtBlenderCli, "--", "cage-create",
+                "--file", $manifest.SourcePath, "--manifest", $manifest.ManifestPath)
+            $arguments += @($manifest.Bodies | ForEach-Object { @("--body", "$($_.SourcePath)=$($_.Root)") })
+            $blender = Resolve-ArtBlender $BlenderPath
+            $output = Invoke-ArtNative $blender $arguments
+            if ($script:ArtNativeExitCode -ne 0 -or @($output | Where-Object { $_ -like "ART_CAGE created *" }).Count -eq 0) {
+                throw "Blender could not write $($manifest.SourcePath):`n$(($output | Select-Object -Last 20) -join "`n")"
+            }
+
+            foreach ($line in @($output | Where-Object { $_ -like "ART_REPORT *" })) {
+                Write-Host $line.Substring("ART_REPORT ".Length)
+            }
+        }
     }
 }
 catch {
@@ -221,5 +274,8 @@ switch ($Kind) {
     }
     "garment" {
         Write-Host "Shape ${name}_$($manifest.RootObjects[0]) on the first body, run tools/Sync-GarmentAsset.ps1, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment."
+    }
+    "cage" {
+        Write-Host "Run tools/Sync-CageAsset.ps1 for its review sheet and checks, then review and approve it as docs/LOCAL_DEVELOPMENT.md describes under Fit The Garment Cage."
     }
 }

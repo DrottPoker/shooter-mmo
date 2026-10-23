@@ -7,7 +7,7 @@ param(
     [string]$Asset,
     # Review stages of a static asset: model. Of a skinned asset: model, rig, and animation when it
     # has clips of its own. Of an animation library: animation. Of a paint layer: paint. Of a
-    # garment: model and rig.
+    # garment: model and rig. Of the garment cage: model.
     [string]$Stage = "model",
     [string]$BlenderPath
 )
@@ -43,6 +43,11 @@ $validation = Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtVali
 $manifest.Approvals[$Stage] = [ordered]@{
     date = (Get-Date).ToString("yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)
     sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
+}
+
+# An approved cage records the exports of the bodies it was fitted to.
+if ($manifest.Kind -eq "cage") {
+    $manifest.FittedTo = Get-ArtCageBodies $manifest
 }
 
 # A new approval of an earlier stage reopens every later stage.

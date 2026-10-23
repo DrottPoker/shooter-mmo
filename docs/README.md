@@ -46,8 +46,8 @@ operations, and future design do not drift into duplicate descriptions.
     asset layout, the review stages and approvals, the shared skeletons, the
     export and import rules for static and skinned models and their textures,
     the modeling conventions, the human base characters edited in Blender with
-    their rig, the animation libraries, paint layers, and garments, and the
-    Blender MCP server for live work.
+    their rig, the animation libraries, paint layers, garments, and the garment
+    cage, and the Blender MCP server for live work.
 
 ## Foundation Hardening
 

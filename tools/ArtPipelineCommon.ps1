@@ -15,13 +15,14 @@ $script:ArtBlenderCli = Join-Path $PSScriptRoot "blender/art_pipeline_cli.py"
 # An animation library holds handmade clips of one skeleton, without meshes, so its only stage is
 # the animation. A skinned asset without clips of its own, such as a body whose clips come from
 # animation libraries, ends with its rig. A garment is reviewed on its bodies at rest, then in the
-# test poses.
+# test poses. The garment cage is reviewed once, on its bodies, and has no export.
 $script:ArtReviewStages = @{
     static = @("model")
     skinned = @("model", "rig", "animation")
     animations = @("animation")
     paint = @("paint")
     garment = @("model", "rig")
+    cage = @("model")
 }
 
 # The stages whose rules Blender can check, and so can be approved.
@@ -31,7 +32,14 @@ $script:ArtImplementedStages = @{
     animations = @("animation")
     paint = @("paint")
     garment = @("model", "rig")
+    cage = @("model")
 }
+
+# The regions of the garment cage and the range of its figure scale in meters; see
+# docs/EQUIPMENT_VISUALS_DESIGN.md.
+$script:ArtCageRegions = @("neck", "trunk", "arms", "legs")
+$script:ArtCageSidedRegions = @("arms", "legs")
+$script:ArtCageFigureRange = @(0.01, 0.2)
 
 # A paint layer exports only images, below this folder.
 $script:ArtPaintTextureFolder = "$script:ArtTextureFolder/Paint"
@@ -830,6 +838,179 @@ function Write-ArtGarmentManifest($Manifest) {
     [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
+    # The garment cage of a skeleton: a net of fixed topology fitted to every body of the skeleton,
+    # on which garments are made and fitted. It has one review stage and no export; garments record
+    # its approved file. See docs/EQUIPMENT_VISUALS_DESIGN.md.
+    $name = Split-Path -Leaf $AssetDirectory
+    $problems = New-Object System.Collections.Generic.List[string]
+    if ($Json.schemaVersion -ne 1) {
+        $problems.Add("schemaVersion must be 1")
+    }
+
+    foreach ($field in @("target", "rootObjects", "triangleBudget", "skeleton", "clips", "rig", "previews", "variants", "part", "export")) {
+        if ($null -ne $Json.PSObject.Properties[$field]) {
+            $problems.Add("a cage has no $field")
+        }
+    }
+
+    $bodies = @()
+    $skeleton = $null
+    $skeletonPath = $null
+    $boneNames = @()
+    try {
+        $first = @($Json.bodies)[0]
+        $skeleton = if ($null -ne $first) { [string](Get-Content -Raw -LiteralPath (Join-Path (Join-Path $script:ArtRepositoryRoot ([string]$first)) "asset.json") | ConvertFrom-Json).skeleton } else { "" }
+        $bodies = @(@($Json.bodies | Where-Object { $null -ne $_ }) | ForEach-Object { Read-ArtRigReference ([string]$_) $skeleton "bodies" })
+        $skeletonPath = Read-ArtSkeleton $skeleton
+        $boneNames = @((Get-Content -Raw -LiteralPath $skeletonPath | ConvertFrom-Json).bones | ForEach-Object { [string]$_.name })
+    }
+    catch {
+        $problems.Add($_.Exception.Message)
+    }
+
+    if ($bodies.Count -eq 0 -or @($bodies | ForEach-Object { $_.Asset } | Sort-Object -Unique).Count -ne $bodies.Count -or
+        @($bodies | ForEach-Object { $_.Root } | Sort-Object -Unique).Count -ne $bodies.Count) {
+        $problems.Add("bodies must name one or more skinned assets of one skeleton, each once, the body the cage is made from first")
+    }
+    elseif ($name -cne $skeleton) {
+        $problems.Add("a cage lies in the folder of its skeleton, art/Cages/$skeleton")
+    }
+
+    $figure = $Json.figure
+    if (-not (Test-ArtNumber $figure) -or $figure -lt $script:ArtCageFigureRange[0] -or $figure -gt $script:ArtCageFigureRange[1]) {
+        $problems.Add("figure must be the figure scale in meters, from $($script:ArtCageFigureRange[0]) to $($script:ArtCageFigureRange[1])")
+    }
+
+    $lines = New-Object System.Collections.Generic.List[object]
+    $lineNames = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($line in @($Json.lines | Where-Object { $null -ne $_ })) {
+        $lineName = [string]$line.name
+        $region = [string]$line.region
+        $bone = [string]$line.bone
+        $share = $line.share
+        $sided = $script:ArtCageSidedRegions -ccontains $region
+        $bonesFound = if ($sided) { $boneNames -ccontains "${bone}_L" -and $boneNames -ccontains "${bone}_R" } else { $boneNames -ccontains $bone }
+        if ($lineName -cnotmatch '^[A-Z][A-Za-z0-9]*$' -or -not $lineNames.Add($lineName) -or
+            $script:ArtCageRegions -cnotcontains $region -or $bone -cnotmatch '^[A-Za-z][A-Za-z0-9]*$' -or -not $bonesFound -or
+            -not (Test-ArtNumber $share) -or $share -lt 0 -or $share -gt 1) {
+            $problems.Add("every line needs a unique name, a region ($($script:ArtCageRegions -join ', ')), a bone of the skeleton, without its side _L or _R for the arms and legs, and a share of the bone from 0 to 1; '$lineName' does not")
+            continue
+        }
+
+        $lines.Add([ordered]@{ name = $lineName; region = $region; bone = $bone; share = [double]$share })
+    }
+
+    if ($lines.Count -eq 0) {
+        $problems.Add("lines must list the standard lines of the cage")
+    }
+
+    # The exports of the bodies the approved cage was fitted to, so a body that changes, joins, or
+    # leaves after the approval makes the cage stale until it is synced and approved again. A record
+    # of a body that left is kept for that, and Get-ArtCageBodyProblem reports it.
+    $fittedTo = New-Object System.Collections.Generic.List[object]
+    foreach ($record in @($Json.fittedTo | Where-Object { $null -ne $_ })) {
+        if ([string]$record.body -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
+            [string]$record.sourceSha256 -cnotmatch $script:ArtShaPattern -or
+            @($fittedTo | Where-Object { $_.body -ceq [string]$record.body }).Count -gt 0) {
+            $problems.Add("fittedTo must list bodies once each with the sourceSha256 of the body's export the cage was approved on")
+            break
+        }
+
+        $fittedTo.Add([ordered]@{ body = [string]$record.body; sourceSha256 = [string]$record.sourceSha256 })
+    }
+
+    $stages = $script:ArtReviewStages["cage"]
+    $approvals = [ordered]@{}
+    if ($null -ne $Json.approvals) {
+        foreach ($property in $Json.approvals.PSObject.Properties) {
+            $value = $property.Value
+            if ($stages -notcontains $property.Name -or [string]$value.date -notmatch $script:ArtDatePattern -or
+                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern) {
+                $problems.Add("approvals of a cage hold its stage $($stages -join ', ') with a date (yyyy-MM-dd) and a sourceSha256")
+                continue
+            }
+
+            $approvals[$property.Name] = [ordered]@{ date = [string]$value.date; sourceSha256 = [string]$value.sourceSha256 }
+        }
+    }
+
+    $sourcePath = Join-Path $AssetDirectory "$name.blend"
+    if (-not $AllowMissingSource -and -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        $problems.Add("the source file $name.blend is missing next to asset.json")
+    }
+
+    if ($problems.Count -gt 0) {
+        throw "${Where}: $($problems -join '; ')."
+    }
+
+    return [pscustomobject]@{
+        Name = $name
+        Directory = $AssetDirectory
+        ManifestPath = Join-Path $AssetDirectory "asset.json"
+        RelativeDirectory = Get-ArtRelativePath $AssetDirectory
+        SourcePath = $sourcePath
+        Kind = "cage"
+        Stages = $stages
+        ImplementedStages = $script:ArtImplementedStages["cage"]
+        Target = $null
+        TargetPath = $null
+        RootObjects = [string[]]@($bodies | ForEach-Object { $_.Root })
+        TriangleBudget = $null
+        Skeleton = $skeleton
+        SkeletonPath = $skeletonPath
+        Rig = $null
+        Previews = @()
+        Clips = [string[]]@()
+        Variants = @()
+        Bodies = $bodies
+        Figure = [double]$figure
+        Lines = $lines.ToArray()
+        FittedTo = $fittedTo.ToArray()
+        Approvals = $approvals
+        Export = $null
+        ExportProblem = $null
+    }
+}
+
+function Format-ArtShare([double]$Value) {
+    # The shortest text that reads back as the same number, so no value is rounded on the way.
+    return $Value.ToString("R", [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Write-ArtCageManifest($Manifest) {
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("{")
+    $lines.Add('    "schemaVersion": 1,')
+    $lines.Add('    "kind": "cage",')
+    $bodies = (@($Manifest.Bodies) | ForEach-Object { '"' + $_.Asset + '"' }) -join ", "
+    $lines.Add("    `"bodies`": [$bodies],")
+    $lines.Add("    `"figure`": $(Format-ArtShare $Manifest.Figure),")
+    $lines.Add('    "lines": [')
+    $entries = @($Manifest.Lines)
+    for ($i = 0; $i -lt $entries.Count; $i++) {
+        $comma = if ($i -lt $entries.Count - 1) { "," } else { "" }
+        $lines.Add("        { `"name`": `"$($entries[$i].name)`", `"region`": `"$($entries[$i].region)`", `"bone`": `"$($entries[$i].bone)`", `"share`": $(Format-ArtShare $entries[$i].share) }$comma")
+    }
+    $lines.Add('    ],')
+    $fitted = @($Manifest.FittedTo)
+    if ($fitted.Count -gt 0) {
+        $lines.Add('    "fittedTo": [')
+        for ($i = 0; $i -lt $fitted.Count; $i++) {
+            $comma = if ($i -lt $fitted.Count - 1) { "," } else { "" }
+            $lines.Add("        { `"body`": `"$($fitted[$i].body)`", `"sourceSha256`": `"$($fitted[$i].sourceSha256)`" }$comma")
+        }
+        $lines.Add('    ],')
+    }
+
+    Add-ArtApprovalLines $lines $Manifest
+    # A cage has no export, so its approvals are the last field.
+    $lines[$lines.Count - 1] = $lines[$lines.Count - 1].TrimEnd(',')
+    $lines.Add("}")
+    $text = ($lines -join "`n") + "`n"
+    [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSource) {
     # AllowMissingSource reads the manifest of a new animation library, paint layer, or garment
     # before its first file is written.
@@ -849,6 +1030,10 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
 
     if ([string]$json.kind -eq "garment") {
         return Read-ArtGarmentManifest $AssetDirectory $json $where -AllowMissingSource:$AllowMissingSource
+    }
+
+    if ([string]$json.kind -eq "cage") {
+        return Read-ArtCageManifest $AssetDirectory $json $where -AllowMissingSource:$AllowMissingSource
     }
 
     $problems = New-Object System.Collections.Generic.List[string]
@@ -1136,6 +1321,11 @@ function Write-ArtAssetManifest($Manifest) {
         return
     }
 
+    if ($Manifest.Kind -eq "cage") {
+        Write-ArtCageManifest $Manifest
+        return
+    }
+
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("{")
     $lines.Add('    "schemaVersion": 1,')
@@ -1215,6 +1405,49 @@ function Write-ArtAssetManifest($Manifest) {
     $lines.Add("}")
     $text = ($lines -join "`n") + "`n"
     [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Get-ArtCageBodyProblem($Manifest) {
+    # Returns $null when the approved cage was fitted to exactly its bodies and every body still has
+    # the export the cage was approved on, otherwise the reason it does not.
+    foreach ($record in @($Manifest.FittedTo)) {
+        if (@($Manifest.Bodies | Where-Object { $_.Asset -ceq $record.body }).Count -eq 0) {
+            return "it was approved on the body $($record.body), which it no longer has; run tools/Sync-CageAsset.ps1, review and approve it again"
+        }
+    }
+
+    foreach ($body in @($Manifest.Bodies)) {
+        $record = @($Manifest.FittedTo | Where-Object { $_.body -ceq $body.Asset }) | Select-Object -First 1
+        $export = $null
+        try {
+            $export = (Read-ArtAssetManifest (Split-Path -Parent $body.ManifestPath)).Export
+        }
+        catch {
+            # The body's own problems are reported with the body.
+        }
+
+        if ($null -eq $record) {
+            return "its body $($body.Asset) joined after the cage was approved; run tools/Sync-CageAsset.ps1, review and approve it again"
+        }
+
+        if ($null -eq $export -or $export.sourceSha256 -ne $record.sourceSha256) {
+            return "its body $($body.Asset) changed after the cage was approved; run tools/Sync-CageAsset.ps1, review and approve it again"
+        }
+    }
+
+    return $null
+}
+
+function Get-ArtCageBodies($Manifest) {
+    # The exports of the cage's bodies as an approval records them.
+    return @($Manifest.Bodies | ForEach-Object {
+            $export = (Read-ArtAssetManifest (Split-Path -Parent $_.ManifestPath)).Export
+            if ($null -eq $export) {
+                throw "The cage cannot be approved before its body $($_.Asset) is exported."
+            }
+
+            [ordered]@{ body = $_.Asset; sourceSha256 = [string]$export.sourceSha256 }
+        })
 }
 
 function Get-ArtExportGateProblem($Manifest, [string]$SourceSha256) {
@@ -1361,6 +1594,18 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
         }
 
         return $arguments + (Get-ArtGarmentClipArguments $Manifest)
+    }
+
+    # A cage is checked against the current files of its bodies and against the figure scale and
+    # the lines of its asset.json.
+    if ($Manifest.Kind -eq "cage") {
+        $arguments = @("--kind", "cage", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
+            "--manifest", $Manifest.ManifestPath)
+        foreach ($body in @($Manifest.Bodies)) {
+            $arguments += @("--body", "$($body.SourcePath)=$($body.Root)")
+        }
+
+        return $arguments
     }
 
     $arguments = @(

@@ -2754,7 +2754,7 @@ When the reviewer approves the model, record the approval and export:
 Expected result: `Approved the 'model' stage of Resource_IronVein
 (triangles=878).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified 5 art asset(s).` Unity imports the model the
+(triangles=878).`, and `Verified 7 art asset(s).` Unity imports the model the
 next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
 its `.meta` file together.
 
@@ -3039,6 +3039,57 @@ bodies. `art/Paint/LeatherJerkin` is the paint of the leather jerkin.
    Expected result: the Console lists `Paint LeatherJerkin` in both catalogs when
    the paint layer is new. Commit the `.blend` file, `asset.json`, the PNG files,
    the catalogs, and their `.meta` files together.
+
+### Fit The Garment Cage
+
+[Garment Cage](ART_PIPELINE.md#garment-cage) describes the net that garments are
+made on, `art/Cages/Humanoid`. It exists already; `New-ArtAsset.ps1 -Kind cage
+-Asset art/Cages/<Skeleton>` makes the cage of a new skeleton from the first of
+its `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
+
+1. Fit it to the bodies and check it, after a body, the figure scale, or a line
+   in `asset.json` changed:
+
+   ```powershell
+   .\tools\Sync-CageAsset.ps1
+   ```
+
+   Expected result: one report line per body, such as `Cage_Male: 1576 faces,
+   1.0 to 25.6 mm from the skin, median 1.9 mm, 223 vertices span pits more than
+   5 mm deep`, `Synced Humanoid: ...` or `Humanoid is up to date: ...`, the path
+   of the review sheet, and `Humanoid meets every rule. Review it, ...`. A second
+   run prints `Humanoid is up to date: ...` and leaves the file as it is. A broken
+   rule stops it with the list of rules, such as a line that does not cross its
+   region, or faces that cross each other.
+2. Look at `artifacts\art-previews\Humanoid.png`. Expected result: per body a
+   row colored by the distance from the skin, mostly blue, yellow over the
+   spanned pits, with the twelve lines drawn as colored rings at the neck, under
+   the bust, at the waist and the hips, on the arms, and on the legs; a row in
+   one brown cloth color; and the torso up close. The cloth follows the waist,
+   the small of the back, the bust, and the buttocks, and shows no buttock
+   cleft above the hip line, no spine groove, no navel, and no abdominal
+   muscles.
+3. Open the file in Blender to look closer:
+
+   ```powershell
+   & $env:BLENDER_PATH art\Cages\Humanoid\Humanoid.blend
+   ```
+
+   Expected result: the male body in `Cage_Male`; the female and `Cage_Female`
+   are hidden in the Outliner below `Fit_Female`, and the reference below
+   `CageReference`. Correct a version in Edit Mode only where the fitting needs
+   help, save, and run the sync again; it keeps the correction. Close Blender
+   without saving otherwise.
+4. Approve it and verify:
+
+   ```powershell
+   .\tools\Approve-ArtAsset.ps1 -Asset art/Cages/Humanoid -Stage model
+   .\tools\Verify-ArtAssets.ps1
+   ```
+
+   Expected result: `Approved the 'model' stage of Humanoid (faces=1576).` and
+   `Verified 7 art asset(s).` The cage has no export; commit the `.blend` file
+   and `asset.json` together.
 
 ### Make A Garment
 

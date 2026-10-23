@@ -5,8 +5,9 @@
 # whose review stages are not all approved for the current .blend file is refused. An animation
 # library exports its armature and clips only, and records the export of the rig it was authored
 # on, so it is exported after that rig. A paint layer exports its images only, and a garment one
-# model per body below src/Client/Assets/Art/Models/Garments. Unity imports the FBX with the rules
-# in ArtModelImportRules. See docs/ART_PIPELINE.md.
+# model per body below src/Client/Assets/Art/Models/Garments. The garment cage has no export, so
+# -All leaves it out. Unity imports the FBX with the rules in ArtModelImportRules. See
+# docs/ART_PIPELINE.md.
 param(
     [string[]]$Asset,
     # Export every asset below art/.
@@ -25,6 +26,12 @@ $directories = if ($All) { Get-ArtAssetDirectories } else { @($Asset | ForEach-O
 # Animation libraries come after the rigs they record the export of, and garments last, because
 # they record the exports of their bodies and of the libraries they were checked in.
 $read = @($directories | ForEach-Object { Read-ArtAssetManifest $_ })
+$cages = @($read | Where-Object { $_.Kind -eq "cage" })
+if (-not $All -and $cages.Count -gt 0) {
+    throw "$($cages[0].Name) is a garment cage, which has no export; garments record its approved file."
+}
+
+$read = @($read | Where-Object { $_.Kind -ne "cage" })
 $manifests = @($read | Where-Object { @("animations", "garment") -notcontains $_.Kind }) +
     @($read | Where-Object { $_.Kind -eq "animations" }) + @($read | Where-Object { $_.Kind -eq "garment" })
 foreach ($manifest in $manifests) {
