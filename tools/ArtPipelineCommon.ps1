@@ -905,22 +905,19 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
         $problems.Add("lines must list the standard lines of the cage")
     }
 
-    # The exports of the bodies the approved cage was fitted to, so a body that changes after the
-    # approval makes the cage stale until it is synced and approved again.
+    # The exports of the bodies the approved cage was fitted to, so a body that changes, joins, or
+    # leaves after the approval makes the cage stale until it is synced and approved again. A record
+    # of a body that left is kept for that, and Get-ArtCageBodyProblem reports it.
     $fittedTo = New-Object System.Collections.Generic.List[object]
     foreach ($record in @($Json.fittedTo | Where-Object { $null -ne $_ })) {
-        if (@($bodies | Where-Object { $_.Asset -ceq [string]$record.body }).Count -ne 1 -or
+        if ([string]$record.body -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
             [string]$record.sourceSha256 -cnotmatch $script:ArtShaPattern -or
             @($fittedTo | Where-Object { $_.body -ceq [string]$record.body }).Count -gt 0) {
-            $problems.Add("fittedTo must list every body of the cage once with the sourceSha256 of the body's export the cage was approved on")
+            $problems.Add("fittedTo must list bodies once each with the sourceSha256 of the body's export the cage was approved on")
             break
         }
 
         $fittedTo.Add([ordered]@{ body = [string]$record.body; sourceSha256 = [string]$record.sourceSha256 })
-    }
-
-    if (($null -ne $Json.approvals -and @($Json.approvals.PSObject.Properties).Count -gt 0) -and $fittedTo.Count -ne $bodies.Count) {
-        $problems.Add("an approved cage records in fittedTo the export of every body it was fitted to")
     }
 
     $stages = $script:ArtReviewStages["cage"]
@@ -1411,8 +1408,14 @@ function Write-ArtAssetManifest($Manifest) {
 }
 
 function Get-ArtCageBodyProblem($Manifest) {
-    # Returns $null when every body of an approved cage still has the export the cage was approved
-    # on, otherwise the reason it does not.
+    # Returns $null when the approved cage was fitted to exactly its bodies and every body still has
+    # the export the cage was approved on, otherwise the reason it does not.
+    foreach ($record in @($Manifest.FittedTo)) {
+        if (@($Manifest.Bodies | Where-Object { $_.Asset -ceq $record.body }).Count -eq 0) {
+            return "it was approved on the body $($record.body), which it no longer has; run tools/Sync-CageAsset.ps1, review and approve it again"
+        }
+    }
+
     foreach ($body in @($Manifest.Bodies)) {
         $record = @($Manifest.FittedTo | Where-Object { $_.body -ceq $body.Asset }) | Select-Object -First 1
         $export = $null
@@ -1423,7 +1426,11 @@ function Get-ArtCageBodyProblem($Manifest) {
             # The body's own problems are reported with the body.
         }
 
-        if ($null -eq $record -or $null -eq $export -or $export.sourceSha256 -ne $record.sourceSha256) {
+        if ($null -eq $record) {
+            return "its body $($body.Asset) joined after the cage was approved; run tools/Sync-CageAsset.ps1, review and approve it again"
+        }
+
+        if ($null -eq $export -or $export.sourceSha256 -ne $record.sourceSha256) {
             return "its body $($body.Asset) changed after the cage was approved; run tools/Sync-CageAsset.ps1, review and approve it again"
         }
     }
