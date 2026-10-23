@@ -116,6 +116,9 @@ def file_sha256(path: str) -> str:
 
 
 def recipe_text(recipe) -> str:
+    """A recipe as the file keeps it, with its numbers as floats, so 0 and 0.0 read alike."""
+    if isinstance(recipe, dict):
+        recipe = {**recipe, "ease": float(recipe["ease"]), "hem": float(recipe["hem"])}
     return json.dumps(recipe, sort_keys=True, separators=(",", ":"))
 
 
@@ -732,7 +735,12 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
         if root in stale:
             body_files.replace_body(path, root, collection_name(root))
     arms = [bpy.data.objects[label] for label in labels]
-    for obj in [o for o in bpy.data.objects if o.type == "ARMATURE" and o.name not in labels]:
+    # A body no longer of the cage leaves the file with its version, which is a change too.
+    gone = [o for o in bpy.data.objects if o.type == "ARMATURE" and o.name not in labels]
+    gone += [o for o in bpy.data.objects if o.name.startswith(cage.version_name("")) and
+             o.name[len(cage.version_name("")):] not in labels]
+    removed = len(gone)
+    for obj in gone:
         for child in list(obj.children_recursive):
             bpy.data.objects.remove(child, do_unlink=True)
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -770,7 +778,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
 
     plan = _plan(name, arms, band, transfer_all)
     _apply(plan, name, arms)
-    if _state(name, labels) == before:
+    if not removed and _state(name, labels) == before:
         return False, plan["hand"], notes
     _show_first(arms)
     relative_image_paths()
