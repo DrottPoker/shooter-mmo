@@ -77,39 +77,19 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // The CI runs Unity without graphics, so the tests cannot render; the window draws the preview.
         [Test]
-        public void TheWardrobeDrawsTheBodyAndLeavesNothingBehind()
+        public void ClosingTheWardrobeLeavesNothingBehind()
         {
             var preview = new WardrobePreview(WardrobePreview.Bodies()[0]);
             var scene = preview.Scene;
-            var cameraObject = new GameObject("TestCamera");
-            var texture = new RenderTexture(64, 64, 24);
-            var pixels = new Texture2D(64, 64, TextureFormat.RGB24, false);
-            try
-            {
-                var camera = cameraObject.AddComponent<Camera>();
-                camera.enabled = false;
-                camera.clearFlags = CameraClearFlags.SolidColor;
-                camera.backgroundColor = Color.black;
-                camera.transform.position = preview.Focus + new Vector3(0f, 0f, 2.5f);
-                camera.transform.LookAt(preview.Focus);
-                preview.Render(camera, texture);
-                RenderTexture.active = texture;
-                pixels.ReadPixels(new Rect(0, 0, 64, 64), 0, 0);
-                pixels.Apply();
-                RenderTexture.active = null;
-                // The body stands in the middle of the view.
-                Assert.That(pixels.GetPixel(32, 32).maxColorComponent, Is.GreaterThan(0.05f));
-            }
-            finally
-            {
-                Object.DestroyImmediate(cameraObject);
-                Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(pixels);
-                preview.Dispose();
-            }
+            var body = preview.Body;
+            preview.Wear(new[] { Jerkin });
+            Assert.That(scene.IsValid(), Is.True);
 
+            preview.Dispose();
             Assert.That(scene.IsValid(), Is.False);
+            Assert.That(body == null, Is.True);
         }
 
         [Test]
