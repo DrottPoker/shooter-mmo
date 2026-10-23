@@ -86,6 +86,13 @@ if (Test-Path -LiteralPath $directory) {
     throw "$relative exists already; a new asset needs a folder of its own."
 }
 
+# A garment template and a garment texture both export the material M_Garment_<Name> and data
+# Models/Garments/<Name>_<Label>.json, so no texture may share a template's name, nor the reverse.
+$other = @{ garment = "GarmentTextures"; texture = "Garments" }[$Kind]
+if ($null -ne $other -and (Test-Path -LiteralPath (Join-Path (Join-Path $script:ArtSourceRoot $other) $name))) {
+    throw "art/$other/$name exists; a garment template and a garment texture need different names, such as Shirt and LinenShirt."
+}
+
 function Format-ArtList([string[]]$Values) {
     return (@($Values) | ForEach-Object { '"' + $_ + '"' }) -join ", "
 }

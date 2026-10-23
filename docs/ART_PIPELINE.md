@@ -171,8 +171,10 @@ missing or stale, when an animation library was exported against another export
 of its rig, when an asset in review has an export or an FBX, when the garment
 cage's approval does not cover its committed file or one of its bodies has
 another export than the cage was approved on, when a garment template was
-fitted to another file of its cage, when a garment texture was exported against
-another export of its template, when the
+fitted to another file of its cage or exported for other bodies than its cage
+has, when a garment texture was exported against another export of its template
+or has masks for other bodies than its template, when two assets export a
+material of the same name, when the
 committed FBX or a committed texture differs from the recorded export, or when a
 model below `src/Client/Assets/Art/Models` or a texture below
 `src/Client/Assets/Art/Textures` has no asset. It reads the SHA-256 of a `.blend`
@@ -822,7 +824,10 @@ the template's first version with the material `M_Garment_<Name>` that shows the
 image, for painting in Texture Paint mode. `Preview` keeps the UVs the image is
 painted in, and its property `template_uvs` the fingerprint of the template's
 UVs then. Where the image's alpha is below 0.5, the garment is cut: the skin
-shows through, with its paint.
+shows through, with its paint. A texture and a template both export the material
+`M_Garment_<Name>`, so a texture never takes a template's name: `New-ArtAsset.ps1`
+refuses it, and `Verify-ArtAssets.ps1` fails when two assets export a material of
+the same name.
 
 - `New-ArtAsset.ps1 -Kind texture -Garment art/Garments/<Template>` starts a
   texture of `-Size` pixels in a light grey, or with `-ProjectFrom

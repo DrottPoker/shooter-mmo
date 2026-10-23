@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 $problems = New-Object System.Collections.Generic.List[string]
 $targets = @{}
 $textures = @{}
+$materials = @{}
 $directories = @(Get-ArtAssetDirectories)
 foreach ($directory in $directories) {
     try {
@@ -222,6 +223,15 @@ foreach ($directory in $directories) {
         if ($null -eq $rigExport -or $rigExport.sourceSha256 -ne $manifest.Export.rigSourceSha256) {
             $problems.Add("${where}: was exported against another export of its rig $($manifest.Rig.Asset); run tools/Sync-AnimationLibrary.ps1, and if it changed the library, review and approve it again, then run tools/Export-ArtAsset.ps1.")
         }
+    }
+
+    # Unity finds a project material by its name, so no two assets export one of the same name.
+    foreach ($material in @($manifest.Export.materials | Where-Object { $null -ne $_ })) {
+        if ($materials.ContainsKey($material.name)) {
+            $problems.Add("${where}: the material $($material.name) is also a material of $($materials[$material.name]); give one of them another name.")
+        }
+
+        $materials[$material.name] = $where
     }
 
     foreach ($texture in @($manifest.Export.textures)) {
