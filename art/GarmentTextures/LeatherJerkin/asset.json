@@ -5,7 +5,8 @@
     "approvals": {
         "texture": {
             "date": "2026-10-23",
-            "sourceSha256": "2863c426c9a76832c6712543cc55eeea96a19876248de2af3bc09eb2b5554bc6"
+            "sourceSha256": "2863c426c9a76832c6712543cc55eeea96a19876248de2af3bc09eb2b5554bc6",
+            "garmentSourceSha256": "90d995ec200626cbad37652130c642b84e6512e4e65338d05025a8be4b202904"
         }
     },
     "export": {

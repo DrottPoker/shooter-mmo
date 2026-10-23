@@ -53,6 +53,11 @@ $manifest.Approvals[$Stage] = [ordered]@{
     sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
 }
 
+# A texture is reviewed on its template, so its approval records the template's file.
+if ($manifest.Kind -eq "texture") {
+    $manifest.Approvals[$Stage].garmentSourceSha256 = Get-ArtFileSha256 $manifest.Garment.SourcePath
+}
+
 # An approved cage records the exports of the bodies it was fitted to.
 if ($manifest.Kind -eq "cage") {
     $manifest.FittedTo = Get-ArtCageBodies $manifest

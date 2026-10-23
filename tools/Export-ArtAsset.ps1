@@ -119,6 +119,11 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
         throw "$($Manifest.Name) cannot be exported before its template $($Manifest.Garment.RelativeDirectory) is approved and exported again: $templateProblem."
     }
 
+    $reviewProblem = Get-ArtTextureTemplateProblem $Manifest
+    if ($null -ne $reviewProblem) {
+        throw "$($Manifest.Name) cannot be exported: $reviewProblem."
+    }
+
     $clipSources = Get-ArtClipSourceRecords $Manifest
     $folder = $script:ArtGarmentTextureFolder
     $results = Invoke-ArtBlender $Blender $Manifest (

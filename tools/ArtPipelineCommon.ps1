@@ -497,7 +497,14 @@ function Add-ArtApprovalLines($Lines, $Manifest) {
         $comma = if ($i -lt $approvedStages.Count - 1) { "," } else { "" }
         $Lines.Add("        `"$($approvedStages[$i])`": {")
         $Lines.Add("            `"date`": `"$($approval.date)`",")
-        $Lines.Add("            `"sourceSha256`": `"$($approval.sourceSha256)`"")
+        if ($approval.Contains("garmentSourceSha256") -and -not [string]::IsNullOrEmpty($approval.garmentSourceSha256)) {
+            $Lines.Add("            `"sourceSha256`": `"$($approval.sourceSha256)`",")
+            $Lines.Add("            `"garmentSourceSha256`": `"$($approval.garmentSourceSha256)`"")
+        }
+        else {
+            $Lines.Add("            `"sourceSha256`": `"$($approval.sourceSha256)`"")
+        }
+
         $Lines.Add("        }$comma")
     }
     $Lines.Add("    },")
@@ -1173,13 +1180,20 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
     if ($null -ne $Json.approvals) {
         foreach ($property in $Json.approvals.PSObject.Properties) {
             $value = $property.Value
+            # A texture is reviewed on its template, so its approval records the template's file too;
+            # an approval without it is stale, which Get-ArtTextureTemplateProblem reports.
             if ($stages -notcontains $property.Name -or [string]$value.date -notmatch $script:ArtDatePattern -or
-                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern) {
-                $problems.Add("approvals of a garment texture hold its stage texture with a date (yyyy-MM-dd) and a sourceSha256")
+                [string]$value.sourceSha256 -cnotmatch $script:ArtShaPattern -or
+                ($null -ne $value.garmentSourceSha256 -and [string]$value.garmentSourceSha256 -cnotmatch $script:ArtShaPattern)) {
+                $problems.Add("approvals of a garment texture hold its stage texture with a date (yyyy-MM-dd), a sourceSha256, and the garmentSourceSha256 of the template file it was reviewed on")
                 continue
             }
 
-            $approvals[$property.Name] = [ordered]@{ date = [string]$value.date; sourceSha256 = [string]$value.sourceSha256 }
+            $approvals[$property.Name] = [ordered]@{
+                date = [string]$value.date
+                sourceSha256 = [string]$value.sourceSha256
+                garmentSourceSha256 = [string]$value.garmentSourceSha256
+            }
         }
     }
 
@@ -1744,6 +1758,18 @@ function Get-ArtCageBodyProblem($Manifest) {
         if ($null -eq $export -or $export.sourceSha256 -ne $record.sourceSha256) {
             return "its body $($body.Asset) changed after the cage was approved; run tools/Sync-CageAsset.ps1, review and approve it again"
         }
+    }
+
+    return $null
+}
+
+function Get-ArtTextureTemplateProblem($Manifest) {
+    # Returns $null when the approved texture was reviewed on its template's current file, otherwise
+    # the reason it was not; a texture's fit and masks depend on the template's shape, not only on
+    # its UVs.
+    $approval = $Manifest.Approvals["texture"]
+    if ($null -ne $approval -and $approval.garmentSourceSha256 -ne (Get-ArtFileSha256 $Manifest.Garment.SourcePath)) {
+        return "it was approved on another file of its template $($Manifest.Garment.RelativeDirectory); run tools/Sync-TextureAsset.ps1, review and approve it again"
     }
 
     return $null

@@ -128,7 +128,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `cloth` | Garments only: the cloth profile of its loose parts, `robe`, `cloak`, or `hood`, or `null`. |
 | `dyes` | Garments only: the number of dye channels. It is `0` until the garment shader brings dyes. |
 | `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
-| `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. |
+| `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. A garment texture's approval also records the `garmentSourceSha256` of its template's file, since it is reviewed on the template. |
 | `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment template records the `cageSourceSha256` of the approved cage file it was fitted to; its `models`, one per body of the cage in order with its `body` label, the `bodySourceSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips it was checked in; its one material `M_Garment_<Name>` without an image; and no `textures`. The export of a garment texture records the `garmentSourceSha256` of its template's export, its `masks` with their `body`, `data`, and `dataSha256` and their `clipSources` when it has transparent parts, its material `M_Garment_<Name>`, and its image `T_Garment_<Name>` below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
 
 ## Review Stages
@@ -842,8 +842,8 @@ the same name.
   after a rebuild of its recipe, or when `Preview`'s own faces or UVs were
   edited, and leaves the file as it was otherwise. It then writes the review
   sheet and checks every rule.
-- The `texture` stage checks that the image is packed, of a known size, with its
-  roughness and metallic, that `Preview` shows it, and that it was painted in the
+- The `texture` stage checks that the image is packed as a PNG, of a known
+  size, with its roughness and metallic, that `Preview` shows it, and that it was painted in the
   template's current UVs, which `Preview` still has. A texture with transparent parts, such as the
   jerkin's laced V, also gets masks of its own on every body, because its holes
   change what the body shows: the template's file is opened with the texture on
@@ -859,6 +859,8 @@ the same name.
   transparent parts its masks per body, `Models/Garments/<Name>_<Label>.json`, in
   the format of the template's data. It runs only when the template is approved
   and exported from its current file, since the masks are computed in that file,
+  and when the texture was approved on that file of the template, since its fit
+  and masks change with the template's shape and not only with its UVs,
   and it records the `export.sourceSha256` of the template's export it was
   checked against, so `Verify-ArtAssets.ps1` fails when the template has a newer
   export: sync, review, and export the texture again.

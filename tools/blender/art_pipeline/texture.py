@@ -22,6 +22,7 @@ import bpy
 import numpy as np
 
 from . import coverage, garment
+from .export import PNG_SIGNATURE
 from .scene import ArtPipelineError, relative_image_paths
 
 PREVIEW = "Preview"
@@ -285,6 +286,8 @@ def texture_errors(name: str, template_file: str, template: str, label: str) -> 
     preview = bpy.data.objects.get(PREVIEW)
     if image is None or image.packed_file is None:
         return [f'The texture needs its image "{image_name(name)}" packed into the file.']
+    if not bytes(image.packed_file.data).startswith(PNG_SIGNATURE):
+        errors.append(f'"{image.name}" must be packed as a PNG, since the export writes it as it is packed.')
     width, height = image.size
     if width != height or width not in SIZES:
         errors.append(f'"{image.name}" is {width} by {height} pixels; a garment texture is '
@@ -310,6 +313,8 @@ def texture_errors(name: str, template_file: str, template: str, label: str) -> 
 def export(name: str, folder: str) -> tuple[str, dict]:
     """Writes the image as a PNG and returns its path and the material's record."""
     image = bpy.data.images[image_name(name)]
+    if not bytes(image.packed_file.data).startswith(PNG_SIGNATURE):
+        raise ArtPipelineError(f'"{image.name}" must be packed as a PNG.')
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, f"{image.name}.png")
     with open(path, "wb") as handle:

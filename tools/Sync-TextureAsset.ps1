@@ -48,8 +48,9 @@ Write-Host "Review sheet: $sheet"
 
 # Every rule of the texture, so a broken one shows before the review.
 Invoke-ArtBlender $blender $manifest (@("validate") + (Get-ArtValidationArguments $manifest "texture")) | Out-Null
-if ($null -eq (Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath))) {
-    Write-Host "$($manifest.Name) meets every rule, and its stage is approved for this file."
+if ($null -eq (Get-ArtExportGateProblem $manifest (Get-ArtFileSha256 $manifest.SourcePath)) -and
+    $null -eq (Get-ArtTextureTemplateProblem $manifest)) {
+    Write-Host "$($manifest.Name) meets every rule, and its stage is approved for this file on the current file of $($manifest.Garment.Name)."
 }
 else {
     Write-Host "$($manifest.Name) meets every rule. Review it, then record the approval with tools/Approve-ArtAsset.ps1 -Asset $($manifest.RelativeDirectory) -Stage texture."

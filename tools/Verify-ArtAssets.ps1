@@ -112,6 +112,9 @@ foreach ($directory in $directories) {
         if ($null -eq $templateExport -or $templateExport.sourceSha256 -ne $manifest.Export.garmentSourceSha256) {
             $problems.Add("${where}: was exported against another export of its template $($manifest.Garment.RelativeDirectory); run tools/Sync-TextureAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1.")
         }
+        elseif ($manifest.Approvals["texture"].garmentSourceSha256 -ne $manifest.Export.garmentSourceSha256) {
+            $problems.Add("${where}: was approved on another file of its template $($manifest.Garment.RelativeDirectory) than it was exported against; run tools/Sync-TextureAsset.ps1, review and approve it again, then run tools/Export-ArtAsset.ps1.")
+        }
 
         # A texture with masks has them for exactly the bodies of its template.
         $masked = @($manifest.Export.masks | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_.body } | Sort-Object)
