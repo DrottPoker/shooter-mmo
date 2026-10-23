@@ -159,8 +159,9 @@ the first gloves, boots, and hoods come; they add faces and change none.
   unfold their textures along them.
 
 The cage is an art asset of its own, reviewed and approved by Victor like every
-other, and garments record the cage they were fitted to, so a change of the
-cage needs new exports of its garments.
+other. It has no export, so garments record the hash of the approved cage
+file they were fitted to, and a change of the cage needs new exports of its
+garments.
 
 ### Standard Lines
 
@@ -565,7 +566,8 @@ themselves are in a `Reference` collection. The template's own material is a
 neutral review material with a grid that shows how its UVs stretch. Export
 writes one FBX per body type, the template skinned to that body's rig, and a
 data file with the cover mask, underlay, and pull-in, all recorded with their
-hashes and with the cage's and the bodies' exports, like every export.
+hashes, with the hash of the cage's approved file, and with the bodies'
+exports, like every export.
 
 ### The Texture Kind
 
