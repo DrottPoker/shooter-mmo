@@ -12,7 +12,8 @@ namespace Mmorpg.Client.Editor
     // asset.json or that a paint layer or a garment fits: one slot per painted material with
     // variants, its own image first, the paint layers of the body in the order they are drawn, the
     // body parts with the faces of the editable mesh their triangles come from, and the garments of
-    // the body from the lowest layer up, as Assets/Art/Appearance/<Model>_Appearance.asset. It
+    // the body from the lowest layer up, one per garment texture, each its template's model and data
+    // with the texture's material, as Assets/Art/Appearance/<Model>_Appearance.asset. It
     // writes only catalogs that differ, and ArtExportFollowUp runs it after every export.
     // ArtAppearanceCatalogTests fails when a catalog differs from what this writes. See
     // docs/ART_PIPELINE.md.
@@ -106,6 +107,8 @@ namespace Mmorpg.Client.Editor
                 && catalog.Garments.Count == garments.Length
                 && catalog.Garments.Zip(garments, (actual, expected) =>
                     actual.Name == expected.Name
+                    && actual.Template == expected.Template
+                    && actual.Material == expected.Material
                     && actual.Slot == expected.Slot
                     && actual.Layer == expected.Layer
                     && actual.Hides.SequenceEqual(expected.Hides)
@@ -123,7 +126,7 @@ namespace Mmorpg.Client.Editor
         public static ArtAssetManifest[] ManifestsWithLooks()
         {
             var painted = ArtAssetManifests.PaintLayers().SelectMany(paint => paint.bodies).ToArray();
-            var dressed = ArtAssetManifests.Garments().SelectMany(garment => garment.bodies).ToArray();
+            var dressed = ArtAssetManifests.Garments().SelectMany(ArtAssetManifests.BodiesOf).ToArray();
             return ArtAssetManifests.ManifestPaths()
                 .Select(ArtAssetManifests.Load)
                 .Where(manifest => manifest.IsSkinned && manifest.IsExported
@@ -181,17 +184,31 @@ namespace Mmorpg.Client.Editor
             return parts.ToArray();
         }
 
-        // The garments that fit the body, from the lowest layer up, each with its version for the
-        // body: its model, and its data with the underlay of every triangle of the model.
+        // The garments that fit the body, from the lowest layer up: one per exported texture of an
+        // exported template that fits the body, named after the texture, with the texture's
+        // material and the template's version for the body: its model, and its data with the
+        // underlay of every triangle of the model. A texture with transparent parts brings its own
+        // data for the body, since its holes change what the body shows.
         public static BodyAppearanceCatalog.Garment[] GarmentsFor(ArtAssetManifest body)
         {
             var label = body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
-            return ArtAssetManifests.Garments()
-                .Where(garment => garment.bodies.Contains(body.AssetPath))
-                .OrderBy(garment => garment.layer)
-                .ThenBy(garment => garment.Name, StringComparer.Ordinal)
-                .Select(garment =>
+            var templates = ArtAssetManifests.Garments()
+                .Where(garment => ArtAssetManifests.BodiesOf(garment).Contains(body.AssetPath))
+                .ToDictionary(garment => garment.AssetPath, StringComparer.Ordinal);
+            return ArtAssetManifests.Textures()
+                .Where(texture => templates.ContainsKey(texture.garment))
+                .Select(texture => (texture, garment: templates[texture.garment]))
+                .OrderBy(pair => pair.garment.layer)
+                .ThenBy(pair => pair.texture.Name, StringComparer.Ordinal)
+                .Select(pair =>
                 {
+                    var garment = pair.garment;
+                    var material = ArtModelImportRules.FindProjectMaterial(pair.texture.export.materials.Single().name);
+                    if (material == null)
+                    {
+                        throw new InvalidOperationException(pair.texture.path + ": the material of the texture is not created.");
+                    }
+
                     var record = garment.export.models.Single(model => model.body == label);
                     var where = garment.path + " " + record.body;
                     var model = AssetDatabase.LoadAssetAtPath<GameObject>(ArtAssetManifests.ToUnityPath(record.target));
@@ -202,6 +219,18 @@ namespace Mmorpg.Client.Editor
                     }
 
                     var data = ArtGarmentData.FromJson(text.text);
+                    var mask = pair.texture.export.masks.SingleOrDefault(entry => entry.body == label);
+                    if (mask != null)
+                    {
+                        var maskText = AssetDatabase.LoadAssetAtPath<TextAsset>(mask.UnityDataPath);
+                        if (maskText == null)
+                        {
+                            throw new InvalidOperationException(pair.texture.path + " " + label + ": the masks of the texture are not imported.");
+                        }
+
+                        data = ArtGarmentData.FromJson(maskText.text);
+                    }
+
                     var topology = new ArtTopologyMaps.Topology(data.garmentVertices, data.garmentFaceSizes, data.garmentFaceVertices);
                     var renderer = model.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single();
                     var sources = ArtTopologyMaps.VertexSources(PositionsIn(model.transform, renderer), topology);
@@ -212,7 +241,9 @@ namespace Mmorpg.Client.Editor
 
                     var faces = ArtTopologyMaps.TriangleFaces(renderer.sharedMesh, sources, topology, where);
                     return new BodyAppearanceCatalog.Garment(
+                        pair.texture.Name,
                         garment.Name,
+                        material,
                         garment.slot,
                         garment.layer,
                         garment.hides,

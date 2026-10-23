@@ -8,7 +8,12 @@ M_Garment_<Name> that shows the image, for painting in Texture Paint mode. Previ
 image is painted in, and the property template_uvs the fingerprint of the template's UVs then, so a
 template whose UVs change is noticed and its texture moved to the new UVs by projection from
 Preview. A texture may also start from the look of another mesh by projection, such as a garment
-made before templates."""
+made before templates.
+
+A texture with transparent parts, such as a laced V, shows the skin through them, so it has a cover
+mask, edges, and pull-in of its own per body, computed in the template's file with the texture on
+every version, by the same rules as the template's, and its skin is checked in motion like the
+template's. An opaque texture uses the template's masks."""
 
 import hashlib
 import os
@@ -16,7 +21,7 @@ import os
 import bpy
 import numpy as np
 
-from . import garment
+from . import coverage, garment
 from .scene import ArtPipelineError, relative_image_paths
 
 PREVIEW = "Preview"
@@ -65,9 +70,16 @@ def current_template_uvs(template_file: str, template: str, label: str) -> str:
         bpy.data.meshes.remove(mesh)
 
 
+def has_holes(image: bpy.types.Image) -> bool:
+    """Whether the image has transparent parts, where the garment shader cuts the garment."""
+    pixels = np.empty(image.size[0] * image.size[1] * 4, np.float32)
+    image.pixels.foreach_get(pixels)
+    return bool((pixels[3::4] < ALPHA_CUT).any())
+
+
 def _material(name: str, image: bpy.types.Image) -> bpy.types.Material:
-    """The texture's material: its image as the color, with its roughness and metallic, drawn from
-    both sides like the game draws garments."""
+    """The texture's material: its image as the color, with its roughness and metallic, and as the
+    alpha where it has transparent parts, drawn from both sides like the game draws garments."""
     material = bpy.data.materials.get(material_name(name)) or bpy.data.materials.new(material_name(name))
     material.use_nodes = True
     nodes, links = material.node_tree.nodes, material.node_tree.links
@@ -75,6 +87,11 @@ def _material(name: str, image: bpy.types.Image) -> bpy.types.Material:
     texture = next((n for n in nodes if n.type == "TEX_IMAGE"), None) or nodes.new("ShaderNodeTexImage")
     texture.image = image
     links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
+    for link in [link for link in links if link.to_socket == bsdf.inputs["Alpha"]]:
+        links.remove(link)
+    if has_holes(image):
+        # The masks read the alpha through this link, as they read a garment's.
+        links.new(texture.outputs["Alpha"], bsdf.inputs["Alpha"])
     bsdf.inputs["Roughness"].default_value = float(image.get("roughness", 0.6))
     bsdf.inputs["Metallic"].default_value = float(image.get("metallic", 0.0))
     material.use_backface_culling = False
@@ -100,9 +117,16 @@ def _preview(name: str, mesh: bpy.types.Mesh, image: bpy.types.Image) -> bpy.typ
     return obj
 
 
-def _bake(source: bpy.types.Object, target: bpy.types.Object, image: bpy.types.Image) -> None:
-    """The look of the source, its material's base color where it shows on its surface, baked into
-    the image in the target's UVs by rays from the target's surface."""
+def _alpha_link(obj: bpy.types.Object):
+    """The link that cuts the object's material by the alpha of its image, or None."""
+    material = obj.data.materials[0] if obj.data.materials else None
+    if material is None or not material.use_nodes:
+        return None
+    return next((link for link in material.node_tree.links if link.to_socket.name == "Alpha"
+                 and link.from_node.type == "TEX_IMAGE" and link.from_node.image is not None), None)
+
+
+def _bake_pass(source: bpy.types.Object, target: bpy.types.Object, image: bpy.types.Image, kind: str) -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.samples = 1
@@ -119,11 +143,67 @@ def _bake(source: bpy.types.Object, target: bpy.types.Object, image: bpy.types.I
     target.select_set(True)
     bpy.context.view_layer.objects.active = target
     try:
-        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, use_selected_to_active=True,
-                            cage_extrusion=PROJECTION_REACH, max_ray_distance=2.0 * PROJECTION_REACH,
-                            margin=BAKE_MARGIN, use_clear=True)
+        if kind == "COLOR":
+            bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, use_selected_to_active=True,
+                                cage_extrusion=PROJECTION_REACH, max_ray_distance=2.0 * PROJECTION_REACH,
+                                margin=BAKE_MARGIN, use_clear=True)
+        else:
+            bpy.ops.object.bake(type="EMIT", use_selected_to_active=True, cage_extrusion=PROJECTION_REACH,
+                                max_ray_distance=2.0 * PROJECTION_REACH, margin=BAKE_MARGIN, use_clear=True)
     finally:
         bake_target.nodes.remove(node)
+
+
+def _bake(source: bpy.types.Object, target: bpy.types.Object, image: bpy.types.Image) -> None:
+    """The look of the source, its material's base color where it shows on its surface, baked into
+    the image in the target's UVs by rays from the target's surface, and the alpha of the source's
+    image too where it cuts the source, so its holes move with it. The color is baked with the
+    source opaque, so a transparent part does not darken its edge."""
+    link = _alpha_link(source)
+    if link is None:
+        _bake_pass(source, target, image, "COLOR")
+        return
+    links = source.data.materials[0].node_tree.links
+    from_node, to_socket = link.from_node, link.to_socket
+    alpha_image = from_node.image
+    links.remove(link)
+    try:
+        _bake_pass(source, target, image, "COLOR")
+    finally:
+        links.new(from_node.outputs["Alpha"], to_socket)
+    # The alpha as the emission of a material of its own, baked the same way.
+    shown = bpy.data.materials.new("AlphaShown")
+    shown.use_nodes = True
+    nodes = shown.node_tree.nodes
+    for node in list(nodes):
+        nodes.remove(node)
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.image = alpha_image
+    emission = nodes.new("ShaderNodeEmission")
+    output = nodes.new("ShaderNodeOutputMaterial")
+    shown.node_tree.links.new(texture.outputs["Alpha"], emission.inputs["Color"])
+    shown.node_tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    width, height = image.size
+    baked = bpy.data.images.new("AlphaBaked", width, height, alpha=True, float_buffer=True)
+    kept = list(source.data.materials)
+    try:
+        for slot in range(len(source.data.materials)):
+            source.data.materials[slot] = shown
+        _bake_pass(source, target, baked, "ALPHA")
+    finally:
+        for slot, original in enumerate(kept):
+            source.data.materials[slot] = original
+        bpy.data.materials.remove(shown)
+    alpha = np.empty(width * height * 4, np.float32)
+    baked.pixels.foreach_get(alpha)
+    bpy.data.images.remove(baked)
+    pixels = np.empty(width * height * 4, np.float32)
+    image.pixels.foreach_get(pixels)
+    # A texel no ray reached stays opaque.
+    reached = alpha[3::4] > 0.5
+    pixels[3::4] = np.where(reached, np.clip(alpha[0::4], 0.0, 1.0), 1.0)
+    image.pixels.foreach_set(pixels)
+    image.update()
 
 
 def create(file: str, name: str, template_file: str, template: str, label: str, size: int,
@@ -133,7 +213,8 @@ def create(file: str, name: str, template_file: str, template: str, label: str, 
     if size not in SIZES:
         raise ArtPipelineError(f"A garment texture is {', '.join(str(s) for s in SIZES)} pixels square.")
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    image = bpy.data.images.new(image_name(name), size, size, alpha=False)
+    # With an alpha channel, for the holes a projected look or a person may give it.
+    image = bpy.data.images.new(image_name(name), size, size, alpha=True)
     image.generated_color = (0.8, 0.8, 0.8, 1.0)
     image["roughness"] = 0.6
     image["metallic"] = 0.0
@@ -197,8 +278,7 @@ def sync(file: str, name: str, template_file: str, template: str, label: str) ->
 
 def texture_errors(name: str, template_file: str, template: str, label: str) -> list[str]:
     """The rules of a texture: its packed square image of a known size with its roughness and
-    metallic, opaque, since transparent parts and their masks come with delivery step 5c, its
-    preview showing it, and the template's current UVs."""
+    metallic, its preview showing it, and the template's current UVs."""
     errors = []
     image = bpy.data.images.get(image_name(name))
     preview = bpy.data.objects.get(PREVIEW)
@@ -212,11 +292,6 @@ def texture_errors(name: str, template_file: str, template: str, label: str) -> 
         value = image.get(key)
         if not isinstance(value, (int, float)) or not 0.0 <= value <= 1.0:
             errors.append(f'"{image.name}" needs the custom property {key} from 0 to 1.')
-    pixels = np.empty(width * height * 4, np.float32)
-    image.pixels.foreach_get(pixels)
-    if (pixels[3::4] < ALPHA_CUT).any():
-        errors.append(f'"{image.name}" has transparent parts; textures with holes and their own masks come with '
-                      "delivery step 5c.")
     if preview is None or preview.type != "MESH" or not preview.data.materials or \
             preview.data.materials[0] is None or preview.data.materials[0].name != material_name(name):
         errors.append(f'The texture needs its "{PREVIEW}" with the material "{material_name(name)}".')
@@ -238,9 +313,9 @@ def export(name: str, folder: str) -> tuple[str, dict]:
     return path, record
 
 
-def dress(template: str, texture_file: str, name: str, labels: list[str]) -> None:
+def dress(template: str, texture_file: str, name: str, labels: list[str]) -> bool:
     """Puts the texture on every version of the template in the open template file, for its review
-    sheet."""
+    sheet and its masks. Returns whether the texture has transparent parts."""
     with bpy.data.libraries.load(texture_file, link=False) as (source, target):
         if image_name(name) not in source.images:
             raise ArtPipelineError(f'{texture_file} has no image "{image_name(name)}".')
@@ -250,3 +325,26 @@ def dress(template: str, texture_file: str, name: str, labels: list[str]) -> Non
         version = bpy.data.objects[garment.version_name(template, label)]
         for slot in range(len(version.data.materials)):
             version.data.materials[slot] = material
+    return has_holes(target.images[0])
+
+
+def masks(texture_file: str, name: str, template_file: str, template: str, labels: list[str], band: str,
+          libraries: list[tuple[str, list[str]]]) -> dict[str, tuple[coverage.Coverage, coverage.Motion]]:
+    """The texture's own masks on every body, and the skin that comes through the garment in the test
+    poses and the clips of the libraries, computed in the template's file with the texture on every
+    version. The template's file is opened in place of the texture's and not saved."""
+    bpy.ops.wm.open_mainfile(filepath=template_file)
+    dress(template, texture_file, name, labels)
+    actions = coverage.load_actions(libraries)
+    results = {}
+    for label in labels:
+        result = coverage.compute(template, label, band)
+        results[label] = (result, coverage.check_motion(template, result, actions))
+    return results
+
+
+def mask_record(name: str, template: str, result: coverage.Coverage) -> dict:
+    """The texture's masks for one body, in the data format of its template's."""
+    data = coverage.record(template, result)
+    data["garment"] = name
+    return data

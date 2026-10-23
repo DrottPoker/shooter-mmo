@@ -259,13 +259,16 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // A garment's version for the body: its model, skinned to the body's armature; its visual
-        // slot and layer; the slots it hides; the body faces it covers; the body face under each of
-        // its triangles; and how far it moves visible body vertices inward.
+        // A garment the body can wear: a garment texture on its template's version for the body,
+        // with the template's model, skinned to the body's armature; its visual slot and layer; the
+        // slots it hides; the body faces it covers; the body face under each of its triangles; how
+        // far it moves visible body vertices inward; and the texture's material it draws with.
         [Serializable]
         public sealed class Garment
         {
             [SerializeField] private string name;
+            [SerializeField] private string template;
+            [SerializeField] private Material material;
             [SerializeField] private string slot;
             [SerializeField] private int layer;
             [SerializeField] private string[] hides;
@@ -277,10 +280,12 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private int[] pullInVertices;
             [SerializeField] private float[] pullInDistances;
 
-            public Garment(string name, string slot, int layer, string[] hides, string hair, string cloth, GameObject model,
-                int[] covered, int[] underlay, int[] pullInVertices, float[] pullInDistances)
+            public Garment(string name, string template, Material material, string slot, int layer, string[] hides, string hair,
+                string cloth, GameObject model, int[] covered, int[] underlay, int[] pullInVertices, float[] pullInDistances)
             {
                 this.name = name;
+                this.template = template ?? string.Empty;
+                this.material = material;
                 this.slot = slot;
                 this.layer = layer;
                 this.hides = hides ?? Array.Empty<string>();
@@ -293,10 +298,23 @@ namespace Mmorpg.Client.Gameplay
                 this.pullInDistances = pullInDistances ?? Array.Empty<float>();
             }
 
-            // Such as LeatherJerkin, from the garment art/Garments/LeatherJerkin.
+            // Such as LeatherJerkin, from the garment texture art/GarmentTextures/LeatherJerkin.
             public string Name
             {
                 get { return name; }
+            }
+
+            // Such as Jerkin, from the garment template art/Garments/Jerkin.
+            public string Template
+            {
+                get { return template ?? string.Empty; }
+            }
+
+            // The texture's material, which the template's model draws with instead of its own; null
+            // draws with the model's.
+            public Material Material
+            {
+                get { return material; }
             }
 
             // The visual slot, such as body.

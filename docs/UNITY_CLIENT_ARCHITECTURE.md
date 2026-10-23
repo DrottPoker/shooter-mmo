@@ -1337,11 +1337,15 @@ renderer, so bodies with other faces still share one combined mesh.
 `PlayerBodyAppearanceTests`, `BodyLookTests`, and `ArtAppearanceCatalogTests`
 cover the looks, their materials, and the catalogs.
 
-A look also names the [garments](ART_PIPELINE.md#garments) its body wears, such as
-`Garment=LeatherJerkin` in its key. The catalog lists every garment that fits the
-body with its model for that body, its visual slot, layer, the slots it hides,
+A look also names the garments its body wears, such as
+`Garment=LeatherJerkin` in its key. A garment is a
+[garment texture](ART_PIPELINE.md#garment-textures) on its
+[template](ART_PIPELINE.md#garments), named after the texture. The catalog lists
+every garment that fits the body with its template's name and model for that
+body, the texture's material, the visual slot, layer, and the slots it hides,
 the body faces it covers, the body face under each of its triangles, and its
-pull-in, and every body part with the face of the body's editable mesh that each
+pull-in, from the texture's own masks when it has transparent parts and from the
+template's otherwise, and every body part with the face of the body's editable mesh that each
 of its triangles comes from and the vertex each of its vertices is. When the
 look's garments change, `PlayerBodyAppearance` puts the body together again as
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#putting-a-character-together-in-unity)
@@ -1356,10 +1360,12 @@ describes, in `PlayerBodyMeshes`:
 3. A pulled-in body vertex moves inward along its normal by its distance, the
    largest any drawn garment asks for.
 4. The drawn garments' meshes join the body's in one mesh, with their bones
-   bound by name to the body's skeleton, whose bind poses they share, and the
+   bound by name to the body's skeleton, whose bind poses they share, each
+   drawing with its texture's material instead of its template's, and the
    vertices no triangle uses are left out.
 
-The combined mesh is shared by every body with the same parts and garments.
+The combined mesh is shared by every body with the same parts, garments, and
+garment materials.
 Garment materials draw with the garment shader `Mmorpg/Garment`, URP Lit with
 three dye channels, cut at alpha 0.5 and drawn from both sides; see
 [Art Pipeline](ART_PIPELINE.md#unity-import-rules). The body prefab carries a

@@ -19,8 +19,15 @@ namespace Mmorpg.Client.Editor
         // Paint over the skin of bodies, exported as one image per body.
         public const string PaintKind = "paint";
 
-        // Clothes or armor, exported as one model per body, skinned to that body's rig.
+        // A garment template, the form of clothes or armor, made on a garment cage and exported as
+        // one model per body of the cage, skinned to that body's rig.
         public const string GarmentKind = "garment";
+
+        // The look of one garment template: its image and its material.
+        public const string TextureKind = "texture";
+
+        // The net that garment templates are made on, with no export.
+        public const string CageKind = "cage";
 
         // asset.json targets are repository paths; Unity asset paths start at Assets/.
         public const string ClientProjectPrefix = "src/Client/";
@@ -58,6 +65,21 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
         }
 
+        // The exported garment textures, each the look of one template.
+        public static ArtAssetManifest[] Textures()
+        {
+            return ManifestPaths()
+                .Select(Load)
+                .Where(manifest => manifest.IsTexture && manifest.IsExported)
+                .ToArray();
+        }
+
+        // The bodies a garment template fits: those of its cage.
+        public static string[] BodiesOf(ArtAssetManifest garment)
+        {
+            return string.IsNullOrEmpty(garment.cage) ? garment.bodies : LoadAsset(garment.cage).bodies;
+        }
+
         public static ArtAssetManifest[] PaintLayers()
         {
             return ManifestPaths()
@@ -89,10 +111,11 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
         }
 
-        // The materials of exported garments, M_Garment_<Name>, which draw with the garment shader.
+        // The materials of exported garment templates and textures, M_Garment_<Name>, which draw
+        // with the garment shader.
         public static string[] GarmentMaterialNames()
         {
-            return Garments()
+            return Garments().Concat(Textures())
                 .SelectMany(garment => garment.export.materials.Select(material => material.name))
                 .Distinct()
                 .OrderBy(name => name, StringComparer.Ordinal)
@@ -129,14 +152,17 @@ namespace Mmorpg.Client.Editor
         public string part = string.Empty;
         public string[] bodies = Array.Empty<string>();
         public int layer;
-        // A garment: its visual slot and its band from the skin; its bodies, the one it is made on
-        // first; its layer from the inside out; the slots it hides; what headwear does to the hair;
-        // and the cloth profile of its loose parts.
+        // A garment template: the cage it is made on, whose bodies it fits; its visual slot and its
+        // band from the cage; its layer from the inside out; the slots it hides; what headwear does
+        // to the hair; and the cloth profile of its loose parts.
+        public string cage = string.Empty;
         public string slot = string.Empty;
         public string band = string.Empty;
         public string[] hides = Array.Empty<string>();
         public string hair = string.Empty;
         public string cloth = string.Empty;
+        // A garment texture: the template it belongs to, such as art/Garments/Jerkin.
+        public string garment = string.Empty;
         public ArtAssetExport export = new ArtAssetExport();
 
         // The asset's name, its folder, such as LeatherJerkin.
@@ -164,6 +190,11 @@ namespace Mmorpg.Client.Editor
         public bool IsGarment
         {
             get { return string.Equals(kind, ArtAssetManifests.GarmentKind, StringComparison.Ordinal); }
+        }
+
+        public bool IsTexture
+        {
+            get { return string.Equals(kind, ArtAssetManifests.TextureKind, StringComparison.Ordinal); }
         }
 
         public string UnityTargetPath
@@ -250,6 +281,8 @@ namespace Mmorpg.Client.Editor
         public string dataSha256 = string.Empty;
         // A garment's model per body.
         public ArtModelRecord[] models = Array.Empty<ArtModelRecord>();
+        // A garment texture with transparent parts: its own masks per body of its template.
+        public ArtMaskRecord[] masks = Array.Empty<ArtMaskRecord>();
         public ArtMaterialRecord[] materials = Array.Empty<ArtMaterialRecord>();
         public ArtTextureRecord[] textures = Array.Empty<ArtTextureRecord>();
         public ArtClipRecord[] clips = Array.Empty<ArtClipRecord>();
@@ -275,6 +308,21 @@ namespace Mmorpg.Client.Editor
         public string body = string.Empty;
         public string target = string.Empty;
         public string sha256 = string.Empty;
+        public string data = string.Empty;
+        public string dataSha256 = string.Empty;
+
+        public string UnityDataPath
+        {
+            get { return ArtAssetManifests.ToUnityPath(data); }
+        }
+    }
+
+    // The masks of a garment texture with transparent parts on one body, in the data format of its
+    // template's.
+    [Serializable]
+    public sealed class ArtMaskRecord
+    {
+        public string body = string.Empty;
         public string data = string.Empty;
         public string dataSha256 = string.Empty;
 

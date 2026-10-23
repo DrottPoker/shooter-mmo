@@ -21,9 +21,9 @@ person's corrections of a fitted version are kept as the difference to the attri
 shape the last fitting gave, and the attribute "built" holds the shape the recipe gave the first
 version, so a new build of a changed recipe carries the handmade shape over.
 
-Every vertex takes the weights of the body where a ray from it inward along the cage's normal meets
-the skin, interpolated from the corners of the skin's triangle and not smoothed, so it moves like
-the skin it covers, and cloth that spans a pit moves with the pit's bottom. The attribute
+Every vertex takes the weights of the nearest skin of the body part its cage face lies on, the
+region and side of the cage, interpolated from the corners of the skin's triangle and not smoothed,
+so it moves like the skin it covers: a sleeve's inside at the armpit moves with the arm. The attribute
 "transferred_weights" holds a checksum of the weights the last transfer gave each vertex of the first
 version; a vertex whose weights differ from it was painted by hand and keeps them, also in the other
 versions."""
@@ -75,8 +75,6 @@ UV_MARGIN = 0.02
 # margin, a few times over, because moving one face moves the corners it shares.
 SETTLE_MARGIN = 0.0005
 SETTLE_PASSES = 4
-# A ray for the weights looks this far into the body.
-WEIGHT_REACH = 0.2
 ALPHA_CUT = 0.5
 REVIEW_GREY = (0.62, 0.62, 0.62, 1.0)
 # The review file places the bodies side by side, this far apart.
@@ -176,14 +174,6 @@ class Surface:
     def weights_at(self, triangle: int, weights) -> np.ndarray:
         _p, a, b, c = self.triangles[triangle]
         return _limited(self.weights[a] * weights[0] + self.weights[b] * weights[1] + self.weights[c] * weights[2])
-
-    def weights_under(self, point: Vector, direction: Vector) -> np.ndarray:
-        """The weights where a ray from the point meets the surface, or at the nearest point when
-        it meets nothing."""
-        location, _normal, triangle, _distance = self.tree.ray_cast(point, direction, WEIGHT_REACH)
-        if location is None:
-            location, _normal, triangle, _distance = self.tree.find_nearest(point)
-        return self.weights_at(triangle, poly_3d_calc(self.corners(triangle), location))
 
     def nearest(self, point: Vector) -> tuple[float, Vector, int]:
         """The distance from the nearest point of the surface along its normal, that normal, and the

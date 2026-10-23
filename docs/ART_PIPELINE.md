@@ -53,7 +53,8 @@ between the export and the game.
 | Start an animation library | `New-ArtAsset.ps1 -Kind animations` | [Make A Clip](LOCAL_DEVELOPMENT.md#make-a-clip) |
 | Paint onto the skin, such as a tattoo or scars | `New-ArtAsset.ps1 -Kind paint`, then `Sync-PaintAsset.ps1` | [Make A Paint Layer](LOCAL_DEVELOPMENT.md#make-a-paint-layer) |
 | Fit the garment cage to the bodies, or move a standard line | `Sync-CageAsset.ps1` | [Fit The Garment Cage](LOCAL_DEVELOPMENT.md#fit-the-garment-cage) |
-| Make clothes or armor as a 3D garment | `New-ArtAsset.ps1 -Kind garment`, then `Sync-GarmentAsset.ps1` | [Make A Garment](LOCAL_DEVELOPMENT.md#make-a-garment) |
+| Make a garment template, the form of clothes or armor, from a recipe on the cage | `New-ArtAsset.ps1 -Kind garment`, then `Sync-GarmentAsset.ps1` | [Make A Garment](LOCAL_DEVELOPMENT.md#make-a-garment) |
+| Paint the look of a garment template, with holes where the skin shows | `New-ArtAsset.ps1 -Kind texture`, then `Sync-TextureAsset.ps1` | [Make A Garment Texture](LOCAL_DEVELOPMENT.md#make-a-garment-texture) |
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](LOCAL_DEVELOPMENT.md#review-approve-and-export-an-asset) |
 
 Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers).
@@ -66,25 +67,27 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `art/<Category>/<Name>/asset.json` | Asset manifest: kind, export target, root objects, triangle budget, skeleton and clips of a skinned asset, approvals, and the export record. |
 | `art/Animations/<Name>/<Name>.blend` | An [animation library](#animation-libraries): handmade clips of one skeleton, keyed on the rig of one character, with the bodies that show them. |
 | `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the first body and moved to the others. |
-| `art/Garments/<Name>/<Name>.blend` | A [garment](#garments): clothes or armor made on the first body and fitted to the others, one version per body. |
+| `art/Garments/<Name>/<Name>.blend` | A [garment template](#garments): the form of clothes or armor, built from a recipe on the garment cage and fitted to every body of the cage, one version per body. |
+| `art/GarmentTextures/<Name>/<Name>.blend` | A [garment texture](#garment-textures): the look of one template, its image in the template's UVs. |
 | `art/Cages/<Skeleton>/<Skeleton>.blend` | The [garment cage](#garment-cage) of a skeleton: the net of fixed topology that garments are made on, fitted to every body of the skeleton, with its standard lines. |
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
-| `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, and a garment one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it. |
-| `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint` and garments to `Textures/Garments`. |
+| `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, a garment template one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it, and a garment texture with transparent parts its own data per body, `Models/Garments/<Name>_<Label>.json`. |
+| `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint` and garment textures to `Textures/Garments`. |
 | `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers; `Garment.shader` and `GarmentInput.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels. |
 | `src/Client/Assets/Editor/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`: a body dressed in chosen garments, playing its clips on a moving ground with the cloth solver running. |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
 | `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, in `bodies.py` the body parts of a skinned character written from its editable body, and in `poses.py` the test poses of the `Humanoid` skeleton that the rig reviews use. |
 | `tools/blender/art_pipeline_cli.py` | Blender entry point for the scripts below. |
-| `tools/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment, or garment cage: its folder, `asset.json`, and first `.blend` file. |
+| `tools/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
 | `tools/Render-ArtPreview.ps1`, `tools/Approve-ArtAsset.ps1`, `tools/Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/ArtPipelineCommon.ps1`. |
 | `tools/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/Sync-AnimationLibrary.ps1`, `tools/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
 | `tools/Sync-PaintAsset.ps1`, `tools/blender/art_pipeline/paint.py` | Builds a paint layer file from its bodies, or updates it, and moves the paint of the first body to the others. |
 | `tools/Sync-CageAsset.ps1`, `tools/blender/art_pipeline/cage.py` | Fits the garment cage to every body from its reference, writes its review sheet, and checks it. |
 | `tools/blender/art_pipeline/body_files.py` | Appends the bodies a garment or the cage is fitted to from their own files, and appends them again when they change. |
-| `tools/Sync-GarmentAsset.ps1`, `tools/blender/art_pipeline/garment.py`, `coverage.py` | Fits a garment to every body from the version on the first body, gives every version the weights of its body, computes what it covers on every body, writes its review sheet and review file, and checks it. |
+| `tools/Sync-GarmentAsset.ps1`, `tools/blender/art_pipeline/garment.py`, `coverage.py` | Builds a garment template from its recipe on the cage, fits it to every body through the cage, gives every version the weights of its body, computes what it covers on every body, writes its review sheet and review file, and checks it. |
+| `tools/Sync-TextureAsset.ps1`, `tools/blender/art_pipeline/texture.py` | Moves a garment texture to its template's new UVs, computes the masks of a texture with transparent parts, writes its review sheet, and checks it. |
 | `tools/Sync-HumanBase.ps1`, `tools/blender/human_base`, `tools/blender/human_base_cli.py` | The tools of the [human base characters](#human-base-characters): their body parts written from their editable bodies, their rig and weights, their checks and review sheets, and the gait model that starts clips in an animation library. |
 | `src/Client/Assets/Editor/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
 | `src/Client/Assets/Editor/ArtAssetManifests.cs` | Reads `asset.json` and the skeleton definitions for the import rules, the material command, and the tests. |
@@ -101,7 +104,7 @@ any `clips` of its own are written by hand when an asset is created.
 | Field | Meaning |
 | --- | --- |
 | `schemaVersion` | Always `1`. |
-| `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries), `paint` for a [paint layer](#paint-layers), `garment` for a [garment](#garments), `cage` for the [garment cage](#garment-cage). A paint layer has no `target`, `rootObjects`, or `triangleBudget`, a garment no `target` or `rootObjects`: its models and roots follow from its bodies, and a cage none of them and no `export`. |
+| `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries), `paint` for a [paint layer](#paint-layers), `garment` for a [garment template](#garments), `texture` for a [garment texture](#garment-textures), `cage` for the [garment cage](#garment-cage). A paint layer has no `target`, `rootObjects`, or `triangleBudget`, a garment template no `target`, `rootObjects`, or `bodies`: its models and roots follow from its cage's bodies, a texture none of them, and a cage no `target`, `rootObjects`, `triangleBudget`, or `export`. |
 | `target` | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx`, where `<Name>` is the folder name. |
 | `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. The one root object of an animation library is its armature, named after its skeleton. |
 | `triangleBudget` | The maximum number of exported triangles, after modifiers. An animation library exports no meshes and has none. A garment's budget holds for each body's version. |
@@ -110,20 +113,23 @@ any `clips` of its own are written by hand when an asset is created.
 | `previews` | Animation libraries only: other skinned assets of the skeleton whose bodies show the clips in the library, such as `["art/Characters/Human_Female"]`. |
 | `clips` | Animation libraries, and skinned assets with clips of their own: the names of the animation clips the asset exports, such as `["Death", "Idle", "Walk", "Jog"]`. Each is one Blender action. A skinned asset whose clips come from animation libraries, such as the human bodies, leaves `clips` out. |
 | `part` | Paint layers only: the part of the painted material `M_<Part>_<Label>`, such as `Body`. |
-| `bodies` | Paint layers and garments: the skinned assets the paint or the garment fits, the body it is made on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology. |
+| `bodies` | Paint layers: the skinned assets the paint fits, the body it is painted on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology; its garment templates fit them. |
+| `cage` | Garment templates only: the garment cage it is made on, such as `art/Cages/Humanoid`. |
+| `recipe` | Garment templates only: its `regions`, `cuts`, `ease`, and `hem`, as [Garments](#garments) describes, or `"modeled"`. |
+| `garment` | Garment textures only: the template it is the look of, such as `art/Garments/Jerkin`. |
 | `figure` | The cage only: the figure scale in meters, the radius of the ball that rolls over the skin, from 0.01 to 0.2. |
 | `lines` | The cage only: the standard lines, each with its `name`, its `region` (`neck`, `trunk`, `arms`, or `legs`), its `bone`, without the side `_L` or `_R` for the arms and legs, and its `share` of the bone's length, from 0 to 1. |
 | `fittedTo` | The cage only, written by its approval: every body with the `sourceSha256` of the body's export the cage was approved on. |
 | `layer` | Paint layers: the order paint layers are drawn in, from 0 to 1000, the lowest first, such as `30` for a chest piece over a shirt at `10`. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `200` for a jerkin over a shirt at `100`. |
 | `slot` | Garments only: the visual slot, `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
-| `band` | Garments only: how far from the skin the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), or `loose` (from 10 mm). |
+| `band` | Garments only: how far from the garment cage the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), or `loose` (from 10 mm). |
 | `hides` | Garments only: the other visual slots it hides, such as `["legs"]` for a floor-length robe, or `[]`. |
 | `hair` | Garments only: for headwear, what happens to the hair under it, `hide`, `compress`, or `show`; `null` for every other slot. |
 | `cloth` | Garments only: the cloth profile of its loose parts, `robe`, `cloak`, or `hood`, or `null`. |
 | `dyes` | Garments only: the number of dye channels. It is `0` until the garment shader brings dyes. |
 | `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
 | `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. |
-| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment records its `models`, one per body in the order of `bodies` with its `body` label, the `bodySourceSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips completed its masks; its one material `M_Garment_<Name>`; and its image below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
+| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment template records the `cageSourceSha256` of the approved cage file it was fitted to; its `models`, one per body of the cage in order with its `body` label, the `bodySourceSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips it was checked in; its one material `M_Garment_<Name>` without an image; and no `textures`. The export of a garment texture records the `garmentSourceSha256` of its template's export, its `masks` with their `body`, `data`, and `dataSha256` and their `clipSources` when it has transparent parts, its material `M_Garment_<Name>`, and its image `T_Garment_<Name>` below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
 
 ## Review Stages
 
@@ -138,7 +144,8 @@ saving the file again, even without a visible change, needs a new approval.
 | `skinned` (characters, creatures) | `model`, then `rig`, then `animation` when it has clips of its own | Implemented. |
 | `animations` (animation libraries) | `animation` | Implemented. |
 | `paint` (paint layers) | `paint` | Implemented. |
-| `garment` (garments) | `model`, then `rig` | Implemented. |
+| `garment` (garment templates) | `model`, then `rig` | Implemented. |
+| `texture` (garment textures) | `texture` | Implemented. |
 | `cage` (the garment cage) | `model` | Implemented. It has no export. |
 
 The `rig` review looks at the skeleton and the weights: test poses that raise
@@ -163,7 +170,9 @@ states: work on the next stage stays on its branch until that stage is approved.
 missing or stale, when an animation library was exported against another export
 of its rig, when an asset in review has an export or an FBX, when the garment
 cage's approval does not cover its committed file or one of its bodies has
-another export than the cage was approved on, when the
+another export than the cage was approved on, when a garment template was
+fitted to another file of its cage, when a garment texture was exported against
+another export of its template, when the
 committed FBX or a committed texture differs from the recorded export, or when a
 model below `src/Client/Assets/Art/Models` or a texture below
 `src/Client/Assets/Art/Textures` has no asset. It reads the SHA-256 of a `.blend`
@@ -387,7 +396,9 @@ A project material is never changed by the import. When an export adds a
 material, `MMORPG > Tools > Art Pipeline > Create Missing Materials` creates it
 as a URP Lit material from its export record, with its texture for a painted
 material, below `Assets/Art/Materials/<Category>`, and reimports the models that
-use it. A garment's material draws with the garment shader `Mmorpg/Garment`,
+use it; a garment texture has no model, and its material goes to
+`Assets/Art/Materials/Garments`. The material of a garment template or texture
+draws with the garment shader `Mmorpg/Garment`,
 URP Lit with three dye channels, and cuts its texture at alpha 0.5 and draws both
 faces, so holes, lace, and torn edges show sharp and the inside of a sleeve is
 drawn. Like the skin shader, it is a copy of URP's `Lit.shader` and
@@ -419,8 +430,10 @@ garment it fails when a model lacks its body's armature or a skeleton bone, has
 another renderer than `<Name>_<Label>`, a vertex without weights or with more
 than four bones, or a bone whose bind pose differs from the body's, and when
 its material does not cut at alpha 0.5 from both sides, and when a garment's data
-is missing, belongs to another garment or body, or holds a face or vertex out of
-range, an unsorted list, or a pull-in beyond 3 mm. A
+or a garment texture's masks are missing, belong to another garment or body, or
+hold a face or vertex out of range, an unsorted list, or a pull-in beyond 3 mm.
+`ArtAppearanceCatalogTests` fails when a body's garment lacks its template or
+does not draw with its texture's material. A
 texture below `Assets/Art/Textures` without an export record or with other
 import settings fails as well. `Verify-ArtAssets.ps1` rejects an export record
 with a missing, malformed, or duplicate material, texture, or clip entry.
@@ -511,7 +524,7 @@ the others as they are.
 | --- | --- | --- | --- |
 | Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Scarred` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
 | Paint layers | Transparent paint over the skin in the body texture's UV layout, such as the paint of a leather jerkin or a scalp, in a [paint layer](#paint-layers) asset of its own. Painted once on the male body and moved to every body of the same topology. | The skin shader lays it over the skin when the body is drawn. | Implemented. |
-| Garments | Meshes skinned to the shared skeleton, such as clothes, armor, and hair, in [garment](#garments) assets of their own, made on the male body and fitted to every body type. | Combined with the visible body parts into the body's one mesh; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md). | Implemented, with the Wardrobe preview and trying garments on in F2; the garment cage, templates, and textures are designed and come with delivery step 5. |
+| Garments | Meshes skinned to the shared skeleton, such as clothes, armor, and hair: [garment templates](#garments) built on the [garment cage](#garment-cage) and fitted to every body of it, each worn with a [garment texture](#garment-textures) of its own asset. | Combined with the visible body parts into the body's one mesh; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md). | Implemented, with the Wardrobe preview and trying garments on in F2. |
 
 The faces and eyes of the human base characters are variants: images packed into
 the character's file, shown by the model review, and exported with the model
@@ -646,75 +659,105 @@ off its place, so the skin does not shine through.
 
 ## Garments
 
-A garment below `art/Garments` is clothes, armor, or hair as a mesh of its own,
-skinned to the shared skeleton, such as the leather jerkin
-`art/Garments/LeatherJerkin`. It is made once, on the first body of `bodies`, and
-fitted to every other body of the same topology; the design is in
-[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md).
+A garment template below `art/Garments` is the form of a garment kind without
+its look, a mesh skinned to the shared skeleton, such as the jerkin
+`art/Garments/Jerkin`. It is built from its recipe on the
+[garment cage](#garment-cage) named in `cage` and fitted to every body of the
+cage, and it is worn with a [garment texture](#garment-textures); the design is
+in [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#templates).
 
 Its file holds, per body, the collection `Export_<Label>` with the body's
-armature `<Label>` and the garment's version `<Name>_<Label>`, a child of it with
-an Armature modifier and the material `M_Garment_<Name>`. The bodies' source
-bodies, eyes, teeth, and tongues are in the `Reference` collection, unselectable,
-so they show the body and the fitting reads them. The first body's version is
-the one a person shapes; the file opens with the other bodies hidden, because
-they stand at the same place.
+armature `<Label>` and the template's version `<Name>_<Label>`, a child of it
+with an Armature modifier and the material `M_Garment_<Name>`, a neutral grey.
+The bodies' source bodies, eyes, teeth, and tongues are in the `Reference`
+collection, unselectable, so they show the body and the fitting reads them, and
+the cage's versions `Cage_<Label>` are in the `Cage` collection, taken from the
+cage's file, whose SHA-256 the file keeps. The first body's version is the one a
+person shapes; the file opens with the other bodies hidden, because they stand
+at the same place.
+
+The recipe in `asset.json` says what the pipeline builds:
+
+| Field | Meaning |
+| --- | --- |
+| `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, and `legs`, such as `["trunk", "arms"]` for the jerkin. A region without a cut is covered whole. |
+| `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The jerkin keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder. |
+| `ease` | More room at the front and the back of the lower armholes, in meters, fading out over 60 mm. The jerkin has none, since ease there let more skin come through it in the clips. |
+| `hem` | How deep every open edge is turned inward, in meters, such as `0.004`. |
+
+A recipe of `"modeled"` instead makes a template whose first version a person
+models by hand over the cage, such as a hairstyle or a helmet.
 
 `tools/Sync-GarmentAsset.ps1` brings the file up to date:
 
-- A body whose rig, surface, or weights changed in its own file is appended
-  again, and the garment stays on it.
-- Every other version is fitted from the first: each vertex is bound to the
-  nearest triangle of the first body, by its barycentric coordinates and its
-  offset in the triangle's frame, and placed at the same triangle and offset of
-  the other body. A vertex or a face centre that then leaves the garment's band,
-  because the other body curves differently, moves back into it along the skin's
-  normal; this is part of the fitting. A version corrected by hand keeps its
-  corrections, because
-  the point attribute `fitted` holds the shape the last fitting gave, and the
-  difference to it is applied again to the new fitting.
-- Every vertex gets the weights of the body under it, interpolated from the
-  corners of its triangle and limited to four bones, and not smoothed, so it
-  moves like the skin it covers: smoothed weights let the skin under a sleeve
-  come through further. The point attribute
-  `transferred_weights` holds a checksum of the weights the last transfer gave
-  each vertex of the first version, so a vertex whose weights were painted by
-  hand keeps them, also in the other versions. `-Weights` transfers every
-  weight again. Weights are painted by hand only on the first version.
+- A body or a cage version that changed in its own file is taken in again. The
+  first version is bound to the old cage and placed on the new one, so it
+  follows.
+- A new template, or one synced with `-Rebuild` after its recipe changed, gets
+  its first version built from the first body's cage: the cage's faces of its
+  regions, cut at its lines, every cage vertex within 8 mm of a line first moved
+  onto it, so the edge runs straight; seams down the sides of the trunk, under
+  the arms, and along the borders between regions, and UVs unfolded along them;
+  an offset from the cage into the band, 4 mm for `tight`, 10 mm for `mid`, and
+  20 mm for `outer` and `loose`; the ease; every open edge turned inward by the
+  `hem` depth with a 12 mm flap, whose faces take the look of the edge in the
+  texture; and every vertex and face centre settled into the band from the cage.
+  The point attribute `built` holds the shape the recipe gave, so a rebuild
+  carries a shape made by hand over: each new vertex takes the difference at its
+  place on the cage.
+- Every other version is fitted from the first through the cage: each vertex is
+  bound to a triangle of the first body's cage, by its barycentric coordinates
+  and its offset in the triangle's frame, and placed at the same triangle and
+  offset of the other body's cage. Every body's cage has the same faces, so this
+  needs nothing of the bodies' own topology. A vertex or a face centre that then
+  leaves the band moves back into it. A version corrected by hand keeps its
+  corrections, because the point attribute `fitted` holds the shape the last
+  fitting gave, and the difference to it is applied again.
+- Every vertex gets the weights of the nearest skin of the body part its cage
+  face lies on, the cage's region and side, interpolated from the corners of the
+  skin's triangle, limited to four bones, and not smoothed, so it moves like the
+  skin it covers: a sleeve's inside at the armpit moves with the arm, not with
+  the trunk next to it. The point attribute `transferred_weights` holds a
+  checksum of the weights the last transfer gave each vertex of the first
+  version, so a vertex whose weights were painted by hand keeps them, also in
+  the other versions. `-Weights` transfers every weight again.
 - A file that this leaves as it was is not saved, so its approvals stay valid.
 
 The sync then writes the review sheet `artifacts/art-previews/<Name>.png`. Per
-body it shows three rows: the body in the garment from four sides with its torso
-from the front and the back, the garment in the test poses of `poses.py`, and
-the body without the garment, its covered faces orange, the skin kept visible
-at the garment's edges yellow, the pulled-in vertices blue, and the skin that
-comes through the garment in motion red. The review file
-`artifacts/art-previews/<Name>_poses.blend` places the bodies side by side with an
-action that steps through the test poses. Last, the sync checks every rule and
-reports what the garment covers. The `model` stage checks that every body has a
-version with the first version's topology and one material, within the triangle
-budget and with every vertex and every face centre in its band from the skin, so
-a large flat face over a round shoulder cannot dip under the skin between its
-corners, and that the bodies, the
-fitting, and the weights are as a sync leaves them. The `rig` stage adds the rig
-rules of skinned assets for each version on its armature.
+body it shows three rows: the body in the template from four sides with its
+torso from the front and the back, the template showing a grid in its UVs, so
+the sheet shows how they stretch; the template in the test poses of `poses.py`;
+and the body without it, its covered faces orange, the skin kept visible at the
+template's edges yellow, the pulled-in vertices blue, and the skin that comes
+through it in motion red. The review file `artifacts/art-previews/<Name>_poses.blend`
+places the bodies side by side with an action that steps through the test
+poses. Last, the sync checks every rule and reports what the template covers.
+The `model` stage checks that the bodies and the cage are the current ones of
+their files and the cage the approved one, that every body has a version with
+the first version's topology and one material, within the triangle budget and
+with every vertex and every face centre in its band from the cage, and that the
+fitting and the weights are as a sync leaves them. The `rig` stage adds the rig
+rules of skinned assets for each version on its armature, and the motion check.
 
-`coverage.py` computes what a garment covers on each body, in the faces and
-vertices of the body's editable mesh, which every body of the topology numbers
-alike:
+`coverage.py` computes what a template covers on each body, in the faces and
+vertices of the body's editable mesh:
 
 - **The cover mask**, the body faces the garment hides. From five points on a
   face, seven rays go out in a cone of 25 degrees around its normal. The face is
   covered when every ray meets the garment where its texture is opaque, or the
-  body, within the band's reach (30, 50, 100, or 300 mm), and at least one meets
-  the garment. A hole, an open hem, or a transparent part of the texture lets a
-  ray out and leaves the face visible; a face that only the body hides, such as
-  the inside of the mouth, stays visible too. The skin at the garment's edges
-  stays visible as well, since a look into a sleeve or under a hem sees past the
-  cone: a face whose centre or a corner lies within the band's edge reach (20,
-  40, 80, or 120 mm) of an open edge of the garment is never covered. The open
-  edges are the borders of its mesh and the lines where its texture is cut,
-  sampled every 5 mm where the garment is opaque.
+  body, within the garment's reach: the distance from the skin to the cage there
+  and the band's reach above it, 30, 50, 100, or 300 mm, so rays from the bottom
+  of a pit that the cage spans reach the cloth over it. At least one ray must
+  meet the garment. A hole, an open hem, or a transparent part of the texture
+  lets a ray out and leaves the face visible; a face that only the body hides,
+  such as the inside of the mouth, stays visible too. The skin at the garment's
+  edges stays visible as well, since a look into a sleeve or under a hem sees
+  past the cone: a face whose centre or a corner lies within the edge reach of
+  an open edge of the garment is never covered. The edge reach is the band's,
+  20, 40, 80, or 120 mm, or four times the gap between the skin and the edge
+  where the cloth hangs farther off, up to 120 mm. The open edges are the
+  borders of its mesh and the lines where its texture is cut, sampled every
+  5 mm where the garment is opaque.
 - **The underlay**, the body face under each garment face, along its inward
   normal, or the nearest one.
 - **The pull-in**: a visible body vertex closer to the garment than the band's
@@ -730,36 +773,35 @@ alike:
   there in motion whatever the weights. A vertex that comes through lies at an
   opening that shows it, so it is not hidden: the report names how many come
   through and the deepest place, the review sheet shows their faces red, and the
-  garment's shape or weights fix them. The rule needs the clips, so it runs at
-  the garment's `rig` stage, which its export runs.
+  template's shape or weights fix them. The rule needs the clips, so it runs at
+  the template's `rig` stage, which its export runs.
 
-`New-ArtAsset.ps1 -Kind garment` starts a garment with a shell on the first body,
-so there is something to shape: the body faces of the slot's body parts, or
-with `-FromPaint` the faces a paint layer covers, with the paint image as the
-garment's texture in the body's UV layout. The shell lies in the garment's band,
-4 mm from the skin for `tight`, 10 mm for `mid`, and 20 mm for `outer` and
-`loose`, smoothed so the body's muscles do not show through, and keeps between
-2 and 7 mm, 7.5 and 22 mm, or 15 and 50 mm, and at least 15 mm for `loose`, at
-its vertices and at the centres of its faces.
+`New-ArtAsset.ps1 -Kind garment` starts a template from its recipe on the cage,
+with `-Slot`, `-Band`, `-Regions`, `-Cuts` as `<Line>:head` or `<Line>:tail`,
+`-Ease`, and `-Hem`, or `-Modeled`; `-Cage` is `art/Cages/Humanoid` unless it
+says otherwise.
 
-The export writes one model per body, `Models/Garments/<Name>_<Label>.fbx`, from
-its `Export_<Label>` collection, the garment skinned to that body's armature, its
-data `Models/Garments/<Name>_<Label>.json`, and its image to `Textures/Garments`.
-The data holds `bodyFaces`, `bodyVertices`, and `garmentFaces`, the `covered`
-body faces, the `underlay` of every garment face, the `pullInVertices` with
-their `pullInDistances` in meters, and the garment's own `garmentVertices`,
-`garmentFaceSizes`, and `garmentFaceVertices`, by which Unity finds the face of
-each triangle. The faces and vertices it names are those of the body's topology,
-which the body's export writes next to its model: its editable mesh's
-`vertices` in Blender's world space, `faceSizes`, `faceVertices`, and
-`faceZones`. A garment is exported after its bodies and the
-animation libraries of its skeleton and records their exports, so
-`Verify-ArtAssets.ps1` fails when a body or a library has a newer export than
-the one the garment was fitted to and checked in: sync, review, and export the
-garment again.
+The export writes one model per body of the cage,
+`Models/Garments/<Name>_<Label>.fbx`, from its `Export_<Label>` collection, the
+template skinned to that body's armature, and its data
+`Models/Garments/<Name>_<Label>.json`. The data holds `bodyFaces`,
+`bodyVertices`, and `garmentFaces`, the `covered` body faces, the `underlay` of
+every garment face, the `pullInVertices` with their `pullInDistances` in meters,
+and the template's own `garmentVertices`, `garmentFaceSizes`, and
+`garmentFaceVertices`, by which Unity finds the face of each triangle. The faces
+and vertices it names are those of the body's topology, which the body's export
+writes next to its model: its editable mesh's `vertices` in Blender's world
+space, `faceSizes`, `faceVertices`, and `faceZones`. A template is exported after
+its cage is approved and after its bodies and the animation libraries of its
+skeleton are exported, and it records the cage's approved file and their
+exports, so `Verify-ArtAssets.ps1` fails when the cage's file changed or a body
+or a library has a newer export than the one the template was fitted to and
+checked in: sync, review, and export the template again. Its material has no
+image, so the game shows a template only with a texture.
 
 Garments of different layers check each other when a character wears them
-together, which comes with putting characters together in Unity.
+together, which comes with the pair check of the first pair of templates that
+overlap.
 
 Cloth in motion is reviewed in Unity with `MMORPG > Tools > Art Pipeline >
 Wardrobe`: pick a body, tick the garments it wears, and play `Idle`, `Walk`,
@@ -767,6 +809,57 @@ Wardrobe`: pick a body, tick the garments it wears, and play `Idle`, `Walk`,
 and jogs forward at the clips' speeds over a checkered ground that the camera
 follows, so loose cloth lags as in the game, and the cloth solver runs. Drag in
 the view to turn the camera and scroll to come closer.
+
+## Garment Textures
+
+A garment texture below `art/GarmentTextures` is the look of one template, named
+in `garment`, such as the leather `art/GarmentTextures/LeatherJerkin` of
+`art/Garments/Jerkin`; the design is in
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#textures). Its file holds
+the image `T_Garment_<Name>`, packed, 512, 1024, or 2048 px square, with the
+custom properties `roughness` and `metallic`, and the mesh `Preview`, a copy of
+the template's first version with the material `M_Garment_<Name>` that shows the
+image, for painting in Texture Paint mode. `Preview` keeps the UVs the image is
+painted in, and its property `template_uvs` the fingerprint of the template's
+UVs then. Where the image's alpha is below 0.5, the garment is cut: the skin
+shows through, with its paint.
+
+- `New-ArtAsset.ps1 -Kind texture -Garment art/Garments/<Template>` starts a
+  texture of `-Size` pixels in a light grey, or with `-ProjectFrom
+  <file.blend>=<Object>` with the look of another mesh, its color and its alpha
+  moved to the template's UVs by projection: Cycles bakes them from `Preview`'s
+  surface, looking 60 mm both ways for the other mesh.
+- `tools/Sync-TextureAsset.ps1` moves the texture to the template's new UVs the
+  same way, from the old `Preview`, when the template's UVs changed, such as
+  after a rebuild of its recipe, and leaves the file as it was otherwise. It then
+  writes the review sheet and checks every rule.
+- The `texture` stage checks that the image is packed, of a known size, with its
+  roughness and metallic, that `Preview` shows it, and that it was painted in the
+  template's current UVs. A texture with transparent parts, such as the
+  jerkin's laced V, also gets masks of its own on every body, because its holes
+  change what the body shows: the template's file is opened with the texture on
+  every version, and `coverage.py` computes the cover mask, underlay, and
+  pull-in and runs the motion check with the template's rules. An opaque
+  texture uses the template's masks.
+- The review sheet `artifacts/art-previews/<Name>.png` shows the template with
+  the texture on every body from four sides with the torso up close and in the
+  test poses, and for a texture with transparent parts the body without it in
+  the colors of the template's sheet, with the texture's own mask.
+- The export writes the image to `Textures/Garments/T_Garment_<Name>.png` and the
+  material `M_Garment_<Name>` with it as `baseMap`, and for a texture with
+  transparent parts its masks per body, `Models/Garments/<Name>_<Label>.json`, in
+  the format of the template's data. It records the `export.sourceSha256` of the
+  template's export it was checked against, so `Verify-ArtAssets.ps1` fails when
+  the template has a newer export: sync, review, and export the texture again.
+
+In Unity, `Create Missing Materials` creates
+`Assets/Art/Materials/Garments/M_Garment_<Name>.mat` with the garment shader, and
+the appearance catalog of every body lists every exported texture of an exported
+template that fits the body as a garment named after the texture: the
+template's model for the body and its slot, layer, and hides, the texture's
+material, which the template's model draws with instead of its own, and the
+texture's masks, or else the template's. A character wears a garment by the
+texture's name, such as `LeatherJerkin`, in F2 and in the Wardrobe.
 
 ## Live Work With The Blender MCP Server
 
@@ -907,6 +1000,8 @@ weights.
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
 | `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. |
+| `art/GarmentTextures/LeatherJerkin` | `texture` | none | The leather of `Jerkin`, 1024 px: warm brown leather with blotches and grain, darker trim with stitches along the neckline, the hem, and the sleeve ends, and an open V at the front, laced across, where the skin shows between the laces. It has masks of its own. Roughness 0.62. Moved from the first leather jerkin garment by projection. |
+| `art/Garments/Jerkin` | `garment` | none | A short-sleeved top in the `mid` band, layer 200, from the recipe `trunk` and `arms`, cut at `HemHip` and `SleeveShort`, turned edges 4 mm deep, without ease or collar, 1,536 triangles per body, on `art/Cages/Humanoid`. |
 | `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the twelve standard lines of [Garment Cage](#garment-cage). |
 | `art/Paint/LeatherJerkin` | `paint` | none | The paint of the leather jerkin over `M_Body`, painted on the male and moved to the female, layer 30: warm brown leather with large soft blotches, fine grain, and worn lighter high points, darker trim with stitches along every edge, side and shoulder seams, short sleeves to a little less than half the upper arm, a round collar that stands 2 cm up the neck, and a V at the front laced across. Smoothness 0.38. Approved 2026-10-21; the female's bra straps are painted up her neck, above any collar, until the base body is fixed. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. |

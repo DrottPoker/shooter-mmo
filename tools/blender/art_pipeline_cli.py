@@ -146,15 +146,38 @@ def _clip_libraries(args) -> list[tuple[str, list[str]]]:
 
 def _texture(args) -> int:
     """Validation and export of a garment texture: its image in its template's current UVs, and its
-    material."""
-    errors = texture.texture_errors(args.texture, os.path.abspath(args.garment_file), args.garment, args.roots.split(",")[0])
+    material. A texture with transparent parts also gets masks of its own on every body, with the
+    skin that comes through the garment in the test poses and the clips, and its export writes them
+    next to the template's models."""
+    labels = args.roots.split(",")
+    garment_file = os.path.abspath(args.garment_file)
+    if args.stage != "texture":
+        raise ArtPipelineError(f'A garment texture has the review stage texture, not "{args.stage}".')
+    errors = texture.texture_errors(args.texture, garment_file, args.garment, labels[0])
     for error in errors:
         print(f"ART_PIPELINE_ERROR {error}")
     if errors:
         return 1
-    print(f"ART_VALIDATION texture={texture.image_name(args.texture)}")
+    holes = texture.has_holes(bpy.data.images[texture.image_name(args.texture)])
+    exported = None
     if args.command == "export":
-        path, record = texture.export(args.texture, args.textures)
+        exported = texture.export(args.texture, args.textures)
+    if holes:
+        results = texture.masks(bpy.data.filepath, args.texture, garment_file, args.garment, labels, args.band,
+                                _clip_libraries(args))
+        for label in labels:
+            result, motion = results[label]
+            print(f"ART_REPORT {args.texture} on {coverage.motion_summary(args.garment, motion)}")
+            print(f"ART_REPORT {args.texture} on {coverage.summary(args.garment, result)}")
+            if exported is not None:
+                data = os.path.join(args.target, f"{args.texture}_{label}.json")
+                coverage.write_record(data, texture.mask_record(args.texture, args.garment, result))
+                print(f"ART_TEXTURE_MASK {json.dumps({'label': label, 'data': data}, separators=(',', ':'))}")
+    else:
+        print(f"ART_REPORT {args.texture} is opaque and uses the masks of its template {args.garment}.")
+    print(f"ART_VALIDATION texture={texture.image_name(args.texture)}")
+    if exported is not None:
+        path, record = exported
         print(f"ART_TEXTURE {json.dumps({'name': texture.image_name(args.texture), 'path': path}, separators=(',', ':'))}")
         print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
         print(f"ART_EXPORT {path}")
@@ -253,9 +276,11 @@ def main() -> int:
     args = parse_args(_parser())
     if args.command == "preview":
         if args.kind == "texture":
+            # A texture with transparent parts also shows its own masks.
             labels = args.roots.split(",")
-            texture.dress(args.garment, os.path.abspath(args.texture_file), args.texture, labels)
-            path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size)
+            holes = texture.dress(args.garment, os.path.abspath(args.texture_file), args.texture, labels)
+            path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size,
+                                                args.garment if holes else None, args.band, _clip_libraries(args))
             print(f"ART_PREVIEW {path}")
             return 0
         if args.kind == "cage":

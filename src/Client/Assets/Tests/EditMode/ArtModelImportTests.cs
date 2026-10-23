@@ -147,9 +147,10 @@ namespace Mmorpg.Client.Tests.EditMode
             // bones have the body's bind poses, so the character's skeleton moves it with the body.
             foreach (var manifest in ExportedManifests().Where(manifest => manifest.IsGarment))
             {
+                var bodies = ArtAssetManifests.BodiesOf(manifest);
                 Assert.That(
                     manifest.export.models.Select(model => model.body),
-                    Is.EqualTo(manifest.bodies.Select(ArtAssetManifests.BodyLabel)),
+                    Is.EqualTo(bodies.Select(ArtAssetManifests.BodyLabel)),
                     manifest.path);
                 foreach (var record in manifest.export.models)
                 {
@@ -157,7 +158,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     var garment = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                     Assert.That(garment, Is.Not.Null, path);
                     var body = ArtAssetManifests.LoadAsset(
-                        manifest.bodies.Single(asset => ArtAssetManifests.BodyLabel(asset) == record.body));
+                        bodies.Single(asset => ArtAssetManifests.BodyLabel(asset) == record.body));
                     var skeleton = ArtAssetManifests.LoadSkeleton(body.skeleton);
                     var armature = garment.transform.Find(record.body);
                     Assert.That(armature, Is.Not.Null, path + " lacks the armature " + record.body);
@@ -199,40 +200,41 @@ namespace Mmorpg.Client.Tests.EditMode
         public void EveryGarmentModelHasItsData()
         {
             // The data says which body faces the garment hides and which face lies under each of its
-            // faces, in the numbering of the body's editable mesh.
+            // faces, in the numbering of the body's editable mesh. A texture with transparent parts
+            // has data of its own per body of its template.
             var garments = ExportedManifests().Where(manifest => manifest.IsGarment).ToArray();
             Assert.That(garments, Is.Not.Empty);
-            foreach (var manifest in garments)
+            var entries = garments
+                .SelectMany(manifest => manifest.export.models.Select(record => (manifest, record.body, record.data, path: record.UnityDataPath)))
+                .Concat(ExportedManifests().Where(manifest => manifest.IsTexture)
+                    .SelectMany(manifest => manifest.export.masks.Select(record => (manifest, record.body, record.data, path: record.UnityDataPath))));
+            foreach (var (manifest, body, file, path) in entries)
             {
-                foreach (var record in manifest.export.models)
-                {
-                    var path = record.UnityDataPath;
-                    var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
-                    Assert.That(asset, Is.Not.Null, manifest.path + " " + record.data);
-                    // A new import of the data alone updates the appearance catalogs.
-                    Assert.That(ArtModelImportRules.AppliesToData(path), Is.True, path);
-                    var data = ArtGarmentData.FromJson(asset.text);
-                    Assert.That(data.schemaVersion, Is.EqualTo(ArtGarmentData.SchemaVersion), path);
-                    Assert.That(data.garment, Is.EqualTo(manifest.Name), path);
-                    Assert.That(data.body, Is.EqualTo(record.body), path);
-                    Assert.That(data.bodyFaces, Is.GreaterThan(0), path);
-                    Assert.That(data.covered, Is.Not.Empty, path);
-                    Assert.That(data.covered, Is.Ordered.And.Unique, path);
-                    Assert.That(data.covered.All(face => face >= 0 && face < data.bodyFaces), Is.True, path);
-                    Assert.That(data.underlay, Has.Length.EqualTo(data.garmentFaces), path);
-                    // The garment's own faces, so the catalog finds the face of every triangle.
-                    Assert.That(data.garmentFaceSizes, Has.Length.EqualTo(data.garmentFaces), path);
-                    Assert.That(data.garmentFaceVertices, Has.Length.EqualTo(data.garmentFaceSizes.Sum()), path);
-                    Assert.That(data.garmentVertices.Length % 3, Is.Zero, path);
-                    Assert.That(data.underlay.All(face => face >= 0 && face < data.bodyFaces), Is.True, path);
-                    Assert.That(data.pullInDistances, Has.Length.EqualTo(data.pullInVertices.Length), path);
-                    Assert.That(data.pullInVertices, Is.Ordered.And.Unique, path);
-                    Assert.That(data.pullInVertices.All(vertex => vertex >= 0 && vertex < data.bodyVertices), Is.True, path);
-                    Assert.That(
-                        data.pullInDistances.All(distance => distance > 0f && distance <= ArtGarmentData.MaximumPullIn + 1e-6f),
-                        Is.True,
-                        path);
-                }
+                var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+                Assert.That(asset, Is.Not.Null, manifest.path + " " + file);
+                // A new import of the data alone updates the appearance catalogs.
+                Assert.That(ArtModelImportRules.AppliesToData(path), Is.True, path);
+                var data = ArtGarmentData.FromJson(asset.text);
+                Assert.That(data.schemaVersion, Is.EqualTo(ArtGarmentData.SchemaVersion), path);
+                Assert.That(data.garment, Is.EqualTo(manifest.Name), path);
+                Assert.That(data.body, Is.EqualTo(body), path);
+                Assert.That(data.bodyFaces, Is.GreaterThan(0), path);
+                Assert.That(data.covered, Is.Not.Empty, path);
+                Assert.That(data.covered, Is.Ordered.And.Unique, path);
+                Assert.That(data.covered.All(face => face >= 0 && face < data.bodyFaces), Is.True, path);
+                Assert.That(data.underlay, Has.Length.EqualTo(data.garmentFaces), path);
+                // The garment's own faces, so the catalog finds the face of every triangle.
+                Assert.That(data.garmentFaceSizes, Has.Length.EqualTo(data.garmentFaces), path);
+                Assert.That(data.garmentFaceVertices, Has.Length.EqualTo(data.garmentFaceSizes.Sum()), path);
+                Assert.That(data.garmentVertices.Length % 3, Is.Zero, path);
+                Assert.That(data.underlay.All(face => face >= 0 && face < data.bodyFaces), Is.True, path);
+                Assert.That(data.pullInDistances, Has.Length.EqualTo(data.pullInVertices.Length), path);
+                Assert.That(data.pullInVertices, Is.Ordered.And.Unique, path);
+                Assert.That(data.pullInVertices.All(vertex => vertex >= 0 && vertex < data.bodyVertices), Is.True, path);
+                Assert.That(
+                    data.pullInDistances.All(distance => distance > 0f && distance <= ArtGarmentData.MaximumPullIn + 1e-6f),
+                    Is.True,
+                    path);
             }
         }
 
@@ -293,7 +295,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
 
                 // Every material the models render with has an approved record, and no record is stale.
-                Assert.That(manifest.UnityModelPaths, Is.Not.Empty, manifest.path);
+                // A garment texture has no model: the catalog draws its template's models with it.
+                Assert.That(manifest.UnityModelPaths, manifest.IsTexture ? Is.Empty : Is.Not.Empty, manifest.path);
                 foreach (var modelPath in manifest.UnityModelPaths)
                 {
                     var model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
@@ -323,10 +326,11 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(material.GetFloat("_Metallic"), Is.EqualTo(record.metallic).Within(0.01f), where);
                     Assert.That(material.GetFloat("_Smoothness"), Is.EqualTo(record.smoothness).Within(0.01f), where);
                     // A garment is cut at its texture's alpha and drawn from both sides.
+                    var garment = manifest.IsGarment || manifest.IsTexture;
                     var alphaClip = material.HasProperty("_AlphaClip") ? material.GetFloat("_AlphaClip") : 0f;
-                    Assert.That(alphaClip, Is.EqualTo(manifest.IsGarment ? 1f : 0f), where);
-                    Assert.That(material.IsKeywordEnabled("_ALPHATEST_ON"), Is.EqualTo(manifest.IsGarment), where);
-                    if (manifest.IsGarment)
+                    Assert.That(alphaClip, Is.EqualTo(garment ? 1f : 0f), where);
+                    Assert.That(material.IsKeywordEnabled("_ALPHATEST_ON"), Is.EqualTo(garment), where);
+                    if (garment)
                     {
                         Assert.That(material.shader.name, Is.EqualTo(ArtMaterialCreator.GarmentShader), where);
                         Assert.That(material.GetFloat("_Cutoff"), Is.EqualTo(ArtMaterialCreator.GarmentAlphaCutoff), where);

@@ -21,9 +21,13 @@ foreach ($directory in $directories) {
     }
 
     $where = $manifest.RelativeDirectory
-    # A paint layer exports images only, so it has no model target, and a garment a model and its
-    # data per body.
+    # A paint layer exports images only, so it has no model target, a garment a model and its data
+    # per body, and a texture with transparent parts its masks per body of its template.
     $modelTargets = @(if ($manifest.Kind -eq "garment") { @($manifest.Models | ForEach-Object { $_.Target; $_.Data }) }
+        elseif ($manifest.Kind -eq "texture") {
+            if ($null -ne $manifest.Export) { @($manifest.Export.masks | Where-Object { $null -ne $_ } | ForEach-Object { $_.data }) }
+            else { @($manifest.Masks | ForEach-Object { $_.Data }) }
+        }
         elseif ($null -ne $manifest.Target) { @($manifest.Target) })
     # A body with an editable mesh exports its topology next to its model.
     if ($null -ne $manifest.Export -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
@@ -103,6 +107,28 @@ foreach ($directory in $directories) {
         if ($null -eq $templateExport -or $templateExport.sourceSha256 -ne $manifest.Export.garmentSourceSha256) {
             $problems.Add("${where}: was exported against another export of its template $($manifest.Garment.RelativeDirectory); run tools/Sync-TextureAsset.ps1, review and approve it if it changed, then run tools/Export-ArtAsset.ps1.")
         }
+
+        foreach ($mask in @($manifest.Export.masks | Where-Object { $null -ne $_ })) {
+            $maskPath = Join-Path $script:ArtRepositoryRoot $mask.data
+            if (-not (Test-Path -LiteralPath $maskPath -PathType Leaf)) {
+                $problems.Add("${where}: $($mask.data) is missing; run tools/Export-ArtAsset.ps1.")
+            }
+            elseif ((Get-ArtFileSha256 $maskPath) -ne $mask.dataSha256) {
+                $problems.Add("${where}: $($mask.data) differs from the recorded export; export it with tools/Export-ArtAsset.ps1 instead of changing it by hand.")
+            }
+        }
+    }
+
+    # A garment, and a texture with masks of its own, was checked in the clips of these libraries.
+    if ($manifest.Kind -eq "garment" -or ($manifest.Kind -eq "texture" -and @($manifest.Export.masks | Where-Object { $null -ne $_ }).Count -gt 0)) {
+        $libraries = @(Get-ArtClipLibraries $manifest.Skeleton | ForEach-Object {
+                [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.sourceSha256 } else { "" })
+            } | Sort-Object)
+        $recorded = @($manifest.Export.clipSources | ForEach-Object { "$($_.library)=$($_.sourceSha256)" } | Sort-Object)
+        if (($libraries -join ",") -cne ($recorded -join ",")) {
+            $sync = if ($manifest.Kind -eq "garment") { "tools/Sync-GarmentAsset.ps1" } else { "tools/Sync-TextureAsset.ps1" }
+            $problems.Add("${where}: was checked in other clips than the current exports of the $($manifest.Skeleton) animation libraries; run $sync, review and approve it, then run tools/Export-ArtAsset.ps1.")
+        }
     }
 
     if ($manifest.Kind -eq "garment") {
@@ -137,14 +163,6 @@ foreach ($directory in $directories) {
             }
         }
 
-        # Its masks hide the skin that comes out of it in the clips of these libraries.
-        $libraries = @(Get-ArtClipLibraries $manifest.Skeleton | ForEach-Object {
-                [string]$_.Asset + "=" + $(if ($null -ne $_.Export) { [string]$_.Export.sourceSha256 } else { "" })
-            } | Sort-Object)
-        $recorded = @($manifest.Export.clipSources | ForEach-Object { "$($_.library)=$($_.sourceSha256)" } | Sort-Object)
-        if (($libraries -join ",") -cne ($recorded -join ",")) {
-            $problems.Add("${where}: was checked in other clips than the current exports of the $($manifest.Skeleton) animation libraries; run tools/Sync-GarmentAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1.")
-        }
     }
     elseif ($null -eq $manifest.Target) {
         # Only the images below.

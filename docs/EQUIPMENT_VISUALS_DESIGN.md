@@ -6,13 +6,15 @@ Status: accepted by Victor on 2026-10-22, with the support of future races added
 Extended on 2026-10-23, accepted by Victor, with the garment cage, garment
 templates, and garment textures, so that clothes keep a shape of their own and
 everything adapts to new body types and a replaced base model. It is
-implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 4 and
-5a are done: this document; the cloth chains with their solver; the garment kind
-with its fitting, weights, bands, masks, review, export, and Unity import, with
-the leather jerkin as the first garment; putting a character together with its
-garments, with the garment shader, the Wardrobe preview, and trying garments on
-in F2; and the garment cage with its standard lines, approved by Victor on
-2026-10-23. Templates and textures are designed here and not implemented yet.
+implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 4, 5a,
+and 5b are done: this document; the cloth chains with their solver; the garment
+kind with its fitting, weights, bands, masks, review, export, and Unity import;
+putting a character together with its garments, with the garment shader, the
+Wardrobe preview, and trying garments on in F2; the garment cage with its
+standard lines, approved by Victor on 2026-10-23; and templates built from
+recipes on the cage with textures of their own, with the template `Jerkin` and
+its texture `LeatherJerkin`, approved by Victor on 2026-10-23, in place of the
+first leather jerkin.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -82,9 +84,9 @@ From the inside out:
    `Socket_Back`.
 
 Paint layers stay for skin-level detail. The leather jerkin, painted first as a
-proof of paint layers, becomes the first garment template with its leather
-texture in step 5b; its paint layer is removed in step 5c, when a tattoo paint
-layer takes over as the proof of paint layers.
+proof of paint layers, became the first garment template, `Jerkin`, with its
+leather texture, `LeatherJerkin`, in step 5b; its paint layer is removed in step
+5c, when a tattoo paint layer takes over as the proof of paint layers.
 
 ## Garments
 
@@ -241,9 +243,11 @@ A template is built by the pipeline from its recipe:
   from `SleeveShort`. A region without a line is covered whole, and a region
   that is not listed is left open, such as the arms of a sleeveless top.
 - **The band**: how far from the cage it lies, [below](#layer-bands).
-- **Ease**: more room where the body folds in motion, such as a few millimeters
-  more at the front and the back of the armpits, so the skin there stays under
-  the cloth when the arms swing.
+- **Ease**: more room where the body folds in motion, in meters, added at the
+  front and the back of the lower armholes, fading out over 60 mm. Measured on
+  the jerkin, ease there let more skin come through in the clips, because the
+  cloth then follows the arm's bones less, so the jerkin uses none; the field
+  stays for templates whose cloth stands off the body.
 - **Edges with thickness**: every open edge of its mesh, the hems, the sleeve
   ends, a neckline, and the top of a collar, is turned inward by a few millimeters, so a hem shows the
   cloth's thickness instead of a paper edge.
@@ -286,7 +290,9 @@ and its approvals.
   mask, edges, and pull-in of its own per body, computed by the pipeline with
   the same rules as the template's, because its holes change what the body
   shows, and the skin its holes show is checked in motion like the template's,
-  in the test poses and the clips. An opaque texture uses the template's.
+  in the test poses and the clips. An opaque texture uses the template's. The
+  leather jerkin's V is such a texture: the skin shows between its laces, and
+  the cover mask leaves the skin under the V and along its cut edges visible.
 - A texture records the template export it was checked against, so a new
   export of the template needs a new export of its textures.
 - The template's UVs stay when its bodies, the cage, or the base model change,
@@ -396,13 +402,14 @@ pipeline fits it to every other body of the cage, also those of
 - **Corrections**: where the fitted shape needs a hand, a person sculpts it on the
   other body's version. The pipeline keeps the correction as a difference over
   the cage, so the next fit keeps it.
-- **Weights**: a garment vertex takes the skin weights of the body under it,
-  where a ray from the vertex inward along the cage's normal meets the skin, not
-  smoothed, so it moves like the skin it covers; measured on the jerkin,
-  smoothed weights let the skin under a sleeve come through further, 20 instead
-  of 7 mm. Cloth that spans a pit takes the weights of the pit's bottom, such as
-  the hips over the buttock cleft, so it moves as one piece and never tears
-  between the two sides. Loose parts take the cloth chains instead. Weights
+- **Weights**: a garment vertex takes the skin weights of the nearest skin of
+  the body part its cage face lies on, the region and side of the cage, not
+  smoothed, so it moves like the skin it covers: a sleeve's inside at the
+  armpit takes the arm's weights, not the trunk's next to it. Measured on the
+  jerkin, smoothed weights let the skin under a sleeve come through further, 20
+  instead of 7 mm, and weights from a ray inward along the cage's normal or from
+  the bottom of a spanned pit gave no less skin through the cloth than the
+  nearest skin. Loose parts take the cloth chains instead. Weights
   painted by hand on the first version are kept, and the other versions copy
   them, because every version of a garment has the same topology; rules in the
   recipe, such as ease, are preferred to painted weights, since they carry over
@@ -594,7 +601,8 @@ Its file holds, per body type, a collection `Export_<Label>` with the body's
 armature and the template's version on it, the version on the first body being
 the one a person shapes, and the cage's versions it is fitted on. The bodies
 themselves are in a `Reference` collection. The template's own material is a
-neutral review material with a grid that shows how its UVs stretch. Export
+neutral grey, which its review sheet shows with a grid in its UVs, so the sheet
+shows how they stretch; its textures bring their own materials. Export
 writes one FBX per body type, the template skinned to that body's rig, and a
 data file with the cover mask, underlay, and pull-in, all recorded with their
 hashes, with the hash of the cage's approved file, and with the bodies'
@@ -612,7 +620,11 @@ computes its masks and runs the template's motion check with them, in the rig
 review's test poses and at every frame of the clips, so skin that its holes show
 and that comes through the cloth around them is reported before the approval.
 Export writes its images and its material `M_Garment_<Name>`, and its masks per
-body when it has transparent parts.
+body when it has transparent parts, in the data format of its template's, next
+to the template's models. In Unity, the appearance catalog lists every texture
+of a template as a garment named after the texture, with the template's model
+for the body, the texture's material, and the texture's masks or else the
+template's; a character wears a garment by the texture's name.
 
 ### Making A Garment
 
@@ -708,12 +720,13 @@ quarter of the triangles come with the first crowd measurement that needs them.
 5. The garment cage, templates, and textures, each approved by Victor:
    - 5a. Done. The garment cage: the `cage` kind, its fitting to every body, its
      standard lines, its checks, and its review sheet.
-   - 5b. Templates and textures: the `garment` kind built from recipes on the
-     cage, with its bands, weights, and masks from the cage, ease, turned
+   - 5b. Done. Templates and textures: the `garment` kind built from recipes on
+     the cage, with its bands, weights, and masks from the cage, ease, turned
      edges, and UVs; the `texture` kind with its own masks; the Unity catalog,
-     the Wardrobe, and F2 choosing a texture per template; and the leather
-     jerkin as the first template, `Jerkin`, with its paint moved to the
-     template's UVs as its first texture, `LeatherJerkin`.
+     the Wardrobe, and F2 wearing a texture on its template; and the leather
+     jerkin as the first template, `Jerkin`, with its old look moved to the
+     template's UVs as its first texture, `LeatherJerkin`, with its laced V
+     transparent. The first leather jerkin garment is removed.
    - 5c. The proof set: a shirt and a long-sleeved shirt, trousers, boots, and
      gloves with their textures and the pair checks where they overlap, a net
      texture with transparent parts over a tattoo paint layer, a robe with a

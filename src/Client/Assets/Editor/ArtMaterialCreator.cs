@@ -10,9 +10,10 @@ namespace Mmorpg.Client.Editor
     // Creates the project material of every exported Blender material that has none yet, as a
     // URP Lit material, or a CharacterSkin material when a paint layer paints it, with the values
     // of its export record, below
-    // Assets/Art/Materials/<Category>, the category folder of its model. A garment's material draws
-    // with the garment shader, which takes dyes, cuts its texture at alpha 0.5, and draws both
-    // faces, so holes and the inside of a sleeve show. An
+    // Assets/Art/Materials/<Category>, the category folder of its model, and Garments for a garment
+    // texture. The material of a garment template or texture draws with the garment shader, which
+    // takes dyes, cuts its texture at alpha 0.5, and draws both faces, so holes and the inside of a
+    // sleeve show. An
     // existing material is never changed, so a material whose Blender look changed is updated by
     // hand from its record; ArtModelImportTests compares every material with its record.
     public static class ArtMaterialCreator
@@ -44,12 +45,13 @@ namespace Mmorpg.Client.Editor
             foreach (var manifest in ArtAssetManifests.ManifestPaths().Select(ArtAssetManifests.Load))
             {
                 var modelPaths = manifest.UnityModelPaths;
-                if (!manifest.IsExported || modelPaths.Length == 0)
+                if (!manifest.IsExported || (modelPaths.Length == 0 && !manifest.IsTexture))
                 {
                     continue;
                 }
 
-                var category = Path.GetFileName(Path.GetDirectoryName(modelPaths[0]));
+                // A garment texture has no model of its own; its material belongs with the garments.
+                var category = manifest.IsTexture ? "Garments" : Path.GetFileName(Path.GetDirectoryName(modelPaths[0]));
                 var folder = ArtModelImportRules.MaterialFolder + "/" + category;
                 foreach (var record in manifest.export.materials)
                 {
@@ -77,7 +79,7 @@ namespace Mmorpg.Client.Editor
 
         private static Material CreateMaterial(ArtAssetManifest manifest, ArtMaterialRecord record)
         {
-            var shader = manifest.IsGarment
+            var shader = manifest.IsGarment || manifest.IsTexture
                 ? GarmentShader
                 : ArtAssetManifests.PaintedMaterialNames().Contains(record.name) ? SkinShader : LitShader;
             var material = new Material(Shader.Find(shader)) { name = record.name };
@@ -104,7 +106,7 @@ namespace Mmorpg.Client.Editor
 
             material.SetFloat("_Metallic", record.metallic);
             material.SetFloat("_Smoothness", record.smoothness);
-            if (manifest.IsGarment)
+            if (manifest.IsGarment || manifest.IsTexture)
             {
                 SetGarmentSurface(material);
             }

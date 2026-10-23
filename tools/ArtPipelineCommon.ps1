@@ -466,6 +466,11 @@ function Add-ArtMaterialLines($Lines, $Materials, [string]$Comma) {
 }
 
 function Add-ArtTextureLines($Lines, $Textures, [string]$Comma) {
+    if ($Textures.Count -eq 0) {
+        $Lines.Add("        `"textures`": []$Comma")
+        return
+    }
+
     $Lines.Add('        "textures": [')
     for ($i = 0; $i -lt $Textures.Count; $i++) {
         $texture = $Textures[$i]
@@ -1112,7 +1117,8 @@ function Write-ArtCageManifest($Manifest) {
 
 function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where, [switch]$AllowMissingSource) {
     # A garment texture: the look of one template, its image in the template's UVs, with one review
-    # stage, exported as its image and its material. See docs/EQUIPMENT_VISUALS_DESIGN.md.
+    # stage, exported as its image and its material, and with transparent parts also as its own
+    # masks per body of the template. See docs/EQUIPMENT_VISUALS_DESIGN.md.
     $name = Split-Path -Leaf $AssetDirectory
     $problems = New-Object System.Collections.Generic.List[string]
     if ($name -notmatch '^[A-Za-z][A-Za-z0-9]*$') {
@@ -1148,6 +1154,14 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
         }
     }
 
+    # A texture with transparent parts has masks of its own per body of its template, next to the
+    # template's models.
+    $roots = if ($null -ne $template) { @($template.RootObjects) } else { @() }
+    $masks = @($roots | ForEach-Object {
+            $data = Get-ArtGarmentDataTarget $name $_
+            [pscustomobject]@{ Body = $_; Data = $data; DataPath = Join-Path $script:ArtRepositoryRoot $data }
+        })
+
     $stages = $script:ArtReviewStages["texture"]
     $approvals = [ordered]@{}
     if ($null -ne $Json.approvals) {
@@ -1167,8 +1181,27 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
     if ($null -ne $Json.export) {
         $materials = ConvertTo-ArtMaterialRecords $Json.export.materials
         $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtGarmentTextureFolder
+        $maskRecords = @($Json.export.masks | Where-Object { $null -ne $_ })
+        $masksMatch = $maskRecords.Count -eq 0 -or $maskRecords.Count -eq $masks.Count
+        for ($i = 0; $masksMatch -and $i -lt $maskRecords.Count; $i++) {
+            $masksMatch = [string]$maskRecords[$i].body -ceq $masks[$i].Body -and [string]$maskRecords[$i].data -ceq $masks[$i].Data -and
+                [string]$maskRecords[$i].dataSha256 -cmatch $script:ArtShaPattern
+        }
+
+        $clipSources = @($Json.export.clipSources | Where-Object { $null -ne $_ })
+        $clipSourcesMatch = ($clipSources.Count -gt 0) -eq ($maskRecords.Count -gt 0) -and
+            @($clipSources | Where-Object {
+                    [string]$_.library -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$' -or
+                    [string]$_.sourceSha256 -cnotmatch $script:ArtShaPattern }).Count -eq 0 -and
+            @($clipSources | ForEach-Object { [string]$_.library } | Sort-Object -Unique).Count -eq $clipSources.Count
         if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern -or [string]$Json.export.garmentSourceSha256 -cnotmatch $script:ArtShaPattern) {
             $problems.Add("export needs a sourceSha256 and the garmentSourceSha256 of its template's export")
+        }
+        elseif (-not $masksMatch) {
+            $problems.Add("export.masks must be empty for an opaque texture, or list the masks of every body of its template in order with its body and its data ($script:ArtGarmentModelFolder/${name}_<Label>.json) and dataSha256")
+        }
+        elseif (-not $clipSourcesMatch) {
+            $problems.Add("export.clipSources must list, for a texture with masks, every animation library its masks were checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export, and be empty without masks")
         }
         elseif ($null -eq $materials -or $materials.Count -ne 1 -or $materials[0].name -cne "M_Garment_$name" -or $materials[0].baseMap -cne "T_Garment_$name") {
             $problems.Add("export.materials must hold the one material M_Garment_$name with its baseMap T_Garment_$name, metallic, and smoothness")
@@ -1180,6 +1213,8 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
             $export = [ordered]@{
                 sourceSha256 = [string]$Json.export.sourceSha256
                 garmentSourceSha256 = [string]$Json.export.garmentSourceSha256
+                masks = @($maskRecords | ForEach-Object { [ordered]@{ body = [string]$_.body; data = [string]$_.data; dataSha256 = [string]$_.dataSha256 } })
+                clipSources = @($clipSources | ForEach-Object { [ordered]@{ library = [string]$_.library; sourceSha256 = [string]$_.sourceSha256 } })
                 materials = $materials
                 textures = $textures
             }
@@ -1215,6 +1250,7 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
         Clips = [string[]]@()
         Variants = @()
         Garment = $template
+        Masks = $masks
         Approvals = $approvals
         Export = $export
         ExportProblem = $null
@@ -1235,6 +1271,26 @@ function Write-ArtTextureManifest($Manifest) {
         $lines.Add('    "export": {')
         $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
         $lines.Add("        `"garmentSourceSha256`": `"$($Manifest.Export.garmentSourceSha256)`",")
+        # An opaque texture uses its template's masks and has none of its own.
+        $masks = @($Manifest.Export.masks | Where-Object { $null -ne $_ })
+        if ($masks.Count -gt 0) {
+            $lines.Add('        "masks": [')
+            for ($i = 0; $i -lt $masks.Count; $i++) {
+                $comma = if ($i -lt $masks.Count - 1) { "," } else { "" }
+                $lines.Add("            { `"body`": `"$($masks[$i].body)`", `"data`": `"$($masks[$i].data)`", `"dataSha256`": `"$($masks[$i].dataSha256)`" }$comma")
+            }
+
+            $lines.Add('        ],')
+            $lines.Add('        "clipSources": [')
+            $sources = @($Manifest.Export.clipSources | Where-Object { $null -ne $_ })
+            for ($i = 0; $i -lt $sources.Count; $i++) {
+                $comma = if ($i -lt $sources.Count - 1) { "," } else { "" }
+                $lines.Add("            { `"library`": `"$($sources[$i].library)`", `"sourceSha256`": `"$($sources[$i].sourceSha256)`" }$comma")
+            }
+
+            $lines.Add('        ],')
+        }
+
         Add-ArtMaterialLines $lines @($Manifest.Export.materials) ","
         Add-ArtTextureLines $lines @($Manifest.Export.textures) ""
         $lines.Add("    }")
@@ -1840,10 +1896,12 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
         return $arguments + (Get-ArtGarmentClipArguments $Manifest)
     }
 
-    # A texture is checked against its template's current UVs.
+    # A texture is checked against its template's current UVs, and one with transparent parts gets
+    # its masks in its template's band, checked in the clips of the skeleton's libraries.
     if ($Manifest.Kind -eq "texture") {
         return @("--kind", "texture", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
-            "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath)
+            "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath,
+            "--band", $Manifest.Garment.Band) + (Get-ArtGarmentClipArguments $Manifest)
     }
 
     # A cage is checked against the current files of its bodies and against the figure scale and
