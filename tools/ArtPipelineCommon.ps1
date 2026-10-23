@@ -1004,6 +1004,24 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
         $problems.Add("lines must list the standard lines of the cage")
     }
 
+    # The exports of the bodies the approved cage was fitted to, so a body that changes after the
+    # approval makes the cage stale until it is synced and approved again.
+    $fittedTo = New-Object System.Collections.Generic.List[object]
+    foreach ($record in @($Json.fittedTo | Where-Object { $null -ne $_ })) {
+        if (@($bodies | Where-Object { $_.Asset -ceq [string]$record.body }).Count -ne 1 -or
+            [string]$record.sourceSha256 -cnotmatch $script:ArtShaPattern -or
+            @($fittedTo | Where-Object { $_.body -ceq [string]$record.body }).Count -gt 0) {
+            $problems.Add("fittedTo must list every body of the cage once with the sourceSha256 of the body's export the cage was approved on")
+            break
+        }
+
+        $fittedTo.Add([ordered]@{ body = [string]$record.body; sourceSha256 = [string]$record.sourceSha256 })
+    }
+
+    if (($null -ne $Json.approvals -and @($Json.approvals.PSObject.Properties).Count -gt 0) -and $fittedTo.Count -ne $bodies.Count) {
+        $problems.Add("an approved cage records in fittedTo the export of every body it was fitted to")
+    }
+
     $stages = $script:ArtReviewStages["cage"]
     $approvals = [ordered]@{}
     if ($null -ne $Json.approvals) {
@@ -1050,6 +1068,7 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
         Bodies = $bodies
         Figure = [double]$figure
         Lines = $lines.ToArray()
+        FittedTo = $fittedTo.ToArray()
         Approvals = $approvals
         Export = $null
         ExportProblem = $null
@@ -1057,7 +1076,8 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
 }
 
 function Format-ArtShare([double]$Value) {
-    return $Value.ToString("0.0##", [System.Globalization.CultureInfo]::InvariantCulture)
+    # The shortest text that reads back as the same number, so no value is rounded on the way.
+    return $Value.ToString("R", [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
 function Write-ArtCageManifest($Manifest) {
@@ -1075,6 +1095,16 @@ function Write-ArtCageManifest($Manifest) {
         $lines.Add("        { `"name`": `"$($entries[$i].name)`", `"region`": `"$($entries[$i].region)`", `"bone`": `"$($entries[$i].bone)`", `"share`": $(Format-ArtShare $entries[$i].share) }$comma")
     }
     $lines.Add('    ],')
+    $fitted = @($Manifest.FittedTo)
+    if ($fitted.Count -gt 0) {
+        $lines.Add('    "fittedTo": [')
+        for ($i = 0; $i -lt $fitted.Count; $i++) {
+            $comma = if ($i -lt $fitted.Count - 1) { "," } else { "" }
+            $lines.Add("        { `"body`": `"$($fitted[$i].body)`", `"sourceSha256`": `"$($fitted[$i].sourceSha256)`" }$comma")
+        }
+        $lines.Add('    ],')
+    }
+
     Add-ArtApprovalLines $lines $Manifest
     # A cage has no export, so its approvals are the last field.
     $lines[$lines.Count - 1] = $lines[$lines.Count - 1].TrimEnd(',')
@@ -1621,6 +1651,39 @@ function Write-ArtAssetManifest($Manifest) {
     $lines.Add("}")
     $text = ($lines -join "`n") + "`n"
     [System.IO.File]::WriteAllText($Manifest.ManifestPath, $text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Get-ArtCageBodyProblem($Manifest) {
+    # Returns $null when every body of an approved cage still has the export the cage was approved
+    # on, otherwise the reason it does not.
+    foreach ($body in @($Manifest.Bodies)) {
+        $record = @($Manifest.FittedTo | Where-Object { $_.body -ceq $body.Asset }) | Select-Object -First 1
+        $export = $null
+        try {
+            $export = (Read-ArtAssetManifest (Split-Path -Parent $body.ManifestPath)).Export
+        }
+        catch {
+            # The body's own problems are reported with the body.
+        }
+
+        if ($null -eq $record -or $null -eq $export -or $export.sourceSha256 -ne $record.sourceSha256) {
+            return "its body $($body.Asset) changed after the cage was approved; run tools/Sync-CageAsset.ps1, review and approve it again"
+        }
+    }
+
+    return $null
+}
+
+function Get-ArtCageBodies($Manifest) {
+    # The exports of the cage's bodies as an approval records them.
+    return @($Manifest.Bodies | ForEach-Object {
+            $export = (Read-ArtAssetManifest (Split-Path -Parent $_.ManifestPath)).Export
+            if ($null -eq $export) {
+                throw "The cage cannot be approved before its body $($_.Asset) is exported."
+            }
+
+            [ordered]@{ body = $_.Asset; sourceSha256 = [string]$export.sourceSha256 }
+        })
 }
 
 function Get-ArtExportGateProblem($Manifest, [string]$SourceSha256) {

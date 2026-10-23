@@ -53,6 +53,11 @@ $manifest.Approvals[$Stage] = [ordered]@{
     sourceSha256 = Get-ArtFileSha256 $manifest.SourcePath
 }
 
+# An approved cage records the exports of the bodies it was fitted to.
+if ($manifest.Kind -eq "cage") {
+    $manifest.FittedTo = Get-ArtCageBodies $manifest
+}
+
 # A new approval of an earlier stage reopens every later stage.
 for ($i = $stageIndex + 1; $i -lt $manifest.Stages.Count; $i++) {
     $manifest.Approvals.Remove($manifest.Stages[$i])
