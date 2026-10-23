@@ -206,9 +206,13 @@ lines.
 | Calf | trousers, to `LegAnkle` | a boot, to `BootCalf` |
 
 Over the overlap, the outer garment lies outside the inner one: its band there is
-measured from the inner garment's surface instead of the cage, and a pair check
-in the pipeline tests every pair of templates that meet, at rest, in the test
-poses, and in the clips, from the first pair on.
+measured from the inner garment's surface instead of the cage. A pair check in
+the pipeline tests every pair of templates of different layers whose garments
+overlap on the body, those that meet at a line and those worn over each other,
+such as a shirt under a jerkin, at rest, in the test poses, and in the clips,
+from the first such pair on: the higher one never lies inside the lower one
+where the lower one is drawn, also at the openings where the lower one's faces
+are kept.
 
 ### Templates
 
@@ -216,11 +220,12 @@ A garment template is the form of a garment kind, without its look: a
 short-sleeved top with a stand collar, a long-sleeved shirt, or trousers. There
 may be several templates per kind, such as a fitted and a loose shirt. A new
 item of clothing is a template and a new [texture](#textures), so it fits every
-body without new modeling. What changes the silhouette is a template of its own:
-the length of a sleeve or a hem, a standing collar, the width. What only opens
-the surface, such as a V-neck, holes, net, lace, or torn edges, is the
-transparency of a texture. Parts worn on top, such as a belt, shoulder guards,
-or a fur collar, are small templates of their own.
+body without new modeling. What changes the silhouette or needs an edge with
+thickness is a template of its own: the length of a sleeve or a hem, a standing
+collar, a V-neck, the width. What only opens the surface with sharp edges, such
+as holes, net, lace, torn edges, or a laced opening, is the transparency of a
+texture; an edge cut by transparency has no thickness. Parts worn on top, such
+as a belt, shoulder guards, or a fur collar, are small templates of their own.
 
 A template is built by the pipeline from its recipe:
 
@@ -233,8 +238,8 @@ A template is built by the pipeline from its recipe:
 - **Ease**: more room where the body folds in motion, such as a few millimeters
   more at the front and the back of the armpits, so the skin there stays under
   the cloth when the arms swing.
-- **Edges with thickness**: every open edge, the hems, the sleeve ends, and the
-  top of a collar, is turned inward by a few millimeters, so a hem shows the
+- **Edges with thickness**: every open edge of its mesh, the hems, the sleeve
+  ends, a neckline, and the top of a collar, is turned inward by a few millimeters, so a hem shows the
   cloth's thickness instead of a paper edge.
 
 The pipeline cuts the cage's faces at the lines, keeps the faces of the
@@ -433,8 +438,12 @@ handled the same way: the new bodies join the cage, the cage is fitted to them,
 the templates are fitted and their masks computed anew, and the textures keep
 their images and are exported again, with new masks where they have
 transparent parts.
-A better cage of another topology is a new cage asset: the templates are built
-again from their recipes, and their textures move to the new UVs by projection.
+A better cage of another topology is a new cage asset. Templates with a recipe of
+lines are built again from it, keeping their handmade shape by projection onto
+the new cage, and their textures move to the new UVs by projection. A modeled
+template keeps its mesh, its UVs, and its painted weights: each vertex is bound
+to the new cage at its place on the first body, and its textures stay as they
+are.
 
 ## Cloth Chains
 
@@ -624,8 +633,8 @@ The sync stops on a broken rule and reports the rest:
   The report names how many do and the deepest place, and the review sheet
   shows their faces red, for the reviewer to weigh and the template's ease,
   shape, or weights to fix. No garment of a lower layer reaches through a higher
-  one where they meet; the pair check tests this from the first pair of
-  templates that meet.
+  one where they overlap; the pair check tests this from the first pair of
+  templates that overlap.
 - The faces that only the cone of rays leaves visible are the garment's
   openings, and the review sheet shows the mask with the skin kept visible at
   the garment's edges, so a mask that is too small or too large shows there; a
@@ -689,7 +698,7 @@ quarter of the triangles come with the first crowd measurement that needs them.
      jerkin as the first template, `Jerkin`, with its paint moved to the
      template's UVs as its first texture, `LeatherJerkin`.
    - 5c. The proof set: a shirt and a long-sleeved shirt, trousers, boots, and
-     gloves with their textures and the pair checks where they meet, a net
+     gloves with their textures and the pair checks where they overlap, a net
      texture with transparent parts over a tattoo paint layer, a robe with a
      hood, a cloak, and one hair with its compressed form.
    - 5d. Paint layers independent of the bodies' topology, moved between bodies
