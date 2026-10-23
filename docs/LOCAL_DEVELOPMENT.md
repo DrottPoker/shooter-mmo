@@ -3110,8 +3110,9 @@ of their own, made on the male body and fitted to the female.
    `Assets/Art/Materials/Garments/M_Garment_LinenShirt.mat`. Commit the
    `.blend` file, `asset.json`, the FBX, JSON, and PNG files, the material, and
    their `.meta` files together. A garment is exported after its bodies and the
-   animation library, and again whenever one of them is exported again. Putting garments on a character in the game comes
-   with delivery step 4 of [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md).
+   animation library, and again whenever one of them is exported again. Wear it
+   in the game with `Try on garment` in F2, as in
+   [Manual Test Of The Human Base Characters](#manual-test-of-the-human-base-characters).
 
 ### Manual Test Of The Human Base Characters
 
