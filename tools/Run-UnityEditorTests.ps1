@@ -34,10 +34,14 @@ $modes = @(if ($Mode -eq "All") { "EditMode", "PlayMode" } else { $Mode })
 
 if ([string]::IsNullOrWhiteSpace($UnityCliPath)) {
     $command = Get-Command unity -ErrorAction SilentlyContinue
-    $UnityCliPath = if ($command) { $command.Source } else { Join-Path $env:LOCALAPPDATA "Unity\bin\unity.exe" }
+    # Unity Hub installs the CLI below LOCALAPPDATA, which only Windows sets.
+    $UnityCliPath = if ($command) { $command.Source }
+    elseif ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Unity\bin\unity.exe" }
+    else { "" }
 }
-if (-not (Test-Path -LiteralPath $UnityCliPath)) {
-    Write-Host "Result: the Unity CLI was not found at '$UnityCliPath'. Set UNITY_CLI_PATH."
+# Without a CLI no Editor can be reached, so the exit code lets callers run the suites headless.
+if ([string]::IsNullOrWhiteSpace($UnityCliPath) -or -not (Test-Path -LiteralPath $UnityCliPath)) {
+    Write-Host "Result: the Unity CLI was not found; set UNITY_CLI_PATH, or run tools/Run-UnityTests.ps1 headless."
     exit 3
 }
 

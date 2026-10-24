@@ -630,9 +630,6 @@ try {
             $exitCode -eq 0
         }
     }
-    elseif ($runUnity) {
-        Skip-Check "Unity tests" "-SkipUnity"
-    }
 }
 finally {
     Restore-TestServices $services
