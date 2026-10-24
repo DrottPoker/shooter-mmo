@@ -1,0 +1,70 @@
+{
+    "schemaVersion": 2,
+    "kind": "garment",
+    "cage": "art/Cages/Humanoid",
+    "slot": "head",
+    "layer": 600,
+    "band": "loose",
+    "recipe": "modeled",
+    "hides": [],
+    "hidesUnderwear": false,
+    "covers": false,
+    "hair": "show",
+    "cloth": null,
+    "dyes": 0,
+    "triangleBudget": 1500,
+    "approvals": {
+        "model": {
+            "date": "2026-10-24",
+            "sourceSha256": "0d78779746a1e6b169dedb58aaca72491efee1ef7e30c7d8db781dd2c805a660"
+        },
+        "rig": {
+            "date": "2026-10-24",
+            "sourceSha256": "0d78779746a1e6b169dedb58aaca72491efee1ef7e30c7d8db781dd2c805a660"
+        }
+    },
+    "export": {
+        "sourceSha256": "0d78779746a1e6b169dedb58aaca72491efee1ef7e30c7d8db781dd2c805a660",
+        "cageSourceSha256": "7275dd08a42fea03718d5b78a362f5e77df532e706713477482cc5340cc74503",
+        "models": [
+            {
+                "body": "Male",
+                "bodyFitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
+                "target": "src/Client/Assets/Art/Models/Garments/HoodDown_Male.fbx",
+                "sha256": "55c6350510ee11e58644bab66bd0d39ca8bae1ada822190bbfec5df1e8ab9edc",
+                "data": "src/Client/Assets/Art/Models/Garments/HoodDown_Male.json",
+                "dataSha256": "dcc025679fd6e68f1d7c8bde9238eee276228cdbf01f3b684b7f7ed8ec9299e9"
+            },
+            {
+                "body": "Female",
+                "bodyFitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
+                "target": "src/Client/Assets/Art/Models/Garments/HoodDown_Female.fbx",
+                "sha256": "0c3ab62aa04329b88e39f80e63fe9068f0917242bdb18671ae5a507cf9140cb6",
+                "data": "src/Client/Assets/Art/Models/Garments/HoodDown_Female.json",
+                "dataSha256": "2c956555bd7472ac1c78bb407635ecd811032a829774eb2283d56bfd4c3b6b94"
+            }
+        ],
+        "clipSources": [
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "75bcdc80b9c74a80d94341ac59ee13a44d6c86690fe9fb7d2053f0515f17a987" }
+        ],
+        "pairSources": [
+            { "garment": "art/Garments/Boots", "sourceSha256": "d1bb8d845590fe38515ad79797cd43d9121437f0f4d1a593ab01f905cc3ad7d6" },
+            { "garment": "art/Garments/Cloak", "sourceSha256": "4a7ba335ab0237ad2f1d9ae6d430093274b871fa357e19cc45665cf36e3d5e47" },
+            { "garment": "art/Garments/Gloves", "sourceSha256": "b7e0e6181ce8373a7fc56efd055e112837e4b2a5ce29c3586211c7e965e09707" },
+            { "garment": "art/Garments/LongShirt", "sourceSha256": "3432af2d3a1f595742d793802bcf305dda6d43553ad3cfa3c1ae49aeb3390deb" },
+            { "garment": "art/Garments/Robe", "sourceSha256": "e8359a5d963768b6bf3a1516db0161444e0d9ac12aab789d1fa9ee776e05a32c" },
+            { "garment": "art/Garments/Shirt", "sourceSha256": "18267824ef8a5124dc4eccdb4a43119a506043d01023e297886e5efa4a5ec1de" },
+            { "garment": "art/Garments/ShoulderHair", "sourceSha256": "7d519025f22587455b784c7b96a3ce99fdb018a3b1393aaaff99d26addb82f7b" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "13b58033a64e17cf322af2aa48d84c2ff0cdb349833a6697ee1fafe26ae656f9" }
+        ],
+        "materials": [
+            {
+                "name": "M_Garment_HoodDown",
+                "baseColor": "#CECECE",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            }
+        ],
+        "textures": []
+    }
+}

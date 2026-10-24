@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Gameplay;
 using UnityEditor;
 using UnityEngine;
 
@@ -72,8 +73,9 @@ namespace Mmorpg.Client.Editor
 
         // A garment's model: its mesh skinned to the armature of its body, which the game replaces
         // with the character's own skeleton, so it needs no avatar and no clips. The game combines
-        // it with the visible body parts, which reads it.
-        public static void ApplyGarmentModelSettings(ModelImporter importer)
+        // it with the visible body parts, which reads it. Hair keeps its shape key UnderHeadwear as a
+        // blend shape, the form it takes under headwear that presses it flat.
+        public static void ApplyGarmentModelSettings(ModelImporter importer, ArtAssetManifest manifest)
         {
             ApplySharedModelSettings(importer);
             importer.animationType = ModelImporterAnimationType.Generic;
@@ -81,6 +83,18 @@ namespace Mmorpg.Client.Editor
             importer.importAnimation = false;
             importer.optimizeGameObjects = false;
             importer.isReadable = true;
+            if (HasShapeKeys(manifest))
+            {
+                importer.importBlendShapes = true;
+                importer.importBlendShapeNormals = ModelImporterNormals.Calculate;
+            }
+        }
+
+        // Whether a garment's model carries shape keys: hair, whose form under headwear is one.
+        public static bool HasShapeKeys(ArtAssetManifest manifest)
+        {
+            return manifest != null && manifest.IsGarment
+                && string.Equals(manifest.slot, BodyAppearanceCatalog.Garment.HairSlot, StringComparison.Ordinal);
         }
 
         // An animation library has an armature and clips, without meshes. Its avatar is made
@@ -303,7 +317,7 @@ namespace Mmorpg.Client.Editor
             }
             else if (manifest != null && manifest.IsGarment)
             {
-                ApplyGarmentModelSettings(importer);
+                ApplyGarmentModelSettings(importer, manifest);
             }
             else
             {

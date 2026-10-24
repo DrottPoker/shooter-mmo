@@ -10,9 +10,10 @@ namespace Mmorpg.Client.Gameplay
     // as parts, a crowd paid for every part of every body; combined, a body is one skinned
     // renderer with one submesh per material. Putting a body together with garments leaves out
     // the body faces the worn garments cover, moves the pulled-in body vertices inward, leaves out
-    // the garment faces whose underlay a garment of a higher layer covers, and leaves out every
-    // garment of a slot that a worn garment of a higher layer hides; see
-    // docs/EQUIPMENT_VISUALS_DESIGN.md. Every
+    // the garment faces whose underlay a garment of a higher layer covers, leaves out every
+    // garment of a slot that a worn garment of a higher layer hides, and leaves out the hair
+    // under headwear that hides it or draws it in its form under headwear that presses it flat;
+    // see docs/EQUIPMENT_VISUALS_DESIGN.md. Every
     // body with the same visible parts of the same model and the same garments shares one mesh.
     // The owner destroys the meshes.
     public sealed class PlayerBodyMeshes : IDisposable
@@ -79,7 +80,7 @@ namespace Mmorpg.Client.Gameplay
 
         // The garments a body draws: the worn ones from the lowest layer up, without those of a slot
         // that a worn garment of a higher layer hides, such as trousers under a floor-length robe;
-        // leg armor over the robe stays.
+        // leg armor over the robe stays. Headwear that hides the hair leaves the hair out.
         public static List<BodyAppearanceCatalog.Garment> Drawn(IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
         {
             var drawn = new List<BodyAppearanceCatalog.Garment>();
@@ -93,7 +94,9 @@ namespace Mmorpg.Client.Gameplay
                 var hidden = false;
                 foreach (var other in garments)
                 {
-                    if (other != null && other != garment && other.Layer > garment.Layer && Contains(other.Hides, garment.Slot))
+                    if (other != null && other != garment
+                        && ((other.Layer > garment.Layer && Contains(other.Hides, garment.Slot))
+                            || (IsHair(garment) && string.Equals(other.Hair, BodyAppearanceCatalog.Garment.HideHair, StringComparison.Ordinal))))
                     {
                         hidden = true;
                         break;
@@ -110,6 +113,31 @@ namespace Mmorpg.Client.Gameplay
                 ? a.Layer.CompareTo(b.Layer)
                 : string.CompareOrdinal(a.Name, b.Name));
             return drawn;
+        }
+
+        // The blend shape a drawn garment takes in full, or null: hair under headwear that presses
+        // it flat takes its form under headwear.
+        public static string ShapeOf(BodyAppearanceCatalog.Garment garment, IReadOnlyList<BodyAppearanceCatalog.Garment> drawn)
+        {
+            if (!IsHair(garment))
+            {
+                return null;
+            }
+
+            foreach (var other in drawn)
+            {
+                if (other != null && string.Equals(other.Hair, BodyAppearanceCatalog.Garment.CompressHair, StringComparison.Ordinal))
+                {
+                    return BodyAppearanceCatalog.Garment.UnderHeadwearShape;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsHair(BodyAppearanceCatalog.Garment garment)
+        {
+            return string.Equals(garment.Slot, BodyAppearanceCatalog.Garment.HairSlot, StringComparison.Ordinal);
         }
 
         // Every part's and every drawn garment's mesh in the root's space, the bones of all of them
@@ -171,7 +199,7 @@ namespace Mmorpg.Client.Gameplay
                     garmentRootBone, bodyRootBone,
                     // A garment face stays unless a garment of a higher layer covers the body face under it.
                     triangle => triangle >= underlay.Count || !coverLayer.TryGetValue(underlay[triangle], out var layer) || layer <= own,
-                    null, garment.Material);
+                    null, garment.Material, ShapeOf(garment, drawn));
             }
 
             return builder.Finish(parts[0].sharedMesh.name + " combined");
@@ -239,10 +267,12 @@ namespace Mmorpg.Client.Gameplay
                 key.Append(';');
             }
 
-            foreach (var garment in Drawn(garments))
+            var drawn = Drawn(garments);
+            foreach (var garment in drawn)
             {
                 key.Append('|').Append(garment.Name).Append('@').Append(garment.Model.GetEntityId().ToString())
-                    .Append('/').Append(garment.Material != null ? garment.Material.GetEntityId().ToString() : "-");
+                    .Append('/').Append(garment.Material != null ? garment.Material.GetEntityId().ToString() : "-")
+                    .Append('~').Append(ShapeOf(garment, drawn) ?? string.Empty);
             }
 
             return key.ToString();
@@ -292,9 +322,10 @@ namespace Mmorpg.Client.Gameplay
             // space of boundsFrom, its root bone, carried to boundsBone, the body's root bone or the
             // bone of its armature that stands where the body's root bone does. keep says which
             // triangles stay, over the submeshes in order; pull says how far each vertex moves
-            // inward; a material, such as a garment texture's, replaces the renderer's own.
+            // inward; a material, such as a garment texture's, replaces the renderer's own; a blend
+            // shape of the mesh, such as hair's form under headwear, is taken in full.
             public void Add(SkinnedMeshRenderer renderer, Matrix4x4 toRoot, Transform boundsFrom, Transform boundsBone,
-                Func<int, bool> keep, Func<int, float> pull, Material material = null)
+                Func<int, bool> keep, Func<int, float> pull, Material material = null, string shape = null)
             {
                 var mesh = renderer.sharedMesh;
                 if (mesh == null || !mesh.isReadable)
@@ -310,6 +341,10 @@ namespace Mmorpg.Client.Gameplay
                 mesh.GetNormals(meshNormals);
                 mesh.GetTangents(meshTangents);
                 mesh.GetUVs(0, meshUvs);
+                if (shape != null)
+                {
+                    TakeShape(mesh, shape);
+                }
                 for (var index = 0; index < meshVertices.Count; index++)
                 {
                     var vertex = meshVertices[index];
@@ -406,6 +441,38 @@ namespace Mmorpg.Client.Gameplay
                 {
                     bounds = meshBounds;
                     hasBounds = true;
+                }
+            }
+
+            // Moves the mesh's vertices, normals, and tangents just read by the deltas of the last
+            // frame of one of its blend shapes, its full weight.
+            private void TakeShape(Mesh mesh, string shape)
+            {
+                var index = mesh.GetBlendShapeIndex(shape);
+                if (index < 0)
+                {
+                    throw new InvalidOperationException("Mesh '" + mesh.name + "' has no blend shape '" + shape + "'.");
+                }
+
+                var count = mesh.vertexCount;
+                var deltaVertices = new Vector3[count];
+                var deltaNormals = new Vector3[count];
+                var deltaTangents = new Vector3[count];
+                mesh.GetBlendShapeFrameVertices(index, mesh.GetBlendShapeFrameCount(index) - 1, deltaVertices, deltaNormals, deltaTangents);
+                for (var vertex = 0; vertex < count; vertex++)
+                {
+                    meshVertices[vertex] += deltaVertices[vertex];
+                    if (vertex < meshNormals.Count)
+                    {
+                        meshNormals[vertex] = (meshNormals[vertex] + deltaNormals[vertex]).normalized;
+                    }
+
+                    if (vertex < meshTangents.Count)
+                    {
+                        var tangent = meshTangents[vertex];
+                        var turned = (new Vector3(tangent.x, tangent.y, tangent.z) + deltaTangents[vertex]).normalized;
+                        meshTangents[vertex] = new Vector4(turned.x, turned.y, turned.z, tangent.w);
+                    }
                 }
             }
 

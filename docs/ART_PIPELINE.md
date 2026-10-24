@@ -123,7 +123,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `fittedTo` | The cage only, written by its approval: every body with the `fitSha256` of the body's export the cage was approved on, the fingerprint of the body's rig, surface, and weights, so a change of only a body's images leaves the cage as it is. |
 | `layer` | Paint layers: the order paint layers are drawn in, the lowest first, within the layers of their `category`: 100 to 199 for a scar, 200 to 299 for a tattoo, and 900 to 999 for underwear, such as `200` for the tattoo. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `150` for a shirt over trousers at `100`. |
 | `slot` | Garments: the visual slot, `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. Underwear: the visual slot it is worn in, `body` for a bra or `legs` for briefs. |
-| `band` | Garments only: how far from the garment cage the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), or `loose` (from 10 mm). |
+| `band` | Garments only: how far from the garment cage the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), `loose` (from 10 mm), or `hair` (from 2 mm). |
 | `hides` | Garments only: the other visual slots it hides, such as `["legs"]` for a floor-length robe, or `[]`. |
 | `hidesUnderwear` | Garment templates only, optional: `true` when it hides the underwear of its slot while it is drawn, such as a top that bares the shoulders, `false` by default. |
 | `covers` | Garment templates only, optional: `false` when it hides nothing under it, neither skin nor inner garments, such as a cloak that lies on top and may swing open, so its cover mask is empty; `true` by default. |
@@ -222,8 +222,9 @@ The `rig` stage of a skinned asset adds these rules:
 - The armature is in its rest pose and shows it (Pose Position), without
   constraints, an active action, or NLA tracks.
 - Every mesh has exactly one modifier, an Armature modifier on that armature
-  that deforms with vertex groups only, and no shape keys. Its vertex groups are
-  deforming bones only.
+  that deforms with vertex groups only, and no shape keys, except a hair
+  garment, which has exactly the basis and `UnderHeadwear`. Its vertex groups
+  are deforming bones only.
 - Every vertex has one to four weights that add up to 1, and vertices of
   different meshes at the same place have the same weights, so the cuts between
   body parts never open.
@@ -346,7 +347,9 @@ said before:
 - `Preserve Hierarchy`, so Unity always creates an explicit model root and every
   Blender root object is a direct child of it, also when there is only one.
 - No cameras, lights, visibility, blend shapes, or colliders, and no animation
-  for a static model. Presentation never takes part in physics.
+  for a static model. Presentation never takes part in physics. Only a hair
+  garment keeps its shape key `UnderHeadwear` as a blend shape, with calculated
+  normals, which Unity takes in full under headwear that compresses the hair.
 - Mesh data is uncompressed, with imported normals and calculated tangents, and
   not readable for a static model.
 - Materials are imported from the model and then remapped by name to the one
@@ -605,10 +608,10 @@ of fixed topology that lies over every body of the skeleton, smooth over the
 body's pits and following its figure, on which garments are made and fitted; the
 design is in
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-garment-cage). It has
-2,880 faces in six regions: 1,576 over the neck, the trunk, the arms to the
+3,424 faces in seven regions: 1,576 over the neck, the trunk, the arms to the
 wrists, and the legs to the ankles, in `neck`, `trunk`, `arms`, and `legs`, and
-since 2026-10-24 760 over the hands, in `hands`, and 544 over the feet, in
-`feet`.
+since 2026-10-24 760 over the hands, in `hands`, 544 over the feet, in `feet`,
+and 544 over the head, in `head`.
 
 Its file holds:
 
@@ -623,7 +626,11 @@ Its file holds:
   fingers by the bone their corners weigh most and 0 for the palm; and `feet`, a
   net of the cage's own on each side, 16 rings of 16 vertices from the ankle
   ring to the toe tip, closed by a fan of 16 triangles there, with the point
-  attributes `sweep_ring` and `sweep_column` that place each vertex on its ring.
+  attributes `sweep_ring` and `sweep_column` that place each vertex on its ring;
+  and `head`, a net of the cage's own from the neck's top ring to the crown, 16
+  rings of 32 vertices on the convex hulls of level sections of the head, so it
+  spans the ears, the nose, and the eye sockets smoothly, closed by a fan of 32
+  triangles at the crown, with the same point attributes.
   `Sync-CageAsset.ps1` adds a region the reference lacks, built on the first
   body. The figure scale and the lines it was last fitted with are custom
   properties of `Cage`, so changing them in `asset.json` changes the file and
@@ -758,7 +765,7 @@ The recipe in `asset.json` says what the pipeline builds:
 
 | Field | Meaning |
 | --- | --- |
-| `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, `legs`, `hands`, and `feet`, such as `["trunk", "arms"]` for the shirt and `["legs", "feet"]` for the boots. A region without a cut is covered whole. |
+| `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, `legs`, `hands`, `feet`, and `head`, such as `["trunk", "arms"]` for the shirt and `["legs", "feet"]` for the boots. A region without a cut is covered whole. |
 | `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`; the boots keep the `tail` of `BootCalf` and the gloves of `GloveCuff`. |
 | `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest, so a hem turned in at the border of the template's region, such as the cloak's neckline over a shirt's, keeps above the inner garment. |
 | `hang` | Optional: its loose parts, which hang on the [cloth chains](#skeletons), each the trunk line it hangs from, which the recipe also cuts at, its `side`, `all` around the trunk for a skirt or `back` across the back for a cloak, its `chains`, `skirt` or `cloak`, and its `flare`, how much wider it grows toward its hem, from 0 to 0.1 m. The robe hangs a skirt `all` around from `HemHip` on the `skirt` chains with a flare of 0.08; the cloak hangs its back from `CloakYoke` on the `cloak` chains with a flare of 0.09. A template with loose parts names the matching `cloth` profile. |
@@ -766,7 +773,11 @@ The recipe in `asset.json` says what the pipeline builds:
 | `hem` | How deep every open edge is turned inward, in meters, such as `0.002`. |
 
 A recipe of `"modeled"` instead makes a template whose first version a person
-models by hand over the cage, such as a hairstyle or a helmet.
+models by hand over the cage, such as a hairstyle or a helmet. A hair template's
+first version also has the shape key `UnderHeadwear`, the hair pressed flat under
+headwear, shaped by hand like the hair; every other version gets it fitted the
+same way as its basis, and a hand correction of it is kept the same way too, in
+the point attribute `fitted_under_headwear`.
 
 `tools/Sync-GarmentAsset.ps1` brings the file up to date:
 
@@ -810,7 +821,12 @@ models by hand over the cage, such as a hairstyle or a helmet.
   and the feet that the template does not cover, so a sleeve's or a trouser
   leg's hem follows its limb, by its barycentric coordinates
   and its offset in the triangle's frame, and placed at the same triangle and
-  offset of the other body's cage. The band is measured from the same regions. Every body's cage has the same faces, so this
+  offset of the other body's cage. A modeled template instead moves with a
+  smooth field of the cage's moves: each vertex by the moves of the cage's
+  vertices, weighted by a Gaussian of their distance beyond the nearest one, 15
+  mm wide plus 0.7 times the vertex's distance from the cage, so hair or a hood
+  that stands far off the cage moves as one and does not crumple where its
+  nearest cage face changes. The band is measured from the same regions. Every body's cage has the same faces, so this
   needs nothing of the bodies' own topology. A vertex or a face centre that then
   leaves the band moves back into it. A version corrected by hand keeps its
   corrections, because the point attribute `fitted` holds the shape the last
@@ -841,8 +857,13 @@ poses. Last, the sync checks every rule and reports what the template covers.
 The `model` stage checks that the bodies and the cage are the current ones of
 their files and the cage the approved one, that every body has a version with
 the first version's topology and one material, within the triangle budget and
-with every vertex and every face centre in its band from the cage, and that the
-fitting and the weights are as a sync leaves them. The `rig` stage adds the rig
+with every vertex and every face centre in its band from the cage, a hair
+template's also in its shape key `UnderHeadwear`, and that the fitting and the
+weights are as a sync leaves them. A point is too close by its straight distance
+to the cage's nearest point and too far by its distance along the normal of the
+cage's nearest face, as the recipes build the cloth: in front of a sharp edge of
+the cage, such as the nose, the distance along either face's normal falls far
+short of the true one. The `rig` stage adds the rig
 rules of skinned assets for each version on its armature, the motion check, and
 the pair check: every exported template of another visual slot and a lower
 layer of the cage, such as the trousers under a shirt, is put on the bodies from
@@ -855,7 +876,10 @@ template's outer side, which is followed instead. The report names how many come
 out through this template and the deepest place, as the motion check does. A
 body wears one garment per visual slot, so templates of the same slot, such as a
 shirt and a jerkin, are not checked against each other, and a template is not
-checked over a slot it hides, such as the robe over trousers. Both checks follow
+checked over a slot it hides, such as the robe over trousers. Hair is checked
+under headwear in the form the headwear gives it: in its shape key
+`UnderHeadwear` under `"hair": "compress"`, as it is under `"show"`, and not at
+all under `"hide"`. Both checks follow
 loose parts with their cloth chains laid in every pose and frame as the runtime
 solver lays them at its Follow detail (`cloth.py`), so they report a leg that
 comes through a skirt or a cloak; the swing of the springs is reviewed in the
@@ -892,7 +916,10 @@ vertices of the body's editable mesh:
   3 mm.
 - **Motion**: every visible vertex that the garment is over at rest keeps the
   point of the garment over it, and so does one that already lies outside the
-  garment at rest, with the point of the garment just inward of it. The body,
+  garment at rest, with the point of the garment just inward of it, at most 50
+  mm inward. A point of the garment only counts when no body lies between it
+  and the vertex, outward or inward, so the hair that the ray from an eye's
+  corner meets beyond the face is not over the eye. The body,
   with the pull-in applied, is measured at rest and takes every test pose and
   every frame of every clip of the skeleton's animation libraries.
   A vertex comes through the garment when it lies more than 1 mm outside the
@@ -1158,6 +1185,8 @@ weights.
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
 | `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. |
+| `art/GarmentTextures/DarkBrownHair` | `texture` | none | Dark brown hair on `ShoulderHair`, 1024 px, painted by a script in the template's UVs, which run around the head through the locks and down along the hair: lighter strands of random width along the hair, deep grooves between the locks, a soft sheen around the crown, darker roots, and slightly lighter tips. Roughness 0.55. Approved 2026-10-24. |
+| `art/GarmentTextures/IronNasalHelm` | `texture` | none | Matte wrought iron on `NasalHelm`, 1024 px, painted by a script from each texel's point and from the part of the helmet its face is, which the template marks in the face attribute `paint_part`: hammered plates darkened by patina with a few rust specks toward the rim and into the corners beside the bands, the bands a little lighter and worn bright along their edges, domed rivets down every band, round the brow band, at the cap, and two on the nasal, the iron's dark underside at the rim, and the brown leather lining below it. Roughness 0.55, metallic 0.45. Approved 2026-10-24. |
 | `art/GarmentTextures/LeatherBoots` | `texture` | none | Dark brown leather on `Boots`, 1024 px, painted by a script from each texel's point on the template: fine grain and blotches, a darker band with stitches along the top of the shaft, stitched seams around the ankle and up the inside of the shaft and the back of the heel, a burnished toe cap and heel counter, and a near-black sole with a darker welt stitched around it. Roughness 0.55. Approved 2026-10-24. |
 | `art/GarmentTextures/LeatherGloves` | `texture` | none | Soft, lighter brown leather on `Gloves`, 1024 px, painted the same way: fine grain and blotches, stitched seams between the palm and the back along the sides of the fingers, around the wrist, and along the inside of the cuff, and a darker band with stitches at the cuff's edge. Roughness 0.6. Approved 2026-10-24. |
 | `art/GarmentTextures/LeatherJerkin` | `texture` | none | The leather jerkin on `Shirt`, 1024 px: warm brown leather with blotches and grain, darker trim with stitches along the neckline, the hem, and the sleeve ends, and an open V at the front, laced across, where the skin shows between the laces. It has masks of its own. Roughness 0.62. Moved from the first leather jerkin garment and then from the template `Jerkin`, which became `Shirt`, by projection; when `Shirt` got its round neckline on 2026-10-24, the new part of the neckline took the leather from just below it, the V ran on up along its edges with its trim, and a new trim with stitches was painted along the neckline. |
@@ -1165,16 +1194,22 @@ weights.
 | `art/GarmentTextures/LinenShirt` | `texture` | none | The same linen on `Shirt`. |
 | `art/GarmentTextures/NetShirt` | `texture` | none | A coarse hemp-colored net on `Shirt`, 1024 px: round cords of 2.4 mm in diamond meshes 25 mm apart around the trunk and each arm, transparent between them, with solid hems 14 mm wide at the neckline, the hem, and the sleeve ends. It has masks of its own, so the skin and its paint show through the meshes. Roughness 0.88. |
 | `art/GarmentTextures/WoolCloak` | `texture` | none | Thick dark brown wool on `Cloak`, 1024 px, painted by a script from each texel's point on the template: fibres and mottling, vertical folds that deepen down the back, a darker turned hem with stitches along every edge, and in front only the cloth over the shoulders, as Victor's picture of 2026-10-24 shows: from the neckline at the top of each shoulder it comes down the front of the shoulder to a rounded corner held by a large cast bronze clasp, 72 mm across, with a beaded rim, a rosette of eight petals, and a domed boss, and runs out over the shoulder to the arm, so the throat and the chest stay free. The alpha follows the cut by its distance from the cut's lines and circles, smooth across the texels, and the cut is hemmed like an edge. Roughness 0.82. |
+| `art/GarmentTextures/WoolHoodDown` | `texture` | none | The wool of `WoolHoodUp` on `HoodDown`: hems with stitches along the collar's hem and the turned band's edge, the seam down the middle of the folded hood and the collar, and the folded hood's own side folds a little darker, without hems. Approved 2026-10-24. |
+| `art/GarmentTextures/WoolHoodUp` | `texture` | none | The undyed grey-brown wool of `WoolRobe` on `HoodUp`, 1024 px, painted by a script from each texel's point on the template: fibres and mottling, a stitched seam down the middle from the face opening over the crown to the collar's hem and down the bib, and a darker turned hem with stitches along the face opening and the collar's hem. Roughness 0.86. Approved 2026-10-24. |
 | `art/GarmentTextures/WoolRobe` | `texture` | none | Undyed grey-brown wool on `Robe`, 1024 px, painted the same way: fibres and mottling, folds that deepen down the skirt, wear at the bottom of the skirt, stitched seams, and darker turned hems with stitches at the neckline, the cuffs, and the skirt's hem. Roughness 0.86. |
 | `art/GarmentTextures/WoolTrousers` | `texture` | none | Brown wool on `Trousers`, 1024 px, with a coarse weave, a darker waistband, stitched hems at the ankles, and stitched seams, among them a yoke across the hips. Roughness 0.9. |
 | `art/Garments/Boots` | `garment` | none | Boots in the `mid` band, layer 120, from the recipe `legs` and `feet`, cut at `BootCalf`, over `tight` trousers below `LegAnkle`, turned edges 4 mm deep, 1,376 triangles per body: a shaft to the middle of the calf 10 mm off the cage and a foot over the cage's smooth feet, without toes, with a flat sole. Approved 2026-10-24. |
 | `art/Garments/Cloak` | `garment` | none | A cloak in the `back` slot, layer 500, `tight` band, from the recipe `neck` and `trunk`, cut at `Neckline` and `CloakYoke`, over a `mid` top above `CloakYoke` and below `Neckline`, so it lies about 1 cm off the shirt and leaves room for a padded top, turned edges 4 mm deep: a yoke over the shoulders from the round neckline down to below the collarbones and a loose back hanging taut from `CloakYoke` between the arms on the `cloak` chains to the middle of the calves with a flare of 0.09, 940 triangles per body, 226 vertices of them on the chains. It covers nothing (`"covers": false`). |
 | `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,808 triangles per body, the cuff about 7 cm up the forearm. Approved 2026-10-24. |
+| `art/Garments/HoodDown` | `garment` | none | The gugel of `HoodUp` pushed back, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "show"`, 1,036 triangles per body: the collar around the neck over the hair and the cloak, its top rolled over into a band that hangs outside it, and the hood folded on the upper back as a rounded bag with soft folds, from the roll down 20 cm. Two sheets meet at the roll's top, the collar and the band with the folded hood, each with its outside out. The collar's weights move with the neck and blend into those of the cloak where it lies on it. Its collar is open around the neck, so it covers nothing (`"covers": false`). Approved 2026-10-24. |
+| `art/Garments/HoodUp` | `garment` | none | A gugel worn up, modeled, in the `head` slot, layer 600, `loose` band, `"hair": "compress"`, 1,186 triangles per body: over the head and the compressed hair with an opening for the face from the brows to under the chin, and a short collar over the neck and the tops of the shoulders that ends above the cloak's clasps, over the cloak, built on rings over the head, the hair, the body, and the cloak. It moves with the head down to the chin and blends over the neck into the upper chest and the shoulders, and where the collar lies on the cloak into the cloak's own weights, halfway where the hair lies close under it. Approved 2026-10-24. |
 | `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,284 triangles per body. |
+| `art/Garments/NasalHelm` | `garment` | none | A nasal helmet, modeled, in the `head` slot, layer 600, `outer` band, `"hair": "compress"`, 2,092 triangles per body, all on `Head`: a pointed spangenhelm over the head and the compressed hair, four bands raised 2.5 mm from the front, the sides, and the back to the point, a brow band 28 mm high above the brows and the ears, the leather lining 4.5 mm below the iron, and a nasal riveted to the brow band that bends forward over the nose's root and runs down the bridge. The female version's nasal is shaped by hand, a rigid copy of the male's with its brow band. Approved 2026-10-24. |
 | `art/Garments/Robe` | `garment` | none | A floor-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `HemHip`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top with a loose skirt hanging all around from `HemHip` on the `skirt` chains to the ankles, 30 mm off the hips and the legs and with a flare of 0.08, so it does not follow the figure, 2,924 triangles per body, 384 vertices of them on the chains. It hides the `legs` slot, so the boots show below it. |
 | `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,644 triangles per body, on `art/Cages/Humanoid`. |
+| `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band, 2,298 triangles per body: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. Approved 2026-10-24. |
 | `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,496 triangles per body, with seams along the inside of the legs. |
-| `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the thirteen standard lines of [Garment Cage](#garment-cage); its regions `hands` and `feet` were added on 2026-10-24, 2,880 faces in all, and the line `CloakYoke` the same day, which moves none of its faces. Approved 2026-10-24. |
+| `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the thirteen standard lines of [Garment Cage](#garment-cage); its regions `hands` and `feet` were added on 2026-10-24, the line `CloakYoke` the same day, which moves none of its faces, and the region `head` after them, 3,424 faces in all. Approved 2026-10-24. |
 | `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910: the pale blue bra with its cups, band, and straps over the middle of the shoulders, lifted out of her body texture with its shaded edge. Roughness 0.8. |
 | `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900: pale blue briefs with a darker waistband, lifted out of the male body texture and moved to the female. Roughness 0.8. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, lifted out of the former male face `Scarred` and moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |

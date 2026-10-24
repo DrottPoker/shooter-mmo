@@ -46,11 +46,11 @@ from .cloth import capsules, follow, worn
 from .scene import ArtPipelineError
 
 # How far rays look for the garment from the skin, per band, in meters.
-REACH = {"tight": 0.03, "mid": 0.05, "outer": 0.10, "loose": 0.30}
+REACH = {"tight": 0.03, "mid": 0.05, "outer": 0.10, "loose": 0.30, "hair": 0.10}
 # How far from an open edge of the garment the skin stays visible, per band, in meters: a look
 # into an opening reaches about four times the band's gap between skin and cloth, or four times the
 # gap at the edge where the cloth hangs farther off the skin, up to the largest band's reach.
-EDGE_REACH = {"tight": 0.02, "mid": 0.04, "outer": 0.08, "loose": 0.12}
+EDGE_REACH = {"tight": 0.02, "mid": 0.04, "outer": 0.08, "loose": 0.12, "hair": 0.04}
 EDGE_GAPS = 4.0
 # How far from the skin a ray looks for the garment cage over it.
 CAGE_REACH = 0.1
@@ -69,6 +69,10 @@ PULL_IN_MAX = 0.003
 PULL_IN_CLEARANCE = 0.003
 # Visible skin may come this far through the garment over it in motion, in meters.
 CLIP_TOLERANCE = 0.001
+# A point lies through a garment at rest only where the garment's outer side lies this close inward
+# of it: farther in, the outer side belongs to cloth elsewhere, such as a hood's side seen from the
+# top of a shoulder.
+REST_DEPTH = 0.05
 # The name of the rest pose in the motion and pair reports.
 REST = "the rest pose"
 DATA_SCHEMA = 2
@@ -249,16 +253,26 @@ def _opaque_hit(cloth: _Cloth, origin: Vector, direction: Vector, distance: floa
     return None
 
 
-def _rest_cover(cloth: _Cloth, point: Vector, direction: Vector, reach: float, depth: float) -> tuple[Vector, float] | None:
+def _blocked(body: BVHTree | None, point: Vector, direction: Vector, distance: float) -> bool:
+    """Whether the body's surface lies between a point on it and a place this far along a direction."""
+    if body is None:
+        return False
+    return body.ray_cast(point + direction * RAY_OFFSET, direction, max(distance - 2.0 * RAY_OFFSET, 0.0))[0] is not None
+
+
+def _rest_cover(cloth: _Cloth, point: Vector, direction: Vector, reach: float, depth: float,
+                body: BVHTree | None = None) -> tuple[Vector, float] | None:
     """Where the garment covers a point at rest, and how deep the point already lies through it: going
     out along the point's normal, the first place a ray meets the garment's inner side where it is
     opaque, or, for a point that lies outside the garment, the place on its outer side inward of it
-    within depth."""
+    within depth. A point lies through the garment only where the garment's outer side lies inside
+    the body there; one that the ray meets after it leaves the body again, such as the hair beside a
+    face seen from the inside of an eye socket, lies on the body's other side."""
     hit = _opaque_hit(cloth, point, direction, reach)
-    if hit is not None and hit[1].dot(direction) > 0.0:
+    if hit is not None and hit[1].dot(direction) > 0.0 and not _blocked(body, point, direction, hit[0]):
         return point + direction * hit[0], 0.0
     hit = _opaque_hit(cloth, point, -direction, depth)
-    if hit is not None and hit[1].dot(direction) > 0.0:
+    if hit is not None and hit[1].dot(direction) > 0.0 and not _blocked(body, point, -direction, hit[0]):
         return point - direction * hit[0], hit[0]
     return None
 
@@ -556,11 +570,12 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     follow(arm, kinds, found, chains)
     cloth = _Cloth(version, _posed(version)[0], _alpha(version))
     shell = garment.Surface(garment.cage_object(label), []).tree
+    skin = BVHTree.FromPolygons([tuple(p) for p in pulled], [tuple(p.vertices) for p in body.data.polygons])
     vertices, corners, weights, deepest = [], [], [], []
     for vertex in coverage.visible_vertices(body):
         direction = Vector(normals[vertex]).normalized()
         reach = _cage_gap(shell, Vector(pulled[vertex]), direction) + REACH[coverage.band]
-        cover = _rest_cover(cloth, Vector(pulled[vertex]), direction, reach, REACH[coverage.band])
+        cover = _rest_cover(cloth, Vector(pulled[vertex]), direction, reach, min(REACH[coverage.band], REST_DEPTH), skin)
         if cover is not None:
             location, depth = cover
             triangle = cloth.triangles[cloth.tree.find_nearest(location)[2]][1]
@@ -644,6 +659,7 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
     rest, normals = _posed(inner)
     cloth = _Cloth(version, _posed(version)[0], _alpha(version))
     shell = garment.Surface(garment.cage_object(label), []).tree
+    skin = garment.Surface(bodies.source_body(label), []).tree
     vertices, corners, weights, deepest = [], [], [], []
     for vertex in sorted({v for p in drawn for v in p.vertices}):
         direction = Vector(normals[vertex]).normalized()
@@ -651,7 +667,7 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
         if outward is None or direction.dot(outward) <= 0.0:
             continue
         reach = _cage_gap(shell, Vector(rest[vertex]), direction) + REACH[coverage.band]
-        cover = _rest_cover(cloth, Vector(rest[vertex]), direction, reach, REACH[coverage.band])
+        cover = _rest_cover(cloth, Vector(rest[vertex]), direction, reach, min(REACH[coverage.band], REST_DEPTH), skin)
         if cover is not None:
             location, depth = cover
             triangle = cloth.triangles[cloth.tree.find_nearest(location)[2]][1]

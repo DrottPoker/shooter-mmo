@@ -1409,7 +1409,8 @@ describes, in `PlayerBodyMeshes`:
 
 1. The garments of a slot that a worn garment of a higher layer hides are left
    out, such as trousers under a floor-length robe, while leg armor over the robe
-   stays; the others are drawn from the lowest layer up.
+   stays, and so is the hair under headwear whose `Hair` is `hide`; the others
+   are drawn from the lowest layer up.
 2. A body triangle is left out when a drawn garment covers its face, and a
    garment triangle when a garment of a higher layer covers the body face under
    it. Loose parts, such as a robe's skirt, cover nothing, and the cloak covers
@@ -1419,10 +1420,14 @@ describes, in `PlayerBodyMeshes`:
 4. The drawn garments' meshes join the body's in one mesh, with their bones
    bound by name to the body's skeleton, whose bind poses they share, each
    drawing with its texture's material instead of its template's, and the
-   vertices no triangle uses are left out.
+   vertices no triangle uses are left out. Hair under headwear whose `Hair` is
+   `compress`, such as the hood up or the helmet, takes its blend shape
+   `UnderHeadwear` in full, its vertices, normals, and tangents, so it lies
+   flat under the headwear at no cost per frame; under the hood down it stays as
+   it is.
 
-The combined mesh is shared by every body with the same parts, garments, and
-garment materials. A body wears one garment per visual slot, such as one chest
+The combined mesh is shared by every body with the same parts, garments,
+garment materials, and blend shapes taken. A body wears one garment per visual slot, such as one chest
 piece: of two of a slot that its look names, the first in the catalog is worn,
 and trying one on in F2 or the Wardrobe takes off the other. It shows its paint
 layers by `AppearanceRules`, as
@@ -1443,7 +1448,7 @@ Debug panel has `Try on garment: <Name>` for every garment of the local body's
 catalog. Other players and bots wear none, and a corpse shows the default body
 model in its underwear.
 `PlayerBodyGarmentTests` covers what a worn garment hides and adds, layers, hidden
-slots, pull-in, and sharing.
+slots, pull-in, sharing, and hair that headwear hides, compresses, or leaves.
 
 ## World Actor And Interaction Client
 

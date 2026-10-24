@@ -389,7 +389,10 @@ CAGE_TORSO_YAWS = (145.0, 35.0, 0.0, 325.0)
 # is seen from, and the view's radius.
 CAGE_ENDS = (("Hand_L", (-1.0, 0.15, 0.1), 0.13), ("Hand_L", (0.45, 1.0, -0.25), 0.13),
              ("Foot_L", (-1.0, 0.1, 0.25), 0.16), ("Foot_L", (-0.4, 1.0, 0.5), 0.16))
-CAGE_ROWS = 4
+# The head up close from the front, the right side, the back, and the front left from above.
+CAGE_HEAD = ((0.0, 1.0, 0.1), (1.0, 0.0, 0.1), (0.0, -1.0, 0.15), (-0.6, 0.7, 0.6))
+CAGE_HEAD_RADIUS = 0.17
+CAGE_ROWS = 5
 CAGE_PITCH = 8.0
 # Shown this far off the cage, which lies 1 mm from the skin, so the skin does not shine through.
 CAGE_DISPLAY_OFFSET = 0.004
@@ -432,7 +435,9 @@ def render_cage_sheet(output: str, cell: int, labels: list[str], lines: list[dic
     blue at the skin, yellow at 15 mm, and red from 30 mm, with the standard lines drawn on it, a
     row in one cloth color, each from the front, the right side, the back, and the back left, a
     row of the torso up close in the cloth color from the front right, the back left, the back, and
-    the back right, and a row of the left hand and foot up close in the distance colors."""
+    the back right, a row of the left hand and foot up close in the distance colors, and a row of
+    the head up close in the distance colors from the front, the right side, the back, and the front
+    left from above."""
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
     for obj in scene.objects:
@@ -512,6 +517,14 @@ def render_cage_sheet(output: str, cell: int, labels: list[str], lines: list[dic
                 center = arm.matrix_world @ (target.tail_local if bone.startswith("Hand") else
                                              target.head_local.lerp(target.tail_local, 0.6) - Vector((0.0, 0.0, 0.03)))
                 _aim_from(camera, sun, center, radius, Vector(direction))
+                top = (rows - 1 - row) * cell
+                sheet[top:top + cell, column * cell:(column + 1) * cell] = _render(
+                    scene, os.path.join(scratch, f"{label}_{row}_{column}.png"))
+            row = CAGE_ROWS * index + 4
+            head = arm.data.bones["Head"]
+            center = arm.matrix_world @ head.head_local.lerp(head.tail_local, 0.4)
+            for column, direction in enumerate(CAGE_HEAD):
+                _aim_from(camera, sun, center, CAGE_HEAD_RADIUS, Vector(direction))
                 top = (rows - 1 - row) * cell
                 sheet[top:top + cell, column * cell:(column + 1) * cell] = _render(
                     scene, os.path.join(scratch, f"{label}_{row}_{column}.png"))

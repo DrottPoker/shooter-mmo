@@ -56,7 +56,9 @@ def rig_fingerprint(arm: bpy.types.Object) -> str:
 
 
 def rig_errors(objects: list[bpy.types.Object], roots: list[bpy.types.Object], skeleton: Skeleton,
-               meshes_allowed: bool = True) -> list[str]:
+               meshes_allowed: bool = True, shape_keys: tuple[str, ...] = ()) -> list[str]:
+    """The rig rules; the meshes may have the named shape keys besides their basis, such as a
+    hairstyle's UnderHeadwear, which Unity imports as blend shapes."""
     errors: list[str] = []
     armatures = [o for o in objects if o.type == "ARMATURE"]
     if len(armatures) != 1:
@@ -76,7 +78,7 @@ def rig_errors(objects: list[bpy.types.Object], roots: list[bpy.types.Object], s
     meshes = [o for o in objects if o.type == "MESH"]
     weights = {}
     for obj in meshes:
-        problems = _binding_errors(obj, arm)
+        problems = _binding_errors(obj, arm, shape_keys)
         if not problems:
             problems, weights[obj.name] = _weight_errors(obj, deform)
         errors += problems
@@ -143,7 +145,7 @@ def _rest_errors(arm: bpy.types.Object) -> list[str]:
     return errors
 
 
-def _binding_errors(obj: bpy.types.Object, arm: bpy.types.Object) -> list[str]:
+def _binding_errors(obj: bpy.types.Object, arm: bpy.types.Object, shape_keys: tuple[str, ...] = ()) -> list[str]:
     errors = []
     if obj.parent != arm or obj.parent_type != "OBJECT":
         errors.append(f'Mesh "{obj.name}" must be a child of the armature "{arm.name}".')
@@ -154,8 +156,11 @@ def _binding_errors(obj: bpy.types.Object, arm: bpy.types.Object) -> list[str]:
     elif not md.use_vertex_groups or md.use_bone_envelopes or md.use_deform_preserve_volume or md.use_multi_modifier:
         errors.append(f'The Armature modifier of "{obj.name}" must deform with vertex groups only, without envelopes, '
                       "Preserve Volume, or Multi Modifier, as Unity skins.")
-    if obj.data.shape_keys is not None:
+    names = [k.name for k in obj.data.shape_keys.key_blocks] if obj.data.shape_keys is not None else []
+    if not shape_keys and names:
         errors.append(f'Mesh "{obj.name}" must have no shape keys.')
+    elif shape_keys and names[1:] != list(shape_keys):
+        errors.append(f'Mesh "{obj.name}" must have the shape keys {list(shape_keys)} besides its basis, not {names[1:]}.')
     return errors
 
 

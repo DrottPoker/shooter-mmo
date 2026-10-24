@@ -103,6 +103,8 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var ownMasks = ArtAssetManifests.Textures().Where(texture => texture.export.masks.Length > 0)
                 .Select(texture => texture.Name).ToHashSet();
+            var coverNothing = ArtAssetManifests.Garments().Where(template => !template.covers)
+                .Select(template => template.Name).ToHashSet();
             foreach (var body in ArtAppearanceCatalogs.ManifestsWithLooks())
             {
                 foreach (var garment in ArtAppearanceCatalogs.GarmentsFor(body))
@@ -110,8 +112,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     var where = body.path + " " + garment.Name;
                     var renderer = garment.Model.GetComponentInChildren<SkinnedMeshRenderer>();
                     Assert.That(garment.Underlay.Count, Is.EqualTo(renderer.sharedMesh.triangles.Length / 3), where);
-                    // A texture with masks of its own, such as a net, may leave every body face visible.
-                    if (!ownMasks.Contains(garment.Name))
+                    // A texture with masks of its own, such as a net, may leave every body face visible,
+                    // and a template that covers nothing, such as the cloak or the hood down, does.
+                    if (!ownMasks.Contains(garment.Name) && !coverNothing.Contains(garment.Template))
                     {
                         Assert.That(garment.Covered, Is.Not.Empty, where);
                     }
@@ -161,7 +164,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(new[]
                 {
                     "WoolTrousers", "LeatherBoots", "LeatherJerkin", "LinenLongShirt", "LinenShirt", "NetShirt", "WoolRobe",
-                    "LeatherGloves", "WoolCloak",
+                    "LeatherGloves", "WoolCloak", "DarkBrownHair", "IronNasalHelm", "WoolHoodDown", "WoolHoodUp",
                 }));
             Assert.That(catalog.GarmentNamed("WoolTrousers").Template, Is.EqualTo("Trousers"));
             Assert.That(catalog.GarmentNamed("LeatherJerkin").Template, Is.EqualTo("Shirt"));
@@ -180,6 +183,17 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.GarmentNamed("WoolCloak").Slot, Is.EqualTo("back"));
             Assert.That(catalog.GarmentNamed("WoolCloak").Cloth, Is.EqualTo("cloak"));
             Assert.That(catalog.GarmentNamed("WoolCloak").Covered, Is.Empty);
+            // The hair over the cloak, and headwear over the hair: the hood up and the helmet press
+            // it flat, the hood down leaves it as it is.
+            Assert.That(catalog.GarmentNamed("DarkBrownHair").Template, Is.EqualTo("ShoulderHair"));
+            Assert.That(catalog.GarmentNamed("DarkBrownHair").Slot, Is.EqualTo("hair"));
+            Assert.That(catalog.GarmentNamed("WoolHoodUp").Template, Is.EqualTo("HoodUp"));
+            Assert.That(catalog.GarmentNamed("WoolHoodUp").Slot, Is.EqualTo("head"));
+            Assert.That(catalog.GarmentNamed("WoolHoodUp").Hair, Is.EqualTo("compress"));
+            Assert.That(catalog.GarmentNamed("WoolHoodDown").Template, Is.EqualTo("HoodDown"));
+            Assert.That(catalog.GarmentNamed("WoolHoodDown").Hair, Is.EqualTo("show"));
+            Assert.That(catalog.GarmentNamed("IronNasalHelm").Template, Is.EqualTo("NasalHelm"));
+            Assert.That(catalog.GarmentNamed("IronNasalHelm").Hair, Is.EqualTo("compress"));
         }
     }
 }

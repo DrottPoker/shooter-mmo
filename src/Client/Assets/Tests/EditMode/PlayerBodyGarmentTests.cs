@@ -15,6 +15,9 @@ namespace Mmorpg.Client.Tests.EditMode
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
         private const string Jerkin = "LeatherJerkin";
         private const string Trousers = "WoolTrousers";
+        private const string Hair = "DarkBrownHair";
+        private const string HoodUp = "WoolHoodUp";
+        private const string HoodDown = "WoolHoodDown";
 
         [Test]
         public void AWornGarmentTakesThePlaceOfTheBodyFacesItCovers()
@@ -203,6 +206,65 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void HeadwearPressesTheHairFlatHidesItOrLeavesIt()
+        {
+            Wear((appearance, meshes, materials) =>
+            {
+                var parts = Parts(appearance);
+                var catalog = appearance.Catalog;
+                var hair = catalog.GarmentNamed(Hair);
+                var hoodUp = catalog.GarmentNamed(HoodUp);
+                var hoodDown = catalog.GarmentNamed(HoodDown);
+                Assert.That(hair.Slot, Is.EqualTo(BodyAppearanceCatalog.Garment.HairSlot));
+                Assert.That(hoodUp.Hair, Is.EqualTo(BodyAppearanceCatalog.Garment.CompressHair));
+                Assert.That(hoodDown.Hair, Is.EqualTo("show"));
+                // A coif that hides the hair leaves it out.
+                var coif = new BodyAppearanceCatalog.Garment("Coif", hoodUp.Template, hoodUp.Material, hoodUp.Slot, hoodUp.Layer,
+                    hoodUp.Hides.ToArray(), hoodUp.HidesUnderwear, BodyAppearanceCatalog.Garment.HideHair, hoodUp.Cloth, hoodUp.Model,
+                    hoodUp.Covered.ToArray(), hoodUp.Underlay.ToArray(), hoodUp.PullInVertices.ToArray(), hoodUp.PullInDistances.ToArray());
+                Assert.That(PlayerBodyMeshes.Drawn(new[] { hair, coif }).Select(garment => garment.Name), Is.EqualTo(new[] { "Coif" }));
+
+                // The vertex the form under headwear moves the most, free and pressed flat.
+                var renderer = hair.Model.GetComponentInChildren<SkinnedMeshRenderer>();
+                var mesh = renderer.sharedMesh;
+                var shape = mesh.GetBlendShapeIndex(BodyAppearanceCatalog.Garment.UnderHeadwearShape);
+                Assert.That(shape, Is.GreaterThanOrEqualTo(0));
+                var deltas = new Vector3[mesh.vertexCount];
+                mesh.GetBlendShapeFrameVertices(shape, mesh.GetBlendShapeFrameCount(shape) - 1, deltas, null, null);
+                var moved = Enumerable.Range(0, deltas.Length).OrderByDescending(vertex => deltas[vertex].sqrMagnitude).First();
+                Assert.That(deltas[moved].magnitude, Is.GreaterThan(0.005f));
+                var toRoot = hair.Model.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
+                var free = toRoot.MultiplyPoint3x4(mesh.vertices[moved]);
+                var pressed = toRoot.MultiplyPoint3x4(mesh.vertices[moved] + deltas[moved]);
+
+                var alone = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair });
+                var up = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair, hoodUp });
+                var down = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair, hoodDown });
+                try
+                {
+                    Assert.That(Nearest(alone.Mesh, free), Is.LessThan(1e-5f));
+                    Assert.That(Nearest(down.Mesh, free), Is.LessThan(1e-5f));
+                    Assert.That(Nearest(up.Mesh, pressed), Is.LessThan(1e-5f));
+                    Assert.That(Nearest(up.Mesh, free), Is.GreaterThan(0.002f));
+                }
+                finally
+                {
+                    Object.DestroyImmediate(alone.Mesh);
+                    Object.DestroyImmediate(up.Mesh);
+                    Object.DestroyImmediate(down.Mesh);
+                }
+
+                // Bodies with the hood up and down share no mesh.
+                appearance.ApplyLook(BodyLook.Default.WithGarment(Hair, true).WithGarment(HoodUp, true), materials);
+                appearance.CombineParts(meshes);
+                var hoodUpMesh = appearance.CombinedRenderer.sharedMesh;
+                appearance.ApplyLook(BodyLook.Default.WithGarment(Hair, true).WithGarment(HoodDown, true), materials);
+                appearance.CombineParts(meshes);
+                Assert.That(appearance.CombinedRenderer.sharedMesh, Is.Not.SameAs(hoodUpMesh));
+            });
+        }
+
+        [Test]
         public void LooseClothHangsOnItsChains()
         {
             Assert.That(PlayerBodyAppearance.ChainsOf("robe"), Is.EqualTo(ClothChainKind.Skirt));
@@ -241,6 +303,11 @@ namespace Mmorpg.Client.Tests.EditMode
             return appearance.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                 .Where(part => part.name != PlayerBodyAppearance.CombinedRendererName && part.sharedMesh != null)
                 .ToArray();
+        }
+
+        private static float Nearest(Mesh mesh, Vector3 point)
+        {
+            return mesh.vertices.Min(position => (position - point).magnitude);
         }
 
         private static int TriangleCount(Mesh mesh)

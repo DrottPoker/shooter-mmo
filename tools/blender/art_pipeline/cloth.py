@@ -60,9 +60,10 @@ PREFIXES = {"skirt": "Skirt", "cloak": "Cloak", "hood": "Hood"}
 MARGINS = {"skirt": 0.012, "cloak": 0.02, "hood": 0.01}
 SLACKS = {"skirt": 0.1, "cloak": 0.05, "hood": 0.0}
 # The chains' angles around the hips from the front toward the right, in degrees, by name; a chain on
-# the left takes the negative angle. As ClothChains in the Unity client.
+# the left takes the negative angle. The hood's chain hangs behind the head. As ClothChains in the
+# Unity client.
 ANGLES = {"SkirtFront": 0.0, "SkirtFrontSide": 45.0, "SkirtSide": 90.0, "SkirtBackSide": 135.0, "SkirtBack": 180.0,
-          "CloakCenter": 180.0, "CloakInner": 157.5, "CloakOuter": 135.0}
+          "CloakCenter": 180.0, "CloakInner": 157.5, "CloakOuter": 135.0, "Hood": 180.0}
 # The part of the legs each bone of a chain lies beside, from its root, as the rig places the chains:
 # a skirt's from the hips to the ankles, a cloak's from the shoulder blades to the middle of the calves.
 BESIDE = {"skirt": ("UpperLeg", "UpperLeg", "LowerLeg", "LowerLeg"), "cloak": (None, None, "UpperLeg", "UpperLeg", "LowerLeg")}

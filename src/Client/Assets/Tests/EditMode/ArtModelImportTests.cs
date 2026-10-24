@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Editor;
+using Mmorpg.Client.Gameplay;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -49,7 +50,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(importer.importCameras, Is.False, path);
                 Assert.That(importer.importLights, Is.False, path);
                 Assert.That(importer.importVisibility, Is.False, path);
-                Assert.That(importer.importBlendShapes, Is.False, path);
+                // Only hair keeps its shape keys, its form under headwear.
+                Assert.That(importer.importBlendShapes, Is.EqualTo(ArtModelImportRules.HasShapeKeys(manifest)), path);
                 Assert.That(importer.addCollider, Is.False, path);
                 Assert.That(importer.isReadable, Is.EqualTo(manifest.IsSkinned || manifest.IsGarment), path);
                 Assert.That(importer.importNormals, Is.EqualTo(ModelImporterNormals.Import), path);
@@ -60,6 +62,12 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(importer.animationType, Is.EqualTo(ModelImporterAnimationType.Generic), path);
                     Assert.That(importer.avatarSetup, Is.EqualTo(ModelImporterAvatarSetup.NoAvatar), path);
                     Assert.That(importer.optimizeGameObjects, Is.False, path);
+                    if (ArtModelImportRules.HasShapeKeys(manifest))
+                    {
+                        Assert.That(importer.importBlendShapeNormals, Is.EqualTo(ModelImporterNormals.Calculate), path);
+                        var mesh = AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponentInChildren<SkinnedMeshRenderer>(true).sharedMesh;
+                        Assert.That(mesh.GetBlendShapeIndex(BodyAppearanceCatalog.Garment.UnderHeadwearShape), Is.GreaterThanOrEqualTo(0), path);
+                    }
                 }
                 else if (manifest.HasSkeleton)
                 {

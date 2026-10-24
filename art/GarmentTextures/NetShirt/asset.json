@@ -6,12 +6,12 @@
         "texture": {
             "date": "2026-10-24",
             "sourceSha256": "58730990584ca8875f8311b5a2a240fae3ed1624cd0b6ae02cace0e273f9e6ec",
-            "garmentSourceSha256": "4239f5b7e6977540f7faa96f912116b2180d27f306eea2e173840c13261d5621"
+            "garmentSourceSha256": "18267824ef8a5124dc4eccdb4a43119a506043d01023e297886e5efa4a5ec1de"
         }
     },
     "export": {
         "sourceSha256": "58730990584ca8875f8311b5a2a240fae3ed1624cd0b6ae02cace0e273f9e6ec",
-        "garmentSourceSha256": "4239f5b7e6977540f7faa96f912116b2180d27f306eea2e173840c13261d5621",
+        "garmentSourceSha256": "18267824ef8a5124dc4eccdb4a43119a506043d01023e297886e5efa4a5ec1de",
         "masks": [
             { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Male.json", "dataSha256": "7a88faf84e6f5bed45c1b20ec68c458ba155d58e4e7489d84f71305ae259857e" },
             { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "d3838abda56f48d416063a1894a9a87e0edb8f39a560cedbaf4bc53653f9ae61" }
