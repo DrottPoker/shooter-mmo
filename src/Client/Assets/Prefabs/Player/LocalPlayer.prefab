@@ -151,8 +151,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Mmorpg.Client::Mmorpg.Client.Gameplay.ThirdPersonCameraController
   target: {fileID: 8029506451051493290}
-  minimumDistance: 3
-  maximumDistance: 30
+  minimumDistance: 0.6
+  maximumDistance: 15
   initialDistance: 12
   minimumPitch: 10
   maximumPitch: 80

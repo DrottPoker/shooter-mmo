@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Editor;
@@ -158,9 +159,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(cameraProperties.FindProperty("target").objectReferenceValue,
                     Is.EqualTo(localController.CameraTarget));
                 Assert.That(cameraProperties.FindProperty("minimumDistance").floatValue,
-                    Is.EqualTo(3f));
+                    Is.EqualTo(0.6f));
                 Assert.That(cameraProperties.FindProperty("maximumDistance").floatValue,
-                    Is.EqualTo(30f));
+                    Is.EqualTo(15f));
                 Assert.That(cameraProperties.FindProperty("initialDistance").floatValue,
                     Is.EqualTo(12f));
                 Assert.That(cameraProperties.FindProperty("minimumPitch").floatValue,
@@ -225,13 +226,13 @@ namespace Mmorpg.Client.Tests.EditMode
                     orbit.ApplyInput(Vector2.zero, Vector2.zero, -1f, 0f);
                 }
 
-                Assert.That(orbit.ZoomDistance, Is.EqualTo(30f));
+                Assert.That(orbit.ZoomDistance, Is.EqualTo(15f));
                 for (var notch = 0; notch < 40; notch++)
                 {
                     orbit.ApplyInput(Vector2.zero, Vector2.zero, 1f, 0f);
                 }
 
-                Assert.That(orbit.ZoomDistance, Is.EqualTo(3f));
+                Assert.That(orbit.ZoomDistance, Is.EqualTo(0.6f));
 
                 // Turning wraps around instead of clamping.
                 orbit.ApplyInput(new Vector2(4 * 360f, 0f), Vector2.zero, 0f, 0f);
@@ -242,6 +243,57 @@ namespace Mmorpg.Client.Tests.EditMode
             finally
             {
                 Object.DestroyImmediate(cameraObject);
+            }
+        }
+
+        [Test]
+        public void ClosestZoomKeepsTheCameraClearOfThePlayerBody()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(LocalPlayerPrefabPath);
+            var instance = Object.Instantiate(prefab);
+            var bakedMesh = new Mesh();
+
+            try
+            {
+                var controller = instance.GetComponent<LocalPlayerController>();
+                var cameraProperties = new SerializedObject(controller.PlayerCamera);
+                var closestDistance = cameraProperties.FindProperty("minimumDistance").floatValue;
+                var minimumPitch = cameraProperties.FindProperty("minimumPitch").floatValue;
+                var maximumPitch = cameraProperties.FindProperty("maximumPitch").floatValue;
+                var pivot = controller.CameraTarget.position;
+
+                var bodyPoints = new List<Vector3>();
+                foreach (var renderer in instance.GetComponentsInChildren<SkinnedMeshRenderer>())
+                {
+                    renderer.BakeMesh(bakedMesh, true);
+                    var toWorld = Matrix4x4.TRS(
+                        renderer.transform.position,
+                        renderer.transform.rotation,
+                        Vector3.one);
+                    bodyPoints.AddRange(bakedMesh.vertices.Select(
+                        vertex => toWorld.MultiplyPoint3x4(vertex)));
+                }
+
+                Assert.That(bodyPoints, Is.Not.Empty);
+
+                // The closest zoom stays about 30 centimeters from the body at every tilt
+                // and all around the player; the bound leaves room for the pose.
+                for (var pitch = minimumPitch; pitch <= maximumPitch; pitch += 5f)
+                {
+                    for (var yaw = 0f; yaw < 360f; yaw += 15f)
+                    {
+                        var direction = Quaternion.Euler(pitch, yaw, 0f) * Vector3.back;
+                        var cameraPosition = pivot + (direction * closestDistance);
+                        var clearance = bodyPoints.Min(
+                            point => Vector3.Distance(point, cameraPosition));
+                        Assert.That(clearance, Is.GreaterThan(0.2f), $"pitch {pitch}, yaw {yaw}");
+                    }
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(bakedMesh);
+                Object.DestroyImmediate(instance);
             }
         }
 

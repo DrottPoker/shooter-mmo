@@ -1181,8 +1181,11 @@ owned by the LocalPlayer prefab and orbits the single CameraTarget pivot.
 Dragging with the middle mouse button turns and tilts it at 0.25 degrees per
 pixel, and the arrow keys turn it at 120 and tilt it at 60 degrees per second.
 Tilt is clamped from 10 to 80 degrees. The scroll wheel changes the zoom
-distance by 15 percent per notch between 3 and 30 meters, and the applied
-distance eases toward it. The camera starts 12 meters away at a 40 degree tilt
+distance by 15 percent per notch between 0.6 and 15 meters, and the applied
+distance eases toward it. From the pivot at 1.45 meters, the 0.6 meter minimum
+keeps the camera about 30 centimeters from the body at every tilt, which an
+EditMode test checks against the baked body meshes, so it never clips into the
+head. The camera starts 12 meters away at a 40 degree tilt
 behind the player, with a 55 degree field of view. A non-allocating spherecast
 from the pivot pulls the camera in front of obstructions at once and eases it
 back out, and it filters the local player hierarchy. Scrolling over interface

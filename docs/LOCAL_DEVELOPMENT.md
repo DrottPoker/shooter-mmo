@@ -3427,7 +3427,7 @@ twelve actions with no missing bindings.
    - Camera Near Clip Plane: `0.05`
    - Camera Far Clip Plane: `500`
    - Target: `CameraTarget`
-   - Minimum, Maximum, and Initial Distance: `3`, `30`, and `12`
+   - Minimum, Maximum, and Initial Distance: `0.6`, `15`, and `12`
    - Minimum, Maximum, and Initial Pitch: `10`, `80`, and `40`
    - Drag Degrees Per Pixel: `0.25`
    - Key Yaw and Key Pitch Degrees Per Second: `120` and `60`
@@ -3883,8 +3883,9 @@ Expected result:
 - Step 5: the new click replaces the route at once.
 - Step 6: dragging turns and tilts the camera around the player. Left and right
   arrows turn it, up and down tilt it, and the tilt stops at 10 and 80 degrees.
-- Step 7: each notch zooms by about 15 percent between 3 and 30 meters, and the
-  zoom eases instead of jumping.
+- Step 7: each notch zooms by about 15 percent between 0.6 and 15 meters, and
+  the zoom eases instead of jumping. Fully zoomed in, the camera stays about 30
+  centimeters from the character's head and shoulders at every tilt.
 - Step 8: the camera moves in front of the hall at once and eases back out
   afterwards.
 - Step 9: clicks and scrolling on the panel neither move the player nor zoom

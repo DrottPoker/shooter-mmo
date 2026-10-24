@@ -257,8 +257,10 @@ Status: Local foundation implemented
 - The camera orbits the player from behind and above. Drag with the middle mouse
   button to turn and tilt it, or hold the arrow keys: left and right turn it,
   up and down tilt it.
-- The scroll wheel zooms between 3 and 30 meters. Each notch changes the
-  distance by 15 percent, and the zoom eases in.
+- The scroll wheel zooms between 0.6 and 15 meters from the pivot at neck
+  height. Fully zoomed in, the camera stays about 30 centimeters from the
+  character. Each notch changes the distance by 15 percent, and the zoom eases
+  in.
 - Tilt is limited to 10 through 80 degrees above the horizon. The camera starts
   12 meters away and 40 degrees above the horizon, behind the player.
 - The cursor always stays visible and free.

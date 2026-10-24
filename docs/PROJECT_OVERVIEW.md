@@ -177,8 +177,8 @@ The repository currently supports:
 - RuneScape-style click-to-move: the client plans a route around obstacles on
   a fine internal grid in the background, predicts it at once, and
   SimulationWorker follows the same waypoints with authoritative collision. An
-  orbit camera turns with the middle mouse button or arrow keys and zooms from 3
-  to 30 meters.
+  orbit camera turns with the middle mouse button or arrow keys and zooms from
+  0.6 to 15 meters.
 - A RuneScape-style world menu: a right click lists every option for every
   target under the cursor, such as Attack, Trade, Mine, Loot, Walk here, and
   Examine, and a left click runs the top option. NPC services and examine texts
