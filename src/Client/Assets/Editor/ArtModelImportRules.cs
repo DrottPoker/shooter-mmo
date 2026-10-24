@@ -29,13 +29,16 @@ namespace Mmorpg.Client.Editor
         public const string PaintTextureFolder = TextureFolder + "/Paint";
         public const string GarmentTextureFolder = TextureFolder + "/Garments";
         public const int MaximumTextureSize = 2048;
+        // A paint layer's image is cropped to its paint in a body's paint UVs, which are twice as
+        // wide as the skin texture for a mirrored body, so it keeps its size, up to that width.
+        public const int MaximumPaintTextureSize = 4096;
 
         // Blender writes every clip at this rate; the animation rules require it.
         public const float ClipFrameRate = 30f;
 
         public override uint GetVersion()
         {
-            return 9;
+            return 10;
         }
 
         public static bool AppliesTo(string assetPath)
@@ -239,7 +242,20 @@ namespace Mmorpg.Client.Editor
             return IsPaintTexture(assetPath) || IsGarmentTexture(assetPath);
         }
 
-        public static void ApplyTextureSettings(TextureImporter importer, bool alpha = false)
+        // The largest size a texture of the path keeps, and whether it keeps a size that is not a
+        // power of two: a paint layer's cropped image does, so it keeps its texels.
+        public static int MaximumTextureSizeOf(string assetPath)
+        {
+            return IsPaintTexture(assetPath) ? MaximumPaintTextureSize : MaximumTextureSize;
+        }
+
+        public static TextureImporterNPOTScale NonPowerOfTwoOf(string assetPath)
+        {
+            return IsPaintTexture(assetPath) ? TextureImporterNPOTScale.None : TextureImporterNPOTScale.ToNearest;
+        }
+
+        public static void ApplyTextureSettings(TextureImporter importer, bool alpha = false,
+            int maximumSize = MaximumTextureSize, TextureImporterNPOTScale nonPowerOfTwo = TextureImporterNPOTScale.ToNearest)
         {
             importer.textureType = TextureImporterType.Default;
             importer.textureShape = TextureImporterShape.Texture2D;
@@ -252,7 +268,8 @@ namespace Mmorpg.Client.Editor
             importer.isReadable = false;
             importer.wrapMode = TextureWrapMode.Clamp;
             importer.filterMode = FilterMode.Trilinear;
-            importer.maxTextureSize = MaximumTextureSize;
+            importer.maxTextureSize = maximumSize;
+            importer.npotScale = nonPowerOfTwo;
             importer.textureCompression = TextureImporterCompression.CompressedHQ;
             importer.crunchedCompression = false;
         }
@@ -329,7 +346,8 @@ namespace Mmorpg.Client.Editor
         {
             if (AppliesToTexture(assetPath))
             {
-                ApplyTextureSettings((TextureImporter)assetImporter, KeepsAlpha(assetPath));
+                ApplyTextureSettings((TextureImporter)assetImporter, KeepsAlpha(assetPath), MaximumTextureSizeOf(assetPath),
+                    NonPowerOfTwoOf(assetPath));
             }
         }
 

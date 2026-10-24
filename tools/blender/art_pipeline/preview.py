@@ -3,7 +3,8 @@ sides at the game camera pitch, plus a fifth view with a 1.8 m mannequin for sca
 the Export collection is rendered, on a dark green ground. The sheet of an animation library
 shows every clip on the bodies of its Reference collection instead: two rows of frames per clip,
 from the front right and from the back left. The sheet of a garment shows it on every body, at rest
-and in the test poses."""
+and in the test poses. The sheet of a paint layer shows it on every body as the game does, up close
+where it paints, and its canvas's image."""
 
 import math
 import os
@@ -15,8 +16,8 @@ import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.kdtree import KDTree
 
-from . import bodies, cage, cloth, coverage, garment, poses
-from .scene import descendants, export_objects, root_objects
+from . import bodies, cage, cloth, coverage, garment, paint, poses
+from .scene import ArtPipelineError, descendants, export_objects, root_objects
 
 YAWS = (35.0, 125.0, 215.0, 305.0)
 SCALE_VIEW_YAW = 20.0
@@ -200,28 +201,183 @@ def render_sheet(output: str, cell: int) -> str:
     return _save(sheet, output)
 
 
-def render_paint_sheet(output: str, cell: int) -> str:
-    """A paint layer on every body of its file: the bodies side by side from four sides, then each
-    body's torso from the front and from the back."""
+# The close-ups of a paint layer: its painted texels joined into the pieces of paint they make,
+# such as an armband or an emblem, by cubes of this size, a piece shown from up to this many
+# directions that see at least this share of it unhidden, the directions this far apart at least,
+# and a piece with fewer than this share of the painted texels left out.
+PAINT_PIECE_CUBE = 0.04
+PAINT_PIECE_VIEWS = 4
+PAINT_PIECE_SEEN = 0.25
+PAINT_PIECE_SPREAD = 60.0
+PAINT_PIECE_SHARE = 0.01
+PAINT_CLOSE_PITCH = 10.0
+# The canvas image is shown over this grey with the outlines of its faces in the paint UV map.
+CANVAS_GREY = 0.42
+CANVAS_LINE = (0.85, 0.85, 0.85)
+
+
+def _painted_points(body: bpy.types.Object, part: str, label: str, image: bpy.types.Image,
+                    limit: int = 40000) -> tuple[np.ndarray, np.ndarray]:
+    """World positions and face normals of the body's texels the image paints."""
+    rect, full = paint.place_crop(image)
+    texels = paint.Texels(body.data, paint._painted_index(body, part, label), tuple(full))
+    alpha = np.zeros((full[1], full[0]), np.float32)
+    alpha[rect[1]:rect[1] + rect[3], rect[0]:rect[0] + rect[2]] = paint._pixels(image)[..., 3]
+    chosen = np.nonzero(alpha.reshape(-1)[texels.places] > 0.3)[0]
+    if len(chosen) > limit:
+        chosen = chosen[np.linspace(0, len(chosen) - 1, limit).astype(np.int64)]
+    texels.places, texels.triangles, texels.weights = texels.places[chosen], texels.triangles[chosen], texels.weights[chosen]
+    local = texels.points(body.data)
+    normals = np.array([body.data.polygons[int(f)].normal[:] for f in texels.faces[texels.triangles]]).reshape(-1, 3)
+    m = np.array(body.matrix_world)
+    return local @ m[:3, :3].T + m[:3, 3], normals @ m[:3, :3].T
+
+
+def _pieces(points: np.ndarray) -> list[np.ndarray]:
+    """The indices of each piece of paint: the points in touching cubes of PAINT_PIECE_CUBE."""
+    cells = np.floor(points / PAINT_PIECE_CUBE).astype(np.int64)
+    keys = {tuple(c) for c in cells}
+    parent = {k: k for k in keys}
+
+    def root(k):
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    for k in keys:
+        for d in ((1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, -1, 0), (1, 0, 1), (1, 0, -1), (0, 1, 1), (0, 1, -1),
+                  (1, 1, 1), (1, 1, -1), (1, -1, 1), (1, -1, -1)):
+            n = (k[0] + d[0], k[1] + d[1], k[2] + d[2])
+            if n in parent:
+                a, b = root(k), root(n)
+                if a != b:
+                    parent[a] = b
+    groups: dict = {}
+    for i, c in enumerate(cells):
+        groups.setdefault(root(tuple(c)), []).append(i)
+    found = [np.array(g) for g in groups.values() if len(g) >= PAINT_PIECE_SHARE * len(points)]
+    return sorted(found, key=lambda g: -float(points[g, 2].mean()))
+
+
+def _piece_views(scene: bpy.types.Scene, camera: bpy.types.Object, points: np.ndarray,
+                 normals: np.ndarray) -> list[tuple[Vector, float, Vector]]:
+    """The views of a piece of paint, every 45 degrees around it, from which the camera sees at least
+    PAINT_PIECE_SEEN of it facing it and not hidden by the body, at least PAINT_PIECE_SPREAD apart, the
+    best first: per view the direction to the camera and the middle and size of the part it sees."""
+    sample = np.linspace(0, len(points) - 1, min(len(points), 400)).astype(np.int64)
+    low, high = points[sample].min(axis=0), points[sample].max(axis=0)
+    middle = Vector(((low + high) / 2.0).tolist())
+    size = max(float(np.linalg.norm(high - low)) / 2.0 * 1.2, 0.06)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    scored = []
+    for yaw in range(0, 360, 45):
+        pitch = math.radians(PAINT_CLOSE_PITCH)
+        direction = Vector((math.sin(math.radians(yaw)) * math.cos(pitch), -math.cos(math.radians(yaw)) * math.cos(pitch),
+                            math.sin(pitch)))
+        eye = middle + direction * (size / math.sin(camera.data.angle / 2.0) * 1.05)
+        seen = []
+        for i in sample:
+            point = Vector(points[i].tolist())
+            toward = eye - point
+            if Vector(normals[i].tolist()).dot(toward.normalized()) <= 0.2:
+                continue
+            hit, location, _normal, _index, _obj, _matrix = scene.ray_cast(depsgraph, eye, -toward.normalized(), distance=toward.length + 0.01)
+            if hit and (location - point).length < 0.004:
+                seen.append(i)
+        if len(seen) >= PAINT_PIECE_SEEN * len(sample):
+            part = points[seen]
+            part_low, part_high = part.min(axis=0), part.max(axis=0)
+            scored.append((len(seen), float(yaw), direction, Vector(((part_low + part_high) / 2.0).tolist()),
+                           max(float(np.linalg.norm(part_high - part_low)) / 2.0 * 1.25, 0.06)))
+    chosen = []
+    for _count, yaw, direction, centre, extent in sorted(scored, key=lambda s: -s[0]):
+        if all(min(abs(yaw - other), 360.0 - abs(yaw - other)) >= PAINT_PIECE_SPREAD for other, *_rest in chosen):
+            chosen.append((yaw, direction, centre, extent))
+        if len(chosen) == PAINT_PIECE_VIEWS:
+            break
+    return [(direction, extent, centre) for _yaw, direction, centre, extent in sorted(chosen, key=lambda c: c[0])]
+
+
+def _canvas_view(canvas: bpy.types.Object, part: str, image: bpy.types.Image, width: int, height: int) -> np.ndarray:
+    """The canvas image over grey, scaled to the size, with the outlines of its painted material's
+    faces in the paint UV map."""
+    rgba = paint._pixels(image)
+    source_h, source_w = rgba.shape[:2]
+    gx, gy = np.meshgrid((np.arange(width) + 0.5) / width, (np.arange(height) + 0.5) / height)
+    sampled = paint._sample(rgba, np.stack([gx.ravel(), gy.ravel()], axis=1)).reshape(height, width, 4)
+    view = np.empty((height, width, 4), np.float32)
+    view[..., :3] = CANVAS_GREY * (1.0 - sampled[..., 3:]) + sampled[..., :3] * sampled[..., 3:]
+    view[..., 3] = 1.0
+    index = paint._painted_index(canvas, part, canvas[paint.CANVAS_BODY])
+    uv = bodies._uvs(canvas.data, bodies.PAINT_UV) * (width, height)
+    line = np.array(CANVAS_LINE, np.float32)
+    for polygon in canvas.data.polygons:
+        if polygon.material_index != index:
+            continue
+        corners = uv[list(polygon.loop_indices)]
+        for a, b in zip(corners, np.roll(corners, -1, axis=0)):
+            steps = int(max(abs(b - a).max(), 1.0)) + 1
+            points = (a + (b - a) * np.linspace(0.0, 1.0, steps)[:, None]).astype(np.int64)
+            px, py = points[:, 0].clip(0, width - 1), points[:, 1].clip(0, height - 1)
+            view[py, px, :3] = view[py, px, :3] * 0.6 + line * 0.4
+    return view
+
+
+def render_paint_sheet(output: str, cell: int, name: str, part: str, labels: list[str], layer: int,
+                       others: list[tuple[str, str, int]]) -> str:
+    """A paint layer on every body of its file as the game shows it, over and under the other layers
+    the body always wears, such as its underwear, in the order of their layers: the bodies side by
+    side from four sides, then every piece of the paint up close on each body from the sides it is
+    seen from, then the canvas's image in its paint UV map."""
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
-    bodies = sorted((o for o in scene.objects if o.type == "MESH" and o.name.startswith("Paint_")), key=lambda o: o.location.x)
+    canvas = bpy.data.objects[paint.CANVAS]
+    canvas.hide_render = True
+    targets = [bpy.data.objects[f"Paint_{label}"] for label in labels]
+    for body, label in zip(targets, labels):
+        stack = [(layer, bpy.data.images[paint.image_name(name, label)])]
+        for path, other, other_layer in others:
+            wanted = paint.image_name(other, label)
+            with bpy.data.libraries.load(path, link=False) as (source, target):
+                target.images = [wanted] if wanted in source.images else []
+            for image in [i for i in target.images if i is not None]:
+                if image.get(paint.RECT) is None:
+                    raise ArtPipelineError(f"{path} keeps {wanted} without its crop; run tools/Sync-PaintAsset.ps1 for {other}.")
+                stack.append((other_layer, image))
+        index = paint._painted_index(body, part, label)
+        paint.preview_material(body, index, f"Preview_{part}_{label}", [image for _l, image in sorted(stack, key=lambda s: s[0])])
     camera, sun = _studio(scene, cell)
-    low, high = _bounds(bodies)
+    low, high = _bounds(targets)
     center = (low + high) / 2.0
     radius = max((high - low).length / 2.0, 0.1)
-    closeups = [(body, yaw) for body in bodies for yaw in (180.0, 0.0)]
-    columns = max(len(YAWS), len(closeups))
-    sheet = np.zeros((cell * 2, cell * columns, 4), dtype=np.float32)
+    columns = len(YAWS)
+    rows = []
     with tempfile.TemporaryDirectory() as scratch:
+        overview = []
         for column, yaw in enumerate(YAWS):
             _aim(camera, sun, center, radius, yaw)
-            sheet[cell:, column * cell:(column + 1) * cell] = _render(scene, os.path.join(scratch, f"a{column}.png"))
-        for column, (body, yaw) in enumerate(closeups):
-            torso = Vector((body.location.x, body.location.y, 1.2))
-            _aim(camera, sun, torso, 0.5, yaw)
-            sheet[:cell, column * cell:(column + 1) * cell] = _render(scene, os.path.join(scratch, f"b{column}.png"))
-    return _save(sheet, output)
+            overview.append(_render(scene, os.path.join(scratch, f"a{column}.png")))
+        rows.append(overview)
+        closeups = []
+        for body, label in zip(targets, labels):
+            points, normals = _painted_points(body, part, label, bpy.data.images[paint.image_name(name, label)])
+            if len(points) == 0:
+                continue
+            for piece in _pieces(points):
+                for direction, size, middle in _piece_views(scene, camera, points[piece], normals[piece]):
+                    _aim_from(camera, sun, middle, size, direction)
+                    closeups.append(_render(scene, os.path.join(scratch, f"c{len(closeups)}.png")))
+        for start in range(0, len(closeups), columns):
+            rows.append(closeups[start:start + columns])
+    empty = np.concatenate([np.full((cell, cell, 3), CANVAS_GREY, np.float32), np.ones((cell, cell, 1), np.float32)], axis=2)
+    sheet_rows = [np.concatenate(row + [empty] * (columns - len(row)), axis=1) for row in rows]
+    canvas_image = bpy.data.images[paint.image_name(name)]
+    width = cell * columns
+    height = int(round(width * canvas_image.size[1] / canvas_image.size[0]))
+    sheet_rows.append(_canvas_view(canvas, part, canvas_image, width, height))
+    # Rows run bottom up in the image, so the first row ends at the top.
+    return _save(np.concatenate(list(reversed(sheet_rows)), axis=0), output)
 
 
 # The test poses of a garment's rig review, seen from the front right; an asset faces +Y, so a

@@ -401,6 +401,26 @@ namespace Mmorpg.Client.Editor
         public string name = string.Empty;
         public string target = string.Empty;
         public string sha256 = string.Empty;
+        // A paint layer's image: the size of its body's full paint layout, width and height, and
+        // where the image lies in it, x, y, width, and height in texels, rows from the bottom.
+        public int[] layout = Array.Empty<int>();
+        public int[] rect = Array.Empty<int>();
+
+        // A paint image's place in its body's paint UVs: xy its corner and zw its size, or the
+        // whole layout for an image without a crop.
+        public Vector4 PaintRect
+        {
+            get
+            {
+                if (layout == null || rect == null || layout.Length != 2 || rect.Length != 4 || layout[0] <= 0 || layout[1] <= 0)
+                {
+                    return new Vector4(0f, 0f, 1f, 1f);
+                }
+
+                return new Vector4((float)rect[0] / layout[0], (float)rect[1] / layout[1],
+                    (float)rect[2] / layout[0], (float)rect[3] / layout[1]);
+            }
+        }
     }
 
     // A painted material M_<Part>_<Label> and the other images T_<Part>_<Label>_<Option> it may

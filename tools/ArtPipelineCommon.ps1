@@ -46,6 +46,9 @@ $script:ArtCageFigureRange = @(0.01, 0.2)
 
 # A paint layer exports only images, below this folder.
 $script:ArtPaintTextureFolder = "$script:ArtTextureFolder/Paint"
+# A paint image is cropped to start at whole blocks of this many texels, as
+# tools/blender/art_pipeline/paint.py does.
+$script:ArtPaintCropBlock = 4
 
 # A garment exports one model per body below this folder, and its images below the other.
 $script:ArtGarmentModelFolder = "$script:ArtModelFolder/Garments"
@@ -208,6 +211,44 @@ function ConvertTo-ArtTextureRecords($Records, [string]$Folder) {
         }
 
         $result.Add([ordered]@{ name = $name; target = [string]$record.target; sha256 = [string]$record.sha256 })
+    }
+
+    return , $result.ToArray()
+}
+
+function ConvertTo-ArtPaintTextureRecords($Records, [string]$Folder) {
+    # Returns the image records of a paint layer as one array, or $null when any entry is malformed
+    # or a duplicate. Each is a texture record with the image's full paint layout of its body, width
+    # and height, its crop, x, y, width, and height inside that layout, starting at whole blocks, how
+    # it was moved, through the shared "topology" or through the "cage", and the bodyPaintSha256 of
+    # the body's export it was moved to.
+    $plain = ConvertTo-ArtTextureRecords $Records $Folder
+    if ($null -eq $plain) {
+        return $null
+    }
+
+    $result = New-Object System.Collections.Generic.List[object]
+    $records = @($Records | Where-Object { $null -ne $_ })
+    for ($i = 0; $i -lt $records.Count; $i++) {
+        $record = $records[$i]
+        $layout = @($record.layout | ForEach-Object { $_ })
+        $rect = @($record.rect | ForEach-Object { $_ })
+        $whole = @(@($layout + $rect) | Where-Object { -not ($_ -is [int] -or $_ -is [long]) }).Count -eq 0
+        if (-not $whole -or $layout.Count -ne 2 -or $rect.Count -ne 4 -or $layout[0] -le 0 -or $layout[1] -le 0 -or
+            $rect[0] -lt 0 -or $rect[1] -lt 0 -or $rect[2] -le 0 -or $rect[3] -le 0 -or
+            $rect[0] + $rect[2] -gt $layout[0] -or $rect[1] + $rect[3] -gt $layout[1] -or
+            $rect[0] % $script:ArtPaintCropBlock -ne 0 -or $rect[1] % $script:ArtPaintCropBlock -ne 0 -or
+            @("topology", "cage") -cnotcontains [string]$record.move -or
+            [string]$record.bodyPaintSha256 -cnotmatch $script:ArtShaPattern) {
+            return $null
+        }
+
+        $entry = $plain[$i]
+        $entry.layout = [int[]]$layout
+        $entry.rect = [int[]]$rect
+        $entry.move = [string]$record.move
+        $entry.bodyPaintSha256 = [string]$record.bodyPaintSha256
+        $result.Add($entry)
     }
 
     return , $result.ToArray()
@@ -409,24 +450,37 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
     }
 
     $export = $null
+    $exportProblem = $null
     if ($null -ne $Json.export) {
-        $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtPaintTextureFolder
+        $textures = ConvertTo-ArtPaintTextureRecords $Json.export.textures $script:ArtPaintTextureFolder
+        # An export from before paint layers kept their place in the bodies' paint UVs has plain
+        # texture records; it is stale, and the next export replaces it.
+        if ($null -eq $textures -and @($Json.export.textures | Where-Object { $null -ne $_ -and @($_.rect | Where-Object { $null -ne $_ }).Count -eq 0 }).Count -gt 0) {
+            $textures = ConvertTo-ArtTextureRecords $Json.export.textures $script:ArtPaintTextureFolder
+            $exportProblem = "export.textures were written before paint layers were cropped in the bodies' paint UVs; export the asset again"
+        }
         $expected = (@($bodies | ForEach-Object { "T_Paint_${name}_$($_.Root)" }) | Sort-Object) -join ","
         $smoothness = $Json.export.smoothness
         $metallic = $Json.export.metallic
+        $cageSha = $Json.export.cageSourceSha256
+        $throughCage = @($textures | Where-Object { $_.move -ceq "cage" }).Count -gt 0
         if ([string]$Json.export.sourceSha256 -cnotmatch $script:ArtShaPattern) {
             $problems.Add("export needs a sourceSha256")
         }
         elseif ($null -eq $textures -or ((@($textures | ForEach-Object { $_.name }) | Sort-Object) -join ",") -cne $expected) {
-            $problems.Add("export.textures must list T_Paint_${name}_<Label> of every body once with its target ($script:ArtPaintTextureFolder/<name>.png) and sha256")
+            $problems.Add("export.textures must list T_Paint_${name}_<Label> of every body once with its target ($script:ArtPaintTextureFolder/<name>.png), sha256, layout, rect starting at whole blocks of $script:ArtPaintCropBlock texels, move (topology or cage), and bodyPaintSha256")
         }
         elseif (-not (Test-ArtNumber $smoothness) -or $smoothness -lt 0 -or $smoothness -gt 1 -or
             -not (Test-ArtNumber $metallic) -or $metallic -lt 0 -or $metallic -gt 1) {
             $problems.Add("export needs the smoothness and metallic of the paint, from 0 to 1")
         }
+        elseif (($throughCage -and [string]$cageSha -cnotmatch $script:ArtShaPattern) -or (-not $throughCage -and $null -ne $cageSha)) {
+            $problems.Add("export has the cageSourceSha256 of the cage file exactly when a body was moved through the cage")
+        }
         else {
             $export = [ordered]@{
                 sourceSha256 = [string]$Json.export.sourceSha256
+                cageSourceSha256 = if ($throughCage) { [string]$cageSha } else { $null }
                 textures = $textures
                 smoothness = [double]$smoothness
                 metallic = [double]$metallic
@@ -469,7 +523,7 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
         Bodies = $bodies
         Approvals = $approvals
         Export = $export
-        ExportProblem = $null
+        ExportProblem = $exportProblem
     }
 }
 
@@ -505,6 +559,24 @@ function Add-ArtTextureLines($Lines, $Textures, [string]$Comma) {
         $Lines.Add("                `"name`": `"$($texture.name)`",")
         $Lines.Add("                `"target`": `"$($texture.target)`",")
         $Lines.Add("                `"sha256`": `"$($texture.sha256)`"")
+        $Lines.Add("            }$separator")
+    }
+    $Lines.Add("        ]$Comma")
+}
+
+function Add-ArtPaintTextureLines($Lines, $Textures, [string]$Comma) {
+    $Lines.Add('        "textures": [')
+    for ($i = 0; $i -lt $Textures.Count; $i++) {
+        $texture = $Textures[$i]
+        $separator = if ($i -lt $Textures.Count - 1) { "," } else { "" }
+        $Lines.Add("            {")
+        $Lines.Add("                `"name`": `"$($texture.name)`",")
+        $Lines.Add("                `"target`": `"$($texture.target)`",")
+        $Lines.Add("                `"sha256`": `"$($texture.sha256)`",")
+        $Lines.Add("                `"layout`": [$(@($texture.layout) -join ', ')],")
+        $Lines.Add("                `"rect`": [$(@($texture.rect) -join ', ')],")
+        $Lines.Add("                `"move`": `"$($texture.move)`",")
+        $Lines.Add("                `"bodyPaintSha256`": `"$($texture.bodyPaintSha256)`"")
         $Lines.Add("            }$separator")
     }
     $Lines.Add("        ]$Comma")
@@ -568,7 +640,16 @@ function Write-ArtPaintManifest($Manifest) {
     else {
         $lines.Add('    "export": {')
         $lines.Add("        `"sourceSha256`": `"$($Manifest.Export.sourceSha256)`",")
-        Add-ArtTextureLines $lines @($Manifest.Export.textures) ","
+        if (-not [string]::IsNullOrEmpty($Manifest.Export.cageSourceSha256)) {
+            $lines.Add("        `"cageSourceSha256`": `"$($Manifest.Export.cageSourceSha256)`",")
+        }
+        # A stale export from before the crops keeps its plain records until the next export.
+        if (@($Manifest.Export.textures | Where-Object { -not $_.Contains("rect") }).Count -gt 0) {
+            Add-ArtTextureLines $lines @($Manifest.Export.textures) ","
+        }
+        else {
+            Add-ArtPaintTextureLines $lines @($Manifest.Export.textures) ","
+        }
         $lines.Add("        `"smoothness`": $(Format-ArtNumber $Manifest.Export.smoothness),")
         $lines.Add("        `"metallic`": $(Format-ArtNumber $Manifest.Export.metallic)")
         $lines.Add("    }")
@@ -622,6 +703,55 @@ function Get-ArtClipSourcesProblem($Manifest, [string]$Sync) {
     }
 
     return $null
+}
+
+function Get-ArtPaintDependencyProblems($Manifest) {
+    # The reasons the export of a paint layer no longer matches what it was moved to: the exports of
+    # its bodies, and the file of the cage when a body was moved through it. None when it matches.
+    $problems = New-Object System.Collections.Generic.List[string]
+    foreach ($body in @($Manifest.Bodies)) {
+        $texture = @($Manifest.Export.textures | Where-Object { $_.name -ceq "T_Paint_$($Manifest.Name)_$($body.Root)" }) | Select-Object -First 1
+        $bodyExport = $null
+        try {
+            $bodyExport = (Read-ArtAssetManifest (Join-Path $script:ArtRepositoryRoot $body.Asset)).Export
+        }
+        catch {
+            # The body's own problems are reported with the body.
+        }
+
+        if ($null -eq $texture -or $null -eq $bodyExport -or [string]::IsNullOrEmpty($bodyExport.paintSha256) -or
+            $bodyExport.paintSha256 -ne $texture.bodyPaintSha256) {
+            $problems.Add("was moved to another export of its body $($body.Asset); run tools/Sync-PaintAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1")
+        }
+    }
+
+    if (-not [string]::IsNullOrEmpty($Manifest.Export.cageSourceSha256)) {
+        $cage = @(Get-ArtPaintCage $Manifest) | Select-Object -First 1
+        if ($null -eq $cage -or (Get-ArtFileSha256 $cage.SourcePath) -ne $Manifest.Export.cageSourceSha256) {
+            $problems.Add("was moved through another file of the garment cage of its bodies; run tools/Sync-PaintAsset.ps1, review and approve it, then run tools/Export-ArtAsset.ps1")
+        }
+    }
+
+    return $problems.ToArray()
+}
+
+function Get-ArtPaintCage($Manifest) {
+    # The garment cages whose bodies hold every body of a paint layer.
+    $assets = @($Manifest.Bodies | ForEach-Object { $_.Asset })
+    foreach ($directory in @(Get-ArtAssetDirectories)) {
+        $json = Get-Content -Raw -LiteralPath (Join-Path $directory "asset.json") | ConvertFrom-Json
+        if ([string]$json.kind -ne "cage") {
+            continue
+        }
+
+        $bodies = @($json.bodies | ForEach-Object { [string]$_ })
+        if (@($assets | Where-Object { $bodies -cnotcontains $_ }).Count -eq 0) {
+            [pscustomobject]@{
+                RelativeDirectory = Get-ArtRelativePath $directory
+                SourcePath = Join-Path $directory "$(Split-Path -Leaf $directory).blend"
+            }
+        }
+    }
 }
 
 function Get-ArtGarmentDependencyProblems($Manifest) {
@@ -1844,6 +1974,10 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
             ($null -eq $json.export.dataSha256 -or [string]$json.export.fitSha256 -cnotmatch $script:ArtShaPattern)) {
             $problems.Add("only the export of a skinned asset with an editable body has a fitSha256, the fingerprint of its rig, surface, and weights")
         }
+        elseif ($null -ne $json.export.PSObject.Properties["paintSha256"] -and
+            ($null -eq $json.export.dataSha256 -or [string]$json.export.paintSha256 -cnotmatch $script:ArtShaPattern)) {
+            $problems.Add("only the export of a skinned asset with an editable body has a paintSha256, the fingerprint of what paint layers read from it")
+        }
         else {
             $export = [ordered]@{
                 sourceSha256 = [string]$json.export.sourceSha256
@@ -1852,6 +1986,8 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
                 # An export from before the fingerprint has none; the garment cage and garments then
                 # wait for the body's next export.
                 fitSha256 = if ($null -ne $json.export.fitSha256) { [string]$json.export.fitSha256 } else { $null }
+                # Likewise for paint layers, which wait for the body's next export.
+                paintSha256 = if ($null -ne $json.export.paintSha256) { [string]$json.export.paintSha256 } else { $null }
                 materials = $materials
                 textures = $textures
                 clips = $clipRecords
@@ -1997,6 +2133,9 @@ function Write-ArtAssetManifest($Manifest) {
         }
         if ($Manifest.Export.Contains("fitSha256") -and $null -ne $Manifest.Export.fitSha256) {
             $lines.Add("        `"fitSha256`": `"$($Manifest.Export.fitSha256)`",")
+        }
+        if ($Manifest.Export.Contains("paintSha256") -and $null -ne $Manifest.Export.paintSha256) {
+            $lines.Add("        `"paintSha256`": `"$($Manifest.Export.paintSha256)`",")
         }
         $textures = @($Manifest.Export.textures)
         $clipRecords = @($Manifest.Export.clips | Where-Object { $null -ne $_ })

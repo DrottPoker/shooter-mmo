@@ -153,10 +153,20 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(AssetDatabase.GetAssetPath(catalog), Is.EqualTo(ArtAppearanceCatalogs.PathFor(manifest)));
             Assert.That(catalog.Slots.Select(slot => slot.Name), Is.EquivalentTo(new[] { "Eye", "Face" }));
             Assert.That(catalog.SlotNamed("Face").Options.Select(option => option.Name), Is.EqualTo(new[] { "Stubble", "Clean" }));
-            // A scar under the tattoo, and the briefs over both; the man has no bra.
-            Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EqualTo(new[] { "Scar", "Tattoo", "Briefs" }));
+            // A scar under the tattoos, and the briefs over them; the man has no bra.
+            Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EqualTo(new[] { "Scar", "Tattoo", "ForearmRunes", "Briefs" }));
             Assert.That(catalog.Paints.Select(paint => paint.Category),
-                Is.EqualTo(new[] { AppearanceCategory.Scar, AppearanceCategory.Tattoo, AppearanceCategory.Underwear }));
+                Is.EqualTo(new[] { AppearanceCategory.Scar, AppearanceCategory.Tattoo, AppearanceCategory.Tattoo, AppearanceCategory.Underwear }));
+            // Every image lies at its crop of the paint UVs, and the runes on the left forearm only in
+            // the left half, which holds the body's left side.
+            foreach (var paint in catalog.Paints)
+            {
+                Assert.That(paint.Rect.x >= 0f && paint.Rect.y >= 0f && paint.Rect.z > 0f && paint.Rect.w > 0f
+                    && paint.Rect.x + paint.Rect.z <= 1f && paint.Rect.y + paint.Rect.w <= 1f, Is.True, paint.Name + " " + paint.Rect);
+            }
+
+            var runes = catalog.Paints.Single(paint => paint.Name == "ForearmRunes").Rect;
+            Assert.That(runes.x + runes.z, Is.LessThanOrEqualTo(0.5f));
             Assert.That(catalog.Paints.Single(paint => paint.Name == "Briefs").Slot, Is.EqualTo("legs"));
             Assert.That(catalog.Paints.Single(paint => paint.Name == "Scar").Material.name, Is.EqualTo("M_Face_Male"));
             // The garments from the lowest layer up, and by name within a layer.

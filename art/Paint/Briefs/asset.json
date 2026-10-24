@@ -8,22 +8,30 @@
     "layer": 900,
     "approvals": {
         "paint": {
-            "date": "2026-10-24",
-            "sourceSha256": "c06800de7e10fa37a0aa44a2d7f44e60b690206c83a95614db9c5438c0ced08c"
+            "date": "2026-10-25",
+            "sourceSha256": "750afd3638ce010602ee0dfff18c8b822d26a162e25f5c8970facb86efe89035"
         }
     },
     "export": {
-        "sourceSha256": "c06800de7e10fa37a0aa44a2d7f44e60b690206c83a95614db9c5438c0ced08c",
+        "sourceSha256": "750afd3638ce010602ee0dfff18c8b822d26a162e25f5c8970facb86efe89035",
         "textures": [
             {
                 "name": "T_Paint_Briefs_Male",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Briefs_Male.png",
-                "sha256": "edd21b50b406ddea623db5281c1405c6f40923e38806552171b5bd4219cec5bf"
+                "sha256": "5c83e4d32592bf97fba6ee6d32b52372a4e95aff505dee64e4edffb60874490e",
+                "layout": [4096, 2048],
+                "rect": [0, 0, 3808, 1760],
+                "move": "topology",
+                "bodyPaintSha256": "c7187d411e4ff35a787147f065a950ac107fb4207c88e33aaddc0ec36bce4d57"
             },
             {
                 "name": "T_Paint_Briefs_Female",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Briefs_Female.png",
-                "sha256": "767195e8882d022bfd235d0ca213b9ee64e185648c2ad57f7c5a6db38fd3776b"
+                "sha256": "94881361a16e5c6304f76c537711c0ed62e9f8527967c3c59bc3b5a136f06c32",
+                "layout": [4096, 2048],
+                "rect": [604, 0, 2912, 2048],
+                "move": "topology",
+                "bodyPaintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1"
             }
         ],
         "smoothness": 0.2,

@@ -396,7 +396,7 @@ switch ($Kind) {
         Write-Host "Make the clips on $($manifest.RootObjects[0]) and add their names to clips in asset.json, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Clip."
     }
     "paint" {
-        Write-Host "Paint T_Paint_${name}_$((Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Bodies[0])).RootObjects[0]) on the first body, run tools/Sync-PaintAsset.ps1 again, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Paint Layer."
+        Write-Host "Paint T_Paint_$name on Canvas, run tools/Sync-PaintAsset.ps1 again, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Paint Layer."
     }
     "garment" {
         Write-Host "Shape ${name}_$($manifest.RootObjects[0]) on the first body where it needs more than its recipe, run tools/Sync-GarmentAsset.ps1, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment."

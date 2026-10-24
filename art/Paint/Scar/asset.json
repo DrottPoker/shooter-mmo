@@ -7,22 +7,30 @@
     "layer": 100,
     "approvals": {
         "paint": {
-            "date": "2026-10-24",
-            "sourceSha256": "e73fde066b84934b61798529c0572aa1a48b940dff19a1c89fdb70e3f0d94d00"
+            "date": "2026-10-25",
+            "sourceSha256": "4f57281f5adeb73f8c8dc4f0ee205589b246c99040df61b48098f994a8cc46d7"
         }
     },
     "export": {
-        "sourceSha256": "e73fde066b84934b61798529c0572aa1a48b940dff19a1c89fdb70e3f0d94d00",
+        "sourceSha256": "4f57281f5adeb73f8c8dc4f0ee205589b246c99040df61b48098f994a8cc46d7",
         "textures": [
             {
                 "name": "T_Paint_Scar_Male",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Scar_Male.png",
-                "sha256": "e2c9aaf40235854121dabd9c544b3d656d04483b0206d74784e4028f8d39fdbf"
+                "sha256": "927f0fdbca92a16fa6c2210fcb36488bf618d3e338358048aad40646b3ea38ff",
+                "layout": [1024, 1024],
+                "rect": [284, 492, 84, 324],
+                "move": "topology",
+                "bodyPaintSha256": "c7187d411e4ff35a787147f065a950ac107fb4207c88e33aaddc0ec36bce4d57"
             },
             {
                 "name": "T_Paint_Scar_Female",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Scar_Female.png",
-                "sha256": "ac5c04173c657c97e87ae3723ba19065eb7300da54c77acabe0b4796a3e526d7"
+                "sha256": "8061d5f5e1c4dd9156ae88c0dd4aea2d5cb4c2b7b3268961b605aa59a82a9954",
+                "layout": [1024, 1024],
+                "rect": [284, 492, 84, 340],
+                "move": "topology",
+                "bodyPaintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1"
             }
         ],
         "smoothness": 0.5,

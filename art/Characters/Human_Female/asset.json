@@ -13,19 +13,20 @@
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-24",
-            "sourceSha256": "ef7c5583bb7d5ea32c42b9f5a714e26428c3ef49a24813b38241029fb3a77e84"
+            "date": "2026-10-25",
+            "sourceSha256": "6cb9e10f81e6f1e872c536ca92af6d93d5ccd0ee4e763defcaa669f42e1ae606"
         },
         "rig": {
-            "date": "2026-10-24",
-            "sourceSha256": "ef7c5583bb7d5ea32c42b9f5a714e26428c3ef49a24813b38241029fb3a77e84"
+            "date": "2026-10-25",
+            "sourceSha256": "6cb9e10f81e6f1e872c536ca92af6d93d5ccd0ee4e763defcaa669f42e1ae606"
         }
     },
     "export": {
-        "sourceSha256": "ef7c5583bb7d5ea32c42b9f5a714e26428c3ef49a24813b38241029fb3a77e84",
-        "targetSha256": "28dc0bb30d72594ad91facaf669c361061544dba90454dec613d4aaa42516dec",
+        "sourceSha256": "6cb9e10f81e6f1e872c536ca92af6d93d5ccd0ee4e763defcaa669f42e1ae606",
+        "targetSha256": "484e1d59bbe3743bc07d530ff1797ab6e3ede29b4e34ad2b28127ebf91a54c8f",
         "dataSha256": "266ff259c4e0a3127f7c6d3e563c3e73c3861ee140b6d8df3562967385f61ae8",
         "fitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
+        "paintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1",
         "materials": [
             {
                 "name": "M_Body_Female",

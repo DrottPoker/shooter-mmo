@@ -485,7 +485,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(importer.sRGBTexture, Is.True, path);
                 Assert.That(importer.mipmapEnabled, Is.True, path);
                 Assert.That(importer.isReadable, Is.False, path);
-                Assert.That(importer.maxTextureSize, Is.EqualTo(ArtModelImportRules.MaximumTextureSize), path);
+                Assert.That(importer.maxTextureSize, Is.EqualTo(ArtModelImportRules.MaximumTextureSizeOf(path)), path);
+                Assert.That(importer.npotScale, Is.EqualTo(ArtModelImportRules.NonPowerOfTwoOf(path)), path);
                 // Paint layers keep their alpha, where the paint covers the skin, and garments theirs,
                 // where they are cut.
                 var alpha = ArtModelImportRules.KeepsAlpha(path);
@@ -494,6 +495,24 @@ namespace Mmorpg.Client.Tests.EditMode
                     Is.EqualTo(alpha ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None),
                     path);
                 Assert.That(importer.alphaIsTransparency, Is.EqualTo(alpha), path);
+            }
+        }
+
+        [Test]
+        public void EveryPaintImageKeepsTheSizeOfItsCrop()
+        {
+            // The skin shader places a paint image at its crop of the body's paint UVs, so the
+            // import must neither scale it to a power of two nor shrink it.
+            foreach (var paint in ArtAssetManifests.PaintLayers())
+            {
+                foreach (var record in paint.export.textures)
+                {
+                    var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(ArtAssetManifests.ToUnityPath(record.target));
+                    Assert.That(texture, Is.Not.Null, record.target);
+                    Assert.That(record.rect.Length, Is.EqualTo(4), record.name);
+                    Assert.That(record.layout.Length, Is.EqualTo(2), record.name);
+                    Assert.That(new Vector2Int(texture.width, texture.height), Is.EqualTo(new Vector2Int(record.rect[2], record.rect[3])), record.name);
+                }
             }
         }
 

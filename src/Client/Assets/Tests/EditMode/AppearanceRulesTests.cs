@@ -90,7 +90,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private static BodyAppearanceCatalog.Paint Paint(string name, AppearanceCategory category, string slot, int layer)
         {
-            return new BodyAppearanceCatalog.Paint(name, category, slot, null, null, layer, 0.5f, 0f);
+            return new BodyAppearanceCatalog.Paint(name, category, slot, null, null, new Vector4(0f, 0f, 1f, 1f), layer, 0.5f, 0f);
         }
 
         private static BodyAppearanceCatalog.Paint Paint(BodyAppearanceCatalog catalog, string name)

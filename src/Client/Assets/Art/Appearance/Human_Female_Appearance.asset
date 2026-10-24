@@ -33,6 +33,7 @@ MonoBehaviour:
     slot: 
     material: {fileID: 2100000, guid: a1188cde8f5d62548a76853e1534b236, type: 2}
     texture: {fileID: 2800000, guid: e8906a79d1477674b95227390dabc883, type: 3}
+    rect: {x: 0.27734375, y: 0.48046875, z: 0.08203125, w: 0.33203125}
     layer: 100
     smoothness: 0.5
     metallic: 0
@@ -41,7 +42,17 @@ MonoBehaviour:
     slot: 
     material: {fileID: 2100000, guid: bccd1ba0242b7cf4fb22f8a2741c63f6, type: 2}
     texture: {fileID: 2800000, guid: dc222fcd076e09e47b319d4d0bc89c14, type: 3}
+    rect: {x: 0.36035156, y: 0, z: 0.6357422, w: 0.8515625}
     layer: 200
+    smoothness: 0.4
+    metallic: 0
+  - name: ForearmRunes
+    category: 4
+    slot: 
+    material: {fileID: 2100000, guid: bccd1ba0242b7cf4fb22f8a2741c63f6, type: 2}
+    texture: {fileID: 2800000, guid: 4d6575df82b88924481511efcaa56e71, type: 3}
+    rect: {x: 0.4296875, y: 0.56640625, z: 0.016601562, w: 0.109375}
+    layer: 210
     smoothness: 0.4
     metallic: 0
   - name: Briefs
@@ -49,6 +60,7 @@ MonoBehaviour:
     slot: legs
     material: {fileID: 2100000, guid: bccd1ba0242b7cf4fb22f8a2741c63f6, type: 2}
     texture: {fileID: 2800000, guid: 3a8643e1ce297be42b8e734845b629ed, type: 3}
+    rect: {x: 0.14746094, y: 0, z: 0.7109375, w: 1}
     layer: 900
     smoothness: 0.2
     metallic: 0
@@ -57,6 +69,7 @@ MonoBehaviour:
     slot: body
     material: {fileID: 2100000, guid: bccd1ba0242b7cf4fb22f8a2741c63f6, type: 2}
     texture: {fileID: 2800000, guid: 205034558244a10459876d1060679757, type: 3}
+    rect: {x: 0.2919922, y: 0, z: 0.62890625, w: 0.37109375}
     layer: 910
     smoothness: 0.2
     metallic: 0

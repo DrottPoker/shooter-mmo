@@ -52,6 +52,7 @@ between the export and the game.
 | Change a clip or add one | the library's `.blend` file, or `Sync-AnimationLibrary.ps1 -Generate` for a gait | [Make A Clip](LOCAL_DEVELOPMENT.md#make-a-clip) |
 | Start an animation library | `New-ArtAsset.ps1 -Kind animations` | [Make A Clip](LOCAL_DEVELOPMENT.md#make-a-clip) |
 | Paint onto the skin, such as a tattoo or scars | `New-ArtAsset.ps1 -Kind paint`, then `Sync-PaintAsset.ps1` | [Make A Paint Layer](LOCAL_DEVELOPMENT.md#make-a-paint-layer) |
+| Move a paint layer's canvas to another body, such as a new base model | `Sync-PaintAsset.ps1 -Canvas`, then `Test-PaintProjection.ps1` | [Make A Paint Layer](LOCAL_DEVELOPMENT.md#make-a-paint-layer) |
 | Fit the garment cage to the bodies, or move a standard line | `Sync-CageAsset.ps1` | [Fit The Garment Cage](LOCAL_DEVELOPMENT.md#fit-the-garment-cage) |
 | Make a garment template, the form of clothes or armor, from a recipe on the cage | `New-ArtAsset.ps1 -Kind garment`, then `Sync-GarmentAsset.ps1` | [Make A Garment](LOCAL_DEVELOPMENT.md#make-a-garment) |
 | Paint the look of a garment template, with holes where the skin shows | `New-ArtAsset.ps1 -Kind texture`, then `Sync-TextureAsset.ps1` | [Make A Garment Texture](LOCAL_DEVELOPMENT.md#make-a-garment-texture) |
@@ -66,14 +67,14 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `art/<Category>/<Name>/<Name>.blend` | Source of truth for one asset, stored in Git LFS. The folder name is the asset name. |
 | `art/<Category>/<Name>/asset.json` | Asset manifest: kind, export target, root objects, triangle budget, skeleton and clips of a skinned asset, approvals, and the export record. |
 | `art/Animations/<Name>/<Name>.blend` | An [animation library](#animation-libraries): handmade clips of one skeleton, keyed on the rig of one character, with the bodies that show them. |
-| `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the first body and moved to the others. |
+| `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the layer's own canvas, a copy of a body, and moved to every body by projection. |
 | `art/Garments/<Name>/<Name>.blend` | A [garment template](#garments): the form of clothes or armor, built from a recipe on the garment cage and fitted to every body of the cage, one version per body. |
 | `art/GarmentTextures/<Name>/<Name>.blend` | A [garment texture](#garment-textures): the look of one template, its image in the template's UVs. |
 | `art/Cages/<Skeleton>/<Skeleton>.blend` | The [garment cage](#garment-cage) of a skeleton: the net of fixed topology that garments are made on, fitted to every body of the skeleton, with its standard lines. |
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, a garment template one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it, and a garment texture with transparent parts its own data per body, `Models/Garments/<Name>_<Label>.json`. |
-| `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint` and garment textures to `Textures/Garments`. |
-| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces. |
+| `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint`, each image cropped to its paint, and garment textures to `Textures/Garments`. |
+| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces. |
 | `src/Client/Assets/Editor/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`: a body dressed in chosen garments, playing its clips on a moving ground with the cloth solver running. |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
@@ -83,7 +84,8 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `tools/Render-ArtPreview.ps1`, `tools/Approve-ArtAsset.ps1`, `tools/Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/ArtPipelineCommon.ps1`. |
 | `tools/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/Sync-AnimationLibrary.ps1`, `tools/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
-| `tools/Sync-PaintAsset.ps1`, `tools/blender/art_pipeline/paint.py` | Builds a paint layer file from its bodies, or updates it, and moves the paint of the first body to the others. |
+| `tools/Sync-PaintAsset.ps1`, `tools/blender/art_pipeline/paint.py` | Builds a paint layer file from its bodies, or updates it, keeps its canvas, and moves the canvas's paint to every body by projection; `-Canvas` moves the canvas to another body. |
+| `tools/Test-PaintProjection.ps1` | Checks the move that a body of another topology than a paint layer's canvas gets, through the garment cage, on subdivided copies of the bodies. |
 | `tools/Sync-CageAsset.ps1`, `tools/blender/art_pipeline/cage.py` | Fits the garment cage to every body from its reference, writes its review sheet, and checks it. |
 | `tools/blender/art_pipeline/body_files.py` | Appends the bodies a garment or the cage is fitted to from their own files, and appends them again when they change. |
 | `tools/Sync-GarmentAsset.ps1`, `tools/blender/art_pipeline/garment.py`, `coverage.py` | Builds a garment template from its recipe on the cage, fits it to every body through the cage, gives every version the weights of its body, computes what it covers on every body, writes its review sheet and review file, and checks it. |
@@ -114,7 +116,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `clips` | Animation libraries, and skinned assets with clips of their own: the names of the animation clips the asset exports, such as `["Death", "Idle", "Walk", "Jog"]`. Each is one Blender action. A skinned asset whose clips come from animation libraries, such as the human bodies, leaves `clips` out. |
 | `category` | Paint layers only: `underwear`, `scar`, or `tattoo`, the kind of look it is, which says how many a body shows, when a player chooses it, and the layers it is drawn at; see [The Look On The Skin](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-skin). |
 | `part` | Paint layers only: the part of the painted material `M_<Part>_<Label>`, such as `Body`. |
-| `bodies` | Paint layers: the skinned assets the paint fits, the body it is painted on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology; its garment templates fit them. |
+| `bodies` | Paint layers: the skinned assets the paint fits, the one a new layer's canvas is copied from first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They may have any topology; a body of another topology than the canvas gets the paint through the garment cage, whose bodies it must be among. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology; its garment templates fit them. |
 | `cage` | Garment templates only: the garment cage it is made on, such as `art/Cages/Humanoid`. |
 | `recipe` | Garment templates only: its `regions`, `cuts`, `over`, `hang`, `ease`, and `hem`, as [Garments](#garments) describes, or `"modeled"`. |
 | `garment` | Garment textures only: the template it is the look of, such as `art/Garments/Shirt`. |
@@ -132,7 +134,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `dyes` | Garments only: the number of dye channels. It is `0` until the garment shader brings dyes. |
 | `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Clean"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
 | `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. A garment texture's approval also records the `garmentSourceSha256` of its template's file, since it is reviewed on the template. |
-| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology and the `fitSha256`, the fingerprint of what the garment cage and the garments read from it, its rig, its surface with its faces and their body parts, and its weights, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment template records the `cageSourceSha256` of the approved cage file it was fitted to; its `models`, one per body of the cage in order with its `body` label, the `bodyFitSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips it was checked in; its `pairSources`, every template of another visual slot and a lower layer of its cage with the `sourceSha256` of the export it was checked over, when there are any; its one material `M_Garment_<Name>` without an image; and no `textures`. The export of a garment texture records the `garmentSourceSha256` of its template's export, its `masks` with their `body`, `data`, and `dataSha256` and their `clipSources` when it has transparent parts, its material `M_Garment_<Name>`, and its image `T_Garment_<Name>` below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
+| `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology, the `fitSha256`, the fingerprint of what the garment cage and the garments read from it, its rig, its surface with its faces and their body parts, and its weights, and the `paintSha256`, the fingerprint of what paint layers read from it, its meshes joined with their faces, materials, zones, digits, and paint UV map, and its rig's landmarks, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, each with its `layout`, the width and height of its body's full paint layout, its `rect`, where the image lies in that layout as x, y, width, and height in texels from the bottom left, x and y in whole blocks of 4 texels, its `move`, `topology` for the exact move through the shared topology or `cage` for the move through the garment cage, and the `bodyPaintSha256` of the body's export it was moved to; the `cageSourceSha256` of the cage file when a body was moved through the cage; and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment template records the `cageSourceSha256` of the approved cage file it was fitted to; its `models`, one per body of the cage in order with its `body` label, the `bodyFitSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips it was checked in; its `pairSources`, every template of another visual slot and a lower layer of its cage with the `sourceSha256` of the export it was checked over, when there are any; its one material `M_Garment_<Name>` without an image; and no `textures`. The export of a garment texture records the `garmentSourceSha256` of its template's export, its `masks` with their `body`, `data`, and `dataSha256` and their `clipSources` when it has transparent parts, its material `M_Garment_<Name>`, and its image `T_Garment_<Name>` below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
 
 ## Review Stages
 
@@ -251,12 +253,18 @@ An animation library has its own rules, from its only stage on:
 
 A paint layer has these rules:
 
-- The file holds the mesh `Paint_<Label>` and the image `T_Paint_<Name>_<Label>` of every
-  body. Every image is packed as a PNG with alpha, of the size of its body
-  texture, with the custom properties `roughness` and `metallic` from 0 to 1.
-- The paint of every body but the first is the move of the first body's paint
-  and has its roughness and metallic, so the file shows what the game will. A
-  file that a painter changed without the sync stops with `is not the move of`.
+- The file holds the canvas `Canvas` with the paint UV map `UVMap_Paint`, its
+  cage version `Canvas_Cage`, and the custom properties `canvas_body` and
+  `landmarks`, and the canvas image `T_Paint_<Name>`, packed as a PNG with alpha
+  of the paint size of its material: the size of its skin texture, twice as wide
+  when the body mirrors that texture. It has the custom properties `roughness`
+  and `metallic` from 0 to 1.
+- The file holds the mesh `Paint_<Label>` and the image `T_Paint_<Name>_<Label>`
+  of every body, and every body has `UVMap_Paint`. Every body's image is the move
+  of the canvas's paint to that body, cropped to its paint, with its place in the
+  custom properties `rect` and `layout` and the canvas's roughness and metallic,
+  so the file shows what the game will. A file that a painter changed without
+  the sync stops with `is not the move of`.
 
 Modeling conventions: one Blender unit is one meter, Z is up, and the ground is
 at Z = 0; rocks and similar props may sink a few centimeters into it. The front
@@ -390,7 +398,10 @@ visible body parts.
 Every PNG below `Assets/Art/Textures` imports as an sRGB texture with mipmaps,
 without alpha, not readable, clamped, trilinear, at most 2048 px, with high
 quality compression. The images of paint layers and garments, below
-`Textures/Paint` and `Textures/Garments`, keep their alpha.
+`Textures/Paint` and `Textures/Garments`, keep their alpha. A paint layer's image
+keeps its size, up to 4096 px and also when that is not a power of two, because
+it is cropped to its paint in a body's paint UV map, which is twice as wide as
+the skin texture of a mirrored body.
 
 `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs` writes the
 appearance catalog of every exported skinned model with `variants` or a paint
@@ -548,7 +559,7 @@ the others as they are.
 | Layer | Made as | In the game | Status |
 | --- | --- | --- | --- |
 | Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Clean` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
-| Paint layers | Transparent paint over the skin in the body texture's UV layout, of a category, `underwear`, `scar`, or `tattoo`, such as the briefs, a scar, or a tattoo, in a [paint layer](#paint-layers) asset of its own. Painted once on the first body and moved to every body of the same topology. | The skin shader lays it over the skin when the body is drawn, by the rules of its category. | Implemented. |
+| Paint layers | Transparent paint over the skin in the bodies' paint UV map, of a category, `underwear`, `scar`, or `tattoo`, such as the briefs, a scar, or a tattoo, in a [paint layer](#paint-layers) asset of its own. Painted once on the layer's canvas and moved to every body by projection, also to a body of another topology, and one-sided where it is painted so. | The skin shader lays it over the skin when the body is drawn, by the rules of its category. | Implemented. |
 | Garments | Meshes skinned to the shared skeleton, such as clothes, armor, and hair: [garment templates](#garments) built on the [garment cage](#garment-cage) and fitted to every body of it, each worn with a [garment texture](#garment-textures) of its own asset. | Combined with the visible body parts into the body's one mesh; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md). | Implemented, with the Wardrobe preview and trying garments on in F2. |
 
 The faces and eyes of the human base characters are variants: images packed into
@@ -563,43 +574,120 @@ material's own image first, and a look picks one option per slot; see
 ## Paint Layers
 
 A paint layer below `art/Paint` is paint over the skin of the bodies of a
-category, such as the tattoo `art/Paint/Tattoo`, the scar `art/Paint/Scar` on the
-faces, or the underwear `art/Paint/Bra` and `art/Paint/Briefs`. Its file holds, per body, the
-mesh `Paint_<Label>`, the body's parts joined in its rest pose, and the image
-`T_Paint_<Name>_<Label>` in the layout of the body texture `T_<Part>_<Label>`,
-transparent where the skin shows. A preview material lays the image over the
-skin by its alpha, with its roughness, so Blender's Material Preview shows the
-look. The paint is made on the first body, by hand in Texture Paint mode or by a
-script, and its image carries the custom properties `roughness` and `metallic`.
-The bodies' UVs are mirrored, so both sides of a body share their texels and
-paint on the skin is the same on both sides; the underwear is paint of its own,
-over the tattoo. A one-sided tattoo comes with paint
-layers that are independent of the bodies' topology, in delivery step 5d of
-[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#delivery-plan).
+category, such as the tattoos `art/Paint/Tattoo` and `art/Paint/ForearmRunes`, the
+scar `art/Paint/Scar` on the faces, or the underwear `art/Paint/Bra` and
+`art/Paint/Briefs`. The paint does not depend on the bodies' topology: it is kept
+on the layer's own canvas and moved to every body by projection, so a body of any
+topology, such as a race body or a new base model, gets it.
 
-Bodies of the same topology have the same faces in the same order, so
-`tools/Sync-PaintAsset.ps1` moves the paint from the first body to every other
-one: each other body gets the first body's UV map as `UVMap_Paint`, and Cycles
-bakes the first body's paint, read through that map, into the other body's own
-UV layout. A texel takes the paint at the same place of the same face, and the
-colors and the alpha bake separately. The approval and the export check that the
-moved paint is current, and the export writes every image as it is packed.
+### The Canvas
+
+The file's collection `Canvas` holds the canvas `Canvas`, a copy of the body the
+paint is painted on, its parts joined in its rest pose, with materials of its own,
+`Canvas_<Part>_<Label>`, that body's version of the garment cage, `Canvas_Cage`,
+and its rig's landmarks in the custom property `landmarks`, and the image
+`T_Paint_<Name>`, the paint. A person paints the image on the canvas, by hand in
+Texture Paint mode or by a script, and the image carries the custom properties
+`roughness` and `metallic`. The canvas is the layer's own: it never changes when
+the bodies change, and a new layer's canvas is a copy of its first body.
+
+The canvas is painted in its paint UV map, `UVMap_Paint`, which every body has
+next to the skin's `UVMap`: the skin's UVs, with every material whose faces share
+their texels with their mirror image laid out twice as wide, the left side in the
+left half and the right side in the right half. The human bodies' skin texture
+`T_Body_<Label>` is mirrored, so the paint of `M_Body` is twice as wide as the
+skin, 4096 by 2048 texels for both sides at the skin's own density, and paint on
+one side stays on that side, as the left forearm's runes of `ForearmRunes` do.
+The face texture `T_Face_<Label>` is not mirrored, so `M_Face`'s paint, such as
+the scar, keeps its UVs and its size. Texture Paint's X mirror paints both sides
+at once. `Sync-HumanBase.ps1` writes `UVMap_Paint` on every body part from the
+source body's `UVMap`; a body of another base model brings a map of its own
+without mirroring, so its `UVMap_Paint` is its `UVMap`.
+
+### Moving The Paint To The Bodies
+
+The file's collection `Reference` holds per body the mesh `Paint_<Label>`, the
+body's parts joined in its rest pose and drawn with the paint over its skin, and
+the image `T_Paint_<Name>_<Label>`, the canvas's paint in the body's own
+`UVMap_Paint`. `tools/Sync-PaintAsset.ps1` builds it: every texel of the body's
+painted material takes the paint at its point of the canvas, filtered between the
+canvas's texels with their colors weighted by their alpha, and the painted edges
+are extended over the empty texels around them, so filtering at a UV seam takes
+paint. The texel's point of the canvas is found in one of two ways:
+
+- A body with the canvas's topology, such as `Human_Female` for a canvas of
+  `Human_Male`, takes the point at the same place of the same face. This move is
+  exact.
+- A body of another topology takes it through the garment cage: every canvas
+  vertex is bound to the nearest face of `Canvas_Cage` on its own region, side,
+  and finger, placed at the same place and height over the body's cage version,
+  moved further by the difference between the rigs' landmarks, such as the eye
+  rims, the lips, the nose, the chin, the wrists, and the finger tips, and laid
+  onto the body's skin of the same region, side, and finger. Each of the body's
+  texels then takes the nearest point of the canvas so fitted. The file keeps the
+  body's cage version as `Cage_<Label>`, and the export records the cage's file.
+
+The cage keeps the paint's place along the bones: an armband that a woman gets
+from a man's canvas through the cage lies at 0.42 to 0.61 of the way from the
+shoulder to the elbow, as on the man, where the shared topology puts it at 0.47 to
+0.65. Where one body has a form the other lacks, the cage spans it and the paint
+stretches: the rune emblem on the man's upper breastbone comes out 94 mm wide on
+the woman instead of 72, since her cleavage has no counterpart on the man.
+`tools/Test-PaintProjection.ps1` checks this move on subdivided copies of the
+bodies, another topology of the same surfaces: the canvas's own body must take
+the paint within 0.5 mm (median) and 1 mm (95%) of its place, and for the other
+bodies the script reports how far the cage places the paint from where their
+shared topology does.
+
+`Sync-PaintAsset.ps1 -Canvas <body>` moves the canvas to another body of the
+layer, with the paint moved to it, so the paint is painted on that body from then
+on. When a new base model replaces the human bodies, each layer's canvas is moved
+to the new first body this way, its paint is checked and touched up there, and
+every body of the new model's topology then gets the exact move from it.
+
+Each body's image is cropped to its paint, to whole blocks of 4 texels with a
+block of empty texels around it, and keeps its place in the custom properties
+`rect`, x, y, width, and height in texels from the bottom left, and `layout`, the
+width and height of the body's full paint layout, so a small tattoo costs little
+memory. The approval and the export check that every body's image is the current
+move of the canvas, and the export writes every image as it is packed, with its
+crop and the fingerprint of its body's export, so CI rejects a layer whose body
+changed what the move reads from it.
+
+### In Unity
 
 In Unity, a paint image imports with its alpha, and its transparent texels take
 the color of their neighbors, so filtering at the edges never darkens the skin.
 The skin shader `Mmorpg/Character Skin` is URP Lit with up to four paint layers:
 only the include of `CharacterSkinInput.hlsl`, a copy of URP's `LitInput.hlsl`
-with the paint properties in the material constant buffer, and the paint
-properties differ from Lit. Each layer is a `_PaintMap<N>` with
-`_PaintSurface<N>` (smoothness, metallic) and lays its color, tinted like the
-base map, its smoothness, and its metallic over the surface by its alpha, in
-order; `_PaintCount` says how many layers are drawn. The body materials that a
-paint layer paints, such as `M_Body_Male`, draw with this shader, and without a
-layer they draw like Lit. `Create Missing Materials` creates them with it. When
-URP is upgraded, the shader is made again from the new `Lit.shader` and
-`LitInput.hlsl` with the same changes. The appearance catalog of every body lists
-the paint layers that fit it with their category and slot, in the order of their
-`layer`, and a body shows them by the rules of their categories.
+with the paint properties in the material constant buffer, the includes of
+`CharacterSkinForwardPass.hlsl` and `CharacterSkinGBufferPass.hlsl`, copies of
+URP's `LitForwardPass.hlsl` and `LitGBufferPass.hlsl` that take the mesh's second
+UV map, the paint UVs, where Lit takes the lightmap UVs, the lightmap keywords
+those passes leave out, since a skinned character is never lightmapped, and the
+paint properties differ from Lit. Each layer is a `_PaintMap<N>` with
+`_PaintSurface<N>` (smoothness, metallic) and `_PaintRect<N>`, where its image
+lies in the paint UVs, its corner in xy and its size in zw; it lays its color,
+tinted like the base map, its smoothness, and its metallic over the surface by
+its alpha inside its rect, in order; `_PaintCount` says how many layers are drawn.
+The body materials that a paint layer paints, such as `M_Body_Male`, draw with
+this shader, and without a layer they draw like Lit. `Create Missing Materials`
+creates them with it. When URP is upgraded, the shader is made again from the new
+`Lit.shader`, `LitInput.hlsl`, `LitForwardPass.hlsl`, and `LitGBufferPass.hlsl`
+with the same changes. The combined body mesh carries the parts' paint UVs, and
+garments and the eyes, which have none, take zero. The appearance catalog of
+every body lists the paint layers that fit it with their category, slot, image,
+and rect, in the order of their `layer`, and a body shows them by the rules of
+their categories.
+
+### Review
+
+The review sheet of a paint layer shows it on every body as the game does, over
+and under the underwear the body always wears, in the order of their layers: the
+bodies side by side from four sides, then every piece of the paint up close on
+each body, such as the emblem and each armband, from up to four sides it is seen
+from, framed on the part the camera sees, and then the canvas's image over grey
+with the outlines of its faces in `UVMap_Paint`.
 
 ## Garment Cage
 
@@ -1107,7 +1195,10 @@ Each file holds one character:
   `Neck`, `Torso`, `Pelvis`, `UpperArms`, `Forearms`, `Hands`, `Thighs`,
   `Shins`, and `Feet`, so equipment can hide whole parts. The sync writes them
   from the source body, with its corner normals as custom normals, so they meet
-  without visible seams, and with its weights. They are hidden in the viewport
+  without visible seams, with its weights, and with the paint UV map
+  `UVMap_Paint`, the source body's `UVMap` with the body texture's faces laid out
+  twice as wide, the left side in the left half and the right side in the right
+  half, so [paint layers](#paint-layers) can differ between the sides. They are hidden in the viewport
   and never edited by hand; the approval and the export refuse parts that differ
   from the source body.
 - Two eyeballs (`<Label>_Eye_L` and `_R`) for gaze animation, and upper and lower
@@ -1115,7 +1206,7 @@ Each file holds one character:
   they are.
 - 9,202 triangles: 8,692 for the body and 510 for the eyeballs, teeth, and
   tongue. Both bodies are exactly mirror symmetric and have identical topology,
-  so paint, armor, and clothes fitted to one body transfer to the other.
+  so paint moves from one body to the other exactly, face by face.
 - Smooth shading, with hard edges only on the ear rims, and the form painted into
   the textures: `M_Body_<Label>` uses the 2048 px body texture
   `T_Body_<Label>`, plain skin under the underwear, which is paint of its own,
@@ -1147,8 +1238,9 @@ Blender process per step:
 3. `check-mesh`, `check-seams`, and `check-parts`: no open or over-shared edges,
    tiny faces, slivers, or loose pieces on the source bodies, exact mirror
    symmetry, identical topology of both bodies and of every part, at most 10,000
-   triangles per character, matching cuts and normals between the parts, and a
-   report of the color difference across the UV seams.
+   triangles per character, matching cuts and normals between the parts, no texel
+   of `UVMap_Paint` that both sides of a body share, and a report of the color
+   difference across the UV seams.
 4. `compare`: the content of each updated character against the committed file
    (objects with their modifiers, constraints, and visibility, the evaluated
    meshes with UVs, normals, and edge flags, vertex weights, the armature with
@@ -1210,10 +1302,11 @@ weights.
 | `art/Garments/ShoulderHair` | `garment` | none | Shoulder-length hair, modeled, in the `hair` slot, layer 550, `hair` band, 2,298 triangles per body: straight, thick stylized locks that fall from the crown, a middle parting, a short blunt fringe, the ears covered, the ends where they land on the shoulders, and the shape key `UnderHeadwear`, the hair pressed flat under hoods and helmets with the fringe and the neck hair showing. Its weights are painted by hand. Approved 2026-10-24. |
 | `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,496 triangles per body, with seams along the inside of the legs. |
 | `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the thirteen standard lines of [Garment Cage](#garment-cage); its regions `hands` and `feet` were added on 2026-10-24, the line `CloakYoke` the same day, which moves none of its faces, and the region `head` after them, 3,424 faces in all. Approved 2026-10-24. |
-| `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910: the pale blue bra with its cups, band, and straps over the middle of the shoulders, lifted out of her body texture with its shaded edge. Roughness 0.8. |
-| `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900: pale blue briefs with a darker waistband, lifted out of the male body texture and moved to the female. Roughness 0.8. |
-| `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, lifted out of the former male face `Scarred` and moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
-| `art/Paint/Tattoo` | `paint` | none | A `tattoo` over `M_Body`, painted on the male and moved to the female, layer 200: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
+| `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910, on a canvas of the female: the pale blue bra with its cups, band, and straps over the middle of the shoulders, lifted out of her body texture with its shaded edge. Roughness 0.8. |
+| `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900, on a canvas of the male, moved to the female: pale blue briefs with a darker waistband, lifted out of the male body texture. Roughness 0.8. |
+| `art/Paint/ForearmRunes` | `paint` | none | A one-sided `tattoo` over `M_Body`, layer 210, painted by a script on a canvas of the male and moved to the female: the runes of the fuþark, f u þ a r k, in a column down the outside of the left forearm between two thin lines, 30 mm apart, in the ink of `Tattoo`. Roughness 0.6. |
+| `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, on a canvas of the male, moved to the female, lifted out of the former male face `Scarred`: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
+| `art/Paint/Tattoo` | `paint` | none | A `tattoo` over `M_Body`, layer 200, painted on a canvas of the male and moved to the female: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Blush` and `Freckles`. Model and rig approved 2026-10-24. The game shows it for the local player who chooses it in F2 and for about half of the development bots. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Stubble` and `Clean`. Model and rig approved 2026-10-24. The game shows it for every player until a body model is chosen, and for every corpse. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |

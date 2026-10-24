@@ -1,6 +1,7 @@
 // The input of the CharacterSkin shader: LitInput.hlsl of URP 17.5 with the paint layers in the
-// material constant buffer and laid over the albedo, smoothness, and metallic. It also defines
-// UNIVERSAL_LIT_INPUT_INCLUDED, so URP's own Lit input never joins it.
+// material constant buffer and laid over the albedo, smoothness, and metallic by
+// InitializeCharacterSkinSurfaceData, which the forward and GBuffer passes call with the paint
+// UVs. It also defines UNIVERSAL_LIT_INPUT_INCLUDED, so URP's own Lit input never joins it.
 #ifndef MMORPG_CHARACTER_SKIN_INPUT_INCLUDED
 #define MMORPG_CHARACTER_SKIN_INPUT_INCLUDED
 #define UNIVERSAL_LIT_INPUT_INCLUDED
@@ -40,6 +41,11 @@ half4 _PaintSurface1;
 half4 _PaintSurface2;
 half4 _PaintSurface3;
 half4 _PaintSurface4;
+// Paint layers: where each layer's image lies in the paint UVs, xy its corner and zw its size.
+float4 _PaintRect1;
+float4 _PaintRect2;
+float4 _PaintRect3;
+float4 _PaintRect4;
 half _PaintCount;
 UNITY_TEXTURE_STREAMING_DEBUG_VARS;
 CBUFFER_END
@@ -261,28 +267,32 @@ half3 ApplyDetailNormal(float2 detailUv, half3 normalTS, half detailMask)
 
 
 // One paint layer over the surface: its color, tinted like the base map, and its smoothness and
-// metallic, by its alpha. The paint maps share the base map's sampler.
-void ApplyPaintLayer(TEXTURE2D_PARAM(paintMap, paintSampler), float2 uv, half4 surface,
+// metallic, by its alpha, read at its crop of the paint UVs and transparent outside it. The paint
+// maps share the base map's sampler, which clamps.
+void ApplyPaintLayer(TEXTURE2D_PARAM(paintMap, paintSampler), float2 paintUV, float4 rect, half4 surface,
                      inout half3 albedo, inout half metallic, inout half smoothness)
 {
+    float2 uv = (paintUV - rect.xy) / rect.zw;
     half4 paint = SAMPLE_TEXTURE2D(paintMap, paintSampler, uv);
+    paint.a *= all(uv == saturate(uv)) ? half(1.0) : half(0.0);
     albedo = lerp(albedo, paint.rgb * _BaseColor.rgb, paint.a);
     metallic = lerp(metallic, surface.y, paint.a);
     smoothness = lerp(smoothness, surface.x, paint.a);
 }
 
-void ApplyPaintLayers(float2 uv, inout half3 albedo, inout half metallic, inout half smoothness)
+void ApplyPaintLayers(float2 paintUV, inout half3 albedo, inout half metallic, inout half smoothness)
 {
     UNITY_BRANCH if (_PaintCount > 0.5)
-        ApplyPaintLayer(TEXTURE2D_ARGS(_PaintMap1, sampler_BaseMap), uv, _PaintSurface1, albedo, metallic, smoothness);
+        ApplyPaintLayer(TEXTURE2D_ARGS(_PaintMap1, sampler_BaseMap), paintUV, _PaintRect1, _PaintSurface1, albedo, metallic, smoothness);
     UNITY_BRANCH if (_PaintCount > 1.5)
-        ApplyPaintLayer(TEXTURE2D_ARGS(_PaintMap2, sampler_BaseMap), uv, _PaintSurface2, albedo, metallic, smoothness);
+        ApplyPaintLayer(TEXTURE2D_ARGS(_PaintMap2, sampler_BaseMap), paintUV, _PaintRect2, _PaintSurface2, albedo, metallic, smoothness);
     UNITY_BRANCH if (_PaintCount > 2.5)
-        ApplyPaintLayer(TEXTURE2D_ARGS(_PaintMap3, sampler_BaseMap), uv, _PaintSurface3, albedo, metallic, smoothness);
+        ApplyPaintLayer(TEXTURE2D_ARGS(_PaintMap3, sampler_BaseMap), paintUV, _PaintRect3, _PaintSurface3, albedo, metallic, smoothness);
     UNITY_BRANCH if (_PaintCount > 3.5)
-        ApplyPaintLayer(TEXTURE2D_ARGS(_PaintMap4, sampler_BaseMap), uv, _PaintSurface4, albedo, metallic, smoothness);
+        ApplyPaintLayer(TEXTURE2D_ARGS(_PaintMap4, sampler_BaseMap), paintUV, _PaintRect4, _PaintSurface4, albedo, metallic, smoothness);
 }
 
+// Lit's surface without paint, for the passes that do not draw it, such as the meta pass.
 inline void InitializeStandardLitSurfaceData(float2 uv, out SurfaceData outSurfaceData)
 {
     half4 albedoAlpha = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap));
@@ -301,9 +311,6 @@ inline void InitializeStandardLitSurfaceData(float2 uv, out SurfaceData outSurfa
 #endif
 
     outSurfaceData.smoothness = specGloss.a;
-#if !_SPECULAR_SETUP
-    ApplyPaintLayers(uv, outSurfaceData.albedo, outSurfaceData.metallic, outSurfaceData.smoothness);
-#endif
     outSurfaceData.normalTS = SampleNormal(uv, TEXTURE2D_ARGS(_BumpMap, sampler_BumpMap), _BumpScale);
     outSurfaceData.occlusion = SampleOcclusion(uv);
     outSurfaceData.emission = SampleEmission(uv, _EmissionColor.rgb, TEXTURE2D_ARGS(_EmissionMap, sampler_EmissionMap));
@@ -322,6 +329,15 @@ inline void InitializeStandardLitSurfaceData(float2 uv, out SurfaceData outSurfa
     float2 detailUv = uv * _DetailAlbedoMap_ST.xy + _DetailAlbedoMap_ST.zw;
     outSurfaceData.albedo = ApplyDetailAlbedo(detailUv, outSurfaceData.albedo, detailMask);
     outSurfaceData.normalTS = ApplyDetailNormal(detailUv, outSurfaceData.normalTS, detailMask);
+#endif
+}
+
+// The surface with the paint layers laid over it, read through the paint UVs.
+inline void InitializeCharacterSkinSurfaceData(float2 uv, float2 paintUV, out SurfaceData outSurfaceData)
+{
+    InitializeStandardLitSurfaceData(uv, outSurfaceData);
+#if !_SPECULAR_SETUP
+    ApplyPaintLayers(paintUV, outSurfaceData.albedo, outSurfaceData.metallic, outSurfaceData.smoothness);
 #endif
 }
 

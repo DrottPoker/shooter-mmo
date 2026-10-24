@@ -91,6 +91,7 @@ namespace Mmorpg.Client.Editor
                     && actual.Slot == expected.Slot
                     && actual.Material == expected.Material
                     && actual.Texture == expected.Texture
+                    && actual.Rect == expected.Rect
                     && actual.Layer == expected.Layer
                     && actual.Smoothness.Equals(expected.Smoothness)
                     && actual.Metallic.Equals(expected.Metallic))
@@ -274,8 +275,9 @@ namespace Mmorpg.Client.Editor
         }
 
         // The paint layers that fit the body, drawn from the lowest layer up: the paint layer
-        // Tattoo over M_Body_Male is the image T_Paint_Tattoo_Male. Its category in asset.json,
-        // such as underwear, is the AppearanceCategory of the same name.
+        // Tattoo over M_Body_Male is the image T_Paint_Tattoo_Male, at its crop of the body's paint
+        // UVs. Its category in asset.json, such as underwear, is the AppearanceCategory of the same
+        // name.
         public static BodyAppearanceCatalog.Paint[] PaintsFor(ArtAssetManifest body)
         {
             var label = body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
@@ -293,6 +295,7 @@ namespace Mmorpg.Client.Editor
                         paint.slot,
                         ArtModelImportRules.FindProjectMaterial("M_" + paint.part + "_" + label),
                         AssetDatabase.LoadAssetAtPath<Texture2D>(ArtAssetManifests.ToUnityPath(texture.target)),
+                        texture.PaintRect,
                         paint.layer,
                         paint.export.smoothness,
                         paint.export.metallic);

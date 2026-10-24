@@ -1,8 +1,11 @@
 // The skin of the player bodies: Universal Render Pipeline/Lit of URP 17.5 with up to four paint
-// layers over the base map, such as the paint of a leather jerkin. Each layer is a transparent
-// image in the base map's UV layout, drawn in order, with its own smoothness and metallic. With no
-// layer it draws like Lit. Only the include of CharacterSkinInput.hlsl and the paint properties
-// differ from Lit; see docs/ART_PIPELINE.md, Appearance Layers.
+// layers over the base map, such as a tattoo or underwear. Each layer is a transparent image in the
+// mesh's paint UV map, its second UV map, which lays both sides of a mirrored body apart, drawn in
+// order at its crop of that map, with its own smoothness and metallic. With no layer it draws like
+// Lit. Only the includes of CharacterSkinInput.hlsl and of the forward and GBuffer passes, which
+// take the paint UVs where Lit takes the lightmap UVs, the lightmap keywords those passes leave
+// out, since a skinned character is never lightmapped, and the paint properties differ from Lit;
+// see docs/ART_PIPELINE.md, Paint Layers.
 Shader "Mmorpg/Character Skin"
 {
     Properties
@@ -22,6 +25,10 @@ Shader "Mmorpg/Character Skin"
         _PaintSurface2("Paint 2 smoothness and metallic", Vector) = (0.5, 0, 0, 0)
         _PaintSurface3("Paint 3 smoothness and metallic", Vector) = (0.5, 0, 0, 0)
         _PaintSurface4("Paint 4 smoothness and metallic", Vector) = (0.5, 0, 0, 0)
+        _PaintRect1("Paint 1 crop in the paint UVs", Vector) = (0, 0, 1, 1)
+        _PaintRect2("Paint 2 crop in the paint UVs", Vector) = (0, 0, 1, 1)
+        _PaintRect3("Paint 3 crop in the paint UVs", Vector) = (0, 0, 1, 1)
+        _PaintRect4("Paint 4 crop in the paint UVs", Vector) = (0, 0, 1, 1)
         _PaintCount("Paint layers", Range(0, 4)) = 0
 
         _Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
@@ -129,8 +136,8 @@ Shader "Mmorpg/Character Skin"
 
             // -------------------------------------
             // Shader Stages
-            #pragma vertex LitPassVertex
-            #pragma fragment LitPassFragment
+            #pragma vertex CharacterSkinPassVertex
+            #pragma fragment CharacterSkinPassFragment
 
             // -------------------------------------
             // Material Keywords
@@ -178,14 +185,10 @@ Shader "Mmorpg/Character Skin"
 
             // -------------------------------------
             // Unity defined keywords
+            // A skinned character is never lightmapped; the paint UVs take the lightmap UVs' place.
             #pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
             #pragma multi_compile _ SHADOWS_SHADOWMASK
-            #pragma multi_compile _ DIRLIGHTMAP_COMBINED
-            #pragma multi_compile _ LIGHTMAP_ON
-            #pragma multi_compile_fragment _ LIGHTMAP_BICUBIC_SAMPLING
             #pragma multi_compile_fragment _ REFLECTION_PROBE_ROTATION
-            #pragma multi_compile _ DYNAMICLIGHTMAP_ON
-            #pragma multi_compile _ USE_LEGACY_LIGHTMAPS
             #pragma multi_compile _ LOD_FADE_CROSSFADE
             #pragma multi_compile_fragment _ DEBUG_DISPLAY
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Fog.hlsl"
@@ -198,7 +201,7 @@ Shader "Mmorpg/Character Skin"
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
 
             #include "CharacterSkinInput.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitForwardPass.hlsl"
+            #include "CharacterSkinForwardPass.hlsl"
             ENDHLSL
         }
 
@@ -277,8 +280,8 @@ Shader "Mmorpg/Character Skin"
 
             // -------------------------------------
             // Shader Stages
-            #pragma vertex LitGBufferPassVertex
-            #pragma fragment LitGBufferPassFragment
+            #pragma vertex CharacterSkinGBufferPassVertex
+            #pragma fragment CharacterSkinGBufferPassFragment
 
             // -------------------------------------
             // Material Keywords
@@ -314,14 +317,10 @@ Shader "Mmorpg/Character Skin"
 
             // -------------------------------------
             // Unity defined keywords
+            // A skinned character is never lightmapped; the paint UVs take the lightmap UVs' place.
             #pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
             #pragma multi_compile _ SHADOWS_SHADOWMASK
-            #pragma multi_compile _ DIRLIGHTMAP_COMBINED
-            #pragma multi_compile _ LIGHTMAP_ON
-            #pragma multi_compile_fragment _ LIGHTMAP_BICUBIC_SAMPLING
             #pragma multi_compile_fragment _ REFLECTION_PROBE_ROTATION
-            #pragma multi_compile _ DYNAMICLIGHTMAP_ON
-            #pragma multi_compile _ USE_LEGACY_LIGHTMAPS
             #pragma multi_compile _ LOD_FADE_CROSSFADE
             #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
             #pragma multi_compile_fragment _ _SCREEN_SPACE_IRRADIANCE
@@ -336,7 +335,7 @@ Shader "Mmorpg/Character Skin"
             // -------------------------------------
             // Includes
             #include "CharacterSkinInput.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitGBufferPass.hlsl"
+            #include "CharacterSkinGBufferPass.hlsl"
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferOutputFormat.hlsl"
             ENDHLSL
         }
