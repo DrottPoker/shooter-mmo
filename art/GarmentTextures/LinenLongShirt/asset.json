@@ -4,14 +4,14 @@
     "garment": "art/Garments/LongShirt",
     "approvals": {
         "texture": {
-            "date": "2026-10-23",
+            "date": "2026-10-24",
             "sourceSha256": "04b66846dd07358d2e06b370a711d0f4339597f26a8e469b884f7fc17e8c8104",
-            "garmentSourceSha256": "2dd8dd57dadb8c44abfb4c0fc107585f67dd8bbebbcfebbe2b301345fa68b454"
+            "garmentSourceSha256": "33e5a71db10fb6eb288e372a915900e410af95c2699272c99e0b29fee68d6977"
         }
     },
     "export": {
         "sourceSha256": "04b66846dd07358d2e06b370a711d0f4339597f26a8e469b884f7fc17e8c8104",
-        "garmentSourceSha256": "2dd8dd57dadb8c44abfb4c0fc107585f67dd8bbebbcfebbe2b301345fa68b454",
+        "garmentSourceSha256": "33e5a71db10fb6eb288e372a915900e410af95c2699272c99e0b29fee68d6977",
         "materials": [
             {
                 "name": "M_Garment_LinenLongShirt",

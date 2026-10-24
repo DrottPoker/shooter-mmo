@@ -302,7 +302,8 @@ def main() -> int:
             labels = args.roots.split(",")
             holes = texture.dress(args.garment, os.path.abspath(args.texture_file), args.texture, labels)
             path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size,
-                                                args.garment if holes else None, args.band, _clip_libraries(args))
+                                                args.garment if holes else None, args.band, _clip_libraries(args),
+                                                args.garment)
             print(f"ART_PREVIEW {path}")
             return 0
         if args.kind == "cage":
@@ -348,7 +349,7 @@ def main() -> int:
                 print(f"ART_REPORT {note}")
             if hand:
                 print(f"ART_REPORT {hand} vertices keep the weights painted on them by hand.")
-        for line in garment.report(args.garment, [r for _p, r in body_list]):
+        for line in garment.report(args.garment, [r for _p, r in body_list], recipe):
             print(f"ART_REPORT {line}")
         print(f"ART_GARMENT {state} {args.file}")
         return 0
@@ -359,7 +360,10 @@ def main() -> int:
         if args.command == "cage-create":
             cage.create(os.path.abspath(args.file), body_list, figure, lines)
         else:
-            state = "synced" if cage.sync(os.path.abspath(args.file), body_list, figure, lines) else "up-to-date"
+            changed, added = cage.sync(os.path.abspath(args.file), body_list, figure, lines)
+            state = "synced" if changed else "up-to-date"
+            if added:
+                print(f"ART_REPORT Added the regions {', '.join(added)} to the cage, built on {body_list[0][1]}.")
         for line in cage.report([r for _p, r in body_list]):
             print(f"ART_REPORT {line}")
         print(f"ART_CAGE {state} {args.file}")

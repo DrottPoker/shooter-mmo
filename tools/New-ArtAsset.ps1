@@ -172,7 +172,7 @@ switch ($Kind) {
 
         # The typical layers and triangle budgets of docs/EQUIPMENT_VISUALS_DESIGN.md.
         $layers = @{ head = 400; body = 200; legs = 100; hands = 350; feet = 120; back = 500 }
-        $budgets = @{ head = 1500; body = 3000; legs = 2000; hands = 800; feet = 1000; back = 1500; hair = 2500 }
+        $budgets = @{ head = 1500; body = 3000; legs = 2000; hands = 2000; feet = 1500; back = 1500; hair = 2500 }
         if (-not $PSBoundParameters.ContainsKey("Layer")) {
             if (-not $layers.ContainsKey($Slot)) {
                 throw "Pass -Layer for a $Slot garment."

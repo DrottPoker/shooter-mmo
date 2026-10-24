@@ -22,17 +22,17 @@
     "triangleBudget": 2000,
     "approvals": {
         "model": {
-            "date": "2026-10-23",
-            "sourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca"
+            "date": "2026-10-24",
+            "sourceSha256": "06f3f5c8225ebef8a6d14f51eeb26723268d38c2b8bf6c934fd72d19135e4225"
         },
         "rig": {
-            "date": "2026-10-23",
-            "sourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca"
+            "date": "2026-10-24",
+            "sourceSha256": "06f3f5c8225ebef8a6d14f51eeb26723268d38c2b8bf6c934fd72d19135e4225"
         }
     },
     "export": {
-        "sourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca",
-        "cageSourceSha256": "56c444388010fa9205ba1c82c7cec32921153c2baa29adbfdebb9e6d60a93adb",
+        "sourceSha256": "06f3f5c8225ebef8a6d14f51eeb26723268d38c2b8bf6c934fd72d19135e4225",
+        "cageSourceSha256": "1821846b4a5f9832b1e459d6be5525e8b216ab43548ffa419ca7b0ce25478e34",
         "models": [
             {
                 "body": "Male",
