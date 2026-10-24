@@ -1,0 +1,39 @@
+{
+    "schemaVersion": 1,
+    "kind": "texture",
+    "garment": "art/Garments/Cloak",
+    "approvals": {
+        "texture": {
+            "date": "2026-10-24",
+            "sourceSha256": "aafd39458fe839f187f2a75ce42415f1bd8e9b55c33c19cd997173023bcb74f1",
+            "garmentSourceSha256": "a456e809c479111923176d45b8cc77613c027706f4727875f1fb0f34e8430292"
+        }
+    },
+    "export": {
+        "sourceSha256": "aafd39458fe839f187f2a75ce42415f1bd8e9b55c33c19cd997173023bcb74f1",
+        "garmentSourceSha256": "a456e809c479111923176d45b8cc77613c027706f4727875f1fb0f34e8430292",
+        "masks": [
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Male.json", "dataSha256": "725a11869ebbe89c0cce16fbee30dd56a71cdd980d490c03e5fc594e69e99e57" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Female.json", "dataSha256": "381e5936a559ff298b69a634f72d5d41ea095ed6b55a58ab8ed60ab393f7f32f" }
+        ],
+        "clipSources": [
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "75bcdc80b9c74a80d94341ac59ee13a44d6c86690fe9fb7d2053f0515f17a987" }
+        ],
+        "materials": [
+            {
+                "name": "M_Garment_WoolCloak",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Garment_WoolCloak",
+                "metallic": 0.0,
+                "smoothness": 0.18
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Garment_WoolCloak",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolCloak.png",
+                "sha256": "eaa48c7e00d12c8ee622458fe00626742e0a16ed42fec08bbb15504e0b78144e"
+            }
+        ]
+    }
+}

@@ -160,7 +160,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.Garments.Select(garment => garment.Name),
                 Is.EqualTo(new[]
                 {
-                    "WoolTrousers", "LeatherBoots", "LeatherJerkin", "LinenLongShirt", "LinenShirt", "NetShirt", "LeatherGloves",
+                    "WoolTrousers", "LeatherBoots", "LeatherJerkin", "LinenLongShirt", "LinenShirt", "NetShirt", "WoolRobe",
+                    "LeatherGloves", "WoolCloak",
                 }));
             Assert.That(catalog.GarmentNamed("WoolTrousers").Template, Is.EqualTo("Trousers"));
             Assert.That(catalog.GarmentNamed("LeatherJerkin").Template, Is.EqualTo("Shirt"));
@@ -170,6 +171,15 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.GarmentNamed("LeatherBoots").Slot, Is.EqualTo("feet"));
             Assert.That(catalog.GarmentNamed("LeatherGloves").Template, Is.EqualTo("Gloves"));
             Assert.That(catalog.GarmentNamed("LeatherGloves").Slot, Is.EqualTo("hands"));
+            // A robe whose skirt hides the trousers, and a cloak on the back that lies on top and
+            // hides nothing, both on cloth chains.
+            Assert.That(catalog.GarmentNamed("WoolRobe").Template, Is.EqualTo("Robe"));
+            Assert.That(catalog.GarmentNamed("WoolRobe").Hides, Is.EqualTo(new[] { "legs" }));
+            Assert.That(catalog.GarmentNamed("WoolRobe").Cloth, Is.EqualTo("robe"));
+            Assert.That(catalog.GarmentNamed("WoolCloak").Template, Is.EqualTo("Cloak"));
+            Assert.That(catalog.GarmentNamed("WoolCloak").Slot, Is.EqualTo("back"));
+            Assert.That(catalog.GarmentNamed("WoolCloak").Cloth, Is.EqualTo("cloak"));
+            Assert.That(catalog.GarmentNamed("WoolCloak").Covered, Is.Empty);
         }
     }
 }

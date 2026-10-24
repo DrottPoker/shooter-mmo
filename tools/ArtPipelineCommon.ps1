@@ -60,6 +60,12 @@ $script:ArtUnderwearSlots = @("body", "legs")
 $script:ArtGarmentBands = @("tight", "mid", "outer", "loose")
 $script:ArtGarmentHairForms = @("hide", "compress", "show")
 $script:ArtGarmentCloth = @("robe", "cloak", "hood")
+# A loose part's side of the edge it hangs from, the chains it hangs on with the cloth profile they
+# take, and its most flare in meters.
+$script:ArtGarmentHangSides = @("all", "back")
+$script:ArtGarmentHangChains = @("skirt", "cloak")
+$script:ArtGarmentHangCloth = @{ skirt = "robe"; cloak = "cloak" }
+$script:ArtGarmentFlareLimit = 0.1
 # A template's recipe: the side of a line it keeps, and the most ease and edge depth in meters.
 $script:ArtGarmentKeeps = @("head", "tail")
 $script:ArtGarmentEaseLimit = 0.03
@@ -669,7 +675,8 @@ function Get-ArtGarmentDependencyProblems($Manifest) {
 function Get-ArtGarmentPairs($Manifest) {
     # The exported templates of the same cage, another visual slot, and a lower layer, which a
     # template is checked over: worn under it, they must not come through it at its openings. A
-    # body wears one garment per visual slot, so templates of the same slot are never worn together.
+    # body wears one garment per visual slot, so templates of the same slot are never worn together,
+    # and a template that hides a slot, such as a robe the legs, is worn over none of that slot.
     return @(Get-ArtAssetDirectories | Where-Object { (Split-Path -Leaf (Split-Path -Parent $_)) -ceq "Garments" } | ForEach-Object {
             $other = $null
             try {
@@ -681,7 +688,7 @@ function Get-ArtGarmentPairs($Manifest) {
 
             if ($null -ne $other -and $other.Kind -eq "garment" -and $other.Name -cne $Manifest.Name -and $null -ne $other.Export -and
                 $null -ne $other.Cage -and $other.Cage.RelativeDirectory -ceq $Manifest.Cage.RelativeDirectory -and
-                $other.Slot -cne $Manifest.Slot -and $other.Layer -lt $Manifest.Layer) {
+                $other.Slot -cne $Manifest.Slot -and $other.Layer -lt $Manifest.Layer -and @($Manifest.Hides) -cnotcontains $other.Slot) {
                 $other
             }
         } | Sort-Object Name)
@@ -709,6 +716,16 @@ function Get-ArtGarmentClipArguments($Manifest) {
         if ($library.Clips.Count -gt 0) {
             $arguments += @("--clip-library", "$($library.SourcePath)=$($library.Clips -join '+')")
         }
+    }
+
+    return $arguments
+}
+
+function Get-ArtGarmentCoverArguments($Garment) {
+    # A template's band, which its masks are computed in, and whether it covers nothing at all.
+    $arguments = @("--band", $Garment.Band)
+    if (-not $Garment.Covers) {
+        $arguments += "--covers-nothing"
     }
 
     return $arguments
@@ -762,6 +779,23 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
         $over.Add([ordered]@{ line = [string]$entry.line; keep = [string]$entry.keep; band = [string]$entry.band })
     }
 
+    # Loose parts that hang on the cloth chains from the template's open edge at a line of the trunk,
+    # all around for a skirt or across the back for a cloak, widening by their flare toward the hem.
+    $hang = New-Object System.Collections.Generic.List[object]
+    $hangLines = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($entry in @($Recipe.hang | Where-Object { $null -ne $_ })) {
+        $line = @($Cage.Lines | Where-Object { $_.name -ceq [string]$entry.line }) | Select-Object -First 1
+        $flare = $entry.flare
+        if ($null -eq $line -or $line.region -cne "trunk" -or $regions -cnotcontains "trunk" -or
+            $script:ArtGarmentHangSides -cnotcontains [string]$entry.side -or
+            $script:ArtGarmentHangChains -cnotcontains [string]$entry.chains -or -not (Test-ArtNumber $flare) -or
+            $flare -lt 0 -or $flare -gt $script:ArtGarmentFlareLimit -or -not $hangLines.Add([string]$entry.line)) {
+            return $null
+        }
+
+        $hang.Add([ordered]@{ line = [string]$entry.line; side = [string]$entry.side; chains = [string]$entry.chains; flare = [double]$flare })
+    }
+
     $ease = $Recipe.ease
     $hem = $Recipe.hem
     if (-not (Test-ArtNumber $ease) -or $ease -lt 0 -or $ease -gt $script:ArtGarmentEaseLimit -or
@@ -772,6 +806,10 @@ function ConvertTo-ArtGarmentRecipe($Recipe, $Cage) {
     $result = [ordered]@{ regions = [string[]]$regions; cuts = $cuts.ToArray() }
     if ($over.Count -gt 0) {
         $result.over = $over.ToArray()
+    }
+
+    if ($hang.Count -gt 0) {
+        $result.hang = $hang.ToArray()
     }
 
     $result.ease = [double]$ease
@@ -824,6 +862,12 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
     $hidesUnderwear = $Json.hidesUnderwear
     if ($null -ne $Json.PSObject.Properties["hidesUnderwear"] -and $hidesUnderwear -isnot [bool]) {
         $problems.Add("hidesUnderwear must be true or false")
+    }
+
+    # A garment that lies on top and may swing open, such as a cloak, covers nothing under it.
+    $covers = $Json.covers
+    if ($null -ne $Json.PSObject.Properties["covers"] -and $covers -isnot [bool]) {
+        $problems.Add("covers must be true or false")
     }
 
     # Only headwear says what happens to the hair under it.
@@ -881,7 +925,15 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
 
     $recipe = ConvertTo-ArtGarmentRecipe $Json.recipe $cage
     if ($null -ne $cage -and $null -eq $recipe) {
-        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), optionally what it lies over, each a line of those regions with the side the inner garment keeps and the inner garment's band, its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
+        $problems.Add("recipe must be ""modeled"" or name the regions of the cage the template covers ($($script:ArtCageRegions -join ', ')), its cuts, each a line of the cage in those regions with the side it keeps (head or tail), optionally what it lies over, each a line of those regions with the side the inner garment keeps and the inner garment's band, optionally its loose parts, each a line of the trunk it hangs from, its side ($($script:ArtGarmentHangSides -join ', ')), its chains ($($script:ArtGarmentHangChains -join ', ')), and its flare from 0 to $script:ArtGarmentFlareLimit m, its ease from 0 to $script:ArtGarmentEaseLimit m, and its hem from 0 to $script:ArtGarmentHemLimit m")
+    }
+
+    # The chains a loose part hangs on move only with the cloth profile that activates them.
+    foreach ($part in @($(if ($recipe -is [System.Collections.IDictionary]) { $recipe["hang"] }) | Where-Object { $null -ne $_ })) {
+        $clothOfChains = $script:ArtGarmentHangCloth[[string]$part.chains]
+        if ([string]$cloth -cne $clothOfChains) {
+            $problems.Add("cloth must be ""$clothOfChains"" for a template whose loose parts hang on the $($part.chains) chains")
+        }
     }
 
     $stages = $script:ArtReviewStages["garment"]
@@ -1028,6 +1080,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         Bodies = $bodies
         Hides = [string[]]$hides
         HidesUnderwear = $hidesUnderwear -eq $true
+        Covers = $covers -ne $false
         Hair = if ($null -ne $hair) { [string]$hair } else { $null }
         Cloth = if ($null -ne $cloth) { [string]$cloth } else { $null }
         Dyes = [int]$Json.dyes
@@ -1070,6 +1123,16 @@ function Add-ArtRecipeLines($Lines, $Recipe) {
         $Lines.Add('        ],')
     }
 
+    $hang = @($Recipe.hang | Where-Object { $null -ne $_ })
+    if ($hang.Count -gt 0) {
+        $Lines.Add('        "hang": [')
+        for ($i = 0; $i -lt $hang.Count; $i++) {
+            $comma = if ($i -lt $hang.Count - 1) { "," } else { "" }
+            $Lines.Add("            { `"line`": `"$($hang[$i].line)`", `"side`": `"$($hang[$i].side)`", `"chains`": `"$($hang[$i].chains)`", `"flare`": $(Format-ArtShare $hang[$i].flare) }$comma")
+        }
+        $Lines.Add('        ],')
+    }
+
     $Lines.Add("        `"ease`": $(Format-ArtShare $Recipe.ease),")
     $Lines.Add("        `"hem`": $(Format-ArtShare $Recipe.hem)")
     $Lines.Add('    },')
@@ -1088,6 +1151,7 @@ function Write-ArtGarmentManifest($Manifest) {
     $hides = (@($Manifest.Hides) | ForEach-Object { '"' + $_ + '"' }) -join ", "
     $lines.Add("    `"hides`": [$hides],")
     $lines.Add("    `"hidesUnderwear`": $(if ($Manifest.HidesUnderwear) { 'true' } else { 'false' }),")
+    $lines.Add("    `"covers`": $(if ($Manifest.Covers) { 'true' } else { 'false' }),")
     $lines.Add("    `"hair`": $(if ($null -ne $Manifest.Hair) { '"' + $Manifest.Hair + '"' } else { 'null' }),")
     $lines.Add("    `"cloth`": $(if ($null -ne $Manifest.Cloth) { '"' + $Manifest.Cloth + '"' } else { 'null' }),")
     $lines.Add("    `"dyes`": $($Manifest.Dyes),")
@@ -1206,7 +1270,21 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
             continue
         }
 
-        $lines.Add([ordered]@{ name = $lineName; region = $region; bone = $bone; share = [double]$share })
+        # A line of the neck may rise toward its sides, by the rise times the square of the distance
+        # to the side, a neckline that hugs the neck.
+        $rise = $line.rise
+        if ($null -ne $line.PSObject.Properties["rise"] -and
+            (-not (Test-ArtNumber $rise) -or $rise -le 0 -or $rise -gt 20 -or $region -cne "neck")) {
+            $problems.Add("rise is how a line of the neck climbs toward its sides, per meter, above 0 and at most 20; '$lineName' does not have one")
+            continue
+        }
+
+        $entry = [ordered]@{ name = $lineName; region = $region; bone = $bone; share = [double]$share }
+        if ($null -ne $line.PSObject.Properties["rise"]) {
+            $entry.rise = [double]$rise
+        }
+
+        $lines.Add($entry)
     }
 
     if ($lines.Count -eq 0) {
@@ -1301,7 +1379,8 @@ function Write-ArtCageManifest($Manifest) {
     $entries = @($Manifest.Lines)
     for ($i = 0; $i -lt $entries.Count; $i++) {
         $comma = if ($i -lt $entries.Count - 1) { "," } else { "" }
-        $lines.Add("        { `"name`": `"$($entries[$i].name)`", `"region`": `"$($entries[$i].region)`", `"bone`": `"$($entries[$i].bone)`", `"share`": $(Format-ArtShare $entries[$i].share) }$comma")
+        $rise = if ($entries[$i].Contains("rise")) { ", `"rise`": $(Format-ArtShare $entries[$i].rise)" } else { "" }
+        $lines.Add("        { `"name`": `"$($entries[$i].name)`", `"region`": `"$($entries[$i].region)`", `"bone`": `"$($entries[$i].bone)`", `"share`": $(Format-ArtShare $entries[$i].share)$rise }$comma")
     }
     $lines.Add('    ],')
     $fitted = @($Manifest.FittedTo)
@@ -2142,8 +2221,8 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
     if ($Manifest.Kind -eq "garment") {
         $arguments = @("--kind", "garment", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
             "--triangle-budget", [string]$Manifest.TriangleBudget, "--skeleton", $Manifest.SkeletonPath,
-            "--garment", $Manifest.Name, "--band", $Manifest.Band, "--manifest", $Manifest.ManifestPath,
-            "--cage-manifest", $Manifest.Cage.ManifestPath)
+            "--garment", $Manifest.Name, "--manifest", $Manifest.ManifestPath,
+            "--cage-manifest", $Manifest.Cage.ManifestPath) + (Get-ArtGarmentCoverArguments $Manifest)
         foreach ($body in @($Manifest.Bodies)) {
             $arguments += @("--body", "$($body.SourcePath)=$($body.Root)")
         }
@@ -2159,8 +2238,8 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
     # its masks in its template's band, checked in the clips of the skeleton's libraries.
     if ($Manifest.Kind -eq "texture") {
         return @("--kind", "texture", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
-            "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath,
-            "--band", $Manifest.Garment.Band) + (Get-ArtGarmentClipArguments $Manifest)
+            "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath) +
+            (Get-ArtGarmentCoverArguments $Manifest.Garment) + (Get-ArtGarmentClipArguments $Manifest)
     }
 
     # A cage is checked against the current files of its bodies and against the figure scale and

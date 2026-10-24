@@ -27,7 +27,9 @@ comes through the garment in the test poses and the clips. See docs/EQUIPMENT_VI
   cloth between it and the inside, comes through. Such skin lies at an opening that shows it, so
   it is reported, not hidden; the garment's shape or weights fix it. Skin that passes a hem's edge
   without the cloth over it does not come through, and neither does a garment that runs into
-  another body part, such as a hem into a thigh when the body folds."""
+  another body part, such as a hem into a thigh when the body folds. Skin, or an inner garment's
+  vertex, that lies through the garment already at rest shows in every pose, which Motion.rest
+  counts and the checks treat as a broken rule."""
 
 import math
 from dataclasses import dataclass
@@ -39,7 +41,8 @@ from mathutils.bvhtree import BVHTree
 from mathutils.interpolate import poly_3d_calc
 from mathutils.kdtree import KDTree
 
-from . import bodies, garment, poses
+from . import bodies, garment, hang, poses
+from .cloth import capsules, follow, worn
 from .scene import ArtPipelineError
 
 # How far rays look for the garment from the skin, per band, in meters.
@@ -96,23 +99,41 @@ class Coverage:
         return np.nonzero(visible)[0]
 
 
+def _loose_faces(mesh: bpy.types.Mesh) -> np.ndarray:
+    """Which faces of a garment belong to loose parts, which hang on the cloth chains."""
+    attribute = mesh.attributes.get(hang.HANG_FACE)
+    if attribute is None or attribute.domain != "FACE" or attribute.data_type != "INT":
+        return np.zeros(len(mesh.polygons), bool)
+    values = np.empty(len(mesh.polygons), np.int32)
+    attribute.data.foreach_get("value", values)
+    return values > 0
+
+
 class _Cloth:
     """A garment version's surface for rays: its triangles, the UVs of their corners, and the
     alpha of its texture."""
 
-    def __init__(self, obj: bpy.types.Object, positions: np.ndarray, alpha: np.ndarray | None):
+    def __init__(self, obj: bpy.types.Object, positions: np.ndarray, alpha: np.ndarray | None, fixed: bool = False):
         mesh = obj.data
+        # Only the cloth that lies on the cage when fixed, as the cover mask takes it: loose parts
+        # hang on the cloth chains, which the runtime solver moves, so what lies under them at rest
+        # need not lie under them in motion.
+        loose = _loose_faces(mesh) if fixed else np.zeros(len(mesh.polygons), bool)
         self.triangles = []
         for polygon in mesh.polygons:
+            if loose[polygon.index]:
+                continue
             vertices, loops = list(polygon.vertices), list(polygon.loop_indices)
             for i in range(1, len(vertices) - 1):
                 self.triangles.append((polygon.index, (vertices[0], vertices[i], vertices[i + 1]),
                                        (loops[0], loops[i], loops[i + 1])))
         counts: dict[tuple[int, int], int] = {}
         for polygon in mesh.polygons:
-            for key in polygon.edge_keys:
-                counts[key] = counts.get(key, 0) + 1
-        # The edges of only one face: the borders of the mesh.
+            if not loose[polygon.index]:
+                for key in polygon.edge_keys:
+                    counts[key] = counts.get(key, 0) + 1
+        # The edges of only one face: the borders of the mesh, and of the fixed cloth where a loose
+        # part hangs from it.
         self.border = {key for key, count in counts.items() if count == 1}
         self.uv = None
         if mesh.uv_layers.active is not None:
@@ -304,8 +325,12 @@ def _edge_reach(edges, surface: "garment.Surface", band: str) -> np.ndarray:
     return np.clip(gaps * EDGE_GAPS, EDGE_REACH[band], max(EDGE_REACH.values()))
 
 
-def compute(name: str, label: str, band: str) -> Coverage:
-    """The cover mask, underlay, and pull-in of one version of the garment, at rest."""
+def compute(name: str, label: str, band: str, covers: bool = True) -> Coverage:
+    """The cover mask, underlay, and pull-in of one version of the garment, at rest. Loose parts
+    cover nothing: they swing off what they hang over at rest, which would show as a hole, so the
+    skin and the inner garments under them stay drawn, and the line they hang from is an open edge.
+    A garment that covers nothing, such as a cloak that lies on top and may swing open, leaves its
+    cover mask empty."""
     body = bodies.source_body(label)
     version = bpy.data.objects.get(garment.version_name(name, label))
     if body is None or version is None:
@@ -313,13 +338,13 @@ def compute(name: str, label: str, band: str) -> Coverage:
     reach = REACH[band]
     surface = garment.Surface(body, [])
     shell = garment.Surface(garment.cage_object(label), []).tree
-    cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
+    cloth = _Cloth(version, bodies.world_positions(version), _alpha(version), fixed=True)
     edges = cloth.edges()
     edge_reach = _edge_reach(edges, surface, band) if edges is not None else None
     rotation = body.matrix_world.to_3x3()
     covered = np.zeros(len(body.data.polygons), bool)
     edge = np.zeros(len(body.data.polygons), bool)
-    for polygon in body.data.polygons:
+    for polygon in body.data.polygons if covers else []:
         corners = [Vector(surface.co[v]) for v in polygon.vertices]
         centre = sum(corners, Vector()) / len(corners)
         normal = (rotation @ polygon.normal).normalized()
@@ -464,14 +489,26 @@ class Motion:
     zone: str
     checked: int  # poses and clip frames
     faces: np.ndarray | None = None  # bool per face of an inner garment whose vertices come through
+    rest: int = 0  # of them, how many lie through it already at rest
+
+    def rest_error(self, version: str, what: str) -> str | None:
+        """The rule broken when something lies through the garment at rest, where it shows in every
+        pose, or None."""
+        if not self.rest:
+            return None
+        return (f'{self.rest} {what} lie through "{version}" at rest, where they show in every pose; fix its shape '
+                "or the cage.")
 
 
-def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action]):
-    """Sets the armature to every test pose and to every frame of every clip, naming each. The last
-    frame of a looping clip repeats its first, so it is left out."""
+def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action], kinds: list[str] | None = None,
+            found: list | None = None, reach: dict | None = None):
+    """Sets the armature to every test pose and to every frame of every clip, naming each, with the
+    cloth chains of the kinds laid as the runtime solver lays them. The last frame of a looping clip
+    repeats its first, so it is left out."""
     scene = bpy.context.scene
     for pose_name, _description, pose in poses.POSES:
         poses.apply(arm, pose)
+        follow(arm, kinds or [], found or [], reach)
         yield pose_name
     poses.rest(arm)
     arm.animation_data_create()
@@ -481,7 +518,17 @@ def _frames(arm: bpy.types.Object, actions: list[bpy.types.Action]):
         last = int(action.frame_range[1])
         for frame in range(last if action.get("loop") else last + 1):
             scene.frame_set(frame)
+            follow(arm, kinds or [], found or [], reach)
             yield f"{action.name} frame {frame}"
+
+
+def _chains_of(garments: list[bpy.types.Object], arm: bpy.types.Object,
+               body: bpy.types.Object) -> tuple[list[str], list, dict]:
+    """The kinds of cloth chains garments worn together hang on, from the inside out, the body's
+    capsules they collide with, and the reaches of the garments' cloth on them, so the chains lie as
+    the runtime solver lays them, a cloak over a robe's skirt."""
+    kinds, reach = worn(arm, garments)
+    return kinds, (capsules(arm, body) if kinds else []), reach
 
 
 def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action]) -> Motion:
@@ -502,8 +549,12 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     pulled[coverage.pull_vertices] -= normals[coverage.pull_vertices] * coverage.pull_distances[:, None]
     # The visible skin the garment is over at rest: going out from it, a ray meets the garment's
     # inner side where it is opaque, or the skin already lies outside it. That point of the garment
-    # is the skin's cover.
-    cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
+    # is the skin's cover. Loose parts count with their chains laid as the runtime solver lays them.
+    kinds, found, chains = _chains_of([version], arm, body)
+    # The garment at rest with its chains laid as the runtime solver lays them.
+    poses.rest(arm)
+    follow(arm, kinds, found, chains)
+    cloth = _Cloth(version, _posed(version)[0], _alpha(version))
     shell = garment.Surface(garment.cage_object(label), []).tree
     vertices, corners, weights, deepest = [], [], [], []
     for vertex in coverage.visible_vertices(body):
@@ -522,13 +573,14 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     weights = np.array(weights).reshape(-1, 3)
     deepest = np.array(deepest)
     where = [REST if depth > 0.0 else "" for depth in deepest]
+    at_rest = int((deepest > CLIP_TOLERANCE).sum())
     checked = 1
     had_animation = arm.animation_data is not None
     previous = arm.animation_data.action if had_animation else None
     body.data.vertices.foreach_set("co", pulled.reshape(-1))
     body.data.update()
     try:
-        for name_of_frame in _frames(arm, actions):
+        for name_of_frame in _frames(arm, actions, kinds, found, chains):
             co = _posed(body)[0][vertices]
             cloth.place(_posed(version)[0])
             a, b, c = (cloth.co[corners[:, k]] for k in range(3))
@@ -564,7 +616,7 @@ def check_motion(name: str, coverage: Coverage, actions: list[bpy.types.Action])
     vertex_zone = np.zeros(coverage.body_vertices, np.int64)
     for polygon in body.data.polygons:
         vertex_zone[list(polygon.vertices)] = zones[polygon.index]
-    result = Motion(label, len(vertices), len(out), 0.0, "", "", checked)
+    result = Motion(label, len(vertices), len(out), 0.0, "", "", checked, rest=at_rest)
     if out:
         worst = int(np.argmax(deepest))
         result.depth, result.where = float(deepest[worst]), where[worst]
@@ -576,21 +628,28 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
                actions: list[bpy.types.Action]) -> Motion:
     """Finds the vertices of an inner garment, worn under this one, that come through this one at
     rest, in the test poses, and in the clips: of the inner garment's faces that stay drawn, those
-    whose body face this one leaves visible, every vertex that this one is over at rest, or that
-    already lies outside it."""
+    whose body face this one leaves visible, every vertex that faces away from the cage and that
+    this one is over at rest, or that already lies outside it. A turned edge's rim and flap face
+    the body and lie under the inner garment's outer side, which is checked instead. The chains of
+    both are laid together, also at rest, so a cloak lies over a robe's skirt."""
     label = coverage.label
     arm = bpy.data.objects[label]
     version = bpy.data.objects[garment.version_name(name, label)]
     drawn = [p for p in inner.data.polygons if not coverage.covered[inner_underlay[p.index]]]
-    rest = bodies.world_positions(inner)
-    normals = np.empty(len(inner.data.vertices) * 3)
-    inner.data.vertex_normals.foreach_get("vector", normals)
-    normals = normals.reshape(-1, 3) @ np.array(inner.matrix_world.to_3x3()).T
-    cloth = _Cloth(version, bodies.world_positions(version), _alpha(version))
+    kinds, found, chains = _chains_of([inner, version], arm, bodies.source_body(label))
+    # Both at rest with their chains laid together, as the runtime solver lays a cloak over a robe's
+    # skirt.
+    poses.rest(arm)
+    follow(arm, kinds, found, chains)
+    rest, normals = _posed(inner)
+    cloth = _Cloth(version, _posed(version)[0], _alpha(version))
     shell = garment.Surface(garment.cage_object(label), []).tree
     vertices, corners, weights, deepest = [], [], [], []
     for vertex in sorted({v for p in drawn for v in p.vertices}):
         direction = Vector(normals[vertex]).normalized()
+        _location, outward, _index, _distance = shell.find_nearest(Vector(rest[vertex]))
+        if outward is None or direction.dot(outward) <= 0.0:
+            continue
         reach = _cage_gap(shell, Vector(rest[vertex]), direction) + REACH[coverage.band]
         cover = _rest_cover(cloth, Vector(rest[vertex]), direction, reach, REACH[coverage.band])
         if cover is not None:
@@ -605,11 +664,12 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
     weights = np.array(weights).reshape(-1, 3)
     deepest = np.array(deepest)
     where = [REST if depth > 0.0 else "" for depth in deepest]
+    at_rest = int((deepest > CLIP_TOLERANCE).sum())
     checked = 1
     had_animation = arm.animation_data is not None
     previous = arm.animation_data.action if had_animation else None
     try:
-        for name_of_frame in _frames(arm, actions):
+        for name_of_frame in _frames(arm, actions, kinds, found, chains):
             co = _posed(inner)[0][vertices]
             cloth.place(_posed(version)[0])
             a, b, c = (cloth.co[corners[:, k]] for k in range(3))
@@ -634,7 +694,7 @@ def check_pair(name: str, coverage: Coverage, inner: bpy.types.Object, inner_und
     out = set(int(v) for v in vertices[through])
     body = bodies.source_body(label)
     zones = bodies.zones_of(body)
-    result = Motion(label, len(vertices), len(out), 0.0, "", "", checked)
+    result = Motion(label, len(vertices), len(out), 0.0, "", "", checked, rest=at_rest)
     if out:
         worst = int(np.argmax(deepest))
         result.depth, result.where = float(deepest[worst]), where[worst]

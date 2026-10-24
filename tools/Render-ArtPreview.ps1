@@ -26,7 +26,8 @@ $blender = Resolve-ArtBlender $BlenderPath
 $arguments = @("preview", "--output", $Output, "--kind", $manifest.Kind)
 if ($manifest.Kind -eq "garment") {
     # The sheet of a garment also shows what it covers, at rest and in the clips.
-    $arguments += @("--garment", $manifest.Name, "--band", $manifest.Band) + (Get-ArtGarmentClipArguments $manifest)
+    $arguments += @("--garment", $manifest.Name) + (Get-ArtGarmentCoverArguments $manifest) +
+        (Get-ArtGarmentClipArguments $manifest)
 }
 elseif ($manifest.Kind -eq "cage") {
     $arguments += @("--roots", ($manifest.RootObjects -join ","), "--manifest", $manifest.ManifestPath)
@@ -35,8 +36,8 @@ elseif ($manifest.Kind -eq "texture") {
     # The sheet of a texture is rendered in its template's file, with the texture on every version.
     # A texture with transparent parts also shows its own masks, at rest and in the clips.
     $arguments += @("--roots", ($manifest.RootObjects -join ","), "--garment", $manifest.Garment.Name,
-        "--texture", $manifest.Name, "--texture-file", $manifest.SourcePath, "--band", $manifest.Garment.Band) +
-        (Get-ArtGarmentClipArguments $manifest)
+        "--texture", $manifest.Name, "--texture-file", $manifest.SourcePath) +
+        (Get-ArtGarmentCoverArguments $manifest.Garment) + (Get-ArtGarmentClipArguments $manifest)
     Invoke-ArtBlender $blender $manifest.Garment $arguments | Out-Null
     Write-Host "Review sheet for $($manifest.Name): $Output"
     return

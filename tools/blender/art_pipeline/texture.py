@@ -317,18 +317,27 @@ def texture_errors(name: str, template_file: str, template: str, label: str) -> 
     return errors
 
 
-def export(name: str, folder: str) -> tuple[str, dict]:
-    """Writes the image as a PNG and returns its path and the material's record."""
+def exported_image(name: str) -> tuple[bytes, dict]:
+    """The image's PNG and the material's record, read from the open texture file, so they can be
+    written after the masks, which open the template's file."""
     image = bpy.data.images[image_name(name)]
-    if not bytes(image.packed_file.data).startswith(PNG_SIGNATURE):
+    data = bytes(image.packed_file.data) if image.packed_file is not None else b""
+    if not data.startswith(PNG_SIGNATURE):
         raise ArtPipelineError(f'"{image.name}" must be packed as a PNG.')
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, f"{image.name}.png")
-    with open(path, "wb") as handle:
-        handle.write(image.packed_file.data)
     record = {"name": material_name(name), "baseColor": "#FFFFFF", "baseMap": image.name,
               "metallic": round(float(image.get("metallic", 0.0)), 4),
               "smoothness": round(1.0 - float(image.get("roughness", 0.6)), 4)}
+    return data, record
+
+
+def export(name: str, image: tuple[bytes, dict], folder: str) -> tuple[str, dict]:
+    """Writes the image that exported_image read as a PNG and returns its path and the material's
+    record."""
+    data, record = image
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{image_name(name)}.png")
+    with open(path, "wb") as handle:
+        handle.write(data)
     return path, record
 
 
@@ -348,7 +357,7 @@ def dress(template: str, texture_file: str, name: str, labels: list[str]) -> boo
 
 
 def masks(texture_file: str, name: str, template_file: str, template: str, labels: list[str], band: str,
-          libraries: list[tuple[str, list[str]]]) -> dict[str, tuple[coverage.Coverage, coverage.Motion]]:
+          libraries: list[tuple[str, list[str]]], covers: bool = True) -> dict[str, tuple[coverage.Coverage, coverage.Motion]]:
     """The texture's own masks on every body, and the skin that comes through the garment in the test
     poses and the clips of the libraries, computed in the template's file with the texture on every
     version. The template's file is opened in place of the texture's and not saved."""
@@ -357,7 +366,7 @@ def masks(texture_file: str, name: str, template_file: str, template: str, label
     actions = coverage.load_actions(libraries)
     results = {}
     for label in labels:
-        result = coverage.compute(template, label, band)
+        result = coverage.compute(template, label, band, covers)
         results[label] = (result, coverage.check_motion(template, result, actions))
     return results
 

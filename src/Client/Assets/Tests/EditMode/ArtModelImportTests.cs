@@ -312,11 +312,15 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(data.garment, Is.EqualTo(manifest.Name), path);
                 Assert.That(data.body, Is.EqualTo(body), path);
                 Assert.That(data.bodyFaces, Is.GreaterThan(0), path);
-                // A template covers the body; a texture's holes, such as a net's meshes, may leave
-                // every body face visible.
-                if (manifest.IsGarment)
+                // A template covers the body, unless it lies on top and covers nothing, such as a cloak;
+                // a texture's holes, such as a net's meshes, may leave every body face visible.
+                if (manifest.IsGarment && manifest.covers)
                 {
                     Assert.That(data.covered, Is.Not.Empty, path);
+                }
+                else if (manifest.IsGarment)
+                {
+                    Assert.That(data.covered, Is.Empty, path);
                 }
 
                 Assert.That(data.covered, Is.Ordered.And.Unique, path);

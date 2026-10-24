@@ -32,6 +32,7 @@ so it moves like the skin it covers: a sleeve's inside at the armpit moves with 
 version; a vertex whose weights differ from it was painted by hand and keeps them, also in the other
 versions."""
 
+import contextlib
 import hashlib
 import json
 import math
@@ -46,7 +47,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.interpolate import poly_3d_calc
 from mathutils.kdtree import KDTree
 
-from . import bodies, body_files, cage, poses
+from . import bodies, body_files, cage, cloth, hang, poses
 from .scene import ArtPipelineError, relative_image_paths
 
 FITTED = "fitted"
@@ -133,6 +134,10 @@ def recipe_text(recipe) -> str:
         recipe = {**recipe, "ease": float(recipe["ease"]), "hem": float(recipe["hem"])}
         if not recipe.get("over"):
             recipe.pop("over", None)
+        if recipe.get("hang"):
+            recipe["hang"] = [{**part, "flare": float(part["flare"])} for part in recipe["hang"]]
+        else:
+            recipe.pop("hang", None)
     return json.dumps(recipe, sort_keys=True, separators=(",", ":"))
 
 
@@ -156,7 +161,9 @@ def over_lift(recipe, lines: list[dict], label: str, points: np.ndarray) -> np.n
     if not entries:
         return lift
     shell = cage_object(label)
-    surface = Surface(shell, [], recipe_regions(recipe))
+    # A point is over the region of the template it belongs to: a hem turned in at the border of
+    # the template's region, such as a cloak's neckline over a shirt's, is nearer the region beyond.
+    surface = Surface(shell, [], tuple(r for r in cage.REGIONS if r in recipe["regions"]))
     keys = cage_keys(shell, surface)
     nearest = [surface.tree.find_nearest(Vector(p))[2] for p in points]
     by_name = {line["name"]: line for line in lines}
@@ -166,8 +173,8 @@ def over_lift(recipe, lines: list[dict], label: str, points: np.ndarray) -> np.n
         for side, point, normal in cage.line_planes(label, line):
             inside = np.array([t is not None and keys[t][0] in regions and (not side or keys[t][1] == side)
                                for t in nearest])
-            # The side a cut keeping the bone's head keeps lies behind the plane's normal.
-            signed = (points - np.array(point)) @ np.array(normal)
+            # The side a cut keeping the bone's head keeps lies behind the line's normal.
+            signed = cage.line_offsets(line, point, normal, points)
             beyond = -signed if entry["keep"] == "head" else signed
             share = np.clip(1.0 + beyond / OVER_FADE, 0.0, 1.0)
             share = share * share * (3.0 - 2.0 * share)
@@ -186,6 +193,25 @@ def band_limits(recipe, lines: list[dict], label: str, points: np.ndarray, band:
 def _points(co: np.ndarray, polygons: list[tuple[int, ...]]) -> np.ndarray:
     """Every vertex and the centre of every face, the points a band holds for."""
     return np.concatenate([co, np.array([co[list(p)].mean(axis=0) for p in polygons]).reshape(-1, 3)])
+
+
+def _loose(mesh: bpy.types.Mesh) -> np.ndarray:
+    """Which vertices belong to loose parts, which hang on the cloth chains instead of the cage."""
+    values = _attribute(mesh, hang.HANG, "INT")
+    return values > 0 if values is not None else np.zeros(len(mesh.vertices), bool)
+
+
+def limits(recipe, lines: list[dict], label: str, co: np.ndarray, polygons: list[tuple[int, ...]], band: str,
+           loose: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
+    """The band of every vertex and face centre of a template on a body, as band_limits gives it,
+    and none for the vertices of loose parts and the faces that touch them, which hang off the cage."""
+    low, high = band_limits(recipe, lines, label, _points(co, polygons), band)
+    if not loose.any():
+        return low, high
+    free = np.concatenate([loose, np.array([loose[list(p)].any() for p in polygons], bool)])
+    low = np.where(free, -np.inf, np.broadcast_to(np.asarray(low, float), free.shape))
+    high = np.where(free, np.inf, np.broadcast_to(np.asarray(np.inf if high is None else high, float), free.shape))
+    return low, high
 
 
 def _triangles(mesh: bpy.types.Mesh) -> list[tuple[int, int, int, int]]:
@@ -360,6 +386,19 @@ def _settle(positions: np.ndarray, polygons: list[tuple[int, ...]], surface: Sur
     return co
 
 
+def _settle_band(co: np.ndarray, polygons: list[tuple[int, ...]], surface: Surface, recipe, lines: list[dict],
+                 label: str, band: str, loose: np.ndarray) -> np.ndarray:
+    """The positions settled into the band that limits gives where the points end up: a point that
+    moves may come to lie over another region of the cage, where the template lies over an inner
+    garment or does not, so the band is taken again until it holds."""
+    for _ in range(SETTLE_PASSES):
+        settled = _settle(co, polygons, surface, *limits(recipe, lines, label, co, polygons, band, loose))
+        if np.array_equal(settled, co):
+            break
+        co = settled
+    return co
+
+
 def _limited(row: np.ndarray) -> np.ndarray:
     """A weight row with its four largest weights, adding up to one."""
     keep = np.argsort(row, kind="stable")[::-1][:MAX_INFLUENCES]
@@ -517,10 +556,15 @@ def _cut(cage_obj: bpy.types.Object, arm: bpy.types.Object, recipe: dict, lines:
             if not faces:
                 continue
             verts = list({v for f in faces for v in f.verts})
+            # Moving along the normal changes no point's distance to the side, so a snapped vertex
+            # lies on a rising line's curve too.
             for v in verts:
-                distance = (v.co - point).dot(normal)
+                distance = float(cage.line_offsets(line, point, normal, np.array(v.co))[()])
                 if abs(distance) < LINE_SNAP:
                     v.co -= normal * distance
+            if line.get("rise"):
+                _cut_curved(bm, faces, line, point, normal, cut["keep"])
+                continue
             geom = list({e for f in faces for e in f.edges}) + verts + faces
             bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=point, plane_no=normal,
                                    clear_outer=cut["keep"] == "head", clear_inner=cut["keep"] == "tail")
@@ -528,6 +572,32 @@ def _cut(cage_obj: bpy.types.Object, arm: bpy.types.Object, recipe: dict, lines:
     bmesh.ops.delete(bm, geom=loose, context="VERTS")
     bm.normal_update()
     return bm
+
+
+def _cut_curved(bm: bmesh.types.BMesh, faces: list, line: dict, point: Vector, normal: Vector, keep: str) -> None:
+    """Cuts faces at a curved standard line, as bisect_plane cuts at a plane: every edge that crosses
+    the line is split where it does, every face crossed joins its two points on the line, and the
+    faces on the side the cut does not keep go."""
+    def offset(co: Vector) -> float:
+        return float(cage.line_offsets(line, point, normal, np.array(co))[()])
+
+    near = 1e-6
+    on = {v for f in faces for v in f.verts if abs(offset(v.co)) <= near}
+    for edge in list({e for f in faces for e in f.edges}):
+        a, b = edge.verts
+        da, db = offset(a.co), offset(b.co)
+        if abs(da) > near and abs(db) > near and (da < 0.0) != (db < 0.0):
+            _edge, vert = bmesh.utils.edge_split(edge, a, da / (da - db))
+            on.add(vert)
+    # The faces keep their identity through the edge splits; a face split adds the other half.
+    pieces = list(faces)
+    for face in faces:
+        corners = [v for v in face.verts if v in on]
+        if len(corners) == 2 and not any(set(e.verts) == set(corners) for e in face.edges):
+            other, _edge = bmesh.utils.face_split(face, corners[0], corners[1])
+            pieces.append(other)
+    beyond = [f for f in pieces if (offset(f.calc_center_median()) > 0.0) == (keep == "head")]
+    bmesh.ops.delete(bm, geom=beyond, context="FACES")
 
 
 def _palm_normal(arm: bpy.types.Object, side: str) -> Vector:
@@ -545,9 +615,9 @@ def _palm_normal(arm: bpy.types.Object, side: str) -> Vector:
 def _mark_seams(bm: bmesh.types.BMesh, arm: bpy.types.Object) -> None:
     """Seams where clothes have them: between the front and the back of the trunk and the neck,
     down the sides and over the shoulders, along the underside of each arm, along the inside of each
-    leg, where an arm, a leg, or the neck meets the trunk, and where a hand or a foot meets its
-    limb; a glove's between its palm and its back, along the sides of the fingers, and a boot's
-    around its sole and up the back of its heel."""
+    leg, where an arm or a leg meets the trunk, and where a hand or a foot meets its limb; a glove's
+    between its palm and its back, along the sides of the fingers, and a boot's around its sole and
+    up the back of its heel. A neckline runs on from the trunk up the neck without a seam."""
     region_layer = bm.faces.layers.int.get("region")
     trunk, neck, arms, legs, hands, feet = (cage.REGIONS.index(r) for r in ("trunk", "neck", "arms", "legs", "hands", "feet"))
     middle = float(np.mean([v.co.y for v in bm.verts]))
@@ -605,7 +675,7 @@ def _mark_seams(bm: bmesh.types.BMesh, arm: bpy.types.Object) -> None:
             continue
         a, b = faces
         ra, rb = a[region_layer], b[region_layer]
-        if ra != rb:
+        if ra != rb and {ra, rb} != {trunk, neck}:
             edge.seam = True
         elif ra in (trunk, neck):
             edge.seam = (a.calc_center_median().y < middle) != (b.calc_center_median().y < middle)
@@ -640,11 +710,14 @@ def _unwrap(mesh: bpy.types.Mesh) -> None:
 
 def _turn_edges(mesh: bpy.types.Mesh, depth: float) -> None:
     """Every open edge turned inward: a rim of the given depth toward the body and a flap back
-    inside the cloth, with the UVs of the edge, so a hem shows the cloth's thickness."""
+    inside the cloth, with the UVs of the edge, so a hem shows the cloth's thickness. The edge of a
+    loose part turns with it: its rim and flap belong to the part."""
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bm.normal_update()
     uv = bm.loops.layers.uv.active
+    loose = bm.verts.layers.int.get(hang.HANG)
+    loose_faces = bm.faces.layers.int.get(hang.HANG_FACE)
     border = [e for e in bm.edges if e.is_boundary]
     rim, flap = {}, {}
     for v in {v for e in border for v in e.verts}:
@@ -658,6 +731,8 @@ def _turn_edges(mesh: bpy.types.Mesh, depth: float) -> None:
             inward = -inward
         rim[v] = bm.verts.new(v.co - v.normal * depth)
         flap[v] = bm.verts.new(rim[v].co + inward * HEM_FLAP)
+        if loose is not None:
+            rim[v][loose] = flap[v][loose] = max(v[loose], 0)
     for edge in border:
         face = edge.link_faces[0]
         loops = {loop.vert: loop for loop in face.loops}
@@ -669,6 +744,8 @@ def _turn_edges(mesh: bpy.types.Mesh, depth: float) -> None:
             new = bm.faces.new(corners)
             new.material_index = face.material_index
             new.smooth = True
+            if loose_faces is not None:
+                new[loose_faces] = face[loose_faces]
             for loop in new.loops:
                 source = a if loop.vert in (a, rim[a], flap[a]) else b
                 loop[uv].uv = loops[source][uv].uv
@@ -676,11 +753,110 @@ def _turn_edges(mesh: bpy.types.Mesh, depth: float) -> None:
     bm.free()
 
 
+def _hang_line(recipe, lines: list[dict], label: str, part: dict) -> tuple[Vector, Vector]:
+    """The plane of the standard line a loose part hangs from, on a body."""
+    line = next(line for line in lines if line["name"] == part["line"])
+    _side, point, normal = cage.line_planes(label, line)[0]
+    return point, normal
+
+
+def _add_hangs(bm: bmesh.types.BMesh, arm: bpy.types.Object, recipe, lines: list[dict], label: str) -> None:
+    """Adds the recipe's loose parts to the cut cage: per part a grid of rings below the open edge
+    at its line, laid on its scaffold on the first body, with the faces marked as the part's and,
+    around a skirt, a seam down the back. The edge's vertices and the rings' keep their column in
+    "hang_top", and the rings' vertices their ring in "hang_ring"."""
+    entries = hang.parts(recipe)
+    if not entries:
+        return
+    loose = bm.verts.layers.int.new(hang.HANG)
+    top_layer = bm.verts.layers.int.new(hang.HANG_TOP)
+    ring_layer = bm.verts.layers.int.new(hang.HANG_RING)
+    face_layer = bm.faces.layers.int.new(hang.HANG_FACE)
+    region_layer = bm.faces.layers.int.get("region")
+    body = bodies.source_body(label)
+    names = [b.name for b in arm.data.bones if b.use_deform]
+    for number, part in enumerate(entries):
+        point, normal = _hang_line(recipe, lines, label, part)
+        edge = hang.edge(bm, part, point, normal)
+        closed = part["side"] == "all"
+        top = np.array([tuple(v.co) for v in edge])
+        rings = hang.ring_count(part, arm, top)
+        co, _weights = hang.scaffold(part, arm, body, top, np.zeros((len(top), len(names))), names, rings)
+        for column, v in enumerate(edge):
+            v[loose] = -(number + 1)
+            v[top_layer] = column
+        grid = [edge]
+        for k in range(1, rings + 1):
+            row = [bm.verts.new(tuple(p)) for p in co[k]]
+            for column, v in enumerate(row):
+                v[loose] = number + 1
+                v[ring_layer] = k
+                v[top_layer] = column
+            grid.append(row)
+        # The new faces run the edge against the faces of the template there.
+        a, b = edge[0], edge[1]
+        face = next(f for f in a.link_faces if b in f.verts)
+        runs = next(loop for loop in face.loops if loop.vert is a).link_loop_next.vert is b
+        columns = len(edge) if closed else len(edge) - 1
+        for k in range(rings):
+            for c in range(columns):
+                n = (c + 1) % len(edge)
+                corners = (grid[k][n], grid[k][c], grid[k + 1][c], grid[k + 1][n]) if runs else \
+                    (grid[k][c], grid[k][n], grid[k + 1][n], grid[k + 1][c])
+                new = bm.faces.new(corners)
+                new[region_layer] = len(cage.REGIONS)
+                new[face_layer] = number + 1
+                new.smooth = True
+        if closed:
+            # A skirt opens for its UVs down the middle of its back.
+            back = min(range(len(edge)), key=lambda c: (abs(edge[c].co.x), edge[c].co.y))
+            for k in range(rings):
+                between = bm.edges.get((grid[k][back], grid[k + 1][back]))
+                if between is not None:
+                    between.seam = True
+    bm.normal_update()
+
+
+def _hang_columns(mesh: bpy.types.Mesh, number: int) -> tuple[np.ndarray, int]:
+    """The vertices of the edge a loose part hangs from, in its order, and its number of rings."""
+    loose = _attribute(mesh, hang.HANG, "INT")
+    top = _attribute(mesh, hang.HANG_TOP, "INT")
+    rings = _attribute(mesh, hang.HANG_RING, "INT")
+    edge = np.nonzero(loose == -(number + 1))[0]
+    edge = edge[np.argsort(top[edge], kind="stable")]
+    return edge, int(rings[loose == number + 1].max())
+
+
+def _lay_hangs(mesh: bpy.types.Mesh, arm: bpy.types.Object, recipe, label: str) -> None:
+    """Lays the rings of every loose part on its scaffold from the edge where it now lies, before
+    its edges are turned."""
+    entries = hang.parts(recipe)
+    if not entries:
+        return
+    names = [b.name for b in arm.data.bones if b.use_deform]
+    loose = _attribute(mesh, hang.HANG, "INT")
+    columns = _attribute(mesh, hang.HANG_TOP, "INT")
+    rings_of = _attribute(mesh, hang.HANG_RING, "INT")
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    for number, part in enumerate(entries):
+        edge, rings = _hang_columns(mesh, number)
+        laid, _weights = hang.scaffold(part, arm, bodies.source_body(label), co[edge], np.zeros((len(edge), len(names))),
+                                       names, rings)
+        members = np.nonzero((loose == number + 1) & (rings_of > 0))[0]
+        co[members] = laid[rings_of[members], columns[members]]
+    mesh.vertices.foreach_set("co", co.reshape(-1))
+    mesh.update()
+
+
 def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> bpy.types.Mesh:
-    """The template's first version as its recipe gives it, on the cage of the first body."""
+    """The template's first version as its recipe gives it, on the cage of the first body, with its
+    loose parts hanging on their scaffolds."""
     cage_obj = cage_object(label)
     arm = bpy.data.objects[label]
     bm = _cut(cage_obj, arm, recipe, lines)
+    _add_hangs(bm, arm, recipe, lines, label)
     _mark_seams(bm, arm)
     mesh = bpy.data.meshes.new(version_name(name, label))
     bm.to_mesh(mesh)
@@ -693,13 +869,15 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
         polygon.use_smooth = True
     _unwrap(mesh)
 
-    # Into the band along the cage's normals, with more room at the armpits.
+    # Into the band along the cage's normals, with more room at the armpits; loose parts hang
+    # where their scaffold lays them.
     co = np.empty(len(mesh.vertices) * 3)
     mesh.vertices.foreach_get("co", co)
     co = co.reshape(-1, 3)
     normals = np.empty(len(mesh.vertices) * 3)
     mesh.vertex_normals.foreach_get("vector", normals)
     normals = normals.reshape(-1, 3)
+    loose = _loose(mesh)
     offset = np.full(len(co), OFFSETS[band]) + over_lift(recipe, lines, label, co)
     armpits = _armpits(cage_obj, arm)
     if recipe.get("ease", 0.0) > 0.0 and len(armpits):
@@ -711,12 +889,13 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
             distance = near.find(point)[2]
             share = max(0.0, 1.0 - distance / EASE_REACH)
             offset[i] += recipe["ease"] * share * share * (3.0 - 2.0 * share)
-    co = co + normals * offset[:, None]
+    co = co + normals * np.where(loose, 0.0, offset)[:, None]
     surface = Surface(cage_obj, [], recipe_regions(recipe))
     polygons = [tuple(p.vertices) for p in mesh.polygons]
-    co = _settle(co, polygons, surface, *band_limits(recipe, lines, label, _points(co, polygons), band))
+    co = _settle_band(co, polygons, surface, recipe, lines, label, band, loose)
     mesh.vertices.foreach_set("co", co.reshape(-1))
     mesh.update()
+    _lay_hangs(mesh, arm, recipe, label)
     if recipe.get("hem", 0.0) > 0.0:
         _turn_edges(mesh, recipe["hem"])
         # The turned edges keep the band too.
@@ -724,11 +903,23 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
         mesh.vertices.foreach_get("co", co)
         co = co.reshape(-1, 3)
         polygons = [tuple(p.vertices) for p in mesh.polygons]
-        co = _settle(co, polygons, surface, *band_limits(recipe, lines, label, _points(co, polygons), band))
+        co = _settle_band(co, polygons, surface, recipe, lines, label, band, _loose(mesh))
         mesh.vertices.foreach_set("co", co.reshape(-1))
         mesh.update()
     mesh.validate()
     return mesh
+
+
+@contextlib.contextmanager
+def _scaffold(part: dict, arm: bpy.types.Object, top: np.ndarray, top_weights: np.ndarray, names: list[str], rings: int):
+    """A loose part's scaffold on a body as a surface to bind to and place on, with the chains'
+    weights, for the time of a with block."""
+    co, weights = hang.scaffold(part, arm, bodies.source_body(arm.name), top, top_weights, names, rings)
+    obj = hang.surface_object(co, weights, names, part["side"] == "all")
+    try:
+        yield Surface(obj, names)
+    finally:
+        hang.remove(obj)
 
 
 def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: list[dict], transfer_all: bool = False) -> dict:
@@ -753,6 +944,20 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
         return _rounded_weights(np.array([skin.weights(keys[t], Vector(p)) for p, (t, _w, _o) in zip(positions, binding)]))
 
     transferred = weights_on(labels[0], co, first_cage)
+    # Loose parts hang on scaffolds instead of the cage: on the first body each of their vertices is
+    # bound to the scaffold there and takes its weights, the chains', from it.
+    entries = hang.parts(recipe)
+    loose = _loose(first.data)
+    values = _attribute(first.data, hang.HANG, "INT")
+    members = [np.nonzero(values == number + 1)[0] for number in range(len(entries))]
+    columns = [_hang_columns(first.data, number) for number in range(len(entries))]
+    hangs = []
+    for number, part in enumerate(entries):
+        edge, rings = columns[number]
+        with _scaffold(part, arms[0], co[edge], transferred[edge], names, rings) as surface:
+            bound = [surface.bind(Vector(co[i])) for i in members[number]]
+            transferred[members[number]] = _rounded_weights(np.array([surface.weights_at(t, w) for t, w, _o in bound]))
+        hangs.append(bound)
     current = bodies.weights_of(first, names)
     stored = _attribute(first.data, TRANSFERRED, "INT")
     if transfer_all or stored is None:
@@ -769,8 +974,15 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
     for arm in arms[1:]:
         own = Surface(cage_object(arm.name), [], regions)
         placed = np.array([own.place(t, w, o) for t, w, o in binding])
-        positions = _settle(placed, polygons, own, *band_limits(recipe, lines, arm.name, _points(placed, polygons), band))
+        positions = _settle_band(placed, polygons, own, recipe, lines, arm.name, band, loose)
         weights = weights_on(arm.name, positions, own)
+        # Then the loose parts, on this body's scaffolds from where their edges now lie.
+        for number, part in enumerate(entries):
+            edge, rings = columns[number]
+            with _scaffold(part, arm, positions[edge], weights[edge], names, rings) as surface:
+                positions[members[number]] = np.array([surface.place(t, w, o) for t, w, o in hangs[number]])
+                weights[members[number]] = _rounded_weights(
+                    np.array([surface.weights_at(t, w) for t, w, _o in hangs[number]]))
         plan["versions"][version_name(name, arm.name)] = {
             "positions": positions, "weights": np.where(hand[:, None], first_weights, weights), "checksums": None}
     return plan
@@ -1060,7 +1272,7 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int, recipe=
         except ArtPipelineError as error:
             errors.append(str(error))
             continue
-        lows, highs = band_limits(recipe, lines or [], label, _points(bodies.world_positions(obj), polygons), band)
+        lows, highs = limits(recipe, lines or [], label, bodies.world_positions(obj), polygons, band, _loose(first.data))
         near = distances < lows - 1e-4
         far = distances > highs + 1e-4 if highs is not None else np.zeros_like(near)
         if near.any() or far.any():
@@ -1093,16 +1305,23 @@ def _distances(obj: bpy.types.Object, label: str, regions: tuple[str, ...] | Non
 
 
 def report(name: str, labels: list[str], recipe) -> list[str]:
-    """How far every version lies from the cage, and its triangles."""
+    """How far every version lies from the cage, its loose parts left out, which hang on the cloth
+    chains, and its triangles."""
     lines = []
     for label in labels:
         obj = bpy.data.objects.get(version_name(name, label))
         if obj is None or bpy.data.objects.get(cage.version_name(label)) is None:
             continue
         distances, _polygons = _distances(obj, label, recipe_regions(recipe))
+        polygons = [tuple(p.vertices) for p in obj.data.polygons]
+        loose = _loose(obj.data)
+        free = np.concatenate([loose, np.array([loose[list(p)].any() for p in polygons], bool)])
+        fixed = distances[~free]
         triangles = sum(len(p.vertices) - 2 for p in obj.data.polygons)
-        lines.append(f"{obj.name}: {triangles} triangles, {distances.min() * 1000:.1f} to {distances.max() * 1000:.1f} mm "
-                     f"from the cage, median {np.median(distances) * 1000:.1f} mm")
+        hanging = "".join(f", {int((_attribute(obj.data, hang.HANG, 'INT') == number + 1).sum())} vertices hanging on the "
+                          f"{part['chains']} chains" for number, part in enumerate(hang.parts(recipe)))
+        lines.append(f"{obj.name}: {triangles} triangles, {fixed.min() * 1000:.1f} to {fixed.max() * 1000:.1f} mm "
+                     f"from the cage, median {np.median(fixed) * 1000:.1f} mm{hanging}")
     return lines
 
 
@@ -1112,12 +1331,15 @@ def export_paths(name: str, labels: list[str], folder: str) -> list[tuple[str, s
 
 def review_file(file: str, labels: list[str], output: str) -> str:
     """The garment on every body side by side, with an action RigTest_<Label> on each armature that
-    steps through the test poses, for the reviewer to play in Blender."""
+    steps through the test poses, for the reviewer to play in Blender. The cloth chains of its loose
+    parts lie in every pose as the runtime solver lays them."""
     bpy.ops.wm.open_mainfile(filepath=file)
     scene = bpy.context.scene
     frame = 0
     for index, label in enumerate(labels):
         arm = bpy.data.objects[label]
+        kinds, reach = cloth.worn(arm, [o for o in arm.children_recursive if o.type == "MESH"])
+        found = cloth.capsules(arm, bodies.source_body(label)) if kinds else []
         arm.location.x = index * REVIEW_OFFSET
         for obj in [arm] + list(arm.children_recursive):
             obj.hide_set(False)
@@ -1127,9 +1349,9 @@ def review_file(file: str, labels: list[str], output: str) -> str:
         frame = 0
         for _name, _description, pose in poses.POSES[1:]:
             for f, p in ((frame, {}), (frame + POSE_FRAMES // 2, pose), (frame + POSE_FRAMES, pose)):
-                _key_pose(arm, p, f)
+                _key_pose(arm, p, f, kinds, found, reach)
             frame += POSE_FRAMES + POSE_FRAMES // 2
-        _key_pose(arm, {}, frame)
+        _key_pose(arm, {}, frame, kinds, found, reach)
     scene.frame_start, scene.frame_end = 0, frame
     scene.render.fps = POSE_FRAMES
     scene.frame_set(0)
@@ -1138,8 +1360,9 @@ def review_file(file: str, labels: list[str], output: str) -> str:
     return output
 
 
-def _key_pose(arm: bpy.types.Object, pose: dict, frame: int) -> None:
+def _key_pose(arm: bpy.types.Object, pose: dict, frame: int, kinds: list[str], found: list, reach: dict) -> None:
     poses.apply(arm, pose)
+    cloth.follow(arm, kinds, found, reach)
     for pb in arm.pose.bones:
         pb.keyframe_insert("rotation_quaternion", frame=frame)
     arm.pose.bones["Hips"].keyframe_insert("location", frame=frame)

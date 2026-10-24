@@ -47,6 +47,8 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--part", help="The painted material part of a paint layer, such as Body.")
         command.add_argument("--garment", help="The name of a garment.")
         command.add_argument("--band", help="The band of a garment: tight, mid, outer, or loose.")
+        command.add_argument("--covers-nothing", action="store_true",
+                             help="The garment hides nothing under it, such as a cloak that lies on top.")
         command.add_argument("--body", action="append", default=[],
                              help="<file.blend>=<armature> of a body a garment fits, the first body first.")
         command.add_argument("--clip-library", action="append", default=[],
@@ -68,6 +70,7 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--kind", default="static")
     command.add_argument("--garment", help="The name of a garment, whose sheet also shows what it covers.")
     command.add_argument("--band", help="The band of a garment.")
+    command.add_argument("--covers-nothing", action="store_true", help="The garment hides nothing under it.")
     command.add_argument("--clip-library", action="append", default=[],
                          help="<file.blend>=<Clip>+<Clip> of an animation library whose clips complete a garment's mask.")
     command.add_argument("--roots", help="Comma-separated armatures of the bodies of a cage or a texture, in order.")
@@ -174,16 +177,27 @@ def _texture(args) -> int:
     holes = texture.has_holes(bpy.data.images[texture.image_name(args.texture)])
     if holes and getattr(args, "opaque_only", None):
         raise ArtPipelineError(f"{args.texture} has transparent parts, so its masks are checked in the clips: {args.opaque_only}.")
-    exported = None
-    if args.command == "export":
-        exported = texture.export(args.texture, args.textures)
+    # The image is read before the masks open the template's file, and written only once every
+    # rule holds.
+    image = texture.exported_image(args.texture) if args.command == "export" else None
+    results = {}
     if holes:
         results = texture.masks(bpy.data.filepath, args.texture, garment_file, args.garment, labels, args.band,
-                                _clip_libraries(args))
+                                _clip_libraries(args), not args.covers_nothing)
         for label in labels:
             result, motion = results[label]
             print(f"ART_REPORT {args.texture} on {coverage.motion_summary(args.garment, motion)}")
             print(f"ART_REPORT {args.texture} on {coverage.summary(args.garment, result)}")
+            errors += filter(None, [motion.rest_error(garment.version_name(args.garment, label),
+                                                      f"visible skin vertices with {args.texture}")])
+    for error in errors:
+        print(f"ART_PIPELINE_ERROR {error}")
+    if errors:
+        return 1
+    exported = texture.export(args.texture, image, args.textures) if image is not None else None
+    if holes:
+        for label in labels:
+            result, _motion = results[label]
             if exported is not None:
                 data = os.path.join(args.target, f"{args.texture}_{label}.json")
                 coverage.write_record(data, texture.mask_record(args.texture, args.garment, result))
@@ -228,7 +242,7 @@ def _garment(args) -> int:
     coverages = {}
     if not errors:
         for label in labels:
-            coverages[label] = coverage.compute(args.garment, label, args.band)
+            coverages[label] = coverage.compute(args.garment, label, args.band, not args.covers_nothing)
             if args.stage == "model":
                 print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
     if not errors and args.stage == "rig":
@@ -237,6 +251,7 @@ def _garment(args) -> int:
             motion = coverage.check_motion(args.garment, coverages[label], actions)
             print(f"ART_REPORT {coverage.motion_summary(args.garment, motion)}")
             print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
+            errors += filter(None, [motion.rest_error(garment.version_name(args.garment, label), "visible skin vertices")])
         # Every template of a lower layer worn under this one, at this one's openings.
         for path, inner, inner_band in _pairs(args):
             versions_inner = garment.append_inner(path, inner, labels)
@@ -244,6 +259,8 @@ def _garment(args) -> int:
                 underlay = coverage.compute(inner, label, inner_band).underlay
                 result = coverage.check_pair(args.garment, coverages[label], obj, underlay, actions)
                 print(f"ART_REPORT {coverage.pair_summary(args.garment, inner, result)}")
+                errors += filter(None, [result.rest_error(garment.version_name(args.garment, label),
+                                                          f"vertices of {inner} worn under it")])
         for library_data in {a.library for a in actions if a.library is not None}:
             bpy.data.libraries.remove(library_data)
     for error in errors:
@@ -303,7 +320,7 @@ def main() -> int:
             holes = texture.dress(args.garment, os.path.abspath(args.texture_file), args.texture, labels)
             path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size,
                                                 args.garment if holes else None, args.band, _clip_libraries(args),
-                                                args.garment)
+                                                args.garment, not args.covers_nothing)
             print(f"ART_PREVIEW {path}")
             return 0
         if args.kind == "cage":
@@ -313,7 +330,7 @@ def main() -> int:
             return 0
         if args.kind == "garment":
             path = preview.render_garment_sheet(os.path.abspath(args.output), args.cell_size, args.garment, args.band,
-                                                _clip_libraries(args))
+                                                _clip_libraries(args), covers=not args.covers_nothing)
             print(f"ART_PREVIEW {path}")
             return 0
         render = {"animations": preview.render_clip_sheet, "paint": preview.render_paint_sheet}.get(

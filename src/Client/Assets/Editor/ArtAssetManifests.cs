@@ -159,8 +159,9 @@ namespace Mmorpg.Client.Editor
         public int layer;
         // A garment template: the cage it is made on, whose bodies it fits; its visual slot and its
         // band from the cage; its layer from the inside out; the slots it hides and whether it hides
-        // the underwear of its slot; what headwear does to the hair; and the cloth profile of its
-        // loose parts.
+        // the underwear of its slot; what headwear does to the hair; the cloth profile of its loose
+        // parts; and whether it covers the body and the garments under it, which a cloak that lies on
+        // top does not.
         public string cage = string.Empty;
         public string slot = string.Empty;
         public string band = string.Empty;
@@ -168,6 +169,7 @@ namespace Mmorpg.Client.Editor
         public bool hidesUnderwear;
         public string hair = string.Empty;
         public string cloth = string.Empty;
+        public bool covers = true;
         // A garment texture: the template it belongs to, such as art/Garments/Shirt.
         public string garment = string.Empty;
         public ArtAssetExport export = new ArtAssetExport();

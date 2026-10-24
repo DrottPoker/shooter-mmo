@@ -177,7 +177,8 @@ namespace Mmorpg.Client.Gameplay
             Refresh();
         }
 
-        // The chains of the worn garments' cloth move; the others rest.
+        // The chains of the worn garments' cloth move, each with its garment's model, so a cloak lies
+        // over a robe's skirt; the others rest.
         private void MoveCloth()
         {
             var solver = GetComponent<ClothChainSolver>();
@@ -191,7 +192,7 @@ namespace Mmorpg.Client.Gameplay
                 var garment = PlayerBodyMeshes.Drawn(worn).LastOrDefault(candidate => ChainsOf(candidate.Cloth) == kind);
                 if (garment != null)
                 {
-                    solver.Activate(kind, ClothProfile.For(kind));
+                    solver.Activate(kind, ClothProfile.For(kind), garment.Model);
                 }
                 else
                 {

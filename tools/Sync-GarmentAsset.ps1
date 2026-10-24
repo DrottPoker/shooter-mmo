@@ -71,8 +71,8 @@ else {
 # The review sheet and the review file, which Git ignores.
 $previews = Join-Path $script:ArtRepositoryRoot "artifacts/art-previews"
 $sheet = Join-Path $previews "$($manifest.Name).png"
-Invoke-ArtBlender $blender $manifest (@("preview", "--output", $sheet, "--kind", "garment", "--garment", $manifest.Name,
-        "--band", $manifest.Band) + (Get-ArtGarmentClipArguments $manifest)) | Out-Null
+Invoke-ArtBlender $blender $manifest (@("preview", "--output", $sheet, "--kind", "garment", "--garment", $manifest.Name) +
+        (Get-ArtGarmentCoverArguments $manifest) + (Get-ArtGarmentClipArguments $manifest)) | Out-Null
 $reviewFile = Join-Path $previews "$($manifest.Name)_poses.blend"
 $output = Invoke-ArtNative $blender (@(
         "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",

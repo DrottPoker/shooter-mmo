@@ -115,11 +115,13 @@ SKIRT_ABOVE_HIP = 0.02
 SKIRT_GAP = 0.01
 SKIRT_BONES = 4
 # Cloak chains across the back, by their distance from the centre line; their tops sit this far
-# below the base of the neck and this far behind the body, and they hang to the knees in five bones.
+# below the base of the neck and this far behind the body, and they hang in five bones to the
+# middle of the calves, this share of the way from the knee to the ankle.
 CLOAK_CHAINS = (("CloakCenter", 0.0, ""), ("CloakInner", 0.09, "_R"), ("CloakOuter", 0.18, "_R"))
 CLOAK_BELOW_NECK = 0.04
 CLOAK_GAP = 0.015
 CLOAK_BONES = 5
+CLOAK_DOWN_THE_SHIN = 0.5
 # The hood chain starts this far behind the back of the head at eye height and steps down and back.
 HOOD_GAP = 0.02
 HOOD_STEPS = ((-0.03, -0.07), (-0.02, -0.07))
@@ -391,8 +393,9 @@ def _hanging(head, end_z, count, roll):
 
 def _chain_bones(label, s, hip_y, hip_z, knee, ankle, neck_base, head, eye_z):
     """The cloth chains, placed from the body: the skirt chains on a ring around the hips that
-    hangs to the ankles, the cloak chains from the shoulder blades to the knees, and the hood chain
-    behind the head. Each bone's Z axis points away from the body, the way its cloth faces."""
+    hangs to the ankles, the cloak chains from the shoulder blades to the middle of the calves, and
+    the hood chain behind the head. Each bone's Z axis points away from the body, the way its cloth
+    faces."""
     bones = {}
     fwd = Vector((0.0, 1.0, 0.0))
     hips = _surface_tree(label, ("Pelvis", "Thighs", "Torso"))
@@ -403,12 +406,14 @@ def _chain_bones(label, s, hip_y, hip_z, knee, ankle, neck_base, head, eye_z):
         top = _hit(label, hips, centre, out, name) + out * (SKIRT_GAP * s)
         for i, bone in enumerate(_hanging(top, ankle.z, SKIRT_BONES, out), 1):
             bones[f"{name}{i}{suffix}"] = bone
-    back = _surface_tree(label, ("Torso", "Neck", "UpperArms"))
+    back = _surface_tree(label, ("Torso",))
     z = neck_base.z - CLOAK_BELOW_NECK * s
+    calf = knee.z + (ankle.z - knee.z) * CLOAK_DOWN_THE_SHIN
     for name, x, suffix in CLOAK_CHAINS:
-        origin = Vector((x * s, neck_base.y + 0.05 * s, z))
-        top = _hit(label, back, origin, -fwd, name) - fwd * (CLOAK_GAP * s)
-        for i, bone in enumerate(_hanging(top, knee.z, CLOAK_BONES, -fwd), 1):
+        # From behind, so a chain beside narrow shoulders finds the back and not the arm in front.
+        origin = Vector((x * s, neck_base.y - 1.0, z))
+        top = _hit(label, back, origin, fwd, name) - fwd * (CLOAK_GAP * s)
+        for i, bone in enumerate(_hanging(top, calf, CLOAK_BONES, -fwd), 1):
             bones[f"{name}{i}{suffix}"] = bone
     skull = _surface_tree(label, ("Head",))
     top = _hit(label, skull, Vector((0.0, head.y, eye_z)), -fwd, "Hood") - fwd * (HOOD_GAP * s)
@@ -540,14 +545,31 @@ def _assign_collections(arm, skeleton, specs):
         arm.pose.bones[spec.name].rotation_mode = "QUATERNION"
 
 
-def add_missing_bones(label, skeleton):
-    """Adds the bones the skeleton has and the rig lacks, such as new cloth chains, placed by the rig
-    rules, and leaves every other bone where it is. Returns their names."""
+# A cloth chain bone lies where the rig rules put it when its ends and its Z axis are this close.
+CHAIN_TOLERANCE = 1e-5
+
+
+def _placed(bone, head, tail, z_axis):
+    """Whether a bone already lies as the rig rules place it: its ends, and its Z axis along the
+    part of z_axis across the bone, as align_roll turns it."""
+    along = (tail - head).normalized()
+    across = (z_axis - along * z_axis.dot(along)).normalized()
+    own = bone.matrix_local.to_3x3().col[2]
+    return ((bone.head_local - head).length <= CHAIN_TOLERANCE and (bone.tail_local - tail).length <= CHAIN_TOLERANCE
+            and (own - across).length <= CHAIN_TOLERANCE)
+
+
+def place_rule_bones(label, skeleton):
+    """Adds the bones the skeleton has and the rig lacks, such as new cloth chains, and moves the cloth
+    chains that do not lie where the rig rules now put them, which no skin moves with; every other
+    bone stays where it is. Returns the names of the bones it added and of those it moved."""
     arm = bpy.data.objects[label]
     missing = [spec for spec in skeleton.bones if spec.name not in arm.data.bones]
-    if not missing:
-        return []
+    chains = [spec for spec in skeleton.bones if spec.chain and spec.name in arm.data.bones]
     bones, _digits = joints(label, arm.data.bones["UpperArm_R"].head_local)
+    moved = [spec for spec in chains if not _placed(arm.data.bones[spec.name], *bones[spec.name])]
+    if not missing and not moved:
+        return [], []
     _select_only(arm)
     bpy.ops.object.mode_set(mode="EDIT")
     edit = arm.data.edit_bones
@@ -560,9 +582,14 @@ def add_missing_bones(label, skeleton):
         if spec.parent is not None:
             bone.parent = edit[spec.parent]
             bone.use_connect = False
+    for spec in moved:
+        head, tail, z_axis = bones[spec.name]
+        bone = edit[spec.name]
+        bone.head, bone.tail = head, tail
+        bone.align_roll(z_axis)
     bpy.ops.object.mode_set(mode="OBJECT")
     _assign_collections(arm, skeleton, missing)
-    return [spec.name for spec in missing]
+    return [spec.name for spec in missing], [spec.name for spec in moved]
 
 
 # ------------------------------------------------------------------------------------ weights
@@ -924,13 +951,14 @@ def _save(out):
 
 def sync(path, label, skeleton_path, out):
     """Writes the body parts of a character from its source body, with the body's weights, adds the
-    bones the skeleton has and the rig lacks, and saves the file."""
+    bones the skeleton has and the rig lacks, places the cloth chains by the rig rules, and saves
+    the file."""
     bpy.ops.wm.open_mainfile(filepath=path)
     skeleton = skeleton_definition.load(skeleton_path)
     parts = bodies.write_parts(label, skeleton.deform_bones)
-    added = add_missing_bones(label, skeleton)
+    added, moved = place_rule_bones(label, skeleton)
     _save(out)
-    print(f"SYNCED {label}: {len(parts)} parts, {len(added)} new bones -> {out}")
+    print(f"SYNCED {label}: {len(parts)} parts, {len(added)} new bones, {len(moved)} cloth chain bones moved -> {out}")
 
 
 def weights(path, label, skeleton_path, out):
@@ -941,7 +969,7 @@ def weights(path, label, skeleton_path, out):
     names = skeleton.deform_bones
     normalize(label)
     bodies.write_parts(label, names)
-    add_missing_bones(label, skeleton)
+    place_rule_bones(label, skeleton)
     arm = bpy.data.objects[label]
     _bones, digit_verts = joints(label, arm.data.bones["UpperArm_R"].head_local)
     bind(label, arm, skeleton, digit_verts)
