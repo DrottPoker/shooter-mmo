@@ -37,14 +37,16 @@ param(
     [string[]]$Bodies = @("art/Characters/Human_Male", "art/Characters/Human_Female"),
     [int]$Layer = 20,
     # garment: its visual slot, its band from the cage, the slots it hides, whether it hides the
-    # underwear of its slot, what happens to the hair under headwear, and its cloth profile. Its
-    # -TriangleBudget is by default the slot's budget.
+    # underwear of its slot, whether it covers nothing under it, such as a cloak that lies on top,
+    # what happens to the hair under headwear, and its cloth profile. Its -TriangleBudget is by
+    # default the slot's budget.
     [ValidateSet("head", "body", "legs", "hands", "feet", "back", "hair")]
     [string]$Slot,
     [ValidateSet("tight", "mid", "outer", "loose")]
     [string]$Band,
     [string[]]$Hides = @(),
     [switch]$HidesUnderwear,
+    [switch]$CoversNothing,
     [ValidateSet("hide", "compress", "show")]
     [string]$Hair,
     [ValidateSet("robe", "cloak", "hood")]
@@ -59,6 +61,10 @@ param(
     # garment: what it lies over beyond a line, each <Line>:<head|tail>:<band>, the side the inner
     # garment keeps and its band, such as Waist:head:mid for a top over trousers.
     [string[]]$Over = @(),
+    # garment: its loose parts, each <Line>:<all|back>:<skirt|cloak>:<flare>, the line of the trunk it
+    # hangs from, all around or across the back, the cloth chains it hangs on, and how much wider it
+    # grows toward its hem, in meters, such as HemHip:all:skirt:0.03 for a robe's skirt.
+    [string[]]$Hang = @(),
     [double]$Ease = 0.0,
     [double]$Hem = 0.004,
     [switch]$Modeled,
@@ -221,18 +227,27 @@ switch ($Kind) {
 
                         [ordered]@{ line = $parts[0]; keep = $parts[1]; band = $parts[2] }
                     })
+                hang = @($Hang | ForEach-Object {
+                        $parts = $_.Split(":")
+                        if ($parts.Count -ne 4) {
+                            throw "Pass each -Hang as <Line>:<all|back>:<skirt|cloak>:<flare>, such as HemHip:all:skirt:0.03."
+                        }
+
+                        [ordered]@{ line = $parts[0]; side = $parts[1]; chains = $parts[2]; flare = [double]::Parse($parts[3], [System.Globalization.CultureInfo]::InvariantCulture) }
+                    })
                 ease = $Ease
                 hem = $Hem
             }
         }
 
         if ($null -eq (ConvertTo-ArtGarmentRecipe ([pscustomobject]$recipe) $cageManifest) -and -not $Modeled) {
-            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
+            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, optionally -Hang at lines of the trunk, each <Line>:<all|back>:<skirt|cloak>:<flare> with a flare from 0 to $script:ArtGarmentFlareLimit, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
         }
 
         Add-ArtRecipeLines $lines $recipe
         $lines.Add("    `"hides`": [$(Format-ArtList $Hides)],")
         $lines.Add("    `"hidesUnderwear`": $(if ($HidesUnderwear) { 'true' } else { 'false' }),")
+        $lines.Add("    `"covers`": $(if ($CoversNothing) { 'false' } else { 'true' }),")
         $lines.Add("    `"hair`": $(if ($Hair) { '"' + $Hair + '"' } else { 'null' }),")
         $lines.Add("    `"cloth`": $(if ($Cloth) { '"' + $Cloth + '"' } else { 'null' }),")
         $lines.Add('    "dyes": 0,')
@@ -250,9 +265,12 @@ switch ($Kind) {
         $bodyPaths = @($Bodies | ForEach-Object { (Read-ArtAssetManifest (Resolve-ArtAssetDirectory $_)).RelativeDirectory })
         $lines.Add("    `"bodies`": [$(Format-ArtList $bodyPaths)],")
         $lines.Add("    `"figure`": $(Format-ArtShare $Figure),")
-        # The standard lines of docs/EQUIPMENT_VISUALS_DESIGN.md, from the neck down.
+        # The standard lines of docs/EQUIPMENT_VISUALS_DESIGN.md, from the neck down, with the rise
+        # of a neckline that climbs toward the sides of the neck.
         $standard = @(
             @("CollarStand", "neck", "Neck", 0.3),
+            @("Neckline", "neck", "Neck", 0.19, 5.3),
+            @("CloakYoke", "trunk", "UpperChest", 0.55),
             @("HemCrop", "trunk", "Chest", 0.5),
             @("Waist", "trunk", "Spine", 0.1),
             @("HemHip", "trunk", "Hips", 0.72),
@@ -268,7 +286,8 @@ switch ($Kind) {
         for ($i = 0; $i -lt $standard.Count; $i++) {
             $comma = if ($i -lt $standard.Count - 1) { "," } else { "" }
             $line = $standard[$i]
-            $lines.Add("        { `"name`": `"$($line[0])`", `"region`": `"$($line[1])`", `"bone`": `"$($line[2])`", `"share`": $(Format-ArtShare $line[3]) }$comma")
+            $rise = if ($line.Count -gt 4) { ", `"rise`": $(Format-ArtShare $line[4])" } else { "" }
+            $lines.Add("        { `"name`": `"$($line[0])`", `"region`": `"$($line[1])`", `"bone`": `"$($line[2])`", `"share`": $(Format-ArtShare $line[3])$rise }$comma")
         }
         $lines.Add('    ],')
     }

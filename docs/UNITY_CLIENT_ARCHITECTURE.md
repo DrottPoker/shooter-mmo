@@ -1268,18 +1268,34 @@ the kinds a garment activates, with a `ClothProfile` for its stiffness, damping,
 gravity, and margin, in `LateUpdate` after the Animator posed the body
 (`PresentationExecutionOrder.Cloth`). Each step puts the chain bones back to
 their rest rotations, lets every chain particle spring toward hanging from its
-animated parent with inertia and gravity, keeps the bone lengths, pushes the
+animated parent, or for a skirt or cloak chain toward following the legs, each
+bone beside a thigh or a shin turning with it as far as the leg pushes the
+cloth outward beyond the slack of its `ClothProfile`, the front chains with the
+leg in front, the back chains and the
+cloak with the leg behind, and the side chains with their own, with inertia and
+gravity, keeps the bone lengths, pushes the
 particles out of capsules around the hips, spine, neck, head, thighs, and shins,
-and turns the bones to point at them. The capsule radii are the middle distance
-of the body vertices that each bone moves most, measured once from the body's
-own mesh in the bind pose, so the cloth lies on every body type's shape. Within
+and turns the bones to point at them. A capsule's radius is the middle distance
+of the body vertices that its bone moves most, around the trunk in each of 16
+directions around the bone with narrow grooves filled, round around a leg,
+measured once from the body's own mesh in the bind pose, so the cloth lies on
+every body type's shape. `PlayerBodyAppearance`
+hands the solver each worn garment's model, from which it measures how far the
+cloth reaches beyond and within the chains: a particle keeps the margin its
+cloth keeps from the body, from the trunk no more than it has in the bind pose,
+so a body standing still wears its garments as they were made, and the skirt
+chains are solved first, so a cloak's particles stay outside the envelope of a
+robe's skirt under it. Within
 25 m of the camera the springs run, to 60 m the chains follow their targets
 without inertia, and beyond they rest; a root that jumps more than 2 m in one
 step, as in a teleport, starts its chain again. With no garment the solver does
 nothing. `ClothChainSolverTests` poses the body with its Animator step by step
 and checks that a robe stays outside the legs while jogging and swings with
-them, that the chains settle when the body stands, a teleport, the levels of
-detail, and the capsule radii.
+them, that it drapes over thighs raised as in sitting, that a cloak is pushed
+back by a leg that kicks back, that a cloak lies over a robe's skirt while
+jogging, that the chains hang at rest as the garments were made, that the
+chains settle when the body stands, a teleport, the levels of detail, and the
+capsule radii, the chest's shallow behind the spine and deep in front.
 
 The controller's third state, `Death`, plays the handmade `Death` clip of the
 library. An Any State transition crossfades into it in 0.15 s while the bool `Dead` is
@@ -1396,7 +1412,8 @@ describes, in `PlayerBodyMeshes`:
    stays; the others are drawn from the lowest layer up.
 2. A body triangle is left out when a drawn garment covers its face, and a
    garment triangle when a garment of a higher layer covers the body face under
-   it.
+   it. Loose parts, such as a robe's skirt, cover nothing, and the cloak covers
+   nothing at all, so what lies under them stays drawn when they swing.
 3. A pulled-in body vertex moves inward along its normal by its distance, the
    largest any drawn garment asks for.
 4. The drawn garments' meshes join the body's in one mesh, with their bones

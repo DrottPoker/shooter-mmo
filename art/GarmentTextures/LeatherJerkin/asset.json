@@ -5,19 +5,19 @@
     "approvals": {
         "texture": {
             "date": "2026-10-24",
-            "sourceSha256": "facd50fb0bca864d0feac73792fa06ac299e8f7d70234782d1b59fd18449c1ad",
-            "garmentSourceSha256": "2529334242c40230e2aa5ffd8ee4292452d99d0fb87369aee96b1d6492b6ccee"
+            "sourceSha256": "5c6d95c37b8597ab3ab0e110a862a02dc00457c83bf6359164d286f6364aa979",
+            "garmentSourceSha256": "4239f5b7e6977540f7faa96f912116b2180d27f306eea2e173840c13261d5621"
         }
     },
     "export": {
-        "sourceSha256": "facd50fb0bca864d0feac73792fa06ac299e8f7d70234782d1b59fd18449c1ad",
-        "garmentSourceSha256": "2529334242c40230e2aa5ffd8ee4292452d99d0fb87369aee96b1d6492b6ccee",
+        "sourceSha256": "5c6d95c37b8597ab3ab0e110a862a02dc00457c83bf6359164d286f6364aa979",
+        "garmentSourceSha256": "4239f5b7e6977540f7faa96f912116b2180d27f306eea2e173840c13261d5621",
         "masks": [
-            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json", "dataSha256": "9f79aa1d394e1e40ba68a1006c34bd8cb20f6a4bcc9150cca927f9e2be5bf5ff" },
-            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "23546180fb6d08faab77d299ccef725399f0b92428a09c644cfeca58b1e38203" }
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json", "dataSha256": "aca6fd67addafb341430ec638401a76c2e4107fb4f7501b67b690c946ea09d3e" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "8b5beef9c04a54a32c8e8bd26fd6e98bbf29f5c2ccf065ead0bbd5f84fd7efe8" }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "75bcdc80b9c74a80d94341ac59ee13a44d6c86690fe9fb7d2053f0515f17a987" }
         ],
         "materials": [
             {
@@ -32,7 +32,7 @@
             {
                 "name": "T_Garment_LeatherJerkin",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_LeatherJerkin.png",
-                "sha256": "a9bc3df2b8a3fe83f841ad2255f83885248ee0f95340f8b1f201a7abba83d722"
+                "sha256": "34e2fd292edc0dedfbd52c13c932f8ef72f6c062fc37b2f9ca1987090a395ddb"
             }
         ]
     }

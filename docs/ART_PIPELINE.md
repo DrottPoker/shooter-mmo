@@ -73,7 +73,7 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, a garment template one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it, and a garment texture with transparent parts its own data per body, `Models/Garments/<Name>_<Label>.json`. |
 | `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint` and garment textures to `Textures/Garments`. |
-| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers; `Garment.shader` and `GarmentInput.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels. |
+| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader` and `CharacterSkinInput.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces. |
 | `src/Client/Assets/Editor/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`: a body dressed in chosen garments, playing its clips on a moving ground with the cloth solver running. |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
@@ -116,16 +116,17 @@ any `clips` of its own are written by hand when an asset is created.
 | `part` | Paint layers only: the part of the painted material `M_<Part>_<Label>`, such as `Body`. |
 | `bodies` | Paint layers: the skinned assets the paint fits, the body it is painted on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology; its garment templates fit them. |
 | `cage` | Garment templates only: the garment cage it is made on, such as `art/Cages/Humanoid`. |
-| `recipe` | Garment templates only: its `regions`, `cuts`, `ease`, and `hem`, as [Garments](#garments) describes, or `"modeled"`. |
+| `recipe` | Garment templates only: its `regions`, `cuts`, `over`, `hang`, `ease`, and `hem`, as [Garments](#garments) describes, or `"modeled"`. |
 | `garment` | Garment textures only: the template it is the look of, such as `art/Garments/Shirt`. |
 | `figure` | The cage only: the figure scale in meters, the radius of the ball that rolls over the skin, from 0.01 to 0.2. |
-| `lines` | The cage only: the standard lines, each with its `name`, its `region` (`neck`, `trunk`, `arms`, or `legs`), its `bone`, without the side `_L` or `_R` for the arms and legs, and its `share` of the bone's length, from 0 to 1. |
+| `lines` | The cage only: the standard lines, each with its `name`, its `region` (`neck`, `trunk`, `arms`, or `legs`), its `bone`, without the side `_L` or `_R` for the arms and legs, and its `share` of the bone's length, from 0 to 1; a line of the neck may also have a `rise`, from above 0 to 20 per meter, by which it climbs toward the sides, the rise times the square of the distance to the side. |
 | `fittedTo` | The cage only, written by its approval: every body with the `fitSha256` of the body's export the cage was approved on, the fingerprint of the body's rig, surface, and weights, so a change of only a body's images leaves the cage as it is. |
 | `layer` | Paint layers: the order paint layers are drawn in, the lowest first, within the layers of their `category`: 100 to 199 for a scar, 200 to 299 for a tattoo, and 900 to 999 for underwear, such as `200` for the tattoo. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `150` for a shirt over trousers at `100`. |
 | `slot` | Garments: the visual slot, `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. Underwear: the visual slot it is worn in, `body` for a bra or `legs` for briefs. |
 | `band` | Garments only: how far from the garment cage the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), or `loose` (from 10 mm). |
 | `hides` | Garments only: the other visual slots it hides, such as `["legs"]` for a floor-length robe, or `[]`. |
 | `hidesUnderwear` | Garment templates only, optional: `true` when it hides the underwear of its slot while it is drawn, such as a top that bares the shoulders, `false` by default. |
+| `covers` | Garment templates only, optional: `false` when it hides nothing under it, neither skin nor inner garments, such as a cloak that lies on top and may swing open, so its cover mask is empty; `true` by default. |
 | `hair` | Garments only: for headwear, what happens to the hair under it, `hide`, `compress`, or `show`; `null` for every other slot. |
 | `cloth` | Garments only: the cloth profile of its loose parts, `robe`, `cloak`, or `hood`, or `null`. |
 | `dyes` | Garments only: the number of dye channels. It is `0` until the garment shader brings dyes. |
@@ -290,7 +291,7 @@ to them, and the runtime cloth solver moves them for the garments that use them
 | Chain | Bones | Parent | Placed |
 | --- | --- | --- | --- |
 | `skirt` | `SkirtFront1` to `4`, `SkirtFrontSide1_L` to `4_L` and `_R`, `SkirtSide`, `SkirtBackSide`, and `SkirtBack`, eight chains of four | `Hips` | On a ring just above the hip joints, 1 cm out from the body, hanging to the ankles. |
-| `cloak` | `CloakCenter1` to `5`, `CloakInner1_L` to `5_L` and `_R`, and `CloakOuter`, five chains of five | `UpperChest` | Across the shoulder blades, 4 cm below the base of the neck and 1.5 cm behind the body, hanging to the knees. |
+| `cloak` | `CloakCenter1` to `5`, `CloakInner1_L` to `5_L` and `_R`, and `CloakOuter`, five chains of five | `UpperChest` | Across the shoulder blades, 4 cm below the base of the neck and 1.5 cm behind the body, hanging to the middle of the calves, halfway from the knees to the ankles. |
 | `hood` | `Hood1`, `Hood2` | `Head` | Behind the head at eye height, stepping down and back. |
 
 A chain bone's Z axis points away from the body, the way its cloth faces.
@@ -412,11 +413,13 @@ use it; a garment texture has no model, and its material goes to
 draws with the garment shader `Mmorpg/Garment`,
 URP Lit with three dye channels, and cuts its texture at alpha 0.5 and draws both
 faces, so holes, lace, and torn edges show sharp and the inside of a sleeve is
-drawn. Like the skin shader, it is a copy of URP's `Lit.shader` and
-`LitInput.hlsl` in which only the include, the dye properties `_DyeMask`,
-`_DyeColor1` to `_DyeColor3`, and `_DyeCount`, and the dyeing of the albedo
-differ; when URP is upgraded, it is made again from the new files with the same
-changes.
+drawn. Its forward pass turns the normal on the back faces in
+`GarmentForwardPass.hlsl`, so the inside of a cloak or a skirt takes the light
+that falls on it instead of the light of its outside. Like the skin shader, it is
+a copy of URP's `Lit.shader` and `LitInput.hlsl` in which only the include, the
+dye properties `_DyeMask`, `_DyeColor1` to `_DyeColor3`, and `_DyeCount`, the
+dyeing of the albedo, and the forward pass's fragment differ; when URP is
+upgraded, it is made again from the new files with the same changes.
 
 `ArtExportFollowUp` runs both commands once after Unity imports exported models,
 their data, or textures, when the Editor next updates, so an export reaches the
@@ -653,7 +656,13 @@ of any topology gets one:
    spine groove, the navel, and the cleavage, while the figure from top to
    bottom stays. The tension fades in over three edges from the open ends.
 5. Eight Taubin steps fair the cage, and no vertex and no face centre stays
-   closer to the skin than 1 mm.
+   closer to the skin than 1 mm. A face that cuts across a curve of the skin
+   between its corners, such as a woman's shoulder, would let the skin come out
+   through it, and every garment on it: a ray goes in from every skin vertex of
+   the net's body parts, and of the hands and feet next to the wrist and ankle
+   rings, along the skin's normal, up to 20 mm, and where it meets a face from
+   outside, or the skin lies closer to a face than 1 mm, the face moves out
+   along its normal, all its corners alike, until the skin lies 1 mm inside it.
 
 These steps fit the neck, the trunk, the arms, and the legs as one net. The
 hands and the feet are fitted after them as a second net that holds the wrist
@@ -676,8 +685,11 @@ changed none of its other vertices:
   the outline at which the ankle ring's vertices lie. The last ring closes at the
   toe tip. The feet are faired in eight Taubin steps.
 - No vertex and no face centre of either stays closer to the skin than 1 mm,
+  and the skin of the hands and the feet stays 1 mm inside their faces,
   settled in 16 passes, since around a slender fingertip moving one face moves
-  the next one back.
+  the next one back. A face whose point over the skin the held wrist or ankle
+  ring carries for more than half stays, so the skin next to a ring may come
+  closer than 1 mm, but the first net keeps it from coming out.
 
 A version corrected by hand keeps its corrections, because the point attribute
 `fitted` holds the shape the last fitting gave, and the difference to it is
@@ -688,8 +700,8 @@ Its `model` stage checks that the bodies are the current ones of their files,
 that the cage was fitted with the figure scale and the lines of `asset.json` and
 is fitted as the fitting gives it now, that every version has the reference's
 topology, that no vertex or face centre lies closer to the skin than 1 mm, that
-no two faces cross each other, and that every line crosses its region on every
-body. The report names how far each version lies from the skin and how many
+the skin comes out through no face between its corners, that no two faces cross
+each other, and that every line crosses its region on every body. The report names how far each version lies from the skin and how many
 vertices span pits more than 5 mm deep.
 
 The standard lines are planes at a `share` of a bone's length, at right angles
@@ -699,6 +711,8 @@ bones lean:
 | Line | Region | Bone and share | Where |
 | --- | --- | --- | --- |
 | `CollarStand` | `neck` | `Neck` 0.3 | a stand collar's top, about 3 cm up the neck |
+| `Neckline` | `neck` | `Neck` 0.19, rise 5.3 | a round neckline that hugs the neck: just above the hollow of the throat, up at the sides of the neck where the shoulders meet it, and at the nape |
+| `CloakYoke` | `trunk` | `UpperChest` 0.55 | a cloak's yoke, a few centimeters below the collarbones and above the armpits, where its back hangs from between the arms |
 | `HemCrop` | `trunk` | `Chest` 0.5 | under the bust |
 | `Waist` | `trunk` | `Spine` 0.1 | the trousers' waistband, at the hip bones |
 | `HemHip` | `trunk` | `Hips` 0.72 | a top's hem, about 5 cm under `Waist` |
@@ -746,7 +760,8 @@ The recipe in `asset.json` says what the pipeline builds:
 | --- | --- |
 | `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, `legs`, `hands`, and `feet`, such as `["trunk", "arms"]` for the shirt and `["legs", "feet"]` for the boots. A region without a cut is covered whole. |
 | `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`; the boots keep the `tail` of `BootCalf` and the gloves of `GloveCuff`. |
-| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`. |
+| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`, and the cloak's yoke over a `mid` top on the `tail` side of `CloakYoke` and the `head` side of `Neckline`, so it leaves room for a padded top. A point is over the region of the template it lies nearest, so a hem turned in at the border of the template's region, such as the cloak's neckline over a shirt's, keeps above the inner garment. |
+| `hang` | Optional: its loose parts, which hang on the [cloth chains](#skeletons), each the trunk line it hangs from, which the recipe also cuts at, its `side`, `all` around the trunk for a skirt or `back` across the back for a cloak, its `chains`, `skirt` or `cloak`, and its `flare`, how much wider it grows toward its hem, from 0 to 0.1 m. The robe hangs a skirt `all` around from `HemHip` on the `skirt` chains with a flare of 0.08; the cloak hangs its back from `CloakYoke` on the `cloak` chains with a flare of 0.09. A template with loose parts names the matching `cloth` profile. |
 | `ease` | More room at the front and the back of the lower armholes, in meters, fading out over 60 mm. The proof set has none, since ease there let more skin come through in the clips. |
 | `hem` | How deep every open edge is turned inward, in meters, such as `0.002`. |
 
@@ -774,7 +789,19 @@ models by hand over the cage, such as a hairstyle or a helmet.
   close to the body as they can, 10 mm for `mid`, and 20 mm for `outer` and
   `loose`, and more where `over` lifts it over an inner garment; the ease; every open edge turned inward by the
   `hem` depth with a 12 mm flap, whose faces take the look of the edge in the
-  texture; and every vertex and face centre settled into the band from the cage.
+  texture; and every vertex and face centre settled into the band from the cage,
+  the band taken again where a point ends up until it holds. Its loose parts
+  hang in rings from the open edge at their line down to the tips of their
+  chains, on a scaffold that does not follow the figure: every column is
+  stretched like a string from the edge over the body's convex outline to where
+  the body reaches out farthest and hangs straight down from there, a skirt's
+  around the hips 30 mm outside the outline, so it never narrows toward the hem,
+  and a cloak's across the back 20 mm behind it; both widen by the flare toward
+  the hem. They have no band and take the weights of their chains, blended
+  from the edge's over the first rings. The point attribute `hang` marks the
+  vertices of each loose part, `hang_top` and `hang_ring` their column and ring,
+  and the face attribute `hang_face` its faces; every other version places them
+  on its own body's scaffold.
   The point attribute `built` holds the shape the recipe gave, so a rebuild
   carries a shape made by hand over: each new vertex takes the difference at its
   place on the cage.
@@ -804,8 +831,9 @@ body it shows three rows: the body in the template from four sides with its
 torso from the front and the back, or for a template shorter than 40 percent of
 the body, such as a glove or a boot, the one on the body's left up close from
 outside and from the front, the template showing a grid in its UVs, so
-the sheet shows how they stretch; the template in the test poses of `poses.py`;
-and the body without it, its covered faces orange, the skin kept visible at the
+the sheet shows how they stretch; the template in the test poses of `poses.py`,
+with the cloth chains of its loose parts laid as the runtime solver lays them at
+its Follow detail (`cloth.py`), so a skirt follows the legs; and the body without it, its covered faces orange, the skin kept visible at the
 template's edges yellow, the pulled-in vertices blue, and the skin that comes
 through it in motion red. The review file `artifacts/art-previews/<Name>_poses.blend`
 places the bodies side by side with an action that steps through the test
@@ -821,9 +849,17 @@ layer of the cage, such as the trousers under a shirt, is put on the bodies from
 its own file, and of its faces that stay drawn, those whose body face this
 template leaves visible at its openings, every vertex that this template is over
 at rest, or that already lies outside it, is followed through the rest pose, the
-test poses, and the clips. The report names how many come out through this
-template and the deepest place, as the motion check does. A body wears one garment per visual slot, so templates of the same slot,
-such as a shirt and a jerkin, are not checked against each other.
+test poses, and the clips. Only vertices that face away from the cage are
+followed: a turned edge's rim and flap face the body and lie under the inner
+template's outer side, which is followed instead. The report names how many come
+out through this template and the deepest place, as the motion check does. A
+body wears one garment per visual slot, so templates of the same slot, such as a
+shirt and a jerkin, are not checked against each other, and a template is not
+checked over a slot it hides, such as the robe over trousers. Both checks follow
+loose parts with their cloth chains laid in every pose and frame as the runtime
+solver lays them at its Follow detail (`cloth.py`), so they report a leg that
+comes through a skirt or a cloak; the swing of the springs is reviewed in the
+Wardrobe.
 A template is approved and exported only on an approved cage whose bodies still
 have the exports the cage was approved on, so it is never fitted to an obsolete
 cage.
@@ -845,8 +881,10 @@ vertices of the body's editable mesh:
   an open edge of the garment is never covered. The edge reach is the band's,
   20, 40, 80, or 120 mm, or four times the gap between the skin and the edge
   where the cloth hangs farther off, up to 120 mm. The open edges are the
-  borders of its mesh and the lines where its texture is cut, sampled every
-  5 mm where the garment is opaque.
+  borders of its mesh, the lines its loose parts hang from, and the lines where
+  its texture is cut, sampled every 5 mm where the garment is opaque. Loose
+  parts cover nothing, since they swing off what they hang over at rest, and a
+  template with `"covers": false`, such as the cloak, covers no face at all.
 - **The underlay**, the body face under each garment face, along its inward
   normal, or the nearest one.
 - **The pull-in**: a visible body vertex closer to the garment than the band's
@@ -864,13 +902,20 @@ vertices of the body's editable mesh:
   there in motion whatever the weights. A vertex that comes through lies at an
   opening that shows it, so it is not hidden: the report names how many come
   through and the deepest place, the review sheet shows their faces red, and the
-  template's shape or weights fix them. The rule needs the clips, so it runs at
-  the template's `rig` stage, which its export runs.
+  template's shape or weights fix them. Skin that lies through the garment
+  already at rest shows in every pose, so it breaks the rule, and so does an
+  inner template's vertex that lies through it at rest in the pair check; the
+  cage keeps the skin inside it, so a template on it has none. The rule needs
+  the clips, so it runs at the template's `rig` stage, which its export runs,
+  and a texture with transparent parts checks its own masks the same way before
+  its export writes anything.
 
 `New-ArtAsset.ps1 -Kind garment` starts a template from its recipe on the cage,
 with `-Slot`, `-Band`, `-Regions`, `-Cuts` as `<Line>:head` or `<Line>:tail`,
-`-Ease`, and `-Hem`, or `-Modeled`; `-Cage` is `art/Cages/Humanoid` unless it
-says otherwise.
+`-Over` as `<Line>:<head|tail>:<band>`, `-Hang` as
+`<Line>:<all|back>:<skirt|cloak>:<flare>`, `-Cloth`, `-Hides`,
+`-CoversNothing`, `-Ease`, and `-Hem`, or `-Modeled`; `-Cage` is
+`art/Cages/Humanoid` unless it says otherwise.
 
 The export writes one model per body of the cage,
 `Models/Garments/<Name>_<Label>.fbx`, from its `Export_<Label>` collection, the
@@ -1115,17 +1160,21 @@ weights.
 | `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. |
 | `art/GarmentTextures/LeatherBoots` | `texture` | none | Dark brown leather on `Boots`, 1024 px, painted by a script from each texel's point on the template: fine grain and blotches, a darker band with stitches along the top of the shaft, stitched seams around the ankle and up the inside of the shaft and the back of the heel, a burnished toe cap and heel counter, and a near-black sole with a darker welt stitched around it. Roughness 0.55. Approved 2026-10-24. |
 | `art/GarmentTextures/LeatherGloves` | `texture` | none | Soft, lighter brown leather on `Gloves`, 1024 px, painted the same way: fine grain and blotches, stitched seams between the palm and the back along the sides of the fingers, around the wrist, and along the inside of the cuff, and a darker band with stitches at the cuff's edge. Roughness 0.6. Approved 2026-10-24. |
-| `art/GarmentTextures/LeatherJerkin` | `texture` | none | The leather jerkin on `Shirt`, 1024 px: warm brown leather with blotches and grain, darker trim with stitches along the neckline, the hem, and the sleeve ends, and an open V at the front, laced across, where the skin shows between the laces. It has masks of its own. Roughness 0.62. Moved from the first leather jerkin garment and then from the template `Jerkin`, which became `Shirt`, by projection. |
+| `art/GarmentTextures/LeatherJerkin` | `texture` | none | The leather jerkin on `Shirt`, 1024 px: warm brown leather with blotches and grain, darker trim with stitches along the neckline, the hem, and the sleeve ends, and an open V at the front, laced across, where the skin shows between the laces. It has masks of its own. Roughness 0.62. Moved from the first leather jerkin garment and then from the template `Jerkin`, which became `Shirt`, by projection; when `Shirt` got its round neckline on 2026-10-24, the new part of the neckline took the leather from just below it, the V ran on up along its edges with its trim, and a new trim with stitches was painted along the neckline. |
 | `art/GarmentTextures/LinenLongShirt` | `texture` | none | Plain oatmeal linen on `LongShirt`, 1024 px, with a fine weave, soft wear, stitched hems at the neckline, the hem, and the cuffs, and stitched seams. Roughness 0.82. |
 | `art/GarmentTextures/LinenShirt` | `texture` | none | The same linen on `Shirt`. |
 | `art/GarmentTextures/NetShirt` | `texture` | none | A coarse hemp-colored net on `Shirt`, 1024 px: round cords of 2.4 mm in diamond meshes 25 mm apart around the trunk and each arm, transparent between them, with solid hems 14 mm wide at the neckline, the hem, and the sleeve ends. It has masks of its own, so the skin and its paint show through the meshes. Roughness 0.88. |
+| `art/GarmentTextures/WoolCloak` | `texture` | none | Thick dark brown wool on `Cloak`, 1024 px, painted by a script from each texel's point on the template: fibres and mottling, vertical folds that deepen down the back, a darker turned hem with stitches along every edge, and in front only the cloth over the shoulders, as Victor's picture of 2026-10-24 shows: from the neckline at the top of each shoulder it comes down the front of the shoulder to a rounded corner held by a large cast bronze clasp, 72 mm across, with a beaded rim, a rosette of eight petals, and a domed boss, and runs out over the shoulder to the arm, so the throat and the chest stay free. The alpha follows the cut by its distance from the cut's lines and circles, smooth across the texels, and the cut is hemmed like an edge. Roughness 0.82. |
+| `art/GarmentTextures/WoolRobe` | `texture` | none | Undyed grey-brown wool on `Robe`, 1024 px, painted the same way: fibres and mottling, folds that deepen down the skirt, wear at the bottom of the skirt, stitched seams, and darker turned hems with stitches at the neckline, the cuffs, and the skirt's hem. Roughness 0.86. |
 | `art/GarmentTextures/WoolTrousers` | `texture` | none | Brown wool on `Trousers`, 1024 px, with a coarse weave, a darker waistband, stitched hems at the ankles, and stitched seams, among them a yoke across the hips. Roughness 0.9. |
 | `art/Garments/Boots` | `garment` | none | Boots in the `mid` band, layer 120, from the recipe `legs` and `feet`, cut at `BootCalf`, over `tight` trousers below `LegAnkle`, turned edges 4 mm deep, 1,376 triangles per body: a shaft to the middle of the calf 10 mm off the cage and a foot over the cage's smooth feet, without toes, with a flat sole. Approved 2026-10-24. |
+| `art/Garments/Cloak` | `garment` | none | A cloak in the `back` slot, layer 500, `tight` band, from the recipe `neck` and `trunk`, cut at `Neckline` and `CloakYoke`, over a `mid` top above `CloakYoke` and below `Neckline`, so it lies about 1 cm off the shirt and leaves room for a padded top, turned edges 4 mm deep: a yoke over the shoulders from the round neckline down to below the collarbones and a loose back hanging taut from `CloakYoke` between the arms on the `cloak` chains to the middle of the calves with a flare of 0.09, 940 triangles per body, 226 vertices of them on the chains. It covers nothing (`"covers": false`). |
 | `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,808 triangles per body, the cuff about 7 cm up the forearm. Approved 2026-10-24. |
-| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,176 triangles per body. |
-| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `trunk` and `arms`, cut at `HemHip` and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,536 triangles per body, on `art/Cages/Humanoid`. |
+| `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,284 triangles per body. |
+| `art/Garments/Robe` | `garment` | none | A floor-length robe in the `body` slot, layer 300, `tight` band, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, `HemHip`, and `SleeveLong`, turned edges 3 mm deep: `LongShirt`'s top with a loose skirt hanging all around from `HemHip` on the `skirt` chains to the ankles, 30 mm off the hips and the legs and with a flare of 0.08, so it does not follow the figure, 2,924 triangles per body, 384 vertices of them on the chains. It hides the `legs` slot, so the boots show below it. |
+| `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `neck`, `trunk`, and `arms`, cut at `Neckline`, a round neckline that hugs the neck, `HemHip`, and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,644 triangles per body, on `art/Cages/Humanoid`. |
 | `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,496 triangles per body, with seams along the inside of the legs. |
-| `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the twelve standard lines of [Garment Cage](#garment-cage); its regions `hands` and `feet` were added on 2026-10-24, 2,880 faces in all. Approved 2026-10-24. |
+| `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the thirteen standard lines of [Garment Cage](#garment-cage); its regions `hands` and `feet` were added on 2026-10-24, 2,880 faces in all, and the line `CloakYoke` the same day, which moves none of its faces. Approved 2026-10-24. |
 | `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910: the pale blue bra with its cups, band, and straps over the middle of the shoulders, lifted out of her body texture with its shaded edge. Roughness 0.8. |
 | `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900: pale blue briefs with a darker waistband, lifted out of the male body texture and moved to the female. Roughness 0.8. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, lifted out of the former male face `Scarred` and moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |

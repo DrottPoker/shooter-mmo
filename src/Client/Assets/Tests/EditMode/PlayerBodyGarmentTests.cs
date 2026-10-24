@@ -191,7 +191,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 var catalog = appearance.Catalog;
                 Assert.That(catalog.OthersInSlot(catalog.GarmentNamed(Jerkin)).Select(garment => garment.Name),
-                    Is.EqualTo(new[] { "LinenLongShirt", "LinenShirt", "NetShirt" }));
+                    Is.EqualTo(new[] { "LinenLongShirt", "LinenShirt", "NetShirt", "WoolRobe" }));
                 Assert.That(catalog.OthersInSlot(catalog.GarmentNamed(Trousers)), Is.Empty);
 
                 // Two chest pieces in the look: the first in the catalog is worn, with the trousers

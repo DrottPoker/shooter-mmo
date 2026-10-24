@@ -1,8 +1,10 @@
 // The garments of the player bodies: Universal Render Pipeline/Lit of URP 17.5 with up to three dye
 // channels. The red, green, and blue of the dye mask mark the regions that each dye color
 // multiplies, such as cloth, trim, and leather; with white dyes or no dye mask it draws like Lit.
-// A garment's material cuts at alpha 0.5 and draws both faces. Only the include of
-// GarmentInput.hlsl and the dye properties differ from Lit; see docs/EQUIPMENT_VISUALS_DESIGN.md.
+// A garment's material cuts at alpha 0.5 and draws both faces, and the forward pass turns the
+// normal on the back faces, so the inside of a cloak takes the light that falls on it. Only the
+// include of GarmentInput.hlsl, the dye properties, and that pass's fragment differ from Lit; see
+// docs/EQUIPMENT_VISUALS_DESIGN.md.
 Shader "Mmorpg/Garment"
 {
     Properties
@@ -126,7 +128,7 @@ Shader "Mmorpg/Garment"
             // -------------------------------------
             // Shader Stages
             #pragma vertex LitPassVertex
-            #pragma fragment LitPassFragment
+            #pragma fragment GarmentPassFragment
 
             // -------------------------------------
             // Material Keywords
@@ -195,6 +197,7 @@ Shader "Mmorpg/Garment"
 
             #include "GarmentInput.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitForwardPass.hlsl"
+            #include "GarmentForwardPass.hlsl"
             ENDHLSL
         }
 

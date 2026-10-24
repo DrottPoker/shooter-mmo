@@ -20,7 +20,9 @@ become the same form as `Shirt` once both lay as close to the body as they can,
 so `LeatherJerkin` is a texture of `Shirt` and `Jerkin` is removed. Its second
 step adds the cage's regions `hands` and `feet`, the templates `Boots` and
 `Gloves` with five fingers, and their leather textures, approved by Victor on
-2026-10-24.
+2026-10-24. Its third step adds loose parts, which hang on the cloth chains,
+with the templates `Robe` and `Cloak`, their wool textures, and cloak chains
+that hang to the middle of the calves.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -207,7 +209,11 @@ change none, so every garment made before keeps its shape.
      and the trunk or between the legs, since the lift and the tension fade in
      from the borders between its regions and from its open ends.
   5. The cage is faired, and no vertex and no face centre lies closer to the
-     skin than 1 mm; one that would is moved out along the skin's normal.
+     skin than 1 mm; one that would is moved out along the skin's normal. Nor
+     does the skin come out through a face between its corners, where a large
+     face cuts across a curve such as a woman's shoulder: such a face moves out
+     along its own normal until the skin lies 1 mm inside it, so no garment on
+     the cage shows skin through it at rest.
 
   These steps fit the neck, the trunk, the arms, and the legs together. The
   hands and the feet are fitted after them and keep the rings they share with
@@ -240,11 +246,18 @@ at a share of a bone's length, at right angles to the bone, or level across the
 trunk, which stands upright at rest while its bones lean, such as the short
 sleeve at a share of the upper arm. A line therefore lies at
 the corresponding place on every body: a dwarf's short sleeve ends where it
-ends on a dwarf's arm. Moving a line means changing its share.
+ends on a dwarf's arm. Moving a line means changing its share. A line of the
+neck may also rise toward the sides, by its rise times the square of the
+distance to the side, so it curves round the neck: the neckline runs just above
+the hollow of the throat, climbs to where the shoulders meet the neck, and runs
+round the nape, as Victor asked on 2026-10-24, where the neck's base, the border
+of the cage's `neck` region, reaches out over the shoulders.
 
 | Line | Region | Where | Used by |
 | --- | --- | --- | --- |
 | `CollarStand` | `neck` | on the neck, 2 to 3 cm above its base | a stand collar's top |
+| `Neckline` | `neck` | round the neck's base, just above the throat's hollow, up its sides | a round neckline: the shirts, the robe, the cloak |
+| `CloakYoke` | `trunk` | a few centimeters below the collarbones, above the armpits | a cloak's yoke, where its back hangs from between the arms |
 | `HemCrop` | `trunk` | under the bust, above the navel | a crop top's hem |
 | `Waist` | `trunk` | at the hip bones | the trousers' waistband |
 | `HemHip` | `trunk` | below `Waist` by the overlap | a top's hem, over the trousers |
@@ -258,8 +271,8 @@ ends on a dwarf's arm. Moving a line means changing its share.
 | `LegAnkle` | `legs` | at the ankle | a trouser hem, in the boot |
 
 The lines and their shares are part of the cage asset and are approved with it;
-the borders of the cage's regions are lines too, such as the neck's base for a
-round neckline and the trunk's edge at the shoulder for a sleeveless top.
+the borders of the cage's regions are lines too, such as the trunk's edge at the
+shoulder for a sleeveless top.
 
 ### How Garments Meet
 
@@ -343,9 +356,28 @@ modeled template: its recipe is `modeled`, its first version is modeled by hand
 on the first body over the cage region it covers, and from then on it is bound
 to the cage, fitted, checked, approved, exported, and worn with textures like
 every other template.
-Loose parts, such as the skirt of a robe or a cloak, hang from a line instead of
-lying on the cage and take the cloth chains; their recipes come with the robe
-and the cloak in step 5c.
+Loose parts, such as the skirt of a robe or the back of a cloak, hang from a
+line instead of lying on the cage and take the cloth chains. A recipe's `hang`
+entry names the trunk line a part hangs from, its side, all around for a skirt
+or across the back for a cloak, its chains, and its flare, how much wider it
+grows toward its hem. The recipe cuts the template's open edge at that line and
+hangs rings of cloth below it down to the chains' tips. On every body the rings
+follow a scaffold, and the cloth does not follow the figure under it, as Victor
+asked on 2026-10-24: every column is stretched like a string from the edge over
+the body's convex outline, a margin outside it, to where the body reaches out
+farthest, and hangs straight down from there, spanning the hollows. A skirt's
+columns lie around the hips between the chains, 30 mm outside the outline, so
+the thighs of a jog stay under it, and flare by the part's flare toward the
+hem, so it falls from the widest of the hips and the legs and never narrows. A
+cloak's columns lie across the back, 20 mm behind it, and grow wider toward the
+hem by the flare. A loose part takes the weights
+of its chains, two neighbouring chains blended across, and blends into the
+weights of the edge it hangs from over its first rings. Its first version is
+built on the first body's scaffold; every other version is bound to that
+scaffold and placed on its own body's. Loose parts have no band; the motion and
+pair checks follow them with their chains laid as the solver lays them, so they
+report a leg that comes through a skirt, and their swing is reviewed in the
+Wardrobe, where the solver's springs move them.
 
 ### Textures
 
@@ -407,14 +439,28 @@ type a garment fits, the pipeline computes:
   there in every pose, so the pipeline reports it instead, and the template's
   ease, shape, or weights fix it. A fold also turns the skin along the cloth, so
   moving it inward along its normal does not keep it under. Skin that only passes
-  a hem's edge, with no cloth over it, does not come through.
+  a hem's edge, with no cloth over it, does not come through. Skin that lies
+  through the garment already at rest shows in every pose, so that breaks a
+  rule instead of being reported; the cage keeps the skin inside it, so a
+  template on it has none.
+
+- **Loose parts cover nothing.** A robe's skirt or a cloak's back swings off
+  what it hangs over at rest, and a face hidden under it would show as a hole,
+  so the skin and the inner garments under loose parts stay drawn, and the line
+  a loose part hangs from counts as an open edge of the cloth that lies on the
+  cage.
+- **A garment may cover nothing at all.** A template whose manifest says
+  `"covers": false` keeps an empty cover mask: it lies on top of the body and
+  the garments under it and hides none of them, so it can swing open or be
+  animated. The cloak is such a garment, as Victor decided on 2026-10-24. Its
+  pull-in still keeps the skin under its edges from poking through.
 
 A mask is 545 bytes for the human bodies (4,358 faces). When Unity puts a
 character together, it removes every body face that a worn garment covers, moves
 the pull-in vertices, and removes every garment face whose underlay face is
 covered by a garment of a higher layer. A shirt over trousers thereby hides the
-trousers' waist under its hem but keeps their legs, and a robe over trousers
-hides the trousers where the robe is.
+trousers' waist under its hem but keeps their legs, and a floor-length robe
+hides the `legs` slot, so trousers under it are not drawn at all.
 
 ### Layer Bands
 
@@ -559,7 +605,9 @@ They are implemented: [Skeletons](ART_PIPELINE.md#skeletons) lists them, and
 `ClothChainSolver` moves them; see
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies). The rig
 places them from each body: the skirt chains on a ring at the hips that
-hangs to that body's ankles, the cloak chains from its shoulders down its back,
+hangs to that body's ankles, the cloak chains from its shoulder blades down its
+back to the middle of its calves, halfway from the knees to the ankles, as
+Victor chose on 2026-10-24,
 the hood chain behind its head. The solver's profiles give lengths as shares of
 the chains, so the same cloth behaves alike on a dwarf and an elf. Adding them changes the rig, so the bodies and the
 animation libraries are approved again once; their clips do not change.
@@ -569,15 +617,62 @@ animation libraries are approved again once; their clips do not change.
 A solver in the Unity client moves the chains every frame, after the Animator and
 before the bodies are drawn:
 
-- **Follow**: every skirt chain has a target from the legs: the front chains
-  follow the leg in front, the side chains the leg on their side, the back
-  chains the leg behind, blended by their angle around the hips. Cloak and hood
-  chains hang from their parent.
+- **Follow**: every skirt and cloak chain has a target from the legs: the front
+  chains follow the leg in front, the side chains the leg on their side, the
+  back chains and the cloak the leg behind, blended by their angle around the
+  hips. Each bone beside a thigh or a shin, as the rig places the chains, turns
+  as that part of the leg turns against the hips, but only as far as the leg
+  pushes the cloth outward, the way the chain faces from the hips, beyond the
+  slack its cloth profile leaves the leg, about 6 degrees of a turn for a robe
+  and 3 for a cloak, so a breathing body leaves the cloth at rest. So a skirt
+  lies over raised thighs and drapes over the knees when sitting, a cloak is
+  pushed back by a leg that kicks back in a jog, and both hang down over a leg
+  that moves away from them, such as a cloak behind a sitting body. Hood chains
+  hang from their parent. The art pipeline lays the chains the same way in the
+  test poses and clips of its review sheets, review files, and checks
+  (`tools/blender/art_pipeline/cloth.py`), without the springs.
 - **Springs**: every bone springs toward its target with stiffness, damping, and
   gravity, so cloth lags behind a turn, swings when a character stops, and
   settles.
-- **Collision**: capsules on the thighs, shins, hips, and spine push the chains
-  out of the body; a cloak also clears a backpack or quiver on `Socket_Back`.
+- **Collision**: capsules on the thighs, shins, hips, spine, neck, and head push
+  the chains out of the body. A capsule's radius is the middle distance of the
+  body's vertices that its bone moves most. Around the trunk it is taken for the
+  vertices along the bone's segment in each of 16 directions around the bone
+  from the body's front toward its right, with narrow grooves filled, so a torso
+  that is deep in front of the spine and shallow behind it keeps a cloak on its
+  back, and the groove along the spine does not catch the cloth and swing it
+  from side to side. A round capsule of the chest's width stood out 12 cm behind
+  the back and pushed the cloak out in the middle of it, which Victor saw on
+  2026-10-24. The legs are about round and move under the cloth, which slides
+  around them, so their capsules stay round and push it straight away; a long
+  profile around a shin let a cloak's hem slide round to its underside. A chain need not lie in its
+  cloth: when a garment goes on, the solver measures from its model how far its
+  cloth reaches beyond and within each particle of its chains (see Layers), and
+  the margin a particle keeps from the body is the one its cloth keeps, the
+  profile's margin and how far the cloth lies within the particle. The trunk
+  carries the chains, and no capsule follows its shape exactly, such as the
+  hips' capsule at the small of the back, so against the trunk's capsules a
+  particle keeps no more than it has in the bind pose: a body standing still
+  wears its garments exactly as they were made and approved. The legs move
+  under the cloth, so it keeps its margin from them, and a leg that kicks back
+  still pushes a cloak's hem over it. A cloak will also clear a backpack or
+  quiver on `Socket_Back`.
+- **Layers**: a cloak worn over a robe lies over its skirt, as Victor decided on
+  2026-10-24. When a garment goes on, the solver measures from its model how far
+  its cloth reaches beyond and within each particle of its chains, the way the
+  chain faces from the hips: the vertices that a chain's bones move most lie at
+  places along the chain, such as the rings of a skirt, and each particle takes
+  the farthest out and in between the places on either side of it. The skirt
+  chains are solved first; their particles moved out by the skirt cloth's reach
+  are the skirt's envelope, which runs between the chains around the hips'
+  upright axis by angle. Every cloak particle with cloth is then kept outside
+  the envelope by a gap of 10 mm and by how far the cloak's own cloth lies
+  within its chains, so the cloak drapes over the skirt and, without a robe,
+  hangs taut as it was made. The art pipeline's pair check lays both garments'
+  chains the same way, at rest too, and a robe that lies through the cloak at
+  rest breaks a rule. In `Death`, where the legs swing up, the shins still come
+  through the cloak and the skirt under it, as they come through the cloak
+  alone.
 - **Profiles**: a garment names a cloth profile, such as `robe`, `coat`, `cloak`,
   or `hood`, with its stiffness, damping, gravity, and chains; the solver reads
   its values.
@@ -667,8 +762,9 @@ A garment template is an art asset of kind `garment` below `art/Garments/<Name>`
 | `slot` | The visual slot: `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
 | `layer` | 0 to 1000, the order from the inside out. |
 | `band` | `tight`, `mid`, `outer`, or `loose`. |
-| `recipe` | The regions and lines it covers, its ease, and its edges' thickness, or `modeled` for a form modeled by hand, such as a hairstyle. |
+| `recipe` | The regions and lines it covers, what it lies over, its loose parts, its ease, and its edges' thickness, or `modeled` for a form modeled by hand, such as a hairstyle. |
 | `hides` | Visual slots it hides, such as `["legs"]` for a floor-length robe. |
+| `covers` | `false` for a garment that hides nothing under it, such as a cloak; `true` by default. |
 | `hair` | Headwear only: `hide`, `compress`, or `show`. |
 | `cloth` | The cloth profile of its loose parts, or none. |
 | `dyes` | The number of dye channels its textures may use, 0 to 3. |
@@ -725,8 +821,8 @@ template's; a character wears a garment by the texture's name.
 The sync stops on a broken rule and reports the rest:
 
 - The cage of every body has the cage's topology, no vertex or face centre
-  inside the skin, and no face that crosses another, and every line crosses its
-  region on every body.
+  inside the skin, no skin that comes out through a face, and no face that
+  crosses another, and every line crosses its region on every body.
 - Every version of a template has the first version's topology and stays within
   its triangle budget.
 - Every vertex and every face centre lies within its band from the cage on every
@@ -734,7 +830,8 @@ The sync stops on a broken rule and reports the rest:
   cloth cannot sink into a pit.
 - In the rig review's test poses and at every frame of `Idle`, `Walk`, `Jog`,
   and `Death`, no visible body vertex under the garment comes through the cloth.
-  Skin that comes through at the armpits is weighed later: the base bodies'
+  At rest none may, and no vertex of an inner template either: that stops the
+  sync. Skin that comes through at the armpits is weighed later: the base bodies'
   armpits are to be fixed, as Victor said on 2026-10-23.
   The report names how many do and the deepest place, and the review sheet
   shows their faces red, for the reviewer to weigh and the template's ease,
@@ -821,7 +918,16 @@ quarter of the triangles come with the first crowd measurement that needs them.
         band over the trousers below `LegAnkle`, and `Gloves`, to `GloveCuff`
         over every sleeve below `SleeveLong`, with the leather textures
         `LeatherBoots` and `LeatherGloves`.
-     3. A robe with the skirt chains and a cloak with the cloak chains.
+     3. Done. A robe with the skirt chains and a cloak with the cloak chains:
+        the templates `Robe`, a long-sleeved top with a skirt from `HemHip` to
+        the ankles that hides the `legs` slot, and `Cloak`, a yoke over the
+        shoulders down to `CloakYoke` below the collarbones with a taut sheet
+        down the back to the middle of the calves, which covers nothing; the
+        textures `WoolRobe` and `WoolCloak`, whose front keeps only the cloth
+        over the shoulders, held by a large bronze clasp at the front of each
+        shoulder; loose parts; skirt and cloak chains that follow the legs; and
+        a cage that keeps all skin inside it, so no garment shows skin through
+        it at rest.
      4. The cage's head region, a shoulder-length hairstyle with its compressed
         form, and the robe's hood up and down.
    - 5d. Paint layers independent of the bodies' topology, moved between bodies

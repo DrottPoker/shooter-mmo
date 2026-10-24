@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -5,9 +6,29 @@ namespace Mmorpg.Client.Gameplay
 {
     // Moves the cloth chains of a body after its Animator posed it, for the garments that hang on
     // them: each chain springs toward hanging from its animated parent, keeps its bone lengths,
-    // feels gravity, and is pushed out of capsules around the hips, torso, legs, and head, so a
-    // robe follows the legs and swings with every step, in every clip, without keys of its own.
-    // The capsules' radii are measured from the body's own mesh, so the solver fits every body type.
+    // feels gravity, and is pushed out of capsules around the hips, torso, legs, and head. Skirt and
+    // cloak chains also follow the legs: each bone beside a thigh or a shin turns as that part of the
+    // leg turns against the hips, but only as far as the leg pushes the cloth outward, the way the
+    // chain faces from the hips; the front chains follow the leg in front, the back chains and the
+    // cloak the leg behind, and the side chains the leg on their side, blended by their angle around
+    // the hips. So a robe drapes over bent legs, a cloak is pushed back by a leg that kicks back,
+    // and both hang down over a leg that moves away from them, in every clip, without keys of their
+    // own. A cloak worn over a robe lies over its skirt: the skirt chains are solved first, and the
+    // cloak's particles are kept outside the skirt's cloth, its envelope, by how far the cloak's own
+    // cloth lies within its chains and a gap. How far each garment's cloth reaches beyond and within
+    // its chains is measured from the garment's model when it is put on.
+    // A capsule's radius is measured from the body's own mesh, so the solver fits every body type:
+    // around the trunk in each of Capsule.Directions directions around its bone, with its narrow
+    // grooves filled, so a torso that is deep in front of the spine and shallow behind it keeps a
+    // cloak on its back and the groove along the spine does not catch the cloth; the legs are about
+    // round and move under the cloth, which slides around them, so their capsules are round and push
+    // it straight away. A chain need not lie in its cloth: the
+    // margin a particle keeps from the body is the one its cloth keeps, the profile's and how far the
+    // garment's cloth lies within the particle. The trunk carries the chains, and no capsule follows
+    // its shape exactly, such as the hips' capsule at the small of the back, so against the trunk's
+    // capsules a particle keeps no more than it has in the bind pose: a body standing still wears its
+    // garments as they were made. The legs move under the cloth, so it keeps its margin from them.
+    // tools/blender/art_pipeline/cloth.py lays the chains the same way for the art pipeline's reviews.
     // Near the camera the springs run, farther away the chains only follow their targets, and far
     // away they rest. It is presentation only and never reaches the server. See
     // docs/EQUIPMENT_VISUALS_DESIGN.md.
@@ -36,6 +57,19 @@ namespace Mmorpg.Client.Gameplay
         // At most this many passes from the tip and back when a chain cannot leave the body otherwise.
         private const int ChainPasses = 3;
         private const float FallbackRadius = 0.05f;
+        // A knee this much farther forward than the other, in meters, makes its leg the one in front.
+        private const float AheadBlend = 0.05f;
+        // A bone follows its part of the leg once that pushes it farther outward than hanging by its
+        // profile's slack, so a breathing body leaves the cloth at rest, and fully this much beyond
+        // it, in the outward share of a unit direction.
+        private const float FollowReach = 0.3f;
+        // The gap a cloak's cloth keeps from the cloth of a robe's skirt under it, in meters.
+        private const float LayerGap = 0.01f;
+        // Vertices of a garment within this share of a bone's length along its chain lie at one
+        // place, such as a ring of a skirt.
+        private const float PlaceSpan = 0.05f;
+        // A capsule's narrow grooves are filled this many times over.
+        private const int GroovePasses = 2;
 
         // The body bones the cloth collides with, each with the bone its capsule ends at. The head is
         // a sphere around its own vertices.
@@ -49,8 +83,12 @@ namespace Mmorpg.Client.Gameplay
         private readonly Dictionary<ClothChainKind, ClothProfile> profiles = new Dictionary<ClothChainKind, ClothProfile>();
         private readonly List<ChainState> chains = new List<ChainState>();
         private readonly List<Capsule> capsules = new List<Capsule>();
+        private readonly Envelope skirtEnvelope = new Envelope();
         private Dictionary<string, Transform> bonesByName;
-        private bool capsulesMeasured;
+        // Every bone of the body's meshes in the bind pose, in the world as the body stood when the
+        // capsules were measured.
+        private Dictionary<string, Matrix4x4> bindPose;
+        private Legs legs;
 
         public Detail CurrentDetail { get; private set; } = Detail.Rest;
 
@@ -58,25 +96,49 @@ namespace Mmorpg.Client.Gameplay
 
         public IReadOnlyList<Capsule> Capsules => capsules;
 
+        // Whether the last step laid a cloak over a robe's skirt.
+        public bool LiesOverSkirt => skirtEnvelope.IsBuilt;
+
         // Lets the chains of a kind carry cloth with the profile's behavior, such as a robe on the
-        // skirt chains. A body without the chains, such as a model exported before they existed,
-        // has nothing to move.
-        public void Activate(ClothChainKind kind, ClothProfile profile)
+        // skirt chains. The garment's model tells how far its cloth reaches beyond and within the
+        // chains, so a cloak lies over a robe's skirt; without it the cloth lies on the chains. A
+        // body without the chains, such as a model exported before they existed, has nothing to move.
+        public void Activate(ClothChainKind kind, ClothProfile profile, GameObject garment = null)
         {
             Deactivate(kind);
-            profiles[kind] = profile;
             var bones = BonesByName();
+            var created = new List<ChainState>();
             foreach (var chain in ClothChains.All)
             {
                 if (chain.Kind == kind && ChainState.TryCreate(chain, bones, out var state))
                 {
-                    chains.Add(state);
+                    created.Add(state);
                 }
             }
 
-            if (!capsulesMeasured && chains.Count > 0)
+            if (created.Count == 0)
             {
+                return;
+            }
+
+            profiles[kind] = profile;
+            if (bindPose == null)
+            {
+                bindPose = BindPose();
                 MeasureCapsules(bones);
+                legs = Legs.Measure(this, bones, bindPose);
+            }
+
+            var reaches = garment != null ? MeasureReaches(garment, kind) : null;
+            foreach (var state in created)
+            {
+                state.Allow(capsules, bindPose);
+                if (reaches != null && reaches.TryGetValue(state.Chain.Bones[0], out var reach))
+                {
+                    state.Reach = reach;
+                }
+
+                chains.Add(state);
             }
         }
 
@@ -106,22 +168,37 @@ namespace Mmorpg.Client.Gameplay
                 }
             }
 
-            return System.Array.Empty<Vector3>();
+            return Array.Empty<Vector3>();
         }
 
-        // How far the deepest particle of an active chain lies inside a capsule, in meters; zero
-        // or less when every particle is outside.
-        public float DeepestPenetration()
+        // How far the cloth at the deepest joint or tip of the active chains of a kind, where its bones
+        // really are, lies inside a capsule, beyond how far it does against the trunk in the bind
+        // pose, in meters; zero or less when none lies deeper.
+        public float DeepestInBody(ClothChainKind kind)
         {
             var deepest = float.NegativeInfinity;
             foreach (var state in chains)
             {
-                for (var index = 1; index < state.Positions.Length; index++)
+                if (state.Chain.Kind == kind)
                 {
-                    foreach (var capsule in capsules)
-                    {
-                        deepest = Mathf.Max(deepest, capsule.Radius - capsule.DistanceTo(state.Positions[index]));
-                    }
+                    deepest = Mathf.Max(deepest, state.DeepestInBody(capsules, ReachScale));
+                }
+            }
+
+            return float.IsNegativeInfinity(deepest) ? 0f : deepest;
+        }
+
+        // How far the deepest particle of the cloak chains lies within the cloth of a robe's skirt
+        // under it, its gap and the cloak cloth's reach within its chains included, after the last
+        // step; zero or less when the cloak lies over it, or when no skirt was under it.
+        public float DeepestUnderCloak()
+        {
+            var deepest = float.NegativeInfinity;
+            foreach (var state in chains)
+            {
+                if (state.Chain.Kind == ClothChainKind.Cloak && skirtEnvelope.IsBuilt)
+                {
+                    deepest = Mathf.Max(deepest, state.DeepestIn(skirtEnvelope, ReachScale));
                 }
             }
 
@@ -145,19 +222,87 @@ namespace Mmorpg.Client.Gameplay
             }
 
             var frames = Mathf.Max(deltaTime, 0f) / FrameSeconds;
-            foreach (var state in chains)
+            if (CurrentDetail != Detail.Rest && legs != null
+                && (profiles.ContainsKey(ClothChainKind.Skirt) || profiles.ContainsKey(ClothChainKind.Cloak)))
             {
-                state.Rest();
-                if (CurrentDetail == Detail.Rest)
+                legs.Update();
+            }
+
+            // The kinds in the order their cloth lies on the body, so the skirt under a cloak is in
+            // place before the cloak.
+            skirtEnvelope.Clear();
+            for (var kind = ClothChainKind.Skirt; kind <= ClothChainKind.Hood; kind++)
+            {
+                var under = kind == ClothChainKind.Cloak && skirtEnvelope.IsBuilt ? skirtEnvelope : null;
+                foreach (var state in chains)
                 {
-                    state.Started = false;
-                    continue;
+                    if (state.Chain.Kind != kind)
+                    {
+                        continue;
+                    }
+
+                    state.Rest();
+                    if (CurrentDetail == Detail.Rest)
+                    {
+                        state.Started = false;
+                        continue;
+                    }
+
+                    var profile = profiles[state.Chain.Kind];
+                    state.Step(profile, CurrentDetail == Detail.Springs, frames, deltaTime,
+                        state.Chain.Beside.Count > 0 ? legs : null);
+                    state.Resolve(capsules, profile.Margin, under, ReachScale);
+                    state.Apply();
                 }
 
-                var profile = profiles[state.Chain.Kind];
-                state.Step(profile, CurrentDetail == Detail.Springs, frames, deltaTime);
-                state.Resolve(capsules, profile.Margin);
-                state.Apply();
+                if (kind == ClothChainKind.Skirt && CurrentDetail != Detail.Rest)
+                {
+                    BuildSkirtEnvelope();
+                }
+            }
+        }
+
+        // The envelope of the skirt's cloth, when a cloak that knows its reaches lies over a skirt
+        // that knows its own.
+        private void BuildSkirtEnvelope()
+        {
+            if (legs == null || !HasReaches(ClothChainKind.Skirt) || !HasReaches(ClothChainKind.Cloak))
+            {
+                return;
+            }
+
+            skirtEnvelope.Begin(legs.HipsPosition, legs.Forward, legs.Right, transform.up);
+            foreach (var state in chains)
+            {
+                if (state.Chain.Kind == ClothChainKind.Skirt)
+                {
+                    var radians = state.Chain.Angle * Mathf.Deg2Rad;
+                    skirtEnvelope.Add(state.Positions, legs.Forward * Mathf.Cos(radians) + legs.Right * Mathf.Sin(radians),
+                        state.Reach, ReachScale);
+                }
+            }
+        }
+
+        private bool HasReaches(ClothChainKind kind)
+        {
+            foreach (var state in chains)
+            {
+                if (state.Chain.Kind == kind && state.Reach != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Reaches are measured in the garment model's meters; a scaled body scales them.
+        private float ReachScale
+        {
+            get
+            {
+                var scale = transform.lossyScale;
+                return Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
             }
         }
 
@@ -190,13 +335,48 @@ namespace Mmorpg.Client.Gameplay
             return bonesByName;
         }
 
+        // Every bone of the body's skinned meshes in the bind pose, from their bind poses.
+        private Dictionary<string, Matrix4x4> BindPose()
+        {
+            var found = new Dictionary<string, Matrix4x4>();
+            foreach (var renderer in GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = renderer.sharedMesh;
+                if (mesh == null)
+                {
+                    continue;
+                }
+
+                var bindposes = mesh.bindposes;
+                var rendererBones = renderer.bones;
+                for (var index = 0; index < rendererBones.Length && index < bindposes.Length; index++)
+                {
+                    if (rendererBones[index] != null && !found.ContainsKey(rendererBones[index].name))
+                    {
+                        found[rendererBones[index].name] = renderer.transform.localToWorldMatrix * bindposes[index].inverse;
+                    }
+                }
+            }
+
+            return found;
+        }
+
+        // The body's front and its right, toward the right leg and level, in the bind pose.
+        private (Vector3 Front, Vector3 Right) BodyAxes()
+        {
+            var right = bindPose.TryGetValue("UpperLeg_R", out var rightLeg) && bindPose.TryGetValue("UpperLeg_L", out var leftLeg)
+                ? Vector3.ProjectOnPlane(rightLeg.GetPosition() - leftLeg.GetPosition(), transform.up).normalized
+                : transform.right;
+            return (transform.forward, right);
+        }
+
         // Every capsule's radius is the middle distance of the body vertices that its bone moves
-        // most, from the bone's segment in the bind pose, so the cloth lies on this body's own shape.
+        // most from the bone's segment in the bind pose, in each direction around the bone, so the
+        // cloth lies on this body's own shape.
         private void MeasureCapsules(Dictionary<string, Transform> bones)
         {
-            capsulesMeasured = true;
-            var distances = new Dictionary<Transform, List<float>>();
-            var segments = new Dictionary<Transform, (Vector3 A, Vector3 B)>();
+            var (front, right) = BodyAxes();
+            var measures = new Dictionary<Transform, CapsuleMeasure>();
             foreach (var (boneName, endName) in CapsuleBones)
             {
                 if (!bones.TryGetValue(boneName, out var bone))
@@ -205,49 +385,27 @@ namespace Mmorpg.Client.Gameplay
                 }
 
                 var end = endName != null && bones.TryGetValue(endName, out var endBone) ? endBone.localPosition : Vector3.zero;
-                segments[bone] = (Vector3.zero, end);
-                distances[bone] = new List<float>();
+                // The body's front and right in the bone's own space in the bind pose.
+                var toBone = bindPose.TryGetValue(boneName, out var boneRest) ? boneRest.inverse : bone.worldToLocalMatrix;
+                measures[bone] = new CapsuleMeasure(end, toBone.MultiplyVector(front), toBone.MultiplyVector(right),
+                    Capsule.IsLeg(boneName));
             }
 
-            var heads = new Dictionary<Transform, List<Vector3>>();
             foreach (var renderer in GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                CollectDistances(renderer, segments, distances, heads);
+                CollectDistances(renderer, measures);
             }
 
-            foreach (var (boneName, endName) in CapsuleBones)
+            foreach (var (boneName, _) in CapsuleBones)
             {
-                if (!bones.TryGetValue(boneName, out var bone))
+                if (bones.TryGetValue(boneName, out var bone))
                 {
-                    continue;
+                    capsules.Add(measures[bone].Measured(bone));
                 }
-
-                var (a, b) = segments[bone];
-                if (endName == null && heads.TryGetValue(bone, out var points) && points.Count > 0)
-                {
-                    // A sphere around the middle of the head's vertices.
-                    var middle = Vector3.zero;
-                    foreach (var point in points)
-                    {
-                        middle += point;
-                    }
-
-                    middle /= points.Count;
-                    a = b = middle;
-                    var list = distances[bone];
-                    list.Clear();
-                    foreach (var point in points)
-                    {
-                        list.Add(Vector3.Distance(point, middle));
-                    }
-                }
-
-                capsules.Add(new Capsule(bone, a, b, Median(distances[bone])));
             }
         }
 
-        private static void CollectDistances(SkinnedMeshRenderer renderer, Dictionary<Transform, (Vector3 A, Vector3 B)> segments,
-            Dictionary<Transform, List<float>> distances, Dictionary<Transform, List<Vector3>> heads)
+        private static void CollectDistances(SkinnedMeshRenderer renderer, Dictionary<Transform, CapsuleMeasure> measures)
         {
             var mesh = renderer.sharedMesh;
             if (mesh == null || !mesh.isReadable)
@@ -258,10 +416,29 @@ namespace Mmorpg.Client.Gameplay
             var bones = renderer.bones;
             var bindposes = mesh.bindposes;
             var vertices = mesh.vertices;
+            var dominants = DominantBones(mesh);
+            for (var vertex = 0; vertex < vertices.Length; vertex++)
+            {
+                var dominant = dominants[vertex];
+                if (dominant < 0 || dominant >= bones.Length || bones[dominant] == null
+                    || !measures.TryGetValue(bones[dominant], out var measure))
+                {
+                    continue;
+                }
+
+                // The vertex in the bone's own space at the bind pose.
+                measure.Add(bindposes[dominant].MultiplyPoint3x4(vertices[vertex]));
+            }
+        }
+
+        // The bone each vertex of a mesh weighs most, or -1.
+        private static int[] DominantBones(Mesh mesh)
+        {
             var perVertex = mesh.GetBonesPerVertex();
             var weights = mesh.GetAllBoneWeights();
+            var found = new int[perVertex.Length];
             var offset = 0;
-            for (var vertex = 0; vertex < vertices.Length; vertex++)
+            for (var vertex = 0; vertex < perVertex.Length; vertex++)
             {
                 var count = perVertex[vertex];
                 var dominant = -1;
@@ -277,33 +454,10 @@ namespace Mmorpg.Client.Gameplay
                 }
 
                 offset += count;
-                if (dominant < 0 || dominant >= bones.Length || bones[dominant] == null)
-                {
-                    continue;
-                }
-
-                var bone = bones[dominant];
-                if (!segments.TryGetValue(bone, out var segment))
-                {
-                    continue;
-                }
-
-                // The vertex in the bone's own space at the bind pose.
-                var local = bindposes[dominant].MultiplyPoint3x4(vertices[vertex]);
-                if (segment.A == segment.B)
-                {
-                    if (!heads.TryGetValue(bone, out var points))
-                    {
-                        heads[bone] = points = new List<Vector3>();
-                    }
-
-                    points.Add(local);
-                }
-                else
-                {
-                    distances[bone].Add(Capsule.SegmentDistance(local, segment.A, segment.B));
-                }
+                found[vertex] = dominant;
             }
+
+            return found;
         }
 
         private static float Median(List<float> values)
@@ -317,42 +471,403 @@ namespace Mmorpg.Client.Gameplay
             return values[values.Count / 2];
         }
 
-        // A capsule around a body bone, in the bone's own space, placed in the world every step.
+        // How far a garment's cloth reaches beyond each particle of its chains of a kind, the way the
+        // chain faces from the hips, and how far within it, in its model's bind pose, per chain by its
+        // first bone: x beyond and y within, negative where all the cloth lies beyond the chain, and
+        // NaN at a particle farther than half a bone from any cloth. Every vertex that a bone of the
+        // chain weighs most lies at a place along the chain, the bone's number and its share of the
+        // bone's length; the vertices at one place, such as a ring of a skirt, give the farthest out
+        // and in there, and a particle takes them as they run between the places on either side of
+        // it. art_pipeline/cloth.py measures the same.
+        private static Dictionary<string, Vector2[]> MeasureReaches(GameObject garment, ClothChainKind kind)
+        {
+            var found = new Dictionary<string, Vector2[]>();
+            var renderer = garment.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            var mesh = renderer != null ? renderer.sharedMesh : null;
+            if (mesh == null || !mesh.isReadable)
+            {
+                return found;
+            }
+
+            var toModel = renderer.transform.localToWorldMatrix;
+            var bones = renderer.bones;
+            var bindposes = mesh.bindposes;
+            var heads = new Dictionary<string, Vector3>();
+            for (var index = 0; index < bones.Length && index < bindposes.Length; index++)
+            {
+                if (bones[index] != null)
+                {
+                    heads[bones[index].name] = (toModel * bindposes[index].inverse).GetPosition();
+                }
+            }
+
+            var up = garment.transform.up;
+            var forward = garment.transform.forward;
+            var right = heads.TryGetValue("UpperLeg_R", out var rightLeg) && heads.TryGetValue("UpperLeg_L", out var leftLeg)
+                ? Vector3.ProjectOnPlane(rightLeg - leftLeg, up).normalized
+                : garment.transform.right;
+
+            // Every bone of the chains of the kind: its chain, its number in it, and its segment.
+            var chainsOfKind = new List<ClothChain>();
+            var segments = new Dictionary<string, (int Chain, int Index, Vector3 A, Vector3 B)>();
+            foreach (var chain in ClothChains.All)
+            {
+                if (chain.Kind != kind)
+                {
+                    continue;
+                }
+
+                chainsOfKind.Add(chain);
+                for (var index = 0; index < chain.Bones.Count; index++)
+                {
+                    if (!heads.TryGetValue(chain.Bones[index], out var a))
+                    {
+                        continue;
+                    }
+
+                    // The chains hang straight in the rest pose, so the tip bone points like the one
+                    // before it, as far.
+                    Vector3 b;
+                    if (index + 1 < chain.Bones.Count && heads.TryGetValue(chain.Bones[index + 1], out var next))
+                    {
+                        b = next;
+                    }
+                    else if (index > 0 && heads.TryGetValue(chain.Bones[index - 1], out var before))
+                    {
+                        b = a + (a - before);
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    segments[chain.Bones[index]] = (chainsOfKind.Count - 1, index, a, b);
+                }
+            }
+
+            var places = new List<float>[chainsOfKind.Count];
+            var beyond = new List<float>[chainsOfKind.Count];
+            var outward = new Vector3[chainsOfKind.Count];
+            for (var chain = 0; chain < chainsOfKind.Count; chain++)
+            {
+                places[chain] = new List<float>();
+                beyond[chain] = new List<float>();
+                var radians = chainsOfKind[chain].Angle * Mathf.Deg2Rad;
+                outward[chain] = forward * Mathf.Cos(radians) + right * Mathf.Sin(radians);
+            }
+
+            var vertices = mesh.vertices;
+            var dominants = DominantBones(mesh);
+            for (var vertex = 0; vertex < vertices.Length; vertex++)
+            {
+                var dominant = dominants[vertex];
+                if (dominant < 0 || dominant >= bones.Length || bones[dominant] == null
+                    || !segments.TryGetValue(bones[dominant].name, out var segment))
+                {
+                    continue;
+                }
+
+                var point = toModel.MultiplyPoint3x4(vertices[vertex]);
+                var axis = segment.B - segment.A;
+                var share = Vector3.Dot(point - segment.A, axis) / Mathf.Max(axis.sqrMagnitude, 1e-12f);
+                var closest = segment.A + axis * Mathf.Clamp01(share);
+                places[segment.Chain].Add(segment.Index + share);
+                beyond[segment.Chain].Add(Vector3.Dot(point - closest, outward[segment.Chain]));
+            }
+
+            for (var chain = 0; chain < chainsOfKind.Count; chain++)
+            {
+                found[chainsOfKind[chain].Bones[0]] = AlongChain(places[chain], beyond[chain], chainsOfKind[chain].Bones.Count + 1);
+            }
+
+            return found;
+        }
+
+        // The farthest out and in at every particle of a chain, from the vertices at their places
+        // along it: vertices within PlaceSpan of each other lie at one place, and a particle takes
+        // the places on either side of it, linearly, or the nearest within half a bone.
+        private static Vector2[] AlongChain(List<float> places, List<float> beyond, int particles)
+        {
+            var found = new Vector2[particles];
+            for (var index = 0; index < particles; index++)
+            {
+                found[index] = new Vector2(float.NaN, float.NaN);
+            }
+
+            if (places.Count == 0)
+            {
+                return found;
+            }
+
+            var order = new int[places.Count];
+            for (var index = 0; index < order.Length; index++)
+            {
+                order[index] = index;
+            }
+
+            Array.Sort(order, (x, y) => places[x].CompareTo(places[y]));
+            var rings = new List<(float Place, float Out, float In)>();
+            var start = 0;
+            for (var index = 1; index <= order.Length; index++)
+            {
+                if (index < order.Length && places[order[index]] - places[order[start]] <= PlaceSpan)
+                {
+                    continue;
+                }
+
+                float sum = 0f, farthest = float.NegativeInfinity, nearest = float.PositiveInfinity;
+                for (var member = start; member < index; member++)
+                {
+                    sum += places[order[member]];
+                    farthest = Mathf.Max(farthest, beyond[order[member]]);
+                    nearest = Mathf.Min(nearest, beyond[order[member]]);
+                }
+
+                rings.Add((sum / (index - start), farthest, -nearest));
+                start = index;
+            }
+
+            for (var particle = 0; particle < particles; particle++)
+            {
+                if (particle < rings[0].Place - 0.5f || particle > rings[rings.Count - 1].Place + 0.5f)
+                {
+                    continue;
+                }
+
+                if (particle <= rings[0].Place)
+                {
+                    found[particle] = new Vector2(rings[0].Out, rings[0].In);
+                    continue;
+                }
+
+                if (particle >= rings[rings.Count - 1].Place)
+                {
+                    var last = rings[rings.Count - 1];
+                    found[particle] = new Vector2(last.Out, last.In);
+                    continue;
+                }
+
+                var after = rings.FindIndex(ring => ring.Place >= particle);
+                var (p0, out0, in0) = rings[after - 1];
+                var (p1, out1, in1) = rings[after];
+                var share = p1 > p0 ? (particle - p0) / (p1 - p0) : 0f;
+                found[particle] = new Vector2(out0 + (out1 - out0) * share, in0 + (in1 - in0) * share);
+            }
+
+            return found;
+        }
+
+        // The body vertices a capsule bone weighs most, in the bone's own space in the bind pose,
+        // and the capsule measured from them: the middle distance from the bone's segment in each
+        // direction around it, from the body's front toward its right, or a sphere around the
+        // head's own vertices.
+        private sealed class CapsuleMeasure
+        {
+            private readonly Vector3 end;
+            private readonly Vector3 front;
+            private readonly Vector3 side;
+            private readonly bool round;
+            private readonly List<float> distances = new List<float>();
+            private readonly List<float>[] directions = new List<float>[Capsule.Directions];
+            private readonly List<Vector3> points = new List<Vector3>();
+
+            public CapsuleMeasure(Vector3 end, Vector3 bodyFront, Vector3 bodyRight, bool round)
+            {
+                this.end = end;
+                this.round = round;
+                var axis = end.sqrMagnitude > 1e-12f ? end.normalized : Vector3.zero;
+                front = (bodyFront - axis * Vector3.Dot(bodyFront, axis)).normalized;
+                side = (bodyRight - axis * Vector3.Dot(bodyRight, axis) - front * Vector3.Dot(bodyRight, front)).normalized;
+                for (var index = 0; index < directions.Length; index++)
+                {
+                    directions[index] = new List<float>();
+                }
+            }
+
+            private bool IsSphere => end == Vector3.zero;
+
+            public void Add(Vector3 local)
+            {
+                if (IsSphere)
+                {
+                    points.Add(local);
+                    return;
+                }
+
+                var away = local - Capsule.Closest(local, Vector3.zero, end);
+                var distance = away.magnitude;
+                if (round)
+                {
+                    distances.Add(distance);
+                    return;
+                }
+
+                // Only the vertices along the segment, so the buttocks below the hips' bone do not
+                // widen its capsule at the small of the back.
+                var along = Vector3.Dot(local, end) / end.sqrMagnitude;
+                if (along <= 0f || along >= 1f)
+                {
+                    return;
+                }
+
+                distances.Add(distance);
+                directions[Capsule.DirectionOf(away, front, side)].Add(distance);
+            }
+
+            public Capsule Measured(Transform bone)
+            {
+                if (IsSphere)
+                {
+                    // A sphere around the middle of the head's vertices.
+                    var middle = Vector3.zero;
+                    foreach (var point in points)
+                    {
+                        middle += point;
+                    }
+
+                    middle = points.Count > 0 ? middle / points.Count : Vector3.zero;
+                    foreach (var point in points)
+                    {
+                        distances.Add(Vector3.Distance(point, middle));
+                    }
+
+                    var radius = Median(distances);
+                    return new Capsule(bone, middle, middle, new[] { radius }, radius, front, side);
+                }
+
+                if (round)
+                {
+                    var radius = Median(distances);
+                    return new Capsule(bone, Vector3.zero, end, new[] { radius }, radius, front, side);
+                }
+
+                var radii = new float?[Capsule.Directions];
+                for (var index = 0; index < radii.Length; index++)
+                {
+                    radii[index] = directions[index].Count > 0 ? Median(directions[index]) : (float?)null;
+                }
+
+                return new Capsule(bone, Vector3.zero, end, WithoutGrooves(Filled(radii, Median(distances))), Median(distances),
+                    front, side);
+            }
+
+            // The radii with every narrow groove between two directions filled, such as the one along
+            // the spine, which would catch cloth and swing it from side to side: a radius smaller than
+            // the middle of its neighbors' takes that middle, GroovePasses times over.
+            private static float[] WithoutGrooves(float[] radii)
+            {
+                for (var pass = 0; pass < GroovePasses; pass++)
+                {
+                    var filled = new float[radii.Length];
+                    for (var index = 0; index < radii.Length; index++)
+                    {
+                        var middle = (radii[(index - 1 + radii.Length) % radii.Length] + radii[(index + 1) % radii.Length]) / 2f;
+                        filled[index] = Mathf.Max(radii[index], middle);
+                    }
+
+                    radii = filled;
+                }
+
+                return radii;
+            }
+
+            // The radii with every direction that no vertex lies in taken between the nearest ones
+            // that some do, around the bone.
+            private static float[] Filled(float?[] radii, float fallback)
+            {
+                var found = new float[radii.Length];
+                for (var index = 0; index < radii.Length; index++)
+                {
+                    if (radii[index].HasValue)
+                    {
+                        found[index] = radii[index].Value;
+                        continue;
+                    }
+
+                    int before = -1, after = -1;
+                    for (var step = 1; step < radii.Length && (before < 0 || after < 0); step++)
+                    {
+                        if (before < 0 && radii[(index - step + radii.Length) % radii.Length].HasValue)
+                        {
+                            before = step;
+                        }
+
+                        if (after < 0 && radii[(index + step) % radii.Length].HasValue)
+                        {
+                            after = step;
+                        }
+                    }
+
+                    found[index] = before < 0
+                        ? fallback
+                        : Mathf.Lerp(radii[(index - before + radii.Length) % radii.Length].Value,
+                            radii[(index + after) % radii.Length].Value, before / (float)(before + after));
+                }
+
+                return found;
+            }
+        }
+
+        // A capsule around a body bone, in the bone's own space, placed in the world every step: its
+        // segment, and the body's distance from it in each of Directions directions around it, from
+        // the body's front toward its right, or one radius for a sphere.
         public sealed class Capsule
         {
+            public const int Directions = 16;
+
             private readonly Transform bone;
             private readonly Vector3 localA;
             private readonly Vector3 localB;
+            private readonly float[] localRadii;
             private readonly float localRadius;
+            private readonly Vector3 localFront;
+            private readonly Vector3 localSide;
+            private Vector3 front;
+            private Vector3 side;
+            private float scale;
 
-            public Capsule(Transform bone, Vector3 localA, Vector3 localB, float localRadius)
+            public Capsule(Transform bone, Vector3 localA, Vector3 localB, float[] localRadii, float localRadius,
+                Vector3 localFront, Vector3 localSide)
             {
                 this.bone = bone;
                 this.localA = localA;
                 this.localB = localB;
+                this.localRadii = localRadii;
                 this.localRadius = localRadius;
+                this.localFront = localFront;
+                this.localSide = localSide;
                 Update();
             }
 
             public string BoneName => bone.name;
 
+            // Whether the capsule is the trunk's, which carries the chains, rather than a leg's, which
+            // moves under the cloth.
+            public bool IsTrunk => !IsLeg(bone.name);
+
             public Vector3 A { get; private set; }
 
             public Vector3 B { get; private set; }
 
+            // The middle distance of the body from the bone, over every direction.
             public float Radius { get; private set; }
 
             public void Update()
             {
                 A = bone.TransformPoint(localA);
                 B = bone.TransformPoint(localB);
-                var scale = bone.lossyScale;
-                Radius = localRadius * Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+                var lossy = bone.lossyScale;
+                scale = Mathf.Max(Mathf.Abs(lossy.x), Mathf.Abs(lossy.y), Mathf.Abs(lossy.z));
+                Radius = localRadius * scale;
+                front = bone.TransformDirection(localFront);
+                side = bone.TransformDirection(localSide);
             }
 
-            public float DistanceTo(Vector3 point)
+            // The radius toward a direction from the capsule's axis, blended between the two
+            // directions around it that were measured.
+            public float RadiusToward(Vector3 away)
             {
-                return SegmentDistance(point, A, B);
+                return RadiusAlong(away, front, side) * scale;
             }
 
             // How far a point lies within the capsule and the margin, and the way out of it.
@@ -363,15 +878,36 @@ namespace Mmorpg.Client.Gameplay
                 var length = away.magnitude;
                 // A point on the axis leaves the way the capsule's bone faces, never through it.
                 normal = length > 1e-6f ? away / length : bone.forward;
-                return Radius + margin - length;
+                return RadiusToward(away) + margin - length;
             }
 
-            public static float SegmentDistance(Vector3 point, Vector3 a, Vector3 b)
+            // How far a point lies within the capsule when its bone has the given matrix, such as in
+            // the bind pose.
+            public float DepthAt(Matrix4x4 boneMatrix, Vector3 point)
             {
-                return Vector3.Distance(point, Closest(point, a, b));
+                var a = boneMatrix.MultiplyPoint3x4(localA);
+                var b = boneMatrix.MultiplyPoint3x4(localB);
+                var away = point - Closest(point, a, b);
+                var lossy = boneMatrix.lossyScale;
+                var matrixScale = Mathf.Max(Mathf.Abs(lossy.x), Mathf.Abs(lossy.y), Mathf.Abs(lossy.z));
+                var radius = RadiusAlong(away, boneMatrix.MultiplyVector(localFront), boneMatrix.MultiplyVector(localSide));
+                return radius * matrixScale - away.magnitude;
             }
 
-            private static Vector3 Closest(Vector3 point, Vector3 a, Vector3 b)
+            // The direction around a bone that an offset from it lies in, from the front toward the
+            // side.
+            public static bool IsLeg(string boneName)
+            {
+                return boneName.StartsWith("UpperLeg", StringComparison.Ordinal) || boneName.StartsWith("LowerLeg", StringComparison.Ordinal);
+            }
+
+            public static int DirectionOf(Vector3 away, Vector3 towardFront, Vector3 towardSide)
+            {
+                var angle = Mathf.Atan2(Vector3.Dot(away, towardSide), Vector3.Dot(away, towardFront));
+                return Mathf.FloorToInt((angle + Mathf.PI) / (2f * Mathf.PI) * Directions) % Directions;
+            }
+
+            public static Vector3 Closest(Vector3 point, Vector3 a, Vector3 b)
             {
                 var axis = b - a;
                 var lengthSquared = axis.sqrMagnitude;
@@ -382,6 +918,239 @@ namespace Mmorpg.Client.Gameplay
 
                 var t = Mathf.Clamp01(Vector3.Dot(point - a, axis) / lengthSquared);
                 return a + axis * t;
+            }
+
+            private float RadiusAlong(Vector3 away, Vector3 towardFront, Vector3 towardSide)
+            {
+                var count = localRadii.Length;
+                if (count == 1)
+                {
+                    return localRadii[0];
+                }
+
+                var angle = Mathf.Atan2(Vector3.Dot(away, towardSide), Vector3.Dot(away, towardFront));
+                var position = (angle + Mathf.PI) / (2f * Mathf.PI) * count - 0.5f;
+                var lower = Mathf.FloorToInt(position);
+                var share = position - lower;
+                return localRadii[((lower % count) + count) % count] * (1f - share)
+                    + localRadii[(((lower + 1) % count) + count) % count] * share;
+            }
+        }
+
+        // The outside of the cloth on the skirt chains that a cloak lies over: per chain, its
+        // particles moved out by how far the skirt's cloth reaches beyond each, the way the chain
+        // faces from the hips. At the height of a point, the cloth runs between the chains around the
+        // hips' upright axis, its distance from the axis blended by angle, and a point nearer the
+        // axis lies inside it.
+        private sealed class Envelope
+        {
+            private static readonly Comparison<(float Angle, float Radius)> ByAngle = (x, y) => x.Angle.CompareTo(y.Angle);
+
+            private readonly List<Vector3[]> lines = new List<Vector3[]>();
+            private readonly List<bool[]> cloth = new List<bool[]>();
+            private readonly List<(float Angle, float Radius)> around = new List<(float Angle, float Radius)>();
+            private int count;
+            private Vector3 centre;
+            private Vector3 forward;
+            private Vector3 right;
+            private Vector3 up;
+
+            public bool IsBuilt => count > 0;
+
+            public void Clear()
+            {
+                count = 0;
+            }
+
+            public void Begin(Vector3 hips, Vector3 hipsForward, Vector3 hipsRight, Vector3 bodyUp)
+            {
+                centre = hips;
+                forward = hipsForward;
+                right = hipsRight;
+                up = bodyUp;
+                count = 0;
+            }
+
+            // A chain's particles moved out by the cloth's reach at each, between the particles that
+            // have cloth at them.
+            public void Add(Vector3[] positions, Vector3 outward, Vector2[] reach, float scale)
+            {
+                if (lines.Count <= count)
+                {
+                    lines.Add(null);
+                    cloth.Add(null);
+                }
+
+                if (lines[count] == null || lines[count].Length != positions.Length)
+                {
+                    lines[count] = new Vector3[positions.Length];
+                    cloth[count] = new bool[positions.Length];
+                }
+
+                var line = lines[count];
+                var has = cloth[count];
+                for (var index = 0; index < positions.Length; index++)
+                {
+                    has[index] = reach != null && index < reach.Length && !float.IsNaN(reach[index].x);
+                    line[index] = has[index] ? positions[index] + outward * (reach[index].x * scale) : positions[index];
+                }
+
+                count++;
+            }
+
+            public float Penetration(Vector3 point, float margin, out Vector3 normal)
+            {
+                var height = Vector3.Dot(point, up);
+                around.Clear();
+                for (var chain = 0; chain < count; chain++)
+                {
+                    var line = lines[chain];
+                    var has = cloth[chain];
+                    for (var index = 0; index + 1 < line.Length; index++)
+                    {
+                        if (!has[index] || !has[index + 1])
+                        {
+                            continue;
+                        }
+
+                        var low = Vector3.Dot(line[index], up);
+                        var high = Vector3.Dot(line[index + 1], up);
+                        if (height >= Mathf.Min(low, high) && height <= Mathf.Max(low, high) && Mathf.Abs(high - low) > 1e-6f)
+                        {
+                            var (angle, radius, _) = Polar(Vector3.Lerp(line[index], line[index + 1], (height - low) / (high - low)));
+                            around.Add((angle, radius));
+                            break;
+                        }
+                    }
+                }
+
+                var (pointAngle, pointRadius, flat) = Polar(point);
+                normal = pointRadius > 1e-6f ? flat / pointRadius : -forward;
+                if (around.Count < 3)
+                {
+                    return -1f;
+                }
+
+                around.Sort(ByAngle);
+                var clothRadius = around[0].Radius;
+                for (var index = 0; index < around.Count; index++)
+                {
+                    var (a0, r0) = around[(index - 1 + around.Count) % around.Count];
+                    var (a1, r1) = around[index];
+                    var span = Mathf.Repeat(a1 - a0, 2f * Mathf.PI);
+                    var share = span > 1e-9f ? Mathf.Repeat(pointAngle - a0, 2f * Mathf.PI) / span : 2f;
+                    if (share <= 1f)
+                    {
+                        clothRadius = r0 + (r1 - r0) * share;
+                        break;
+                    }
+                }
+
+                return clothRadius + margin - pointRadius;
+            }
+
+            private (float Angle, float Radius, Vector3 Flat) Polar(Vector3 point)
+            {
+                var offset = point - centre;
+                var flat = offset - up * Vector3.Dot(offset, up);
+                return (Mathf.Atan2(Vector3.Dot(flat, right), Vector3.Dot(flat, forward)), flat.magnitude, flat);
+            }
+        }
+
+        // The legs skirts and cloaks follow: where each thigh and shin points against the hips at
+        // rest, measured from the body's bind pose, and every step how each turns against the posed
+        // hips, the hips' forward and right axes, and how far the right knee lies ahead of the left.
+        private sealed class Legs
+        {
+            public const int ThighL = 0;
+            public const int ShinL = 1;
+            public const int ThighR = 2;
+            public const int ShinR = 3;
+
+            private static readonly (string Bone, string End)[] Parts =
+            {
+                ("UpperLeg_L", "LowerLeg_L"), ("LowerLeg_L", "Foot_L"), ("UpperLeg_R", "LowerLeg_R"), ("LowerLeg_R", "Foot_R"),
+            };
+
+            private readonly Transform hips;
+            private readonly Transform[] parts;
+            private readonly Transform[] ends;
+            private readonly Vector3[] restInHips;
+            private readonly Vector3 forwardInHips;
+            private readonly Vector3 rightInHips;
+
+            private Legs(Transform hips, Transform[] parts, Transform[] ends, Vector3[] restInHips, Vector3 forwardInHips,
+                Vector3 rightInHips)
+            {
+                this.hips = hips;
+                this.parts = parts;
+                this.ends = ends;
+                this.restInHips = restInHips;
+                this.forwardInHips = forwardInHips;
+                this.rightInHips = rightInHips;
+            }
+
+            public Quaternion[] Turns { get; } = new Quaternion[4];
+
+            public Vector3 Forward { get; private set; }
+
+            public Vector3 Right { get; private set; }
+
+            public float Ahead { get; private set; }
+
+            public Vector3 HipsPosition => hips.position;
+
+            // The legs of a body from its bind pose, or null for a body without them.
+            public static Legs Measure(ClothChainSolver solver, Dictionary<string, Transform> bones, Dictionary<string, Matrix4x4> rest)
+            {
+                if (!bones.TryGetValue("Hips", out var hips) || !rest.TryGetValue("Hips", out var hipsRest))
+                {
+                    return null;
+                }
+
+                var fromHips = Quaternion.Inverse(hipsRest.rotation);
+                var parts = new Transform[Parts.Length];
+                var ends = new Transform[Parts.Length];
+                var directions = new Vector3[Parts.Length];
+                for (var index = 0; index < Parts.Length; index++)
+                {
+                    var (bone, end) = Parts[index];
+                    if (!bones.TryGetValue(bone, out parts[index]) || !bones.TryGetValue(end, out ends[index])
+                        || !rest.TryGetValue(bone, out var boneRest) || !rest.TryGetValue(end, out var endRest))
+                    {
+                        return null;
+                    }
+
+                    directions[index] = fromHips * (endRest.GetPosition() - boneRest.GetPosition()).normalized;
+                }
+
+                // Toward the right leg, level.
+                var across = Vector3.ProjectOnPlane(rest["UpperLeg_R"].GetPosition() - rest["UpperLeg_L"].GetPosition(), solver.transform.up);
+                return new Legs(hips, parts, ends, directions, fromHips * solver.transform.forward, fromHips * across.normalized);
+            }
+
+            public void Update()
+            {
+                for (var index = 0; index < parts.Length; index++)
+                {
+                    Turns[index] = Quaternion.FromToRotation(hips.rotation * restInHips[index], ends[index].position - parts[index].position);
+                }
+
+                Forward = hips.rotation * forwardInHips;
+                Right = hips.rotation * rightInHips;
+                Ahead = Vector3.Dot(parts[ShinR].position - parts[ShinL].position, Forward);
+            }
+
+            // How much a chain at an angle around the hips follows the right leg rather than the
+            // left: a side chain its own leg, a front chain the leg in front, and a back chain the
+            // leg behind, blended between.
+            public float RightShare(float angle)
+            {
+                var radians = angle * Mathf.Deg2Rad;
+                var side = Mathf.Sin(radians);
+                var rightAhead = Mathf.Clamp01(0.5f + Ahead / (2f * AheadBlend));
+                var byDepth = Mathf.Cos(radians) > 0f ? rightAhead : 1f - rightAhead;
+                return Mathf.Max(side, 0f) + (1f - Mathf.Abs(side)) * byDepth;
             }
         }
 
@@ -396,6 +1165,10 @@ namespace Mmorpg.Client.Gameplay
             private readonly float[] lengths;
             private readonly Vector3[] targets;
             private readonly Vector3[] previous;
+            // How far each particle lies within each of the trunk's capsules in the bind pose,
+            // unclamped, and negative infinity for the legs': against the trunk it keeps no more than
+            // it has there.
+            private float[,] restDepths;
 
             private ChainState(ClothChain chain, Transform[] bones)
             {
@@ -426,6 +1199,10 @@ namespace Mmorpg.Client.Gameplay
 
             public bool Started { get; set; }
 
+            // How far the garment's cloth reaches beyond each particle and within it, or null when the
+            // garment is not known; NaN at a particle without cloth.
+            public Vector2[] Reach { get; set; }
+
             public static bool TryCreate(ClothChain chain, Dictionary<string, Transform> bones, out ChainState state)
             {
                 var found = new Transform[chain.Bones.Count];
@@ -442,6 +1219,44 @@ namespace Mmorpg.Client.Gameplay
                 return true;
             }
 
+            // Measures how far each particle lies within each capsule in the bind pose: the chain
+            // hangs at rest from its parent there.
+            public void Allow(List<Capsule> capsules, Dictionary<string, Matrix4x4> bindPose)
+            {
+                restDepths = new float[Positions.Length, capsules.Count];
+                var parent = bones[0].parent;
+                if (parent == null || !bindPose.TryGetValue(parent.name, out var matrix))
+                {
+                    for (var index = 0; index < Positions.Length; index++)
+                    {
+                        for (var capsule = 0; capsule < capsules.Count; capsule++)
+                        {
+                            restDepths[index, capsule] = float.NegativeInfinity;
+                        }
+                    }
+
+                    return;
+                }
+
+                var points = new Vector3[Positions.Length];
+                for (var index = 0; index < bones.Length; index++)
+                {
+                    matrix *= Matrix4x4.TRS(bones[index].localPosition, restRotations[index], bones[index].localScale);
+                    points[index] = matrix.GetPosition();
+                }
+
+                points[bones.Length] = matrix.MultiplyPoint3x4(childOffsets[bones.Length - 1]);
+                for (var capsule = 0; capsule < capsules.Count; capsule++)
+                {
+                    var boneMatrix = Matrix4x4.identity;
+                    var known = capsules[capsule].IsTrunk && bindPose.TryGetValue(capsules[capsule].BoneName, out boneMatrix);
+                    for (var index = 0; index < Positions.Length; index++)
+                    {
+                        restDepths[index, capsule] = known ? capsules[capsule].DepthAt(boneMatrix, points[index]) : float.NegativeInfinity;
+                    }
+                }
+            }
+
             public void Rest()
             {
                 for (var index = 0; index < bones.Length; index++)
@@ -450,15 +1265,20 @@ namespace Mmorpg.Client.Gameplay
                 }
             }
 
-            // Where every particle hangs from the animated parent with the bones at rest, and the
-            // particles' move toward it: inertia, gravity, and the spring with springs on, straight
-            // to it without them.
-            public void Step(ClothProfile profile, bool springs, float frames, float deltaTime)
+            // Where every particle hangs from the animated parent with the bones at rest, or follows
+            // the legs, and the particles' move toward it: inertia, gravity, and the spring with
+            // springs on, straight to it without them.
+            public void Step(ClothProfile profile, bool springs, float frames, float deltaTime, Legs legs)
             {
                 targets[0] = bones[0].position;
                 for (var index = 0; index < bones.Length; index++)
                 {
                     targets[index + 1] = bones[index].TransformPoint(childOffsets[index]);
+                }
+
+                if (legs != null)
+                {
+                    FollowLegs(legs, profile.Slack);
                 }
 
                 var restart = !Started || Vector3.Distance(targets[0], Positions[0]) > RestartDistance;
@@ -489,18 +1309,44 @@ namespace Mmorpg.Client.Gameplay
                 }
             }
 
-            // Moves every particle out of the capsules at its bone's length from the one before, so
-            // the bones that point at the particles end exactly where the particles are. A pass from
-            // the root sets each particle in turn; when a particle cannot leave a capsule that way,
-            // such as behind a thigh that swings back, a pass from the tip pulls the chain toward
-            // where the tip is free, and the next pass from the root bends the chain around the leg.
-            public void Resolve(List<Capsule> capsules, float margin)
+            // Every bone beside a thigh or a shin turns as that part of the legs turns, as far as it
+            // pushes the bone outward beyond the slack, the way the chain faces from the hips.
+            private void FollowLegs(Legs legs, float slack)
             {
-                FromRoot(capsules, margin);
-                for (var pass = 0; pass < ChainPasses && Penetrates(capsules, margin); pass++)
+                var share = legs.RightShare(Chain.Angle);
+                var radians = Chain.Angle * Mathf.Deg2Rad;
+                var outward = legs.Forward * Mathf.Cos(radians) + legs.Right * Mathf.Sin(radians);
+                for (var index = 0; index < bones.Length; index++)
+                {
+                    var hanging = (targets[index + 1] - bones[index].position).normalized;
+                    var part = index < Chain.Beside.Count ? Chain.Beside[index] : LegPart.None;
+                    var direction = hanging;
+                    if (part != LegPart.None)
+                    {
+                        var left = part == LegPart.Thigh ? Legs.ThighL : Legs.ShinL;
+                        var right = part == LegPart.Thigh ? Legs.ThighR : Legs.ShinR;
+                        var turned = Quaternion.Slerp(legs.Turns[left], legs.Turns[right], share) * hanging;
+                        var reach = Mathf.Clamp01((Vector3.Dot(turned - hanging, outward) - slack) / FollowReach);
+                        direction = reach > 0f ? Vector3.Slerp(hanging, turned, reach) : hanging;
+                    }
+
+                    targets[index + 1] = targets[index] + direction.normalized * lengths[index];
+                }
+            }
+
+            // Moves every particle out of the capsules at its bone's length from the one before, so
+            // the bones that point at the particles end exactly where the particles are, and out of
+            // the cloth under it, such as a cloak out of a robe's skirt. A pass from the root sets
+            // each particle in turn; when a particle cannot leave a capsule that way, such as behind a
+            // thigh that swings back, a pass from the tip pulls the chain toward where the tip is
+            // free, and the next pass from the root bends the chain around the leg.
+            public void Resolve(List<Capsule> capsules, float margin, Envelope under, float scale)
+            {
+                FromRoot(capsules, margin, under, scale);
+                for (var pass = 0; pass < ChainPasses && Penetrates(capsules, margin, under, scale); pass++)
                 {
                     var last = Positions.Length - 1;
-                    PushOut(last, capsules, margin);
+                    PushOut(last, capsules, margin, under, scale);
                     for (var index = last - 1; index >= 1; index--)
                     {
                         var link = Positions[index] - Positions[index + 1];
@@ -510,31 +1356,66 @@ namespace Mmorpg.Client.Gameplay
                             Positions[index] = Positions[index + 1] + link / length * lengths[index];
                         }
 
-                        PushOut(index, capsules, margin);
+                        PushOut(index, capsules, margin, under, scale);
                     }
 
-                    FromRoot(capsules, margin);
+                    FromRoot(capsules, margin, under, scale);
                 }
             }
 
-            private void FromRoot(List<Capsule> capsules, float margin)
+            // How far the garment's cloth lies within a particle, or zero without the garment or cloth.
+            private float Within(int index, float scale)
             {
+                return Reach != null && !float.IsNaN(Reach[index].y) ? Reach[index].y * scale : 0f;
+            }
+
+            // The margin a particle keeps from a capsule: the one its cloth keeps, the profile's and
+            // how far the cloth lies within the particle, and from the trunk no more than it has in the
+            // bind pose.
+            private float MarginFrom(int index, int capsule, float margin, float scale)
+            {
+                var own = margin + Within(index, scale);
+                return restDepths == null ? own : Mathf.Min(own, -restDepths[index, capsule]);
+            }
+
+            // How far a particle lies inside one of the colliders, the capsules and then the cloth
+            // under it, with a share of the margins, and the way out.
+            private float Depth(int index, int collider, List<Capsule> capsules, float margin, Envelope under, float scale,
+                float share, out Vector3 normal)
+            {
+                if (collider < capsules.Count)
+                {
+                    return capsules[collider].Penetration(Positions[index], MarginFrom(index, collider, margin, scale) * share, out normal);
+                }
+
+                normal = Vector3.zero;
+                if (under == null || Reach == null || float.IsNaN(Reach[index].y))
+                {
+                    return -1f;
+                }
+
+                return under.Penetration(Positions[index], (LayerGap + Reach[index].y) * scale * share, out normal);
+            }
+
+            private void FromRoot(List<Capsule> capsules, float margin, Envelope under, float scale)
+            {
+                var colliders = capsules.Count + 1;
                 for (var index = 1; index < Positions.Length; index++)
                 {
                     KeepLength(index);
                     for (var iteration = 0; iteration < ResolveIterations; iteration++)
                     {
                         var moved = false;
-                        foreach (var capsule in capsules)
+                        for (var collider = 0; collider < colliders; collider++)
                         {
-                            var depth = capsule.Penetration(Positions[index], margin, out var normal);
+                            var depth = Depth(index, collider, capsules, margin, under, scale, 1f, out var normal);
                             if (depth <= 0f)
                             {
                                 continue;
                             }
 
-                            // Slide around the joint before it, on the bone's reach, out of the capsule;
-                            // straight out when the bone points into the capsule head on.
+                            // Slide around the joint before it, on the bone's reach, out of the collider;
+                            // straight out when the bone points into it head on.
                             var link = (Positions[index] - Positions[index - 1]).normalized;
                             var tangent = normal - link * Vector3.Dot(normal, link);
                             var slope = tangent.magnitude;
@@ -553,11 +1434,11 @@ namespace Mmorpg.Client.Gameplay
                 }
             }
 
-            private void PushOut(int index, List<Capsule> capsules, float margin)
+            private void PushOut(int index, List<Capsule> capsules, float margin, Envelope under, float scale)
             {
-                foreach (var capsule in capsules)
+                for (var collider = 0; collider <= capsules.Count; collider++)
                 {
-                    var depth = capsule.Penetration(Positions[index], margin, out var normal);
+                    var depth = Depth(index, collider, capsules, margin, under, scale, 1f, out var normal);
                     if (depth > 0f)
                     {
                         Positions[index] += normal * depth;
@@ -565,14 +1446,14 @@ namespace Mmorpg.Client.Gameplay
                 }
             }
 
-            private bool Penetrates(List<Capsule> capsules, float margin)
+            private bool Penetrates(List<Capsule> capsules, float margin, Envelope under, float scale)
             {
                 for (var index = 1; index < Positions.Length; index++)
                 {
-                    foreach (var capsule in capsules)
+                    for (var collider = 0; collider <= capsules.Count; collider++)
                     {
-                        // A little inside the margin is still outside the body.
-                        if (capsule.Penetration(Positions[index], margin * 0.5f, out _) > 0f)
+                        // A little inside the margin is still outside.
+                        if (Depth(index, collider, capsules, margin, under, scale, 0.5f, out _) > 0f)
                         {
                             return true;
                         }
@@ -604,6 +1485,39 @@ namespace Mmorpg.Client.Gameplay
                         bone.rotation = Quaternion.FromToRotation(current, wanted) * bone.rotation;
                     }
                 }
+            }
+
+            // How far the cloth at the deepest joint or tip, where the bones really are, lies inside a
+            // capsule, beyond how far it does against the trunk in the bind pose.
+            public float DeepestInBody(List<Capsule> capsules, float scale)
+            {
+                var deepest = float.NegativeInfinity;
+                for (var index = 1; index <= bones.Length; index++)
+                {
+                    var point = index < bones.Length ? bones[index].position : bones[index - 1].TransformPoint(childOffsets[index - 1]);
+                    for (var capsule = 0; capsule < capsules.Count; capsule++)
+                    {
+                        deepest = Mathf.Max(deepest, capsules[capsule].Penetration(point, MarginFrom(index, capsule, 0f, scale), out _));
+                    }
+                }
+
+                return deepest;
+            }
+
+            // How far the deepest particle with cloth lies within the cloth under it, the gap and its
+            // own cloth's reach within it included.
+            public float DeepestIn(Envelope under, float scale)
+            {
+                var deepest = float.NegativeInfinity;
+                for (var index = 1; Reach != null && index < Positions.Length; index++)
+                {
+                    if (!float.IsNaN(Reach[index].y))
+                    {
+                        deepest = Mathf.Max(deepest, under.Penetration(Positions[index], (LayerGap + Reach[index].y) * scale, out _));
+                    }
+                }
+
+                return deepest;
             }
         }
     }

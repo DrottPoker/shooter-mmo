@@ -15,7 +15,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.kdtree import KDTree
 
-from . import bodies, cage, coverage, garment, poses
+from . import bodies, cage, cloth, coverage, garment, poses
 from .scene import descendants, export_objects, root_objects
 
 YAWS = (35.0, 125.0, 215.0, 305.0)
@@ -287,7 +287,8 @@ def _review_grid(versions: list[bpy.types.Object]) -> None:
 
 
 def render_garment_sheet(output: str, cell: int, name: str | None = None, band: str | None = None,
-                         libraries: list[tuple[str, list[str]]] | None = None, template: str | None = None) -> str:
+                         libraries: list[tuple[str, list[str]]] | None = None, template: str | None = None,
+                         covers: bool = True) -> str:
     """A garment on every body of its file, rows per body: the body in the garment from four sides
     with its torso, or the garment itself when it is a glove or a boot, up close, then the test poses
     that bend it, and with the garment's name and band the body without it, colored: orange the
@@ -347,8 +348,13 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
             row = per_body * index
             close = close_up(arm, center, low, high)
             around(row, center, radius, low, high, f"{index}", close)
+            # The chains of loose parts lie in every test pose as the runtime solver lays them.
+            worn = bpy.data.objects.get(garment.version_name(template, arm.name)) if template else None
+            kinds, reach = cloth.worn(arm, [worn]) if worn is not None else ([], {})
+            found = cloth.capsules(arm, bodies.source_body(arm.name)) if kinds else []
             for column, pose_name in enumerate(GARMENT_POSES):
                 poses.apply(arm, next(p for n, _d, p in poses.POSES if n == pose_name))
+                cloth.follow(arm, kinds, found, reach)
                 # Raised arms reach above the rest pose's bounds.
                 _aim(camera, sun, center, radius * 1.2, GARMENT_POSE_YAW)
                 place(row + 1, column, os.path.join(scratch, f"{index}_p{column}.png"))
@@ -357,7 +363,7 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
                 body = bodies.source_body(arm.name)
                 version = bpy.data.objects[garment.version_name(name, arm.name)]
                 materials = list(body.data.materials)
-                result = coverage.compute(name, arm.name, band)
+                result = coverage.compute(name, arm.name, band, covers)
                 coverage.check_motion(name, result, actions)
                 mask = _mask_material(body, result)
                 for slot in range(len(body.data.materials)):

@@ -38,7 +38,8 @@ trunk, the arms, and the legs are fitted first, together:
    small of the back, stays as the ball left it. A ring runs around the trunk's upright axis or
    around the bone a vertex follows most, ends at a border between regions, and its tension fades
    in from the cage's open ends.
-5. The cage is faired, and no vertex or face centre stays inside the skin.
+5. The cage is faired, and no vertex or face centre stays inside the skin, nor does the skin come
+   out through a face between its corners, where a large face cuts across a curve of the skin.
 
 The hands and the feet are fitted after them and keep the rings at the wrists and the ankles as they
 lie, so adding them changed nothing of the rest:
@@ -112,6 +113,11 @@ FOOT_RINGS = tuple(("turn", step / 8) for step in range(1, 9)) + tuple(
 PIVOT_MARGIN = 0.025
 # How far from the skin the cage keeps at least, in meters.
 CLEARANCE = 0.001
+# How far in from the skin a ray looks for a face of the cage that the skin comes out through, and
+# the least share of the point the skin meets that a triangle's free corners must carry for the
+# triangle to move.
+POKE_REACH = 0.02
+POKE_FREE_SHARE = 0.5
 # How far along the cage's normal a vertex looks for the skin of its region, how close to the skin
 # it takes the nearest point instead, and how much farther than the nearest point a ray's hit may
 # lie, so a ray from the skin itself does not cross a limb to its far side.
@@ -360,6 +366,16 @@ class Skin:
         polygons = [tuple(p.vertices) for p in body.data.polygons]
         centres = np.array([co[list(p)].mean(axis=0) for p in polygons])
         self.all = BVHTree.FromPolygons([tuple(c) for c in co], polygons)
+        # The skin's vertices with their normals and the body parts of the faces around them, for
+        # finding skin that comes out through the cage between its corners.
+        self.co = co
+        normals = np.empty(len(body.data.vertices) * 3)
+        body.data.vertex_normals.foreach_get("vector", normals)
+        normals = normals.reshape(-1, 3) @ np.array(body.matrix_world.to_3x3()).T
+        self.normals = normals / np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
+        self.vertex_zones = np.zeros((len(co), len(bodies.ZONES)), bool)
+        for polygon, zone in zip(polygons, zones):
+            self.vertex_zones[list(polygon), zone] = True
         self.trees = {}
         for region in REGIONS:
             wanted = {bodies.ZONES.index(z) for z in SKIN_ZONES[region]}
@@ -386,6 +402,63 @@ class Skin:
         if location is None:
             raise ArtPipelineError(f"The body has no skin of the cage region {key}.")
         return location, normal, (Vector(point) - location).dot(normal)
+
+    def vertices_of(self, regions) -> np.ndarray:
+        """The skin vertices that a cage of these regions is kept from coming through: those of the
+        body parts it is kept outside of, and of the extremities that hang from it, whose skin next
+        to a wrist or an ankle may come through the ring that a later stage keeps."""
+        regions = set(regions) | {end for end, limb in ATTACHED.items() if limb in regions}
+        wanted = [bodies.ZONES.index(z) for region in regions for z in SKIN_ZONES[region]]
+        return np.nonzero(self.vertex_zones[:, wanted].any(axis=1))[0]
+
+
+def poking(triangles: np.ndarray, x: np.ndarray, skin: Skin, vertices: np.ndarray,
+           clearance: float) -> list[tuple[int, int, Vector, float]]:
+    """The skin vertices that come out through the cage between its corners, or come closer to it
+    than the clearance from inside: per vertex, the cage triangle it meets, where, and how far that
+    point of the triangle must move out. A ray goes in from the skin along its normal; where it meets
+    a face of the cage from outside, the face lies inside the skin. Every vertex and face centre of
+    the cage lies outside the skin, so only a face that cuts across a curve of the skin between its
+    corners can, by little: the ray looks no farther than POKE_REACH."""
+    tree = BVHTree.FromPolygons([tuple(c) for c in x], [tuple(t) for t in triangles])
+    found = []
+    for vertex in vertices:
+        point, normal = Vector(skin.co[vertex]), Vector(skin.normals[vertex])
+        location, face_normal, triangle, distance = tree.ray_cast(point, -normal, POKE_REACH)
+        if location is not None and face_normal.dot(normal) > 0.0:
+            found.append((int(vertex), triangle, location, distance + clearance))
+            continue
+        if clearance <= 0.0:
+            continue
+        location, face_normal, triangle, distance = tree.ray_cast(point, normal, clearance)
+        if location is not None and face_normal.dot(normal) > 0.0:
+            found.append((int(vertex), triangle, location, clearance - distance))
+    return found
+
+
+def _lift_faces(triangles: np.ndarray, x: np.ndarray, found: list[tuple[int, int, Vector, float]],
+                held: np.ndarray | None) -> np.ndarray:
+    """The cage with every triangle that skin comes through moved out along its normal, all its free
+    corners alike, so the point the skin meets moves out as far as it must. Where held corners carry
+    most of that point, such as next to a wrist ring, the free ones would have to move far, so the
+    triangle stays. A corner that several triangles move takes the largest move."""
+    lift = np.zeros(len(x))
+    direction = np.zeros_like(x)
+    for _vertex, triangle, location, need in found:
+        corners = triangles[triangle]
+        weights = np.array(poly_3d_calc([Vector(x[c]) for c in corners], location))
+        free = np.ones(3, bool) if held is None else ~held[corners]
+        share = float(weights[free].sum())
+        if share < POKE_FREE_SHARE:
+            continue
+        a, b, c = (x[k] for k in corners)
+        normal = np.cross(b - a, c - a)
+        normal /= max(np.linalg.norm(normal), 1e-12)
+        step = (need + SETTLE_MARGIN) / share
+        for corner in corners[free]:
+            if step > lift[corner]:
+                lift[corner], direction[corner] = step, normal
+    return x + direction * lift[:, None]
 
 
 def _transfer(reference: np.ndarray, weights: np.ndarray, names: list[str], rig: bpy.types.Object,
@@ -485,7 +558,7 @@ def _fit_body(part: Part, x: np.ndarray, keys: list[tuple[str, str]], weights: n
     ends = np.minimum(net.hops_from(np.nonzero(net.on_border)[0], LIFT_FADE) / LIFT_FADE, 1.0)
     x = _tension(net, x, keys, _axes(weights, keys, names, arm), ends)
     x = net.faired(x, FAIRING)
-    return _settle(net, x, skin)
+    return _settle(part, x, skin)
 
 
 def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.ndarray, digits: np.ndarray,
@@ -524,10 +597,10 @@ def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.n
     # The feet are faired, which spreads their rings where they crowd at the front of the ankle; the
     # hands lie on their skin already, and fairing would only draw in the fingertips.
     x = part.net.faired(x, FAIRING, held | np.array([key[0] != "feet" for key in keys]))
-    return _settle(part.net, x, skin, held, SETTLE_PASSES * ENDS_SETTLE_FACTOR)
+    return _settle(part, x, skin, held, SETTLE_PASSES * ENDS_SETTLE_FACTOR)
 
 
-def _hull(points: np.ndarray) -> np.ndarray:
+def hull(points: np.ndarray) -> np.ndarray:
     """The convex hull of points in a plane, counterclockwise."""
     unique = sorted({(float(p[0]), float(p[1])) for p in np.round(points, 9)})
     if len(unique) < 3:
@@ -548,7 +621,7 @@ def _hull(points: np.ndarray) -> np.ndarray:
     return np.array(lower[:-1] + upper[:-1])
 
 
-def _centroid(polygon: np.ndarray) -> np.ndarray:
+def centroid(polygon: np.ndarray) -> np.ndarray:
     """The centre of a polygon's area."""
     x, y = polygon[:, 0], polygon[:, 1]
     xn, yn = np.roll(x, -1), np.roll(y, -1)
@@ -556,7 +629,7 @@ def _centroid(polygon: np.ndarray) -> np.ndarray:
     return np.array((((x + xn) * cross).sum(), ((y + yn) * cross).sum())) / (3.0 * cross.sum())
 
 
-def _toward(polygon: np.ndarray, centre: np.ndarray, angle: float) -> tuple[int, np.ndarray]:
+def toward(polygon: np.ndarray, centre: np.ndarray, angle: float) -> tuple[int, np.ndarray]:
     """Where a ray from a point inside a convex polygon, at an angle, meets its outline: the edge
     from the polygon's corner of that number, and the point."""
     direction = np.array((math.cos(angle), math.sin(angle)))
@@ -635,7 +708,7 @@ def _foot_rings(arm: bpy.types.Object, side: str, ankle: np.ndarray, triangles: 
     # The turn after which a half-plane stands across the forward direction.
     full = math.atan2(-np.dot(back, forward), np.dot(normal, forward))
     start = np.stack([(ankle - pivot) @ across, (ankle - pivot) @ back], axis=1)
-    middle = _centroid(start)
+    middle = centroid(start)
     first = math.atan2(start[0, 1] - middle[1], start[0, 0] - middle[0])
     shares = _shares(start)
     # The hulls run counterclockwise; a ring that runs the other way walks them backward.
@@ -646,12 +719,12 @@ def _foot_rings(arm: bpy.types.Object, side: str, ankle: np.ndarray, triangles: 
         turn = full * share if kind == "turn" else full
         down = back * math.cos(turn) + normal * math.sin(turn)
         origin = pivot if kind == "turn" else pivot + forward * tip * share
-        hull = _hull(_section(triangles, origin, across, down))
-        if len(hull) < 3:
+        convex = hull(_section(triangles, origin, across, down))
+        if len(convex) < 3:
             raise ArtPipelineError(f"A ring of the foot on the {side} side cuts too little of its skin.")
-        middle = _centroid(hull)
-        edge, point = _toward(hull, middle, first)
-        outline = np.concatenate([[point], hull[edge + 1:], hull[:edge + 1]])
+        middle = centroid(convex)
+        edge, point = toward(convex, middle, first)
+        outline = np.concatenate([[point], convex[edge + 1:], convex[:edge + 1]])
         if turning < 0.0:
             outline = np.concatenate([outline[:1], outline[1:][::-1]])
         rings.append([origin + across * p[0] + down * p[1] for p in _along(outline, shares)])
@@ -704,12 +777,15 @@ def _tension(net: Net, x: np.ndarray, keys: list[tuple[str, str]], axes: np.ndar
     return x + normals * offset[:, None]
 
 
-def _settle(net: Net, x: np.ndarray, skin: Skin, held: np.ndarray | None = None, passes: int = SETTLE_PASSES) -> np.ndarray:
+def _settle(part: Part, x: np.ndarray, skin: Skin, held: np.ndarray | None = None, passes: int = SETTLE_PASSES) -> np.ndarray:
     """Every vertex, and the corners of every face whose centre, lies inside the skin or closer
-    than the clearance moved out along the skin's normal, a few times over, because moving one face
-    moves the corners it shares. Held vertices stay where they are."""
+    than the clearance moved out along the skin's normal, and every face that the skin of the part's
+    body parts comes out through between its corners moved out along its own, a few times over,
+    because moving one face moves the corners it shares. Held vertices stay where they are."""
+    net = part.net
     x = x.copy()
     points = [(i,) for i in range(net.count)] + net.faces
+    vertices = skin.vertices_of({REGIONS[r] for r in part.regions})
     for _ in range(passes):
         settled = True
         for corners in points:
@@ -722,6 +798,11 @@ def _settle(net: Net, x: np.ndarray, skin: Skin, held: np.ndarray | None = None,
                     continue
                 x[moving] += np.array(normal) * (CLEARANCE + SETTLE_MARGIN - distance)
                 settled = False
+        found = poking(net.triangles, x, skin, vertices, CLEARANCE)
+        if found:
+            lifted = _lift_faces(net.triangles, x, found, held)
+            settled = settled and np.array_equal(lifted, x)
+            x = lifted
         if settled:
             break
     return x
@@ -1117,7 +1198,8 @@ def stale_errors(body_list: list[tuple[str, str]], figure: float, lines: list[di
 def line_planes(label: str, line: dict) -> list[tuple[str, Vector, Vector]]:
     """A standard line on a body: per side its plane, a point and a normal, at the line's share of
     its bone's length, at right angles to the bone, or level across the trunk, which stands upright
-    at rest while its bones lean."""
+    at rest while its bones lean. A line with a rise curves away from its plane; line_offsets gives
+    how far points lie beyond it."""
     arm = bpy.data.objects[label]
     planes = []
     for side in (("L", "R") if line["region"] in SIDED else ("",)):
@@ -1132,6 +1214,18 @@ def line_planes(label: str, line: dict) -> list[tuple[str, Vector, Vector]]:
     return planes
 
 
+def line_offsets(line: dict, point: Vector, normal: Vector, co: np.ndarray) -> np.ndarray:
+    """How far points lie beyond a standard line's surface along its normal, toward its bone's tail:
+    from its plane, and for a line with a rise from the plane raised toward the sides by the rise
+    times the square of the distance to the side, so a neckline runs low at the throat, high at the
+    sides of the neck where the shoulders meet it, and between at the nape, round all the way."""
+    offsets = (np.asarray(co, float) - np.array(point)) @ np.array(normal)
+    rise = float(line.get("rise", 0.0))
+    if rise:
+        offsets = offsets - rise * (np.asarray(co, float)[..., 0] - point.x) ** 2
+    return offsets
+
+
 def line_segments(label: str, line: dict) -> list[tuple[str, list[tuple[Vector, Vector]]]]:
     """Where a standard line crosses its region of the cage's version on a body: per side the
     segments of the plane through the region's faces."""
@@ -1143,7 +1237,7 @@ def line_segments(label: str, line: dict) -> list[tuple[str, list[tuple[Vector, 
     wanted = REGIONS.index(line["region"])
     found = []
     for side, point, normal in line_planes(label, line):
-        signed = (co - np.array(point)) @ np.array(normal)
+        signed = line_offsets(line, point, normal, co)
         segments = []
         for polygon, region in zip(cage.data.polygons, regions):
             corners = list(polygon.vertices)
@@ -1163,14 +1257,15 @@ def line_segments(label: str, line: dict) -> list[tuple[str, list[tuple[Vector, 
 
 def cage_errors(labels: list[str], lines: list[dict]) -> list[str]:
     """The model rules of a cage: a version per body with the reference's topology, no vertex and
-    no face centre inside the skin, no face that crosses another, and every line crossing its
-    region on every body."""
+    no face centre inside the skin, no skin that comes out through a face, no face that crosses
+    another, and every line crossing its region on every body."""
     errors = []
     try:
         cage, _rig = _reference()
     except ArtPipelineError as error:
         return [str(error)]
     faces = [tuple(p.vertices) for p in cage.data.polygons]
+    regions = _face_regions(cage.data)
     for label in labels:
         version = bpy.data.objects.get(version_name(label))
         if version is None or version.type != "MESH":
@@ -1186,6 +1281,17 @@ def cage_errors(labels: list[str], lines: list[dict]) -> list[str]:
         if inside:
             errors.append(f'"{version.name}" lies inside the skin or closer than {CLEARANCE * 1000:.0f} mm at '
                           f"{len(inside)} vertices and face centres; run tools/Sync-CageAsset.ps1, or correct it outward.")
+        # The fitting keeps the skin the clearance inside the cage where it can; the skin next to a
+        # ring that an earlier stage keeps may come closer, but never out.
+        through = 0
+        for stage in STAGES:
+            part = Part(faces, regions, stage)
+            if len(part.vertices):
+                through += len(poking(part.net.triangles, co[part.vertices], skin,
+                                      skin.vertices_of({REGIONS[r] for r in part.regions}), 0.0))
+        if through:
+            errors.append(f'The skin comes out through "{version.name}" between its corners at {through} vertices; '
+                          "run tools/Sync-CageAsset.ps1, or correct it outward.")
         tree = BVHTree.FromPolygons([tuple(c) for c in co], faces)
         crossing = [(a, b) for a, b in tree.overlap(tree) if a < b and not set(faces[a]) & set(faces[b])]
         if crossing:
@@ -1230,7 +1336,8 @@ def read_manifest(path: str) -> tuple[float, list[dict]]:
         data = json.load(handle)
     figure = float(data["figure"])
     lines = [{"name": str(line["name"]), "region": str(line["region"]), "bone": str(line["bone"]),
-              "share": float(line["share"])} for line in data["lines"]]
+              "share": float(line["share"]), **({"rise": float(line["rise"])} if "rise" in line else {})}
+             for line in data["lines"]]
     if not math.isfinite(figure) or figure <= 0.0:
         raise ArtPipelineError("The figure scale of a cage must be a positive number of meters.")
     return figure, lines

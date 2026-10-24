@@ -1,0 +1,32 @@
+{
+    "schemaVersion": 1,
+    "kind": "texture",
+    "garment": "art/Garments/Robe",
+    "approvals": {
+        "texture": {
+            "date": "2026-10-24",
+            "sourceSha256": "8e3ff6c8bfc4d35f7c25d0e4b2316834bc167328544bbcde3d2a22d135c63e5b",
+            "garmentSourceSha256": "f5213c22782e52005bfe88eac9705c63691212a3144fcf451cf860b96f39a122"
+        }
+    },
+    "export": {
+        "sourceSha256": "8e3ff6c8bfc4d35f7c25d0e4b2316834bc167328544bbcde3d2a22d135c63e5b",
+        "garmentSourceSha256": "f5213c22782e52005bfe88eac9705c63691212a3144fcf451cf860b96f39a122",
+        "materials": [
+            {
+                "name": "M_Garment_WoolRobe",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Garment_WoolRobe",
+                "metallic": 0.0,
+                "smoothness": 0.14
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Garment_WoolRobe",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolRobe.png",
+                "sha256": "07749f07fcd2118167d0b70a78a6a3a094ab66e542efca4584eee548385b1849"
+            }
+        ]
+    }
+}

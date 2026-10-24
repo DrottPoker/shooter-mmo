@@ -3060,15 +3060,15 @@ its `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
    ```
 
    Expected result: one report line per body, such as `Cage_Male: 2880 faces,
-   1.0 to 25.6 mm from the skin, median 1.8 mm, 275 vertices span pits more than
+   1.0 to 25.6 mm from the skin, median 1.9 mm, 325 vertices span pits more than
    5 mm deep`, `Synced Humanoid: ...` or `Humanoid is up to date: ...`, the path
    of the review sheet, and `Humanoid meets every rule, and its stage is approved
    for this file.` A cage that lacks a region the pipeline has first prints
    `Added the regions hands, feet to the cage, built on Male.`; its other
    vertices stay exactly where they were. A second run prints `Humanoid is up to
    date: ...` and leaves the file as it is. A broken rule stops it with the list
-   of rules, such as a line that does not cross its region, or faces that cross
-   each other.
+   of rules, such as a line that does not cross its region, faces that cross
+   each other, or skin that comes out through the cage between its corners.
 2. Look at `artifacts\art-previews\Humanoid.png`. Expected result: per body a
    row colored by the distance from the skin, mostly blue, yellow over the
    spanned pits, with the twelve lines drawn as colored rings at the neck, under
@@ -3338,24 +3338,28 @@ controller, and prefabs are committed.
 15. Run `.\tools\Sync-HumanBase.ps1` and open
     `artifacts\human-base\review\Human_Male_rig_chains.png`. Expected result:
     the cloth chains alone over the body: eight skirt chains on a ring at the hips
-    hanging to the ankles, five cloak chains down the back to the knees, and the
-    hood chain behind the head, and the same on the female, shorter and narrower.
-    In Unity, run the EditMode tests in `ClothChainSolverTests`. Expected result:
-    every test passes, among them a robe that stays outside the legs while the
-    body jogs. No garment uses the chains yet, so nothing changes in the game.
+    hanging to the ankles, five cloak chains down the back to the middle of the
+    calves, and the hood chain behind the head, and the same on the female,
+    shorter and narrower. In Unity, run the EditMode tests in
+    `ClothChainSolverTests`. Expected result: every test passes, among them a
+    robe that stays outside the legs while the body jogs. The robe and the cloak
+    of steps 23 to 25 use the chains.
 16. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Shirt`.
-    Expected result: `Shirt_Male: 1536 triangles, 0.0 to 6.9 mm from the cage,
+    Expected result: `Shirt_Male: 1644 triangles, 0.0 to 7.8 mm from the cage,
     median 2.0 mm`, the same for the female, `Shirt is up to date: ...`,
-    `Shirt_Male: none of the 163 visible vertices under it comes through it in
-    239 poses and clip frames`, `Shirt_Male: covers 418 of 4358 body faces,
-    leaves 114 at its edges visible, and pulls in 31 visible vertices by at most
-    2.5 mm`, for the female 31 vertices by at most 9.5 mm at the hips in `Death`,
+    `Shirt_Male: none of the 168 visible vertices under it comes through it in
+    239 poses and clip frames`, `Shirt_Male: covers 466 of 4358 body faces,
+    leaves 123 at its edges visible, and pulls in 17 visible vertices by at most
+    1.6 mm`, for the female 30 vertices by at most 9.5 mm at the upper arms in
+    `Jog`, none of them at rest, since skin through a garment at rest stops the
+    sync,
     `Trousers under Shirt_Male: of the 36 vertices of it that stay drawn under
     Shirt_Male, 2 come through it in 239 poses and clip frames, by at most 1.2 mm
     (Torso in Death frame 14)`, for the female none, and `Shirt meets every
     rule, and both stages are approved for this file.` Open `artifacts\art-previews\Shirt.png`. Expected result: the
     shirt with a grid in its UVs on both bodies from four sides, close to the
-    body and following its figure, ending at the base of the neck, with short
+    body and following its figure, with a round neckline that hugs the neck, low
+    at the throat and up at its sides, with short
     sleeves over half the upper arm and the hem over the hips, the test poses,
     and each body without it, orange in the shirt's shape and a yellow band of
     visible skin along the neckline, the sleeve openings, and the hem. Then run
@@ -3373,7 +3377,10 @@ controller, and prefabs are committed.
     where the skin shows between the laces. The skin under the garments is gone
     except near their edges, so nothing shows through when you walk and turn,
     and a look into a sleeve, into the V, or at the hips below the hem shows
-    skin, never a hole in the body. Turn on `Try on garment: LinenShirt`.
+    skin, never a hole in the body. With the female body chosen, look at the
+    shoulders from the side while you stand still. Expected result: no skin
+    shows through the jerkin at the shoulder seams. Turn on `Try on garment:
+    LinenShirt`.
     Expected result: the linen shirt takes the jerkin's place, since a body wears
     one chest piece. Choose `Your tattoo: Tattoo` and turn on `Try on garment:
     NetShirt`. Expected result: the tattoo and the skin show through the net's
@@ -3450,6 +3457,66 @@ controller, and prefabs are committed.
     wears them as in step 21. Press `Walk`, `Jog`, and `Death`. Expected result:
     the boots follow the feet and bend at the front of the ankle, the gloves'
     fingers follow the hands, and the body falls and lies in the outfit.
+23. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Robe`, then the same
+    for `art/Garments/Cloak`. Expected result: `Robe_Male: 2924 triangles, 0.0
+    to 7.8 mm from the cage, median 2.0 mm, 384 vertices hanging on the skirt
+    chains`, `Robe_Male: of the 236 visible vertices under it, 5 come through
+    it ... by at most 5.4 mm (Pelvis in Death frame 33)`, on the female 25 by at
+    most 10.4 mm at the hips in `Death`, like the shirts, and no leg through the
+    skirt, `Robe_Male: covers 774 of 4358 body faces`, the legs under the skirt
+    left visible; then `Cloak_Male: 940 triangles, 8.7 to 17.7 mm from the
+    cage, median 11.7 mm, 226 vertices hanging on the cloak chains`,
+    `Cloak_Male: covers 0 of 4358 body faces, leaves 0 at its edges visible`,
+    shins through the cloak only in `Death`, `LongShirt under Cloak_Male: ... 2
+    come through it ... by at most 9.6 mm (Torso in arms_up)`, `Robe under
+    Cloak_Male: ...` with the robe through the cloak only in `Death`, where the
+    legs swing up, and `... meets every rule, and both stages are approved for
+    this file.` Open
+    `artifacts\art-previews\Robe.png` and `artifacts\art-previews\Cloak.png`.
+    Expected result: the robe with `LongShirt`'s top and its round neckline and
+    a skirt that falls straight from the hips to the ankles, wider at the hem,
+    closed all round, which follows the legs in the stride and drapes over the
+    knees when sitting, and on the mask rows the legs not orange; the cloak a
+    yoke over the shoulders from the round neckline to below the collarbones
+    with a taut sheet down the back to the middle of the calves, which a leg
+    that kicks back pushes back, and no orange on its mask rows. Then run
+    `.\tools\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/WoolRobe` and the
+    same for `WoolCloak` and open their sheets. Expected result: undyed
+    grey-brown wool with folds down the skirt, wear at its bottom, and stitched
+    hems; dark brown wool with folds down the back, stitched hems, and in front
+    only the cloth over the shoulders, down to a large round bronze clasp at the
+    front of each shoulder.
+24. In a World scene, press F2 and in the Presentation section turn on
+    `Try on garment: LeatherBoots`, `Try on garment: WoolRobe`, and then
+    `Try on garment: LinenLongShirt` and `Try on garment: WoolCloak`. Expected
+    result: the robe reaches the ankles with the boots showing below it, and
+    turning on `LinenLongShirt` takes the robe's place, since both are chest
+    pieces; turn `WoolRobe` on again. The robe's skirt falls straight from the
+    hips, wider toward the hem, without showing the shape of the legs. The cloak
+    lies over the shoulders and is held by a large round bronze clasp at the
+    front of each shoulder, with the throat and the chest free, and over the
+    robe it falls straight from the shoulders out over the skirt, covering its
+    back, with no skirt showing through it and no bulge in the middle of the
+    back; everything under it, the robe or the shirt, stays whole when the cloak
+    swings. Turn off `WoolRobe` and turn on `LinenLongShirt` and
+    `WoolTrousers`. Expected result: the cloak hangs taut down the back to the
+    middle of the calves, close to the back without following it or the
+    buttocks. Turn `WoolRobe` on again. Walk, jog, stop, and turn. Expected
+    result: the skirt follows the legs, the cloak is pushed back by the legs
+    that kick back and swings behind over the skirt, both settle when you stop,
+    and no leg pokes out through the skirt or the cloak, no skirt through the
+    cloak, and no hole shows anywhere. With `WoolTrousers` on under the robe,
+    the trousers are not drawn.
+25. In the Unity Editor, open `MMORPG > Tools > Art Pipeline > Wardrobe`, pick
+    each body in turn, and tick `LeatherBoots`, `WoolRobe`, and `WoolCloak`.
+    Expected result: `Drawn` reads `LeatherBoots, WoolRobe, WoolCloak`, and the
+    body wears them as in step 24. Press `Walk`, `Jog`, and `Death`, and drag
+    around the body. Expected result: the skirt and the cloak swing with the
+    steps, the legs stay inside the skirt and in front of the cloak, the cloak
+    lies over the skirt, the inside of the cloak shows from the front, and the
+    body falls and lies in the robe and the cloak; when it falls, the legs swing
+    up through the cloak and the skirt for a moment, as the art pipeline
+    reports for `Death`.
 
 ## One-Time Unity World Scene Authoring
 
