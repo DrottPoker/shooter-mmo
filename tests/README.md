@@ -1,6 +1,6 @@
 # Backend Tests
 
-Last updated: 2026-10-16
+Last updated: 2026-10-24
 
 This directory holds the .NET backend tests: one test project per production
 module, one project for flows that cross modules or processes, and shared test
@@ -51,6 +51,19 @@ namespace.
 - A new test project references only what it tests, `Mmorpg.Testing`, and the
   libraries it needs, gets an `AssemblyInfo.cs` like its siblings, joins
   `Mmorpg.slnx` in the matching folder, and commits its `packages.lock.json`.
+
+## Test Selection
+
+`tools/Test-Changes.ps1` runs only the test projects that a change can affect,
+as [Checks For A Change](../docs/LOCAL_DEVELOPMENT.md#checks-for-a-change)
+describes. It follows project references: a change to a project selects every
+test project that references it, directly or through other projects. A test
+that reads a repository file outside its own project and the projects it
+references therefore needs a rule in the `$rules` table of that script, as
+`RealtimeMetricNamesTests` has for `docs/SERVICE_FEATURES.md`. Content, test
+fixtures, generated World data, and the monitoring configuration already select
+every test project, and a configuration file of a production or tool project,
+such as an `appsettings.json`, does too.
 
 ## Item Catalog Fixture
 
@@ -132,7 +145,7 @@ for every pull request, every push to `development` and `main`, and manual runs:
 
 | Job | Runs |
 | --- | --- |
-| `Backend checks and unit tests` | Dependency policy, locked restore, format, build, the three content verifiers, and every test with `Category!=Integration` |
+| `Backend checks and unit tests` | Dependency policy, art assets, the test selection rules of `tools/Test-Changes.ps1`, locked restore, format, build, the content and protocol verifiers, and every test with `Category!=Integration` |
 | `Integration tests (items)` | `Category=Integration` in `Mmorpg.GameService.Items.Tests` |
 | `Integration tests (other)` | `Category=Integration` in every other test project |
 | `Observability configuration` | `tools/Verify-Observability.ps1`: the collector and Prometheus configuration, the promtool alert rule tests, and the Grafana dashboard JSON, with the images pinned in `docker-compose.observability.yml` |

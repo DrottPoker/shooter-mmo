@@ -45,6 +45,11 @@ jobs:
         shell: pwsh
         run: ./tools/Verify-ArtAssets.ps1
 
+      # Every tracked file must match a rule of the local change-based checks.
+      - name: Verify test selection rules
+        shell: pwsh
+        run: ./tools/Test-Changes.ps1 -VerifyRules
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
