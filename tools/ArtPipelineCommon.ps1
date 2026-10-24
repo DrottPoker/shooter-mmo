@@ -40,7 +40,7 @@ $script:ArtImplementedStages = @{
 
 # The regions of the garment cage and the range of its figure scale in meters; see
 # docs/EQUIPMENT_VISUALS_DESIGN.md.
-$script:ArtCageRegions = @("neck", "trunk", "arms", "legs", "hands", "feet")
+$script:ArtCageRegions = @("neck", "trunk", "arms", "legs", "hands", "feet", "head")
 $script:ArtCageSidedRegions = @("arms", "legs", "hands", "feet")
 $script:ArtCageFigureRange = @(0.01, 0.2)
 
@@ -57,7 +57,7 @@ $script:ArtGarmentSlots = @("head", "body", "legs", "hands", "feet", "back", "ha
 # and both under the underwear, and the visual slots underwear is worn in.
 $script:ArtPaintCategories = [ordered]@{ scar = @(100, 199); tattoo = @(200, 299); underwear = @(900, 999) }
 $script:ArtUnderwearSlots = @("body", "legs")
-$script:ArtGarmentBands = @("tight", "mid", "outer", "loose")
+$script:ArtGarmentBands = @("tight", "mid", "outer", "loose", "hair")
 $script:ArtGarmentHairForms = @("hide", "compress", "show")
 $script:ArtGarmentCloth = @("robe", "cloak", "hood")
 # A loose part's side of the edge it hangs from, the chains it hangs on with the cloth profile they
@@ -677,6 +677,8 @@ function Get-ArtGarmentPairs($Manifest) {
     # template is checked over: worn under it, they must not come through it at its openings. A
     # body wears one garment per visual slot, so templates of the same slot are never worn together,
     # and a template that hides a slot, such as a robe the legs, is worn over none of that slot.
+    # Headwear that hides the hair is worn over no hairstyle; one that compresses it is checked over
+    # the hairstyle's form UnderHeadwear.
     return @(Get-ArtAssetDirectories | Where-Object { (Split-Path -Leaf (Split-Path -Parent $_)) -ceq "Garments" } | ForEach-Object {
             $other = $null
             try {
@@ -688,7 +690,8 @@ function Get-ArtGarmentPairs($Manifest) {
 
             if ($null -ne $other -and $other.Kind -eq "garment" -and $other.Name -cne $Manifest.Name -and $null -ne $other.Export -and
                 $null -ne $other.Cage -and $other.Cage.RelativeDirectory -ceq $Manifest.Cage.RelativeDirectory -and
-                $other.Slot -cne $Manifest.Slot -and $other.Layer -lt $Manifest.Layer -and @($Manifest.Hides) -cnotcontains $other.Slot) {
+                $other.Slot -cne $Manifest.Slot -and $other.Layer -lt $Manifest.Layer -and @($Manifest.Hides) -cnotcontains $other.Slot -and
+                -not ($Manifest.Hair -ceq "hide" -and $other.Slot -ceq "hair")) {
                 $other
             }
         } | Sort-Object Name)

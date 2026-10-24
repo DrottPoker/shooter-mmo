@@ -369,6 +369,17 @@ namespace Mmorpg.Client.Gameplay
         [Serializable]
         public sealed class Garment
         {
+            // The visual slot of hair, worn as a garment under headwear.
+            public const string HairSlot = "hair";
+
+            // What headwear does to the hair under it: hides it, or presses it flat into its form
+            // under headwear; any other value leaves it as it is.
+            public const string HideHair = "hide";
+            public const string CompressHair = "compress";
+
+            // The blend shape of hair that is its form pressed flat under headwear.
+            public const string UnderHeadwearShape = "UnderHeadwear";
+
             [SerializeField] private string name;
             [SerializeField] private string template;
             [SerializeField] private Material material;

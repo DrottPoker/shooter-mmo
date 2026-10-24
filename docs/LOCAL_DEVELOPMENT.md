@@ -3135,7 +3135,11 @@ so a shirt and a jerkin replace each other.
    `Tunic_Female` are hidden in the Outliner. Shape `Tunic_Male` in Edit Mode
    where it needs more than the recipe gives, such as folds or a flared hem, and
    paint its weights by hand if it needs it. Correct `Tunic_Female` only where the
-   fitting needs help. Save, then fit and check it:
+   fitting needs help, as the helmet's nasal over the woman's smaller nose. A
+   hairstyle, a template of `-Slot hair -Band hair -Modeled`, also has the shape
+   key `UnderHeadwear` on its first version, the hair pressed flat under hoods
+   and helmets, shaped in Edit Mode with that key active. Save, then fit and
+   check it:
 
    ```powershell
    .\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Tunic
@@ -3184,8 +3188,10 @@ so a shirt and a jerkin replace each other.
    files together. A template is exported after its cage is approved and after
    its bodies and the animation library are exported, and again whenever one of
    them changes. Templates exported together are exported in the order of their
-   layers, `Trousers`, `Boots`, `LongShirt`, `Shirt`, then `Gloves`, since each
-   records the exports of the templates of lower layers it was checked over.
+   layers, `Trousers`, `Boots`, `LongShirt`, `Shirt`, `Robe`, `Gloves`, `Cloak`,
+   `ShoulderHair`, then `HoodDown`, `HoodUp`, and `NasalHelm`, since each
+   records the exports of the templates of lower layers it was checked over;
+   `Export-ArtAsset.ps1` puts them in that order when it is given them together.
    Then give it a texture.
 
 ### Make A Garment Texture
@@ -3517,6 +3523,60 @@ controller, and prefabs are committed.
     body falls and lies in the robe and the cloak; when it falls, the legs swing
     up through the cloak and the skirt for a moment, as the art pipeline
     reports for `Death`.
+26. Run `.\tools\Sync-CageAsset.ps1` and open
+    `artifacts\art-previews\Humanoid.png`. Expected result: `Humanoid is up to
+    date: ...`, and the sheet's last row shows each body's head from the front,
+    the side, the back, and above in a smooth net from the neck to the crown that
+    spans the ears, the nose, and the eye sockets without following them in.
+27. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/ShoulderHair`, then
+    the same for `HoodUp`, `HoodDown`, and `NasalHelm`. Expected result:
+    `ShoulderHair_Male: 2298 triangles, 4.0 to 51.0 mm from the cage, median
+    17.1 mm`, `ShoulderHair is up to date: ...`, for both bodies `none of the
+    ... visible vertices under it comes through it`, and `ShoulderHair meets
+    every rule, and both stages are approved for this file.`; then
+    `HoodUp_Male: 1186 triangles, 11.9 to 79.6 mm from the cage`, nothing
+    through it on either body, `Cloak under HoodUp_Male: none of the 58 vertices
+    of it ...`, and `ShoulderHair under HoodUp_Male: none of the 806 vertices of
+    it ...`, the hair checked in its form under headwear; `HoodDown_Male: 1036
+    triangles, 13.9 to 74.0 mm from the cage`, `HoodDown_Male: covers 0 of 4358
+    body faces`, and nothing of the cloak, the shirts, the robe, or the hair as
+    it is through it; and `NasalHelm_Male: 2092 triangles, 10.8 to 34.6 mm from
+    the cage`, nothing through it, and `ShoulderHair under NasalHelm_Male: none
+    of the ... vertices of it ...`. Open `artifacts\art-previews\HoodUp.png`,
+    `HoodDown.png`, and `NasalHelm.png`. Expected result: the gugel up over the
+    head with an opening for the face and a short collar over the neck and the
+    shoulders; the hood down as a collar around the neck with its top rolled over
+    and the hood folded on the upper back; and a pointed iron helmet with four
+    raised bands, a brow band above the ears, and a nasal down the nose.
+28. In a World scene, press F2 and in the Presentation section turn on
+    `Try on garment: LinenLongShirt`, `Try on garment: WoolCloak`, and
+    `Try on garment: DarkBrownHair`, on the man and, after `>` next to `Your
+    body`, on the woman. Expected result: straight dark brown hair with a middle
+    parting and a short fringe covers the ears and falls to the shoulders, over
+    the cloak's yoke. Turn on `Try on garment: WoolHoodUp`. Expected result: the
+    grey-brown wool hood covers the head with the fringe and a little hair at
+    the sides of the face showing in its opening, the hair pressed flat under it
+    and nowhere through it, and its short collar lies over the neck and the
+    cloak, ending above the bronze clasps. Turn on `Try on garment:
+    WoolHoodDown`, which takes the hood up's place in the `head` slot. Expected
+    result: the hair falls as before, its ends inside the collar, which lies
+    around the neck with its top rolled over, and the hood lies folded on the
+    upper back over the cloak and the hair. Turn on `Try on garment:
+    IronNasalHelm`. Expected result: a pointed riveted iron helmet sits above
+    the brows and the ears with the leather lining showing below the iron and
+    the nasal down in front of the nose, and the hair pressed flat under it hangs
+    out below it to the shoulders. Walk, jog, and turn with each. Expected
+    result: nothing of the hair, the cloak, or the shirt shows through the hood
+    or the helmet, and the hood down's bag stays on the back.
+29. In the Unity Editor, open `MMORPG > Tools > Art Pipeline > Wardrobe`, pick
+    each body in turn, and tick `LinenLongShirt`, `WoolCloak`, `DarkBrownHair`,
+    and `WoolHoodUp`. Expected result: `Drawn` reads `LinenLongShirt, WoolCloak,
+    DarkBrownHair, WoolHoodUp`, with the hair pressed flat under the hood. Tick
+    `WoolHoodDown` and then `IronNasalHelm` instead of the hood up, and press
+    `Walk`, `Jog`, and `Death`. Expected result: the hair takes its own form
+    under the hood down and its pressed form under the helmet, the helmet moves
+    with the head, and the body falls and lies in the outfit without the hair or
+    the cloak coming through the hood or the helmet.
 
 ## One-Time Unity World Scene Authoring
 

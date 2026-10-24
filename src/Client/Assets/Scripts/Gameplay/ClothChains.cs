@@ -102,7 +102,8 @@ namespace Mmorpg.Client.Gameplay
                 }
             }
 
-            chains.Add(Chain(ClothChainKind.Hood, "Head", "Hood", HoodBones, string.Empty));
+            // The hood's chain hangs behind the head, so its cloth reaches backward from it.
+            chains.Add(Chain(ClothChainKind.Hood, "Head", "Hood", HoodBones, string.Empty, 180f));
             return chains.ToArray();
         }
 

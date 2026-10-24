@@ -240,8 +240,8 @@ namespace Mmorpg.Client.Editor
 
                     var topology = new ArtTopologyMaps.Topology(data.garmentVertices, data.garmentFaceSizes, data.garmentFaceVertices);
                     var renderer = model.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single();
-                    var sources = ArtTopologyMaps.VertexSources(PositionsIn(model.transform, renderer), topology);
-                    if (sources.Any(source => source < 0))
+                    var sources = ArtTopologyMaps.VertexCandidates(PositionsIn(model.transform, renderer), topology);
+                    if (sources.Any(candidates => candidates.Length == 0))
                     {
                         throw new InvalidOperationException(where + ": the model has vertices that are not in its data; export the garment again.");
                     }

@@ -6,12 +6,12 @@
         "texture": {
             "date": "2026-10-24",
             "sourceSha256": "aafd39458fe839f187f2a75ce42415f1bd8e9b55c33c19cd997173023bcb74f1",
-            "garmentSourceSha256": "a456e809c479111923176d45b8cc77613c027706f4727875f1fb0f34e8430292"
+            "garmentSourceSha256": "4a7ba335ab0237ad2f1d9ae6d430093274b871fa357e19cc45665cf36e3d5e47"
         }
     },
     "export": {
         "sourceSha256": "aafd39458fe839f187f2a75ce42415f1bd8e9b55c33c19cd997173023bcb74f1",
-        "garmentSourceSha256": "a456e809c479111923176d45b8cc77613c027706f4727875f1fb0f34e8430292",
+        "garmentSourceSha256": "4a7ba335ab0237ad2f1d9ae6d430093274b871fa357e19cc45665cf36e3d5e47",
         "masks": [
             { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Male.json", "dataSha256": "725a11869ebbe89c0cce16fbee30dd56a71cdd980d490c03e5fc594e69e99e57" },
             { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Female.json", "dataSha256": "381e5936a559ff298b69a634f72d5d41ea095ed6b55a58ab8ed60ab393f7f32f" }

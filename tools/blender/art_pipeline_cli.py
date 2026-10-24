@@ -224,10 +224,11 @@ def _garment(args) -> int:
     if [root for _path, root in body_list] != labels:
         raise ArtPipelineError("A garment is checked against its bodies; pass one --body per root, in order.")
     band, recipe, lines, cage_file = garment.read_manifests(args.manifest, args.cage_manifest)
+    slot, hair = garment.read_wearing(args.manifest)
     if band != args.band:
         raise ArtPipelineError(f'The band "{args.band}" is not the band of {args.manifest}.')
     errors = garment.stale_errors(args.garment, args.band, recipe, lines, body_list, cage_file)
-    errors += garment.garment_errors(args.garment, labels, args.band, args.triangle_budget, recipe, lines)
+    errors += garment.garment_errors(args.garment, labels, args.band, args.triangle_budget, recipe, lines, slot)
     versions = [v for v in (bpy.data.objects.get(garment.version_name(args.garment, label)) for label in labels)
                 if v is not None]
     if args.stage == "rig":
@@ -236,7 +237,8 @@ def _garment(args) -> int:
             arm = bpy.data.objects.get(label)
             version = bpy.data.objects.get(garment.version_name(args.garment, label))
             if arm is not None and version is not None:
-                errors += skinned.rig_errors([arm, version], [arm], skeleton)
+                errors += skinned.rig_errors([arm, version], [arm], skeleton,
+                                             shape_keys=garment.SHAPE_KEYS.get(slot, ()))
     elif args.stage != "model":
         raise ArtPipelineError(f'A garment has the review stages model and rig, not "{args.stage}".')
     coverages = {}
@@ -252,9 +254,10 @@ def _garment(args) -> int:
             print(f"ART_REPORT {coverage.motion_summary(args.garment, motion)}")
             print(f"ART_REPORT {coverage.summary(args.garment, coverages[label])}")
             errors += filter(None, [motion.rest_error(garment.version_name(args.garment, label), "visible skin vertices")])
-        # Every template of a lower layer worn under this one, at this one's openings.
+        # Every template of a lower layer worn under this one, at this one's openings, a hairstyle
+        # under headwear that compresses it in its form UnderHeadwear.
         for path, inner, inner_band in _pairs(args):
-            versions_inner = garment.append_inner(path, inner, labels)
+            versions_inner = garment.append_inner(path, inner, labels, compressed=hair == "compress")
             for label, obj in zip(labels, versions_inner):
                 underlay = coverage.compute(inner, label, inner_band).underlay
                 result = coverage.check_pair(args.garment, coverages[label], obj, underlay, actions)

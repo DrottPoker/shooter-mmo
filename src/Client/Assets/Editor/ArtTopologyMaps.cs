@@ -34,9 +34,38 @@ namespace Mmorpg.Client.Editor
             return sources;
         }
 
+        // Every source vertex within the tolerance of each position, nearest first. A garment made
+        // of pieces that meet, such as a hood's collar and the band turned down over it, has two
+        // vertices at one place, and only the face of a triangle tells which one a corner is.
+        public static int[][] VertexCandidates(IReadOnlyList<Vector3> positions, Topology topology)
+        {
+            var candidates = new int[positions.Count][];
+            for (var index = 0; index < positions.Count; index++)
+            {
+                candidates[index] = topology.Within(positions[index]);
+            }
+
+            return candidates;
+        }
+
         // The source face of each triangle of the mesh, over its submeshes in order, from the
         // source vertices of its corners: the one face that holds all three.
         public static int[] TriangleFaces(Mesh mesh, IReadOnlyList<int> vertexSources, Topology topology, string where)
+        {
+            var candidates = new int[vertexSources.Count][];
+            for (var index = 0; index < candidates.Length; index++)
+            {
+                candidates[index] = vertexSources[index] >= 0 ? new[] { vertexSources[index] } : Array.Empty<int>();
+            }
+
+            return TriangleFaces(mesh, candidates, topology, where);
+        }
+
+        // The same from the source vertices each corner may be, nearest first: the one face that
+        // holds the nearest of each corner's, or where no face does, the one that holds one of each
+        // corner's. A turned edge's rim may lie on the edge it turns from, so the nearest decide
+        // where they can.
+        public static int[] TriangleFaces(Mesh mesh, IReadOnlyList<int[]> vertexCandidates, Topology topology, string where)
         {
             var faces = new List<int>();
             var triangles = new List<int>();
@@ -45,28 +74,18 @@ namespace Mmorpg.Client.Editor
                 mesh.GetTriangles(triangles, submesh);
                 for (var corner = 0; corner < triangles.Count; corner += 3)
                 {
-                    var a = vertexSources[triangles[corner]];
-                    var b = vertexSources[triangles[corner + 1]];
-                    var c = vertexSources[triangles[corner + 2]];
-                    if (a < 0 || b < 0 || c < 0)
+                    var a = vertexCandidates[triangles[corner]];
+                    var b = vertexCandidates[triangles[corner + 1]];
+                    var c = vertexCandidates[triangles[corner + 2]];
+                    if (a.Length == 0 || b.Length == 0 || c.Length == 0)
                     {
                         throw new InvalidOperationException(where + ": triangle " + faces.Count + " has a corner outside the editable mesh.");
                     }
 
-                    var face = -1;
-                    foreach (var candidate in topology.FacesOf(a))
+                    var face = FaceHolding(topology, new[] { a[0] }, new[] { b[0] }, new[] { c[0] }, where, faces.Count);
+                    if (face < 0)
                     {
-                        if (!topology.FaceHolds(candidate, b) || !topology.FaceHolds(candidate, c))
-                        {
-                            continue;
-                        }
-
-                        if (face >= 0)
-                        {
-                            throw new InvalidOperationException(where + ": triangle " + faces.Count + " lies in two faces.");
-                        }
-
-                        face = candidate;
+                        face = FaceHolding(topology, a, b, c, where, faces.Count);
                     }
 
                     if (face < 0)
@@ -79,6 +98,44 @@ namespace Mmorpg.Client.Editor
             }
 
             return faces.ToArray();
+        }
+
+        // The one face that holds one vertex of each corner's, or -1.
+        private static int FaceHolding(Topology topology, int[] a, int[] b, int[] c, string where, int triangle)
+        {
+            var face = -1;
+            foreach (var first in a)
+            {
+                foreach (var candidate in topology.FacesOf(first))
+                {
+                    if (candidate == face || !HoldsAny(topology, candidate, b) || !HoldsAny(topology, candidate, c))
+                    {
+                        continue;
+                    }
+
+                    if (face >= 0)
+                    {
+                        throw new InvalidOperationException(where + ": triangle " + triangle + " lies in two faces.");
+                    }
+
+                    face = candidate;
+                }
+            }
+
+            return face;
+        }
+
+        private static bool HoldsAny(Topology topology, int face, int[] vertices)
+        {
+            foreach (var vertex in vertices)
+            {
+                if (topology.FaceHolds(face, vertex))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // An editable mesh: its vertices in Unity's axes and its faces.
@@ -154,6 +211,42 @@ namespace Mmorpg.Client.Editor
             public bool FaceHolds(int face, int vertex)
             {
                 return Array.IndexOf(faces[face], vertex) >= 0;
+            }
+
+            // Every vertex within the tolerance of the position, the one Nearest gives first.
+            public int[] Within(Vector3 position)
+            {
+                var nearest = Nearest(position);
+                var center = CellOf(position);
+                var found = new List<int>();
+                for (var x = -1; x <= 1; x++)
+                {
+                    for (var y = -1; y <= 1; y++)
+                    {
+                        for (var z = -1; z <= 1; z++)
+                        {
+                            if (!cells.TryGetValue(center + new Vector3Int(x, y, z), out var inCell))
+                            {
+                                continue;
+                            }
+
+                            foreach (var vertex in inCell)
+                            {
+                                if (vertex != nearest && (vertices[vertex] - position).magnitude <= Tolerance)
+                                {
+                                    found.Add(vertex);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (nearest >= 0)
+                {
+                    found.Insert(0, nearest);
+                }
+
+                return found.ToArray();
             }
 
             // The vertex nearest to the position within the tolerance, or -1.

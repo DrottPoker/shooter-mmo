@@ -22,7 +22,11 @@ step adds the cage's regions `hands` and `feet`, the templates `Boots` and
 `Gloves` with five fingers, and their leather textures, approved by Victor on
 2026-10-24. Its third step adds loose parts, which hang on the cloth chains,
 with the templates `Robe` and `Cloak`, their wool textures, and cloak chains
-that hang to the middle of the calves.
+that hang to the middle of the calves. Its fourth step adds the cage's region
+`head`, the hairstyle `ShoulderHair` with its form under headwear and its
+texture `DarkBrownHair`, the robe's hood up and down, `HoodUp` and `HoodDown`,
+with the wool textures `WoolHoodUp` and `WoolHoodDown`, and the helmet
+`NasalHelm` with its texture `IronNasalHelm`, approved by Victor on 2026-10-24.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -148,8 +152,12 @@ order that [How Garments Meet](#how-garments-meet) fixes.
 | `feet` | shoes, boots, over the trouser legs | 120 |
 | `body` | shirts, tops, jerkins, chest armor, robes, coats | 150 a top, over the trousers; 300 a robe or coat, over the boots |
 | `hands` | gloves, gauntlets, over every sleeve | 350 |
-| `head` | hoods, hats, helmets, masks | 400 |
 | `back` | cloaks, capes | 500 |
+| `hair` | hairstyles, beards, over the cloak | 550 |
+| `head` | hoods, hats, helmets, masks, over the hair | 600 |
+
+Hair lies over the cloak and falls on its yoke, and headwear lies over the hair,
+so `head` is the highest layer; Victor accepted this order on 2026-10-24.
 
 An item names the garments it shows, so one item may show several garments,
 such as a robe with a hood. A garment may also hide whole slots below it, such
@@ -174,8 +182,9 @@ with a fixed topology of its own, the same on every body, that the pipeline
 lays around each body: over the neck, the trunk, the arms, the hands, the legs,
 and the feet. Regions are added to it when the first garments that need them
 come, the hands and the feet with the first gloves and boots on 2026-10-24, the
-head with the first hoods; they add vertices and faces after the cage's own and
-change none, so every garment made before keeps its shape.
+head with the first hair and hoods the same day; they add vertices and faces
+after the cage's own and change none, so every garment made before keeps its
+shape.
 
 - **Its topology** was taken once from the human base body as it was when the
   cage was made, the faces of the neck, trunk, arms, and legs with their rings,
@@ -355,7 +364,11 @@ form that no recipe of lines gives, such as a hairstyle or a helmet, is a
 modeled template: its recipe is `modeled`, its first version is modeled by hand
 on the first body over the cage region it covers, and from then on it is bound
 to the cage, fitted, checked, approved, exported, and worn with textures like
-every other template.
+every other template. A modeled template follows a smooth field of the cage's
+moves to the other bodies rather than its nearest face, because hair or a hood
+stands far off the cage, where the nearest face changes from one vertex to the
+next and would crumple it. A person may shape another body's version by hand,
+such as the helmet's nasal over a smaller nose, and the sync keeps that shape.
 Loose parts, such as the skirt of a robe or the back of a cloak, hang from a
 line instead of lying on the cage and take the cloth chains. A recipe's `hang`
 entry names the trunk line a part hangs from, its side, all around for a skirt
@@ -478,8 +491,14 @@ from the cage, which itself lies on the skin at the body's high points.
 | --- | --- | --- |
 | `tight` | 0 to 8 mm | shirts, a jerkin, trousers, leggings, gloves |
 | `mid` | 5 to 25 mm | boots, padded armor |
-| `outer` | 10 to 60 mm | plate armor, a coat's upper body |
+| `outer` | 10 to 60 mm | plate armor, a coat's upper body, helmets |
 | `loose` | from 10 mm, no limit | skirts, robes, cloaks, hoods |
+| `hair` | from 2 mm, no limit | hairstyles |
+
+The lower bound is measured straight to the cage, the upper bound along the
+normal of the cage's nearest face, as the recipes build the cloth: in front of a
+sharp edge of the cage, such as the nose, the distance along a face's normal
+falls far short of the true one and would call a helmet's nasal too close.
 
 A garment of a higher layer lies in an outer band, so an inner garment never
 reaches through an outer one where the outer one does not hide it. Where garments
@@ -690,10 +709,32 @@ Hair is a garment of its own visual slot, `hair`, with a shape key
 `UnderHeadwear`, the hair pressed flat to fit under hoods and helmets, made by
 hand like the hair itself. Headwear says what happens to the hair: `hide` for a
 closed helmet, `compress` for a hood or a hat, so the fringe and the neck hair
-show under it, and `show` for a circlet. Headwear covers the scalp like any
-garment covers the body. A hood that can be up or down is two garments of the
-same item. A hairstyle is a modeled template of the `hair` slot with its
+show under it, and `show` for a circlet or a hood down. Headwear covers the scalp
+like any garment covers the body. A hood that can be up or down is two garments
+of the same item. A hairstyle is a modeled template of the `hair` slot with its
 textures, and it comes with the head region of the cage.
+
+The sync fits the form under headwear to every body like the hair itself and
+checks the band in both forms. A template worn over hair is checked over the
+form the hair takes under it: the compressed form under `compress`, the hair as
+it is under `show`, and no hair under `hide`. Unity takes the blend shape in
+full when it puts a character together under headwear that compresses the hair.
+
+The first hairstyle, `ShoulderHair`, is straight and thick in stylized locks
+with a middle parting and a short fringe, covers the ears, and ends where it
+lands on the shoulders; `DarkBrownHair` paints it dark brown with lighter
+strands. The gugel `HoodUp` covers the head and the compressed hair with an
+opening for the face and a short collar over the neck and the shoulders that ends
+above the cloak's clasps, over the cloak. Victor had its short point at the back
+taken away, so it hangs on no chain and the hood chains stay unused. `HoodDown`
+is the same hood pushed back: its collar stays around the neck with its top
+rolled over into a turned band, and the hood lies folded on the upper back over
+the cloak and the hair as it is. A helmet is a modeled garment weighted to the
+head, not a rigid attachment: `NasalHelm` is a pointed spangenhelm of iron plates
+held by four riveted bands under a round cap, with a riveted brow band, a
+leather lining that shows below the iron, and a nasal riveted to the brow band
+that bends forward over the nose's root; it sits above the ears and compresses
+the hair.
 
 ## Attachments
 
@@ -714,7 +755,7 @@ puts the character together:
    move inward.
 2. The visible garment faces: every face but those whose underlay a garment of a
    higher layer covers, and every slot a worn garment hides is left out.
-3. Hair in its normal or compressed form.
+3. Hair in its normal or compressed form, or none under headwear that hides it.
 4. One combined skinned mesh on the character's skeleton, the cloth chains with
    it, with one submesh per material. Materials are shared copies keyed by their
    texture, dye colors, and paint layers, so characters that look alike batch.
@@ -729,8 +770,10 @@ Unity imports a model's triangles in an order of its own, so the body faces are
 found again in Unity by position: every body exports its editable mesh next to
 its model, and the appearance catalog maps every triangle of the body's parts and
 of each garment to the face it comes from when it is written, in the Editor; see
-[Art Pipeline](ART_PIPELINE.md#unity-import-rules). Hair in its compressed form
-comes with the first hair garment, which brings the shape key.
+[Art Pipeline](ART_PIPELINE.md#unity-import-rules). Hair keeps its shape key as
+a blend shape when it is imported, and the combined mesh takes it in full under
+headwear that compresses the hair, so its compressed form costs nothing per
+frame.
 
 ## Art Pipeline
 
@@ -928,8 +971,11 @@ quarter of the triangles come with the first crowd measurement that needs them.
         shoulder; loose parts; skirt and cloak chains that follow the legs; and
         a cage that keeps all skin inside it, so no garment shows skin through
         it at rest.
-     4. The cage's head region, a shoulder-length hairstyle with its compressed
-        form, and the robe's hood up and down.
+     4. Done. The cage's head region, a shoulder-length hairstyle with its
+        compressed form, the robe's hood up and down, and a nasal helmet that
+        Victor added: the templates `ShoulderHair`, `HoodUp`, `HoodDown`, and
+        `NasalHelm` with the textures `DarkBrownHair`, `WoolHoodUp`,
+        `WoolHoodDown`, and `IronNasalHelm`.
    - 5d. Paint layers independent of the bodies' topology, moved between bodies
      by projection.
 6. Items: items show their garments as templates with textures, the `back` slot,
@@ -941,5 +987,6 @@ quarter of the triangles come with the first crowd measurement that needs them.
 
 - Whether a hood is toggled up and down by the player, and where.
 - Whether dye colors belong to the item definition or to each item.
-- Whether helmets and masks are rigid attachments on the head or skinned
-  garments; this design treats them as garments.
+
+Helmets are skinned garments weighted to the head, as the first helmet,
+`NasalHelm`, shows; masks will be too.

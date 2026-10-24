@@ -1,0 +1,32 @@
+{
+    "schemaVersion": 1,
+    "kind": "texture",
+    "garment": "art/Garments/HoodUp",
+    "approvals": {
+        "texture": {
+            "date": "2026-10-24",
+            "sourceSha256": "ecb467315dba60791469f36e7f540153f951aff2a23ff62eb55258d5cf24a66b",
+            "garmentSourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e"
+        }
+    },
+    "export": {
+        "sourceSha256": "ecb467315dba60791469f36e7f540153f951aff2a23ff62eb55258d5cf24a66b",
+        "garmentSourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e",
+        "materials": [
+            {
+                "name": "M_Garment_WoolHoodUp",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Garment_WoolHoodUp",
+                "metallic": 0.0,
+                "smoothness": 0.14
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Garment_WoolHoodUp",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolHoodUp.png",
+                "sha256": "8b938b9a63c581773e73a39c31670f70bc7341e05bfbcebc2208ee3b08c059ad"
+            }
+        ]
+    }
+}

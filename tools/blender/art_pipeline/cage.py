@@ -8,12 +8,14 @@ first body's rig when the cage was made, and on it the mesh Cage, that body's fa
 trunk, the arms, and the legs, with its weights, the face attribute "region", and the figure scale
 and the standard lines the cage was last fitted with as custom properties. The reference never
 changes after it is made: a new base model changes the bodies, not the cage. Regions are only added
-to it, the hands and the feet when the first gloves and boots came, with their vertices and faces
-after the others, so every garment made before keeps its faces. The hands are the first body's
-faces of its hands, with the face attribute "digit" for the finger or thumb each face belongs to.
-The feet are a net of the cage's own, since a boot never shows the toes: rings that sweep from the
-ankle around the heel and forward to the toe tip, with the point attributes "sweep_ring" and
-"sweep_column" that place each vertex on them. Per body, the collection Fit_<Label> holds the body's
+to it, the hands and the feet when the first gloves and boots came and the head with the first hair
+and headwear, with their vertices and faces after the others, so every garment made before keeps its
+faces. The hands are the first body's faces of its hands, with the face attribute "digit" for the
+finger or thumb each face belongs to. The feet are a net of the cage's own, since a boot never shows
+the toes: rings that sweep from the ankle around the heel and forward to the toe tip, with the point
+attributes "sweep_ring" and "sweep_column" that place each vertex on them. The head is a net of the
+cage's own too, since hair, hoods, and helmets lie over the ears and never in the eye sockets: rings
+that sweep from the neck's top up to the crown. Per body, the collection Fit_<Label> holds the body's
 armature with the cage's version Cage_<Label> on it, and the Reference collection the body's source
 body, eyes, teeth, and tongue.
 
@@ -41,8 +43,8 @@ trunk, the arms, and the legs are fitted first, together:
 5. The cage is faired, and no vertex or face centre stays inside the skin, nor does the skin come
    out through a face between its corners, where a large face cuts across a curve of the skin.
 
-The hands and the feet are fitted after them and keep the rings at the wrists and the ankles as they
-lie, so adding them changed nothing of the rest:
+The hands, the feet, and the head are fitted after them and keep the rings at the wrists, the
+ankles, and the top of the neck as they lie, so adding them changed nothing of the rest:
 
 - A hand's vertex is drawn to the nearest skin of its own finger or thumb and of the palm, so a
   finger is never drawn to the next one, and the gaps between the fingers stay open.
@@ -52,8 +54,12 @@ lie, so adding them changed nothing of the rest:
   across the foot toward the toe tip. Each ring's vertices follow its outline at the shares at which
   the ankle ring's lie, and the last ring closes at the toe tip. The toes and the arch are spanned,
   and the sole is flat.
-- The feet are faired; the hands already lie on their skin. Both are kept outside the skin like the
-  rest.
+- The head is laid on the convex hulls of its cross sections the same way: planes that turn from
+  the plane of the neck's top ring until they lie across the head's bone, then planes across it up
+  to the crown, where the last ring closes. The ears, the nose, the lips, and the eye sockets are
+  spanned.
+- The feet and the head are faired; the hands already lie on their skin. All are kept outside the
+  skin like the rest.
 
 A person's corrections of a version are kept as the difference to the attribute "fitted", the shape
 the last fitting gave."""
@@ -83,21 +89,21 @@ SWEEP_COLUMN = "sweep_column"
 # The attributes that belong to the cage and not to what is made on it.
 OWN_ATTRIBUTES = ("region", FITTED, DIGIT, SWEEP_RING, SWEEP_COLUMN)
 # The regions in the order of the face attribute's values.
-REGIONS = ("neck", "trunk", "arms", "legs", "hands", "feet")
+REGIONS = ("neck", "trunk", "arms", "legs", "hands", "feet", "head")
 # The regions fitted together, stage by stage: a later stage keeps the vertices it shares with an
 # earlier one, so the regions added to a cage change nothing of the cage that was there. Within a
 # stage, a vertex on the border of two regions belongs to the later one, so the limbs keep the
 # vertices they share with the trunk. The first stage's regions are made with the cage; the others
 # are added to it.
-STAGES = (("neck", "trunk", "arms", "legs"), ("hands", "feet"))
+STAGES = (("neck", "trunk", "arms", "legs"), ("hands", "feet", "head"))
 # The region each extremity hangs from, at the ring they share.
-ATTACHED = {"hands": "arms", "feet": "legs"}
+ATTACHED = {"hands": "arms", "feet": "legs", "head": "neck"}
 # The body parts each region is made of, and the parts whose skin a region's vertices are drawn to
 # and kept outside of. The neck and the trunk meet without a border of skin between them.
 REGION_ZONES = {"neck": ("Neck",), "trunk": ("Torso", "Pelvis"), "arms": ("UpperArms", "Forearms"),
-                "legs": ("Thighs", "Shins"), "hands": ("Hands",), "feet": ("Feet",)}
+                "legs": ("Thighs", "Shins"), "hands": ("Hands",), "feet": ("Feet",), "head": ("Head",)}
 SKIN_ZONES = {"neck": ("Neck", "Torso"), "trunk": ("Torso", "Pelvis", "Neck"), "arms": ("UpperArms", "Forearms"),
-              "legs": ("Thighs", "Shins"), "hands": ("Hands",), "feet": ("Feet",)}
+              "legs": ("Thighs", "Shins"), "hands": ("Hands",), "feet": ("Feet",), "head": ("Head",)}
 SIDED = ("arms", "legs", "hands", "feet")
 # The digits of a hand, by the start of their bones' names; the face attribute "digit" holds 1 + the
 # index here, and 0 for the palm and every face outside the hands.
@@ -111,6 +117,13 @@ WRIST_MATCH = 1e-4
 FOOT_RINGS = tuple(("turn", step / 8) for step in range(1, 9)) + tuple(
     ("reach", share) for share in (0.15, 0.3, 0.45, 0.6, 0.72, 0.83, 0.92, 0.97))
 PIVOT_MARGIN = 0.025
+# The rings of the head: planes at these shares of the way from the centre of the neck's top ring
+# to the top of the head along the head's bone, evenly up the neck and the face and closer together
+# over the crown, so its faces keep their size over the dome. The first HEAD_TURN planes turn from
+# the plane of the neck's ring until they lie across the bone; the last ring closes at the crown.
+HEAD_RINGS = (0.071, 0.142, 0.213, 0.284, 0.355, 0.426, 0.497, 0.568, 0.638,
+              0.709, 0.777, 0.840, 0.894, 0.939, 0.973, 0.993)
+HEAD_TURN = 3
 # How far from the skin the cage keeps at least, in meters.
 CLEARANCE = 0.001
 # How far in from the skin a ray looks for a face of the cage that the skin comes out through, and
@@ -358,7 +371,8 @@ class Skin:
     """A body's skin per cage region and side, for the fitting, and the whole body's skin, for
     keeping the cage outside and for the checks; with the hands and feet in it, the skin has no
     open ends at the cage's ends. A hand's skin is also split by its digits: each finger and the
-    thumb with the palm. A foot's skin is kept as triangles too, for its cross sections."""
+    thumb with the palm. A foot's skin and the head's with the neck's are kept as triangles too, for
+    their cross sections."""
 
     def __init__(self, body: bpy.types.Object):
         co = bodies.world_positions(body)
@@ -384,6 +398,11 @@ class Skin:
                         if z in wanted and (not side or side_of(c[0]) == side)]
                 self.trees[(region, side)] = BVHTree.FromPolygons([tuple(c) for c in co], keep)
         hands, feet = bodies.ZONES.index("Hands"), bodies.ZONES.index("Feet")
+        # A plane just above the neck's top ring may dip under it at its low side, so the head's
+        # cross sections cut the neck's skin too.
+        head = {bodies.ZONES.index("Head"), bodies.ZONES.index("Neck")}
+        self.head = np.array([co[[p[0], p[i], p[i + 1]]] for p, z in zip(polygons, zones) if z in head
+                              for i in range(1, len(p) - 1)])
         digits = face_digits(body)
         self.feet = {}
         for side in ("L", "R"):
@@ -563,9 +582,9 @@ def _fit_body(part: Part, x: np.ndarray, keys: list[tuple[str, str]], weights: n
 
 def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.ndarray, digits: np.ndarray,
               rings: np.ndarray, columns: np.ndarray, arm: bpy.types.Object, skin: Skin) -> np.ndarray:
-    """The hands and the feet, from the rings they share with the limbs, which stay: a hand's
-    vertices drawn to the skin of their own digit and the palm, a foot laid on its rings, and both
-    faired and kept outside the skin."""
+    """The hands, the feet, and the head, from the rings they share with the limbs and the neck,
+    which stay: a hand's vertices drawn to the skin of their own digit and the palm, a foot and the
+    head laid on their rings, and all faired and kept outside the skin."""
     x = x.copy()
     # A vertex whose faces all belong to one finger or the thumb is drawn to its skin; one at the
     # palm or between them to the whole hand's.
@@ -594,9 +613,21 @@ def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.n
         for i, r, c in zip(members, ring, column):
             if not held[i]:
                 x[i] = pole if r == len(FOOT_RINGS) + 1 else laid[r - 1][c]
-    # The feet are faired, which spreads their rings where they crowd at the front of the ankle; the
-    # hands lie on their skin already, and fairing would only draw in the fingertips.
-    x = part.net.faired(x, FAIRING, held | np.array([key[0] != "feet" for key in keys]))
+    members = np.array([i for i, key in enumerate(keys) if key[0] == "head"], np.int64)
+    if len(members):
+        ring, column = rings[members], columns[members]
+        if ring.min() < 0 or ring.max() != len(HEAD_RINGS) + 1:
+            raise ArtPipelineError(f"The head of the cage was not made with the {len(HEAD_RINGS)} rings of the fitting; "
+                                   "make its head region again.")
+        neck = np.zeros((int(column[ring == 0].max()) + 1, 3))
+        neck[column[ring == 0]] = x[members[ring == 0]]
+        laid, pole = _head_rings(arm, neck, skin.head)
+        for i, r, c in zip(members, ring, column):
+            if not held[i]:
+                x[i] = pole if r == len(HEAD_RINGS) + 1 else laid[r - 1][c]
+    # The feet and the head are faired, which spreads the feet's rings where they crowd at the front
+    # of the ankle; the hands lie on their skin already, and fairing would only draw in the fingertips.
+    x = part.net.faired(x, FAIRING, held | np.array([key[0] not in ("feet", "head") for key in keys]))
     return _settle(part, x, skin, held, SETTLE_PASSES * ENDS_SETTLE_FACTOR)
 
 
@@ -644,7 +675,7 @@ def toward(polygon: np.ndarray, centre: np.ndarray, angle: float) -> tuple[int, 
         if t > 0.0 and -1e-9 <= u <= 1.0 + 1e-9 and (best is None or t < best[0]):
             best = (t, index)
     if best is None:
-        raise ArtPipelineError("A ring of a foot of the cage found no outline around its centre.")
+        raise ArtPipelineError("A ring of a foot or the head of the cage found no outline around its centre.")
     return best[1], centre + direction * best[0]
 
 
@@ -663,10 +694,9 @@ def _along(polygon: np.ndarray, shares: np.ndarray) -> np.ndarray:
     return np.stack([np.interp(distance, reach, closed[:, k]) for k in range(2)], axis=1)
 
 
-def _section(triangles: np.ndarray, origin: np.ndarray, across: np.ndarray, down: np.ndarray) -> np.ndarray:
-    """Where a half-plane cuts the triangles, in the half-plane's coordinates: along its axis across,
-    and away from the axis along down."""
-    normal = np.cross(across, down)
+def _plane_section(triangles: np.ndarray, origin: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+    """Where a plane cuts the triangles, in the plane's coordinates along its axes first and second."""
+    normal = np.cross(first, second)
     signed = (triangles - origin) @ normal
     found = []
     for i, j in ((0, 1), (1, 2), (2, 0)):
@@ -675,8 +705,27 @@ def _section(triangles: np.ndarray, origin: np.ndarray, across: np.ndarray, down
         t = signed[crossing, i] / (signed[crossing, i] - signed[crossing, j])
         found.append(a + (b - a) * t[:, None])
     points = np.concatenate(found) - origin
-    flat = np.stack([points @ across, points @ down], axis=1)
+    return np.stack([points @ first, points @ second], axis=1)
+
+
+def _section(triangles: np.ndarray, origin: np.ndarray, across: np.ndarray, down: np.ndarray) -> np.ndarray:
+    """Where a half-plane cuts the triangles, in the half-plane's coordinates: along its axis across,
+    and away from the axis along down."""
+    flat = _plane_section(triangles, origin, across, down)
     return flat[flat[:, 1] > 0.0]
+
+
+def _ring_along(convex: np.ndarray, first: float, shares: np.ndarray, turning: float) -> tuple[np.ndarray, np.ndarray]:
+    """The points of a ring on a convex outline: the first where the ray from the outline's centre
+    at the angle first meets it, and the others around it in the direction of turning at the shares
+    of the outline. Returns them and the outline's centre."""
+    middle = centroid(convex)
+    edge, point = toward(convex, middle, first)
+    outline = np.concatenate([[point], convex[edge + 1:], convex[:edge + 1]])
+    # The hulls run counterclockwise; a ring that runs the other way walks them backward.
+    if turning < 0.0:
+        outline = np.concatenate([outline[:1], outline[1:][::-1]])
+    return _along(outline, shares), middle
 
 
 def _foot_rings(arm: bpy.types.Object, side: str, ankle: np.ndarray, triangles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -711,8 +760,7 @@ def _foot_rings(arm: bpy.types.Object, side: str, ankle: np.ndarray, triangles: 
     middle = centroid(start)
     first = math.atan2(start[0, 1] - middle[1], start[0, 0] - middle[0])
     shares = _shares(start)
-    # The hulls run counterclockwise; a ring that runs the other way walks them backward.
-    turning = np.sign(np.sum(start[:, 0] * np.roll(start[:, 1], -1) - np.roll(start[:, 0], -1) * start[:, 1]))
+    turning = _turning(start)
     tip = float(((triangles.reshape(-1, 3) - pivot) @ forward).max())
     rings = []
     for kind, share in FOOT_RINGS:
@@ -722,13 +770,62 @@ def _foot_rings(arm: bpy.types.Object, side: str, ankle: np.ndarray, triangles: 
         convex = hull(_section(triangles, origin, across, down))
         if len(convex) < 3:
             raise ArtPipelineError(f"A ring of the foot on the {side} side cuts too little of its skin.")
-        middle = centroid(convex)
-        edge, point = toward(convex, middle, first)
-        outline = np.concatenate([[point], convex[edge + 1:], convex[:edge + 1]])
-        if turning < 0.0:
-            outline = np.concatenate([outline[:1], outline[1:][::-1]])
-        rings.append([origin + across * p[0] + down * p[1] for p in _along(outline, shares)])
+        flat, middle = _ring_along(convex, first, shares, turning)
+        rings.append([origin + across * p[0] + down * p[1] for p in flat])
     pole = pivot + forward * tip + across * middle[0] + down * middle[1]
+    return np.array(rings), pole
+
+
+def _turning(polygon: np.ndarray) -> float:
+    """1 for a polygon that runs counterclockwise, -1 for one that runs clockwise."""
+    return float(np.sign(np.sum(polygon[:, 0] * np.roll(polygon[:, 1], -1) - np.roll(polygon[:, 0], -1) * polygon[:, 1])))
+
+
+def _head_rings(arm: bpy.types.Object, neck: np.ndarray, triangles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The head's rings on a body, one row of points per ring of HEAD_RINGS, and the point that
+    closes the last ring at the crown. The planes stand at the rings' shares of the way from the
+    centre of the neck's top ring to the top of the head along the head's bone; over the first
+    HEAD_TURN rings they turn from the plane of the neck's ring until they lie across the bone. Each
+    ring follows the convex hull of its cross section of the head's and the neck's skin, which spans
+    the ears, the nose, the lips, and the eye sockets: its first point lies where the ray from the
+    hull's centre at the angle of the neck ring's first point meets the hull, and the others follow
+    around the hull at the shares of the outline that the neck ring's points lie at."""
+    if not len(triangles):
+        raise ArtPipelineError("The body has no skin of the head.")
+    world = arm.matrix_world
+    bone = arm.data.bones["Head"]
+    up = np.array((world @ bone.tail_local) - (world @ bone.head_local))
+    up /= np.linalg.norm(up)
+    centre = neck.mean(axis=0)
+    normal = np.linalg.svd(neck - centre)[2][2]
+    if normal @ up < 0.0:
+        normal = -normal
+
+    def frame(n: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        # The body's right across the plane, and its front.
+        right = np.array((1.0, 0.0, 0.0)) - n[0] * n
+        right /= np.linalg.norm(right)
+        return right, np.cross(n, right)
+
+    right, front = frame(normal)
+    start = np.stack([(neck - centre) @ right, (neck - centre) @ front], axis=1)
+    middle = centroid(start)
+    first = math.atan2(start[0, 1] - middle[1], start[0, 0] - middle[0])
+    shares = _shares(start)
+    turning = _turning(start)
+    tip = float(((triangles.reshape(-1, 3) - centre) @ up).max())
+    rings = []
+    for index, share in enumerate(HEAD_RINGS):
+        blend = min((index + 1) / HEAD_TURN, 1.0)
+        plane = normal * (1.0 - blend) + up * blend
+        right, front = frame(plane / np.linalg.norm(plane))
+        origin = centre + up * tip * share
+        convex = hull(_plane_section(triangles, origin, right, front))
+        if len(convex) < 3:
+            raise ArtPipelineError("A ring of the head cuts too little of its skin.")
+        flat, middle = _ring_along(convex, first, shares, turning)
+        rings.append([origin + right * p[0] + front * p[1] for p in flat])
+    pole = centre + up * tip + right * middle[0] + front * middle[1]
     return np.array(rings), pole
 
 
@@ -1056,6 +1153,58 @@ def _add_feet(label: str, figure: float) -> None:
     _append(list(moved), rows, bones, new_faces, "feet", sweep=sweep)
 
 
+def _add_head(label: str, figure: float) -> None:
+    """The head region: the rings of the head from the cage's ring at the top of the neck to the
+    crown, laid on the body as the fitting lays them, each ring a quad strip and the last one closed
+    by a fan at the crown. The rings start at the middle of the nape."""
+    cage, rig = _reference()
+    arm, body = bpy.data.objects[label], bodies.source_body(label)
+    x = fit(label, figure)
+    faces = [tuple(p.vertices) for p in cage.data.polygons]
+    stage = Part(faces, _face_regions(cage.data), STAGES[0])
+    keys = stage.keys(bodies.world_positions(cage)[stage.vertices])
+    loops = [loop for loop in stage.net.loops() if all(keys[v] == ("neck", "") for v in loop)]
+    if len(loops) != 1:
+        raise ArtPipelineError(f"The cage has {len(loops)} open ends of the neck, not one ring at its top.")
+    ring = [int(stage.vertices[v]) for v in loops[0]]
+    # The new faces run along the ring against the neck's faces there.
+    neck = next(f for f in faces if ring[0] in f and ring[1] in f)
+    if neck[(neck.index(ring[0]) + 1) % len(neck)] == ring[1]:
+        ring.reverse()
+    back = min(range(len(ring)), key=lambda i: (round(float(x[ring[i]][1]), 4), abs(float(x[ring[i]][0]))))
+    ring = ring[back:] + ring[:back]
+    laid, pole = _head_rings(arm, x[ring], Skin(body).head)
+    count = len(x)
+    points, rows_of_head, sweep = [], [ring], {}
+    for index, row in enumerate(laid):
+        numbers = list(range(count + len(points), count + len(points) + len(row)))
+        points.extend(row)
+        rows_of_head.append(numbers)
+        for column, vertex in enumerate(numbers):
+            sweep[vertex] = (index + 1, column)
+    crown = count + len(points)
+    points.append(pole)
+    sweep[crown] = (len(HEAD_RINGS) + 1, 0)
+    for column, vertex in enumerate(ring):
+        sweep[vertex] = (0, column)
+    size = len(ring)
+    new_faces = []
+    for upper, lower in zip(rows_of_head, rows_of_head[1:]):
+        for j in range(size):
+            new_faces.append((upper[j], upper[(j + 1) % size], lower[(j + 1) % size], lower[j]))
+    last = rows_of_head[-1]
+    for j in range(size):
+        new_faces.append((last[j], last[(j + 1) % size], crown))
+    bones = [b.name for b in arm.data.bones if b.use_deform]
+    weights = bodies.weights_of(body, bones)
+    zones = bodies.zones_of(body)
+    head = bodies.ZONES.index("Head")
+    polygons = [tuple(p.vertices) for p in body.data.polygons if zones[p.index] == head]
+    rows = _skin_rows(body, polygons, weights, points)
+    moved = _transfer(np.array(points), np.array(rows), bones, arm, rig)
+    _append(list(moved), rows, bones, new_faces, "head", sweep=sweep)
+
+
 def _add_regions(label: str, figure: float) -> list[str]:
     """Adds the regions the reference lacks, built on its first body, with their vertices and faces
     after its own. Returns the regions it added."""
@@ -1068,6 +1217,8 @@ def _add_regions(label: str, figure: float) -> list[str]:
             _add_hands(label)
         elif region == "feet":
             _add_feet(label, figure)
+        elif region == "head":
+            _add_head(label, figure)
     return missing
 
 

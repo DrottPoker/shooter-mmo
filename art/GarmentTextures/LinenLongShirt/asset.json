@@ -6,12 +6,12 @@
         "texture": {
             "date": "2026-10-24",
             "sourceSha256": "2e2f2fcd1dad59d90289474533dfba485252c863d2bcbca790bcb81b3dbbeb4c",
-            "garmentSourceSha256": "5064ced04a66d3a4c5097753aeca4449bb9bf0dc31e3ca53e06576f5eebf2c21"
+            "garmentSourceSha256": "3432af2d3a1f595742d793802bcf305dda6d43553ad3cfa3c1ae49aeb3390deb"
         }
     },
     "export": {
         "sourceSha256": "2e2f2fcd1dad59d90289474533dfba485252c863d2bcbca790bcb81b3dbbeb4c",
-        "garmentSourceSha256": "5064ced04a66d3a4c5097753aeca4449bb9bf0dc31e3ca53e06576f5eebf2c21",
+        "garmentSourceSha256": "3432af2d3a1f595742d793802bcf305dda6d43553ad3cfa3c1ae49aeb3390deb",
         "materials": [
             {
                 "name": "M_Garment_LinenLongShirt",

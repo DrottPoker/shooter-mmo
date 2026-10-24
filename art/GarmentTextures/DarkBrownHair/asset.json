@@ -1,0 +1,32 @@
+{
+    "schemaVersion": 1,
+    "kind": "texture",
+    "garment": "art/Garments/ShoulderHair",
+    "approvals": {
+        "texture": {
+            "date": "2026-10-24",
+            "sourceSha256": "9ae583d52da74987d64e7e8855ef9ea36515af0b10ad900f7cb0b8e270a08f25",
+            "garmentSourceSha256": "7d519025f22587455b784c7b96a3ce99fdb018a3b1393aaaff99d26addb82f7b"
+        }
+    },
+    "export": {
+        "sourceSha256": "9ae583d52da74987d64e7e8855ef9ea36515af0b10ad900f7cb0b8e270a08f25",
+        "garmentSourceSha256": "7d519025f22587455b784c7b96a3ce99fdb018a3b1393aaaff99d26addb82f7b",
+        "materials": [
+            {
+                "name": "M_Garment_DarkBrownHair",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Garment_DarkBrownHair",
+                "metallic": 0.0,
+                "smoothness": 0.45
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Garment_DarkBrownHair",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_DarkBrownHair.png",
+                "sha256": "de3b29db9b4cac67c8fa2c356cf78bf84e9ee683e0e7c28a5fbc8bc3a5ef2233"
+            }
+        ]
+    }
+}
