@@ -40,13 +40,12 @@ namespace Mmorpg.Client.Gameplay
             get { return remotePlayers.Values; }
         }
 
-        // The lying body that player corpses show, from the body of the remote player prefab.
+        // The lying body that player corpses show, from the default body model of the remote
+        // player prefab.
         public bool TryGetCorpseBody(out Mesh mesh, out Material[] materials)
         {
-            var body = remotePlayerPrefab != null
-                ? remotePlayerPrefab.GetComponentInChildren<PlayerBodyAppearance>(true)
-                : null;
-            return corpseBodies.TryGet(body, bodyMeshes, bodyMaterials, out mesh, out materials);
+            var model = DefaultModelOf(remotePlayerPrefab);
+            return corpseBodies.TryGet(model != null ? model.Body : null, bodyMeshes, bodyMaterials, out mesh, out materials);
         }
 
         // Whether a body that shows its character dead lies near the position, such as the body
@@ -182,8 +181,8 @@ namespace Mmorpg.Client.Gameplay
 
             if (bodyLook != null)
             {
-                bodyLook.Offer(LocalAppearance != null ? LocalAppearance.Catalog : null);
-                bodyLook.Changed += ApplyLocalBodyLook;
+                OfferLocalBody();
+                bodyLook.Changed += OnBodyLookChanged;
             }
 
             simulationClient.EntitySpawned += OnEntitySpawned;
@@ -211,8 +210,8 @@ namespace Mmorpg.Client.Gameplay
 
             if (bodyLook != null)
             {
-                bodyLook.Changed -= ApplyLocalBodyLook;
-                bodyLook.Offer(null);
+                bodyLook.Changed -= OnBodyLookChanged;
+                bodyLook.Offer(null, null);
             }
 
             remotePlayers.Clear();
@@ -271,6 +270,7 @@ namespace Mmorpg.Client.Gameplay
                         movementSession.SnapshotRateHz),
                     movementSession.CollisionWorld,
                     movementSession.Settings.CharacterCollision);
+                remotePlayer.ShowBody();
                 CombineBody(remotePlayer);
                 remotePlayer.ApplyBodyTint(BodiesTinted, bodyMaterials);
                 remotePlayer.ApplyBodyLook(bodyMaterials);
@@ -363,6 +363,53 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
+        // Another model puts in another body, which is combined, tinted, and offered to the panel;
+        // either way the body shows the look.
+        private void OnBodyLookChanged()
+        {
+            if (ShowLocalModel())
+            {
+                CombineBody(localPlayer);
+                ApplyLocalBodyTint();
+                OfferLocalBody();
+            }
+
+            ApplyLocalBodyLook();
+        }
+
+        // Puts in the body of the chosen model, or of the default model for none or an unknown
+        // name; true when it put in a new body.
+        private bool ShowLocalModel()
+        {
+            var slot = SlotOf(localPlayer);
+            return slot != null
+                && slot.Models != null
+                && slot.Show(slot.Models.NamedOrDefault(bodyLook != null ? bodyLook.Model : null));
+        }
+
+        // The panel lists the models and the catalog of the body the local player shows.
+        private void OfferLocalBody()
+        {
+            if (bodyLook != null)
+            {
+                var slot = SlotOf(localPlayer);
+                bodyLook.Offer(
+                    slot != null ? slot.Models : null,
+                    LocalAppearance != null ? LocalAppearance.Catalog : null);
+            }
+        }
+
+        private static PlayerBodySlot SlotOf(Component player)
+        {
+            return player != null ? player.GetComponentInChildren<PlayerBodySlot>(true) : null;
+        }
+
+        private static PlayerBodyModels.Model DefaultModelOf(Component playerPrefab)
+        {
+            var slot = SlotOf(playerPrefab);
+            return slot != null && slot.Models != null ? slot.Models.Default : null;
+        }
+
         private void ApplyLocalBodyLook()
         {
             var appearance = LocalAppearance;
@@ -381,6 +428,16 @@ namespace Mmorpg.Client.Gameplay
             {
                 Debug.LogError(
                     "WorldSceneContext requires a local player prefab, spawn point, remote player prefab, and entity presentation root.",
+                    this);
+                return false;
+            }
+
+            var localModel = DefaultModelOf(localPlayerPrefab);
+            var remoteModel = DefaultModelOf(remotePlayerPrefab);
+            if (localModel == null || localModel.Body == null || remoteModel == null || remoteModel.Body == null)
+            {
+                Debug.LogError(
+                    "WorldSceneContext requires the local and remote player prefabs to show a body model through a PlayerBodySlot.",
                     this);
                 return false;
             }
@@ -421,6 +478,7 @@ namespace Mmorpg.Client.Gameplay
                 playerSpawnPoint.rotation,
                 playerSpawnPoint.parent);
             localPlayer.name = localPlayerPrefab.name;
+            ShowLocalModel();
 
             if (localPlayer.PlayerCamera == null
                 || localPlayer.PlayerInput == null

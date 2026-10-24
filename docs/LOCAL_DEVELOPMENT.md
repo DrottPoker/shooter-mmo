@@ -3254,7 +3254,11 @@ controller, and prefabs are committed.
    the Inspector names it a Prefab Variant of `Human_Male`, with an `Animator`
    using `HumanLocomotion` and the avatar `Human_MaleAvatar`, a
    `CharacterLocomotionAnimator`, and a `PlayerBodyAppearance` with the skin
-   materials `M_Body_Male` and `M_Face_Male`.
+   materials `M_Body_Male` and `M_Face_Male`. `HumanFemaleBody.prefab` is the
+   same for `Human_Female`, with `Human_FemaleAvatar`, `M_Body_Female`, and
+   `M_Face_Female`. Open `Assets/Prefabs/Player/LocalPlayer.prefab`. Expected
+   result: `PlayerVisual` has no child and a `PlayerBodySlot` whose `Models` is
+   `PlayerBodyModels`, which lists `Human_Male` first and `Human_Female`.
 4. Start the local stack, enter Play Mode from `Assets/Scenes/LoginMenu.unity`,
    log in, and join a shard. Expected result: your character is the male body
    in underwear and stands in `Idle`, breathing.
@@ -3267,8 +3271,9 @@ controller, and prefabs are committed.
    and walk. Expected result: the body walks slower, without sliding.
 7. Start ActiveSimulationBots as described in
    [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) and join
-   `local-shard-2`. Expected result: every bot is the same male body and walks
-   or jogs with its speed.
+   `local-shard-2`. Expected result: the bots show the male or the female body,
+   about half each, every bot keeps its body while it stays, and every body
+   walks or jogs with its speed.
 8. Press F2 and turn on `Tint bodies: you purple, players orange, bots blue` in
    the Presentation section. Expected result: your skin turns faintly purple and
    the bots' faintly blue, a second client's character faintly orange; the eyes,
@@ -3317,7 +3322,8 @@ controller, and prefabs are committed.
 14. With ActiveSimulationBots on the shard, as in step 7, look at the bots up
     close. Expected result: the bots show both faces and both eye colors in every
     combination, and each bot keeps its look while it stays. Real players show
-    the stubble face and teal eyes until looks are saved with characters.
+    the male body with the stubble face and teal eyes until looks are saved with
+    characters.
 15. Run `.\tools\Sync-HumanBase.ps1` and open
     `artifacts\human-base\review\Human_Male_rig_chains.png`. Expected result:
     the cloth chains alone over the body: eight skirt chains on a ring at the hips
@@ -3376,6 +3382,17 @@ controller, and prefabs are committed.
     the hem, the hips are whole, the V shows the chest between the laces, and a
     look up into a sleeve shows the arm going on into it. Press `Death`. Expected
     result: the body falls and lies on its back in the jerkin.
+19. In a World scene, press F2. The Presentation section starts with `Your body:
+    Human_Male (creation only)`. Choose `Your tattoo: Tattoo` and turn on `Try on
+    garment: NetShirt`, then press `>` next to `Your body`. Expected result: the
+    row reads `Your body: Human_Female (creation only)`, your character is the
+    woman at once, on the same spot, with the net shirt, the tattoo, the bra, and
+    the briefs, and the face and eye rows list her options, `Blush`, `Freckles`,
+    `Teal`, and `Hazel`. Walk and jog. Expected result: she moves like the man,
+    without errors in the Console. Leave the shard and join again. Expected
+    result: she comes back. Press `>` once more. Expected result: the man is
+    back, with the face and eyes you chose for him before. The choice is kept
+    between sessions like the look; other players and every corpse show the man.
 
 ## One-Time Unity World Scene Authoring
 

@@ -21,6 +21,8 @@ namespace Mmorpg.Client.Tests.EditMode
             // At most one scar, chosen once, and at most one tattoo, changed in the game too.
             Assert.That(AppearanceRules.For(AppearanceCategory.Scar), Is.EqualTo(new AppearanceRules.Rule(false, false)));
             Assert.That(AppearanceRules.For(AppearanceCategory.Tattoo), Is.EqualTo(new AppearanceRules.Rule(false, true)));
+            // The body model, one per character, chosen once.
+            Assert.That(AppearanceRules.BodyModel, Is.EqualTo(new AppearanceRules.Rule(true, false)));
             Assert.That(AppearanceRules.OfSlot("Face"), Is.EqualTo(AppearanceCategory.Face));
             Assert.That(AppearanceRules.OfSlot("Eye"), Is.EqualTo(AppearanceCategory.Eye));
             Assert.That(AppearanceRules.OfSlot("Tattoo"), Is.Null);

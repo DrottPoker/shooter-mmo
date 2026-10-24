@@ -64,12 +64,13 @@ namespace Mmorpg.Client.Gameplay
             get { return playerCamera; }
         }
 
-        // The animated body of the player, or null without one.
+        // The animated body of the player, or null without one. A body that left the player, as
+        // when its body slot shows another model, is looked up again.
         public CharacterLocomotionAnimator Body
         {
             get
             {
-                if (body == null)
+                if (body == null || !body.transform.IsChildOf(transform))
                 {
                     body = GetComponentInChildren<CharacterLocomotionAnimator>(true);
                 }

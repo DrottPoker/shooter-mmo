@@ -112,10 +112,10 @@ LocalPlayer prefab
   +-- CharacterBody
   +-- PlayerInput and LocalPlayerInput
   +-- LocalPlayerController
-  +-- PlayerVisual
-      +-- Body (HumanMaleBody prefab, also in the RemotePlayer prefab)
+  +-- PlayerVisual with PlayerBodySlot (PlayerBodyModels, also in the RemotePlayer prefab)
+      +-- runtime Body (HumanMaleBody or HumanFemaleBody prefab instance)
           +-- Animator with HumanLocomotion, CharacterLocomotionAnimator
-          +-- PlayerBodyAppearance (combined parts, tint)
+          +-- PlayerBodyAppearance (combined parts, look, tint)
   +-- CameraTarget
   +-- LocalPlayerCamera
       +-- Camera and AudioListener
@@ -1214,13 +1214,29 @@ CharacterController or PhysX to decide network position.
 
 ## Player Bodies
 
-The LocalPlayer and RemotePlayer prefabs show the male human base body as
-`PlayerVisual/Body`, a nested `Assets/Prefabs/Player/HumanMaleBody.prefab`,
-which is a Prefab Variant of the exported `Human_Male.fbx` (see
-[Art Pipeline](ART_PIPELINE.md#prefabs)). Every player shows this body until
-the body type is chosen at character creation. The body has no collider; the
-movement capsule, the remote pointer trigger, and the health bar height stay as
-they were.
+The LocalPlayer and RemotePlayer prefabs show one of the human base bodies, the
+body models that `Assets/Content/Player/PlayerBodyModels.asset` lists:
+`Human_Male`, the default, with `Assets/Prefabs/Player/HumanMaleBody.prefab`,
+and `Human_Female` with `HumanFemaleBody.prefab`, each a Prefab Variant of its
+exported model (see [Art Pipeline](ART_PIPELINE.md#prefabs)) with its own look
+catalog. The prefabs hold no body of their own: `PlayerBodySlot` on
+`PlayerVisual` references the models and puts in an instance of the chosen
+model's body as `PlayerVisual/Body` when `WorldSceneContext` spawns the player,
+before the body is combined and given its look and tint, so a player
+instantiates only the body it shows. Showing another model replaces the body:
+the old one leaves the player at once, is hidden, and is destroyed, and
+`LocalPlayerController.Body` and `RemotePlayerView.Body` look the body up again
+once the one they found left the player. `WorldSceneContext` refuses to start
+when either player prefab has no slot with a default model.
+
+Until body type is chosen at character creation, saved with the character, and
+sent to other clients, the local player's model comes from the World Debug
+panel (F2), other players show the default model, and a development bot shows a
+model picked from its persistent id with a mixed FNV-1a hash,
+`PlayerBodyModels.Varied`, so a crowd of bots shows both bodies and each bot
+keeps its own. Every player corpse shows the default model. The body has no
+collider; the movement capsule, the remote pointer trigger, and the health bar
+height stay as they were.
 
 The body's Animator uses its Humanoid avatar,
 `Assets/Art/Animation/HumanLocomotion.controller`, no root motion, and
@@ -1307,21 +1323,30 @@ way from white), and leaves the eyes, teeth, and tongue alone.
 
 A body also shows a look: another face or eye color from the
 [appearance variants](ART_PIPELINE.md#appearance-layers) of its model. The body's
-`PlayerBodyAppearance` references the model's `BodyAppearanceCatalog`,
+`PlayerBodyAppearance` references the model's `BodyAppearanceCatalog`, such as
 `Assets/Art/Appearance/Human_Male_Appearance.asset`, with the slots `Eye` (`Teal`,
-`Brown`) and `Face` (`Stubble`, `Clean`), the material's own image first. A
+`Brown`) and `Face` (`Stubble`, `Clean`), the material's own image first; the
+woman's has `Eye` (`Teal`, `Hazel`) and `Face` (`Blush`, `Freckles`). A
 `BodyLook` is a value that names one option per slot, with a stable key such as
 `Eye=Brown;Face=Clean`; a slot it does not name shows the material's own
-image. Until looks are chosen at character creation, saved with the character,
-and sent to other clients, the local player's look comes from the World Debug
-panel (F2), whose Presentation section steps through every slot of the local
-body's catalog with `<` and `>`. `ClientBootstrap` owns this
-`PlayerBodyLookSetting`, keeps its key in `PlayerPrefs`, and passes it to the
-panel and to `WorldSceneContext`, which offers the setting the local body's
-catalog and shows a new look at once. Other players show the default look, and a
-development bot shows a look picked from its persistent id with a mixed FNV-1a
-hash, `BodyLook.Varied`, so a crowd of bots shows every combination and each bot
-keeps its look.
+image. Until the body model and the look are chosen at character creation,
+saved with the character, and sent to other clients, the local player's come
+from the World Debug panel (F2). Its Presentation section first has
+`Your body: Human_Male (creation only)`, which steps through the body models
+with `<` and `>`, and then steps through every slot of the local body's catalog.
+`ClientBootstrap` owns this `PlayerBodyLookSetting`, keeps the look's key and
+the model's name in `PlayerPrefs`, and passes it to the panel and to
+`WorldSceneContext`, which offers the setting the body models and the local
+body's catalog and shows a new look at once. A new model puts in the other
+body, combines it, gives it the tint and the look, and offers its catalog. One
+look serves both models: an option, paint layer, or garment that the shown
+body's catalog lacks, such as `Face=Stubble` on the woman or the bra on the
+man, is not shown and comes back with the body that has it, while garments, the
+tattoo, the scar, and the briefs, which both bodies have, carry over. Other
+players show the default look, and a development bot shows a look from the
+catalog of its model, picked from its persistent id with a mixed FNV-1a hash,
+`BodyLook.Varied`, so a crowd of bots shows every combination and each bot keeps
+its look.
 
 A look also names the paint layers its body wears, such as `Tattoo`, which the
 catalog lists for its body with their category, slot, material, image, layer,
@@ -1345,7 +1370,12 @@ a body draws as it should only once it has been given its look; a body without a
 look shows the skin without the underwear. The look is applied to the combined
 renderer, so bodies with other faces still share one combined mesh.
 `PlayerBodyAppearanceTests`, `BodyLookTests`, and `ArtAppearanceCatalogTests`
-cover the looks, their materials, and the catalogs.
+cover the looks, their materials, and the catalogs. `PlayerBodyModelTests` covers
+the body models, the slot that puts a body in and replaces it, the model a remote
+player shows, and the setting; `PlayerBodyAssetTests` covers both body prefabs,
+the models asset, and the player prefabs' slots, and
+`ClosestZoomKeepsTheCameraClearOfThePlayerBody` checks the camera against every
+body model.
 
 A look also names the garments its body wears, such as
 `Garment=LeatherJerkin` in its key. A garment is a
@@ -1393,8 +1423,8 @@ profile: a robe the skirt chains, a cloak the cloak chains, and a hood the hood
 chain. In the Editor, `MMORPG > Tools > Art Pipeline > Wardrobe` shows a body in
 chosen garments playing its clips, and `WardrobePreviewTests` covers it. Until items show garments, the Presentation section of the World
 Debug panel has `Try on garment: <Name>` for every garment of the local body's
-catalog. Other players and bots wear none, and a corpse shows the body in its
-underwear.
+catalog. Other players and bots wear none, and a corpse shows the default body
+model in its underwear.
 `PlayerBodyGarmentTests` covers what a worn garment hides and adds, layers, hidden
 slots, pull-in, and sharing.
 

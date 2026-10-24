@@ -33,9 +33,11 @@ namespace Mmorpg.Client.App
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
         private readonly GameMessageLog gameMessages = new GameMessageLog();
 
-        // The World Debug panel's body tint setting, kept between sessions, off by default.
+        // The World Debug panel's body tint, look, and body model settings, kept between sessions;
+        // the tint is off and the model the default by default.
         private const string BodyTintPreference = "Mmorpg.Debug.TintPlayerBodies";
         private const string BodyLookPreference = "Mmorpg.Debug.PlayerBodyLook";
+        private const string BodyModelPreference = "Mmorpg.Debug.PlayerBodyModel";
         private PlayerBodyTintSetting bodyTint;
         private PlayerBodyLookSetting bodyLook;
 
@@ -66,7 +68,9 @@ namespace Mmorpg.Client.App
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
             bodyTint = new PlayerBodyTintSetting(PlayerPrefs.GetInt(BodyTintPreference, 0) == 1);
             bodyTint.Changed += SaveBodyTint;
-            bodyLook = new PlayerBodyLookSetting(BodyLook.Parse(PlayerPrefs.GetString(BodyLookPreference, string.Empty)));
+            bodyLook = new PlayerBodyLookSetting(
+                BodyLook.Parse(PlayerPrefs.GetString(BodyLookPreference, string.Empty)),
+                PlayerPrefs.GetString(BodyModelPreference, string.Empty));
             bodyLook.Changed += SaveBodyLook;
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
 
@@ -143,6 +147,7 @@ namespace Mmorpg.Client.App
         private void SaveBodyLook()
         {
             PlayerPrefs.SetString(BodyLookPreference, bodyLook.Look.Key);
+            PlayerPrefs.SetString(BodyModelPreference, bodyLook.Model ?? string.Empty);
             PlayerPrefs.Save();
         }
 
