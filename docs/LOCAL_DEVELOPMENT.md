@@ -85,6 +85,7 @@ Restore locked dependencies and run the standard backend quality gate:
 
 ```powershell
 dotnet restore Mmorpg.slnx --locked-mode
+& .\tools\Test-Changes.ps1 -VerifyRules
 & .\tools\Verify-DependencyPolicy.ps1
 & .\tools\Verify-ArtAssets.ps1
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
@@ -100,6 +101,8 @@ dotnet test Mmorpg.slnx --configuration Release --no-build
 Expected result:
 
 - Restore accepts every committed `packages.lock.json` file.
+- The test selection rules report that every tracked file matches a rule; see
+  [Checks For A Change](#checks-for-a-change).
 - Dependency policy verification confirms exact Unity and NuGet versions in
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, and the absence of tracked
@@ -174,6 +177,84 @@ pull requests. Close them and let the next monthly run, or a manual check under
 `src/Client/Directory.Build.props` stops the repository build
 settings from applying to the project files Unity generates, and those files
 and their NuGet lock file are ignored by Git.
+
+### Checks For A Change
+
+CI runs the full gate above for every pull request, so a task does not run it
+after every change. Check at three levels instead:
+
+1. While changing code, run the tests that cover it: one test project, narrowed
+   with `--filter "FullyQualifiedName~<Class>"` when that is faster, or one Unity
+   fixture with `tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter <Fixture>`,
+   as [Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli)
+   describes.
+2. Before every push, run the checks that the changes of the branch can affect:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Changes.ps1
+   ```
+
+3. CI runs the full gate. `tools/Test-Changes.ps1 -All` runs the same checks
+   locally in one command.
+
+`Test-Changes.ps1` compares the checkout with its merge base with
+`origin/development`: committed and uncommitted changes and untracked files.
+It prints every changed file with the checks it selects and why, runs them, and
+ends with a summary:
+
+- A .NET file selects the projects that contain it, through the project folder,
+  a linked item, or an imported MSBuild file, and every project that references
+  them. Those projects are restored and built through a temporary solution
+  filter, their test projects run, and `dotnet format` checks the changed C#
+  files. A project file or lock file adds the dependency policy, and a
+  configuration file of a production or tool project, such as an
+  `appsettings.json`, runs every test project, because tests read the
+  configuration of other projects.
+- Other files follow the `$rules` table at the top of the script. Content, test
+  fixtures, and generated World data run every test project, both Unity suites,
+  and the content verifiers. Unity client and shared package files run both
+  Unity suites, and their linked .NET code the projects that compile it. Art
+  sources and the Blender scripts run `Verify-ArtAssets.ps1` and both Unity
+  suites, because the Editor reads the art manifests and a test reads the clip
+  speeds in the animation script; the art pipeline scripts run
+  `Verify-ArtAssets.ps1`. Monitoring configuration runs
+  `Verify-Observability.ps1` and every test project. Documentation runs nothing, except
+  `docs/SERVICE_FEATURES.md`, which a test reads. Shared build, format, and test
+  settings and the script itself run the full gate, and so does a file that no
+  rule matches. A content compiler's verifier runs whenever its tool project is
+  selected, and every changed PowerShell script gets a syntax check.
+- Integration tests run when a selected test project has any. When
+  `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` are not set, the script reads
+  them from `.env`, in a worktree from the `.env` of the main checkout, starts the
+  `docker-compose.test.yml` containers when they do not run, and stops the
+  containers it started when it ends. A skipped test fails the check, as in CI.
+- The Unity suites run through `tools/Run-UnityEditorTests.ps1` when an Editor
+  has this checkout's project open, and otherwise headless through
+  `tools/Run-UnityTests.ps1`.
+
+Options:
+
+| Option | Effect |
+| --- | --- |
+| `-Plan` | Prints the changed files and the selected checks, and runs nothing |
+| `-Path <paths>` | Checks these repository paths instead of the changes of the branch; with `-Plan` it shows what a change to them would run |
+| `-All` | Runs the full gate |
+| `-Base <ref>` | Compares with another branch than `origin/development` |
+| `-SkipIntegration` | Runs no integration test, so no containers are needed |
+| `-SkipUnity` | Leaves the Unity suites to CI |
+| `-VerifyRules` | Fails when a tracked file matches no rule, a .NET folder file belongs to no project, or a rule names an unknown project; CI runs it |
+
+Expected result: the script lists each changed file with its checks, then runs
+them, and ends with `Result: every one of <n> selected checks passed` and exit
+code 0. A failed check prints its output and gives exit code 1; exit code 2
+means the changes or the project files could not be read. A change to one test
+file takes about half a minute, and a Unity client change about two minutes.
+
+Keep the rules right: a test that reads a repository file outside its project
+and the projects it references needs a rule, as
+[Backend Tests](../tests/README.md#test-selection) describes. When CI fails on a
+check that the script did not select, fix the failure and add the missing rule
+in the same task.
 
 ## Pull Request Workflow
 
@@ -1669,13 +1750,12 @@ Run the focused automated coverage:
 dotnet test Mmorpg.slnx `
   --configuration Release `
   --filter "FullyQualifiedName~WorldActor|FullyQualifiedName~RealtimeProtocolGolden"
-unity command run_tests --mode editor --async_tests
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Run-UnityEditorTests.ps1 -Mode EditMode
 ```
 
 Expected result: every selected backend test passes, including the content
 rules for examine text and menu options, the authored menu order, and the spawn
-that carries them. Poll `unity command test_status` until `status` is
-`completed`; every EditMode test passes, including `WorldMenuTests`.
+that carries them. Every EditMode test passes, including `WorldMenuTests`.
 
 ## Mob Corpse Verification
 
@@ -2457,12 +2537,43 @@ Useful commands, run from `src/Client` or with
 - `unity command console_status` reports compiler failure state and console
   counts. `unity command console --level warning` returns the entries.
 - `unity command run_tests --mode editor --async_tests` starts the EditMode
-  suite. Poll `unity command test_status` until `status` is `completed`; the
-  result lists every test. A synchronous run is limited to the Pipeline's 30
-  second request time and fails once the suite takes longer.
-- `unity command run_tests --mode playmode --async_tests` starts the PlayMode
-  suite. Entering Play Mode reloads the Editor domain and drops a synchronous
-  request, so poll `unity command test_status` until `status` is `completed`.
+  suite, and `--mode playmode` the PlayMode suite, and `unity command
+  test_status` reports the run. `tools/Run-UnityEditorTests.ps1` below wraps
+  them; use the script instead of polling by hand.
+
+Run the Unity tests in the running Editor:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Run-UnityEditorTests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter InventoryStoragePredictionTests
+```
+
+The script talks to the Editor that has its own checkout's `src/Client` open,
+so a worktree's script never reaches the Editor of the main checkout;
+`-ProjectPath` chooses another project. It leaves Play Mode, refreshes assets so
+that changed files compile, and stops at once with the compiler errors when the
+scripts do not compile. Then it starts each run asynchronously and polls its
+status every two seconds, across the domain reloads of Play Mode, until the run
+completes. Every step has a limit of 15 minutes (`-TimeoutMinutes`), after which
+the script reports the last Editor state and cancels a running test run, so it
+never waits without a report. `-Filter` takes substrings of test full names,
+such as fixture names, separated by commas, and each filter runs as its own run;
+`-FilterType Category` or `Assembly` matches an exact category or part of an
+assembly name instead. A filtered run takes a few seconds once the scripts are
+compiled, the whole EditMode suite about 70 seconds, and the PlayMode suite
+about 30 seconds.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Every selected test passed |
+| 1 | A test failed, was skipped, or was inconclusive, or a suite has no tests; the report lists each test with its message |
+| 2 | The scripts do not compile; the report lists the compiler errors |
+| 3 | No running Editor has the project open; open it with `unity open <path>`, or run `tools/Run-UnityTests.ps1` headless |
+| 4 | The Editor did not respond or a run timed out, usually because a modal dialog blocks the Editor |
+| 5 | A filter selected no test in any selected mode |
+
+`tools/Run-UnityTests.ps1` runs both suites headless instead, as CI does. It
+cannot run while an Editor has the same project open.
 
 Coding agents:
 

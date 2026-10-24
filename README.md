@@ -219,6 +219,7 @@ Run from the repository root:
 
 ```powershell
 dotnet restore Mmorpg.slnx --locked-mode
+& ./tools/Test-Changes.ps1 -VerifyRules
 & ./tools/Verify-DependencyPolicy.ps1
 & ./tools/Verify-ArtAssets.ps1
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
@@ -231,6 +232,12 @@ dotnet run --project tools/ProtocolGenerator --configuration Release --no-build 
 & ./tools/Verify-Observability.ps1
 powershell -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
+
+CI runs these checks for every pull request, and
+`powershell -ExecutionPolicy Bypass -File tools/Test-Changes.ps1 -All` runs them
+all in one command. Before a push, `tools/Test-Changes.ps1` without `-All` runs
+only the checks that the changes of the branch can affect, as
+[Checks For A Change](docs/LOCAL_DEVELOPMENT.md#checks-for-a-change) describes.
 
 Start the isolated PostgreSQL and Redis test containers before running
 integration tests:
@@ -273,8 +280,9 @@ The test projects, where a new test goes, the traits, the database rules, and
 how CI splits these checks into parallel jobs are described in
 [Backend Tests](tests/README.md).
 
-Run Unity tests through `Window > General > Test Runner`, or use the licensed
-headless workflow documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
+Run Unity tests through `Window > General > Test Runner`, in a running Editor
+with `tools/Run-UnityEditorTests.ps1`, or with the licensed headless workflow,
+all documented in [Local Development](docs/LOCAL_DEVELOPMENT.md).
 CI runs both Unity suites for every pull request on a self-hosted Windows
 runner, described in
 [Unity CI Runner](docs/LOCAL_DEVELOPMENT.md#unity-ci-runner). A pull request is
@@ -302,7 +310,7 @@ waited for, merged, and cleaned up with the two scripts in
 | `src/Client` | Unity project and Unity tests |
 | `art` | Blender sources of the 3D models, one folder per asset with its `.blend` file in Git LFS and its `asset.json` review and export record. See [Art Pipeline](docs/ART_PIPELINE.md) |
 | `observability` | Local monitoring stack configuration: OpenTelemetry Collector, Prometheus with alert rules and their tests, Loki, Tempo, and the Grafana data sources and dashboards |
-| `tools` | Verification, content compilers and their shared pipeline library, the realtime protocol generator, the Blender art pipeline scripts and the human base character build, stress benchmark, shared headless bot client, active bot population, and the pull request wait and merge scripts |
+| `tools` | Verification and the change-based test selection, the Unity test runners, content compilers and their shared pipeline library, the realtime protocol generator, the Blender art pipeline scripts and the human base character build, stress benchmark, shared headless bot client, active bot population, and the pull request wait and merge scripts |
 | `tests` | Backend tests: one test project per server module, shared runtime and tool tests, cross-module integration tests, and shared test infrastructure. See [Backend Tests](tests/README.md) |
 | `docs` | Architecture, implemented features, setup, and product references |
 

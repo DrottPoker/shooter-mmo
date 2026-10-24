@@ -46,18 +46,23 @@ Task Workflow. These notes override the app's defaults where they differ.
 
 ## Verification
 
-- Backend quality gate: the command list in `README.md` under Standard Quality
-  Checks. Run it from the repository root. The build must stay at zero warnings.
-- Integration tests: start `docker-compose.test.yml` and set
-  `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` from `.env`, as shown
-  in `README.md`. A full run takes about one minute with `Host=127.0.0.1`;
+- Check at the three levels in `AGENTS.md` under Verification. Before a push,
+  run `tools/Test-Changes.ps1` from the checkout of the task; `-Plan` shows what
+  it would run and why. The build must stay at zero warnings.
+- `tools/Test-Changes.ps1` takes `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS`
+  from the `.env` of the main checkout when they are not set, starts
+  `docker-compose.test.yml` when an integration test is selected and the
+  containers do not run, and stops the containers it started. Never print
+  `.env` values. Integration tests take about one minute with `Host=127.0.0.1`;
   `Host=localhost` makes every new connection on Windows wait about two seconds.
-  Never print `.env` values. Every test gets its own database below
-  `<base>_<project>`, so test projects run in parallel; never start two runs of
-  the same test project at once.
+  Every test gets its own database below `<base>_<project>`, so test projects run
+  in parallel; never start two runs of the same test project at once.
 - Focused runs: `dotnet test tests/Server/<Project> --configuration Release` for
-  one test project, or `dotnet test Mmorpg.slnx --configuration Release --filter
-  "Category!=Integration"` for a fast loop without containers.
+  one test project, with `--filter "FullyQualifiedName~<Class>"` for one class,
+  or with `--filter "Category!=Integration"` without containers.
+- The full gate is the command list in `README.md` under Standard Quality Checks,
+  or `tools/Test-Changes.ps1 -All` in one command. CI runs it for every pull
+  request.
 - New tests go into the test project of the module they test. The layout,
   traits, database rules, and internal access policy are in `tests/README.md`.
 - Local stack for manual or end-to-end tests: `docker compose up -d --wait`,
@@ -78,12 +83,11 @@ With Unity CLI.
   prefabs, and assets through `unity command ...` and never hand-edit `.unity`,
   `.prefab`, or `.asset` YAML.
 - Check compile state with `unity command console_status` after C# changes.
-- EditMode tests: `unity command run_tests --mode editor --async_tests`, then
-  poll `unity command test_status` until `status` is `completed`. A synchronous
-  run fails once the suite takes longer than the Pipeline's 30 second request
-  limit, whatever `--timeout` says.
-- PlayMode tests: `unity command run_tests --mode playmode --async_tests`, then
-  poll `unity command test_status` until `status` is `completed`.
+- Unity tests: `tools/Run-UnityEditorTests.ps1` runs both suites in the Editor
+  that has the script's own checkout open, and `-Mode EditMode -Filter <fixture>`
+  runs one fixture while iterating. It leaves Play Mode, refreshes and compiles
+  first, fails at once on compile errors, and always ends with a report, so
+  never write polling loops around `run_tests` and `test_status`.
 - `unity command eval_file --file <path>` runs a C# file. Keep such scripts in
   the session scratchpad, not in the repository.
 - `capture_game_view` and `capture_scene_view` always save below `Assets/`.

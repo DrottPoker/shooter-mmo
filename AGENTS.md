@@ -20,6 +20,22 @@ Follow these rules for all future work in this repository.
   the user must perform and the expected result. Explicitly state when no manual
   Unity Editor steps are required.
 
+## Verification
+
+- Check at three levels, as `docs/LOCAL_DEVELOPMENT.md` describes under Checks
+  For A Change. While changing code, run only the tests that cover it: one .NET
+  test project, narrowed with `--filter` when that is faster, or
+  `tools/Run-UnityEditorTests.ps1 -Filter <fixture>`. Before every push, run
+  `tools/Test-Changes.ps1`, which runs the checks that the changes of the branch
+  can affect. CI runs the full quality gate for every pull request, so run the
+  full gate locally, with `tools/Test-Changes.ps1 -All`, only when the user asks
+  for it.
+- Never rerun the full gate or a whole suite after each small change.
+- When CI fails on something that `tools/Test-Changes.ps1` did not run, fix it
+  and add the missing rule to that script in the same task.
+- Run Unity tests in a running Editor with `tools/Run-UnityEditorTests.ps1`,
+  not with hand-written loops around `run_tests` and `test_status`.
+
 ## Branches
 
 - `main` and `development` are the only long-lived branches. `main` is never
