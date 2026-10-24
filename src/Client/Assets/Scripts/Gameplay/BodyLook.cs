@@ -33,7 +33,7 @@ namespace Mmorpg.Client.Gameplay
             Key = KeyOf(options, paints, garments);
         }
 
-        // Such as "Eye=Brown;Face=Scarred;Garment=LeatherJerkin;Paint=Tattoo", empty for the
+        // Such as "Eye=Brown;Face=Clean;Garment=LeatherJerkin;Paint=Tattoo", empty for the
         // default look.
         public string Key { get; }
 

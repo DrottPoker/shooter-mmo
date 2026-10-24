@@ -145,17 +145,20 @@ namespace Mmorpg.Client.Tests.EditMode
                     var appearance = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
                     appearance.CombineParts(meshes);
                     var own = appearance.CombinedRenderer.sharedMaterials;
+                    // Untinted, the body draws its look, with the paint of its underwear on the skin.
+                    appearance.ApplyTint(false, PlayerBodyColors.Player, tints);
+                    var untinted = appearance.CombinedRenderer.sharedMaterials;
 
                     appearance.ApplyTint(true, PlayerBodyColors.Player, tints);
                     var tinted = appearance.CombinedRenderer.sharedMaterials;
                     for (var index = 0; index < own.Length; index++)
                     {
                         var skin = appearance.SkinMaterials.Contains(own[index]);
-                        Assert.That(tinted[index] != own[index], Is.EqualTo(skin), own[index].name);
+                        Assert.That(tinted[index] != untinted[index], Is.EqualTo(skin), own[index].name);
                     }
 
                     appearance.ApplyTint(false, PlayerBodyColors.Player, tints);
-                    Assert.That(appearance.CombinedRenderer.sharedMaterials, Is.EqualTo(own));
+                    Assert.That(appearance.CombinedRenderer.sharedMaterials, Is.EqualTo(untinted));
                 }
             }
             finally

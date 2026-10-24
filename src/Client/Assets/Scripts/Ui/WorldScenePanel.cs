@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
@@ -357,8 +359,9 @@ namespace Mmorpg.Client.Ui
             DrawBodyLook();
         }
 
-        // One row per appearance slot of the local body, such as Face and Eye, that steps
-        // through its options.
+        // One row per appearance slot of the local body, such as Face and Eye, and per category of
+        // its paint layers, such as its underwear and a tattoo, that steps through the options,
+        // with the rule of when a player chooses it.
         private void DrawBodyLook()
         {
             var catalog = bodyLook != null ? bodyLook.Catalog : null;
@@ -384,34 +387,45 @@ namespace Mmorpg.Client.Ui
                     }
                 }
 
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Your " + slot.Name.ToLowerInvariant() + ": " + options[current].Name, GUILayout.Width(220f));
-                if (GUILayout.Button("<", GUILayout.Width(28f)))
+                var category = AppearanceRules.OfSlot(slot.Name);
+                var rule = category.HasValue ? " (" + RuleText(AppearanceRules.For(category.Value)) + ")" : string.Empty;
+                var step = StepButtons("Your " + slot.Name.ToLowerInvariant() + ": " + options[current].Name + rule);
+                if (step != 0)
                 {
-                    bodyLook.Look = bodyLook.Look.With(slot.Name, options[(current + options.Count - 1) % options.Count].Name);
+                    bodyLook.Look = bodyLook.Look.With(slot.Name, options[(current + step + options.Count) % options.Count].Name);
                 }
-
-                if (GUILayout.Button(">", GUILayout.Width(28f)))
-                {
-                    bodyLook.Look = bodyLook.Look.With(slot.Name, options[(current + 1) % options.Count].Name);
-                }
-
-                GUILayout.EndHorizontal();
             }
 
-            // Paint layers show on the body without being equipped until equipment shows them.
-            foreach (var paint in catalog.Paints)
+            // Paint layers show on the body without being equipped: one row per category and slot,
+            // with no paint among the choices of a category that a body may go without.
+            var shown = new List<BodyAppearanceCatalog.Paint>();
+            catalog.ShownPaints(bodyLook.Look, null, shown);
+            var groups = catalog.Paints.Where(paint => paint != null)
+                .GroupBy(paint => (paint.Category, paint.Slot))
+                .ToArray();
+            foreach (var group in groups)
             {
-                if (paint == null)
+                var rule = AppearanceRules.For(group.Key.Category);
+                var choices = new List<BodyAppearanceCatalog.Paint>();
+                if (!rule.Required)
                 {
-                    continue;
+                    choices.Add(null);
                 }
 
-                var worn = bodyLook.Look.HasPaint(paint.Name);
-                var wear = GUILayout.Toggle(worn, " Try on paint: " + paint.Name);
-                if (wear != worn)
+                choices.AddRange(group);
+                var current = Math.Max(choices.FindIndex(choice => choice != null && shown.Contains(choice)), 0);
+                var name = group.Key.Category.ToString().ToLowerInvariant() + (group.Key.Slot.Length > 0 ? " (" + group.Key.Slot + ")" : string.Empty);
+                var step = StepButtons("Your " + name + ": " + (choices[current] != null ? choices[current].Name : "none") + " (" + RuleText(rule) + ")");
+                if (step != 0 && choices.Count > 1)
                 {
-                    bodyLook.Look = bodyLook.Look.WithPaint(paint.Name, wear);
+                    var look = bodyLook.Look;
+                    foreach (var paint in group)
+                    {
+                        look = look.WithPaint(paint.Name, false);
+                    }
+
+                    var chosen = choices[(current + step + choices.Count) % choices.Count];
+                    bodyLook.Look = chosen != null ? look.WithPaint(chosen.Name, true) : look;
                 }
             }
 
@@ -440,6 +454,33 @@ namespace Mmorpg.Client.Ui
                     bodyLook.Look = look;
                 }
             }
+        }
+
+        // When a player chooses a kind of look; until character creation it only shows in F2.
+        private static string RuleText(AppearanceRules.Rule rule)
+        {
+            return rule.ChangesInGame ? "creation, in game" : "creation only";
+        }
+
+        // A row with the label and buttons that step back and forth: -1, 1, or 0 when neither
+        // was pressed.
+        private static int StepButtons(string label)
+        {
+            var step = 0;
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(300f));
+            if (GUILayout.Button("<", GUILayout.Width(28f)))
+            {
+                step = -1;
+            }
+
+            if (GUILayout.Button(">", GUILayout.Width(28f)))
+            {
+                step = 1;
+            }
+
+            GUILayout.EndHorizontal();
+            return step;
         }
 
         private void DrawStatusAndLeave()

@@ -112,6 +112,7 @@ any `clips` of its own are written by hand when an asset is created.
 | `rig` | Animation libraries only: the skinned asset whose rig the clips are keyed on, such as `art/Characters/Human_Male`. |
 | `previews` | Animation libraries only: other skinned assets of the skeleton whose bodies show the clips in the library, such as `["art/Characters/Human_Female"]`. |
 | `clips` | Animation libraries, and skinned assets with clips of their own: the names of the animation clips the asset exports, such as `["Death", "Idle", "Walk", "Jog"]`. Each is one Blender action. A skinned asset whose clips come from animation libraries, such as the human bodies, leaves `clips` out. |
+| `category` | Paint layers only: `underwear`, `scar`, or `tattoo`, the kind of look it is, which says how many a body shows, when a player chooses it, and the layers it is drawn at; see [The Look On The Skin](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-skin). |
 | `part` | Paint layers only: the part of the painted material `M_<Part>_<Label>`, such as `Body`. |
 | `bodies` | Paint layers: the skinned assets the paint fits, the body it is painted on first, such as `["art/Characters/Human_Male", "art/Characters/Human_Female"]`. They must have the same topology. The cage: the skinned assets it is fitted to, the one it was made from first, of any topology; its garment templates fit them. |
 | `cage` | Garment templates only: the garment cage it is made on, such as `art/Cages/Humanoid`. |
@@ -120,14 +121,15 @@ any `clips` of its own are written by hand when an asset is created.
 | `figure` | The cage only: the figure scale in meters, the radius of the ball that rolls over the skin, from 0.01 to 0.2. |
 | `lines` | The cage only: the standard lines, each with its `name`, its `region` (`neck`, `trunk`, `arms`, or `legs`), its `bone`, without the side `_L` or `_R` for the arms and legs, and its `share` of the bone's length, from 0 to 1. |
 | `fittedTo` | The cage only, written by its approval: every body with the `fitSha256` of the body's export the cage was approved on, the fingerprint of the body's rig, surface, and weights, so a change of only a body's images leaves the cage as it is. |
-| `layer` | Paint layers: the order paint layers are drawn in, from 0 to 1000, the lowest first, such as `30` for a scar over the tattoo at `10`. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `150` for a shirt over trousers at `100`. |
-| `slot` | Garments only: the visual slot, `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
+| `layer` | Paint layers: the order paint layers are drawn in, the lowest first, within the layers of their `category`: 100 to 199 for a scar, 200 to 299 for a tattoo, and 900 to 999 for underwear, such as `200` for the tattoo. Garments: the order of a character's garments from the inside out, from 0 to 1000, such as `150` for a shirt over trousers at `100`. |
+| `slot` | Garments: the visual slot, `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. Underwear: the visual slot it is worn in, `body` for a bra or `legs` for briefs. |
 | `band` | Garments only: how far from the garment cage the garment lies, `tight` (0 to 8 mm), `mid` (5 to 25 mm), `outer` (10 to 60 mm), or `loose` (from 10 mm). |
 | `hides` | Garments only: the other visual slots it hides, such as `["legs"]` for a floor-length robe, or `[]`. |
+| `hidesUnderwear` | Garment templates only, optional: `true` when it hides the underwear of its slot while it is drawn, such as a top that bares the shoulders, `false` by default. |
 | `hair` | Garments only: for headwear, what happens to the hair under it, `hide`, `compress`, or `show`; `null` for every other slot. |
 | `cloth` | Garments only: the cloth profile of its loose parts, `robe`, `cloak`, or `hood`, or `null`. |
 | `dyes` | Garments only: the number of dye channels. It is `0` until the garment shader brings dyes. |
-| `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
+| `variants` | Skinned assets only, optional: the [appearance variants](#appearance-layers), each a painted material `M_<Part>_<Label>` with the other `images` `T_<Part>_<Label>_<Option>` it may show in the game, such as `{ "material": "M_Face_Male", "images": ["T_Face_Male_Clean"] }`. The material's own image is named `T_<Part>_<Label>_<Option>` as well. |
 | `approvals` | One entry per approved review stage: the `date` and the `sourceSha256` of the `.blend` file that was approved. A garment texture's approval also records the `garmentSourceSha256` of its template's file, since it is reviewed on the template. |
 | `export` | The `sourceSha256` of the exported `.blend` file, the `targetSha256` of the written FBX, for a body with an editable mesh the `dataSha256` of its topology and the `fitSha256`, the fingerprint of what the garment cage and the garments read from it, its rig, its surface with its faces and their body parts, and its weights, and `materials`: the approved look of every exported material as URP Lit values, `baseColor` (sRGB `#RRGGBB`), `metallic`, and `smoothness` (1 - Roughness). A painted material also names its image in `baseMap`, and its `baseColor` is white. `textures` lists every exported image, those the materials name and the variants, with its `name`, `target` PNG, and `sha256`, present only when there are textures, and `clips` lists every clip of a skinned asset with its `name`, length in `frames`, and whether it should `loop`. The export of an animation library has no materials or textures; it records its `clips` and the `rigSourceSha256`, the `export.sourceSha256` of its rig when it was exported. The export of a paint layer records its `textures`, one `T_Paint_<Name>_<Label>` per body below `src/Client/Assets/Art/Textures/Paint`, and the `smoothness` and `metallic` of the paint, without a `targetSha256`. The export of a garment template records the `cageSourceSha256` of the approved cage file it was fitted to; its `models`, one per body of the cage in order with its `body` label, the `bodyFitSha256` of the body's export it was fitted to, the model's `target` and `sha256`, and its `data` file and `dataSha256`; its `clipSources`, every animation library of its skeleton with the `sourceSha256` of the export whose clips it was checked in; its `pairSources`, every template of another visual slot and a lower layer of its cage with the `sourceSha256` of the export it was checked over, when there are any; its one material `M_Garment_<Name>` without an image; and no `textures`. The export of a garment texture records the `garmentSourceSha256` of its template's export, its `masks` with their `body`, `data`, and `dataSha256` and their `clipSources` when it has transparent parts, its material `M_Garment_<Name>`, and its image `T_Garment_<Name>` below `src/Client/Assets/Art/Textures/Garments`. `null` before the first export. |
 
@@ -534,21 +536,24 @@ the others as they are.
 
 | Layer | Made as | In the game | Status |
 | --- | --- | --- | --- |
-| Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Scarred` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
-| Paint layers | Transparent paint over the skin in the body texture's UV layout, such as a tattoo or a scalp, in a [paint layer](#paint-layers) asset of its own. Painted once on the male body and moved to every body of the same topology. | The skin shader lays it over the skin when the body is drawn. | Implemented. |
+| Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Clean` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
+| Paint layers | Transparent paint over the skin in the body texture's UV layout, of a category, `underwear`, `scar`, or `tattoo`, such as the briefs, a scar, or a tattoo, in a [paint layer](#paint-layers) asset of its own. Painted once on the first body and moved to every body of the same topology. | The skin shader lays it over the skin when the body is drawn, by the rules of its category. | Implemented. |
 | Garments | Meshes skinned to the shared skeleton, such as clothes, armor, and hair: [garment templates](#garments) built on the [garment cage](#garment-cage) and fitted to every body of it, each worn with a [garment texture](#garment-textures) of its own asset. | Combined with the visible body parts into the body's one mesh; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md). | Implemented, with the Wardrobe preview and trying garments on in F2. |
 
 The faces and eyes of the human base characters are variants: images packed into
 the character's file, shown by the model review, and exported with the model
-through `variants` in `asset.json`. In Unity, the body's `BodyAppearanceCatalog` lists one slot per
+through `variants` in `asset.json`. Which kinds of look a body shows and when a
+player chooses them is in
+[The Look On The Skin](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-skin). In Unity, the body's `BodyAppearanceCatalog` lists one slot per
 material with variants, such as `Face` and `Eye`, with its options, the
 material's own image first, and a look picks one option per slot; see
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 
 ## Paint Layers
 
-A paint layer below `art/Paint` is paint over the skin of the bodies, such as the
-tattoo `art/Paint/Tattoo`. Its file holds, per body, the
+A paint layer below `art/Paint` is paint over the skin of the bodies of a
+category, such as the tattoo `art/Paint/Tattoo`, the scar `art/Paint/Scar` on the
+faces, or the underwear `art/Paint/Bra` and `art/Paint/Briefs`. Its file holds, per body, the
 mesh `Paint_<Label>`, the body's parts joined in its rest pose, and the image
 `T_Paint_<Name>_<Label>` in the layout of the body texture `T_<Part>_<Label>`,
 transparent where the skin shows. A preview material lays the image over the
@@ -556,8 +561,8 @@ skin by its alpha, with its roughness, so Blender's Material Preview shows the
 look. The paint is made on the first body, by hand in Texture Paint mode or by a
 script, and its image carries the custom properties `roughness` and `metallic`.
 The bodies' UVs are mirrored, so both sides of a body share their texels and
-paint on the skin is the same on both sides, and it lies over the underwear,
-which is painted into the body texture. A one-sided tattoo comes with paint
+paint on the skin is the same on both sides; the underwear is paint of its own,
+over the tattoo. A one-sided tattoo comes with paint
 layers that are independent of the bodies' topology, in delivery step 5d of
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#delivery-plan).
 
@@ -582,7 +587,8 @@ paint layer paints, such as `M_Body_Male`, draw with this shader, and without a
 layer they draw like Lit. `Create Missing Materials` creates them with it. When
 URP is upgraded, the shader is made again from the new `Lit.shader` and
 `LitInput.hlsl` with the same changes. The appearance catalog of every body lists
-the paint layers that fit it, in the order of their `layer`.
+the paint layers that fit it with their category and slot, in the order of their
+`layer`, and a body shows them by the rules of their categories.
 
 ## Garment Cage
 
@@ -981,11 +987,12 @@ Each file holds one character:
   so paint, armor, and clothes fitted to one body transfer to the other.
 - Smooth shading, with hard edges only on the ear rims, and the form painted into
   the textures: `M_Body_<Label>` uses the 2048 px body texture
-  `T_Body_<Label>` with the underwear, `M_Face_<Label>` a 1024 px face texture,
+  `T_Body_<Label>`, plain skin under the underwear, which is paint of its own,
+  `M_Face_<Label>` a 1024 px face texture,
   `M_Eye_<Label>` a 512 px iris texture, and `M_Teeth_<Label>` and
   `M_Tongue_<Label>` flat colors. The face and eye variants for character
   creation are packed into the file and exported as
-  [variants](#appearance-layers): `T_Face_Male_Stubble`, `T_Face_Male_Scarred`,
+  [variants](#appearance-layers): `T_Face_Male_Stubble`, `T_Face_Male_Clean`,
   `T_Eye_Male_Teal`, and `T_Eye_Male_Brown` for the male, `T_Face_Female_Blush`,
   `T_Face_Female_Freckles`, `T_Eye_Female_Teal`, and `T_Eye_Female_Hazel` for
   the female. Another face is the face or eye material with another image.
@@ -1056,9 +1063,12 @@ weights.
 | `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `trunk` and `arms`, cut at `HemHip` and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,536 triangles per body, on `art/Cages/Humanoid`. |
 | `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,496 triangles per body, with seams along the inside of the legs. |
 | `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the twelve standard lines of [Garment Cage](#garment-cage). |
-| `art/Paint/Tattoo` | `paint` | none | A tattoo over `M_Body`, painted on the male and moved to the female, layer 10: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
-| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. |
-| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Model and rig approved 2026-10-22. The game shows it for every player. |
+| `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910: the pale blue bra with its cups, band, and straps over the middle of the shoulders, lifted out of her body texture with its shaded edge. Roughness 0.8. |
+| `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900: pale blue briefs with a darker waistband, lifted out of the male body texture and moved to the female. Roughness 0.8. |
+| `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, lifted out of the former male face `Scarred` and moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
+| `art/Paint/Tattoo` | `paint` | none | A `tattoo` over `M_Body`, painted on the male and moved to the female, layer 200: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
+| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Blush` and `Freckles`. Model and rig approved 2026-10-24. |
+| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Stubble` and `Clean`. Model and rig approved 2026-10-24. The game shows it for every player. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |
 
 ## Planned

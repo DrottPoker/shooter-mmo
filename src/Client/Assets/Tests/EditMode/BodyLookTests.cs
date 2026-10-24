@@ -11,7 +11,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ALookKeepsOneOptionPerSlotInAStableKey()
         {
-            var look = BodyLook.Default.With("Face", "Scarred").With("Eye", "Brown").With("Face", "Stubble");
+            var look = BodyLook.Default.With("Face", "Clean").With("Eye", "Brown").With("Face", "Stubble");
 
             Assert.That(look.Key, Is.EqualTo("Eye=Brown;Face=Stubble"));
             Assert.That(look.OptionFor("Face"), Is.EqualTo("Stubble"));
@@ -24,12 +24,12 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ALookWearsPaintLayersInItsKey()
         {
-            var look = BodyLook.Default.With("Face", "Scarred").WithPaint("LeatherJerkin", true).WithPaint("Apron", true);
+            var look = BodyLook.Default.With("Face", "Clean").WithPaint("LeatherJerkin", true).WithPaint("Apron", true);
 
-            Assert.That(look.Key, Is.EqualTo("Face=Scarred;Paint=Apron+LeatherJerkin"));
+            Assert.That(look.Key, Is.EqualTo("Face=Clean;Paint=Apron+LeatherJerkin"));
             Assert.That(look.HasPaint("LeatherJerkin"), Is.True);
             Assert.That(BodyLook.Parse(look.Key), Is.EqualTo(look));
-            Assert.That(look.WithPaint("Apron", false).Key, Is.EqualTo("Face=Scarred;Paint=LeatherJerkin"));
+            Assert.That(look.WithPaint("Apron", false).Key, Is.EqualTo("Face=Clean;Paint=LeatherJerkin"));
             Assert.That(BodyLook.Parse("Paint=LeatherJerkin+Brö+").Key, Is.EqualTo("Paint=LeatherJerkin"));
             Assert.Throws<System.ArgumentException>(() => BodyLook.Default.With(BodyLook.PaintKey, "LeatherJerkin"));
         }
@@ -37,22 +37,22 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ALookWearsGarmentsInItsKey()
         {
-            var look = BodyLook.Default.With("Face", "Scarred").WithGarment("LeatherJerkin", true).WithPaint("Tattoo", true);
+            var look = BodyLook.Default.With("Face", "Clean").WithGarment("LeatherJerkin", true).WithPaint("Tattoo", true);
 
-            Assert.That(look.Key, Is.EqualTo("Face=Scarred;Garment=LeatherJerkin;Paint=Tattoo"));
+            Assert.That(look.Key, Is.EqualTo("Face=Clean;Garment=LeatherJerkin;Paint=Tattoo"));
             Assert.That(look.HasGarment("LeatherJerkin"), Is.True);
             Assert.That(look.HasPaint("LeatherJerkin"), Is.False);
             Assert.That(BodyLook.Parse(look.Key), Is.EqualTo(look));
-            Assert.That(look.WithGarment("LeatherJerkin", false).Key, Is.EqualTo("Face=Scarred;Paint=Tattoo"));
+            Assert.That(look.WithGarment("LeatherJerkin", false).Key, Is.EqualTo("Face=Clean;Paint=Tattoo"));
             Assert.Throws<System.ArgumentException>(() => BodyLook.Default.With(BodyLook.GarmentKey, "LeatherJerkin"));
         }
 
         [Test]
         public void ALookComesBackFromItsKeyAndSkipsBrokenEntries()
         {
-            var look = BodyLook.Parse("Eye=Brown;Face=Scarred");
+            var look = BodyLook.Parse("Eye=Brown;Face=Clean");
 
-            Assert.That(look.Key, Is.EqualTo("Eye=Brown;Face=Scarred"));
+            Assert.That(look.Key, Is.EqualTo("Eye=Brown;Face=Clean"));
             Assert.That(BodyLook.Parse("Face=;=Brown;Eye=Brö;Eye=Teal").Key, Is.EqualTo("Eye=Teal"));
             Assert.That(BodyLook.Parse(null), Is.EqualTo(BodyLook.Default));
         }
@@ -73,7 +73,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 Assert.That(looks, Is.EquivalentTo(new[]
                 {
-                    "Eye=Brown;Face=Scarred", "Eye=Brown;Face=Stubble", "Eye=Teal;Face=Scarred", "Eye=Teal;Face=Stubble",
+                    "Eye=Brown;Face=Clean", "Eye=Brown;Face=Stubble", "Eye=Teal;Face=Clean", "Eye=Teal;Face=Stubble",
                 }));
                 Assert.That(BodyLook.Varied("bot-7", null), Is.EqualTo(BodyLook.Default));
             }
@@ -110,7 +110,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // A catalog with the Face and Eye slots of the male body, without materials or images.
-        internal static BodyAppearanceCatalog Catalog(Material face = null, Texture2D scarred = null)
+        internal static BodyAppearanceCatalog Catalog(Material face = null, Texture2D clean = null)
         {
             var catalog = ScriptableObject.CreateInstance<BodyAppearanceCatalog>();
             catalog.Configure(new[]
@@ -123,7 +123,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 new BodyAppearanceCatalog.Slot("Face", face, new[]
                 {
                     new BodyAppearanceCatalog.Option("Stubble", null),
-                    new BodyAppearanceCatalog.Option("Scarred", scarred),
+                    new BodyAppearanceCatalog.Option("Clean", clean),
                 }),
             });
             return catalog;

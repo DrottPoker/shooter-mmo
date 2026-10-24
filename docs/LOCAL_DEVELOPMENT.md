@@ -104,7 +104,7 @@ Expected result:
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, and the absence of tracked
   client builds.
-- Art asset verification reports `Verified 14 art asset(s).`: every asset below
+- Art asset verification reports `Verified 17 art asset(s).`: every asset below
   `art/` is approved for its current `.blend` file, every model below
   `src/Client/Assets/Art/Models` is the recorded export of one of them, and an
   asset in review, such as a character before its rig, has no model yet. It needs
@@ -2754,7 +2754,7 @@ When the reviewer approves the model, record the approval and export:
 Expected result: `Approved the 'model' stage of Resource_IronVein
 (triangles=878).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified 14 art asset(s).` Unity imports the model the
+(triangles=878).`, and `Verified 17 art asset(s).` Unity imports the model the
 next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
 its `.meta` file together.
 
@@ -2880,7 +2880,7 @@ by hand:
    src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
    the same for the female, `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
-   (clips=Death,Idle,Walk,Jog).`, and `Verified 14 art asset(s).` The library is
+   (clips=Death,Idle,Walk,Jog).`, and `Verified 17 art asset(s).` The library is
    exported with the characters because it records the export of its rig;
    `Verify-ArtAssets.ps1` otherwise stops with `was exported against another
    export of its rig`. After `-Rig`, sync the library first and review its clips
@@ -2891,7 +2891,7 @@ The export also writes the textures below
 `variants` in `asset.json` names among them. When Unity gets focus it imports the
 models, creates any material the export added, and updates the appearance
 catalogs. Expected result: the Console lists created materials and each changed
-catalog with its slots, such as `Eye (Teal, Brown), Face (Stubble, Scarred)`, and
+catalog with its slots, such as `Eye (Teal, Brown), Face (Stubble, Clean)`, and
 nothing when nothing changed. Commit the `.blend` files, `asset.json`, the FBX and
 texture files, the catalogs, and their `.meta` files together. An export of
 unchanged sources leaves every file as it is.
@@ -2908,7 +2908,7 @@ A face or an eye color is another image of a body's face or eye material; see
    shown, then show the material's own image again, pack the copy into the file
    (`Image > Pack`), and save.
 2. Add the image to the material's entry in `variants` in `asset.json`, such as
-   `{ "material": "M_Face_Male", "images": ["T_Face_Male_Scarred",
+   `{ "material": "M_Face_Male", "images": ["T_Face_Male_Clean",
    "T_Face_Male_Bearded"] }`.
 3. Run `.\tools\Sync-HumanBase.ps1`. Expected result: every check passes, and
    the faces sheet `artifacts\human-base\review\Human_Base_faces.png` shows the
@@ -2918,7 +2918,7 @@ A face or an eye color is another image of a body's face or eye material; see
    [Edit The Human Base Characters](#edit-the-human-base-characters), step 4.
    Expected result: the export writes `T_Face_Male_Bearded.png` below
    `src/Client/Assets/Art/Textures/Characters`, and when Unity gets focus the
-   Console lists the catalog with `Face (Stubble, Scarred, Bearded)`. In the game,
+   Console lists the catalog with `Face (Stubble, Clean, Bearded)`. In the game,
    F2 offers the new face under `Your face`.
 
 ### Make A Clip
@@ -2981,7 +2981,7 @@ clip of the human bodies: `Idle`, `Walk`, `Jog`, and `Death`.
    (clips=Death,Idle,Walk,Jog).`, `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
    (clips=Death,Idle,Walk,Jog).`,
-   and `Verified 14 art asset(s).` Unity imports the clips as Humanoid motion when
+   and `Verified 17 art asset(s).` Unity imports the clips as Humanoid motion when
    it gets focus. A library whose armature is not the current rig stops the
    approval and the export with `The armature "Humanoid" is not the current rig
    "Male" ...`; sync it first. Commit the `.blend` file, `asset.json`, the FBX,
@@ -2997,17 +2997,21 @@ changes the library, and it needs a new review and approval first.
 [Paint Layers](ART_PIPELINE.md#paint-layers) describes paint over the skin of the
 bodies. `art/Paint/Tattoo` is a tattoo on the chest and the upper arms.
 
-1. Create a new paint layer with the order it is drawn in, from 0 to 1000, the
-   lowest first, such as 10 for a shirt and 30 for a jerkin over it:
+1. Create a new paint layer of a category, `scar`, `tattoo`, or `underwear`,
+   which says how many a body shows and when a player chooses it, as
+   [The Look On The Skin](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-skin)
+   describes. It is drawn at the first layer of its category unless `-Layer`
+   names another of them, and underwear needs `-Slot body` or `-Slot legs`:
 
    ```powershell
-   .\tools\New-ArtAsset.ps1 -Kind paint -Asset art/Paint/ChainShirt -Layer 25
+   .\tools\New-ArtAsset.ps1 -Kind paint -Asset art/Paint/Serpent -PaintCategory tattoo
    ```
 
-   Expected result: `Synced ChainShirt: ...` and `Created art/Paint/ChainShirt
-   with asset.json and ChainShirt.blend.` It paints `M_Body` of
+   Expected result: `Synced Serpent: ...` and `Created art/Paint/Serpent
+   with asset.json and Serpent.blend.` It paints `M_Body` of
    `art/Characters/Human_Male` and moves the paint to `art/Characters/Human_Female`
-   unless `-Part` and `-Bodies` say otherwise. An existing paint layer is built
+   unless `-Part` and `-Bodies` say otherwise, such as `-Part Face` for a scar on
+   the face. An existing paint layer is built
    or updated with:
 
    ```powershell
@@ -3089,7 +3093,7 @@ its `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
    ```
 
    Expected result: `Approved the 'model' stage of Humanoid (faces=1576).` and
-   `Verified 14 art asset(s).` The cage has no export; commit the `.blend` file
+   `Verified 17 art asset(s).` The cage has no export; commit the `.blend` file
    and `asset.json` together.
 
 ### Make A Garment
@@ -3293,17 +3297,23 @@ controller, and prefabs are committed.
     of death as the same body lying in the same pose and direction, where the
     grey capsule used to be, and a click on it opens the corpse as before.
 12. Press F2. In the Presentation section, press `>` next to `Your face:
-    Stubble`, then next to `Your eye: Teal`. Expected result: the rows read
-    `Your face: Scarred` and `Your eye: Brown`, and your body shows a scar over
-    the right eye and brown eyes at once; zoom in with the mouse wheel to see
-    them. Leave the shard and join again. Expected result: your body keeps the
-    scar and the brown eyes. Press `>` twice more. Expected result: the stubble
-    face and teal eyes are back.
-13. Still in the F2 Presentation section, turn on `Try on paint: Tattoo`.
-    Expected result: your body shows the tattoo at once, a round rune emblem on
-    the upper breastbone and an armband around each upper arm, in dark
-    blue-black ink; turn it off and it is gone. The choice is kept between
-    sessions like the face and the eyes.
+    Stubble (creation only)`, then next to `Your eye: Teal (creation only)`.
+    Expected result: the rows read `Your face: Clean` and `Your eye: Brown`, and
+    your body shows the clean-shaven face and brown eyes at once; zoom in with
+    the mouse wheel to see them. Press `>` next to `Your scar: none (creation
+    only)`. Expected result: `Your scar: Scar`, and a pale scar runs over the
+    brow, the outer corner of the right eye, and down the cheek, on either face.
+    Leave the shard and join again. Expected result: your body keeps the face,
+    the scar, and the brown eyes. Press `>` once more on each row. Expected
+    result: the stubble face, no scar, and teal eyes are back.
+13. Still in the F2 Presentation section, press `>` next to `Your tattoo: none
+    (creation, in game)`. Expected result: `Your tattoo: Tattoo`, and your body
+    shows the tattoo at once, a round rune emblem on the upper breastbone and an
+    armband around each upper arm, in dark blue-black ink; press `>` again and
+    it is gone. `Your underwear (legs): Briefs (creation, in game)` has no
+    `none`: underwear is always worn, and the woman also has `Your underwear
+    (body): Bra`. The choices are kept between sessions like the face and the
+    eyes.
 14. With ActiveSimulationBots on the shard, as in step 7, look at the bots up
     close. Expected result: the bots show both faces and both eye colors in every
     combination, and each bot keeps its look while it stays. Real players show
@@ -3348,9 +3358,10 @@ controller, and prefabs are committed.
     and a look into a sleeve, into the V, or at the hips below the hem shows
     skin, never a hole in the body. Turn on `Try on garment: LinenShirt`.
     Expected result: the linen shirt takes the jerkin's place, since a body wears
-    one chest piece. Turn on `Try on paint: Tattoo` and `Try on garment:
+    one chest piece. Choose `Your tattoo: Tattoo` and turn on `Try on garment:
     NetShirt`. Expected result: the tattoo and the skin show through the net's
-    meshes. Turn the garments off and the bare body is back.
+    meshes, and on the woman the bra too, since the net shirt does not hide
+    underwear. Turn the garments off and the bare body is back.
     The choice is kept between sessions like the face and the eyes; other
     players and bots wear no garments.
 18. In the Unity Editor, open `MMORPG > Tools > Art Pipeline > Wardrobe`.

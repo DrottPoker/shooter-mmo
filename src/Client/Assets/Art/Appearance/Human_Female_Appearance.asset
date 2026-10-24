@@ -28,11 +28,37 @@ MonoBehaviour:
     - name: Freckles
       texture: {fileID: 2800000, guid: 5cd2dd2928c3c31478b55cffdf8634fb, type: 3}
   paints:
+  - name: Scar
+    category: 3
+    slot: 
+    material: {fileID: 2100000, guid: a1188cde8f5d62548a76853e1534b236, type: 2}
+    texture: {fileID: 2800000, guid: e8906a79d1477674b95227390dabc883, type: 3}
+    layer: 100
+    smoothness: 0.5
+    metallic: 0
   - name: Tattoo
+    category: 4
+    slot: 
     material: {fileID: 2100000, guid: bccd1ba0242b7cf4fb22f8a2741c63f6, type: 2}
     texture: {fileID: 2800000, guid: dc222fcd076e09e47b319d4d0bc89c14, type: 3}
-    layer: 10
+    layer: 200
     smoothness: 0.4
+    metallic: 0
+  - name: Briefs
+    category: 2
+    slot: legs
+    material: {fileID: 2100000, guid: bccd1ba0242b7cf4fb22f8a2741c63f6, type: 2}
+    texture: {fileID: 2800000, guid: 3a8643e1ce297be42b8e734845b629ed, type: 3}
+    layer: 900
+    smoothness: 0.2
+    metallic: 0
+  - name: Bra
+    category: 2
+    slot: body
+    material: {fileID: 2100000, guid: bccd1ba0242b7cf4fb22f8a2741c63f6, type: 2}
+    texture: {fileID: 2800000, guid: 205034558244a10459876d1060679757, type: 3}
+    layer: 910
+    smoothness: 0.2
     metallic: 0
   parts:
   - name: Female_Feet
@@ -72,6 +98,7 @@ MonoBehaviour:
     slot: legs
     layer: 100
     hides: []
+    hidesUnderwear: 0
     hair: 
     cloth: 
     model: {fileID: 919132149155446097, guid: 8b03449e44c80254d8669b6a571f398c, type: 3}
@@ -108,6 +135,7 @@ MonoBehaviour:
     slot: body
     layer: 150
     hides: []
+    hidesUnderwear: 0
     hair: 
     cloth: 
     model: {fileID: 919132149155446097, guid: e16906f9da57e7b4c99b3f65e0f4a7ae, type: 3}
@@ -160,6 +188,7 @@ MonoBehaviour:
     slot: body
     layer: 150
     hides: []
+    hidesUnderwear: 0
     hair: 
     cloth: 
     model: {fileID: 919132149155446097, guid: ea9847b4b9c27a349b30b57fb5cd1622, type: 3}
@@ -212,6 +241,7 @@ MonoBehaviour:
     slot: body
     layer: 150
     hides: []
+    hidesUnderwear: 0
     hair: 
     cloth: 
     model: {fileID: 919132149155446097, guid: e16906f9da57e7b4c99b3f65e0f4a7ae, type: 3}
@@ -252,6 +282,7 @@ MonoBehaviour:
     slot: body
     layer: 150
     hides: []
+    hidesUnderwear: 0
     hair: 
     cloth: 
     model: {fileID: 919132149155446097, guid: e16906f9da57e7b4c99b3f65e0f4a7ae, type: 3}

@@ -9,20 +9,20 @@
     "skeleton": "Humanoid",
     "variants": [
         { "material": "M_Eye_Male", "images": ["T_Eye_Male_Brown"] },
-        { "material": "M_Face_Male", "images": ["T_Face_Male_Scarred"] }
+        { "material": "M_Face_Male", "images": ["T_Face_Male_Clean"] }
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-22",
-            "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf"
+            "date": "2026-10-24",
+            "sourceSha256": "e6709d01b876f87d7591f6c4cc803c43edd5433bd6988b92af8dc10bb752fee2"
         },
         "rig": {
-            "date": "2026-10-22",
-            "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf"
+            "date": "2026-10-24",
+            "sourceSha256": "e6709d01b876f87d7591f6c4cc803c43edd5433bd6988b92af8dc10bb752fee2"
         }
     },
     "export": {
-        "sourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf",
+        "sourceSha256": "e6709d01b876f87d7591f6c4cc803c43edd5433bd6988b92af8dc10bb752fee2",
         "targetSha256": "4604679a1941e1d85e56de8dbccfe3b9bd049cb529fc5e71680a89e1e59749cf",
         "dataSha256": "bfea2e93621d75d7cde6bc9e1eefe3d4330a9a30e48bb27cce5322d7197f5f1b",
         "fitSha256": "3f384ad10189db1c3a3c70d88cc0c6f1adcdd19cb715ef51af687bc1c2996695",
@@ -65,7 +65,7 @@
             {
                 "name": "T_Body_Male",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Body_Male.png",
-                "sha256": "3a8570c70e0b6f4e804e7afc649d3458e424c80f800f1744be3cb3f35ab1a246"
+                "sha256": "87605fe79572a7e4cbf8ee7185bde3f746e80db0af928c32507c390fd8bb789d"
             },
             {
                 "name": "T_Eye_Male_Teal",
@@ -83,9 +83,9 @@
                 "sha256": "4fecb602a6dc15398569cf00613264e622d584e154a35e003548689494ca43fd"
             },
             {
-                "name": "T_Face_Male_Scarred",
-                "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Male_Scarred.png",
-                "sha256": "6e6f27f3ced9130a265b0555b2bdb95728d4e3f2d746afd4406229b214fec684"
+                "name": "T_Face_Male_Clean",
+                "target": "src/Client/Assets/Art/Textures/Characters/T_Face_Male_Clean.png",
+                "sha256": "055331fa322a29da7e200ba8706651913904c141de7d6f8799f19c9f6e1d9391"
             }
         ]
     }

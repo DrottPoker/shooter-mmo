@@ -15,6 +15,7 @@
         "hem": 0.002
     },
     "hides": [],
+    "hidesUnderwear": false,
     "hair": null,
     "cloth": null,
     "dyes": 0,

@@ -150,21 +150,25 @@ namespace Mmorpg.Client.Editor
         // art/Characters/Human_Male.
         public string rig = string.Empty;
         public ArtMaterialVariants[] variants = Array.Empty<ArtMaterialVariants>();
-        // A paint layer: the painted material part, the bodies, the painted one first, and the
-        // order paint layers are drawn in.
+        // A paint layer: its category, underwear, scar, or tattoo, the painted material part, the
+        // bodies, the painted one first, and the order paint layers are drawn in; underwear also
+        // has the visual slot it is worn in.
+        public string category = string.Empty;
         public string part = string.Empty;
         public string[] bodies = Array.Empty<string>();
         public int layer;
         // A garment template: the cage it is made on, whose bodies it fits; its visual slot and its
-        // band from the cage; its layer from the inside out; the slots it hides; what headwear does
-        // to the hair; and the cloth profile of its loose parts.
+        // band from the cage; its layer from the inside out; the slots it hides and whether it hides
+        // the underwear of its slot; what headwear does to the hair; and the cloth profile of its
+        // loose parts.
         public string cage = string.Empty;
         public string slot = string.Empty;
         public string band = string.Empty;
         public string[] hides = Array.Empty<string>();
+        public bool hidesUnderwear;
         public string hair = string.Empty;
         public string cloth = string.Empty;
-        // A garment texture: the template it belongs to, such as art/Garments/Jerkin.
+        // A garment texture: the template it belongs to, such as art/Garments/Shirt.
         public string garment = string.Empty;
         public ArtAssetExport export = new ArtAssetExport();
 

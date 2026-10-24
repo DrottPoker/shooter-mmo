@@ -21,6 +21,8 @@ namespace Mmorpg.Client.Gameplay
 
         public const string CombinedRendererName = "CombinedBody";
 
+        private static readonly BodyAppearanceCatalog.Garment[] NoGarments = new BodyAppearanceCatalog.Garment[0];
+
         [SerializeField] private Material[] skinMaterials = new Material[0];
         [SerializeField] private BodyAppearanceCatalog catalog;
 
@@ -229,6 +231,8 @@ namespace Mmorpg.Client.Gameplay
         {
             CaptureOwnMaterials();
             var tint = tinted ? TintFor(tintColor) : Color.white;
+            // Garments show only on the combined renderer, and only those drawn hide underwear.
+            var drawn = combinedRenderer != null ? PlayerBodyMeshes.Drawn(worn) : (IReadOnlyList<BodyAppearanceCatalog.Garment>)NoGarments;
             foreach (var entry in ownMaterials)
             {
                 if (entry.Key == null)
@@ -255,7 +259,7 @@ namespace Mmorpg.Client.Gameplay
                     paints.Clear();
                     if (catalog != null)
                     {
-                        catalog.PaintsFor(own, look, paints);
+                        catalog.PaintsFor(own, look, drawn, paints);
                     }
 
                     var skinTint = System.Array.IndexOf(skinMaterials, own) >= 0 ? tint : Color.white;

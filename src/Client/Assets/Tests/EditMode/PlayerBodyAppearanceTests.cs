@@ -80,8 +80,8 @@ namespace Mmorpg.Client.Tests.EditMode
             var root = new GameObject("Body");
             var skin = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             var face = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "M_Face_Male" };
-            var scarred = new Texture2D(4, 4) { name = "T_Face_Male_Scarred" };
-            var catalog = BodyLookTests.Catalog(face, scarred);
+            var clean = new Texture2D(4, 4) { name = "T_Face_Male_Clean" };
+            var catalog = BodyLookTests.Catalog(face, clean);
             try
             {
                 using (var materials = new PlayerBodyMaterials())
@@ -89,16 +89,16 @@ namespace Mmorpg.Client.Tests.EditMode
                     var head = CreateBody(root.transform, skin, face, catalog);
                     var appearance = root.GetComponentInChildren<PlayerBodyAppearance>();
 
-                    appearance.ApplyLook(BodyLook.Default.With("Face", "Scarred"), materials);
+                    appearance.ApplyLook(BodyLook.Default.With("Face", "Clean"), materials);
 
                     var looked = head.sharedMaterials;
                     Assert.That(looked[0], Is.SameAs(skin));
                     Assert.That(looked[1], Is.Not.SameAs(face));
-                    Assert.That(looked[1].GetTexture("_BaseMap"), Is.SameAs(scarred));
+                    Assert.That(looked[1].GetTexture("_BaseMap"), Is.SameAs(clean));
 
                     // The face is skin too in this body, so the tint multiplies the new face.
                     appearance.ApplyTint(true, PlayerBodyColors.LocalPlayer, materials);
-                    Assert.That(head.sharedMaterials[1].GetTexture("_BaseMap"), Is.SameAs(scarred));
+                    Assert.That(head.sharedMaterials[1].GetTexture("_BaseMap"), Is.SameAs(clean));
                     Assert.That(head.sharedMaterials[0], Is.Not.SameAs(skin));
 
                     appearance.ApplyTint(false, PlayerBodyColors.LocalPlayer, materials);
@@ -111,7 +111,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Object.DestroyImmediate(root);
                 Object.DestroyImmediate(skin);
                 Object.DestroyImmediate(face);
-                Object.DestroyImmediate(scarred);
+                Object.DestroyImmediate(clean);
                 Object.DestroyImmediate(catalog);
             }
         }
@@ -123,15 +123,15 @@ namespace Mmorpg.Client.Tests.EditMode
             var second = new GameObject("Second");
             var skin = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             var face = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            var scarred = new Texture2D(4, 4);
-            var catalog = BodyLookTests.Catalog(face, scarred);
+            var clean = new Texture2D(4, 4);
+            var catalog = BodyLookTests.Catalog(face, clean);
             try
             {
                 using (var materials = new PlayerBodyMaterials())
                 {
                     var firstBody = CreateBody(first.transform, skin, face, catalog);
                     var secondBody = CreateBody(second.transform, skin, face, catalog);
-                    var look = BodyLook.Default.With("Face", "Scarred");
+                    var look = BodyLook.Default.With("Face", "Clean");
                     first.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
                     second.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
 
@@ -145,7 +145,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Object.DestroyImmediate(second);
                 Object.DestroyImmediate(skin);
                 Object.DestroyImmediate(face);
-                Object.DestroyImmediate(scarred);
+                Object.DestroyImmediate(clean);
                 Object.DestroyImmediate(catalog);
             }
         }
@@ -157,14 +157,14 @@ namespace Mmorpg.Client.Tests.EditMode
             var second = new GameObject("Second");
             var skin = new Material(Shader.Find(SkinShader));
             var lit = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            var jerkin = new Texture2D(4, 4) { name = "T_Paint_LeatherJerkin_Male" };
+            var tattoo = new Texture2D(4, 4) { name = "T_Paint_Tattoo_Male" };
             var catalog = ScriptableObject.CreateInstance<BodyAppearanceCatalog>();
             catalog.Configure(
                 new BodyAppearanceCatalog.Slot[0],
                 new[]
                 {
-                    new BodyAppearanceCatalog.Paint("LeatherJerkin", skin, jerkin, 30, 0.38f, 0f),
-                    new BodyAppearanceCatalog.Paint("Apron", lit, jerkin, 40, 0.5f, 0f),
+                    new BodyAppearanceCatalog.Paint("Tattoo", AppearanceCategory.Tattoo, string.Empty, skin, tattoo, 200, 0.38f, 0f),
+                    new BodyAppearanceCatalog.Paint("Scar", AppearanceCategory.Scar, string.Empty, lit, tattoo, 100, 0.5f, 0f),
                 });
             try
             {
@@ -172,14 +172,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 {
                     var firstBody = CreateBody(first.transform, skin, lit, catalog);
                     var secondBody = CreateBody(second.transform, skin, lit, catalog);
-                    var look = BodyLook.Default.WithPaint("LeatherJerkin", true).WithPaint("Apron", true);
+                    var look = BodyLook.Default.WithPaint("Tattoo", true).WithPaint("Scar", true);
                     first.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
                     second.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
 
                     var painted = firstBody.sharedMaterials[0];
                     Assert.That(painted, Is.Not.SameAs(skin));
                     Assert.That(painted.GetFloat("_PaintCount"), Is.EqualTo(1f));
-                    Assert.That(painted.GetTexture("_PaintMap1"), Is.SameAs(jerkin));
+                    Assert.That(painted.GetTexture("_PaintMap1"), Is.SameAs(tattoo));
                     Assert.That((Vector2)painted.GetVector("_PaintSurface1"), Is.EqualTo(new Vector2(0.38f, 0f)));
                     Assert.That(secondBody.sharedMaterials[0], Is.SameAs(painted));
                     // A material without the skin shader cannot take paint and stays as it is.
@@ -195,7 +195,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Object.DestroyImmediate(second);
                 Object.DestroyImmediate(skin);
                 Object.DestroyImmediate(lit);
-                Object.DestroyImmediate(jerkin);
+                Object.DestroyImmediate(tattoo);
                 Object.DestroyImmediate(catalog);
             }
         }

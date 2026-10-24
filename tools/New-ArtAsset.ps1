@@ -27,20 +27,24 @@ param(
     [string[]]$Previews = @("art/Characters/Human_Female"),
     # animations: clips of the gait model to start with, from Idle, Walk, and Jog.
     [string[]]$Generate = @(),
-    # paint: the painted material part, the bodies the paint fits with the painted one first, and
-    # the drawing order from 0 to 1000, the lowest first. garment: its layer from the inside out, by
-    # default the slot's typical layer. cage: the bodies it is fitted to, the one it is made from
-    # first.
+    # paint: its -PaintCategory, the painted material part, the bodies the paint fits with the painted
+    # one first, and the drawing order within its category's layers, by default the first of them;
+    # underwear also needs -Slot, body or legs. garment: its layer from the inside out, by default
+    # the slot's typical layer. cage: the bodies it is fitted to, the one it is made from first.
+    [ValidateSet("underwear", "scar", "tattoo")]
+    [string]$PaintCategory,
     [string]$Part = "Body",
     [string[]]$Bodies = @("art/Characters/Human_Male", "art/Characters/Human_Female"),
     [int]$Layer = 20,
-    # garment: its visual slot, its band from the cage, the slots it hides, what happens to the hair
-    # under headwear, and its cloth profile. Its -TriangleBudget is by default the slot's budget.
+    # garment: its visual slot, its band from the cage, the slots it hides, whether it hides the
+    # underwear of its slot, what happens to the hair under headwear, and its cloth profile. Its
+    # -TriangleBudget is by default the slot's budget.
     [ValidateSet("head", "body", "legs", "hands", "feet", "back", "hair")]
     [string]$Slot,
     [ValidateSet("tight", "mid", "outer", "loose")]
     [string]$Band,
     [string[]]$Hides = @(),
+    [switch]$HidesUnderwear,
     [ValidateSet("hide", "compress", "show")]
     [string]$Hair,
     [ValidateSet("robe", "cloak", "hood")]
@@ -135,7 +139,28 @@ switch ($Kind) {
         $lines.Add("    `"previews`": [$(Format-ArtList $previewPaths)],")
     }
     "paint" {
+        if ([string]::IsNullOrEmpty($PaintCategory)) {
+            throw "A paint layer needs -PaintCategory: underwear, scar, or tattoo."
+        }
+
+        if ($PaintCategory -eq "underwear" -and $script:ArtUnderwearSlots -notcontains $Slot) {
+            throw "Underwear needs -Slot, the visual slot it is worn in: body or legs."
+        }
+
+        if ($PaintCategory -ne "underwear" -and -not [string]::IsNullOrEmpty($Slot)) {
+            throw "Only underwear has a -Slot."
+        }
+
+        if (-not $PSBoundParameters.ContainsKey("Layer")) {
+            $Layer = $script:ArtPaintCategories[$PaintCategory][0]
+        }
+
         $bodyPaths = @($Bodies | ForEach-Object { (Read-ArtAssetManifest (Resolve-ArtAssetDirectory $_)).RelativeDirectory })
+        $lines.Add("    `"category`": `"$PaintCategory`",")
+        if ($PaintCategory -eq "underwear") {
+            $lines.Add("    `"slot`": `"$Slot`",")
+        }
+
         $lines.Add("    `"part`": `"$Part`",")
         $lines.Add("    `"bodies`": [$(Format-ArtList $bodyPaths)],")
         $lines.Add("    `"layer`": $Layer,")
@@ -207,6 +232,7 @@ switch ($Kind) {
 
         Add-ArtRecipeLines $lines $recipe
         $lines.Add("    `"hides`": [$(Format-ArtList $Hides)],")
+        $lines.Add("    `"hidesUnderwear`": $(if ($HidesUnderwear) { 'true' } else { 'false' }),")
         $lines.Add("    `"hair`": $(if ($Hair) { '"' + $Hair + '"' } else { 'null' }),")
         $lines.Add("    `"cloth`": $(if ($Cloth) { '"' + $Cloth + '"' } else { 'null' }),")
         $lines.Add('    "dyes": 0,')

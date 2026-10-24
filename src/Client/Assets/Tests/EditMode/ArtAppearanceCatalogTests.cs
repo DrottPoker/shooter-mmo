@@ -149,7 +149,13 @@ namespace Mmorpg.Client.Tests.EditMode
                 .Single(candidate => candidate.UnityTargetPath == "Assets/Art/Models/Characters/Human_Male.fbx");
             Assert.That(AssetDatabase.GetAssetPath(catalog), Is.EqualTo(ArtAppearanceCatalogs.PathFor(manifest)));
             Assert.That(catalog.Slots.Select(slot => slot.Name), Is.EquivalentTo(new[] { "Eye", "Face" }));
-            Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EquivalentTo(new[] { "Tattoo" }));
+            Assert.That(catalog.SlotNamed("Face").Options.Select(option => option.Name), Is.EqualTo(new[] { "Stubble", "Clean" }));
+            // A scar under the tattoo, and the briefs over both; the man has no bra.
+            Assert.That(catalog.Paints.Select(paint => paint.Name), Is.EqualTo(new[] { "Scar", "Tattoo", "Briefs" }));
+            Assert.That(catalog.Paints.Select(paint => paint.Category),
+                Is.EqualTo(new[] { AppearanceCategory.Scar, AppearanceCategory.Tattoo, AppearanceCategory.Underwear }));
+            Assert.That(catalog.Paints.Single(paint => paint.Name == "Briefs").Slot, Is.EqualTo("legs"));
+            Assert.That(catalog.Paints.Single(paint => paint.Name == "Scar").Material.name, Is.EqualTo("M_Face_Male"));
             // The garments from the lowest layer up, and by name within a layer.
             Assert.That(catalog.Garments.Select(garment => garment.Name),
                 Is.EqualTo(new[] { "WoolTrousers", "LeatherJerkin", "LinenLongShirt", "LinenShirt", "NetShirt" }));
