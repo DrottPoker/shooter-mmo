@@ -597,8 +597,10 @@ of fixed topology that lies over every body of the skeleton, smooth over the
 body's pits and following its figure, on which garments are made and fitted; the
 design is in
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-garment-cage). It has
-1,576 faces over the neck, the trunk, the arms to the wrists, and the legs to the
-ankles, in four regions: `neck`, `trunk`, `arms`, and `legs`.
+2,880 faces in six regions: 1,576 over the neck, the trunk, the arms to the
+wrists, and the legs to the ankles, in `neck`, `trunk`, `arms`, and `legs`, and
+since 2026-10-24 760 over the hands, in `hands`, and 544 over the feet, in
+`feet`.
 
 Its file holds:
 
@@ -606,8 +608,16 @@ Its file holds:
   copy of the male body's rig when the cage was made, and on it the mesh `Cage`,
   the male body's faces of its `Neck`, `Torso`, `Pelvis`, `UpperArms`,
   `Forearms`, `Thighs`, and `Shins` parts, with their weights and the face
-  attribute `region`. It never changes: a new base model changes the bodies, not
-  the cage. The figure scale and the lines it was last fitted with are custom
+  attribute `region`. Its faces never change: a new base model changes the
+  bodies, not the cage. Regions are only added to it, with their vertices and
+  faces after its own: `hands`, the male body's faces of its `Hands` part, met at
+  the wrist rings, with the face attribute `digit`, 1 to 5 for the thumb and the
+  fingers by the bone their corners weigh most and 0 for the palm; and `feet`, a
+  net of the cage's own on each side, 16 rings of 16 vertices from the ankle
+  ring to the toe tip, closed by a fan of 16 triangles there, with the point
+  attributes `sweep_ring` and `sweep_column` that place each vertex on its ring.
+  `Sync-CageAsset.ps1` adds a region the reference lacks, built on the first
+  body. The figure scale and the lines it was last fitted with are custom
   properties of `Cage`, so changing them in `asset.json` changes the file and
   needs a new approval.
 - Per body, the collection `Fit_<Label>` with the body's armature and the cage's
@@ -639,6 +649,30 @@ of any topology gets one:
    bottom stays. The tension fades in over three edges from the open ends.
 5. Eight Taubin steps fair the cage, and no vertex and no face centre stays
    closer to the skin than 1 mm.
+
+These steps fit the neck, the trunk, the arms, and the legs as one net. The
+hands and the feet are fitted after them as a second net that holds the wrist
+and ankle rings where the first left them, so the regions added to the cage
+changed none of its other vertices:
+
+- A hand's vertex moves with the rig like the rest, then to the nearest skin of
+  its own finger or thumb and the palm, the body's hand faces that the finger's
+  or thumb's bones move most, or of the whole hand where its faces belong to
+  more than one; the gaps between the fingers stay open, and the hands are not
+  faired.
+- A foot is laid on rings: half-planes that turn about an axis across the foot
+  in the ankle ring's plane, 25 mm in front of the ankle, from that plane down
+  in eight steps until they stand across the foot's forward direction, then
+  planes across it at 15, 30, 45, 60, 72, 83, 92, and 97 percent of the way to the
+  toe tip. Each ring follows the convex hull of its cross section of the foot's
+  skin, which spans the toes and the arch and makes the sole flat: its first
+  vertex lies where the ray from the hull's centre at the angle of the ankle
+  ring's first vertex meets the hull, and the others follow at the shares of
+  the outline at which the ankle ring's vertices lie. The last ring closes at the
+  toe tip. The feet are faired in eight Taubin steps.
+- No vertex and no face centre of either stays closer to the skin than 1 mm,
+  settled in 16 passes, since around a slender fingertip moving one face moves
+  the next one back.
 
 A version corrected by hand keeps its corrections, because the point attribute
 `fitted` holds the shape the last fitting gave, and the difference to it is
@@ -677,8 +711,10 @@ rows: the cage from the front, the right side, the back, and the back left,
 colored by its distance from the skin, blue at the skin, yellow at 15 mm, and
 red from 30 mm, with the lines drawn on it in colors; the cage in one cloth
 color from the same sides; and the torso up close in the cloth color from the
-front right, the back left, the back, and the back right. The cage is drawn 4 mm
-off its place, so the skin does not shine through.
+front right, the back left, the back, and the back right; and the left hand from
+outside and from the front and the left foot from outside and from the front,
+up close in the distance colors. The cage is drawn 4 mm off its place, so the
+skin does not shine through.
 
 ## Garments
 
@@ -703,9 +739,9 @@ The recipe in `asset.json` says what the pipeline builds:
 
 | Field | Meaning |
 | --- | --- |
-| `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, and `legs`, such as `["trunk", "arms"]` for the shirt. A region without a cut is covered whole. |
-| `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`. |
-| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line. |
+| `regions` | The cage regions it covers, of `neck`, `trunk`, `arms`, `legs`, `hands`, and `feet`, such as `["trunk", "arms"]` for the shirt and `["legs", "feet"]` for the boots. A region without a cut is covered whole. |
+| `cuts` | The standard lines where it ends, each with the side it keeps: `head` toward the head of the line's bone, `tail` toward its tail. The shirt keeps the `tail` of `HemHip`, the trunk above the hem, and the `head` of `SleeveShort`, the arm toward the shoulder; the trousers keep the `head` of `Waist` and of `LegAnkle`; the boots keep the `tail` of `BootCalf` and the gloves of `GloveCuff`. |
+| `over` | Optional: where it lies over a garment of another slot, each a line of its regions, the side of it the inner garment keeps, and the inner garment's band. The shirt lies over `tight` trousers on the `head` side of `Waist`: there its band is measured from the inner garment's surface, the inner band's distance off the cage, and it rises to it over 30 mm before the line, also in the regions that hang from the line's region, such as a hand from its arm. The boots lie over `tight` trousers on the `head` side of `LegAnkle`, the gloves over a `tight` sleeve on the `head` side of `SleeveLong`. |
 | `ease` | More room at the front and the back of the lower armholes, in meters, fading out over 60 mm. The proof set has none, since ease there let more skin come through in the clips. |
 | `hem` | How deep every open edge is turned inward, in meters, such as `0.002`. |
 
@@ -716,12 +752,19 @@ models by hand over the cage, such as a hairstyle or a helmet.
 
 - A body or a cage version that changed in its own file is taken in again. The
   first version is bound to the old cage and placed on the new one, so it
-  follows.
+  follows; where its cage did not move, such as when only other regions were
+  added to the cage, it stays exactly where it was, so every other version is
+  fitted as before.
 - A new template, or one synced with `-Rebuild` after its recipe changed, gets
   its first version built from the first body's cage: the cage's faces of its
   regions, cut at its lines, every cage vertex within 8 mm of a line first moved
   onto it, so the edge runs straight; seams down the sides of the trunk, under
-  the arms, and along the borders between regions, and UVs unfolded along them;
+  the upper arms and along the inside of the forearms, each measured around its
+  own bone, along the inside of the legs, along the borders between regions, so
+  a hand or a foot meets its limb at a seam, between a glove's palm and its back,
+  by the side of the hand each face looks to, so the seam runs along the sides
+  of the fingers, and around a boot's sole, where its faces look down, and up
+  the back of its heel, and UVs unfolded along them;
   an offset from the cage into the band, 2 mm for `tight`, so clothes lie as
   close to the body as they can, 10 mm for `mid`, and 20 mm for `outer` and
   `loose`, and more where `over` lifts it over an inner garment; the ease; every open edge turned inward by the
@@ -731,18 +774,21 @@ models by hand over the cage, such as a hairstyle or a helmet.
   carries a shape made by hand over: each new vertex takes the difference at its
   place on the cage.
 - Every other version is fitted from the first through the cage: each vertex is
-  bound to a triangle of the first body's cage, by its barycentric coordinates
+  bound to a triangle of the first body's cage, of every region but the hands
+  and the feet that the template does not cover, so a sleeve's or a trouser
+  leg's hem follows its limb, by its barycentric coordinates
   and its offset in the triangle's frame, and placed at the same triangle and
-  offset of the other body's cage. Every body's cage has the same faces, so this
+  offset of the other body's cage. The band is measured from the same regions. Every body's cage has the same faces, so this
   needs nothing of the bodies' own topology. A vertex or a face centre that then
   leaves the band moves back into it. A version corrected by hand keeps its
   corrections, because the point attribute `fitted` holds the shape the last
   fitting gave, and the difference to it is applied again.
 - Every vertex gets the weights of the nearest skin of the body part its cage
-  face lies on, the cage's region and side, interpolated from the corners of the
+  face lies on, the cage's region and side, and on a hand the face's finger or
+  thumb with the palm, interpolated from the corners of the
   skin's triangle, limited to four bones, and not smoothed, so it moves like the
   skin it covers: a sleeve's inside at the armpit moves with the arm, not with
-  the trunk next to it. The point attribute `transferred_weights` holds a
+  the trunk next to it, and a glove's finger with its own finger. The point attribute `transferred_weights` holds a
   checksum of the weights the last transfer gave each vertex of the first
   version, so a vertex whose weights were painted by hand keeps them, also in
   the other versions. `-Weights` transfers every weight again.
@@ -750,7 +796,9 @@ models by hand over the cage, such as a hairstyle or a helmet.
 
 The sync then writes the review sheet `artifacts/art-previews/<Name>.png`. Per
 body it shows three rows: the body in the template from four sides with its
-torso from the front and the back, the template showing a grid in its UVs, so
+torso from the front and the back, or for a template shorter than 40 percent of
+the body, such as a glove or a boot, the one on the body's left up close from
+outside and from the front, the template showing a grid in its UVs, so
 the sheet shows how they stretch; the template in the test poses of `poses.py`;
 and the body without it, its covered faces orange, the skin kept visible at the
 template's edges yellow, the pulled-in vertices blue, and the skin that comes
@@ -834,8 +882,14 @@ its cage is approved and after its bodies and the animation libraries of its
 skeleton are exported from their current files, and it records the cage's approved file and their
 exports, so `Verify-ArtAssets.ps1` fails when the cage's file changed or a body
 or a library has a newer export than the one the template was fitted to and
-checked in: sync, review, and export the template again. Its material has no
-image, so the game shows a template only with a texture.
+checked in: sync, review, and export the template again. It also records the
+exports of the templates it was checked over in the pair check, so templates
+that are exported together, such as after a change of the cage, are exported in
+the order of their layers, the trousers before the boots before the shirts
+before the gloves; a texture of a template exported before a template of a lower
+layer stops with `was checked over other templates of a lower layer than the
+current exports of its cage's templates` until its template is exported again.
+Its material has no image, so the game shows a template only with a texture.
 
 Garments of different layers check each other when a character wears them
 together, which comes with the pair check of the first pair of templates that
@@ -1054,15 +1108,19 @@ weights.
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
 | `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. |
+| `art/GarmentTextures/LeatherBoots` | `texture` | none | Dark brown leather on `Boots`, 1024 px, painted by a script from each texel's point on the template: fine grain and blotches, a darker band with stitches along the top of the shaft, stitched seams around the ankle and up the inside of the shaft and the back of the heel, a burnished toe cap and heel counter, and a near-black sole with a darker welt stitched around it. Roughness 0.55. Approved 2026-10-24. |
+| `art/GarmentTextures/LeatherGloves` | `texture` | none | Soft, lighter brown leather on `Gloves`, 1024 px, painted the same way: fine grain and blotches, stitched seams between the palm and the back along the sides of the fingers, around the wrist, and along the inside of the cuff, and a darker band with stitches at the cuff's edge. Roughness 0.6. Approved 2026-10-24. |
 | `art/GarmentTextures/LeatherJerkin` | `texture` | none | The leather jerkin on `Shirt`, 1024 px: warm brown leather with blotches and grain, darker trim with stitches along the neckline, the hem, and the sleeve ends, and an open V at the front, laced across, where the skin shows between the laces. It has masks of its own. Roughness 0.62. Moved from the first leather jerkin garment and then from the template `Jerkin`, which became `Shirt`, by projection. |
 | `art/GarmentTextures/LinenLongShirt` | `texture` | none | Plain oatmeal linen on `LongShirt`, 1024 px, with a fine weave, soft wear, stitched hems at the neckline, the hem, and the cuffs, and stitched seams. Roughness 0.82. |
 | `art/GarmentTextures/LinenShirt` | `texture` | none | The same linen on `Shirt`. |
 | `art/GarmentTextures/NetShirt` | `texture` | none | A coarse hemp-colored net on `Shirt`, 1024 px: round cords of 2.4 mm in diamond meshes 25 mm apart around the trunk and each arm, transparent between them, with solid hems 14 mm wide at the neckline, the hem, and the sleeve ends. It has masks of its own, so the skin and its paint show through the meshes. Roughness 0.88. |
 | `art/GarmentTextures/WoolTrousers` | `texture` | none | Brown wool on `Trousers`, 1024 px, with a coarse weave, a darker waistband, stitched hems at the ankles, and stitched seams, among them a yoke across the hips. Roughness 0.9. |
+| `art/Garments/Boots` | `garment` | none | Boots in the `mid` band, layer 120, from the recipe `legs` and `feet`, cut at `BootCalf`, over `tight` trousers below `LegAnkle`, turned edges 4 mm deep, 1,376 triangles per body: a shaft to the middle of the calf 10 mm off the cage and a foot over the cage's smooth feet, without toes, with a flat sole. Approved 2026-10-24. |
+| `art/Garments/Gloves` | `garment` | none | Gloves with five fingers in the `tight` band, layer 350, from the recipe `arms` and `hands`, cut at `GloveCuff`, over a `tight` sleeve below `SleeveLong`, turned edges 2 mm deep, 1,808 triangles per body, the cuff about 7 cm up the forearm. Approved 2026-10-24. |
 | `art/Garments/LongShirt` | `garment` | none | `Shirt` with long sleeves, cut at `SleeveLong`, 2,176 triangles per body. |
 | `art/Garments/Shirt` | `garment` | none | A short-sleeved top in the `tight` band, layer 150, from the recipe `trunk` and `arms`, cut at `HemHip` and `SleeveShort`, over `tight` trousers below `Waist`, turned edges 2 mm deep, without ease or collar, 1,536 triangles per body, on `art/Cages/Humanoid`. |
 | `art/Garments/Trousers` | `garment` | none | Trousers in the `tight` band, layer 100, from the recipe `trunk` and `legs`, cut at `Waist` and `LegAnkle`, turned edges 2 mm deep, 1,496 triangles per body, with seams along the inside of the legs. |
-| `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the twelve standard lines of [Garment Cage](#garment-cage). |
+| `art/Cages/Humanoid` | `cage` | none | The garment cage of the `Humanoid` skeleton, made from the male body on 2026-10-23 and fitted to the male and the female, with a figure scale of 60 mm and the twelve standard lines of [Garment Cage](#garment-cage); its regions `hands` and `feet` were added on 2026-10-24, 2,880 faces in all. Approved 2026-10-24. |
 | `art/Paint/Bra` | `paint` | none | The woman's `underwear` in the `body` slot over `M_Body`, layer 910: the pale blue bra with its cups, band, and straps over the middle of the shoulders, lifted out of her body texture with its shaded edge. Roughness 0.8. |
 | `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900: pale blue briefs with a darker waistband, lifted out of the male body texture and moved to the female. Roughness 0.8. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, lifted out of the former male face `Scarred` and moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |

@@ -1,0 +1,75 @@
+{
+    "schemaVersion": 2,
+    "kind": "garment",
+    "cage": "art/Cages/Humanoid",
+    "slot": "hands",
+    "layer": 350,
+    "band": "tight",
+    "recipe": {
+        "regions": ["arms", "hands"],
+        "cuts": [
+            { "line": "GloveCuff", "keep": "tail" }
+        ],
+        "over": [
+            { "line": "SleeveLong", "keep": "head", "band": "tight" }
+        ],
+        "ease": 0,
+        "hem": 0.002
+    },
+    "hides": [],
+    "hidesUnderwear": false,
+    "hair": null,
+    "cloth": null,
+    "dyes": 0,
+    "triangleBudget": 2000,
+    "approvals": {
+        "model": {
+            "date": "2026-10-24",
+            "sourceSha256": "931039a147bc345c7d372b7cd3dfd0221446dd950ade21c520e502c20ff1eba1"
+        },
+        "rig": {
+            "date": "2026-10-24",
+            "sourceSha256": "931039a147bc345c7d372b7cd3dfd0221446dd950ade21c520e502c20ff1eba1"
+        }
+    },
+    "export": {
+        "sourceSha256": "931039a147bc345c7d372b7cd3dfd0221446dd950ade21c520e502c20ff1eba1",
+        "cageSourceSha256": "1821846b4a5f9832b1e459d6be5525e8b216ab43548ffa419ca7b0ce25478e34",
+        "models": [
+            {
+                "body": "Male",
+                "bodyFitSha256": "3f384ad10189db1c3a3c70d88cc0c6f1adcdd19cb715ef51af687bc1c2996695",
+                "target": "src/Client/Assets/Art/Models/Garments/Gloves_Male.fbx",
+                "sha256": "ae930cb354c4df07da7e1dcb38d8d5bc3951a763776cd236772533843acd41b9",
+                "data": "src/Client/Assets/Art/Models/Garments/Gloves_Male.json",
+                "dataSha256": "69f2232665de7f8132ed94f1657447ceb28d16476b3a8970dab7bbb46d2045f5"
+            },
+            {
+                "body": "Female",
+                "bodyFitSha256": "6d6123be26f47d604aa2e0c2b03fec2679fce235dd0faf34b722d377328a8317",
+                "target": "src/Client/Assets/Art/Models/Garments/Gloves_Female.fbx",
+                "sha256": "8ba8fb5fe5fb1cd2ce05602e2f4e5b7d13ed0e65e06aac004dfcb3f2a5f36200",
+                "data": "src/Client/Assets/Art/Models/Garments/Gloves_Female.json",
+                "dataSha256": "991d0eea5b7252845dbfbfc269b89dae32cb5d423d4786d4785702bda2269f45"
+            }
+        ],
+        "clipSources": [
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c" }
+        ],
+        "pairSources": [
+            { "garment": "art/Garments/Boots", "sourceSha256": "bdf53a1efdab563722387b918f9e13ec5eb43c42802aa1f668df7eece55fc068" },
+            { "garment": "art/Garments/LongShirt", "sourceSha256": "33e5a71db10fb6eb288e372a915900e410af95c2699272c99e0b29fee68d6977" },
+            { "garment": "art/Garments/Shirt", "sourceSha256": "2529334242c40230e2aa5ffd8ee4292452d99d0fb87369aee96b1d6492b6ccee" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "06f3f5c8225ebef8a6d14f51eeb26723268d38c2b8bf6c934fd72d19135e4225" }
+        ],
+        "materials": [
+            {
+                "name": "M_Garment_Gloves",
+                "baseColor": "#CECECE",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            }
+        ],
+        "textures": []
+    }
+}

@@ -3053,27 +3053,32 @@ made on, `art/Cages/Humanoid`. It exists already; `New-ArtAsset.ps1 -Kind cage
 its `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
 
 1. Fit it to the bodies and check it, after a body, the figure scale, or a line
-   in `asset.json` changed:
+   in `asset.json` changed, or after a region was added to the pipeline:
 
    ```powershell
    .\tools\Sync-CageAsset.ps1
    ```
 
-   Expected result: one report line per body, such as `Cage_Male: 1576 faces,
-   1.0 to 25.6 mm from the skin, median 1.9 mm, 223 vertices span pits more than
+   Expected result: one report line per body, such as `Cage_Male: 2880 faces,
+   1.0 to 25.6 mm from the skin, median 1.8 mm, 275 vertices span pits more than
    5 mm deep`, `Synced Humanoid: ...` or `Humanoid is up to date: ...`, the path
-   of the review sheet, and `Humanoid meets every rule. Review it, ...`. A second
-   run prints `Humanoid is up to date: ...` and leaves the file as it is. A broken
-   rule stops it with the list of rules, such as a line that does not cross its
-   region, or faces that cross each other.
+   of the review sheet, and `Humanoid meets every rule, and its stage is approved
+   for this file.` A cage that lacks a region the pipeline has first prints
+   `Added the regions hands, feet to the cage, built on Male.`; its other
+   vertices stay exactly where they were. A second run prints `Humanoid is up to
+   date: ...` and leaves the file as it is. A broken rule stops it with the list
+   of rules, such as a line that does not cross its region, or faces that cross
+   each other.
 2. Look at `artifacts\art-previews\Humanoid.png`. Expected result: per body a
    row colored by the distance from the skin, mostly blue, yellow over the
    spanned pits, with the twelve lines drawn as colored rings at the neck, under
    the bust, at the waist and the hips, on the arms, and on the legs; a row in
-   one brown cloth color; and the torso up close. The cloth follows the waist,
-   the small of the back, the bust, and the buttocks, and shows no buttock
-   cleft above the hip line, no spine groove, no navel, and no abdominal
-   muscles.
+   one brown cloth color; the torso up close; and the left hand and foot up
+   close. The cloth follows the waist, the small of the back, the bust, and the
+   buttocks, and shows no buttock cleft above the hip line, no spine groove, no
+   navel, and no abdominal muscles. The hand follows each finger with the gaps
+   between them open; the foot is smooth, without toes, with a flat sole and a
+   fold at the front of the ankle.
 3. Open the file in Blender to look closer:
 
    ```powershell
@@ -3092,9 +3097,12 @@ its `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
    .\tools\Verify-ArtAssets.ps1
    ```
 
-   Expected result: `Approved the 'model' stage of Humanoid (faces=1576).` and
-   `Verified 17 art asset(s).` The cage has no export; commit the `.blend` file
-   and `asset.json` together.
+   Expected result: `Approved the 'model' stage of Humanoid (faces=2880).` and
+   `Verified 21 art asset(s).` The cage has no export; commit the `.blend` file
+   and `asset.json` together. Every template on the cage records its approved
+   file, so sync, review, approve, and export its templates again, in the order
+   of their layers, and their textures after them; a template whose regions did
+   not move keeps its shape, its weights, and its exported files.
 
 ### Make A Garment
 
@@ -3175,7 +3183,10 @@ so a shirt and a jerkin replace each other.
    file, `asset.json`, the FBX and JSON files, the material, and their `.meta`
    files together. A template is exported after its cage is approved and after
    its bodies and the animation library are exported, and again whenever one of
-   them changes. Then give it a texture.
+   them changes. Templates exported together are exported in the order of their
+   layers, `Trousers`, `Boots`, `LongShirt`, `Shirt`, then `Gloves`, since each
+   records the exports of the templates of lower layers it was checked over.
+   Then give it a texture.
 
 ### Make A Garment Texture
 
@@ -3376,6 +3387,51 @@ controller, and prefabs are committed.
     the hem, the hips are whole, the V shows the chest between the laces, and a
     look up into a sleeve shows the arm going on into it. Press `Death`. Expected
     result: the body falls and lies on its back in the jerkin.
+19. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Boots`, then the same
+    for `art/Garments/Gloves`. Expected result: `Boots_Male: 1376 triangles,
+    6.8 to 12.6 mm from the cage, median 9.8 mm`, `Boots is up to date: ...`,
+    for both bodies `none of the 147 visible vertices under it comes through
+    it`, `Boots_Male: covers 683 of 4358 body faces, leaves 42 at its edges
+    visible, and pulls in 0 visible vertices`, `Trousers under Boots_Male: ...
+    1 come through it ... by at most 4.6 mm (Shins in Jog frame 3)`, a trouser
+    vertex at the front of the ankle inside the boot's fold, and none on the
+    female; then `Gloves_Male: 1808 triangles, 0.2 to 4.1 mm from the cage`,
+    `Gloves_Male: of the 43 visible vertices under it, 1 come through it ... by
+    at most 1.5 mm (Hands in fist)`, none on the female, `LongShirt under
+    Gloves_Male: ... 2 come through it ... by at most 1.1 mm (Forearms in Walk
+    frame 3)`, 5 by at most 1.5 mm on the female, and `... meets every rule, and
+    both stages are approved for this file.` Open `artifacts\art-previews\Boots.png`
+    and `artifacts\art-previews\Gloves.png`. Expected result: the last two
+    columns show the left boot or glove up close from outside and from the front,
+    with an even grid; the boot reaches the middle of the calf, covers the foot
+    without toes, and has a flat sole; the glove has five fingers and ends about
+    7 cm up the forearm. Then run
+    `.\tools\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/LeatherBoots` and
+    the same for `LeatherGloves` and open their sheets. Expected result: dark
+    brown leather boots with a stitched band at the top, a stitched seam around
+    the ankle, a lighter toe and heel, and a near-black sole with a stitched
+    welt; soft lighter brown gloves with stitched seams along the sides of the
+    fingers, around the wrist, and on the inside of the cuff, and a stitched band
+    at the cuff's edge.
+20. In a World scene, press F2 and in the Presentation section turn on
+    `Try on garment: WoolTrousers`, `Try on garment: LeatherBoots`,
+    `Try on garment: LinenLongShirt`, and `Try on garment: LeatherGloves`.
+    Expected result: your body wears the trousers tucked into brown leather
+    boots that reach the middle of the calf, the long linen shirt, and brown
+    leather gloves over its cuffs, with five fingers that follow your hands.
+    No toes and no fingertips show through, and nothing of the trousers or the
+    sleeves shows through the boots or the gloves when you walk, jog, and turn;
+    a look into a boot's shaft or a glove's cuff shows the trouser leg or the
+    sleeve going on into it. The soles sink about 1 cm into the ground. Turn the
+    boots and the gloves off. Expected result: the bare feet and hands are back,
+    whole.
+21. In the Unity Editor, open `MMORPG > Tools > Art Pipeline > Wardrobe`, pick
+    each body in turn, and tick `WoolTrousers`, `LeatherBoots`,
+    `LinenLongShirt`, and `LeatherGloves`. Expected result: `Drawn` reads
+    `WoolTrousers, LeatherBoots, LinenLongShirt, LeatherGloves`, and the body
+    wears them as in step 20. Press `Walk`, `Jog`, and `Death`. Expected result:
+    the boots follow the feet and bend at the front of the ankle, the gloves'
+    fingers follow the hands, and the body falls and lies in the outfit.
 
 ## One-Time Unity World Scene Authoring
 

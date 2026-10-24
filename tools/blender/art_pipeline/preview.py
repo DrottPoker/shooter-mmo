@@ -228,6 +228,9 @@ def render_paint_sheet(output: str, cell: int) -> str:
 # yaw of 0 looks at its back.
 GARMENT_POSES = ("t_pose", "arms_up", "arms_forward", "torso", "stride", "sit")
 GARMENT_POSE_YAW = 215.0
+# A garment shorter than this share of the body's height, such as a glove or a boot, is seen up close
+# instead of the torso.
+CLOSE_SHARE = 0.4
 # The mask view: body faces the garment covers, the skin at its edges that stays visible, the
 # vertices it pulls in, the skin that comes through it in motion even so, and the other skin.
 COVERED_SRGB = (0.95, 0.45, 0.10)
@@ -284,12 +287,14 @@ def _review_grid(versions: list[bpy.types.Object]) -> None:
 
 
 def render_garment_sheet(output: str, cell: int, name: str | None = None, band: str | None = None,
-                         libraries: list[tuple[str, list[str]]] | None = None) -> str:
+                         libraries: list[tuple[str, list[str]]] | None = None, template: str | None = None) -> str:
     """A garment on every body of its file, rows per body: the body in the garment from four sides
-    with its torso from the front and from the back, then the test poses that bend it, and with the
-    garment's name and band the body without it, colored: orange the covered faces, yellow the skin
-    at the garment's edges that stays visible, blue the pulled-in vertices, and red the skin that
-    comes through the garment in the test poses and the clips of the libraries."""
+    with its torso, or the garment itself when it is a glove or a boot, up close, then the test poses
+    that bend it, and with the garment's name and band the body without it, colored: orange the
+    covered faces, yellow the skin at the garment's edges that stays visible, blue the pulled-in
+    vertices, and red the skin that comes through the garment in the test poses and the clips of the
+    libraries. template names the garment's template where name is left out, for the close-ups."""
+    template = template or name
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
     armatures = sorted((o for o in scene.objects if o.type == "ARMATURE"), key=lambda o: o.name)
@@ -305,14 +310,28 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
         top = (rows - 1 - row) * cell
         sheet[top:top + cell, column * cell:(column + 1) * cell] = _render(scene, path)
 
-    def around(row: int, center: Vector, radius: float, low: Vector, high: Vector, tag: str) -> None:
+    def around(row: int, center: Vector, radius: float, low: Vector, high: Vector, tag: str,
+               close: tuple[Vector, float, tuple[float, float]]) -> None:
         for column, yaw in enumerate(YAWS):
             _aim(camera, sun, center, radius, yaw)
             place(row, column, os.path.join(scratch, f"{tag}_{column}.png"))
-        torso = Vector((center.x, center.y, low.z + (high.z - low.z) * 0.68))
-        for column, yaw in enumerate((180.0, 0.0), len(YAWS)):
-            _aim(camera, sun, torso, (high.z - low.z) * 0.22, yaw)
+        target, size, yaws = close
+        for column, yaw in enumerate(yaws, len(YAWS)):
+            _aim(camera, sun, target, size, yaw)
             place(row, column, os.path.join(scratch, f"{tag}_c{column}.png"))
+
+    def close_up(arm: bpy.types.Object, center: Vector, low: Vector, high: Vector) -> tuple[Vector, float, tuple[float, float]]:
+        """The torso from the front and the back, or for a garment much shorter than the body, such
+        as a glove or a boot, the one on the body's left from outside and from the front."""
+        height = high.z - low.z
+        version = bpy.data.objects.get(garment.version_name(template, arm.name)) if template else None
+        if version is not None:
+            co = bodies.world_positions(version)
+            left = co[co[:, 0] < arm.matrix_world.translation.x]
+            if np.ptp(co[:, 2]) < CLOSE_SHARE * height and len(left):
+                near, far = Vector(left.min(axis=0)), Vector(left.max(axis=0))
+                return (near + far) / 2.0, max((far - near).length * 0.6, 0.08), (270.0, 180.0)
+        return Vector((center.x, center.y, low.z + height * 0.68)), height * 0.22, (180.0, 0.0)
 
     actions = coverage.load_actions(libraries or []) if name else []
     with tempfile.TemporaryDirectory() as scratch:
@@ -326,7 +345,8 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
             center = (low + high) / 2.0
             radius = max((high - low).length / 2.0, 0.1)
             row = per_body * index
-            around(row, center, radius, low, high, f"{index}")
+            close = close_up(arm, center, low, high)
+            around(row, center, radius, low, high, f"{index}", close)
             for column, pose_name in enumerate(GARMENT_POSES):
                 poses.apply(arm, next(p for n, _d, p in poses.POSES if n == pose_name))
                 # Raised arms reach above the rest pose's bounds.
@@ -343,7 +363,7 @@ def render_garment_sheet(output: str, cell: int, name: str | None = None, band: 
                 for slot in range(len(body.data.materials)):
                     body.data.materials[slot] = mask
                 version.hide_render = True
-                around(row + 2, center, radius, low, high, f"{index}_m")
+                around(row + 2, center, radius, low, high, f"{index}_m", close)
                 version.hide_render = False
                 for slot, material in enumerate(materials):
                     body.data.materials[slot] = material
@@ -358,7 +378,12 @@ CAGE_YAWS = (180.0, 90.0, 0.0, 35.0)
 # The torso up close from the front right, the back left, the back, and the back right, where the arms
 # hide nothing.
 CAGE_TORSO_YAWS = (145.0, 35.0, 0.0, 325.0)
-CAGE_ROWS = 3
+# The left hand and foot up close: the hand from outside and from the front, past the thigh that hides
+# the palm, the foot from outside and from the front, each as a bone it is aimed at, the direction it
+# is seen from, and the view's radius.
+CAGE_ENDS = (("Hand_L", (-1.0, 0.15, 0.1), 0.13), ("Hand_L", (0.45, 1.0, -0.25), 0.13),
+             ("Foot_L", (-1.0, 0.1, 0.25), 0.16), ("Foot_L", (-0.4, 1.0, 0.5), 0.16))
+CAGE_ROWS = 4
 CAGE_PITCH = 8.0
 # Shown this far off the cage, which lies 1 mm from the skin, so the skin does not shine through.
 CAGE_DISPLAY_OFFSET = 0.004
@@ -389,12 +414,19 @@ def _aim_low(camera: bpy.types.Object, sun: bpy.types.Object, center: Vector, ra
     sun.rotation_euler = (math.radians(50.0), 0.0, math.radians(yaw - 45.0))
 
 
+def _aim_from(camera: bpy.types.Object, sun: bpy.types.Object, center: Vector, radius: float, direction: Vector) -> None:
+    camera.location = center + direction.normalized() * (radius / math.sin(camera.data.angle / 2.0) * 1.05)
+    camera.rotation_euler = (center - camera.location).to_track_quat("-Z", "Y").to_euler()
+    yaw = math.degrees(math.atan2(direction.x, -direction.y))
+    sun.rotation_euler = (math.radians(50.0), 0.0, math.radians(yaw - 45.0))
+
+
 def render_cage_sheet(output: str, cell: int, labels: list[str], lines: list[dict]) -> str:
     """The garment cage on every body: per body a row colored by the cage's distance from the skin,
     blue at the skin, yellow at 15 mm, and red from 30 mm, with the standard lines drawn on it, a
-    row in one cloth color, each from the front, the right side, the back, and the back left, and a
+    row in one cloth color, each from the front, the right side, the back, and the back left, a
     row of the torso up close in the cloth color from the front right, the back left, the back, and
-    the back right."""
+    the back right, and a row of the left hand and foot up close in the distance colors."""
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
     for obj in scene.objects:
@@ -418,7 +450,7 @@ def render_cage_sheet(output: str, cell: int, labels: list[str], lines: list[dic
             version = bpy.data.objects[cage.version_name(label)]
             body = bodies.source_body(label)
             co = bodies.world_positions(version)
-            normals = cage.Net(version.data).normals(co)
+            normals = cage.Net.of(version.data).normals(co)
             mesh = version.data.copy()
             mesh.name = f"PreviewCage_{label}"
             mesh.vertices.foreach_set("co", (co + normals * CAGE_DISPLAY_OFFSET).reshape(-1))
@@ -464,6 +496,19 @@ def render_cage_sheet(output: str, cell: int, labels: list[str], lines: list[dic
                     top = (rows - 1 - row) * cell
                     sheet[top:top + cell, column * cell:(column + 1) * cell] = _render(
                         scene, os.path.join(scratch, f"{label}_{row}_{column}.png"))
+            arm = bpy.data.objects[label]
+            shown.data.materials[0] = gap
+            for obj in drawn:
+                obj.hide_render = False
+            row = CAGE_ROWS * index + 3
+            for column, (bone, direction, radius) in enumerate(CAGE_ENDS):
+                target = arm.data.bones[bone]
+                center = arm.matrix_world @ (target.tail_local if bone.startswith("Hand") else
+                                             target.head_local.lerp(target.tail_local, 0.6) - Vector((0.0, 0.0, 0.03)))
+                _aim_from(camera, sun, center, radius, Vector(direction))
+                top = (rows - 1 - row) * cell
+                sheet[top:top + cell, column * cell:(column + 1) * cell] = _render(
+                    scene, os.path.join(scratch, f"{label}_{row}_{column}.png"))
             body.hide_render = True
             shown.hide_render = True
             for obj in drawn:

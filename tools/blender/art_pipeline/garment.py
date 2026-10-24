@@ -78,6 +78,8 @@ LINE_SNAP = 0.008
 # the line.
 OVER_FADE = 0.03
 UV_MARGIN = 0.02
+# A boot's sole is where its faces look this far down, the cosine of their angle to straight down.
+SOLE_FACING = 0.5
 # A vertex or a face centre that leaves its band moves back into it by the difference and this
 # margin, a few times over, because moving one face moves the corners it shares.
 SETTLE_MARGIN = 0.0005
@@ -134,24 +136,35 @@ def recipe_text(recipe) -> str:
     return json.dumps(recipe, sort_keys=True, separators=(",", ":"))
 
 
+def recipe_regions(recipe) -> tuple[str, ...] | None:
+    """The cage regions a template is bound to and measured from: every region but the hands and
+    the feet that it does not cover, so the hem of a sleeve or a trouser leg follows its limb and not
+    the hand or the foot beyond it, or None for a modeled template, which may lie on any."""
+    if not isinstance(recipe, dict):
+        return None
+    return tuple(r for r in cage.REGIONS if r not in cage.ATTACHED or r in recipe["regions"])
+
+
 def over_lift(recipe, lines: list[dict], label: str, points: np.ndarray) -> np.ndarray:
     """How far each point of a template on a body lies farther from the cage than its band, because
     the recipe says the template lies over an inner garment beyond a standard line there: the inner
     band's distance from the cage on the line's side the inner garment keeps, fading in over
-    OVER_FADE before the line, and only in the line's region of the cage."""
+    OVER_FADE before the line, and only in the line's region of the cage and the regions that hang
+    from it, such as a hand from its arm."""
     lift = np.zeros(len(points))
     entries = recipe.get("over", []) if isinstance(recipe, dict) else []
     if not entries:
         return lift
     shell = cage_object(label)
-    surface = Surface(shell, [])
+    surface = Surface(shell, [], recipe_regions(recipe))
     keys = cage_keys(shell, surface)
     nearest = [surface.tree.find_nearest(Vector(p))[2] for p in points]
     by_name = {line["name"]: line for line in lines}
     for entry in entries:
         line = by_name[entry["line"]]
+        regions = {line["region"]} | {end for end, parent in cage.ATTACHED.items() if parent == line["region"]}
         for side, point, normal in cage.line_planes(label, line):
-            inside = np.array([t is not None and keys[t][0] == line["region"] and (not side or keys[t][1] == side)
+            inside = np.array([t is not None and keys[t][0] in regions and (not side or keys[t][1] == side)
                                for t in nearest])
             # The side a cut keeping the bone's head keeps lies behind the plane's normal.
             signed = (points - np.array(point)) @ np.array(normal)
@@ -188,12 +201,17 @@ def _triangles(mesh: bpy.types.Mesh) -> list[tuple[int, int, int, int]]:
 
 class Surface:
     """A mesh's surface for fitting, such as a body or a cage: its triangles, their frames, and the
-    mesh's weights over the given bones, or over its own vertex groups."""
+    mesh's weights over the given bones, or over its own vertex groups. A cage's surface may hold
+    only the faces of some of its regions, those recipe_regions gives a template."""
 
-    def __init__(self, obj: bpy.types.Object, names: list[str] | None = None):
+    def __init__(self, obj: bpy.types.Object, names: list[str] | None = None, regions: tuple[str, ...] | None = None):
         mesh = obj.data
         self.co = bodies.world_positions(obj)
         self.triangles = _triangles(mesh)
+        if regions is not None:
+            values = cage.face_ints(mesh, "region", -1)
+            wanted = {cage.REGIONS.index(r) for r in regions}
+            self.triangles = [t for t in self.triangles if values[t[0]] in wanted]
         self.tree = BVHTree.FromPolygons([tuple(p) for p in self.co], [t[1:] for t in self.triangles])
         self.names = names if names is not None else [g.name for g in obj.vertex_groups]
         self.weights = bodies.weights_of(obj, self.names) if self.names else np.zeros((len(self.co), 0))
@@ -246,24 +264,35 @@ class Surface:
 class RegionSkin:
     """A body's skin with its weights, split by the regions and sides of the cage, so cloth takes the
     weights of the body part it lies on: a sleeve's inside at the armpit those of the arm, not of
-    the trunk next to it."""
+    the trunk next to it. A hand's skin is also split by its digits, each finger and the thumb with
+    the palm, so a glove's finger moves with its own finger and not with the next one."""
 
     def __init__(self, body: bpy.types.Object, names: list[str]):
         self.surface = Surface(body, names)
         zones = bodies.zones_of(body)
+        digits = cage.face_digits(body)
         centres = np.array([self.surface.co[list(t[1:])].mean(axis=0) for t in self.surface.triangles])
+        hands = bodies.ZONES.index("Hands")
         self.trees = {}
+
+        def add(key, keep) -> None:
+            found = [i for i, t in enumerate(self.surface.triangles) if keep(t[0], centres[i][0])]
+            tree = BVHTree.FromPolygons([tuple(p) for p in self.surface.co], [self.surface.triangles[i][1:] for i in found])
+            self.trees[key] = (tree, found)
+
         for region in cage.REGIONS:
             wanted = {bodies.ZONES.index(z) for z in cage.SKIN_ZONES[region]}
             for side in (("L", "R") if region in cage.SIDED else ("",)):
-                found = [i for i, t in enumerate(self.surface.triangles)
-                         if zones[t[0]] in wanted and (not side or cage.side_of(centres[i][0]) == side)]
-                tree = BVHTree.FromPolygons([tuple(p) for p in self.surface.co],
-                                            [self.surface.triangles[i][1:] for i in found])
-                self.trees[(region, side)] = (tree, found)
+                add((region, side), lambda p, x, w=wanted, s=side: zones[p] in w and (not s or cage.side_of(x) == s))
+        for side in ("L", "R"):
+            for digit in range(1, len(cage.DIGITS) + 1):
+                add(("hands", side, digit),
+                    lambda p, x, s=side, d=digit: zones[p] == hands and cage.side_of(x) == s and digits[p] in (0, d))
 
-    def weights(self, key: tuple[str, str], point: Vector) -> np.ndarray:
-        tree, found = self.trees[key]
+    def weights(self, key: tuple, point: Vector) -> np.ndarray:
+        """The weights of the nearest skin of a cage region and side, or of a hand's digit with the
+        palm when the key also names a digit other than 0."""
+        tree, found = self.trees[key if len(key) < 3 or key[2] else key[:2]]
         location, _normal, index, _distance = tree.find_nearest(point)
         if location is None:
             location, _normal, triangle, _distance = self.surface.tree.find_nearest(point)
@@ -272,15 +301,15 @@ class RegionSkin:
         return self.surface.weights_at(triangle, poly_3d_calc(self.surface.corners(triangle), location))
 
 
-def cage_keys(cage_obj: bpy.types.Object, surface: Surface) -> list[tuple[str, str]]:
-    """The region and side of every triangle of a cage's surface."""
-    regions = np.empty(len(cage_obj.data.polygons), np.int32)
-    cage_obj.data.attributes["region"].data.foreach_get("value", regions)
+def cage_keys(cage_obj: bpy.types.Object, surface: Surface) -> list[tuple[str, str, int]]:
+    """The region, side, and digit of every triangle of a cage's surface."""
+    regions = cage.face_ints(cage_obj.data, "region", -1)
+    digits = cage.face_ints(cage_obj.data, cage.DIGIT, 0)
     keys = []
     for polygon, a, b, c in surface.triangles:
         region = cage.REGIONS[int(regions[polygon])]
         x = surface.co[[a, b, c]].mean(axis=0)[0]
-        keys.append((region, cage.side_of(x) if region in cage.SIDED else ""))
+        keys.append((region, cage.side_of(x) if region in cage.SIDED else "", int(digits[polygon])))
     return keys
 
 
@@ -501,13 +530,47 @@ def _cut(cage_obj: bpy.types.Object, arm: bpy.types.Object, recipe: dict, lines:
     return bm
 
 
+def _palm_normal(arm: bpy.types.Object, side: str) -> Vector:
+    """The direction a hand's palm faces at rest: at right angles to the hand's bone and to the line
+    from the index finger's base to the little finger's, on the side of the hand the thumb lies on."""
+    world = arm.matrix_world
+    hand = arm.data.bones[f"Hand_{side}"]
+    along = (world @ hand.tail_local) - (world @ hand.head_local)
+    across = (world @ arm.data.bones[f"LittleProximal_{side}"].head_local) - (world @ arm.data.bones[f"IndexProximal_{side}"].head_local)
+    normal = along.cross(across).normalized()
+    # The bones mirror, so the cross product turns the other way on the left hand.
+    return -normal if side == "L" else normal
+
+
 def _mark_seams(bm: bmesh.types.BMesh, arm: bpy.types.Object) -> None:
     """Seams where clothes have them: between the front and the back of the trunk and the neck,
     down the sides and over the shoulders, along the underside of each arm, along the inside of each
-    leg, and where an arm, a leg, or the neck meets the trunk."""
+    leg, where an arm, a leg, or the neck meets the trunk, and where a hand or a foot meets its
+    limb; a glove's between its palm and its back, along the sides of the fingers, and a boot's
+    around its sole and up the back of its heel."""
     region_layer = bm.faces.layers.int.get("region")
-    trunk, neck, arms, legs = (cage.REGIONS.index(r) for r in ("trunk", "neck", "arms", "legs"))
+    trunk, neck, arms, legs, hands, feet = (cage.REGIONS.index(r) for r in ("trunk", "neck", "arms", "legs", "hands", "feet"))
     middle = float(np.mean([v.co.y for v in bm.verts]))
+    palms = {side: _palm_normal(arm, side) for side in ("L", "R")}
+
+    def palm(face) -> bool:
+        return face.normal.dot(palms[cage.side_of(face.calc_center_median().x)]) > 0.0
+
+    def sole(face) -> bool:
+        return face.normal.z < -SOLE_FACING
+
+    def heel(face) -> float:
+        """Across the foot behind its ankle, on which side of the foot's middle the face lies, or 0
+        in front of the ankle."""
+        side = cage.side_of(face.calc_center_median().x)
+        joint = arm.matrix_world @ arm.data.bones[f"LowerLeg_{side}"].tail_local
+        forward = (arm.matrix_world @ arm.data.bones[f"Toes_{side}"].tail_local) - joint
+        forward.z = 0.0
+        forward.normalize()
+        offset = face.calc_center_median() - joint
+        if offset.dot(forward) >= 0.0:
+            return 0.0
+        return 1.0 if offset.dot(forward.cross(Vector((0.0, 0.0, 1.0)))) > 0.0 else -1.0
 
     def angle(face, bone_name: str, seam_side: Vector) -> float:
         # Around a limb's bone, measured so it wraps where the seam runs.
@@ -522,8 +585,14 @@ def _mark_seams(bm: bmesh.types.BMesh, arm: bpy.types.Object) -> None:
     def limb_angle(face, region: int) -> float:
         side = cage.side_of(face.calc_center_median().x)
         if region == arms:
-            # Under the arm.
-            return angle(face, f"UpperArm_{side}", Vector((0.0, 0.0, -1.0)))
+            # Under the upper arm, around its bone, and on to the inside of the forearm, around the
+            # forearm's bone, which hangs down too far for "under" to name a side of it.
+            upper = arm.data.bones[f"UpperArm_{side}"]
+            head, tail = arm.matrix_world @ upper.head_local, arm.matrix_world @ upper.tail_local
+            if (face.calc_center_median() - tail).dot((tail - head).normalized()) <= 0.0:
+                return angle(face, f"UpperArm_{side}", Vector((0.0, 0.0, -1.0)))
+            inward = Vector((1.0 if face.calc_center_median().x < 0.0 else -1.0, 0.0, -1.0))
+            return angle(face, f"LowerArm_{side}", inward)
         # On the inside of the leg, toward the other one, around the bone of the thigh or the shin.
         knee = arm.matrix_world @ arm.data.bones[f"LowerLeg_{side}"].head_local
         bone = f"UpperLeg_{side}" if face.calc_center_median().z > knee.z else f"LowerLeg_{side}"
@@ -543,6 +612,11 @@ def _mark_seams(bm: bmesh.types.BMesh, arm: bpy.types.Object) -> None:
         elif ra in (arms, legs):
             ta, tb = limb_angle(a, ra), limb_angle(b, ra)
             edge.seam = (ta < 0.0) != (tb < 0.0) and abs(ta) > math.pi / 2 and abs(tb) > math.pi / 2
+        elif ra == hands:
+            edge.seam = palm(a) != palm(b)
+        elif ra == feet:
+            ha, hb = heel(a), heel(b)
+            edge.seam = sole(a) != sole(b) or (not sole(a) and ha * hb < 0.0)
 
 
 def _unwrap(mesh: bpy.types.Mesh) -> None:
@@ -612,7 +686,7 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
     bm.to_mesh(mesh)
     bm.free()
     # The cage's own attributes stay with the cage.
-    for attribute in ("region", cage.FITTED):
+    for attribute in cage.OWN_ATTRIBUTES:
         if attribute in mesh.attributes:
             mesh.attributes.remove(mesh.attributes[attribute])
     for polygon in mesh.polygons:
@@ -638,7 +712,7 @@ def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> 
             share = max(0.0, 1.0 - distance / EASE_REACH)
             offset[i] += recipe["ease"] * share * share * (3.0 - 2.0 * share)
     co = co + normals * offset[:, None]
-    surface = Surface(cage_obj, [])
+    surface = Surface(cage_obj, [], recipe_regions(recipe))
     polygons = [tuple(p.vertices) for p in mesh.polygons]
     co = _settle(co, polygons, surface, *band_limits(recipe, lines, label, _points(co, polygons), band))
     mesh.vertices.foreach_set("co", co.reshape(-1))
@@ -666,7 +740,8 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
     # Every deforming bone, so weights painted by hand on cloth chain bones, which the body has
     # none of, are kept too.
     names = [b.name for b in arms[0].data.bones if b.use_deform]
-    first_cage = Surface(cage_object(labels[0]), [])
+    regions = recipe_regions(recipe)
+    first_cage = Surface(cage_object(labels[0]), [], regions)
     co = bodies.world_positions(first)
     binding = [first_cage.bind(Vector(p)) for p in co]
     polygons = [tuple(p.vertices) for p in first.data.polygons]
@@ -692,7 +767,7 @@ def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: lis
     plan = {"names": names, "hand": int(hand.sum()), "binding": binding,
             "versions": {first.name: {"positions": None, "weights": first_weights, "checksums": checksums}}}
     for arm in arms[1:]:
-        own = Surface(cage_object(arm.name), [])
+        own = Surface(cage_object(arm.name), [], regions)
         placed = np.array([own.place(t, w, o) for t, w, o in binding])
         positions = _settle(placed, polygons, own, *band_limits(recipe, lines, arm.name, _points(placed, polygons), band))
         weights = weights_on(arm.name, positions, own)
@@ -858,7 +933,7 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
             bpy.data.objects.get(cage.version_name(label)) is None for label in labels):
         binding = built_binding = None
         if first is not None and bpy.data.objects.get(cage.version_name(labels[0])) is not None:
-            old = Surface(cage_object(labels[0]), [])
+            old = Surface(cage_object(labels[0]), [], recipe_regions(recipe))
             binding = [old.bind(Vector(p)) for p in bodies.world_positions(first)]
             # The shape the recipe gave moves with the cage too, so a later rebuild carries over
             # only the handmade shape, not the cage's change.
@@ -867,12 +942,25 @@ def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: 
                 built_binding = [old.bind(Vector(p)) for p in built]
         append_cages(cage_file, labels)
         if binding is not None:
-            own = Surface(cage_object(labels[0]), [])
-            first.data.vertices.foreach_set("co", np.array([own.place(t, w, o) for t, w, o in binding]).reshape(-1))
+            own = Surface(cage_object(labels[0]), [], recipe_regions(recipe))
+
+            def follow(points: np.ndarray, bound: list) -> np.ndarray:
+                # Where the cage did not move, such as when only other regions were added to it, a
+                # point stays exactly where it was, so the fitting of the other bodies, which looks
+                # for the nearest triangle of the cage, finds what it found before.
+                placed = np.array([tuple(own.place(t, w, o)) for t, w, o in bound])
+                return np.where((np.linalg.norm(placed - points, axis=1) > FIT_TOLERANCE)[:, None], placed, points)
+
+            current = bodies.world_positions(first)
+            moved = follow(current, binding)
+            first.data.vertices.foreach_set("co", moved.reshape(-1))
             if built_binding is not None:
-                _store(first.data, BUILT, np.array([tuple(own.place(t, w, o)) for t, w, o in built_binding]))
+                _store(first.data, BUILT, follow(_attribute(first.data, BUILT), built_binding))
             first.data.update()
-            notes.append(f"{first.name} moved with its changed cage.")
+            if np.abs(moved - current).max(initial=0.0) > 0.0:
+                notes.append(f"{first.name} moved with its changed cage.")
+            else:
+                notes.append(f"{first.name} stays where it is: its regions of the changed cage did not move.")
 
     if recipe != MODELED and (first is None or rebuild):
         new = _new_first_version(name, band, recipe, lines, arms[0])
@@ -968,7 +1056,7 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int, recipe=
         if triangles > budget:
             errors.append(f'"{obj.name}" has {triangles} triangles; the budget is {budget}.')
         try:
-            distances, nearest = _distances(obj, label)
+            distances, nearest = _distances(obj, label, recipe_regions(recipe))
         except ArtPipelineError as error:
             errors.append(str(error))
             continue
@@ -993,10 +1081,10 @@ def garment_errors(name: str, labels: list[str], band: str, budget: int, recipe=
     return errors
 
 
-def _distances(obj: bpy.types.Object, label: str) -> tuple[np.ndarray, np.ndarray]:
-    """The distance from the cage of every vertex and of the centre of every face, and the body
-    polygon each is nearest to."""
-    shell = Surface(cage_object(label), [])
+def _distances(obj: bpy.types.Object, label: str, regions: tuple[str, ...] | None) -> tuple[np.ndarray, np.ndarray]:
+    """The distance from the cage's regions a template covers of every vertex and of the centre of
+    every face, and the body polygon each is nearest to."""
+    shell = Surface(cage_object(label), [], regions)
     skin = Surface(bodies.source_body(label), [])
     co = bodies.world_positions(obj)
     points = [Vector(p) for p in list(co) + [co[list(p.vertices)].mean(axis=0) for p in obj.data.polygons]]
@@ -1004,14 +1092,14 @@ def _distances(obj: bpy.types.Object, label: str) -> tuple[np.ndarray, np.ndarra
             np.array([skin.signed_distance(p)[1] for p in points], np.int64))
 
 
-def report(name: str, labels: list[str]) -> list[str]:
+def report(name: str, labels: list[str], recipe) -> list[str]:
     """How far every version lies from the cage, and its triangles."""
     lines = []
     for label in labels:
         obj = bpy.data.objects.get(version_name(name, label))
         if obj is None or bpy.data.objects.get(cage.version_name(label)) is None:
             continue
-        distances, _polygons = _distances(obj, label)
+        distances, _polygons = _distances(obj, label, recipe_regions(recipe))
         triangles = sum(len(p.vertices) - 2 for p in obj.data.polygons)
         lines.append(f"{obj.name}: {triangles} triangles, {distances.min() * 1000:.1f} to {distances.max() * 1000:.1f} mm "
                      f"from the cage, median {np.median(distances) * 1000:.1f} mm")

@@ -40,8 +40,8 @@ $script:ArtImplementedStages = @{
 
 # The regions of the garment cage and the range of its figure scale in meters; see
 # docs/EQUIPMENT_VISUALS_DESIGN.md.
-$script:ArtCageRegions = @("neck", "trunk", "arms", "legs")
-$script:ArtCageSidedRegions = @("arms", "legs")
+$script:ArtCageRegions = @("neck", "trunk", "arms", "legs", "hands", "feet")
+$script:ArtCageSidedRegions = @("arms", "legs", "hands", "feet")
 $script:ArtCageFigureRange = @(0.01, 0.2)
 
 # A paint layer exports only images, below this folder.
@@ -1202,7 +1202,7 @@ function Read-ArtCageManifest([string]$AssetDirectory, $Json, [string]$Where, [s
         if ($lineName -cnotmatch '^[A-Z][A-Za-z0-9]*$' -or -not $lineNames.Add($lineName) -or
             $script:ArtCageRegions -cnotcontains $region -or $bone -cnotmatch '^[A-Za-z][A-Za-z0-9]*$' -or -not $bonesFound -or
             -not (Test-ArtNumber $share) -or $share -lt 0 -or $share -gt 1) {
-            $problems.Add("every line needs a unique name, a region ($($script:ArtCageRegions -join ', ')), a bone of the skeleton, without its side _L or _R for the arms and legs, and a share of the bone from 0 to 1; '$lineName' does not")
+            $problems.Add("every line needs a unique name, a region ($($script:ArtCageRegions -join ', ')), a bone of the skeleton, without its side _L or _R for the arms, legs, hands, and feet, and a share of the bone from 0 to 1; '$lineName' does not")
             continue
         }
 

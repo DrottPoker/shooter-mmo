@@ -4,14 +4,14 @@
     "garment": "art/Garments/Trousers",
     "approvals": {
         "texture": {
-            "date": "2026-10-23",
+            "date": "2026-10-24",
             "sourceSha256": "bac42bdab554edbd4ca79676654154660cdf3168c7addab931a10024c036d588",
-            "garmentSourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca"
+            "garmentSourceSha256": "06f3f5c8225ebef8a6d14f51eeb26723268d38c2b8bf6c934fd72d19135e4225"
         }
     },
     "export": {
         "sourceSha256": "bac42bdab554edbd4ca79676654154660cdf3168c7addab931a10024c036d588",
-        "garmentSourceSha256": "3999875849e8d2ce8c950056f98ff9175dc11b342b32425cbcc3ba4319e757ca",
+        "garmentSourceSha256": "06f3f5c8225ebef8a6d14f51eeb26723268d38c2b8bf6c934fd72d19135e4225",
         "materials": [
             {
                 "name": "M_Garment_WoolTrousers",

@@ -41,6 +41,38 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void TheWardrobeDressesEveryBodyInBootsAndGlovesOverItsTrousersAndSleeves()
+        {
+            var outfit = new[] { "LeatherGloves", "LinenLongShirt", "LeatherBoots", "WoolTrousers" };
+            foreach (var body in WardrobePreview.Bodies())
+            {
+                using (var preview = new WardrobePreview(body))
+                {
+                    var renderer = preview.Body.GetComponent<PlayerBodyAppearance>().CombinedRenderer;
+                    var bare = renderer.sharedMesh.triangles.Length;
+                    preview.Wear(outfit);
+                    // From the inside out: the trousers, the boots over their legs, the shirt, and the
+                    // gloves over its sleeves.
+                    Assert.That(preview.Worn.Select(garment => garment.Name),
+                        Is.EqualTo(new[] { "WoolTrousers", "LeatherBoots", "LinenLongShirt", "LeatherGloves" }), body.Name);
+                    Assert.That(preview.Worn.Select(garment => garment.Slot), Is.EqualTo(new[] { "legs", "feet", "body", "hands" }), body.Name);
+                    var materials = renderer.sharedMaterials.Select(material => material.name).ToArray();
+                    foreach (var name in outfit)
+                    {
+                        Assert.That(materials, Does.Contain("M_Garment_" + name), body.Name);
+                    }
+
+                    // The boots and the gloves take the place of the feet and the hands they cover, so
+                    // the dressed body draws fewer of its own triangles than the bare one.
+                    var skin = renderer.sharedMaterials.Select((material, index) => (material, index))
+                        .Where(entry => !entry.material.name.StartsWith("M_Garment_", StringComparison.Ordinal))
+                        .Sum(entry => renderer.sharedMesh.GetTriangles(entry.index).Length);
+                    Assert.That(skin, Is.LessThan(bare), body.Name);
+                }
+            }
+        }
+
+        [Test]
         public void AJogMovesTheBodyAtItsSpeedWithTheGroundUnderIt()
         {
             using (var preview = new WardrobePreview(WardrobePreview.Bodies()[0]))

@@ -158,10 +158,18 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.Paints.Single(paint => paint.Name == "Scar").Material.name, Is.EqualTo("M_Face_Male"));
             // The garments from the lowest layer up, and by name within a layer.
             Assert.That(catalog.Garments.Select(garment => garment.Name),
-                Is.EqualTo(new[] { "WoolTrousers", "LeatherJerkin", "LinenLongShirt", "LinenShirt", "NetShirt" }));
+                Is.EqualTo(new[]
+                {
+                    "WoolTrousers", "LeatherBoots", "LeatherJerkin", "LinenLongShirt", "LinenShirt", "NetShirt", "LeatherGloves",
+                }));
             Assert.That(catalog.GarmentNamed("WoolTrousers").Template, Is.EqualTo("Trousers"));
             Assert.That(catalog.GarmentNamed("LeatherJerkin").Template, Is.EqualTo("Shirt"));
             Assert.That(catalog.GarmentNamed("LinenLongShirt").Template, Is.EqualTo("LongShirt"));
+            // Boots over the trouser legs and gloves over every sleeve, each in a slot of its own.
+            Assert.That(catalog.GarmentNamed("LeatherBoots").Template, Is.EqualTo("Boots"));
+            Assert.That(catalog.GarmentNamed("LeatherBoots").Slot, Is.EqualTo("feet"));
+            Assert.That(catalog.GarmentNamed("LeatherGloves").Template, Is.EqualTo("Gloves"));
+            Assert.That(catalog.GarmentNamed("LeatherGloves").Slot, Is.EqualTo("hands"));
         }
     }
 }

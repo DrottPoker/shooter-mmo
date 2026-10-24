@@ -1,6 +1,6 @@
 # Equipment Visuals Design
 
-Last updated: 2026-10-23
+Last updated: 2026-10-24
 
 Status: accepted by Victor on 2026-10-22, with the support of future races added.
 Extended on 2026-10-23, accepted by Victor, with the garment cage, garment
@@ -17,7 +17,10 @@ its texture `LeatherJerkin`, approved by Victor on 2026-10-23, in place of the
 first leather jerkin. Step 5c's first step adds `Shirt`, `LongShirt`, and
 `Trousers` with their textures, the tattoo, and the pair check; `Jerkin` had
 become the same form as `Shirt` once both lay as close to the body as they can,
-so `LeatherJerkin` is a texture of `Shirt` and `Jerkin` is removed.
+so `LeatherJerkin` is a texture of `Shirt` and `Jerkin` is removed. Its second
+step adds the cage's regions `hands` and `feet`, the templates `Boots` and
+`Gloves` with five fingers, and their leather textures, approved by Victor on
+2026-10-24.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -159,15 +162,24 @@ gloves sit over them.
 
 The garment cage is the surface that clothes are made on. It is a sparse net
 with a fixed topology of its own, the same on every body, that the pipeline
-lays around each body: over the neck, the trunk, the arms to the wrists, and the
-legs to the ankles. Regions for the hands, the feet, and the head are added when
-the first gloves, boots, and hoods come; they add faces and change none.
+lays around each body: over the neck, the trunk, the arms, the hands, the legs,
+and the feet. Regions are added to it when the first garments that need them
+come, the hands and the feet with the first gloves and boots on 2026-10-24, the
+head with the first hoods; they add vertices and faces after the cage's own and
+change none, so every garment made before keeps its shape.
 
 - **Its topology** was taken once from the human base body as it was when the
   cage was made, the faces of the neck, trunk, arms, and legs with their rings,
   and is the cage's own from then on: a new base model changes the bodies, not
   the cage. The cage keeps that first shape on a copy of that body's rig, its
-  reference, and its regions: `neck`, `trunk`, `arms`, and `legs`.
+  reference, and its regions: `neck`, `trunk`, `arms`, `legs`, `hands`, and
+  `feet`.
+- **The hands** are the body's faces of its hands, with five fingers, met at the
+  cage's wrist rings, and each face knows the finger or the thumb it belongs to,
+  so a glove's finger follows its own finger.
+- **The feet** are a net of the cage's own, since a boot never shows the toes:
+  rings from the ankle ring around the heel and forward to the toe tip, closed
+  there, with the toes and the arch spanned and a flat sole.
 - **Fitting it to a body** works for any body of the skeleton, whatever its
   topology:
   1. The reference shape moves with the rig: every cage vertex follows the
@@ -189,6 +201,16 @@ the first gloves, boots, and hoods come; they add faces and change none.
      from the borders between its regions and from its open ends.
   5. The cage is faired, and no vertex and no face centre lies closer to the
      skin than 1 mm; one that would is moved out along the skin's normal.
+
+  These steps fit the neck, the trunk, the arms, and the legs together. The
+  hands and the feet are fitted after them and keep the rings they share with
+  the arms and the legs as those lie, so adding them changed nothing of the
+  rest: a hand's vertices are drawn to the skin of their own finger or thumb and
+  the palm, so the gaps between the fingers stay open, and a foot is laid on the
+  convex outlines of its cross sections, half-planes that turn about an axis in
+  front of the ankle from the ankle ring down until they stand across the foot,
+  then planes across the foot to the toe tip, so the toes and the arch are
+  spanned and the sole is flat. Both keep 1 mm from the skin like the rest.
 - **Its figure scale** is one number of the cage asset, in meters, the radius of
   the ball: 60 mm. The reviewer judges it on the cage's review sheet and asks for
   more or less figure. Not every groove has to go: Victor approved the cage with
@@ -294,8 +316,11 @@ A template is built by the pipeline from its recipe:
 The pipeline cuts the cage's faces at the lines, keeps the faces of the
 template, offsets them into its band, adds the ease and the turned edges, and
 unfolds its UVs along its own edges and along seams that the pipeline places
-where clothes have them: down the sides of the trunk, under the arms, along the
-inside of the legs, and at the back of a collar. The result is the
+where clothes have them: down the sides of the trunk, under the upper arms and
+along the inside of the forearms, along the inside of the legs, at the back of a
+collar, where a hand or a foot meets its limb, between a glove's palm and its
+back along the sides of the fingers, and around a boot's sole and up the back
+of its heel. The result is the
 template's version on the first body, the male; every other body's version is
 fitted from it. A person may then shape the first version by hand, such as
 folds or a flared hem; the pipeline keeps that shape as a difference over the
@@ -436,7 +461,9 @@ pipeline fits it to every other body of the cage, also those of
 - **Shape**: every garment vertex is bound to the closest point of the first
   body's cage, as a face, barycentric coordinates, and an offset along the
   cage's normal and tangents, and placed at the same point and offset of the
-  other body's cage. Every body's cage has the same faces, so this needs nothing
+  other body's cage. A template is bound to every region of the cage but the
+  hands and the feet that it does not cover, so a sleeve's or a trouser leg's
+  hem follows its limb and not the hand or the foot beyond it. Every body's cage has the same faces, so this needs nothing
   of the bodies' own topology. The first version keeps its binding to the cage
   too, so when the first body or its cage changes, the first version follows. A
   vertex or a face centre that leaves the garment's band moves back into it.
@@ -718,7 +745,7 @@ The sync stops on a broken rule and reports the rest:
 
 The cage's review sheet shows every body from the front, the side, and the back
 with the cage over it, colored by its distance from the skin, and the standard
-lines drawn on it.
+lines drawn on it, and its hands and feet up close.
 
 The template's review sheet shows the template on every body type from four
 sides with its grid, the template in the test poses, and the body without it,
@@ -740,13 +767,16 @@ ground, and runs the cloth solver.
 | `head` | 1,500 |
 | `body` | 3,000; a robe or coat 4,000 |
 | `legs` | 2,000 |
-| `hands` | 800 |
-| `feet` | 1,000 |
+| `hands` | 2,000 |
+| `feet` | 1,500 |
 | `back` | 1,500 |
 | `hair` | 2,500 |
 
 A character in a full outfit draws about 15,000 to 18,000 triangles near the
-camera, because the covered body faces are gone. Levels of detail at half and a
+camera, because the covered body faces are gone. Gloves with five fingers are
+made at the resolution of the body's hands, 1,520 triangles for both, and boots
+hide the body's feet, 1,328 triangles, so their budgets were raised from 800 and
+1,000 on 2026-10-24 and still leave the character lighter than without them. Levels of detail at half and a
 quarter of the triangles come with the first crowd measurement that needs them.
 
 ## Delivery Plan
@@ -779,8 +809,11 @@ quarter of the triangles come with the first crowd measurement that needs them.
         transparent meshes over the tattoo paint layer `Tattoo`, which replaces
         the leather jerkin paint layer, `LeatherJerkin` as a texture of `Shirt`,
         and the pair check.
-     2. Boots and five-finger gloves, with the cage's regions for the feet and
-        the hands.
+     2. Done. Boots and five-finger gloves, with the cage's regions for the
+        feet and the hands: the templates `Boots`, to the calf in the `mid`
+        band over the trousers below `LegAnkle`, and `Gloves`, to `GloveCuff`
+        over every sleeve below `SleeveLong`, with the leather textures
+        `LeatherBoots` and `LeatherGloves`.
      3. A robe with the skirt chains and a cloak with the cloak chains.
      4. The cage's head region, a shoulder-length hairstyle with its compressed
         form, and the robe's hood up and down.

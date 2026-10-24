@@ -7,11 +7,18 @@ The file holds the reference in the collection CageReference: the armature CageR
 first body's rig when the cage was made, and on it the mesh Cage, that body's faces of the neck, the
 trunk, the arms, and the legs, with its weights, the face attribute "region", and the figure scale
 and the standard lines the cage was last fitted with as custom properties. The reference never
-changes after it is made: a new base model changes the bodies, not the cage. Per body, the
-collection Fit_<Label> holds the body's armature with the cage's version Cage_<Label> on it, and the
-Reference collection the body's source body, eyes, teeth, and tongue.
+changes after it is made: a new base model changes the bodies, not the cage. Regions are only added
+to it, the hands and the feet when the first gloves and boots came, with their vertices and faces
+after the others, so every garment made before keeps its faces. The hands are the first body's
+faces of its hands, with the face attribute "digit" for the finger or thumb each face belongs to.
+The feet are a net of the cage's own, since a boot never shows the toes: rings that sweep from the
+ankle around the heel and forward to the toe tip, with the point attributes "sweep_ring" and
+"sweep_column" that place each vertex on them. Per body, the collection Fit_<Label> holds the body's
+armature with the cage's version Cage_<Label> on it, and the Reference collection the body's source
+body, eyes, teeth, and tongue.
 
-A version is fitted from the reference alone, so a body of any topology gets one:
+A version is fitted from the reference alone, so a body of any topology gets one. The neck, the
+trunk, the arms, and the legs are fitted first, together:
 
 1. The reference moves with the rig from CageRig to the body's armature, every bone with its
    length, blended by the reference's weights.
@@ -33,6 +40,20 @@ A version is fitted from the reference alone, so a body of any topology gets one
    in from the cage's open ends.
 5. The cage is faired, and no vertex or face centre stays inside the skin.
 
+The hands and the feet are fitted after them and keep the rings at the wrists and the ankles as they
+lie, so adding them changed nothing of the rest:
+
+- A hand's vertex is drawn to the nearest skin of its own finger or thumb and of the palm, so a
+  finger is never drawn to the next one, and the gaps between the fingers stay open.
+- A foot is laid on the outline of its cross sections with their hollows spanned, their convex
+  hulls: first half-planes that turn about an axis in front of the ankle, from the plane of the
+  ankle ring down until they stand across the foot, so their rings run around the heel, then planes
+  across the foot toward the toe tip. Each ring's vertices follow its outline at the shares at which
+  the ankle ring's lie, and the last ring closes at the toe tip. The toes and the arch are spanned,
+  and the sole is flat.
+- The feet are faired; the hands already lie on their skin. Both are kept outside the skin like the
+  rest.
+
 A person's corrections of a version are kept as the difference to the attribute "fitted", the shape
 the last fitting gave."""
 
@@ -45,6 +66,8 @@ import bmesh
 import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
+from mathutils.interpolate import poly_3d_calc
+from mathutils.kdtree import KDTree
 
 from . import bodies, body_files
 from .scene import ArtPipelineError, relative_image_paths
@@ -53,16 +76,40 @@ REFERENCE = "Cage"
 REFERENCE_RIG = "CageRig"
 REFERENCE_COLLECTION = "CageReference"
 FITTED = "fitted"
-# The regions in the order of the face attribute's values. A vertex on the border of two regions
-# belongs to the later one, so the limbs keep the vertices they share with the trunk.
-REGIONS = ("neck", "trunk", "arms", "legs")
+DIGIT = "digit"
+SWEEP_RING = "sweep_ring"
+SWEEP_COLUMN = "sweep_column"
+# The attributes that belong to the cage and not to what is made on it.
+OWN_ATTRIBUTES = ("region", FITTED, DIGIT, SWEEP_RING, SWEEP_COLUMN)
+# The regions in the order of the face attribute's values.
+REGIONS = ("neck", "trunk", "arms", "legs", "hands", "feet")
+# The regions fitted together, stage by stage: a later stage keeps the vertices it shares with an
+# earlier one, so the regions added to a cage change nothing of the cage that was there. Within a
+# stage, a vertex on the border of two regions belongs to the later one, so the limbs keep the
+# vertices they share with the trunk. The first stage's regions are made with the cage; the others
+# are added to it.
+STAGES = (("neck", "trunk", "arms", "legs"), ("hands", "feet"))
+# The region each extremity hangs from, at the ring they share.
+ATTACHED = {"hands": "arms", "feet": "legs"}
 # The body parts each region is made of, and the parts whose skin a region's vertices are drawn to
 # and kept outside of. The neck and the trunk meet without a border of skin between them.
 REGION_ZONES = {"neck": ("Neck",), "trunk": ("Torso", "Pelvis"), "arms": ("UpperArms", "Forearms"),
-                "legs": ("Thighs", "Shins")}
+                "legs": ("Thighs", "Shins"), "hands": ("Hands",), "feet": ("Feet",)}
 SKIN_ZONES = {"neck": ("Neck", "Torso"), "trunk": ("Torso", "Pelvis", "Neck"), "arms": ("UpperArms", "Forearms"),
-              "legs": ("Thighs", "Shins")}
-SIDED = ("arms", "legs")
+              "legs": ("Thighs", "Shins"), "hands": ("Hands",), "feet": ("Feet",)}
+SIDED = ("arms", "legs", "hands", "feet")
+# The digits of a hand, by the start of their bones' names; the face attribute "digit" holds 1 + the
+# index here, and 0 for the palm and every face outside the hands.
+DIGITS = ("Thumb", "Index", "Middle", "Ring", "Little")
+# A body's hand vertex on the border with its forearm must lie this close to the cage's wrist ring.
+WRIST_MATCH = 1e-4
+# The rings of a foot: half-planes turned by these shares of the turn from the ankle ring's plane
+# until they stand across the foot, then planes across the foot at these shares of the way to the
+# toe tip; the last ring closes at the tip. The axis the half-planes turn about lies this far in
+# front of the ankle ring, so their rings keep apart at the front of the ankle.
+FOOT_RINGS = tuple(("turn", step / 8) for step in range(1, 9)) + tuple(
+    ("reach", share) for share in (0.15, 0.3, 0.45, 0.6, 0.72, 0.83, 0.92, 0.97))
+PIVOT_MARGIN = 0.025
 # How far from the skin the cage keeps at least, in meters.
 CLEARANCE = 0.001
 # How far along the cage's normal a vertex looks for the skin of its region, how close to the skin
@@ -90,6 +137,9 @@ TENSION_STEPS = 200
 TENSION_RATE = 0.5
 FAIRING = 8
 SETTLE_PASSES = 4
+# The hands and the feet settle in more passes: around a slender fingertip, moving one face moves
+# the next one back toward the skin.
+ENDS_SETTLE_FACTOR = 4
 SETTLE_MARGIN = 0.0002
 # How far a fitted vertex may differ from what a sync gives before the file is stale.
 FIT_TOLERANCE = 1e-5
@@ -113,16 +163,17 @@ class Net:
     toward. A vertex on a border, such as the ring at a wrist, is smoothed along the border only,
     so the cage keeps its length."""
 
-    def __init__(self, mesh: bpy.types.Mesh):
-        self.faces = [tuple(p.vertices) for p in mesh.polygons]
-        self.count = len(mesh.vertices)
+    def __init__(self, faces: list[tuple[int, ...]], count: int):
+        self.faces = faces
+        self.count = count
         counts: dict[tuple[int, int], int] = {}
         for face in self.faces:
             for i in range(len(face)):
                 key = tuple(sorted((face[i], face[(i + 1) % len(face)])))
                 counts[key] = counts.get(key, 0) + 1
-        edges = np.array(sorted(counts), np.int64)
-        border = np.array([counts[tuple(e)] == 1 for e in edges])
+        edges = np.array(sorted(counts), np.int64).reshape(-1, 2)
+        border = np.array([counts[tuple(e)] == 1 for e in edges], bool)
+        self.border_edges = edges[border]
         self.on_border = np.zeros(self.count, bool)
         self.on_border[edges[border].reshape(-1)] = True
         # A vertex inside the cage counts every neighbor, a border vertex only those along the border.
@@ -135,6 +186,32 @@ class Net:
         triangles = [(f[0], f[i], f[i + 1]) for f in self.faces for i in range(1, len(f) - 1)]
         self.triangles = np.array(triangles, np.int64)
         self.edges = edges
+
+    @classmethod
+    def of(cls, mesh: bpy.types.Mesh) -> "Net":
+        return cls([tuple(p.vertices) for p in mesh.polygons], len(mesh.vertices))
+
+    def loops(self) -> list[list[int]]:
+        """The open ends, each a loop of its vertices in the order they follow each other."""
+        neighbors: dict[int, list[int]] = {}
+        for a, b in self.border_edges:
+            neighbors.setdefault(int(a), []).append(int(b))
+            neighbors.setdefault(int(b), []).append(int(a))
+        seen, found = set(), []
+        for start in sorted(neighbors):
+            if start in seen:
+                continue
+            loop, previous, current = [start], None, start
+            seen.add(start)
+            while True:
+                following = [n for n in neighbors[current] if n != previous and n not in seen]
+                if not following:
+                    break
+                previous, current = current, following[0]
+                loop.append(current)
+                seen.add(current)
+            found.append(loop)
+        return found
 
     def hops_from(self, start: np.ndarray, limit: int) -> np.ndarray:
         """How many edges each vertex lies from the nearest vertex of start, up to limit."""
@@ -170,12 +247,46 @@ class Net:
             y = y + 0.5 * (self.mean_of_neighbors(y) - y)
         return self.normals(y)
 
-    def faired(self, x: np.ndarray, iterations: int) -> np.ndarray:
-        # Taubin smoothing, a shrinking and an inflating step, keeps the cage's size.
+    def faired(self, x: np.ndarray, iterations: int, held: np.ndarray | None = None) -> np.ndarray:
+        # Taubin smoothing, a shrinking and an inflating step, keeps the cage's size. Held vertices
+        # stay where they are.
+        start = x
         for _ in range(iterations):
             x = x + 0.5 * (self.mean_of_neighbors(x) - x)
             x = x - 0.53 * (self.mean_of_neighbors(x) - x)
+            if held is not None:
+                x[held] = start[held]
         return x
+
+
+class Part:
+    """The faces of some regions of a cage, numbered among their own vertices: vertices holds each
+    one's number in the cage."""
+
+    def __init__(self, faces: list[tuple[int, ...]], regions: np.ndarray, wanted: tuple[str, ...]):
+        chosen = [i for i, region in enumerate(regions) if REGIONS[region] in wanted]
+        self.vertices = np.array(sorted({v for i in chosen for v in faces[i]}), np.int64)
+        local = {int(v): i for i, v in enumerate(self.vertices)}
+        self.faces = [tuple(local[v] for v in faces[i]) for i in chosen]
+        self.regions = np.asarray(regions)[chosen]
+        self.net = Net(self.faces, len(self.vertices))
+
+    def keys(self, co: np.ndarray) -> list[tuple[str, str]]:
+        """Every vertex's region, with its side for a limb or an extremity: of two regions whose
+        border it lies on, the later one."""
+        best = np.full(len(self.vertices), -1, np.int64)
+        for face, region in zip(self.faces, self.regions):
+            for v in face:
+                best[v] = max(best[v], region)
+        return [(REGIONS[r], side_of(co[i][0]) if REGIONS[r] in SIDED else "") for i, r in enumerate(best)]
+
+    def borders(self) -> np.ndarray:
+        """The vertices on an open end of the part or on a border between two of its regions."""
+        seen: dict[int, set[int]] = {}
+        for face, region in zip(self.faces, self.regions):
+            for v in face:
+                seen.setdefault(v, set()).add(int(region))
+        return np.nonzero(self.net.on_border | np.array([len(seen.get(v, ())) > 1 for v in range(self.net.count)]))[0]
 
 
 def _reference() -> tuple[bpy.types.Object, bpy.types.Object]:
@@ -195,33 +306,53 @@ def _face_regions(mesh: bpy.types.Mesh) -> np.ndarray:
     return values.astype(np.int64)
 
 
-def vertex_keys(cage: bpy.types.Object) -> list[tuple[str, str]]:
-    """Every reference vertex's region, with its side for an arm or a leg."""
-    mesh = cage.data
-    regions = _face_regions(mesh)
-    best = np.full(len(mesh.vertices), -1, np.int64)
-    for polygon, region in zip(mesh.polygons, regions):
-        for v in polygon.vertices:
-            best[v] = max(best[v], region)
-    co = bodies.world_positions(cage)
-    return [(REGIONS[r], side_of(co[i][0]) if REGIONS[r] in SIDED else "") for i, r in enumerate(best)]
+def _ints(mesh: bpy.types.Mesh, name: str, domain: str, default: int) -> np.ndarray:
+    """An integer attribute of the mesh, or the default everywhere when it has none."""
+    count = len(mesh.polygons) if domain == "FACE" else len(mesh.vertices)
+    attribute = mesh.attributes.get(name)
+    if attribute is None or attribute.domain != domain or attribute.data_type != "INT":
+        return np.full(count, default, np.int64)
+    values = np.empty(count, np.int32)
+    attribute.data.foreach_get("value", values)
+    return values.astype(np.int64)
 
 
-def region_borders(cage: bpy.types.Object) -> np.ndarray:
-    """The reference vertices on an open end of the cage or on a border between two regions."""
-    regions = _face_regions(cage.data)
-    seen: dict[int, set[int]] = {}
-    for polygon, region in zip(cage.data.polygons, regions):
-        for v in polygon.vertices:
-            seen.setdefault(v, set()).add(int(region))
-    net = Net(cage.data)
-    return np.nonzero(net.on_border | np.array([len(seen.get(v, ())) > 1 for v in range(net.count)]))[0]
+def face_ints(mesh: bpy.types.Mesh, name: str, default: int) -> np.ndarray:
+    """An integer face attribute of a cage's mesh, such as "region" or "digit"."""
+    return _ints(mesh, name, "FACE", default)
+
+
+def digit_of(bone: str) -> int:
+    """1 + the index in DIGITS of the digit a bone belongs to, or 0."""
+    return next((i + 1 for i, digit in enumerate(DIGITS) if bone.startswith(digit)), 0)
+
+
+def face_digits(obj: bpy.types.Object) -> np.ndarray:
+    """The digit of every face of a skinned mesh: that of the bone its corners weigh most together,
+    or 0 for the palm and every face that no finger or thumb moves most."""
+    names = [g.name for g in obj.vertex_groups]
+    weights = bodies.weights_of(obj, names)
+    of_name = np.array([digit_of(name) for name in names] or [0])
+    found = np.zeros(len(obj.data.polygons), np.int64)
+    for polygon in obj.data.polygons:
+        total = weights[list(polygon.vertices)].sum(axis=0)
+        if total.any():
+            found[polygon.index] = of_name[int(np.argmax(total))]
+    return found
+
+
+def missing_regions() -> list[str]:
+    """The regions the reference does not have yet, in their order."""
+    cage, _rig = _reference()
+    present = {REGIONS[r] for r in np.unique(_face_regions(cage.data))}
+    return [region for region in REGIONS if region not in present]
 
 
 class Skin:
     """A body's skin per cage region and side, for the fitting, and the whole body's skin, for
     keeping the cage outside and for the checks; with the hands and feet in it, the skin has no
-    open ends at the cage's ends."""
+    open ends at the cage's ends. A hand's skin is also split by its digits: each finger and the
+    thumb with the palm. A foot's skin is kept as triangles too, for its cross sections."""
 
     def __init__(self, body: bpy.types.Object):
         co = bodies.world_positions(body)
@@ -236,8 +367,18 @@ class Skin:
                 keep = [p for p, z, c in zip(polygons, zones, centres)
                         if z in wanted and (not side or side_of(c[0]) == side)]
                 self.trees[(region, side)] = BVHTree.FromPolygons([tuple(c) for c in co], keep)
+        hands, feet = bodies.ZONES.index("Hands"), bodies.ZONES.index("Feet")
+        digits = face_digits(body)
+        self.feet = {}
+        for side in ("L", "R"):
+            for digit in range(1, len(DIGITS) + 1):
+                keep = [p for p, z, c, d in zip(polygons, zones, centres, digits)
+                        if z == hands and side_of(c[0]) == side and d in (0, digit)]
+                self.trees[("hands", side, digit)] = BVHTree.FromPolygons([tuple(c) for c in co], keep)
+            self.feet[side] = np.array([co[[p[0], p[i], p[i + 1]]] for p, z, c in zip(polygons, zones, centres)
+                                        if z == feet and side_of(c[0]) == side for i in range(1, len(p) - 1)])
 
-    def nearest(self, key: tuple[str, str] | None, point) -> tuple[Vector, Vector, float]:
+    def nearest(self, key: tuple | None, point) -> tuple[Vector, Vector, float]:
         """The nearest point of the region's skin, or of the whole skin without a region, its normal,
         and the point's distance outside the skin."""
         tree = self.all if key is None else self.trees[key]
@@ -268,18 +409,46 @@ def _transfer(reference: np.ndarray, weights: np.ndarray, names: list[str], rig:
 
 
 def fit(label: str, figure: float) -> np.ndarray:
-    """The cage's version on a body, as the fitting gives it, in world space."""
+    """The cage's version on a body, as the fitting gives it, in world space: stage by stage, each
+    keeping the vertices an earlier stage placed."""
     cage, rig = _reference()
     arm = bpy.data.objects.get(label)
     body = bodies.source_body(label)
     if arm is None or arm.type != "ARMATURE" or body is None:
         raise ArtPipelineError(f'The file has no body "{label}" with its source body.')
-    net = Net(cage.data)
-    keys = vertex_keys(cage)
+    mesh = cage.data
+    faces = [tuple(p.vertices) for p in mesh.polygons]
+    regions = _face_regions(mesh)
     names = [g.name for g in cage.vertex_groups]
-    x = _transfer(bodies.world_positions(cage), bodies.weights_of(cage, names), names, rig, arm)
+    weights = bodies.weights_of(cage, names)
+    reference = bodies.world_positions(cage)
+    x = _transfer(reference, weights, names, rig, arm)
     skin = Skin(body)
+    digits = _ints(mesh, DIGIT, "FACE", 0)
+    rings, columns = _ints(mesh, SWEEP_RING, "POINT", -1), _ints(mesh, SWEEP_COLUMN, "POINT", -1)
+    placed = np.zeros(len(x), bool)
+    for number, stage in enumerate(STAGES):
+        part = Part(faces, regions, stage)
+        if not len(part.vertices):
+            continue
+        held = placed[part.vertices]
+        keys = part.keys(reference[part.vertices])
+        if number == 0:
+            y = _fit_body(part, x[part.vertices], keys, weights[part.vertices], names, arm, skin, figure)
+        else:
+            chosen = [i for i, region in enumerate(regions) if REGIONS[region] in stage]
+            y = _fit_ends(part, x[part.vertices], keys, held, digits[chosen], rings[part.vertices],
+                          columns[part.vertices], arm, skin)
+        x[part.vertices[~held]] = y[~held]
+        placed[part.vertices] = True
+    return x
 
+
+def _fit_body(part: Part, x: np.ndarray, keys: list[tuple[str, str]], weights: np.ndarray, names: list[str],
+              arm: bpy.types.Object, skin: Skin, figure: float) -> np.ndarray:
+    """The neck, the trunk, the arms, and the legs: drawn to the skin, lifted out of the pits by the
+    ball, drawn taut along their rings, faired, and kept outside the skin."""
+    net = part.net
     normals = net.normals(x)
     for i, key in enumerate(keys):
         tree = skin.trees[key]
@@ -294,7 +463,7 @@ def fit(label: str, figure: float) -> np.ndarray:
 
     # The ball rolls over the skin along normals that point out of the pits.
     normals = net.smoothed_normals(x, NORMAL_SMOOTHING)
-    fade = np.minimum(net.hops_from(region_borders(cage), LIFT_FADE) / LIFT_FADE, 1.0)
+    fade = np.minimum(net.hops_from(part.borders(), LIFT_FADE) / LIFT_FADE, 1.0)
     for i, key in enumerate(keys):
         if fade[i] <= 0.0:
             continue
@@ -314,16 +483,186 @@ def fit(label: str, figure: float) -> np.ndarray:
 
     # A ring stops at a border between regions by itself, so the tension fades in from the open ends only.
     ends = np.minimum(net.hops_from(np.nonzero(net.on_border)[0], LIFT_FADE) / LIFT_FADE, 1.0)
-    x = _tension(net, x, keys, _axes(cage, keys, names, arm), ends)
+    x = _tension(net, x, keys, _axes(weights, keys, names, arm), ends)
     x = net.faired(x, FAIRING)
     return _settle(net, x, skin)
 
 
-def _axes(cage: bpy.types.Object, keys: list[tuple[str, str]], names: list[str], arm: bpy.types.Object) -> np.ndarray:
+def _fit_ends(part: Part, x: np.ndarray, keys: list[tuple[str, str]], held: np.ndarray, digits: np.ndarray,
+              rings: np.ndarray, columns: np.ndarray, arm: bpy.types.Object, skin: Skin) -> np.ndarray:
+    """The hands and the feet, from the rings they share with the limbs, which stay: a hand's
+    vertices drawn to the skin of their own digit and the palm, a foot laid on its rings, and both
+    faired and kept outside the skin."""
+    x = x.copy()
+    # A vertex whose faces all belong to one finger or the thumb is drawn to its skin; one at the
+    # palm or between them to the whole hand's.
+    around: dict[int, set[int]] = {}
+    for face, digit in zip(part.faces, digits):
+        for v in face:
+            around.setdefault(v, set()).add(int(digit))
+    for i, key in enumerate(keys):
+        if held[i] or key[0] != "hands":
+            continue
+        own = around.get(i, {0})
+        tree = skin.trees[("hands", key[1], next(iter(own)))] if len(own) == 1 and 0 not in own else skin.trees[key]
+        location, _normal, _index, _distance = tree.find_nearest(Vector(x[i]))
+        x[i] = np.array(location)
+    for side in ("L", "R"):
+        members = np.array([i for i, key in enumerate(keys) if key == ("feet", side)], np.int64)
+        if not len(members):
+            continue
+        ring, column = rings[members], columns[members]
+        if ring.min() < 0 or ring.max() != len(FOOT_RINGS) + 1:
+            raise ArtPipelineError(f"The foot of the cage on the {side} side was not made with the {len(FOOT_RINGS)} rings "
+                                   "of the fitting; make its feet region again.")
+        ankle = np.zeros((int(column[ring == 0].max()) + 1, 3))
+        ankle[column[ring == 0]] = x[members[ring == 0]]
+        laid, pole = _foot_rings(arm, side, ankle, skin.feet[side])
+        for i, r, c in zip(members, ring, column):
+            if not held[i]:
+                x[i] = pole if r == len(FOOT_RINGS) + 1 else laid[r - 1][c]
+    # The feet are faired, which spreads their rings where they crowd at the front of the ankle; the
+    # hands lie on their skin already, and fairing would only draw in the fingertips.
+    x = part.net.faired(x, FAIRING, held | np.array([key[0] != "feet" for key in keys]))
+    return _settle(part.net, x, skin, held, SETTLE_PASSES * ENDS_SETTLE_FACTOR)
+
+
+def _hull(points: np.ndarray) -> np.ndarray:
+    """The convex hull of points in a plane, counterclockwise."""
+    unique = sorted({(float(p[0]), float(p[1])) for p in np.round(points, 9)})
+    if len(unique) < 3:
+        return np.array(unique).reshape(-1, 2)
+
+    def turn(o, a, b) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower, upper = [], []
+    for p in unique:
+        while len(lower) >= 2 and turn(lower[-2], lower[-1], p) <= 0.0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(unique):
+        while len(upper) >= 2 and turn(upper[-2], upper[-1], p) <= 0.0:
+            upper.pop()
+        upper.append(p)
+    return np.array(lower[:-1] + upper[:-1])
+
+
+def _centroid(polygon: np.ndarray) -> np.ndarray:
+    """The centre of a polygon's area."""
+    x, y = polygon[:, 0], polygon[:, 1]
+    xn, yn = np.roll(x, -1), np.roll(y, -1)
+    cross = x * yn - xn * y
+    return np.array((((x + xn) * cross).sum(), ((y + yn) * cross).sum())) / (3.0 * cross.sum())
+
+
+def _toward(polygon: np.ndarray, centre: np.ndarray, angle: float) -> tuple[int, np.ndarray]:
+    """Where a ray from a point inside a convex polygon, at an angle, meets its outline: the edge
+    from the polygon's corner of that number, and the point."""
+    direction = np.array((math.cos(angle), math.sin(angle)))
+    best = None
+    for index, (a, b) in enumerate(zip(polygon, np.roll(polygon, -1, axis=0))):
+        edge, start = b - a, a - centre
+        determinant = edge[0] * direction[1] - edge[1] * direction[0]
+        if abs(determinant) < 1e-15:
+            continue
+        t = (edge[0] * start[1] - edge[1] * start[0]) / determinant
+        u = (direction[0] * start[1] - direction[1] * start[0]) / determinant
+        if t > 0.0 and -1e-9 <= u <= 1.0 + 1e-9 and (best is None or t < best[0]):
+            best = (t, index)
+    if best is None:
+        raise ArtPipelineError("A ring of a foot of the cage found no outline around its centre.")
+    return best[1], centre + direction * best[0]
+
+
+def _shares(polygon: np.ndarray) -> np.ndarray:
+    """How far along a closed polygon's outline each of its corners lies, as shares of the outline."""
+    lengths = np.linalg.norm(np.roll(polygon, -1, axis=0) - polygon, axis=1)
+    return np.concatenate([[0.0], np.cumsum(lengths)[:-1]]) / lengths.sum()
+
+
+def _along(polygon: np.ndarray, shares: np.ndarray) -> np.ndarray:
+    """The points at shares of a closed polygon's outline, from its first corner."""
+    closed = np.concatenate([polygon, polygon[:1]])
+    lengths = np.linalg.norm(closed[1:] - closed[:-1], axis=1)
+    reach = np.concatenate([[0.0], np.cumsum(lengths)])
+    distance = shares * reach[-1]
+    return np.stack([np.interp(distance, reach, closed[:, k]) for k in range(2)], axis=1)
+
+
+def _section(triangles: np.ndarray, origin: np.ndarray, across: np.ndarray, down: np.ndarray) -> np.ndarray:
+    """Where a half-plane cuts the triangles, in the half-plane's coordinates: along its axis across,
+    and away from the axis along down."""
+    normal = np.cross(across, down)
+    signed = (triangles - origin) @ normal
+    found = []
+    for i, j in ((0, 1), (1, 2), (2, 0)):
+        crossing = (signed[:, i] < 0.0) != (signed[:, j] < 0.0)
+        a, b = triangles[crossing, i], triangles[crossing, j]
+        t = signed[crossing, i] / (signed[crossing, i] - signed[crossing, j])
+        found.append(a + (b - a) * t[:, None])
+    points = np.concatenate(found) - origin
+    flat = np.stack([points @ across, points @ down], axis=1)
+    return flat[flat[:, 1] > 0.0]
+
+
+def _foot_rings(arm: bpy.types.Object, side: str, ankle: np.ndarray, triangles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """A foot's rings on a body, one row of points per ring of FOOT_RINGS, and the point that closes
+    the last ring at the toe tip. The half-planes turn about an axis across the foot, in the ankle
+    ring's plane, in front of the ankle, from that plane down until they stand across the foot's
+    forward direction; the planes after them stand across it. Each ring follows the convex hull of
+    its cross section of the foot's skin: its first point lies where the ray from the hull's centre
+    at the angle of the ankle ring's first point meets the hull, the back of the ankle on the heel
+    and the middle of the sole further on, and the others follow around the hull in the ankle ring's
+    direction at the shares of the outline that the ankle ring's points lie at, so the rings keep
+    their points spread evenly and do not cut the corners of a flat section."""
+    if not len(triangles):
+        raise ArtPipelineError(f"The body has no skin of the foot on the {side} side.")
+    world = arm.matrix_world
+    joint = np.array(world @ arm.data.bones[f"LowerLeg_{side}"].tail_local)
+    toe = np.array(world @ arm.data.bones[f"Toes_{side}"].tail_local)
+    forward = toe - joint
+    forward[2] = 0.0
+    forward /= np.linalg.norm(forward)
+    centre = ankle.mean(axis=0)
+    normal = np.linalg.svd(ankle - centre)[2][2]
+    if normal[2] > 0.0:
+        normal = -normal
+    back = -forward - np.dot(-forward, normal) * normal
+    back /= np.linalg.norm(back)
+    across = np.cross(back, normal)
+    pivot = centre - back * (((ankle - centre) @ -back).max() + PIVOT_MARGIN)
+    # The turn after which a half-plane stands across the forward direction.
+    full = math.atan2(-np.dot(back, forward), np.dot(normal, forward))
+    start = np.stack([(ankle - pivot) @ across, (ankle - pivot) @ back], axis=1)
+    middle = _centroid(start)
+    first = math.atan2(start[0, 1] - middle[1], start[0, 0] - middle[0])
+    shares = _shares(start)
+    # The hulls run counterclockwise; a ring that runs the other way walks them backward.
+    turning = np.sign(np.sum(start[:, 0] * np.roll(start[:, 1], -1) - np.roll(start[:, 0], -1) * start[:, 1]))
+    tip = float(((triangles.reshape(-1, 3) - pivot) @ forward).max())
+    rings = []
+    for kind, share in FOOT_RINGS:
+        turn = full * share if kind == "turn" else full
+        down = back * math.cos(turn) + normal * math.sin(turn)
+        origin = pivot if kind == "turn" else pivot + forward * tip * share
+        hull = _hull(_section(triangles, origin, across, down))
+        if len(hull) < 3:
+            raise ArtPipelineError(f"A ring of the foot on the {side} side cuts too little of its skin.")
+        middle = _centroid(hull)
+        edge, point = _toward(hull, middle, first)
+        outline = np.concatenate([[point], hull[edge + 1:], hull[:edge + 1]])
+        if turning < 0.0:
+            outline = np.concatenate([outline[:1], outline[1:][::-1]])
+        rings.append([origin + across * p[0] + down * p[1] for p in _along(outline, shares)])
+    pole = pivot + forward * tip + across * middle[0] + down * middle[1]
+    return np.array(rings), pole
+
+
+def _axes(weights: np.ndarray, keys: list[tuple[str, str]], names: list[str], arm: bpy.types.Object) -> np.ndarray:
     """The axis each vertex's ring runs around: up for the trunk, which stands upright at rest, and
     for the neck and the limbs the bone of the armature that the vertex follows most in the
     reference."""
-    weights = bodies.weights_of(cage, names)
     directions = []
     for name in names:
         bone = arm.data.bones.get(name)
@@ -365,20 +704,23 @@ def _tension(net: Net, x: np.ndarray, keys: list[tuple[str, str]], axes: np.ndar
     return x + normals * offset[:, None]
 
 
-def _settle(net: Net, x: np.ndarray, skin: Skin) -> np.ndarray:
+def _settle(net: Net, x: np.ndarray, skin: Skin, held: np.ndarray | None = None, passes: int = SETTLE_PASSES) -> np.ndarray:
     """Every vertex, and the corners of every face whose centre, lies inside the skin or closer
     than the clearance moved out along the skin's normal, a few times over, because moving one face
-    moves the corners it shares."""
+    moves the corners it shares. Held vertices stay where they are."""
     x = x.copy()
     points = [(i,) for i in range(net.count)] + net.faces
-    for _ in range(SETTLE_PASSES):
+    for _ in range(passes):
         settled = True
         for corners in points:
             corners = list(corners)
             centre = x[corners].mean(axis=0)
             _location, normal, distance = skin.nearest(None, centre)
             if distance < CLEARANCE:
-                x[corners] += np.array(normal) * (CLEARANCE + SETTLE_MARGIN - distance)
+                moving = corners if held is None else [c for c in corners if not held[c]]
+                if not moving:
+                    continue
+                x[moving] += np.array(normal) * (CLEARANCE + SETTLE_MARGIN - distance)
                 settled = False
         if settled:
             break
@@ -415,11 +757,22 @@ def _apply(label: str, fitted: np.ndarray) -> None:
         body_files.collection(collection_name(label)).objects.link(version)
         correction = np.zeros_like(fitted)
     else:
-        if [tuple(p.vertices) for p in version.data.polygons] != [tuple(p.vertices) for p in cage.data.polygons]:
+        own = [tuple(p.vertices) for p in version.data.polygons]
+        faces = [tuple(p.vertices) for p in cage.data.polygons]
+        if own != faces[:len(own)]:
             raise ArtPipelineError(f'"{version.name}" no longer has the topology of the cage; delete it so the next '
                                    "sync fits it again.")
         previous = _attribute(version.data, FITTED)
-        correction = bodies.world_positions(version) - previous if previous is not None else np.zeros_like(fitted)
+        correction = np.zeros_like(fitted)
+        if previous is not None:
+            correction[:len(previous)] = bodies.world_positions(version) - previous
+        if len(own) < len(faces):
+            # Regions were added to the cage after its versions: each gets them, and its vertices
+            # keep their numbers and corrections.
+            old = version.data
+            version.data = cage.data.copy()
+            bpy.data.meshes.remove(old)
+            version.data.name = version_name(label)
     version.parent = arm
     version.matrix_parent_inverse = arm.matrix_world.inverted()
     version.matrix_world = Matrix.Identity(4)
@@ -440,7 +793,7 @@ def _state(labels: list[str]) -> str:
     digest = hashlib.sha256()
     cage = bpy.data.objects.get(REFERENCE)
     if cage is not None:
-        digest.update(f"{cage.get('figure')}|{cage.get('lines')}".encode("utf-8"))
+        digest.update(f"{cage.get('figure')}|{cage.get('lines')}|{len(cage.data.polygons)}".encode("utf-8"))
     for label in labels:
         digest.update(label.encode("utf-8"))
         arm = bpy.data.objects.get(label)
@@ -469,9 +822,178 @@ def _show_first(labels: list[str]) -> None:
     rig.hide_set(True)
 
 
+def _append(points: list, rows: list, bones: list[str], faces: list[tuple[int, ...]], region: str,
+            digits: list[int] | None = None, sweep: dict[int, tuple[int, int]] | None = None) -> None:
+    """Adds vertices, at points in world space with their weights over the bones, and faces of a
+    region to the reference, after its own, so every vertex and face it had keeps its number. sweep
+    gives the vertices of a foot's rings their ring and column."""
+    cage, _rig = _reference()
+    carried = np.array(rows).max(axis=0) > 0.0 if rows else np.zeros(len(bones), bool)
+    for column in np.nonzero(carried)[0]:
+        if bones[column] not in cage.vertex_groups:
+            cage.vertex_groups.new(name=bones[column])
+    groups = {g.name: g.index for g in cage.vertex_groups}
+    inverse = cage.matrix_world.inverted()
+    bm = bmesh.new()
+    bm.from_mesh(cage.data)
+    deform = bm.verts.layers.deform.verify()
+    region_layer = bm.faces.layers.int.get("region")
+    digit_layer = bm.faces.layers.int.get(DIGIT) or bm.faces.layers.int.new(DIGIT)
+    sweep_layers = []
+    for name in (SWEEP_RING, SWEEP_COLUMN):
+        layer = bm.verts.layers.int.get(name)
+        if layer is None:
+            layer = bm.verts.layers.int.new(name)
+            for v in bm.verts:
+                v[layer] = -1
+        sweep_layers.append(layer)
+    for point, row in zip(points, rows):
+        v = bm.verts.new(inverse @ Vector(point))
+        for column, weight in enumerate(row):
+            if weight > 0.0:
+                v[deform][groups[bones[column]]] = float(weight)
+        for layer in sweep_layers:
+            v[layer] = -1
+    bm.verts.ensure_lookup_table()
+    for index, corners in enumerate(faces):
+        face = bm.faces.new([bm.verts[c] for c in corners])
+        face[region_layer] = REGIONS.index(region)
+        face[digit_layer] = int(digits[index]) if digits is not None else 0
+        face.smooth = True
+    for vertex, (ring, column) in (sweep or {}).items():
+        bm.verts[vertex][sweep_layers[0]] = ring
+        bm.verts[vertex][sweep_layers[1]] = column
+    bm.to_mesh(cage.data)
+    bm.free()
+    cage.data.update()
+
+
+def _skin_rows(body: bpy.types.Object, polygons: list[tuple[int, ...]], weights: np.ndarray, points) -> list[np.ndarray]:
+    """The body's weights at points on its skin of the given faces, from the corners of the nearest
+    face."""
+    co = bodies.world_positions(body)
+    tree = BVHTree.FromPolygons([tuple(c) for c in co], polygons)
+    rows = []
+    for point in points:
+        location, _normal, index, _distance = tree.find_nearest(Vector(point))
+        corners = polygons[index]
+        shares = poly_3d_calc([Vector(co[v]) for v in corners], location)
+        rows.append(sum(weights[v] * share for v, share in zip(corners, shares)))
+    return rows
+
+
+def _add_hands(label: str) -> None:
+    """The hands region from the body's faces of its hands, met at the cage's wrist rings, with the
+    digit of every face."""
+    cage, rig = _reference()
+    arm, body = bpy.data.objects[label], bodies.source_body(label)
+    zones = bodies.zones_of(body)
+    hands, forearms = bodies.ZONES.index("Hands"), bodies.ZONES.index("Forearms")
+    chosen = [p for p in body.data.polygons if zones[p.index] == hands]
+    wrists = {v for p in body.data.polygons if zones[p.index] == forearms for v in p.vertices}
+    used = sorted({v for p in chosen for v in p.vertices})
+    bones = [b.name for b in arm.data.bones if b.use_deform]
+    weights = bodies.weights_of(body, bones)
+    moved = _transfer(bodies.world_positions(body)[used], weights[used], bones, arm, rig)
+    reference = bodies.world_positions(cage)
+    stage = Part([tuple(p.vertices) for p in cage.data.polygons], _face_regions(cage.data), STAGES[0])
+    ends = stage.vertices[np.unique(stage.net.border_edges)]
+    near = KDTree(len(ends))
+    for i, v in enumerate(ends):
+        near.insert(reference[v], i)
+    near.balance()
+    number, points, rows = {}, [], []
+    for v, point in zip(used, moved):
+        if v in wrists:
+            _co, index, distance = near.find(point)
+            if distance > WRIST_MATCH:
+                raise ArtPipelineError(f"The hands of {label} do not meet the cage's wrists, which were made from another "
+                                       "body; the hands region is made from the body the cage was made from.")
+            number[v] = int(ends[index])
+        else:
+            number[v] = len(reference) + len(points)
+            points.append(point)
+            rows.append(weights[v])
+    digits = face_digits(body)
+    _append(points, rows, bones, [tuple(number[v] for v in p.vertices) for p in chosen], "hands",
+            [int(digits[p.index]) for p in chosen])
+
+
+def _add_feet(label: str, figure: float) -> None:
+    """The feet region: on each side the rings of the foot from the cage's ankle ring to the toe
+    tip, laid on the body as the fitting lays them, each ring a quad strip and the last one closed by
+    a fan at the tip."""
+    cage, rig = _reference()
+    arm, body = bpy.data.objects[label], bodies.source_body(label)
+    x = fit(label, figure)
+    faces = [tuple(p.vertices) for p in cage.data.polygons]
+    regions = _face_regions(cage.data)
+    stage = Part(faces, regions, STAGES[0])
+    keys = stage.keys(bodies.world_positions(cage)[stage.vertices])
+    skin = Skin(body)
+    zones = bodies.zones_of(body)
+    bones = [b.name for b in arm.data.bones if b.use_deform]
+    weights = bodies.weights_of(body, bones)
+    count = len(x)
+    points, rows, new_faces, sweep = [], [], [], {}
+    for side in ("L", "R"):
+        loops = [loop for loop in stage.net.loops() if all(keys[v] == ("legs", side) for v in loop)]
+        if len(loops) != 1:
+            raise ArtPipelineError(f"The cage has {len(loops)} open ends of the leg on the {side} side, not one ankle ring.")
+        ring = [int(stage.vertices[v]) for v in loops[0]]
+        # The new faces run along the ankle ring against the leg's faces there.
+        leg = next(f for f in faces if ring[0] in f and ring[1] in f)
+        if leg[(leg.index(ring[0]) + 1) % len(leg)] == ring[1]:
+            ring.reverse()
+        forward = np.array(arm.matrix_world @ arm.data.bones[f"Toes_{side}"].tail_local) - x[ring].mean(axis=0)
+        back = int(np.argmin(x[ring] @ forward))
+        ring = ring[back:] + ring[:back]
+        laid, pole = _foot_rings(arm, side, x[ring], skin.feet[side])
+        rows_of_side = [ring]
+        for index, row in enumerate(laid):
+            numbers = list(range(count + len(points), count + len(points) + len(row)))
+            points.extend(row)
+            rows_of_side.append(numbers)
+            for column, vertex in enumerate(numbers):
+                sweep[vertex] = (index + 1, column)
+        tip = count + len(points)
+        points.append(pole)
+        sweep[tip] = (len(FOOT_RINGS) + 1, 0)
+        for column, vertex in enumerate(ring):
+            sweep[vertex] = (0, column)
+        size = len(ring)
+        for upper, lower in zip(rows_of_side, rows_of_side[1:]):
+            for j in range(size):
+                new_faces.append((upper[j], upper[(j + 1) % size], lower[(j + 1) % size], lower[j]))
+        last = rows_of_side[-1]
+        for j in range(size):
+            new_faces.append((last[j], last[(j + 1) % size], tip))
+    feet = bodies.ZONES.index("Feet")
+    polygons = [tuple(p.vertices) for p in body.data.polygons if zones[p.index] == feet]
+    rows = _skin_rows(body, polygons, weights, points)
+    moved = _transfer(np.array(points), np.array(rows), bones, arm, rig)
+    _append(list(moved), rows, bones, new_faces, "feet", sweep=sweep)
+
+
+def _add_regions(label: str, figure: float) -> list[str]:
+    """Adds the regions the reference lacks, built on its first body, with their vertices and faces
+    after its own. Returns the regions it added."""
+    missing = missing_regions()
+    early = [region for region in missing if region in STAGES[0]]
+    if early:
+        raise ArtPipelineError(f"The reference lacks the regions {early}, which are made with the cage; make the cage again.")
+    for region in missing:
+        if region == "hands":
+            _add_hands(label)
+        elif region == "feet":
+            _add_feet(label, figure)
+    return missing
+
+
 def create(file: str, body_list: list[tuple[str, str]], figure: float, lines: list[dict]) -> None:
-    """Writes the first file of a cage: the bodies, and the reference made from the first body,
-    then the cage's version on every body."""
+    """Writes the first file of a cage: the bodies, and the reference made from the first body, its
+    first stage's regions from the body's faces and the others added to them, then the cage's version
+    on every body."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     arms = [body_files.append_body(path, root, collection_name(root)) for path, root in body_list]
     first = arms[0]
@@ -488,7 +1010,7 @@ def create(file: str, body_list: list[tuple[str, str]], figure: float, lines: li
             collection.objects.unlink(rig)
 
     zones = bodies.zones_of(body)
-    regions = {bodies.ZONES.index(z): REGIONS.index(r) for r, zs in REGION_ZONES.items() for z in zs}
+    regions = {bodies.ZONES.index(z): REGIONS.index(r) for r in STAGES[0] for z in REGION_ZONES[r]}
     bm = bmesh.new()
     bm.from_mesh(body.data)
     bm.faces.ensure_lookup_table()
@@ -524,6 +1046,7 @@ def create(file: str, body_list: list[tuple[str, str]], figure: float, lines: li
     bodies.set_weights(cage, bodies.weights_of(body, names)[sources], names)
 
     _record(figure, lines)
+    _add_regions(first.name, figure)
     for arm in arms:
         _apply(arm.name, fit(arm.name, figure))
     _show_first([a.name for a in arms])
@@ -531,10 +1054,11 @@ def create(file: str, body_list: list[tuple[str, str]], figure: float, lines: li
     bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
 
 
-def sync(file: str, body_list: list[tuple[str, str]], figure: float, lines: list[dict]) -> bool:
-    """Appends the bodies again that changed in their own files and fits the cage's version on
-    every body again from the reference, keeping the corrections. Returns whether the file changed;
-    an unchanged file is not saved, so its approval stays valid."""
+def sync(file: str, body_list: list[tuple[str, str]], figure: float, lines: list[dict]) -> tuple[bool, list[str]]:
+    """Appends the bodies again that changed in their own files, adds the regions the reference
+    lacks, and fits the cage's version on every body again from the reference, keeping the
+    corrections. Returns whether the file changed and the regions it added; an unchanged file is
+    not saved, so its approval stays valid."""
     bpy.ops.wm.open_mainfile(filepath=file)
     labels = [root for _path, root in body_list]
     before = _state(labels)
@@ -549,15 +1073,16 @@ def sync(file: str, body_list: list[tuple[str, str]], figure: float, lines: list
             bpy.data.objects.remove(child, do_unlink=True)
         bpy.data.objects.remove(obj, do_unlink=True)
     _record(figure, lines)
+    added = _add_regions(labels[0], figure)
     for label in labels:
         _apply(label, fit(label, figure))
-    if not removed and _state(labels) == before:
-        return False
-    if stale:
+    if not removed and not added and _state(labels) == before:
+        return False, added
+    if stale or added:
         _show_first(labels)
     relative_image_paths()
     bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
-    return True
+    return True, added
 
 
 def stale_errors(body_list: list[tuple[str, str]], figure: float, lines: list[dict]) -> list[str]:
@@ -567,6 +1092,9 @@ def stale_errors(body_list: list[tuple[str, str]], figure: float, lines: list[di
     stale = body_files.stale_bodies(body_list)
     if stale:
         return [f"The bodies {stale} of the cage changed in their own files; run tools/Sync-CageAsset.ps1."]
+    missing = missing_regions()
+    if missing:
+        return [f"The cage lacks the regions {missing}; run tools/Sync-CageAsset.ps1, which adds them."]
     cage, _rig = _reference()
     recorded = json.dumps(lines, sort_keys=True, separators=(",", ":"))
     if cage.get("figure") != float(figure) or cage.get("lines") != recorded:
