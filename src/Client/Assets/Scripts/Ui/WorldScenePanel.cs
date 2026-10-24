@@ -356,7 +356,39 @@ namespace Mmorpg.Client.Ui
             bodyTint.Enabled = GUILayout.Toggle(
                 bodyTint.Enabled,
                 " Tint bodies: you purple, players orange, bots blue");
+            DrawBodyModel();
             DrawBodyLook();
+        }
+
+        // A row that steps through the body models of the World scene, such as Human_Male and
+        // Human_Female, with the rule of when a player chooses one.
+        private void DrawBodyModel()
+        {
+            var models = bodyLook != null ? bodyLook.Models : null;
+            if (models == null || models.Models.Count < 2)
+            {
+                return;
+            }
+
+            var shown = models.NamedOrDefault(bodyLook.Model);
+            var current = 0;
+            for (var index = 0; index < models.Models.Count; index++)
+            {
+                if (models.Models[index] == shown)
+                {
+                    current = index;
+                }
+            }
+
+            var step = StepButtons("Your body: " + (shown != null ? shown.Name : "none") + " (" + RuleText(AppearanceRules.BodyModel) + ")");
+            if (step != 0)
+            {
+                var chosen = models.Models[(current + step + models.Models.Count) % models.Models.Count];
+                if (chosen != null)
+                {
+                    bodyLook.Model = chosen.Name;
+                }
+            }
         }
 
         // One row per appearance slot of the local body, such as Face and Eye, and per category of

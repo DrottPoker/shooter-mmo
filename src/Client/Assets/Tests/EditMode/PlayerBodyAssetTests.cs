@@ -11,12 +11,14 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
-    // The human body that replaces the player capsule: the body prefab, its Animator
-    // controller, and its place in the player prefabs. See docs/UNITY_CLIENT_ARCHITECTURE.md.
+    // The human bodies that replace the player capsule: the body prefabs, their Animator
+    // controller, the body models, and how the player prefabs show them. See
+    // docs/UNITY_CLIENT_ARCHITECTURE.md.
     public sealed class PlayerBodyAssetTests
     {
-        private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
-        private const string BodyModelPath = "Assets/Art/Models/Characters/Human_Male.fbx";
+        private const string MaleBodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
+        private const string FemaleBodyPrefabPath = "Assets/Prefabs/Player/HumanFemaleBody.prefab";
+        private const string BodyModelsPath = "Assets/Content/Player/PlayerBodyModels.asset";
         private const string ControllerPath = "Assets/Art/Animation/HumanLocomotion.controller";
         private const string ActionsModelPath = "Assets/Art/Models/Animations/Human_Actions.fbx";
         private const string AnimateScript = "tools/blender/human_base/animate.py";
@@ -27,53 +29,68 @@ namespace Mmorpg.Client.Tests.EditMode
             "Assets/Prefabs/Player/RemotePlayer.prefab",
         };
 
-        [Test]
-        public void TheBodyIsAVariantOfTheMaleModelWithItsAnimatorAndLook()
+        [TestCase(MaleBodyPrefabPath, "Human_Male", "Male")]
+        [TestCase(FemaleBodyPrefabPath, "Human_Female", "Female")]
+        public void TheBodyIsAVariantOfItsModelWithItsAnimatorAndLook(string bodyPath, string modelName, string materialSuffix)
         {
-            var body = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath);
+            var modelPath = "Assets/Art/Models/Characters/" + modelName + ".fbx";
+            var body = AssetDatabase.LoadAssetAtPath<GameObject>(bodyPath);
             Assert.That(body, Is.Not.Null);
             Assert.That(PrefabUtility.GetPrefabAssetType(body), Is.EqualTo(PrefabAssetType.Variant));
             Assert.That(
                 AssetDatabase.GetAssetPath(PrefabUtility.GetCorrespondingObjectFromOriginalSource(body)),
-                Is.EqualTo(BodyModelPath));
+                Is.EqualTo(modelPath));
 
             var animator = body.GetComponent<Animator>();
             Assert.That(animator, Is.Not.Null);
             Assert.That(AssetDatabase.GetAssetPath(animator.runtimeAnimatorController), Is.EqualTo(ControllerPath));
             Assert.That(animator.avatar, Is.Not.Null);
             Assert.That(animator.avatar.isHuman, Is.True);
-            Assert.That(AssetDatabase.GetAssetPath(animator.avatar), Is.EqualTo(BodyModelPath));
+            Assert.That(AssetDatabase.GetAssetPath(animator.avatar), Is.EqualTo(modelPath));
             // The game moves the character; the clips play in place.
             Assert.That(animator.applyRootMotion, Is.False);
             Assert.That(animator.cullingMode, Is.EqualTo(AnimatorCullingMode.CullUpdateTransforms));
             Assert.That(body.GetComponent<CharacterLocomotionAnimator>(), Is.Not.Null);
+            Assert.That(body.GetComponent<ClothChainSolver>(), Is.Not.Null);
 
             // The skin is the body and the face, not the eyes, teeth, or tongue.
             var appearance = body.GetComponent<PlayerBodyAppearance>();
             Assert.That(appearance, Is.Not.Null);
             Assert.That(
                 appearance.SkinMaterials.Select(material => material.name),
-                Is.EquivalentTo(new[] { "M_Body_Male", "M_Face_Male" }));
+                Is.EquivalentTo(new[] { "M_Body_" + materialSuffix, "M_Face_" + materialSuffix }));
+            Assert.That(
+                AssetDatabase.GetAssetPath(appearance.Catalog),
+                Is.EqualTo("Assets/Art/Appearance/" + modelName + "_Appearance.asset"));
             Assert.That(body.GetComponentsInChildren<Collider>(true), Is.Empty);
         }
 
         [Test]
-        public void ThePlayersShowTheBodyInPlaceOfTheCapsule()
+        public void TheBodyModelsAreTheMaleBodyFirstAndTheFemaleBody()
         {
-            var body = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath);
+            var models = AssetDatabase.LoadAssetAtPath<PlayerBodyModels>(BodyModelsPath);
+            Assert.That(models, Is.Not.Null);
+            Assert.That(models.Models.Select(model => model.Name), Is.EqualTo(new[] { "Human_Male", "Human_Female" }));
+            Assert.That(
+                models.Models.Select(model => AssetDatabase.GetAssetPath(model.Body)),
+                Is.EqualTo(new[] { MaleBodyPrefabPath, FemaleBodyPrefabPath }));
+            Assert.That(models.Default, Is.SameAs(models.Models[0]));
+        }
+
+        [Test]
+        public void ThePlayersShowABodyModelInPlaceOfTheCapsule()
+        {
+            var models = AssetDatabase.LoadAssetAtPath<PlayerBodyModels>(BodyModelsPath);
             foreach (var path in PlayerPrefabPaths)
             {
                 var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 var visual = prefab.transform.Find("PlayerVisual");
                 Assert.That(visual, Is.Not.Null, path);
-                var bodies = prefab.GetComponentsInChildren<PlayerBodyAppearance>(true);
-                Assert.That(bodies, Has.Length.EqualTo(1), path);
-                var instance = bodies[0].gameObject;
-                Assert.That(instance.transform.parent, Is.EqualTo(visual), path);
-                Assert.That(PrefabUtility.GetCorrespondingObjectFromSource(instance), Is.EqualTo(body), path);
-                Assert.That(instance.transform.localPosition, Is.EqualTo(Vector3.zero), path);
-                Assert.That(instance.transform.localRotation, Is.EqualTo(Quaternion.identity), path);
-                Assert.That(instance.transform.localScale, Is.EqualTo(Vector3.one), path);
+                var slot = visual.GetComponent<PlayerBodySlot>();
+                Assert.That(slot, Is.Not.Null, path);
+                Assert.That(slot.Models, Is.SameAs(models), path);
+                // A player instantiates only the body it shows.
+                Assert.That(prefab.GetComponentsInChildren<PlayerBodyAppearance>(true), Is.Empty, path);
                 Assert.That(
                     prefab.GetComponentsInChildren<MeshRenderer>(true),
                     Is.Empty,
