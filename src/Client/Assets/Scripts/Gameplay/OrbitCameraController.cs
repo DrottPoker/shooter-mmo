@@ -13,8 +13,11 @@ namespace Mmorpg.Client.Gameplay
         private const int CollisionHitCapacity = 16;
 
         [SerializeField] private Transform target;
-        [SerializeField, Min(0.5f)] private float minimumDistance = 3f;
-        [SerializeField, Min(0.5f)] private float maximumDistance = 30f;
+
+        // From the neck-high pivot, 0.6 meters keeps the camera about 30 centimeters
+        // from the body at every tilt.
+        [SerializeField, Min(0.5f)] private float minimumDistance = 0.6f;
+        [SerializeField, Min(0.5f)] private float maximumDistance = 15f;
         [SerializeField, Min(0.5f)] private float initialDistance = 12f;
         [SerializeField, Range(0f, 89f)] private float minimumPitch = 10f;
         [SerializeField, Range(0f, 89f)] private float maximumPitch = 80f;

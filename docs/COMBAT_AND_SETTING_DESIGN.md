@@ -219,8 +219,8 @@ direction with these decisions:
   service. Escape closes the interaction. Examine shows a short description
   from the actor content; Mob weaknesses follow with resistances.
 - The camera orbits the player. The middle mouse button and the arrow keys turn
-  and tilt it between 10 and 80 degrees, and the scroll wheel zooms from 3 to 30
-  meters. Geometry pulls the camera in front of walls; hiding roofs and
+  and tilt it between 10 and 80 degrees, and the scroll wheel zooms from 0.6 to
+  15 meters. Geometry pulls the camera in front of walls; hiding roofs and
   occluding walls is not implemented yet.
 
 ## Combat Model
