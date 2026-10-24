@@ -261,32 +261,39 @@ namespace Mmorpg.Client.Tests.EditMode
                 var minimumPitch = cameraProperties.FindProperty("minimumPitch").floatValue;
                 var maximumPitch = cameraProperties.FindProperty("maximumPitch").floatValue;
                 var pivot = controller.CameraTarget.position;
+                var slot = instance.GetComponentInChildren<PlayerBodySlot>(true);
+                Assert.That(slot.Models.Models, Is.Not.Empty);
 
-                var bodyPoints = new List<Vector3>();
-                foreach (var renderer in instance.GetComponentsInChildren<SkinnedMeshRenderer>())
+                // Every body model a player can show.
+                foreach (var model in slot.Models.Models)
                 {
-                    renderer.BakeMesh(bakedMesh, true);
-                    var toWorld = Matrix4x4.TRS(
-                        renderer.transform.position,
-                        renderer.transform.rotation,
-                        Vector3.one);
-                    bodyPoints.AddRange(bakedMesh.vertices.Select(
-                        vertex => toWorld.MultiplyPoint3x4(vertex)));
-                }
-
-                Assert.That(bodyPoints, Is.Not.Empty);
-
-                // The closest zoom stays about 30 centimeters from the body at every tilt
-                // and all around the player; the bound leaves room for the pose.
-                for (var pitch = minimumPitch; pitch <= maximumPitch; pitch += 5f)
-                {
-                    for (var yaw = 0f; yaw < 360f; yaw += 15f)
+                    Assert.That(slot.Show(model), Is.True, model.Name);
+                    var bodyPoints = new List<Vector3>();
+                    foreach (var renderer in instance.GetComponentsInChildren<SkinnedMeshRenderer>())
                     {
-                        var direction = Quaternion.Euler(pitch, yaw, 0f) * Vector3.back;
-                        var cameraPosition = pivot + (direction * closestDistance);
-                        var clearance = bodyPoints.Min(
-                            point => Vector3.Distance(point, cameraPosition));
-                        Assert.That(clearance, Is.GreaterThan(0.2f), $"pitch {pitch}, yaw {yaw}");
+                        renderer.BakeMesh(bakedMesh, true);
+                        var toWorld = Matrix4x4.TRS(
+                            renderer.transform.position,
+                            renderer.transform.rotation,
+                            Vector3.one);
+                        bodyPoints.AddRange(bakedMesh.vertices.Select(
+                            vertex => toWorld.MultiplyPoint3x4(vertex)));
+                    }
+
+                    Assert.That(bodyPoints, Is.Not.Empty, model.Name);
+
+                    // The closest zoom stays about 30 centimeters from the body at every tilt
+                    // and all around the player; the bound leaves room for the pose.
+                    for (var pitch = minimumPitch; pitch <= maximumPitch; pitch += 5f)
+                    {
+                        for (var yaw = 0f; yaw < 360f; yaw += 15f)
+                        {
+                            var direction = Quaternion.Euler(pitch, yaw, 0f) * Vector3.back;
+                            var cameraPosition = pivot + (direction * closestDistance);
+                            var clearance = bodyPoints.Min(
+                                point => Vector3.Distance(point, cameraPosition));
+                            Assert.That(clearance, Is.GreaterThan(0.2f), $"{model.Name}, pitch {pitch}, yaw {yaw}");
+                        }
                     }
                 }
             }
@@ -330,12 +337,21 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(prefab, Is.Not.Null);
             Assert.That(prefab.GetComponent<RemotePlayerView>(), Is.Not.Null);
-            Assert.That(prefab.GetComponentInChildren<Renderer>(true), Is.Not.Null);
-            Assert.That(prefab.GetComponentsInChildren<Collider>(true), Is.Empty);
-            Assert.That(prefab.GetComponentsInChildren<Rigidbody>(true), Is.Empty);
-            Assert.That(prefab.GetComponentsInChildren<Camera>(true), Is.Empty);
-            Assert.That(prefab.GetComponentsInChildren<AudioListener>(true), Is.Empty);
-            Assert.That(prefab.GetComponentsInChildren<PlayerInput>(true), Is.Empty);
+            // It shows one of the body models, which are presentation only as well.
+            var models = prefab.GetComponentInChildren<PlayerBodySlot>(true).Models;
+            Assert.That(models.Models, Is.Not.Empty);
+            var presentations = new List<GameObject> { prefab };
+            presentations.AddRange(models.Models.Select(model => model.Body.gameObject));
+            foreach (var presentation in presentations)
+            {
+                Assert.That(presentation.GetComponentsInChildren<Collider>(true), Is.Empty, presentation.name);
+                Assert.That(presentation.GetComponentsInChildren<Rigidbody>(true), Is.Empty, presentation.name);
+                Assert.That(presentation.GetComponentsInChildren<Camera>(true), Is.Empty, presentation.name);
+                Assert.That(presentation.GetComponentsInChildren<AudioListener>(true), Is.Empty, presentation.name);
+                Assert.That(presentation.GetComponentsInChildren<PlayerInput>(true), Is.Empty, presentation.name);
+            }
+
+            Assert.That(models.Default.Body.GetComponentInChildren<Renderer>(true), Is.Not.Null);
         }
 
         [TestCase(DevelopmentWorld1ScenePath, "development-world-1")]

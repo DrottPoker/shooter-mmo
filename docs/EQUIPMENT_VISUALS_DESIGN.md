@@ -122,6 +122,13 @@ come later and follow these rules, which `AppearanceRules` in the client holds
 until then. F2 and the Wardrobe show them: one choice per kind, with no scar or
 tattoo among the choices, and the rule of each.
 
+Under the look lies the body model, `Human_Male` or `Human_Female`: exactly one,
+chosen in character creation and never changed (`AppearanceRules.BodyModel`).
+F2 chooses it until then. One look serves both bodies, as Victor decided on
+2026-10-24: what the other body lacks, such as the face `Stubble` on the woman
+or the bra on the man, is not shown and comes back with the body that has it,
+while the garments, the tattoo, the scar, and the briefs carry over.
+
 ## Garments
 
 ### Slots And Layers

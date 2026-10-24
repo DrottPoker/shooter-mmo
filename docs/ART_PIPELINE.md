@@ -462,14 +462,19 @@ material overrides. A resource node model has the roots `Available` and
 `Depleted`, which `ResourceNodeView` switches when the node depletes; an
 EditMode test checks every resource node prefab for them.
 
-`Assets/Prefabs/Player/HumanMaleBody.prefab` is the Prefab Variant of
-`Human_Male.fbx` that the local and remote player prefabs show as
-`PlayerVisual/Body`, in place of their old capsule. It adds the Animator with
-`Assets/Art/Animation/HumanLocomotion.controller`, the locomotion driver, and
-the body's look; see
-[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
-`PlayerBodyAssetTests` checks the variant, the controller, and both player
-prefabs.
+`Assets/Prefabs/Player/HumanMaleBody.prefab` and `HumanFemaleBody.prefab` are
+the Prefab Variants of `Human_Male.fbx` and `Human_Female.fbx` that the local and
+remote player prefabs show as `PlayerVisual/Body`, in place of their old
+capsule. Each adds the Animator with
+`Assets/Art/Animation/HumanLocomotion.controller`, the locomotion driver, the
+body's look with its skin materials and its model's appearance catalog, and the
+cloth chain solver. `Assets/Content/Player/PlayerBodyModels.asset` lists them as
+the body models `Human_Male`, the default, and `Human_Female`, and a player
+prefab puts in the body of its model when it spawns; see
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies). A new
+body model is a new Prefab Variant with the same components and an entry in
+that list. `PlayerBodyAssetTests` checks both variants, the controller, the
+models, and both player prefabs.
 
 ## Animation Libraries
 
@@ -1125,15 +1130,14 @@ weights.
 | `art/Paint/Briefs` | `paint` | none | `underwear` in the `legs` slot over `M_Body`, layer 900: pale blue briefs with a darker waistband, lifted out of the male body texture and moved to the female. Roughness 0.8. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, lifted out of the former male face `Scarred` and moved to the female: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
 | `art/Paint/Tattoo` | `paint` | none | A `tattoo` over `M_Body`, painted on the male and moved to the female, layer 200: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
-| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Blush` and `Freckles`. Model and rig approved 2026-10-24. |
-| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Stubble` and `Clean`. Model and rig approved 2026-10-24. The game shows it for every player. |
+| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Blush` and `Freckles`. Model and rig approved 2026-10-24. The game shows it for the local player who chooses it in F2 and for about half of the development bots. |
+| `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Stubble` and `Clean`. Model and rig approved 2026-10-24. The game shows it for every player until a body model is chosen, and for every corpse. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |
 
 ## Planned
 
-- The body type at character creation, which shows the female body for female
-  characters with the clips of the library, and the look chosen there, saved
-  with the character and sent to every client.
+- The body type at character creation, chosen in F2 until then, and the look
+  chosen there, saved with the character and sent to every client.
 - Eyelid bones for blinking and forearm twist bones.
 - A model fix of the low armpits, where the triceps meet the torso, and of the
   female's bra straps, which are painted up her neck, above the collar of chest

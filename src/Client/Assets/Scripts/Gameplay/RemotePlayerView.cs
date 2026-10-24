@@ -18,12 +18,13 @@ namespace Mmorpg.Client.Gameplay
 
         public ulong NetworkEntityId { get; private set; }
 
-        // The animated body of the player, or null without one.
+        // The animated body of the player, or null without one. A body that left the player, as
+        // when its body slot shows another model, is looked up again.
         public CharacterLocomotionAnimator Body
         {
             get
             {
-                if (body == null)
+                if (body == null || !body.transform.IsChildOf(transform))
                 {
                     body = GetComponentInChildren<CharacterLocomotionAnimator>(true);
                 }
@@ -66,6 +67,29 @@ namespace Mmorpg.Client.Gameplay
             ConfigurePointerTarget(characterCollision);
         }
 
+        // Puts in the body of the player's model, before the body is combined and given its look
+        // and tint; true when it put in a new body.
+        public bool ShowBody()
+        {
+            var slot = GetComponentInChildren<PlayerBodySlot>(true);
+            return slot != null && slot.Show(ModelFor(ArchetypeId, PersistentId, slot.Models));
+        }
+
+        // Every player shows the default model until body type is saved with characters and sent
+        // to other clients; a development bot shows a model of its own, picked from its persistent
+        // id, so a crowd of bots shows every model.
+        public static PlayerBodyModels.Model ModelFor(string archetypeId, string persistentId, PlayerBodyModels models)
+        {
+            if (models == null)
+            {
+                return null;
+            }
+
+            return string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal)
+                ? models.Varied(persistentId)
+                : models.Default;
+        }
+
         public void ApplyBodyTint(bool tinted, PlayerBodyMaterials materials)
         {
             var appearance = GetComponentInChildren<PlayerBodyAppearance>(true);
@@ -76,8 +100,8 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Every player shows the default look until looks are saved with characters and sent to
-        // other clients; a development bot shows a look of its own, picked from its persistent
-        // id, so a crowd of bots shows every face and eye color.
+        // other clients; a development bot shows a look of its own from the catalog of its model,
+        // picked from its persistent id, so a crowd of bots shows every face and eye color.
         public void ApplyBodyLook(PlayerBodyMaterials materials)
         {
             var appearance = GetComponentInChildren<PlayerBodyAppearance>(true);

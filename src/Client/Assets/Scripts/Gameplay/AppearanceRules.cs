@@ -34,6 +34,9 @@ namespace Mmorpg.Client.Gameplay
             public bool ChangesInGame { get; }
         }
 
+        // The body model, such as Human_Female: exactly one, chosen in character creation only.
+        public static readonly Rule BodyModel = new Rule(true, false);
+
         public static Rule For(AppearanceCategory category)
         {
             switch (category)
