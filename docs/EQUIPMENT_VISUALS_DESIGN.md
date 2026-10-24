@@ -92,6 +92,33 @@ leather texture, `LeatherJerkin`, in step 5b, and a texture of `Shirt` in step
 5c; its paint layer is removed in step 5c, when the tattoo paint layer `Tattoo`
 takes over as the proof of paint layers.
 
+### The Look On The Skin
+
+A body's look on its skin has five kinds, as Victor decided on 2026-10-24. The
+face and the eyes are whole images of their materials, the face and eye
+variants; the others are paint layers of a category, drawn in the order of the
+table, so a tattoo lies over a scar and the underwear over both.
+
+| Kind | Made as | Shown | Chosen |
+| --- | --- | --- | --- |
+| Face | A face image, such as `Stubble` and `Clean` for the man and `Blush` and `Freckles` for the woman | Exactly one | In character creation, never changed |
+| Eyes | An eye image, such as `Teal` | Exactly one | In character creation, never changed |
+| Scar | A `scar` paint layer, layers 100 to 199, such as `Scar` over the left eye | At most one | In character creation, never changed |
+| Tattoo | A `tattoo` paint layer, layers 200 to 299, such as `Tattoo` | At most one | In character creation, and changed in the game later, such as at an NPC |
+| Underwear | An `underwear` paint layer of a visual slot, layers 900 to 999: `Bra` in `body` for the woman, `Briefs` in `legs` for both | Exactly one per slot the body has underwear for, never taken off | In character creation, and changed in the game later |
+
+Underwear is never taken off, but a garment can hide it: a template with
+`hidesUnderwear`, such as a top that bares the shoulders or has a deep
+neckline, hides the underwear of its own slot while it is drawn, so no bra
+strap shows beside it, while the briefs stay, also without trousers. The skin
+under the underwear is plain skin without detail. The net shirt does not hide
+the bra: it shows through the meshes.
+
+Character creation, the look a server stores, and the NPC who changes a tattoo
+come later and follow these rules, which `AppearanceRules` in the client holds
+until then. F2 and the Wardrobe show them: one choice per kind, with no scar or
+tattoo among the choices, and the rule of each.
+
 ## Garments
 
 ### Slots And Layers

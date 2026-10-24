@@ -13,16 +13,16 @@
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-23",
-            "sourceSha256": "27c4bab9c27cebb187213051050470feb7cfd8f13ac37ca9c46f930faee96014"
+            "date": "2026-10-24",
+            "sourceSha256": "3a8baf890e37ca320a920c0a1f3f15dbbe919182335dc54b9be1ddf3820aaf0b"
         },
         "rig": {
-            "date": "2026-10-23",
-            "sourceSha256": "27c4bab9c27cebb187213051050470feb7cfd8f13ac37ca9c46f930faee96014"
+            "date": "2026-10-24",
+            "sourceSha256": "3a8baf890e37ca320a920c0a1f3f15dbbe919182335dc54b9be1ddf3820aaf0b"
         }
     },
     "export": {
-        "sourceSha256": "27c4bab9c27cebb187213051050470feb7cfd8f13ac37ca9c46f930faee96014",
+        "sourceSha256": "3a8baf890e37ca320a920c0a1f3f15dbbe919182335dc54b9be1ddf3820aaf0b",
         "targetSha256": "a21ccf9ba5cc66de73504a8481b2c8a9be68527ee9b51d7083b1ae3f7d0e05a4",
         "dataSha256": "266ff259c4e0a3127f7c6d3e563c3e73c3861ee140b6d8df3562967385f61ae8",
         "fitSha256": "6d6123be26f47d604aa2e0c2b03fec2679fce235dd0faf34b722d377328a8317",
@@ -65,7 +65,7 @@
             {
                 "name": "T_Body_Female",
                 "target": "src/Client/Assets/Art/Textures/Characters/T_Body_Female.png",
-                "sha256": "8ab2aa448042ccd00168d3680e9b2c71c84ecb5435a74dbbafaaee2e687b7b2b"
+                "sha256": "3dadf85467d5debe1da75f894a8034bc4359f276930f5d83cee0aaa6218b184c"
             },
             {
                 "name": "T_Eye_Female_Teal",

@@ -1,0 +1,31 @@
+{
+    "schemaVersion": 1,
+    "kind": "paint",
+    "category": "scar",
+    "part": "Face",
+    "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
+    "layer": 100,
+    "approvals": {
+        "paint": {
+            "date": "2026-10-24",
+            "sourceSha256": "e73fde066b84934b61798529c0572aa1a48b940dff19a1c89fdb70e3f0d94d00"
+        }
+    },
+    "export": {
+        "sourceSha256": "e73fde066b84934b61798529c0572aa1a48b940dff19a1c89fdb70e3f0d94d00",
+        "textures": [
+            {
+                "name": "T_Paint_Scar_Male",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Scar_Male.png",
+                "sha256": "e2c9aaf40235854121dabd9c544b3d656d04483b0206d74784e4028f8d39fdbf"
+            },
+            {
+                "name": "T_Paint_Scar_Female",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Scar_Female.png",
+                "sha256": "ac5c04173c657c97e87ae3723ba19065eb7300da54c77acabe0b4796a3e526d7"
+            }
+        ],
+        "smoothness": 0.5,
+        "metallic": 0.0
+    }
+}

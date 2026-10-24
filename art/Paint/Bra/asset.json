@@ -1,0 +1,27 @@
+{
+    "schemaVersion": 1,
+    "kind": "paint",
+    "category": "underwear",
+    "slot": "body",
+    "part": "Body",
+    "bodies": ["art/Characters/Human_Female"],
+    "layer": 910,
+    "approvals": {
+        "paint": {
+            "date": "2026-10-24",
+            "sourceSha256": "0b1b7cdb0bf3335dd5c75010fda397056cd6c6430a9612a6a9e031ca7e2ffb88"
+        }
+    },
+    "export": {
+        "sourceSha256": "0b1b7cdb0bf3335dd5c75010fda397056cd6c6430a9612a6a9e031ca7e2ffb88",
+        "textures": [
+            {
+                "name": "T_Paint_Bra_Female",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Bra_Female.png",
+                "sha256": "0b13c38dd4a58d49168b7b77de3cb9f939cee532c6e0580879d1ae0b203cfbcb"
+            }
+        ],
+        "smoothness": 0.2,
+        "metallic": 0.0
+    }
+}

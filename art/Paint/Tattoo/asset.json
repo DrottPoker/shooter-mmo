@@ -1,9 +1,10 @@
 {
     "schemaVersion": 1,
     "kind": "paint",
+    "category": "tattoo",
     "part": "Body",
     "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
-    "layer": 10,
+    "layer": 200,
     "approvals": {
         "paint": {
             "date": "2026-10-23",

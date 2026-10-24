@@ -1,15 +1,16 @@
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Gameplay;
 using UnityEditor;
 using UnityEngine;
 
 namespace Mmorpg.Client.Editor
 {
     // MMORPG > Tools > Art Pipeline > Wardrobe: a body of the appearance catalogs dressed in the
-    // garments ticked on the left, playing Idle, Walk, Jog, or Death on a moving ground with the
-    // cloth solver running, for reviewing garments in motion before approving them. Drag in the
-    // view to turn the camera around the body, and scroll to come closer. The window's layout is a
-    // temporary tool interface; WardrobePreview does the work.
+    // garments ticked on the left, with the paint layers picked there, playing Idle, Walk, Jog, or
+    // Death on a moving ground with the cloth solver running, for reviewing garments in motion
+    // before approving them. Drag in the view to turn the camera around the body, and scroll to
+    // come closer. The window's layout is a temporary tool interface; WardrobePreview does the work.
     public sealed class WardrobeWindow : EditorWindow
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Wardrobe";
@@ -17,6 +18,7 @@ namespace Mmorpg.Client.Editor
         private const float SidebarWidth = 220f;
 
         private readonly HashSet<string> chosen = new HashSet<string>();
+        private readonly HashSet<string> chosenPaints = new HashSet<string>();
         private ArtAssetManifest[] bodies = new ArtAssetManifest[0];
         private int bodyIndex;
         private WardrobePreview preview;
@@ -65,7 +67,8 @@ namespace Mmorpg.Client.Editor
             {
                 preview = new WardrobePreview(bodies[bodyIndex]);
                 chosen.IntersectWith(preview.Catalog.Garments.Select(garment => garment.Name));
-                preview.Wear(chosen);
+                chosenPaints.IntersectWith(preview.Catalog.Paints.Select(paint => paint.Name));
+                preview.Wear(chosen, chosenPaints);
             }
             catch (System.Exception error)
             {
@@ -192,7 +195,38 @@ namespace Mmorpg.Client.Editor
                         chosen.Remove(garment.Name);
                     }
 
-                    preview.Wear(chosen);
+                    preview.Wear(chosen, chosenPaints);
+                }
+            }
+
+            // One choice per paint category and slot, by its rule: underwear is always worn.
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Paint", EditorStyles.boldLabel);
+            foreach (var group in preview.Catalog.Paints.Where(paint => paint != null).GroupBy(paint => (paint.Category, paint.Slot)))
+            {
+                var required = AppearanceRules.For(group.Key.Category).Required;
+                var choices = (required ? new string[0] : new[] { "none" }).Concat(group.Select(paint => paint.Name)).ToArray();
+                var current = System.Array.FindIndex(choices, name => chosenPaints.Contains(name));
+                if (current < 0)
+                {
+                    current = 0;
+                }
+
+                var label = group.Key.Category + (group.Key.Slot.Length > 0 ? " (" + group.Key.Slot + ")" : string.Empty);
+                var picked = EditorGUILayout.Popup(label, current, choices);
+                if (picked != current)
+                {
+                    foreach (var paint in group)
+                    {
+                        chosenPaints.Remove(paint.Name);
+                    }
+
+                    if (required || picked > 0)
+                    {
+                        chosenPaints.Add(choices[picked]);
+                    }
+
+                    preview.Wear(chosen, chosenPaints);
                 }
             }
 
@@ -210,6 +244,7 @@ namespace Mmorpg.Client.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Speed", preview.Speed.ToString("0.0") + " m/s");
             EditorGUILayout.LabelField("Drawn", string.Join(", ", preview.Worn.Select(garment => garment.Name)));
+            EditorGUILayout.LabelField("Painted", string.Join(", ", preview.Painted.Select(paint => paint.Name)));
             EditorGUILayout.LabelField("Cloth", preview.Solver.IsActive ? preview.Solver.CurrentDetail.ToString() : "none");
         }
 

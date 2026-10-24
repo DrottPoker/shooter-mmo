@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using Mmorpg.Client.Gameplay;
 using NUnit.Framework;
 using UnityEngine;
@@ -102,12 +103,16 @@ namespace Mmorpg.Client.Tests.PlayMode
             var prefab = Spawn().GetComponent<PlayerBodyAppearance>();
             yield return null;
             using (var meshes = new PlayerBodyMeshes())
+            using (var bodyMaterials = new PlayerBodyMaterials())
             using (var corpses = new PlayerCorpseBodies())
             {
-                Assert.That(corpses.TryGet(prefab, meshes, out var mesh, out var materials), Is.True);
-                Assert.That(corpses.TryGet(prefab, meshes, out var again, out _), Is.True);
+                Assert.That(corpses.TryGet(prefab, meshes, bodyMaterials, out var mesh, out var materials), Is.True);
+                Assert.That(corpses.TryGet(prefab, meshes, bodyMaterials, out var again, out _), Is.True);
                 Assert.That(again, Is.SameAs(mesh), "every player corpse shares one baked body");
                 Assert.That(materials, Is.Not.Empty);
+                // The corpse wears the body's underwear, which is paint over its skin.
+                Assert.That(materials.Any(material => material.HasProperty("_PaintCount") && material.GetFloat("_PaintCount") >= 1f),
+                    Is.True);
 
                 // Lying on the ground: low and long, not standing.
                 var bounds = mesh.bounds;

@@ -46,7 +46,7 @@ namespace Mmorpg.Client.Gameplay
             var body = remotePlayerPrefab != null
                 ? remotePlayerPrefab.GetComponentInChildren<PlayerBodyAppearance>(true)
                 : null;
-            return corpseBodies.TryGet(body, bodyMeshes, out mesh, out materials);
+            return corpseBodies.TryGet(body, bodyMeshes, bodyMaterials, out mesh, out materials);
         }
 
         // Whether a body that shows its character dead lies near the position, such as the body

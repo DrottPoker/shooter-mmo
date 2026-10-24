@@ -15,7 +15,9 @@ namespace Mmorpg.Client.Editor
     // takes dyes, cuts its texture at alpha 0.5, and draws both faces, so holes and the inside of a
     // sleeve show. An
     // existing material is never changed, so a material whose Blender look changed is updated by
-    // hand from its record; ArtModelImportTests compares every material with its record.
+    // hand from its record; ArtModelImportTests compares every material with its record. Only a
+    // Lit material that a paint layer starts to paint, such as a face that gets a scar, takes the
+    // CharacterSkin shader, which keeps every Lit value.
     public static class ArtMaterialCreator
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Create Missing Materials";
@@ -31,9 +33,35 @@ namespace Mmorpg.Client.Editor
         public static void CreateMissingMaterialsMenu()
         {
             var created = CreateMissingMaterials();
-            Debug.Log(created.Count == 0
+            var painted = GiveSkinShaderToPaintedMaterials();
+            Debug.Log(created.Count == 0 && painted.Count == 0
                 ? "Every exported art material has a project material."
-                : "Created " + string.Join(", ", created) + ".");
+                : string.Join(" ", new[]
+                {
+                    created.Count > 0 ? "Created " + string.Join(", ", created) + "." : string.Empty,
+                    painted.Count > 0 ? "Gave " + string.Join(", ", painted) + " the skin shader for their paint layers." : string.Empty,
+                }.Where(text => text.Length > 0)));
+        }
+
+        // Gives every Lit material that a paint layer paints the skin shader, and returns their paths.
+        public static List<string> GiveSkinShaderToPaintedMaterials()
+        {
+            var changed = new List<string>();
+            foreach (var name in ArtAssetManifests.PaintedMaterialNames())
+            {
+                var material = ArtModelImportRules.FindProjectMaterial(name);
+                if (material == null || material.shader == null || material.shader.name != LitShader)
+                {
+                    continue;
+                }
+
+                material.shader = Shader.Find(SkinShader);
+                EditorUtility.SetDirty(material);
+                changed.Add(AssetDatabase.GetAssetPath(material));
+            }
+
+            AssetDatabase.SaveAssets();
+            return changed;
         }
 
         // Returns the paths of the created materials and reimports the models that use them, so

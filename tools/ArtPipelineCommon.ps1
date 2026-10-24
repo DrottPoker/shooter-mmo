@@ -53,6 +53,10 @@ $script:ArtGarmentTextureFolder = "$script:ArtTextureFolder/Garments"
 # The visual slots, bands, headwear hair forms, and cloth profiles of garments; see
 # docs/EQUIPMENT_VISUALS_DESIGN.md.
 $script:ArtGarmentSlots = @("head", "body", "legs", "hands", "feet", "back", "hair")
+# The categories of paint layers with the layers each is drawn at, so a scar lies under a tattoo
+# and both under the underwear, and the visual slots underwear is worn in.
+$script:ArtPaintCategories = [ordered]@{ scar = @(100, 199); tattoo = @(200, 299); underwear = @(900, 999) }
+$script:ArtUnderwearSlots = @("body", "legs")
 $script:ArtGarmentBands = @("tight", "mid", "outer", "loose")
 $script:ArtGarmentHairForms = @("hide", "compress", "show")
 $script:ArtGarmentCloth = @("robe", "cloak", "hood")
@@ -351,8 +355,22 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
         $problems.Add("part must name the painted material M_<Part>_<Label>, such as Body")
     }
 
-    if (-not ($Json.layer -is [int] -or $Json.layer -is [long]) -or $Json.layer -lt 0 -or $Json.layer -gt 1000) {
-        $problems.Add("layer must be a whole number from 0 to 1000, the order paint layers are drawn in")
+    $category = [string]$Json.category
+    $range = $script:ArtPaintCategories[$category]
+    if (@($script:ArtPaintCategories.Keys) -cnotcontains $category) {
+        $problems.Add("category must be one of: $(@($script:ArtPaintCategories.Keys) -join ', ')")
+    }
+    elseif (-not ($Json.layer -is [int] -or $Json.layer -is [long]) -or $Json.layer -lt $range[0] -or $Json.layer -gt $range[1]) {
+        $problems.Add("layer must be a whole number from $($range[0]) to $($range[1]) for a $category, the order paint layers are drawn in")
+    }
+
+    # Underwear is worn in a visual slot, which a garment of that slot can hide; other paint is not.
+    $slot = $Json.slot
+    if ($category -ceq "underwear" -and $script:ArtUnderwearSlots -cnotcontains [string]$slot) {
+        $problems.Add("underwear needs the slot it is worn in: $($script:ArtUnderwearSlots -join ' or ')")
+    }
+    elseif ($category -cne "underwear" -and $null -ne $Json.PSObject.Properties["slot"]) {
+        $problems.Add("only underwear has a slot")
     }
 
     $bodies = @()
@@ -438,6 +456,8 @@ function Read-ArtPaintManifest([string]$AssetDirectory, $Json, [string]$Where, [
         Previews = @()
         Clips = [string[]]@()
         Variants = @()
+        Category = $category
+        Slot = if ($category -ceq "underwear") { [string]$slot } else { $null }
         Part = $part
         Layer = [int]$Json.layer
         Bodies = $bodies
@@ -515,6 +535,11 @@ function Write-ArtPaintManifest($Manifest) {
     $lines.Add("{")
     $lines.Add('    "schemaVersion": 1,')
     $lines.Add('    "kind": "paint",')
+    $lines.Add("    `"category`": `"$($Manifest.Category)`",")
+    if ($null -ne $Manifest.Slot) {
+        $lines.Add("    `"slot`": `"$($Manifest.Slot)`",")
+    }
+
     $lines.Add("    `"part`": `"$($Manifest.Part)`",")
     $bodies = (@($Manifest.Bodies) | ForEach-Object { '"' + $_.Asset + '"' }) -join ", "
     $lines.Add("    `"bodies`": [$bodies],")
@@ -795,6 +820,12 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         $problems.Add("hides must list other visual slots the garment hides, each once, or none")
     }
 
+    # A garment that bares the shoulders or has a deep neckline hides the underwear of its slot.
+    $hidesUnderwear = $Json.hidesUnderwear
+    if ($null -ne $Json.PSObject.Properties["hidesUnderwear"] -and $hidesUnderwear -isnot [bool]) {
+        $problems.Add("hidesUnderwear must be true or false")
+    }
+
     # Only headwear says what happens to the hair under it.
     $hair = $Json.hair
     if ($slot -ceq "head" -and $script:ArtGarmentHairForms -cnotcontains [string]$hair) {
@@ -996,6 +1027,7 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         Band = $band
         Bodies = $bodies
         Hides = [string[]]$hides
+        HidesUnderwear = $hidesUnderwear -eq $true
         Hair = if ($null -ne $hair) { [string]$hair } else { $null }
         Cloth = if ($null -ne $cloth) { [string]$cloth } else { $null }
         Dyes = [int]$Json.dyes
@@ -1055,6 +1087,7 @@ function Write-ArtGarmentManifest($Manifest) {
     Add-ArtRecipeLines $lines $Manifest.Recipe
     $hides = (@($Manifest.Hides) | ForEach-Object { '"' + $_ + '"' }) -join ", "
     $lines.Add("    `"hides`": [$hides],")
+    $lines.Add("    `"hidesUnderwear`": $(if ($Manifest.HidesUnderwear) { 'true' } else { 'false' }),")
     $lines.Add("    `"hair`": $(if ($null -ne $Manifest.Hair) { '"' + $Manifest.Hair + '"' } else { 'null' }),")
     $lines.Add("    `"cloth`": $(if ($null -ne $Manifest.Cloth) { '"' + $Manifest.Cloth + '"' } else { 'null' }),")
     $lines.Add("    `"dyes`": $($Manifest.Dyes),")

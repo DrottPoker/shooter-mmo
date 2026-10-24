@@ -18,7 +18,7 @@
     "export": {
         "sourceSha256": "e83df584615405a57fdd74c4a80192e9d1eede5e17d7da893646ec6e96e4e08c",
         "targetSha256": "51ac0c68ef8135fefee68e0ecaeb5860acbf997e5a3d60324c81dbcc1faffc81",
-        "rigSourceSha256": "9567099b6a2e60af08ffba0d84cd337f29e6946c717a35a6c0846e0aabc607cf",
+        "rigSourceSha256": "e6709d01b876f87d7591f6c4cc803c43edd5433bd6988b92af8dc10bb752fee2",
         "clips": [
             { "name": "Death", "frames": 60, "loop": false },
             { "name": "Idle", "frames": 120, "loop": true },

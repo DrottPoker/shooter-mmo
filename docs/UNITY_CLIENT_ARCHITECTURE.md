@@ -1000,7 +1000,10 @@ so a field of corpses costs no animation or skinning; the corpse has a box
 collider around it for the pointer. While a body that shows its character dead
 lies within 1.5 m, the corpse stays hidden, so the dying body and its remains
 never show twice; it appears when the character respawns at the World spawn. The
-corpse shows the default look until looks are sent to other clients. Every
+corpse shows the default look, with the body's underwear, until looks are sent to
+other clients: the hidden copy of the body takes the look from the shared
+`PlayerBodyMaterials` before it is baked, since the underwear is paint over the
+skin. Every
 other corpse, such as a Mob corpse with presentation key `corpse.mob`, is a
 generic capsule with a shared renderer property block on the runtime primitive
 material, which never creates per-frame materials.
@@ -1306,9 +1309,9 @@ A body also shows a look: another face or eye color from the
 [appearance variants](ART_PIPELINE.md#appearance-layers) of its model. The body's
 `PlayerBodyAppearance` references the model's `BodyAppearanceCatalog`,
 `Assets/Art/Appearance/Human_Male_Appearance.asset`, with the slots `Eye` (`Teal`,
-`Brown`) and `Face` (`Stubble`, `Scarred`), the material's own image first. A
+`Brown`) and `Face` (`Stubble`, `Clean`), the material's own image first. A
 `BodyLook` is a value that names one option per slot, with a stable key such as
-`Eye=Brown;Face=Scarred`; a slot it does not name shows the material's own
+`Eye=Brown;Face=Clean`; a slot it does not name shows the material's own
 image. Until looks are chosen at character creation, saved with the character,
 and sent to other clients, the local player's look comes from the World Debug
 panel (F2), whose Presentation section steps through every slot of the local
@@ -1320,11 +1323,13 @@ development bot shows a look picked from its persistent id with a mixed FNV-1a
 hash, `BodyLook.Varied`, so a crowd of bots shows every combination and each bot
 keeps its look.
 
-A look also names the paint layers its body wears, such as `LeatherJerkin`, which
-the catalog lists for its body with their material, image, layer, smoothness,
-and metallic. Until equipment shows its paint, the Presentation section of the
-World Debug panel has `Try on paint: <Name>` for every paint layer of the local
-body's catalog. The body materials that paint layers paint draw with the skin
+A look also names the paint layers its body wears, such as `Tattoo`, which the
+catalog lists for its body with their category, slot, material, image, layer,
+smoothness, and metallic. Until character creation, the Presentation section of
+the World Debug panel has a row per category and slot of the local body's
+catalog, such as `Your tattoo: <Name>` and `Your underwear (legs): <Name>`, that
+steps through its choices with `<` and `>`, with `none` for a scar or a tattoo,
+and shows when a player chooses it. The body materials that paint layers paint draw with the skin
 shader `Mmorpg/Character Skin`, URP Lit with up to four paint layers; see
 [Art Pipeline](ART_PIPELINE.md#paint-layers). A look's paint layers on such a
 material go into its copy, from the lowest layer up, and a material with another
@@ -1334,8 +1339,10 @@ The look and the tint draw with copies of the body's materials, another image in
 `_BaseMap`, paint layers, a tinted `_BaseColor`, or any of them together, that `PlayerBodyMaterials` in
 `WorldSceneContext` creates once per material, image, paint layers, and tint and shares
 between every body that looks the same, so a crowd stays in the SRP Batcher; a
-property block per body kept every body out of it. The default look without a
-tint draws with the body's own materials. The look is applied to the combined
+property block per body kept every body out of it. Every look draws its
+underwear, so even the default look draws the body material with its paint, and
+a body draws as it should only once it has been given its look; a body without a
+look shows the skin without the underwear. The look is applied to the combined
 renderer, so bodies with other faces still share one combined mesh.
 `PlayerBodyAppearanceTests`, `BodyLookTests`, and `ArtAppearanceCatalogTests`
 cover the looks, their materials, and the catalogs.
@@ -1370,7 +1377,14 @@ describes, in `PlayerBodyMeshes`:
 The combined mesh is shared by every body with the same parts, garments, and
 garment materials. A body wears one garment per visual slot, such as one chest
 piece: of two of a slot that its look names, the first in the catalog is worn,
-and trying one on in F2 or the Wardrobe takes off the other.
+and trying one on in F2 or the Wardrobe takes off the other. It shows its paint
+layers by `AppearanceRules`, as
+[The Look On The Skin](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-skin)
+describes: `BodyAppearanceCatalog.ShownPaints` takes of each category and slot
+the first the look names, the first underwear of each slot when the look names
+none, and leaves out the underwear of a slot whose drawn garment has
+`HidesUnderwear`. F2 and the Wardrobe step through one choice per category and
+slot and show the rule of each.
 Garment materials draw with the garment shader `Mmorpg/Garment`, URP Lit with
 three dye channels, cut at alpha 0.5 and drawn from both sides; see
 [Art Pipeline](ART_PIPELINE.md#unity-import-rules). The body prefab carries a
@@ -1379,7 +1393,8 @@ profile: a robe the skirt chains, a cloak the cloak chains, and a hood the hood
 chain. In the Editor, `MMORPG > Tools > Art Pipeline > Wardrobe` shows a body in
 chosen garments playing its clips, and `WardrobePreviewTests` covers it. Until items show garments, the Presentation section of the World
 Debug panel has `Try on garment: <Name>` for every garment of the local body's
-catalog. Other players and bots wear none, and a corpse shows the bare body.
+catalog. Other players and bots wear none, and a corpse shows the body in its
+underwear.
 `PlayerBodyGarmentTests` covers what a worn garment hides and adds, layers, hidden
 slots, pull-in, and sharing.
 

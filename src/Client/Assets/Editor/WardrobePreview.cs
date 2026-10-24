@@ -149,8 +149,9 @@ namespace Mmorpg.Client.Editor
             get { return Body.transform.position + Vector3.up * 1.1f; }
         }
 
-        // Dresses the body in the garments of its catalog with these names.
-        public void Wear(IEnumerable<string> garments)
+        // Dresses the body in the garments of its catalog with these names, with these paint
+        // layers on its skin; its underwear is always worn.
+        public void Wear(IEnumerable<string> garments, IEnumerable<string> paints = null)
         {
             var look = BodyLook.Default;
             foreach (var garment in garments)
@@ -158,7 +159,23 @@ namespace Mmorpg.Client.Editor
                 look = look.WithGarment(garment, true);
             }
 
+            foreach (var paint in paints ?? Enumerable.Empty<string>())
+            {
+                look = look.WithPaint(paint, true);
+            }
+
             appearance.ApplyLook(look, materials);
+        }
+
+        // The paint layers the body shows, by the rules of their categories.
+        public IReadOnlyList<BodyAppearanceCatalog.Paint> Painted
+        {
+            get
+            {
+                var shown = new List<BodyAppearanceCatalog.Paint>();
+                Catalog.ShownPaints(appearance.Look, PlayerBodyMeshes.Drawn(appearance.Worn), shown);
+                return shown;
+            }
         }
 
         public void Play(Motion motion)

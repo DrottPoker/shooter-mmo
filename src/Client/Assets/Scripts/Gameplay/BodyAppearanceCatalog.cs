@@ -6,8 +6,8 @@ namespace Mmorpg.Client.Gameplay
 {
     // The looks a body model offers, from the approved exports of its art assets: one slot per
     // painted material that can show other images, such as the Face and the Eye, with its
-    // options, the material's own image first, the paint layers that fit the body, such as the
-    // paint of a leather jerkin, in the order they are drawn, and the garments that fit it, with
+    // options, the material's own image first, the paint layers that fit the body, such as its
+    // underwear and a tattoo, in the order they are drawn, and the garments that fit it, with
     // the faces of the body's editable mesh that each part's triangles come from. MMORPG > Tools >
     // Art Pipeline > Update Appearance Catalogs writes it from asset.json; see
     // docs/ART_PIPELINE.md and docs/EQUIPMENT_VISUALS_DESIGN.md.
@@ -94,22 +94,89 @@ namespace Mmorpg.Client.Gameplay
             return null;
         }
 
-        // The paint layers of the look on the material, in the order they are drawn.
-        public void PaintsFor(Material material, BodyLook look, List<Paint> result)
+        // The paint layers a body shows on the material with the look and these drawn garments, in
+        // the order they are drawn.
+        public void PaintsFor(Material material, BodyLook look, IReadOnlyList<Garment> drawn, List<Paint> result)
         {
             result.Clear();
-            if (material == null || look == null)
+            if (material == null)
             {
                 return;
             }
 
+            ShownPaints(look, drawn, result);
+            result.RemoveAll(paint => paint.Material != material);
+        }
+
+        // The paint layers a body shows with the look and these drawn garments, in the order they
+        // are drawn, by AppearanceRules: of each category and slot the first the look names, the
+        // body's first underwear of a slot when the look names none, since underwear is always
+        // worn, and no underwear of a slot whose drawn garment hides it.
+        public void ShownPaints(BodyLook look, IReadOnlyList<Garment> drawn, List<Paint> result)
+        {
+            result.Clear();
+            var taken = new HashSet<(AppearanceCategory, string)>();
+            var shown = new HashSet<Paint>();
+            foreach (var named in new[] { true, false })
+            {
+                foreach (var paint in paints)
+                {
+                    if (paint == null || taken.Contains((paint.Category, paint.Slot)))
+                    {
+                        continue;
+                    }
+
+                    if (named ? look != null && look.HasPaint(paint.Name) : AppearanceRules.For(paint.Category).Required)
+                    {
+                        taken.Add((paint.Category, paint.Slot));
+                        shown.Add(paint);
+                    }
+                }
+            }
+
             foreach (var paint in paints)
             {
-                if (paint != null && paint.Material == material && look.HasPaint(paint.Name))
+                if (shown.Contains(paint) && !(paint.Category == AppearanceCategory.Underwear && HidesUnderwear(drawn, paint.Slot)))
                 {
                     result.Add(paint);
                 }
             }
+        }
+
+        // The other paint layers of the catalog of the same category and slot as this one, such as
+        // another tattoo, which a body never shows together with it.
+        public IEnumerable<Paint> OthersLike(Paint paint)
+        {
+            if (paint == null)
+            {
+                yield break;
+            }
+
+            foreach (var other in paints)
+            {
+                if (other != null && other != paint && other.Category == paint.Category && other.Slot == paint.Slot)
+                {
+                    yield return other;
+                }
+            }
+        }
+
+        private static bool HidesUnderwear(IReadOnlyList<Garment> drawn, string slot)
+        {
+            if (drawn == null)
+            {
+                return false;
+            }
+
+            foreach (var garment in drawn)
+            {
+                if (garment != null && garment.HidesUnderwear && garment.Slot == slot)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public Slot SlotNamed(string name)
@@ -193,15 +260,20 @@ namespace Mmorpg.Client.Gameplay
         public sealed class Paint
         {
             [SerializeField] private string name;
+            [SerializeField] private AppearanceCategory category;
+            [SerializeField] private string slot;
             [SerializeField] private Material material;
             [SerializeField] private Texture2D texture;
             [SerializeField] private int layer;
             [SerializeField] private float smoothness;
             [SerializeField] private float metallic;
 
-            public Paint(string name, Material material, Texture2D texture, int layer, float smoothness, float metallic)
+            public Paint(string name, AppearanceCategory category, string slot, Material material, Texture2D texture, int layer,
+                float smoothness, float metallic)
             {
                 this.name = name;
+                this.category = category;
+                this.slot = slot ?? string.Empty;
                 this.material = material;
                 this.texture = texture;
                 this.layer = layer;
@@ -213,6 +285,19 @@ namespace Mmorpg.Client.Gameplay
             public string Name
             {
                 get { return name; }
+            }
+
+            // Underwear, Scar, or Tattoo.
+            public AppearanceCategory Category
+            {
+                get { return category; }
+            }
+
+            // Underwear only: the visual slot it is worn in, body for a bra or legs for briefs;
+            // empty otherwise.
+            public string Slot
+            {
+                get { return slot ?? string.Empty; }
             }
 
             // The body material it paints over, such as M_Body_Male.
@@ -290,6 +375,7 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private string slot;
             [SerializeField] private int layer;
             [SerializeField] private string[] hides;
+            [SerializeField] private bool hidesUnderwear;
             [SerializeField] private string hair;
             [SerializeField] private string cloth;
             [SerializeField] private GameObject model;
@@ -298,8 +384,9 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private int[] pullInVertices;
             [SerializeField] private float[] pullInDistances;
 
-            public Garment(string name, string template, Material material, string slot, int layer, string[] hides, string hair,
-                string cloth, GameObject model, int[] covered, int[] underlay, int[] pullInVertices, float[] pullInDistances)
+            public Garment(string name, string template, Material material, string slot, int layer, string[] hides,
+                bool hidesUnderwear, string hair, string cloth, GameObject model, int[] covered, int[] underlay,
+                int[] pullInVertices, float[] pullInDistances)
             {
                 this.name = name;
                 this.template = template ?? string.Empty;
@@ -307,6 +394,7 @@ namespace Mmorpg.Client.Gameplay
                 this.slot = slot;
                 this.layer = layer;
                 this.hides = hides ?? Array.Empty<string>();
+                this.hidesUnderwear = hidesUnderwear;
                 this.hair = hair ?? string.Empty;
                 this.cloth = cloth ?? string.Empty;
                 this.model = model;
@@ -350,6 +438,13 @@ namespace Mmorpg.Client.Gameplay
             public IReadOnlyList<string> Hides
             {
                 get { return hides ?? Array.Empty<string>(); }
+            }
+
+            // Whether the underwear of its slot is left off while it is drawn, such as the bra under
+            // a top that bares the shoulders.
+            public bool HidesUnderwear
+            {
+                get { return hidesUnderwear; }
             }
 
             // Headwear only: hide, compress, or show the hair under it; empty otherwise.
@@ -406,7 +501,7 @@ namespace Mmorpg.Client.Gameplay
                 this.texture = texture;
             }
 
-            // Such as Scarred, from the image T_Face_Male_Scarred.
+            // Such as Clean, from the image T_Face_Male_Clean.
             public string Name
             {
                 get { return name; }

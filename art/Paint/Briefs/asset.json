@@ -1,0 +1,32 @@
+{
+    "schemaVersion": 1,
+    "kind": "paint",
+    "category": "underwear",
+    "slot": "legs",
+    "part": "Body",
+    "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
+    "layer": 900,
+    "approvals": {
+        "paint": {
+            "date": "2026-10-24",
+            "sourceSha256": "c06800de7e10fa37a0aa44a2d7f44e60b690206c83a95614db9c5438c0ced08c"
+        }
+    },
+    "export": {
+        "sourceSha256": "c06800de7e10fa37a0aa44a2d7f44e60b690206c83a95614db9c5438c0ced08c",
+        "textures": [
+            {
+                "name": "T_Paint_Briefs_Male",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Briefs_Male.png",
+                "sha256": "edd21b50b406ddea623db5281c1405c6f40923e38806552171b5bd4219cec5bf"
+            },
+            {
+                "name": "T_Paint_Briefs_Female",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Briefs_Female.png",
+                "sha256": "767195e8882d022bfd235d0ca213b9ee64e185648c2ad57f7c5a6db38fd3776b"
+            }
+        ],
+        "smoothness": 0.2,
+        "metallic": 0.0
+    }
+}

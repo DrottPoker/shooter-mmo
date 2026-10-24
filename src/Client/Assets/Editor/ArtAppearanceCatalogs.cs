@@ -87,6 +87,8 @@ namespace Mmorpg.Client.Editor
                 && catalog.Paints.Count == paints.Length
                 && catalog.Paints.Zip(paints, (actual, expected) =>
                     actual.Name == expected.Name
+                    && actual.Category == expected.Category
+                    && actual.Slot == expected.Slot
                     && actual.Material == expected.Material
                     && actual.Texture == expected.Texture
                     && actual.Layer == expected.Layer
@@ -112,6 +114,7 @@ namespace Mmorpg.Client.Editor
                     && actual.Slot == expected.Slot
                     && actual.Layer == expected.Layer
                     && actual.Hides.SequenceEqual(expected.Hides)
+                    && actual.HidesUnderwear == expected.HidesUnderwear
                     && actual.Hair == expected.Hair
                     && actual.Cloth == expected.Cloth
                     && actual.Model == expected.Model
@@ -251,6 +254,7 @@ namespace Mmorpg.Client.Editor
                         garment.slot,
                         garment.layer,
                         garment.hides,
+                        garment.hidesUnderwear,
                         garment.hair,
                         garment.cloth,
                         model,
@@ -270,7 +274,8 @@ namespace Mmorpg.Client.Editor
         }
 
         // The paint layers that fit the body, drawn from the lowest layer up: the paint layer
-        // Tattoo over M_Body_Male is the image T_Paint_Tattoo_Male.
+        // Tattoo over M_Body_Male is the image T_Paint_Tattoo_Male. Its category in asset.json,
+        // such as underwear, is the AppearanceCategory of the same name.
         public static BodyAppearanceCatalog.Paint[] PaintsFor(ArtAssetManifest body)
         {
             var label = body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
@@ -284,6 +289,8 @@ namespace Mmorpg.Client.Editor
                     var texture = paint.export.textures.Single(record => record.name == image);
                     return new BodyAppearanceCatalog.Paint(
                         paint.Name,
+                        CategoryOf(paint),
+                        paint.slot,
                         ArtModelImportRules.FindProjectMaterial("M_" + paint.part + "_" + label),
                         AssetDatabase.LoadAssetAtPath<Texture2D>(ArtAssetManifests.ToUnityPath(texture.target)),
                         paint.layer,
@@ -293,13 +300,25 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
         }
 
+        public static AppearanceCategory CategoryOf(ArtAssetManifest paint)
+        {
+            if (!Enum.TryParse(paint.category, true, out AppearanceCategory category)
+                || category == AppearanceCategory.Face || category == AppearanceCategory.Eye
+                || !string.Equals(category.ToString(), paint.category, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(paint.path + ": the category " + paint.category + " is not underwear, scar, or tattoo.");
+            }
+
+            return category;
+        }
+
         public static string PathFor(ArtAssetManifest manifest)
         {
             return Folder + "/" + Path.GetFileNameWithoutExtension(manifest.target) + "_Appearance.asset";
         }
 
         // M_Face_Male with T_Face_Male_Stubble as its own image and the variant
-        // T_Face_Male_Scarred is the slot Face with the options Stubble and Scarred.
+        // T_Face_Male_Clean is the slot Face with the options Stubble and Clean.
         public static BodyAppearanceCatalog.Slot[] SlotsFor(ArtAssetManifest manifest)
         {
             return manifest.variants
