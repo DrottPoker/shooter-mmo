@@ -26,23 +26,38 @@ public sealed class PreciseLoopTimerTests
         Assert.True(timer.IsHighResolution);
 
         // A 2 ms wait takes about 2 ms with a precise timer and at least 15.6 ms when it
-        // rounds up to the Windows timer tick. The median ignores the few waits that a busy
-        // machine wakes late, and a rounding timer never reaches a short median, so one of
-        // three rounds suffices when parallel test runs starve the whole process.
+        // rounds up to the Windows timer tick. The test measures the timer, not the scheduler:
+        // when parallel test runs and Editors keep every core busy, a woken thread of normal
+        // priority waits tens of milliseconds for a core, so the measuring thread runs above
+        // them. The median ignores the few waits that still wake late, and a rounding timer
+        // never reaches a short median, so one of three rounds suffices.
         var medians = new List<double>();
-        for (var round = 0; round < 3 && (medians.Count == 0 || medians[^1] >= 8d); round++)
+        var priority = Thread.CurrentThread.Priority;
+        if (OperatingSystem.IsWindows())
         {
-            var waits = new double[21];
-            for (var index = 0; index < waits.Length; index++)
-            {
-                var started = Stopwatch.GetTimestamp();
-                timer.Wait(TimeSpan.FromMilliseconds(2), CancellationToken.None);
-                waits[index] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            }
+            Thread.CurrentThread.Priority = ThreadPriority.Highest;
+        }
 
-            Array.Sort(waits);
-            Assert.True(waits[0] >= 1.9d, $"The shortest 2 ms wait took {waits[0]} ms.");
-            medians.Add(waits[waits.Length / 2]);
+        try
+        {
+            for (var round = 0; round < 3 && (medians.Count == 0 || medians[^1] >= 8d); round++)
+            {
+                var waits = new double[21];
+                for (var index = 0; index < waits.Length; index++)
+                {
+                    var started = Stopwatch.GetTimestamp();
+                    timer.Wait(TimeSpan.FromMilliseconds(2), CancellationToken.None);
+                    waits[index] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                }
+
+                Array.Sort(waits);
+                Assert.True(waits[0] >= 1.9d, $"The shortest 2 ms wait took {waits[0]} ms.");
+                medians.Add(waits[waits.Length / 2]);
+            }
+        }
+        finally
+        {
+            Thread.CurrentThread.Priority = priority;
         }
 
         Assert.True(medians[^1] < 8d, $"The median 2 ms waits took {string.Join(", ", medians)} ms.");

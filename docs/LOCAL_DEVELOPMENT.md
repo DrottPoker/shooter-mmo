@@ -214,8 +214,11 @@ ends with a summary:
   fixtures, and generated World data run every test project, both Unity suites,
   and the content verifiers. Unity client and shared package files run both
   Unity suites, and their linked .NET code the projects that compile it. Art
-  runs `Verify-ArtAssets.ps1`, monitoring configuration `Verify-Observability.ps1`
-  and every test project. Documentation runs nothing, except
+  sources and the Blender scripts run `Verify-ArtAssets.ps1` and both Unity
+  suites, because the Editor reads the art manifests and a test reads the clip
+  speeds in the animation script; the art pipeline scripts run
+  `Verify-ArtAssets.ps1`. Monitoring configuration runs
+  `Verify-Observability.ps1` and every test project. Documentation runs nothing, except
   `docs/SERVICE_FEATURES.md`, which a test reads. Shared build, format, and test
   settings and the script itself run the full gate, and so does a file that no
   rule matches. A content compiler's verifier runs whenever its tool project is

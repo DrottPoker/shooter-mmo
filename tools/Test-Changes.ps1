@@ -73,9 +73,11 @@ $rules = @(
         Checks = @("unity", "art"); Reason = "exported art" },
     @{ Pattern = '^src/Client/'
         Checks = @("owner", "unity"); Reason = "the Unity client" },
-    @{ Pattern = '^art/'
-        Checks = @("art"); Reason = "art sources and approvals" },
-    @{ Pattern = '^tools/(blender/.+|[^/]*Art[^/]*\.ps1|Sync-[^/]+\.ps1)$'
+    # The Unity Editor reads the art manifests and skeletons, and a Unity test the clip speeds in
+    # the Blender animation script.
+    @{ Pattern = '^(art|tools/blender)/'
+        Checks = @("art", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
+    @{ Pattern = '^tools/([^/]*Art[^/]*|Sync-[^/]+)\.ps1$'
         Checks = @("art"); Reason = "the art pipeline" },
     @{ Pattern = '^tools/Verify-DependencyPolicy\.ps1$'
         Checks = @("deps"); Reason = "the dependency policy" },

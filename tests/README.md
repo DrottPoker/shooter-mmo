@@ -63,7 +63,10 @@ references therefore needs a rule in the `$rules` table of that script, as
 `RealtimeMetricNamesTests` has for `docs/SERVICE_FEATURES.md`. Content, test
 fixtures, generated World data, and the monitoring configuration already select
 every test project, and a configuration file of a production or tool project,
-such as an `appsettings.json`, does too.
+such as an `appsettings.json`, does too. The same holds for a Unity test that
+reads a file outside `src/Client` and `src/Shared`: `art/` and `tools/blender/`
+select the Unity suites because the Editor reads the art manifests and
+`PlayerBodyAssetTests` reads the clip speeds in `tools/blender/human_base/animate.py`.
 
 ## Item Catalog Fixture
 
