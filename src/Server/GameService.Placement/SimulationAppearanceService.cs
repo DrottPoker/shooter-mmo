@@ -10,10 +10,14 @@ using Npgsql;
 namespace Mmorpg.GameService.Placement;
 
 // Changes the look of the character of a live simulation session for the worker that holds the
-// session: its headwear lowered or raised, or in Development another body model and look.
+// session: its headwear lowered or raised, or in Development another body model and look. It locks
+// the character before the session, as item mutations do, and checks the session's token under
+// both locks, so a reconnect that rotates the token either commits first and refuses the change,
+// or waits for it and loads the changed look.
 internal sealed class SimulationAppearanceService(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options,
+    ICharacterLocks characterLocks,
     ICharacterAppearances characterAppearances)
 {
     public const string HeadwearChange = "headwear";
@@ -60,28 +64,19 @@ internal sealed class SimulationAppearanceService(
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var scope = new PostgresTransactionScope(connection, transaction);
         var characterId = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
-            $"""
+            """
             select character_id
             from character_simulation_sessions
-            where id = @SimulationSessionId
-              and simulation_worker_id = @WorkerId
-              and worker_runtime_id = @WorkerRuntimeId
-              and session_token_hash = @SessionTokenHash
-              and released_at is null
-              and expires_at > now()
-              and {AccountsSql.IsActiveOrUnboundSession("character_simulation_sessions.account_session_id")};
+            where id = @SimulationSessionId;
             """,
-            new
-            {
-                SimulationSessionId = simulationSessionId,
-                WorkerId = workerId.Trim(),
-                WorkerRuntimeId = request.WorkerRuntimeId.Trim(),
-                SessionTokenHash = TokenGenerator.HashToken(request.SessionToken.Trim())
-            },
+            new { SimulationSessionId = simulationSessionId },
             transaction,
             cancellationToken: cancellationToken));
-        if (characterId is null)
+        if (characterId is null
+            || await characterLocks.LockActiveForItemMutationAsync(scope, characterId.Value, cancellationToken) is null
+            || !await LockLiveSessionAsync(scope, simulationSessionId, characterId.Value, workerId, request, cancellationToken))
         {
             await transaction.RollbackAsync(cancellationToken);
             return ServiceResult<SimulationAppearance>.Unauthorized(
@@ -89,7 +84,6 @@ internal sealed class SimulationAppearanceService(
                 "Simulation session is invalid, released, expired, or owned by another worker runtime.");
         }
 
-        var scope = new PostgresTransactionScope(connection, transaction);
         var change = isHeadwear
             ? await characterAppearances.SetHeadwearLoweredAsync(scope, characterId.Value, request.HeadwearLowered!.Value, cancellationToken)
             : await characterAppearances.SetDevelopmentLookAsync(
@@ -108,5 +102,42 @@ internal sealed class SimulationAppearanceService(
 
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<SimulationAppearance>.Ok(SimulationAppearance.From(change.Appearance));
+    }
+
+    // Locks the session FOR UPDATE when it is live, still the character's, and held by this
+    // worker runtime with this session token.
+    private static async Task<bool> LockLiveSessionAsync(
+        PostgresTransactionScope scope,
+        Guid simulationSessionId,
+        Guid characterId,
+        string workerId,
+        SimulationAppearanceChangeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var locked = await scope.Connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
+            $"""
+            select id
+            from character_simulation_sessions
+            where id = @SimulationSessionId
+              and character_id = @CharacterId
+              and simulation_worker_id = @WorkerId
+              and worker_runtime_id = @WorkerRuntimeId
+              and session_token_hash = @SessionTokenHash
+              and released_at is null
+              and expires_at > now()
+              and {AccountsSql.IsActiveOrUnboundSession("character_simulation_sessions.account_session_id")}
+            for update of character_simulation_sessions;
+            """,
+            new
+            {
+                SimulationSessionId = simulationSessionId,
+                CharacterId = characterId,
+                WorkerId = workerId.Trim(),
+                WorkerRuntimeId = request.WorkerRuntimeId!.Trim(),
+                SessionTokenHash = TokenGenerator.HashToken(request.SessionToken!.Trim())
+            },
+            scope.Transaction,
+            cancellationToken: cancellationToken));
+        return locked is not null;
     }
 }
