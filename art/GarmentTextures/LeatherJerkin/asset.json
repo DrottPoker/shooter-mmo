@@ -4,14 +4,14 @@
     "garment": "art/Garments/Shirt",
     "approvals": {
         "texture": {
-            "date": "2026-10-24",
+            "date": "2026-10-25",
             "sourceSha256": "5c6d95c37b8597ab3ab0e110a862a02dc00457c83bf6359164d286f6364aa979",
-            "garmentSourceSha256": "18267824ef8a5124dc4eccdb4a43119a506043d01023e297886e5efa4a5ec1de"
+            "garmentSourceSha256": "680f64e1a565d1108b061cae507a41c847230553ebbf558d744c7c0bdc65651a"
         }
     },
     "export": {
         "sourceSha256": "5c6d95c37b8597ab3ab0e110a862a02dc00457c83bf6359164d286f6364aa979",
-        "garmentSourceSha256": "18267824ef8a5124dc4eccdb4a43119a506043d01023e297886e5efa4a5ec1de",
+        "garmentSourceSha256": "680f64e1a565d1108b061cae507a41c847230553ebbf558d744c7c0bdc65651a",
         "masks": [
             { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Male.json", "dataSha256": "aca6fd67addafb341430ec638401a76c2e4107fb4f7501b67b690c946ea09d3e" },
             { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "8b5beef9c04a54a32c8e8bd26fd6e98bbf29f5c2ccf065ead0bbd5f84fd7efe8" }

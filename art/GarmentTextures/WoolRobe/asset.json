@@ -5,13 +5,13 @@
     "approvals": {
         "texture": {
             "date": "2026-10-25",
-            "sourceSha256": "40b1e5fb289829762130b2f0a4a9ee03ca8bb15f35cea80bbbc29f8d10bb69a8",
-            "garmentSourceSha256": "e8359a5d963768b6bf3a1516db0161444e0d9ac12aab789d1fa9ee776e05a32c"
+            "sourceSha256": "28a8663a9b5bb9e3eadc1d1e6eebe3b5dbcad789eb2de7405988c43d31cc7ba7",
+            "garmentSourceSha256": "41d46b193498fe818d266efb93d6859109170380580ee0bc665531ef53aa4b39"
         }
     },
     "export": {
-        "sourceSha256": "40b1e5fb289829762130b2f0a4a9ee03ca8bb15f35cea80bbbc29f8d10bb69a8",
-        "garmentSourceSha256": "e8359a5d963768b6bf3a1516db0161444e0d9ac12aab789d1fa9ee776e05a32c",
+        "sourceSha256": "28a8663a9b5bb9e3eadc1d1e6eebe3b5dbcad789eb2de7405988c43d31cc7ba7",
+        "garmentSourceSha256": "41d46b193498fe818d266efb93d6859109170380580ee0bc665531ef53aa4b39",
         "materials": [
             {
                 "name": "M_Garment_WoolRobe",
@@ -27,7 +27,7 @@
             {
                 "name": "T_Garment_WoolRobe",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolRobe.png",
-                "sha256": "c0994b4d49ca2efd69a18a1683b04f82bfbbd281496d562ff423bdaf9df3f26e"
+                "sha256": "d599738d59fcac2e62b0ae94e40cc4e795339c202b774a98aaacae86e07d73f8"
             },
             {
                 "name": "T_Garment_WoolRobe_Dye",

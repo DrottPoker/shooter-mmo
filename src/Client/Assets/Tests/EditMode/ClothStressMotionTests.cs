@@ -133,8 +133,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 var thigh = bones["UpperLeg_R"];
                 var along = (bones["LowerLeg_R"].position - thigh.position).normalized;
                 thigh.rotation = Quaternion.FromToRotation(along, preview.Body.transform.forward) * thigh.rotation;
+                // The skirt from the waist moves with the hips above its chains, so the knee comes
+                // through below them only.
                 meter.Sample(null, 0f, Step, true);
-                Assert.That(meter.LastPoked, Is.GreaterThan(10));
+                Assert.That(meter.LastPoked, Is.GreaterThan(5));
                 Assert.That(meter.LastPokeDepth, Is.GreaterThan(0.03f));
             }
         }

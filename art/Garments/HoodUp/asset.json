@@ -15,23 +15,23 @@
     "triangleBudget": 1500,
     "approvals": {
         "model": {
-            "date": "2026-10-24",
-            "sourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e"
+            "date": "2026-10-25",
+            "sourceSha256": "bfff1b9feecdfd9948ab6596bb938c8faf114c6ae06e237884ccd6a43e1edc44"
         },
         "rig": {
-            "date": "2026-10-24",
-            "sourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e"
+            "date": "2026-10-25",
+            "sourceSha256": "bfff1b9feecdfd9948ab6596bb938c8faf114c6ae06e237884ccd6a43e1edc44"
         }
     },
     "export": {
-        "sourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e",
-        "cageSourceSha256": "7275dd08a42fea03718d5b78a362f5e77df532e706713477482cc5340cc74503",
+        "sourceSha256": "bfff1b9feecdfd9948ab6596bb938c8faf114c6ae06e237884ccd6a43e1edc44",
+        "cageSourceSha256": "594dd54e7a81af0c490b2d200e37a798845974297a48f140447595789b6ab571",
         "models": [
             {
                 "body": "Male",
                 "bodyFitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
                 "target": "src/Client/Assets/Art/Models/Garments/HoodUp_Male.fbx",
-                "sha256": "e87e99a65a378aacfabd651289a18a13fa7ac5feb9a6e69b793c3bd450168471",
+                "sha256": "2148d3c0fe1246b82a50b458ac79914a5efc03abe5521f7ca7f451d789b3da7d",
                 "data": "src/Client/Assets/Art/Models/Garments/HoodUp_Male.json",
                 "dataSha256": "bce1b457a20898c79bcb7ba871e564ec79f3ae88e1d05b40fc5156ab77bdceba"
             },
@@ -39,7 +39,7 @@
                 "body": "Female",
                 "bodyFitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
                 "target": "src/Client/Assets/Art/Models/Garments/HoodUp_Female.fbx",
-                "sha256": "8fe59fc29e5541d981f1782ad1a878a41e6f3e4140ab5e6ffe620576297a9c71",
+                "sha256": "5c26cfe6736ba2ea6c9fd61d00331ecffee1a970e0520547e9d1ebb0752e2dd0",
                 "data": "src/Client/Assets/Art/Models/Garments/HoodUp_Female.json",
                 "dataSha256": "e948db930038e24e0b85106b3fa7da6353f779e502c5cc76b895c2d9a188c6e6"
             }
@@ -48,14 +48,14 @@
             { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Boots", "sourceSha256": "d1bb8d845590fe38515ad79797cd43d9121437f0f4d1a593ab01f905cc3ad7d6" },
-            { "garment": "art/Garments/Cloak", "sourceSha256": "4a7ba335ab0237ad2f1d9ae6d430093274b871fa357e19cc45665cf36e3d5e47" },
-            { "garment": "art/Garments/Gloves", "sourceSha256": "b7e0e6181ce8373a7fc56efd055e112837e4b2a5ce29c3586211c7e965e09707" },
-            { "garment": "art/Garments/LongShirt", "sourceSha256": "3432af2d3a1f595742d793802bcf305dda6d43553ad3cfa3c1ae49aeb3390deb" },
-            { "garment": "art/Garments/Robe", "sourceSha256": "e8359a5d963768b6bf3a1516db0161444e0d9ac12aab789d1fa9ee776e05a32c" },
-            { "garment": "art/Garments/Shirt", "sourceSha256": "18267824ef8a5124dc4eccdb4a43119a506043d01023e297886e5efa4a5ec1de" },
-            { "garment": "art/Garments/ShoulderHair", "sourceSha256": "7d519025f22587455b784c7b96a3ce99fdb018a3b1393aaaff99d26addb82f7b" },
-            { "garment": "art/Garments/Trousers", "sourceSha256": "13b58033a64e17cf322af2aa48d84c2ff0cdb349833a6697ee1fafe26ae656f9" }
+            { "garment": "art/Garments/Boots", "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7" },
+            { "garment": "art/Garments/Cloak", "sourceSha256": "78a795692c9aaf446884fe63a1e6fe2c0a2c48a769c804b7a10c646f882bd641" },
+            { "garment": "art/Garments/Gloves", "sourceSha256": "2af2c7601fa6f946c714f04697c2bedb941c808bce9d19c277169a9070c1af67" },
+            { "garment": "art/Garments/LongShirt", "sourceSha256": "d300f2b2ba9178d34526b9a29d6404e8b775ccaf0b6f5b18c75b1ecff1726bf4" },
+            { "garment": "art/Garments/Robe", "sourceSha256": "41d46b193498fe818d266efb93d6859109170380580ee0bc665531ef53aa4b39" },
+            { "garment": "art/Garments/Shirt", "sourceSha256": "680f64e1a565d1108b061cae507a41c847230553ebbf558d744c7c0bdc65651a" },
+            { "garment": "art/Garments/ShoulderHair", "sourceSha256": "f0573cb912500f79bea07282316bd46bd893c8e5fd28b8b3aa32401886c25e3f" },
+            { "garment": "art/Garments/Trousers", "sourceSha256": "f9d96d304d8b4bce5b463b9f6cc83cdaef7d848b47a315cd54c56db80729572e" }
         ],
         "materials": [
             {

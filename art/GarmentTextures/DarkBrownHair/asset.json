@@ -4,14 +4,14 @@
     "garment": "art/Garments/ShoulderHair",
     "approvals": {
         "texture": {
-            "date": "2026-10-24",
+            "date": "2026-10-25",
             "sourceSha256": "9ae583d52da74987d64e7e8855ef9ea36515af0b10ad900f7cb0b8e270a08f25",
-            "garmentSourceSha256": "7d519025f22587455b784c7b96a3ce99fdb018a3b1393aaaff99d26addb82f7b"
+            "garmentSourceSha256": "f0573cb912500f79bea07282316bd46bd893c8e5fd28b8b3aa32401886c25e3f"
         }
     },
     "export": {
         "sourceSha256": "9ae583d52da74987d64e7e8855ef9ea36515af0b10ad900f7cb0b8e270a08f25",
-        "garmentSourceSha256": "7d519025f22587455b784c7b96a3ce99fdb018a3b1393aaaff99d26addb82f7b",
+        "garmentSourceSha256": "f0573cb912500f79bea07282316bd46bd893c8e5fd28b8b3aa32401886c25e3f",
         "materials": [
             {
                 "name": "M_Garment_DarkBrownHair",

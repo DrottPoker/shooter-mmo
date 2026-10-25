@@ -6,8 +6,10 @@
     "lines": [
         { "name": "CollarStand", "region": "neck", "bone": "Neck", "share": 0.3 },
         { "name": "Neckline", "region": "neck", "bone": "Neck", "share": 0.19, "rise": 5.3 },
+        { "name": "CloakNape", "region": "trunk", "bone": "UpperChest", "share": 0.85 },
         { "name": "CloakYoke", "region": "trunk", "bone": "UpperChest", "share": 0.55 },
         { "name": "HemCrop", "region": "trunk", "bone": "Chest", "share": 0.5 },
+        { "name": "SkirtWaist", "region": "trunk", "bone": "Spine", "share": 0.45 },
         { "name": "Waist", "region": "trunk", "bone": "Spine", "share": 0.1 },
         { "name": "HemHip", "region": "trunk", "bone": "Hips", "share": 0.72 },
         { "name": "SleeveShort", "region": "arms", "bone": "UpperArm", "share": 0.6 },
@@ -25,8 +27,8 @@
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-24",
-            "sourceSha256": "7275dd08a42fea03718d5b78a362f5e77df532e706713477482cc5340cc74503"
+            "date": "2026-10-25",
+            "sourceSha256": "594dd54e7a81af0c490b2d200e37a798845974297a48f140447595789b6ab571"
         }
     }
 }

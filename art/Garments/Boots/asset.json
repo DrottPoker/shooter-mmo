@@ -25,17 +25,17 @@
     "triangleBudget": 1500,
     "approvals": {
         "model": {
-            "date": "2026-10-24",
-            "sourceSha256": "d1bb8d845590fe38515ad79797cd43d9121437f0f4d1a593ab01f905cc3ad7d6"
+            "date": "2026-10-25",
+            "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7"
         },
         "rig": {
-            "date": "2026-10-24",
-            "sourceSha256": "d1bb8d845590fe38515ad79797cd43d9121437f0f4d1a593ab01f905cc3ad7d6"
+            "date": "2026-10-25",
+            "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7"
         }
     },
     "export": {
-        "sourceSha256": "d1bb8d845590fe38515ad79797cd43d9121437f0f4d1a593ab01f905cc3ad7d6",
-        "cageSourceSha256": "7275dd08a42fea03718d5b78a362f5e77df532e706713477482cc5340cc74503",
+        "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7",
+        "cageSourceSha256": "594dd54e7a81af0c490b2d200e37a798845974297a48f140447595789b6ab571",
         "models": [
             {
                 "body": "Male",
@@ -58,7 +58,7 @@
             { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
         ],
         "pairSources": [
-            { "garment": "art/Garments/Trousers", "sourceSha256": "13b58033a64e17cf322af2aa48d84c2ff0cdb349833a6697ee1fafe26ae656f9" }
+            { "garment": "art/Garments/Trousers", "sourceSha256": "f9d96d304d8b4bce5b463b9f6cc83cdaef7d848b47a315cd54c56db80729572e" }
         ],
         "materials": [
             {
