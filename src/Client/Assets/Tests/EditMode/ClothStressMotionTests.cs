@@ -57,6 +57,24 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void JerkIsMeasuredFromEachFramesOwnTime()
+        {
+            // Steady speed and steady acceleration in frames of different length have no jerk.
+            var times = new[] { 0f, 1f / 30f, 1f / 30f + 1f / 144f, 1f / 30f + 1f / 144f + 1f / 60f };
+            Vector3 Moving(float time) => new Vector3(2f * time, 0f, 0f);
+            Vector3 Speeding(float time) => new Vector3(0f, 1.5f * time * time, 0f);
+            foreach (var place in new System.Func<float, Vector3>[] { Moving, Speeding })
+            {
+                Assert.That(ClothMotionMeter.Jerk(place(times[3]), place(times[2]), place(times[1]), place(times[0]),
+                    times[3] - times[2], times[2] - times[1], times[1] - times[0]), Is.LessThan(1e-2f));
+            }
+
+            // In equal frames a cube of the time has the jerk 6.
+            Vector3 Cube(float time) => new Vector3(0f, 0f, time * time * time);
+            Assert.That(ClothMotionMeter.Jerk(Cube(0.3f), Cube(0.2f), Cube(0.1f), Cube(0f), 0.1f, 0.1f, 0.1f), Is.EqualTo(6f).Within(1e-2f));
+        }
+
+        [Test]
         public void TheNetworkMotionShowsTheCourseAsTheGamePresentsARemoteBody()
         {
             using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male")))

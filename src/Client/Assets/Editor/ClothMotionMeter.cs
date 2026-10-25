@@ -87,7 +87,7 @@ namespace Mmorpg.Client.Editor
                 }
 
                 chain.Push(particles, chain.Anchor, deltaTime);
-                if (chain.HasJerk && steady && !motion.JitteryFrames)
+                if (chain.HasJerk && steady)
                 {
                     foreach (var jerk in chain.Jerks)
                     {
@@ -344,6 +344,18 @@ namespace Mmorpg.Client.Editor
             wornKey = null;
         }
 
+        // How fast a point's acceleration changes over its last four places, the newest first, from
+        // the frame times between them, the newest first.
+        public static float Jerk(Vector3 x0, Vector3 x1, Vector3 x2, Vector3 x3, float h0, float h1, float h2)
+        {
+            var v1 = (x0 - x1) / h0;
+            var v2 = (x1 - x2) / h1;
+            var v3 = (x2 - x3) / h2;
+            var a1 = (v1 - v2) / (0.5f * (h0 + h1));
+            var a2 = (v2 - v3) / (0.5f * (h1 + h2));
+            return (a1 - a2).magnitude / (0.25f * h0 + 0.5f * h1 + 0.25f * h2);
+        }
+
         // The bone each vertex of a mesh weighs most, or -1.
         private static int[] DominantBones(Mesh mesh)
         {
@@ -398,19 +410,24 @@ namespace Mmorpg.Client.Editor
             // How far the particle that moved most moved in the anchor's frame over the last frame.
             public float LastMove { get; private set; }
 
-            // Every particle's jerk over the last four frames, of equal length.
+            // Every particle's jerk over the last four frames, from their own frame times: the
+            // velocities over the three frames, the accelerations between their middles, and the
+            // change between the accelerations' times, which for equal frames is the third
+            // difference over the frame time cubed.
             public IEnumerable<float> Jerks
             {
                 get
                 {
-                    var step = steps[steps.Count - 1];
+                    var h0 = steps[steps.Count - 1];
+                    var h1 = steps[steps.Count - 2];
+                    var h2 = steps[steps.Count - 3];
                     var x0 = history[history.Count - 1];
                     var x1 = history[history.Count - 2];
                     var x2 = history[history.Count - 3];
                     var x3 = history[history.Count - 4];
                     for (var index = 1; index < x0.Length; index++)
                     {
-                        yield return (x0[index] - 3f * x1[index] + 3f * x2[index] - x3[index]).magnitude / (step * step * step);
+                        yield return Jerk(x0[index], x1[index], x2[index], x3[index], h0, h1, h2);
                     }
                 }
             }
