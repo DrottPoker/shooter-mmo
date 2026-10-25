@@ -23,10 +23,24 @@ internal sealed class AppearanceReplicator(
     private readonly HashSet<ulong> seen = [];
     private readonly Dictionary<ulong, Sent> sent = [];
 
-    // The look a spawn of the player carries.
-    public RealtimeCharacterAppearance AppearanceOf(PlayerSimulationEntity entity)
+    // The look a spawn of the player carries. A spawn can come before the first broadcast that
+    // sees the player, so the look of its first spawn counts as sent: a change before that
+    // broadcast still reaches the viewers the spawn reached.
+    public RealtimeCharacterAppearance SpawnAppearanceOf(PlayerSimulationEntity entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
+        var appearance = AppearanceOf(entity);
+        if (!sent.ContainsKey(entity.NetworkEntityId))
+        {
+            var (lookVersion, itemRevision) = VersionsOf(entity);
+            sent[entity.NetworkEntityId] = new Sent(lookVersion, itemRevision, -1, KeyOf(appearance));
+        }
+
+        return appearance;
+    }
+
+    private RealtimeCharacterAppearance AppearanceOf(PlayerSimulationEntity entity)
+    {
         var session = entity.Session;
         if (!looks.TryGet(session.CharacterId, session.SimulationSessionId, out var look, out _))
         {
@@ -63,11 +77,7 @@ internal sealed class AppearanceReplicator(
         foreach (var entity in playerBuffer)
         {
             seen.Add(entity.NetworkEntityId);
-            var session = entity.Session;
-            looks.TryGet(session.CharacterId, session.SimulationSessionId, out _, out var lookVersion);
-            var itemRevision = itemStates.TryGetItemState(session.CharacterId, session.SimulationSessionId, out var state)
-                ? state!.ItemStateRevision
-                : -1;
+            var (lookVersion, itemRevision) = VersionsOf(entity);
             var owner = connectionBindings.TryGetConnectionId(entity.NetworkEntityId, out var connectionId)
                 ? connectionId
                 : -1;
@@ -107,6 +117,17 @@ internal sealed class AppearanceReplicator(
     public void Clear()
     {
         sent.Clear();
+    }
+
+    // The player's look version and item-state revision; a look changes only when one of them moves.
+    private (long LookVersion, long ItemRevision) VersionsOf(PlayerSimulationEntity entity)
+    {
+        var session = entity.Session;
+        looks.TryGet(session.CharacterId, session.SimulationSessionId, out _, out var lookVersion);
+        var itemRevision = itemStates.TryGetItemState(session.CharacterId, session.SimulationSessionId, out var state)
+            ? state!.ItemStateRevision
+            : -1;
+        return (lookVersion, itemRevision);
     }
 
     private void SendToViewers(ulong entityId, byte[] packet, int owner)

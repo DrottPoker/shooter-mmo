@@ -271,7 +271,7 @@ internal sealed class EntityPresenceReplicator(
             entity.ArchetypeId,
             clock.ServerTick,
             RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State),
-            Appearances?.AppearanceOf(entity)
+            Appearances?.SpawnAppearanceOf(entity)
                 ?? new RealtimeCharacterAppearance(AppearanceReplicationSettings.Default.DefaultBodyModel, [], [], false));
     }
 
