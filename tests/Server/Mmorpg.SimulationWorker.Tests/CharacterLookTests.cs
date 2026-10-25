@@ -56,12 +56,12 @@ public sealed class CharacterLookTests
         var characterId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         var outfit = new[] { new CharacterLookItem("body", "fixture.tunic") };
-        store.Register(characterId, sessionId, new CharacterLook(CharacterStateTestData.Appearance, outfit));
+        store.Register(characterId, sessionId, "token-1", new CharacterLook(CharacterStateTestData.Appearance, outfit));
         Assert.True(store.TryGet(characterId, sessionId, out _, out var firstVersion));
 
         var lowered = CharacterStateTestData.Appearance with { HeadwearLowered = true };
-        Assert.False(store.TryApply(characterId, Guid.NewGuid(), lowered));
-        Assert.True(store.TryApply(characterId, sessionId, lowered));
+        Assert.False(store.TryApply(characterId, Guid.NewGuid(), "token-1", lowered));
+        Assert.True(store.TryApply(characterId, sessionId, "token-1", lowered));
 
         Assert.True(store.TryGet(characterId, sessionId, out var look, out var secondVersion));
         Assert.True(secondVersion > firstVersion);
@@ -69,6 +69,14 @@ public sealed class CharacterLookTests
         // A bot keeps the outfit it was dressed in.
         Assert.Same(outfit, look.Outfit);
         Assert.False(store.TryGet(characterId, Guid.NewGuid(), out _, out _));
+
+        // A reconnect keeps the session with a new token and the look GameService stores then; a
+        // change answered for the old token arrives too late to overwrite it.
+        store.Register(characterId, sessionId, "token-2", new CharacterLook(CharacterStateTestData.Appearance));
+        Assert.False(store.TryApply(characterId, sessionId, "token-1", lowered));
+        Assert.True(store.TryGet(characterId, sessionId, out var reconnected, out _));
+        Assert.False(reconnected!.Appearance.HeadwearLowered);
+        Assert.True(store.TryApply(characterId, sessionId, "token-2", lowered));
 
         store.Remove(characterId, Guid.NewGuid());
         Assert.True(store.TryGet(characterId, sessionId, out _, out _));

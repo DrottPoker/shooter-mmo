@@ -108,6 +108,41 @@ public sealed class RealtimeAppearanceTests
     }
 
     [Fact]
+    public async Task AChangeAnsweredAfterAReconnectLeavesTheLookTheReconnectLoaded()
+    {
+        await using var harness = RealtimeServerHarness.Create();
+        var character = AddCharacter(harness, "Late Hood", WovenLook, Equipped("head", "clothing.wool_hood"));
+        var viewer = harness.AddCharacter("Late Viewer");
+        var gate = new TestGate();
+        harness.GameService.OnAppearanceChange = async (_, request, _) =>
+        {
+            await gate.WaitAsync();
+            return ScriptedGameServiceHandler.Json(WovenLook with { HeadwearLowered = request.HeadwearLowered!.Value });
+        };
+        await harness.StartAsync();
+        var first = await harness.JoinAsync(character);
+        var watcher = await harness.JoinAsync(viewer);
+        var entityId = first.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(() => watcher.Spawns.Any(spawn => spawn.EntityId == entityId), "the spawn");
+
+        first.Send(RealtimeProtocol.EncodeAppearanceIntent(RealtimeAppearanceIntent.CreateLowerHeadwear(Guid.NewGuid())));
+        await harness.PollUntilAsync(() => gate.HasEntered, "the held change");
+        // The same session reconnects with a new token, and the worker loads the look GameService
+        // had then.
+        var reconnect = character with { Ticket = "ticket-late-reconnect", SimulationSessionToken = "late-reconnected-token" };
+        harness.GameService.AddCharacter(reconnect);
+        var second = await harness.JoinAsync(reconnect, "second");
+        gate.Release();
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+
+        Assert.True(second.JoinAccepted!.IsReconnect);
+        Assert.True(harness.Looks.TryGet(character.CharacterId, character.SimulationSessionId, out var look, out _));
+        Assert.False(look!.Appearance.HeadwearLowered);
+        Assert.DoesNotContain(Changes(watcher), change => change.EntityId == entityId && change.Appearance.HeadwearLowered);
+        Assert.Empty(Results(second));
+    }
+
+    [Fact]
     public async Task ADevelopmentBotShowsALookAndOutfitOfItsOwnAndCannotChangeIt()
     {
         await using var harness = RealtimeServerHarness.Create();

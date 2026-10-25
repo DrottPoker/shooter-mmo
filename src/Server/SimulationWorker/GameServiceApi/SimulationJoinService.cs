@@ -131,7 +131,7 @@ public sealed class SimulationJoinService(
             : botLooks?.For(session.CharacterId);
         if (look is not null)
         {
-            lookStore?.Register(session.CharacterId, session.SimulationSessionId, look);
+            lookStore?.Register(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, look);
         }
 
         sessionStore.TryGet(session.CharacterId, out var registeredSession);

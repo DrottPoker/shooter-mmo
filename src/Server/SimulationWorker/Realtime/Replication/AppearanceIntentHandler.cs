@@ -69,7 +69,7 @@ internal sealed class AppearanceIntentHandler(
         inFlight.Remove(completed.Context.PeerId);
         var session = completed.Session;
         var stored = completed.Result is { Succeeded: true, Value: { } appearance }
-            && looks.TryApply(session.CharacterId, session.SimulationSessionId, appearance);
+            && looks.TryApply(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, appearance);
         if (completed.Context.Session?.SimulationSessionId != session.SimulationSessionId
             || !peers.TryGetCurrentPeer(completed.Context, out var peer))
         {
