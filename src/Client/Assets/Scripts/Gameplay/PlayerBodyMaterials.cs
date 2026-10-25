@@ -6,7 +6,7 @@ namespace Mmorpg.Client.Gameplay
 {
     // The materials player bodies draw with when they look different from their model: a copy
     // of a body material with another painted image, such as another face, paint layers over
-    // its skin, such as the paint of a leather jerkin, a tint, or any of them together, shared by
+    // its skin, such as a tattoo or underwear, a tint, or any of them together, shared by
     // every body that looks the same. A property block on each body kept every body
     // out of the SRP Batcher, so a dense crowd paid a full draw call setup per player. The
     // owner destroys the copies.
@@ -19,6 +19,7 @@ namespace Mmorpg.Client.Gameplay
         private static readonly int PaintCountId = Shader.PropertyToID("_PaintCount");
         private static readonly int[] PaintMapIds = PaintIds("_PaintMap");
         private static readonly int[] PaintSurfaceIds = PaintIds("_PaintSurface");
+        private static readonly int[] PaintRectIds = PaintIds("_PaintRect");
 
         private static readonly IReadOnlyList<BodyAppearanceCatalog.Paint> NoPaints =
             new BodyAppearanceCatalog.Paint[0];
@@ -152,6 +153,7 @@ namespace Mmorpg.Client.Gameplay
             {
                 material.SetTexture(PaintMapIds[index], paints[index].Texture);
                 material.SetVector(PaintSurfaceIds[index], new Vector4(paints[index].Smoothness, paints[index].Metallic, 0f, 0f));
+                material.SetVector(PaintRectIds[index], paints[index].Rect);
             }
 
             material.SetFloat(PaintCountId, count);

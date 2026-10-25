@@ -1365,8 +1365,8 @@ catalog of its model, picked from its persistent id with a mixed FNV-1a hash,
 its look.
 
 A look also names the paint layers its body wears, such as `Tattoo`, which the
-catalog lists for its body with their category, slot, material, image, layer,
-smoothness, and metallic. Until character creation, the Presentation section of
+catalog lists for its body with their category, slot, material, image, its crop
+of the body's paint UVs, layer, smoothness, and metallic. Until character creation, the Presentation section of
 the World Debug panel has a row per category and slot of the local body's
 catalog, such as `Your tattoo: <Name>` and `Your underwear (legs): <Name>`, that
 steps through its choices with `<` and `>`, with `none` for a scar or a tattoo,
@@ -1384,7 +1384,8 @@ property block per body kept every body out of it. Every look draws its
 underwear, so even the default look draws the body material with its paint, and
 a body draws as it should only once it has been given its look; a body without a
 look shows the skin without the underwear. The look is applied to the combined
-renderer, so bodies with other faces still share one combined mesh.
+renderer, so bodies with other faces still share one combined mesh, which keeps
+the parts' paint UVs, their second UV map, for the skin shader.
 `PlayerBodyAppearanceTests`, `BodyLookTests`, and `ArtAppearanceCatalogTests`
 cover the looks, their materials, and the catalogs. `PlayerBodyModelTests` covers
 the body models, the slot that puts a body in and replaces it, the model a remote

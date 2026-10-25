@@ -1,0 +1,39 @@
+{
+    "schemaVersion": 1,
+    "kind": "paint",
+    "category": "tattoo",
+    "part": "Body",
+    "bodies": ["art/Characters/Human_Male", "art/Characters/Human_Female"],
+    "layer": 210,
+    "approvals": {
+        "paint": {
+            "date": "2026-10-25",
+            "sourceSha256": "2d1b7e9295a60a01326f5208fe12ef58dc89b5fbbabaea9330a8a021d4c9e1ff"
+        }
+    },
+    "export": {
+        "sourceSha256": "2d1b7e9295a60a01326f5208fe12ef58dc89b5fbbabaea9330a8a021d4c9e1ff",
+        "textures": [
+            {
+                "name": "T_Paint_ForearmRunes_Male",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_ForearmRunes_Male.png",
+                "sha256": "8f03c93b16a96249a7b7a746cc2b412631efb82295eccf3a9c8890816b3e62d7",
+                "layout": [4096, 2048],
+                "rect": [1268, 152, 188, 100],
+                "move": "topology",
+                "bodyPaintSha256": "c7187d411e4ff35a787147f065a950ac107fb4207c88e33aaddc0ec36bce4d57"
+            },
+            {
+                "name": "T_Paint_ForearmRunes_Female",
+                "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_ForearmRunes_Female.png",
+                "sha256": "92b5bfa39a6e26edf9281ab79e5c43676be055a3dd77ba7a9ca75b1d487cd2c9",
+                "layout": [4096, 2048],
+                "rect": [1760, 1160, 68, 224],
+                "move": "topology",
+                "bodyPaintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1"
+            }
+        ],
+        "smoothness": 0.4,
+        "metallic": 0.0
+    }
+}

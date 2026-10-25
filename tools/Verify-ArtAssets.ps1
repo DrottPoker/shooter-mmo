@@ -142,6 +142,13 @@ foreach ($directory in $directories) {
         }
     }
 
+    if ($manifest.Kind -eq "paint") {
+        # The paint was moved to the current exports of its bodies, and through the current cage.
+        foreach ($dependencyProblem in @(Get-ArtPaintDependencyProblems $manifest)) {
+            $problems.Add("${where}: $dependencyProblem.")
+        }
+    }
+
     if ($manifest.Kind -eq "garment") {
         # The template still matches its cage, the bodies of the cage, and the clips it was checked in.
         foreach ($dependencyProblem in @(Get-ArtGarmentDependencyProblems $manifest)) {

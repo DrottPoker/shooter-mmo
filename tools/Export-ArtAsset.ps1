@@ -46,18 +46,24 @@ foreach ($manifest in $manifests) {
 }
 
 function Export-ArtPaint([string]$Blender, $Manifest, [string]$SourceSha256) {
-    # A paint layer exports one image per body and the smoothness and metallic of its paint.
+    # A paint layer exports one image per body, cropped to its paint, with its place in the body's
+    # full paint layout, the fingerprint of the body it was moved to, and how it was moved, and the
+    # smoothness and metallic of its paint, and the cage's file when a body was moved through it.
     $folder = $script:ArtPaintTextureFolder
     $results = Invoke-ArtBlender $Blender $Manifest (
         @("export") + (Get-ArtValidationArguments $Manifest "paint") + @(
             "--textures", (Join-Path $script:ArtRepositoryRoot $folder)))
-    $textures = ConvertTo-ArtTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
+    $textures = ConvertTo-ArtPaintTextureRecords @($results | Where-Object { $_ -like "ART_TEXTURE *" } |
             ForEach-Object {
                 $texture = $_.Substring("ART_TEXTURE ".Length) | ConvertFrom-Json
                 [pscustomobject]@{
                     name = $texture.name
                     target = Get-ArtRelativePath $texture.path
                     sha256 = Get-ArtFileSha256 $texture.path
+                    layout = $texture.layout
+                    rect = $texture.rect
+                    move = $texture.move
+                    bodyPaintSha256 = $texture.bodyPaintSha256
                 }
             }) $folder
     $surface = @($results | Where-Object { $_ -like "ART_PAINT *" } |
@@ -68,6 +74,7 @@ function Export-ArtPaint([string]$Blender, $Manifest, [string]$SourceSha256) {
 
     $Manifest.Export = [ordered]@{
         sourceSha256 = $SourceSha256
+        cageSourceSha256 = if ($null -ne $surface.cageSourceSha256) { [string]$surface.cageSourceSha256 } else { $null }
         textures = $textures
         smoothness = [double]$surface.smoothness
         metallic = [double]$surface.metallic
@@ -373,19 +380,24 @@ foreach ($manifest in $manifests) {
 
     # A body with an editable mesh exports its topology next to the model, and records the
     # fingerprint of what the garment cage and garments read from it: its rig, its surface with its
-    # faces and their body parts, and its weights.
+    # faces and their body parts, and its weights; and of what paint layers read from it: its
+    # meshes joined with their faces, materials, and paint UV map, and its rig's landmarks.
     $dataSha256 = $null
     $fitSha256 = $null
+    $paintSha256 = $null
     $data = @($results | Where-Object { $_ -like "ART_DATA *" } | ForEach-Object { $_.Substring("ART_DATA ".Length) | ConvertFrom-Json })
     if ($data.Count -gt 0) {
         $fits = @($results | Where-Object { $_ -like "ART_FIT *" } | ForEach-Object { $_.Substring("ART_FIT ".Length).Trim() })
+        $layouts = @($results | Where-Object { $_ -like "ART_PAINT_LAYOUT *" } | ForEach-Object { $_.Substring("ART_PAINT_LAYOUT ".Length).Trim() })
         if ($data.Count -ne 1 -or (Get-ArtRelativePath $data[0].path) -cne (Get-ArtDataTarget $manifest.Target) -or
-            $fits.Count -ne 1 -or $fits[0] -cnotmatch $script:ArtShaPattern) {
+            $fits.Count -ne 1 -or $fits[0] -cnotmatch $script:ArtShaPattern -or
+            $layouts.Count -ne 1 -or $layouts[0] -cnotmatch $script:ArtShaPattern) {
             throw "Blender reported unexpected data for $($manifest.Name)."
         }
 
         $dataSha256 = Get-ArtFileSha256 $data[0].path
         $fitSha256 = $fits[0]
+        $paintSha256 = $layouts[0]
     }
     elseif ($null -ne $manifest.Export -and $manifest.Export.Contains("dataSha256") -and $null -ne $manifest.Export.dataSha256) {
         Remove-ArtStaleFiles @(Get-ArtDataTarget $manifest.Target) @()
@@ -396,6 +408,7 @@ foreach ($manifest in $manifests) {
         targetSha256 = Get-ArtFileSha256 $manifest.TargetPath
         dataSha256 = $dataSha256
         fitSha256 = $fitSha256
+        paintSha256 = $paintSha256
         rigSourceSha256 = $rigSourceSha256
         materials = $materials
         textures = $textures

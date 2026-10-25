@@ -8,17 +8,21 @@
     "layer": 910,
     "approvals": {
         "paint": {
-            "date": "2026-10-24",
-            "sourceSha256": "0b1b7cdb0bf3335dd5c75010fda397056cd6c6430a9612a6a9e031ca7e2ffb88"
+            "date": "2026-10-25",
+            "sourceSha256": "9888141443e1c2c241321d7e48f4bbb6e8dda778a8a6cbb4ac865902238c3b67"
         }
     },
     "export": {
-        "sourceSha256": "0b1b7cdb0bf3335dd5c75010fda397056cd6c6430a9612a6a9e031ca7e2ffb88",
+        "sourceSha256": "9888141443e1c2c241321d7e48f4bbb6e8dda778a8a6cbb4ac865902238c3b67",
         "textures": [
             {
                 "name": "T_Paint_Bra_Female",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Bra_Female.png",
-                "sha256": "0b13c38dd4a58d49168b7b77de3cb9f939cee532c6e0580879d1ae0b203cfbcb"
+                "sha256": "a5d80704c7ac8fc3582bdf0a5ad598c47b4acf94889cb060e897a715ac305643",
+                "layout": [4096, 2048],
+                "rect": [1196, 0, 2576, 760],
+                "move": "topology",
+                "bodyPaintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1"
             }
         ],
         "smoothness": 0.2,

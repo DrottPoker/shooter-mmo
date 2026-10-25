@@ -163,8 +163,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 new BodyAppearanceCatalog.Slot[0],
                 new[]
                 {
-                    new BodyAppearanceCatalog.Paint("Tattoo", AppearanceCategory.Tattoo, string.Empty, skin, tattoo, 200, 0.38f, 0f),
-                    new BodyAppearanceCatalog.Paint("Scar", AppearanceCategory.Scar, string.Empty, lit, tattoo, 100, 0.5f, 0f),
+                    new BodyAppearanceCatalog.Paint("Tattoo", AppearanceCategory.Tattoo, string.Empty, skin, tattoo,
+                        new Vector4(0.25f, 0.5f, 0.5f, 0.25f), 200, 0.38f, 0f),
+                    new BodyAppearanceCatalog.Paint("Scar", AppearanceCategory.Scar, string.Empty, lit, tattoo,
+                        new Vector4(0f, 0f, 1f, 1f), 100, 0.5f, 0f),
                 });
             try
             {
@@ -181,6 +183,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(painted.GetFloat("_PaintCount"), Is.EqualTo(1f));
                     Assert.That(painted.GetTexture("_PaintMap1"), Is.SameAs(tattoo));
                     Assert.That((Vector2)painted.GetVector("_PaintSurface1"), Is.EqualTo(new Vector2(0.38f, 0f)));
+                    // The image lies at its crop of the paint UVs.
+                    Assert.That(painted.GetVector("_PaintRect1"), Is.EqualTo(new Vector4(0.25f, 0.5f, 0.5f, 0.25f)));
                     Assert.That(secondBody.sharedMaterials[0], Is.SameAs(painted));
                     // A material without the skin shader cannot take paint and stays as it is.
                     Assert.That(firstBody.sharedMaterials[1], Is.SameAs(lit));
@@ -216,6 +220,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 Assert.That(shader.FindPropertyIndex("_PaintMap" + layer), Is.GreaterThanOrEqualTo(0));
                 Assert.That(shader.FindPropertyIndex("_PaintSurface" + layer), Is.GreaterThanOrEqualTo(0));
+                Assert.That(shader.FindPropertyIndex("_PaintRect" + layer), Is.GreaterThanOrEqualTo(0));
             }
 
             Assert.That(shader.FindPropertyIndex("_PaintCount"), Is.GreaterThanOrEqualTo(0));

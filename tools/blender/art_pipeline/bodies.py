@@ -22,6 +22,15 @@ ZONES = ("Head", "Neck", "Torso", "Pelvis", "UpperArms", "Forearms", "Hands", "T
 NORMAL_TOLERANCE = 1e-3
 UV_TOLERANCE = 1e-6
 WEIGHT_TOLERANCE = 1e-4
+# The UV map of the skin textures, and the one the parts get for paint layers: the skin's UVs with
+# every material whose faces share their texels with their mirror image, such as the body texture,
+# laid out twice as wide, the left side in the left half and the right side in the right half, so
+# paint can differ between the sides. A material that is not mirrored, such as the face, keeps its
+# UVs. The parts' paint UVs are written from the source body's UVs, never edited by hand.
+SKIN_UV = "UVMap"
+PAINT_UV = "UVMap_Paint"
+# The texels per side of the raster that finds texels both sides of a body share in the paint UV map.
+SIDES_RASTER = 1024
 
 
 def body_name(root: str) -> str:
@@ -82,11 +91,93 @@ def corner_normals(mesh: bpy.types.Mesh) -> np.ndarray:
     return out.reshape(-1, 3)
 
 
-def _uvs(mesh: bpy.types.Mesh) -> np.ndarray:
-    out = np.empty(len(mesh.loops) * 2)
-    if mesh.uv_layers.active is not None:
-        mesh.uv_layers.active.data.foreach_get("uv", out)
+def _uvs(mesh: bpy.types.Mesh, name: str | None = None) -> np.ndarray:
+    """The UVs of a UV map, the active one by default, or zeros when the mesh lacks it."""
+    out = np.zeros(len(mesh.loops) * 2)
+    layer = mesh.uv_layers.active if name is None else mesh.uv_layers.get(name)
+    if layer is not None:
+        layer.data.foreach_get("uv", out)
     return out.reshape(-1, 2)
+
+
+def _face_sides(mesh: bpy.types.Mesh) -> np.ndarray:
+    """1 for every face whose centre lies at the right of the body (+X), 0 for the left."""
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    return np.array([int(co[list(p.vertices), 0].mean() > 0.0) for p in mesh.polygons], np.int32)
+
+
+def mirrored_materials(mesh: bpy.types.Mesh) -> set[str]:
+    """The materials of a mesh with faces at one side that share all their skin UVs with a face at
+    the other side, so the skin texture is the same on both sides."""
+    uv = _uvs(mesh, SKIN_UV)
+    sides = _face_sides(mesh)
+    seen: dict[tuple, set[int]] = {}
+    found = set()
+    for polygon in mesh.polygons:
+        material = mesh.materials[polygon.material_index]
+        if material is None:
+            continue
+        corners = tuple(sorted(tuple(int(round(c * 1e5)) for c in uv[i]) for i in polygon.loop_indices))
+        key = (material.name, corners)
+        seen.setdefault(key, set()).add(int(sides[polygon.index]))
+        if len(seen[key]) == 2:
+            found.add(material.name)
+    return found
+
+
+def write_paint_uvs(mesh: bpy.types.Mesh) -> set[str]:
+    """Writes the paint UV map of a mesh from its skin UVs and returns its mirrored materials."""
+    if mesh.uv_layers.get(SKIN_UV) is None:
+        raise RuntimeError(f'{mesh.name} needs the UV map "{SKIN_UV}".')
+    mirrored = mirrored_materials(mesh)
+    uv = _uvs(mesh, SKIN_UV)
+    sides = _face_sides(mesh)
+    for polygon in mesh.polygons:
+        material = mesh.materials[polygon.material_index]
+        if material is not None and material.name in mirrored:
+            loops = list(polygon.loop_indices)
+            uv[loops, 0] = uv[loops, 0] * 0.5 + 0.5 * sides[polygon.index]
+    layer = mesh.uv_layers.get(PAINT_UV) or mesh.uv_layers.new(name=PAINT_UV, do_init=False)
+    layer.data.foreach_set("uv", uv.ravel())
+    mesh.uv_layers.active = mesh.uv_layers[SKIN_UV]
+    mesh.uv_layers[SKIN_UV].active_render = True
+    return mirrored
+
+
+def shared_paint_texels(meshes: list[bpy.types.Mesh], material: str, wide: bool) -> int:
+    """The texels of a raster over the paint UV map that faces of the material at both sides of the
+    body cover, in the meshes together, such as a body's parts, the raster twice as wide for a
+    mirrored material. Paint on such a texel would show on both sides. Faces that overlap at one
+    side, such as an eyelid's fold over the eye socket, are left to the skin's UVs."""
+    width, height = SIDES_RASTER * (2 if wide else 1), SIDES_RASTER
+    counts = np.zeros((2, height, width), bool)
+    for mesh in meshes:
+        if mesh.uv_layers.get(PAINT_UV) is None:
+            raise RuntimeError(f'{mesh.name} lacks the UV map "{PAINT_UV}".')
+        uv = _uvs(mesh, PAINT_UV)
+        sides = _face_sides(mesh)
+        names = [m.name if m is not None else None for m in mesh.materials]
+        for polygon in mesh.polygons:
+            if names[polygon.material_index] != material:
+                continue
+            corners = uv[list(polygon.loop_indices)] * (width, height)
+            low = np.floor(corners.min(axis=0)).astype(int).clip(0, (width - 1, height - 1))
+            high = np.ceil(corners.max(axis=0)).astype(int).clip(0, (width - 1, height - 1))
+            xs, ys = np.meshgrid(np.arange(low[0], high[0] + 1) + 0.5, np.arange(low[1], high[1] + 1) + 0.5)
+            covered = np.zeros(xs.shape, bool)
+            for i in range(1, len(corners) - 1):
+                a, b, c = corners[0], corners[i], corners[i + 1]
+                area = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])
+                if abs(area) < 1e-9:
+                    continue
+                # Texel centres strictly inside, so faces that only share an edge never overlap.
+                w0 = ((b[0] - xs) * (c[1] - ys) - (c[0] - xs) * (b[1] - ys)) / area
+                w1 = ((c[0] - xs) * (a[1] - ys) - (a[0] - xs) * (c[1] - ys)) / area
+                covered |= (w0 > 1e-4) & (w1 > 1e-4) & (1.0 - w0 - w1 > 1e-4)
+            counts[sides[polygon.index], low[1]:high[1] + 1, low[0]:high[0] + 1] |= covered
+    return int((counts[0] & counts[1]).sum())
 
 
 def bind(obj: bpy.types.Object, arm: bpy.types.Object) -> None:
@@ -142,10 +233,11 @@ def zones_of(body: bpy.types.Object) -> np.ndarray:
 
 
 def split(body: bpy.types.Object, zone_index: int, name: str, normals: np.ndarray) -> tuple[bpy.types.Mesh, np.ndarray]:
-    """A copy of the body's mesh with only the faces of one zone, in their order, and the body's
-    corner normals, and the body's index of each of its vertices."""
+    """A copy of the body's mesh with only the faces of one zone, in their order, the body's corner
+    normals, and the paint UV map, and the body's index of each of its vertices."""
     mesh = body.data.copy()
     mesh.name = name
+    write_paint_uvs(mesh)
     zone = zones_of(body)
     first_loop = np.array([p.loop_start for p in mesh.polygons])
     bm = bmesh.new()
@@ -260,7 +352,10 @@ def part_errors(root: str) -> list[str]:
                     == [mesh.materials[p.material_index].name for p in mesh.polygons])
             if same:
                 same = (float(np.abs(corner_normals(part.data) - corner_normals(mesh)).max()) <= NORMAL_TOLERANCE
-                        and float(np.abs(_uvs(part.data) - _uvs(mesh)).max(initial=0.0)) <= UV_TOLERANCE)
+                        and [u.name for u in part.data.uv_layers] == [u.name for u in mesh.uv_layers]
+                        and part.data.uv_layers.active.name == SKIN_UV
+                        and all(float(np.abs(_uvs(part.data, u.name) - _uvs(mesh, u.name)).max(initial=0.0)) <= UV_TOLERANCE
+                                for u in mesh.uv_layers))
             if same:
                 order = {_key(co): i for i, co in enumerate(part_co)}
                 rows = [order.get(_key(co)) for co in fresh_co]

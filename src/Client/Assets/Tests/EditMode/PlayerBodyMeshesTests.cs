@@ -63,6 +63,42 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void ACombinedBodyKeepsThePaintUvsOfItsParts()
+        {
+            var scene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                using (var meshes = new PlayerBodyMeshes())
+                {
+                    var body = InstantiateBody(scene);
+                    var parts = body.GetComponentsInChildren<SkinnedMeshRenderer>().ToArray();
+                    // The skin's parts carry the paint UVs, their second UV map; the eyes, teeth,
+                    // and tongue have none and take zero.
+                    var expected = new List<Vector2>();
+                    var painted = 0;
+                    foreach (var part in parts)
+                    {
+                        var uvs = new List<Vector2>();
+                        part.sharedMesh.GetUVs(1, uvs);
+                        painted += uvs.Count > 0 ? 1 : 0;
+                        expected.AddRange(uvs.Count > 0 ? uvs : Enumerable.Repeat(Vector2.zero, part.sharedMesh.vertexCount));
+                    }
+
+                    Assert.That(painted, Is.GreaterThanOrEqualTo(10), "body parts with paint UVs");
+                    var appearance = body.GetComponent<PlayerBodyAppearance>();
+                    appearance.CombineParts(meshes);
+                    var actual = new List<Vector2>();
+                    appearance.CombinedRenderer.sharedMesh.GetUVs(1, actual);
+                    Assert.That(actual, Is.EqualTo(expected));
+                }
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(scene);
+            }
+        }
+
+        [Test]
         public void ACombinedBodyIsBoundedAroundEveryPart()
         {
             var scene = EditorSceneManager.NewPreviewScene();

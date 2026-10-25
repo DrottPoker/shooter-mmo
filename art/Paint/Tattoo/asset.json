@@ -7,22 +7,30 @@
     "layer": 200,
     "approvals": {
         "paint": {
-            "date": "2026-10-23",
-            "sourceSha256": "9da34f920e1d5b12ab0666cec162c0072284f52b5ac3b27c01f2d6d436fd20af"
+            "date": "2026-10-25",
+            "sourceSha256": "75207bc34665fe31f706791e72a73642d2f41570c46107b1646fff05bfd08fda"
         }
     },
     "export": {
-        "sourceSha256": "9da34f920e1d5b12ab0666cec162c0072284f52b5ac3b27c01f2d6d436fd20af",
+        "sourceSha256": "75207bc34665fe31f706791e72a73642d2f41570c46107b1646fff05bfd08fda",
         "textures": [
             {
                 "name": "T_Paint_Tattoo_Male",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Tattoo_Male.png",
-                "sha256": "67cc45498608a0a99dfb4dbf4b0dffa45d2e11cd0d30f170ee8480e944868d1f"
+                "sha256": "5029c2402888eb12f743b64c3165f9955c5f8c46d9b3b17710bbffbafccb47f6",
+                "layout": [4096, 2048],
+                "rect": [916, 0, 2980, 924],
+                "move": "topology",
+                "bodyPaintSha256": "c7187d411e4ff35a787147f065a950ac107fb4207c88e33aaddc0ec36bce4d57"
             },
             {
                 "name": "T_Paint_Tattoo_Female",
                 "target": "src/Client/Assets/Art/Textures/Paint/T_Paint_Tattoo_Female.png",
-                "sha256": "82a8735bd8e4759cd1ba07a6e1ec06a2b87e8d8c4885564e4879451f5684c02d"
+                "sha256": "68fd071de22a0ad28117f57330a4fdf25374b748c162d884972725bc6b7e2497",
+                "layout": [4096, 2048],
+                "rect": [1476, 0, 2604, 1744],
+                "move": "topology",
+                "bodyPaintSha256": "3245eea8ddff78a3b366b3b360423c583c3b963c18e0d0b34f137a7f22ac27a1"
             }
         ],
         "smoothness": 0.4,

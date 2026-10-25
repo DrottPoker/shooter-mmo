@@ -77,6 +77,11 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--manifest", help="The asset.json of a cage, with its standard lines.")
     command.add_argument("--texture", help="The name of a garment texture, shown on its template.")
     command.add_argument("--texture-file", help="The .blend file of the texture.")
+    command.add_argument("--paint", help="The name of a paint layer.")
+    command.add_argument("--part", help="The painted material part of a paint layer.")
+    command.add_argument("--layer", type=int, help="The layer a paint layer is drawn at.")
+    command.add_argument("--other-paint", action="append", default=[],
+                         help="<file.blend>=<Name>:<layer> of a paint layer that a body always wears with it, such as underwear.")
     command = commands.add_parser("library-sync")
     command.add_argument("--library", required=True, help="The animation library .blend to build or update.")
     command.add_argument("--armature", required=True, help="The name of the armature the clips are keyed on.")
@@ -122,8 +127,16 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--file", required=True, help="The paint layer .blend to build or update.")
     command.add_argument("--paint", required=True)
     command.add_argument("--part", required=True)
-    command.add_argument("--body", action="append", default=[], help="<file.blend>=<armature>, the painted body first.")
+    command.add_argument("--body", action="append", default=[], help="<file.blend>=<armature>, the first body first.")
+    command.add_argument("--cage", help="The .blend file of the garment cage of the bodies.")
+    command.add_argument("--canvas", help="The armature of the body the canvas moves to, with its paint.")
     command.add_argument("--force", action="store_true")
+    command = commands.add_parser("paint-projection")
+    command.add_argument("--file", required=True, help="The paint layer .blend to check.")
+    command.add_argument("--paint", required=True)
+    command.add_argument("--part", required=True)
+    command.add_argument("--roots", required=True, help="Comma-separated armatures of the layer's bodies.")
+    command.add_argument("--cage", required=True, help="The .blend file of the garment cage of the bodies.")
     return parser
 
 
@@ -137,9 +150,10 @@ def _paint(args) -> int:
         return 1
     print("ART_VALIDATION paint")
     if args.command == "export":
-        for name, path in paint.export_images(args.paint, labels, args.textures):
-            print(f"ART_TEXTURE {json.dumps({'name': name, 'path': path}, separators=(',', ':'))}")
-        print(f"ART_PAINT {json.dumps(paint.paint_record(args.paint, labels), separators=(',', ':'))}")
+        for record in paint.export_images(args.paint, labels, args.textures):
+            print(f"ART_TEXTURE {json.dumps(record, separators=(',', ':'))}")
+        record = dict(paint.paint_record(args.paint), cageSourceSha256=paint.cage_record())
+        print(f"ART_PAINT {json.dumps(record, separators=(',', ':'))}")
     return 0
 
 
@@ -336,17 +350,30 @@ def main() -> int:
                                                 _clip_libraries(args), covers=not args.covers_nothing)
             print(f"ART_PREVIEW {path}")
             return 0
-        render = {"animations": preview.render_clip_sheet, "paint": preview.render_paint_sheet}.get(
-            args.kind, preview.render_sheet)
+        if args.kind == "paint":
+            others = [(os.path.abspath(path), rest.split(":", 1)[0], int(rest.split(":", 1)[1]))
+                      for path, rest in (e.rsplit("=", 1) for e in args.other_paint)]
+            path = preview.render_paint_sheet(os.path.abspath(args.output), args.cell_size, args.paint, args.part,
+                                              args.roots.split(","), args.layer, others)
+            print(f"ART_PREVIEW {path}")
+            return 0
+        render = {"animations": preview.render_clip_sheet}.get(args.kind, preview.render_sheet)
         path = render(os.path.abspath(args.output), args.cell_size)
         print(f"ART_PREVIEW {path}")
         return 0
     if args.command == "paint-sync":
-        painted = [tuple(b.rsplit("=", 1)) for b in args.body]
-        changed = paint.sync(os.path.abspath(args.file), args.paint, args.part,
-                             [(os.path.abspath(path), root) for path, root in painted], args.force)
+        changed = paint.sync(os.path.abspath(args.file), args.paint, args.part, _bodies(args),
+                             os.path.abspath(args.cage) if args.cage else None, args.canvas, args.force)
         print(f"ART_PAINT_SYNC {'synced' if changed else 'up-to-date'} {args.file}")
         return 0
+    if args.command == "paint-projection":
+        bpy.ops.wm.open_mainfile(filepath=os.path.abspath(args.file))
+        reports, errors = paint.projection_report(args.paint, args.part, args.roots.split(","), os.path.abspath(args.cage))
+        for label, report in reports:
+            print(f"ART_PROJECTION {json.dumps(dict(report, body=label), separators=(',', ':'))}")
+        for error in errors:
+            print(f"ART_PIPELINE_ERROR {error}")
+        return 1 if errors else 0
     if args.command == "new-static":
         new_static_file(os.path.abspath(args.file), args.roots.split(","))
         print(f"ART_NEW {args.file}")
@@ -438,6 +465,8 @@ def main() -> int:
             data = os.path.splitext(args.target)[0] + ".json"
             coverage.write_record(data, bodies.topology(roots[0]))
             print(f"ART_DATA {json.dumps({'path': data}, separators=(',', ':'))}")
+            # What paint layers read from the body, so they are moved to it again when it changes.
+            print(f"ART_PAINT_LAYOUT {paint.body_fingerprint(roots[0])}")
         for record in material_records():
             print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
         if args.textures:

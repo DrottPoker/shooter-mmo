@@ -3106,7 +3106,9 @@ changes the library, and it needs a new review and approval first.
 ### Make A Paint Layer
 
 [Paint Layers](ART_PIPELINE.md#paint-layers) describes paint over the skin of the
-bodies. `art/Paint/Tattoo` is a tattoo on the chest and the upper arms.
+bodies, kept on each layer's own canvas and moved to every body by projection.
+`art/Paint/Tattoo` is a tattoo on the chest and the upper arms, and
+`art/Paint/ForearmRunes` a one-sided tattoo on the left forearm.
 
 1. Create a new paint layer of a category, `scar`, `tattoo`, or `underwear`,
    which says how many a body shows and when a player chooses it, as
@@ -3119,24 +3121,27 @@ bodies. `art/Paint/Tattoo` is a tattoo on the chest and the upper arms.
    ```
 
    Expected result: `Synced Serpent: ...` and `Created art/Paint/Serpent
-   with asset.json and Serpent.blend.` It paints `M_Body` of
-   `art/Characters/Human_Male` and moves the paint to `art/Characters/Human_Female`
-   unless `-Part` and `-Bodies` say otherwise, such as `-Part Face` for a scar on
-   the face. An existing paint layer is built
-   or updated with:
+   with asset.json and Serpent.blend.` Its canvas is a copy of
+   `art/Characters/Human_Male`, it paints `M_Body`, and the paint moves to
+   `art/Characters/Human_Female`, unless `-Part` and `-Bodies` say otherwise, such
+   as `-Part Face` for a scar on the face. An existing paint layer is built or
+   updated with:
 
    ```powershell
    .\tools\Sync-PaintAsset.ps1 -Asset art/Paint/Tattoo
    ```
 
    Expected result: `Tattoo is up to date: every body is there and shows the
-   current paint.`, or `Synced Tattoo: ...` for a new or changed file.
-2. Open the file in Blender, select `Paint_Male`, switch to Texture Paint, and
-   paint into `T_Paint_Tattoo_Male`, or change its custom properties
-   `roughness` and `metallic`. The body's UVs are mirrored, so a stroke on one
-   side shows on both. Save, then run the sync again. Expected result:
-   `Synced Tattoo`, and `Paint_Female` shows the same paint when the file is
-   opened again.
+   current paint of the canvas.`, or `Synced Tattoo: ...` for a new or changed
+   file.
+2. Open the file in Blender. Expected result: the Outliner holds `Canvas >
+   Canvas`, to the left of the bodies, and `Reference` with `Paint_Male`,
+   `Paint_Female`, and the ground. Select `Canvas`, switch to Texture Paint, and
+   paint into `T_Paint_Tattoo`, or change its custom properties `roughness` and
+   `metallic`. A stroke on one side stays on that side; turn on X mirror in the
+   tool settings to paint both sides at once. Save, then run the sync again.
+   Expected result: `Synced Tattoo`, and `Paint_Male` and `Paint_Female` show the
+   new paint when the file is opened again.
 3. Render the review sheet, review it and the file, then approve, export, and
    verify:
 
@@ -3147,14 +3152,39 @@ bodies. `art/Paint/Tattoo` is a tattoo on the chest and the upper arms.
    .\tools\Verify-ArtAssets.ps1
    ```
 
-   Expected result: a sheet with both bodies from four sides and each torso from
-   the front and the back, `Approved the 'paint' stage of Tattoo (paint).`,
-   `Exported Tattoo to src/Client/Assets/Art/Textures/Paint
-   (T_Paint_Tattoo_Male, T_Paint_Tattoo_Female).`, and `Verified
-   8 art asset(s).` When Unity gets focus, it updates the appearance catalogs.
-   Expected result: the Console lists `Paint Tattoo` in both catalogs when
-   the paint layer is new. Commit the `.blend` file, `asset.json`, the PNG files,
-   the catalogs, and their `.meta` files together.
+   Expected result: a sheet with both bodies in their underwear from four sides,
+   the emblem and each armband up close on each body, and the canvas's image
+   below them over grey with the outlines of its faces, both sides of the body
+   apart; `Approved the 'paint' stage of Tattoo (paint).`, `Exported Tattoo to
+   src/Client/Assets/Art/Textures/Paint (T_Paint_Tattoo_Male,
+   T_Paint_Tattoo_Female).`, and the verification without problems. When Unity
+   gets focus, it updates the appearance catalogs. Expected result: the Console
+   lists `Paint Tattoo` in both catalogs when the paint layer is new. Commit the
+   `.blend` file, `asset.json`, the PNG files, the catalogs, and their `.meta`
+   files together.
+4. After a change of the move or the garment cage, check the move that a body of
+   another topology than the canvas gets:
+
+   ```powershell
+   .\tools\Test-PaintProjection.ps1 -Asset art/Paint/Tattoo
+   ```
+
+   Expected result: about `Male: through the cage 0.05 mm (median) and 0.48 mm
+   (95%) from the exact move ...` and `Female: through the cage 6.46 mm (median)
+   ...`, without an error: the canvas's own body takes the paint within a
+   millimeter of its place, and the woman shows how far the cage and the
+   landmarks place the paint from where the shared topology does.
+5. To paint a layer on another body from then on, such as a new base model that
+   joined its `bodies`, move its canvas there, review the paint on it, and touch
+   it up on the canvas:
+
+   ```powershell
+   .\tools\Sync-PaintAsset.ps1 -Asset art/Paint/Tattoo -Canvas Human_Female
+   ```
+
+   Expected result: `Synced Tattoo: ...`, and the canvas is a copy of the female
+   with the paint she showed. Revert it with `git checkout -- art/Paint/Tattoo`
+   when it was only a try.
 
 ### Fit The Garment Cage
 
@@ -3377,7 +3407,11 @@ controller, and prefabs are committed.
    Outliner holds `Source > Male_Body`, shown in the viewport, and `Export >
    Male`, the armature, with `Male_Body`, the ten hidden body parts from
    `Male_Head` to `Male_Feet`, and the eyes, teeth, and tongue as its children,
-   and the file has no actions. Revert the file without saving.
+   and the file has no actions. Select `Male_Torso`, open the UV Editor, and
+   switch the UV map from `UVMap` to `UVMap_Paint` in the mesh data. Expected
+   result: in `UVMap` both halves of the chest lie on one island; in
+   `UVMap_Paint` the left half lies in the left half of the map and the right
+   half in the right half. Revert the file without saving.
 3. In Unity, open `Assets/Prefabs/Player/HumanMaleBody.prefab`. Expected result:
    the Inspector names it a Prefab Variant of `Human_Male`, with an `Animator`
    using `HumanLocomotion` and the avatar `Human_MaleAvatar`, a
@@ -3440,10 +3474,14 @@ controller, and prefabs are committed.
     the scar, and the brown eyes. Press `>` once more on each row. Expected
     result: the stubble face, no scar, and teal eyes are back.
 13. Still in the F2 Presentation section, press `>` next to `Your tattoo: none
-    (creation, in game)`. Expected result: `Your tattoo: Tattoo`, and your body
-    shows the tattoo at once, a round rune emblem on the upper breastbone and an
-    armband around each upper arm, in dark blue-black ink; press `>` again and
-    it is gone. `Your underwear (legs): Briefs (creation, in game)` has no
+    (creation, in game)`. Expected result: `Your tattoo: ForearmRunes`, and your
+    body shows six runes, f u þ a r k, in a column down the outside of the left
+    forearm between two thin lines, in dark blue-black ink, and nothing on the
+    right forearm; turn the camera around the body to see both. Press `>` again.
+    Expected result: `Your tattoo: Tattoo`, a round rune emblem on the upper
+    breastbone and an armband around each upper arm, and the runes are gone;
+    press `>` again and it is gone. Choose the female body in F2 and repeat.
+    Expected result: the same tattoos at the same places on her body. `Your underwear (legs): Briefs (creation, in game)` has no
     `none`: underwear is always worn, and the woman also has `Your underwear
     (body): Bra`. The choices are kept between sessions like the face and the
     eyes.

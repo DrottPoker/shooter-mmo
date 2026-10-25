@@ -291,6 +291,9 @@ namespace Mmorpg.Client.Gameplay
             private readonly List<Vector3> normals = new List<Vector3>();
             private readonly List<Vector4> tangents = new List<Vector4>();
             private readonly List<Vector2> uvs = new List<Vector2>();
+            // The paint UVs, the body's second UV map, which the skin shader reads its paint layers
+            // through; zero on meshes without it, such as garments and the eyes.
+            private readonly List<Vector2> paintUvs = new List<Vector2>();
             private readonly List<byte> bonesPerVertex = new List<byte>();
             private readonly List<int> firstWeight = new List<int>();
             private readonly List<BoneWeight1> weights = new List<BoneWeight1>();
@@ -298,6 +301,7 @@ namespace Mmorpg.Client.Gameplay
             private readonly List<Vector3> meshNormals = new List<Vector3>();
             private readonly List<Vector4> meshTangents = new List<Vector4>();
             private readonly List<Vector2> meshUvs = new List<Vector2>();
+            private readonly List<Vector2> meshPaintUvs = new List<Vector2>();
             private readonly List<Matrix4x4> meshBindposes = new List<Matrix4x4>();
             private readonly List<int> meshTriangles = new List<int>();
             private Bounds bounds;
@@ -341,6 +345,7 @@ namespace Mmorpg.Client.Gameplay
                 mesh.GetNormals(meshNormals);
                 mesh.GetTangents(meshTangents);
                 mesh.GetUVs(0, meshUvs);
+                mesh.GetUVs(1, meshPaintUvs);
                 if (shape != null)
                 {
                     TakeShape(mesh, shape);
@@ -368,6 +373,7 @@ namespace Mmorpg.Client.Gameplay
                     }
 
                     uvs.Add(index < meshUvs.Count ? meshUvs[index] : Vector2.zero);
+                    paintUvs.Add(index < meshPaintUvs.Count ? meshPaintUvs[index] : Vector2.zero);
                 }
 
                 // A bone keeps one bind pose for every mesh: its bind pose in the root's space.
@@ -515,6 +521,7 @@ namespace Mmorpg.Client.Gameplay
                 var keptNormals = new List<Vector3>(count);
                 var keptTangents = new List<Vector4>(count);
                 var keptUvs = new List<Vector2>(count);
+                var keptPaintUvs = new List<Vector2>(count);
                 var keptBonesPerVertex = new List<byte>(count);
                 var keptWeights = new List<BoneWeight1>();
                 for (var index = 0; index < used.Length; index++)
@@ -528,6 +535,7 @@ namespace Mmorpg.Client.Gameplay
                     keptNormals.Add(normals[index]);
                     keptTangents.Add(tangents[index]);
                     keptUvs.Add(uvs[index]);
+                    keptPaintUvs.Add(paintUvs[index]);
                     keptBonesPerVertex.Add(bonesPerVertex[index]);
                     for (var weight = 0; weight < bonesPerVertex[index]; weight++)
                     {
@@ -546,6 +554,7 @@ namespace Mmorpg.Client.Gameplay
                 combinedMesh.SetNormals(keptNormals);
                 combinedMesh.SetTangents(keptTangents);
                 combinedMesh.SetUVs(0, keptUvs);
+                combinedMesh.SetUVs(1, keptPaintUvs);
                 using (var perVertex = new NativeArray<byte>(keptBonesPerVertex.ToArray(), Allocator.Temp))
                 using (var allWeights = new NativeArray<BoneWeight1>(keptWeights.ToArray(), Allocator.Temp))
                 {

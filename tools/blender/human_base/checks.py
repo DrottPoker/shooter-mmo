@@ -9,7 +9,8 @@ report lines and the rules it found broken:
   both faces that share the seam edge (sRGB, 0..255). It is a report and breaks no rule.
 - parts: the body parts written from the source bodies, where every body part of the male and the
   female has the same topology, the parts close up into one watertight body (every open edge of a
-  part is matched by an edge of a neighbouring part), and the normals agree across the cuts.
+  part is matched by an edge of a neighbouring part), the normals agree across the cuts, and no texel
+  of the paint UV map belongs to both sides of the body, so paint can differ between the sides.
 - rig: a character after a step against its file before the step: the source body, eyeballs, teeth
   and tongue are unchanged at rest, the body parts are what the source body gives, the art
   pipeline's rig rules hold, and the weights are mirror symmetric.
@@ -274,7 +275,25 @@ def _check_character(label, lines, failures):
     for o in sorted(parts, key=lambda o: o.name):
         t = sum(len(p.vertices) - 2 for p in o.data.polygons)
         lines.append(f"  {o.name:<20}{t:>6} tris  {', '.join(m.name for m in o.data.materials)}")
+    _check_paint_uvs(label, parts, lines, failures)
     return {o["zone"]: o for o in parts}
+
+
+def _check_paint_uvs(label, parts, lines, failures):
+    """Every part has the paint UV map, laid out twice as wide for the materials the source body
+    mirrors, and no texel of a material in it belongs to both sides of the body, over all parts
+    together."""
+    missing = [o.name for o in parts if o.data.uv_layers.get(bodies.PAINT_UV) is None]
+    if missing:
+        failures.append(f"{label}: the parts {missing} lack the UV map {bodies.PAINT_UV}")
+        return
+    mirrored = bodies.mirrored_materials(bodies.source_body(label).data)
+    for material in sorted({m.name for o in parts for m in o.data.materials}):
+        shared = bodies.shared_paint_texels([o.data for o in parts], material, material in mirrored)
+        layout = "both sides apart, twice as wide" if material in mirrored else "as the skin UVs"
+        lines.append(f"  paint UV map, {material}: {layout}, {shared} texels shared by both sides")
+        if shared:
+            failures.append(f"{label}: {shared} texels of {material} belong to both sides in the paint UV map")
 
 
 def parts(male_path, female_path):
@@ -441,9 +460,8 @@ def clips(path, label):
 
 def _mesh_snapshot(me):
     arrays = {}
-    for name, collection, attr, width in (("co", me.vertices, "co", 3),
-                                          ("uv", me.uv_layers.active.data if me.uv_layers.active else [], "uv", 2),
-                                          ("normals", me.corner_normals, "vector", 3)):
+    layers = [(f"uv_{u.name}", u.data, "uv", 2) for u in me.uv_layers]
+    for name, collection, attr, width in [("co", me.vertices, "co", 3), ("normals", me.corner_normals, "vector", 3)] + layers:
         values = np.empty(len(collection) * width, np.float64)
         if len(collection):
             collection.foreach_get(attr, values)

@@ -264,18 +264,20 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private string slot;
             [SerializeField] private Material material;
             [SerializeField] private Texture2D texture;
+            [SerializeField] private Vector4 rect = new Vector4(0f, 0f, 1f, 1f);
             [SerializeField] private int layer;
             [SerializeField] private float smoothness;
             [SerializeField] private float metallic;
 
-            public Paint(string name, AppearanceCategory category, string slot, Material material, Texture2D texture, int layer,
-                float smoothness, float metallic)
+            public Paint(string name, AppearanceCategory category, string slot, Material material, Texture2D texture, Vector4 rect,
+                int layer, float smoothness, float metallic)
             {
                 this.name = name;
                 this.category = category;
                 this.slot = slot ?? string.Empty;
                 this.material = material;
                 this.texture = texture;
+                this.rect = rect;
                 this.layer = layer;
                 this.smoothness = smoothness;
                 this.metallic = metallic;
@@ -306,10 +308,17 @@ namespace Mmorpg.Client.Gameplay
                 get { return material; }
             }
 
-            // The paint in the material's UV layout, transparent where the skin shows.
+            // The paint in the mesh's paint UVs, its second UV map, cropped to the paint and
+            // transparent where the skin shows.
             public Texture2D Texture
             {
                 get { return texture; }
+            }
+
+            // Where the texture lies in the paint UVs: xy its corner and zw its size.
+            public Vector4 Rect
+            {
+                get { return rect; }
             }
 
             // Paint layers draw from the lowest layer up.

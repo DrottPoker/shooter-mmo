@@ -13,19 +13,20 @@
     ],
     "approvals": {
         "model": {
-            "date": "2026-10-24",
-            "sourceSha256": "9ae7198c8633949c0086879cc30582aeb692b672234b1343935aa831002ee6fe"
+            "date": "2026-10-25",
+            "sourceSha256": "ae840748200642709b56c3829fe08d4dc9e97cc50b4b5612441bfab0ca0b9203"
         },
         "rig": {
-            "date": "2026-10-24",
-            "sourceSha256": "9ae7198c8633949c0086879cc30582aeb692b672234b1343935aa831002ee6fe"
+            "date": "2026-10-25",
+            "sourceSha256": "ae840748200642709b56c3829fe08d4dc9e97cc50b4b5612441bfab0ca0b9203"
         }
     },
     "export": {
-        "sourceSha256": "9ae7198c8633949c0086879cc30582aeb692b672234b1343935aa831002ee6fe",
-        "targetSha256": "2a79882d91155c0e4087290d8c1054d63f537211457c0a407da911e05807f6a2",
+        "sourceSha256": "ae840748200642709b56c3829fe08d4dc9e97cc50b4b5612441bfab0ca0b9203",
+        "targetSha256": "4f66d3383afd6b1aed2665e7e092cb5fa4dc4c953a9857c294cd7755829a14b1",
         "dataSha256": "bfea2e93621d75d7cde6bc9e1eefe3d4330a9a30e48bb27cce5322d7197f5f1b",
         "fitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
+        "paintSha256": "c7187d411e4ff35a787147f065a950ac107fb4207c88e33aaddc0ec36bce4d57",
         "materials": [
             {
                 "name": "M_Body_Male",

@@ -6,8 +6,8 @@ Status: accepted by Victor on 2026-10-22, with the support of future races added
 Extended on 2026-10-23, accepted by Victor, with the garment cage, garment
 templates, and garment textures, so that clothes keep a shape of their own and
 everything adapts to new body types and a replaced base model. It is
-implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 4, 5a,
-and 5b are done: this document; the cloth chains with their solver; the garment
+implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 5 are
+done: this document; the cloth chains with their solver; the garment
 kind with its fitting, weights, bands, masks, review, export, and Unity import;
 putting a character together with its garments, with the garment shader, the
 Wardrobe preview, and trying garments on in F2; the garment cage with its
@@ -27,6 +27,11 @@ that hang to the middle of the calves. Its fourth step adds the cage's region
 texture `DarkBrownHair`, the robe's hood up and down, `HoodUp` and `HoodDown`,
 with the wool textures `WoolHoodUp` and `WoolHoodDown`, and the helmet
 `NasalHelm` with its texture `IronNasalHelm`, approved by Victor on 2026-10-24.
+Step 5d makes paint layers independent of the bodies' topology, as Victor decided
+on 2026-10-24: each layer keeps its own canvas, a copy of the body it is painted
+on, and every body gets the paint by projection, through the bodies' new paint UV
+map, which lays the two sides of a mirrored body apart, so paint can be one-sided,
+as the new tattoo `ForearmRunes` on the left forearm is.
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -113,7 +118,7 @@ table, so a tattoo lies over a scar and the underwear over both.
 | Face | A face image, such as `Stubble` and `Clean` for the man and `Blush` and `Freckles` for the woman | Exactly one | In character creation, never changed |
 | Eyes | An eye image, such as `Teal` | Exactly one | In character creation, never changed |
 | Scar | A `scar` paint layer, layers 100 to 199, such as `Scar` over the left eye | At most one | In character creation, never changed |
-| Tattoo | A `tattoo` paint layer, layers 200 to 299, such as `Tattoo` | At most one | In character creation, and changed in the game later, such as at an NPC |
+| Tattoo | A `tattoo` paint layer, layers 200 to 299, such as `Tattoo` or the one-sided `ForearmRunes` | At most one | In character creation, and changed in the game later, such as at an NPC |
 | Underwear | An `underwear` paint layer of a visual slot, layers 900 to 999: `Bra` in `body` for the woman, `Briefs` in `legs` for both | Exactly one per slot the body has underwear for, never taken off | In character creation, and changed in the game later |
 
 Underwear is never taken off, but a garment can hide it: a template with
@@ -122,6 +127,18 @@ neckline, hides the underwear of its own slot while it is drawn, so no bra
 strap shows beside it, while the briefs stay, also without trousers. The skin
 under the underwear is plain skin without detail. The net shirt does not hide
 the bra: it shows through the meshes.
+
+Paint does not depend on the bodies' topology, as Victor decided on 2026-10-24
+for step 5d: a paint layer keeps its paint on a canvas of its own, a copy of the
+body it is painted on that never changes with the bodies, and every body gets the
+paint baked into its own paint UV map when the layer is synced, exactly through
+the shared topology where a body has the canvas's, and through the garment cage
+and the rigs' landmarks otherwise. The paint UV map is a second UV map of every
+body, only for paint: the mirrored human skin keeps its texture, and the paint
+lays the two sides apart, so a tattoo can be one-sided. When a new base model
+replaces the bodies, each layer's canvas moves to its new first body and its
+paint is checked and touched up there; see
+[Paint Layers](ART_PIPELINE.md#paint-layers).
 
 Character creation, the look a server stores, and the NPC who changes a tattoo
 come later and follow these rules, which `AppearanceRules` in the client holds
@@ -564,11 +581,11 @@ bodies, not code:
 
 - **Its own body.** A new race starts as a copy of a human body and is reshaped
   in Blender, taller and slender for an elf, shorter and broader for a dwarf,
-  longer ears and all. Keeping the human topology keeps its paint layers, which
-  still need it until step 5d; garments, cover masks, and underlays do not, since
-  they are fitted on the cage and computed in each body's own faces. What a
-  shape cannot give, such as tusks or horns, is a separate mesh in the body's
-  file.
+  longer ears and all. Keeping the human topology gives it the exact move of the
+  paint layers; a body of its own topology gets them through the cage, and
+  garments, cover masks, and underlays are fitted on the cage and computed in
+  each body's own faces either way. What a shape cannot give, such as tusks or
+  horns, is a separate mesh in the body's file.
 - **Its own rig.** The rig places the same `Humanoid` bones from the race's own
   model, so a dwarf's legs and arms are shorter and an elf's longer, and the cloth
   chains are placed from the model too: a dwarf's skirt chains end at a dwarf's
@@ -587,6 +604,9 @@ bodies, not code:
   images; a texture with transparent parts is checked and exported again, which
   computes its masks for the new body, and an opaque one is exported again
   against the new template export.
+- **Paint.** Every paint layer that lists the new body moves to it from its
+  canvas, exactly when the body keeps the canvas's topology and through the cage
+  and the landmarks otherwise, and is reviewed and exported for it.
 - **Race features.** Headwear says per body type whether ears show or are
   covered, so an elf's hood is corrected around long ears or lets them through.
   Hair, such as a dwarf's beard, is a hair garment like any other.
@@ -598,7 +618,9 @@ A new base model that replaces today's human bodies, with another topology, is
 handled the same way: the new bodies join the cage, the cage is fitted to them,
 the templates are fitted and their masks computed anew, and the textures keep
 their images and are exported again, with new masks where they have
-transparent parts.
+transparent parts. Each paint layer's canvas moves to the new first body through
+the cage, `Sync-PaintAsset.ps1 -Canvas`, its paint is checked and touched up
+there, and the other bodies of the new model's topology get the exact move.
 A better cage of another topology is a new cage asset. Templates with a recipe of
 lines are built again from it, keeping their handmade shape by projection onto
 the new cage, and their textures move to the new UVs by projection. A modeled
@@ -950,7 +972,7 @@ quarter of the triangles come with the first crowd measurement that needs them.
      template's UVs as its first texture, `LeatherJerkin`, with its laced V
      transparent. The first leather jerkin garment is removed.
    - 5c. The proof set, in four steps, as Victor accepted on 2026-10-23:
-     1. Shirts, trousers, and a tattoo: the templates `Shirt` and `LongShirt`
+     1. Done. Shirts, trousers, and a tattoo: the templates `Shirt` and `LongShirt`
         over `Trousers` at the waist, the textures `LinenShirt`,
         `LinenLongShirt`, `WoolTrousers`, and `NetShirt`, a coarse net with
         transparent meshes over the tattoo paint layer `Tattoo`, which replaces
@@ -976,8 +998,13 @@ quarter of the triangles come with the first crowd measurement that needs them.
         Victor added: the templates `ShoulderHair`, `HoodUp`, `HoodDown`, and
         `NasalHelm` with the textures `DarkBrownHair`, `WoolHoodUp`,
         `WoolHoodDown`, and `IronNasalHelm`.
-   - 5d. Paint layers independent of the bodies' topology, moved between bodies
-     by projection.
+   - 5d. Done. Paint layers independent of the bodies' topology, moved between
+     bodies by projection: a canvas of its own per layer, the bodies' paint UV map
+     `UVMap_Paint`, which lays the two sides of a mirrored body apart, the move
+     through the shared topology or through the cage and the rigs' landmarks, the
+     canvas moved to another body, the images cropped to their paint, the skin
+     shader reading the paint UVs, the four layers moved to their canvases, and the
+     one-sided tattoo `ForearmRunes`.
 6. Items: items show their garments as templates with textures, the `back` slot,
    dye colors on items, and the look sent to every client with the body type.
 7. With the first new race: making a body type from a human body, generalizing
