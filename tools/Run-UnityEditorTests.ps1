@@ -93,22 +93,24 @@ function Test-EditorListed {
 }
 
 # Waits until the Editor answers, is not compiling or reloading, and is out of Play Mode. A
-# request during a domain reload fails, so failures count as busy until the deadline.
+# request during a domain reload fails, so failures count as busy until the deadline. An Editor in
+# Play Mode reports the status "playing", not "ready", so the play mode alone decides when to stop
+# it, and a stop request that a reload dropped is sent again.
 function Wait-EditorIdle([string]$Activity) {
     $deadline = Get-Deadline
     $last = $null
-    $stopRequested = $false
+    $nextStop = [DateTime]::MinValue
     while ($true) {
         $status = Invoke-EditorCommand "editor_status"
         $state = $status.Json
-        if ($state -and $state.status -eq "ready" -and -not $state.compiling -and -not $state.domainReloadInProgress) {
-            if ($state.playMode -eq "stopped") {
+        if ($state -and -not $state.compiling -and -not $state.domainReloadInProgress) {
+            if ($state.status -eq "ready" -and $state.playMode -eq "stopped") {
                 return
             }
-            if (-not $stopRequested) {
+            if ($state.playMode -ne "stopped" -and [DateTime]::UtcNow -ge $nextStop) {
                 Write-Host "Leaving Play Mode."
                 $null = Invoke-EditorCommand "editor_stop"
-                $stopRequested = $true
+                $nextStop = [DateTime]::UtcNow.AddSeconds(10)
             }
         }
         $last = if ($state) { "status $($state.status), compiling $($state.compiling), play mode $($state.playMode)" } else { "$($status.Text)".Trim() }

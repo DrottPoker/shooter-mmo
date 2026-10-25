@@ -3,7 +3,6 @@ using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
-using Mmorpg.GameSimulation;
 using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -13,6 +12,11 @@ namespace Mmorpg.Client.Gameplay
     [DisallowMultipleComponent]
     public sealed class WorldSceneContext : MonoBehaviour
     {
+        // At most this long a frame goes to putting bodies on players that came into view, the
+        // nearest first and at least one a frame, so a crowd that comes into view at once, as at a
+        // join, takes a few frames instead of stalling one: a body takes about 2 ms.
+        public const double BodyMillisecondsPerFrame = 3.0;
+
         [SerializeField] private LocalPlayerController localPlayerPrefab;
         [SerializeField] private Transform playerSpawnPoint;
         [SerializeField] private RemotePlayerView remotePlayerPrefab;
@@ -28,6 +32,10 @@ namespace Mmorpg.Client.Gameplay
         private readonly Dictionary<ulong, RealtimeCharacterAppearance> deferredAppearances =
             new Dictionary<ulong, RealtimeCharacterAppearance>();
         private readonly List<ulong> revivedEntities = new List<ulong>();
+        // Players in view whose body waits to be put on, with the look to show.
+        private readonly Dictionary<ulong, RealtimeCharacterAppearance> waitingBodies =
+            new Dictionary<ulong, RealtimeCharacterAppearance>();
+        private readonly System.Diagnostics.Stopwatch bodyWatch = new System.Diagnostics.Stopwatch();
         private bool localLookDeferred;
         private RealtimeSimulationClient simulationClient;
         private WorldPointerFocus pointerFocus;
@@ -252,6 +260,7 @@ namespace Mmorpg.Client.Gameplay
 
             remotePlayers.Clear();
             deferredAppearances.Clear();
+            waitingBodies.Clear();
             bodyMaterials.Dispose();
             corpseBodies.Dispose();
             bodyMeshes.Dispose();
@@ -277,22 +286,9 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            if (!movementSession.TryEnsureCollisionChunks(
-                    new[]
-                    {
-                        new SimulationVector3(
-                            spawn.InitialState.PositionX,
-                            spawn.InitialState.PositionY,
-                            spawn.InitialState.PositionZ)
-                    },
-                    out var collisionError))
-            {
-                simulationClient.DisconnectForClientFailure(
-                    "collision_stream_failed",
-                    collisionError);
-                return;
-            }
-
+            // Like a Mob, a remote player never loads collision chunks: the local player's chunks
+            // ground it, and beyond them it shows its replicated height. Loading the chunks around
+            // every far spawn cost milliseconds, and the next owner snapshot unloaded them again.
             if (!remotePlayers.TryGetValue(spawn.EntityId, out var remotePlayer))
             {
                 remotePlayer = Instantiate(remotePlayerPrefab, entityPresentationRoot);
@@ -308,9 +304,8 @@ namespace Mmorpg.Client.Gameplay
                     movementSession.CollisionWorld,
                     movementSession.Settings.CharacterCollision);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
-                PresentAppearance(
-                    remotePlayer,
-                    simulationClient.TryGetAppearance(spawn.EntityId, out var appearance) ? appearance : spawn.Appearance);
+                waitingBodies[spawn.EntityId] =
+                    simulationClient.TryGetAppearance(spawn.EntityId, out var appearance) ? appearance : spawn.Appearance;
             }
 
             remotePlayer.PushSnapshot(spawn.ServerTick, spawn.InitialState);
@@ -325,16 +320,68 @@ namespace Mmorpg.Client.Gameplay
 
             remotePlayers.Remove(despawn.EntityId);
             deferredAppearances.Remove(despawn.EntityId);
+            waitingBodies.Remove(despawn.EntityId);
             Destroy(remotePlayer.gameObject);
         }
 
-        // The local player's look comes through the look setting.
+        // The local player's look comes through the look setting. A player whose body waits gets
+        // the new look when its body is put on.
         private void OnEntityAppearanceChanged(RealtimeEntityAppearanceChanged change)
         {
+            if (waitingBodies.ContainsKey(change.EntityId))
+            {
+                waitingBodies[change.EntityId] = change.Appearance;
+                return;
+            }
+
             if (remotePlayers.TryGetValue(change.EntityId, out var remotePlayer) && remotePlayer != null)
             {
                 PresentAppearance(remotePlayer, change.Appearance);
             }
+        }
+
+        // Puts bodies on the players that wait for one, the nearest to the camera first, for at
+        // most BodyMillisecondsPerFrame and at least one body a frame.
+        private void PresentWaitingBodies()
+        {
+            if (waitingBodies.Count == 0)
+            {
+                return;
+            }
+
+            var camera = Camera.main;
+            var eye = camera != null ? camera.transform.position : Vector3.zero;
+            bodyWatch.Restart();
+            do
+            {
+                var nearestId = 0UL;
+                RemotePlayerView nearest = null;
+                var nearestDistance = float.PositiveInfinity;
+                foreach (var entityId in waitingBodies.Keys)
+                {
+                    if (remotePlayers.TryGetValue(entityId, out var view) && view != null)
+                    {
+                        var distance = (view.transform.position - eye).sqrMagnitude;
+                        if (distance < nearestDistance)
+                        {
+                            nearestId = entityId;
+                            nearest = view;
+                            nearestDistance = distance;
+                        }
+                    }
+                }
+
+                if (nearest == null)
+                {
+                    waitingBodies.Clear();
+                    return;
+                }
+
+                var appearance = waitingBodies[nearestId];
+                waitingBodies.Remove(nearestId);
+                PresentAppearance(nearest, appearance);
+            }
+            while (waitingBodies.Count > 0 && bodyWatch.Elapsed.TotalMilliseconds < BodyMillisecondsPerFrame);
         }
 
         // Shows the body model and the dressed look, or keeps them for later while the body shows
@@ -358,9 +405,11 @@ namespace Mmorpg.Client.Gameplay
             remotePlayer.ApplyAppearance(appearance, Presentation, bodyMaterials);
         }
 
-        // A body that lives again shows the look it waited with.
+        // Players that came into view get their bodies, and a body that lives again shows the look
+        // it waited with.
         private void Update()
         {
+            PresentWaitingBodies();
             if (localLookDeferred && !IsLocalBodyDead)
             {
                 localLookDeferred = false;
