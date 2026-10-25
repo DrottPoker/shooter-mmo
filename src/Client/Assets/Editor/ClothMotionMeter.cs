@@ -15,16 +15,26 @@ namespace Mmorpg.Client.Editor
     //   skirt through a cloak: a vertex comes through when the cloth crosses the way to it from the
     //   bone it hangs on, or for an inner garment from the hips' upright axis;
     // - how much the chains jerk in the frame of the bone they hang from, in steady motion;
-    // - how far a spin flares the chains out, how long they take to settle after a stop or a spin,
-    //   whether the skirt's chains keep their order around the hips, and how far a jump moves them.
+    // - how far a spin flares the chains out, how long their swing on the target pose takes to
+    //   settle after a stop or a spin,
+    //   whether the skirt's chains keep their order around the hips, and how far a jump moves them;
+    // - how often the legs push a cloak's lower half in steady motion, as a heel that kicks it.
     // See docs/EQUIPMENT_VISUALS_DESIGN.md.
     public sealed class ClothMotionMeter : IDisposable
     {
         // Cloth this far or less from a vertex past it still covers it, in meters.
         public const float PokeTolerance = 0.002f;
 
-        // A chain moving slower than this in the frame of its bone has settled, in meters a second.
-        public const float SettledSpeed = 0.05f;
+        // A chain whose swing on its target pose changes no faster than this, in meters a second, in
+        // the frame of its bone, beyond how fast the target itself moves, has settled, about a swing
+        // of a centimeter left: the target follows the clip, which never stands still, and springs
+        // trail a moving target.
+        public const float SettledSpeed = 0.1f;
+
+        // A cloak is pushed in a frame where the collision swings a bone of its lower half, beside
+        // the legs, out of the body by more than this many degrees.
+        public const float PushedDegrees = 2f;
+        public const int CloakLowerHalf = 2;
 
         private const float GridCell = 0.05f;
 
@@ -46,6 +56,8 @@ namespace Mmorpg.Client.Editor
         private float sumSquaredJerk;
         private int jerkCount;
         private float lastUnsettled;
+        private int steadyFrames;
+        private int pushedFrames;
 
         public ClothMotionMeter(WardrobePreview preview)
         {
@@ -87,6 +99,16 @@ namespace Mmorpg.Client.Editor
             time = motionTime;
             var hips = bones["Hips"];
             var up = hipsUp.HasValue ? hips.rotation * hipsUp.Value : preview.Body.transform.up;
+            var cloakPush = chains.Where(chain => chain.Definition.Kind == ClothChainKind.Cloak)
+                .Select(chain => preview.Solver.PushOf(chain.Definition, CloakLowerHalf)).DefaultIfEmpty(0f).Max();
+            report.CloakPushDegrees = Mathf.Max(report.CloakPushDegrees, cloakPush);
+            if (steady)
+            {
+                steadyFrames++;
+                pushedFrames += cloakPush > PushedDegrees ? 1 : 0;
+                report.CloakPushed = (float)pushedFrames / steadyFrames;
+            }
+
             foreach (var chain in chains)
             {
                 var particles = preview.Solver.ParticlesOf(chain.Definition);
@@ -95,7 +117,7 @@ namespace Mmorpg.Client.Editor
                     continue;
                 }
 
-                chain.Push(particles, chain.Anchor, deltaTime);
+                chain.Push(particles, preview.Solver.TargetsOf(chain.Definition), chain.Anchor, deltaTime);
                 if (chain.HasJerk && steady)
                 {
                     foreach (var jerk in chain.Jerks)
@@ -111,7 +133,7 @@ namespace Mmorpg.Client.Editor
                     report.JumpMove = Mathf.Max(report.JumpMove, chain.LastMove);
                 }
 
-                if (settling && chain.HasSpeed && chain.Speed > SettledSpeed)
+                if (settling && chain.HasSpeed && chain.SwingSpeed > SettledSpeed + chain.TargetSpeed)
                 {
                     lastUnsettled = motionTime;
                 }
@@ -162,6 +184,8 @@ namespace Mmorpg.Client.Editor
             sumSquaredJerk = 0f;
             jerkCount = 0;
             lastUnsettled = 0f;
+            steadyFrames = 0;
+            pushedFrames = 0;
         }
 
         private static float Radius(Vector3 centre, Vector3 up, Vector3 point)
@@ -410,11 +434,14 @@ namespace Mmorpg.Client.Editor
             return found;
         }
 
-        // A chain's particles in the frame of the bone it hangs from, the last four frames of them.
+        // A chain's particles in the frame of the bone it hangs from, the last four frames of them,
+        // and how far they lie from the target pose.
         private sealed class Chain
         {
             private readonly List<Vector3[]> history = new List<Vector3[]>();
             private readonly List<float> steps = new List<float>();
+            private Vector3[] swing;
+            private Vector3[] targetPlaces;
 
             public Chain(ClothChain definition, Transform anchor)
             {
@@ -432,6 +459,12 @@ namespace Mmorpg.Client.Editor
 
             // The fastest particle's speed in the anchor's frame over the last frame.
             public float Speed { get; private set; }
+
+            // How fast the particles' offset from the target pose changed over the last frame, at
+            // most: the speed of the springs' own swing; and how fast the target pose moved.
+            public float SwingSpeed { get; private set; }
+
+            public float TargetSpeed { get; private set; }
 
             // How far the particle that moved most moved in the anchor's frame over the last frame.
             public float LastMove { get; private set; }
@@ -458,13 +491,31 @@ namespace Mmorpg.Client.Editor
                 }
             }
 
-            public void Push(IReadOnlyList<Vector3> particles, Transform anchor, float deltaTime)
+            public void Push(IReadOnlyList<Vector3> particles, IReadOnlyList<Vector3> targets, Transform anchor, float deltaTime)
             {
                 var local = new Vector3[particles.Count];
+                var offsets = new Vector3[particles.Count];
+                var aims = new Vector3[particles.Count];
                 for (var index = 0; index < local.Length; index++)
                 {
                     local[index] = anchor.InverseTransformPoint(particles[index]);
+                    aims[index] = index < targets.Count ? anchor.InverseTransformPoint(targets[index]) : local[index];
+                    offsets[index] = local[index] - aims[index];
                 }
+
+                SwingSpeed = 0f;
+                TargetSpeed = 0f;
+                if (swing != null && swing.Length == offsets.Length && deltaTime > 0f)
+                {
+                    for (var index = 0; index < offsets.Length; index++)
+                    {
+                        SwingSpeed = Mathf.Max(SwingSpeed, Vector3.Distance(offsets[index], swing[index]) / deltaTime);
+                        TargetSpeed = Mathf.Max(TargetSpeed, Vector3.Distance(aims[index], targetPlaces[index]) / deltaTime);
+                    }
+                }
+
+                swing = offsets;
+                targetPlaces = aims;
 
                 history.Add(local);
                 steps.Add(deltaTime);
@@ -491,6 +542,10 @@ namespace Mmorpg.Client.Editor
             {
                 history.Clear();
                 steps.Clear();
+                swing = null;
+                targetPlaces = null;
+                SwingSpeed = 0f;
+                TargetSpeed = 0f;
             }
         }
 
@@ -501,7 +556,8 @@ namespace Mmorpg.Client.Editor
             private readonly int[] chosen;
             private readonly Transform[] from;
             private readonly Transform[] to;
-            private readonly Mesh baked = new Mesh();
+            // Kept by Unity's unloading of unused assets, as when a scene loads, which would destroy it.
+            private readonly Mesh baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
             private readonly List<Vector3> bakedVertices = new List<Vector3>();
             private readonly List<Vector3> vertices = new List<Vector3>();
 
@@ -594,7 +650,7 @@ namespace Mmorpg.Client.Editor
             {
                 this.renderer = renderer;
                 Layer = layer;
-                baked = new Mesh();
+                baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
                 owned.Add(baked);
                 var mesh = renderer.sharedMesh;
                 var dominant = DominantBones(mesh);
@@ -767,5 +823,8 @@ namespace Mmorpg.Client.Editor
         public float SettleSeconds;
         public int OrderBreaks;
         public float JumpMove;
+        // The share of steady frames in which the legs push a cloak's lower half, and how far at most.
+        public float CloakPushed;
+        public float CloakPushDegrees;
     }
 }

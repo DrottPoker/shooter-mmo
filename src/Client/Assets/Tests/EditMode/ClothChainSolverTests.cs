@@ -11,7 +11,8 @@ using UnityEngine;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // The cloth chains of the Humanoid skeleton and the solver that lays them on the body in its
-    // target pose, posed by its Animator step by step; see docs/EQUIPMENT_VISUALS_DESIGN.md.
+    // target pose and swings them with springs on it, posed by its Animator step by step; see
+    // docs/EQUIPMENT_VISUALS_DESIGN.md.
     public sealed class ClothChainSolverTests
     {
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
@@ -136,8 +137,8 @@ namespace Mmorpg.Client.Tests.EditMode
             }
 
             // Every sample of the cloth keeps no more margin from the body than it has in the bind
-            // pose, so a chain keeps the place it has there.
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Pose));
+            // pose, and gravity counts against the bind pose, so a chain keeps the place it has there.
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Spring));
             foreach (var pair in rest)
             {
                 Assert.That(Quaternion.Angle(Bone(pair.Key).localRotation, pair.Value), Is.LessThan(1f), pair.Key);
@@ -165,7 +166,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
             }
 
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Pose));
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Spring));
             // No joint of a chain, nor the cloth between it and its neighbours, lies in the legs.
             Assert.That(deepest, Is.LessThan(0.001f));
             // The front of the robe swings with the legs.
@@ -297,7 +298,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Move(animator, HumanLocomotion.JogSpeed);
             animator.Update(Step);
             solver.Simulate(Step, body.transform.position + Vector3.forward * (ClothChainSolver.FarDistance - 10f));
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Pose));
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Spring));
             animator.Update(Step);
             solver.Simulate(Step, body.transform.position + Vector3.forward * (ClothChainSolver.FarDistance + 10f));
             Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Rest));

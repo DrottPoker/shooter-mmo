@@ -10,8 +10,9 @@ namespace Mmorpg.Client.Gameplay
     // docs/EQUIPMENT_VISUALS_DESIGN.md: every chain hangs from its animated parent, its bones beside
     // a thigh or a shin follow the legs, and each bone swings outward, the way its chain faces, by
     // the smallest angle that keeps its cloth and the cloth toward its neighbours outside the trunk
-    // and the legs, for a cloak also the arms and the outer side of a robe's skirt under it. The
-    // laying is ClothPose, run by a ClothWorld in Burst jobs: in play the world of
+    // and the legs, for a cloak also the arms and the outer side of a robe's skirt under it; on the
+    // nearest bodies springs swing the cloth on that pose, within limits. The laying is ClothPose
+    // and ClothSprings, run by a ClothWorld in Burst jobs: in play the world of
     // ClothChainScheduler, which lays every body in view each frame, and out of play, as in the
     // Wardrobe and the tests, one of the body's own that Simulate steps. This measures the body
     // and its garments once and describes them to the world: the capsules around its bones, from
@@ -85,11 +86,44 @@ namespace Mmorpg.Client.Gameplay
         // Lets tests share measures out of play.
         internal static bool SharesMeasuresOutOfPlay { get; set; }
 
+        // Moves the body out of play into a world shared with other bodies, as tests of a crowd do; the
+        // body starts its springs again there, and the world's owner disposes it.
+        internal void ShareWorld(ClothWorld shared)
+        {
+            if (world != null && handle >= 0)
+            {
+                world.Remove(handle);
+            }
+
+            handle = -1;
+            ownWorld?.Dispose();
+            ownWorld = null;
+            world = shared;
+            Describe();
+        }
+
         private static bool SharesMeasures => Application.isPlaying || SharesMeasuresOutOfPlay;
 
         public ClothDetail CurrentDetail { get; private set; } = ClothDetail.Rest;
 
         public bool IsActive => laid.Count > 0;
+
+        // What the body's springs cost of the budget: a robe and a cloak count one each, and a hood
+        // alone one.
+        public int SpringCost
+        {
+            get
+            {
+                var cost = (profiles[(int)ClothChainKind.Skirt].HasValue ? 1 : 0) + (profiles[(int)ClothChainKind.Cloak].HasValue ? 1 : 0);
+                return Math.Max(cost, IsActive ? 1 : 0);
+            }
+        }
+
+        // How far the body's springs are faded in, from 0 to 1, and whether its cloth sleeps on its
+        // target pose.
+        public float SpringWeight => world != null && handle >= 0 ? world.SpringWeightOf(handle) : 0f;
+
+        public bool Sleeps => world != null && handle >= 0 && world.SleepsOf(handle);
 
         public IReadOnlyList<Capsule> Capsules => capsules;
 
@@ -114,6 +148,57 @@ namespace Mmorpg.Client.Gameplay
             profiles[(int)kind] = profile;
             reaches[(int)kind] = garment != null ? ReachesOf(garment, kind) : null;
             Describe();
+        }
+
+        // Gives the active chains of a kind another profile, keeping their garment's reach, as the
+        // Wardrobe does while the profiles are tuned; the springs start again from the target.
+        public void Tune(ClothChainKind kind, ClothProfile profile)
+        {
+            if (!profiles[(int)kind].HasValue)
+            {
+                return;
+            }
+
+            profiles[(int)kind] = profile;
+            Describe();
+        }
+
+        // The profile the chains of a kind move with, or null for a kind without cloth.
+        public ClothProfile? ProfileOf(ClothChainKind kind) => profiles[(int)kind];
+
+        // Tells the solver that the body jumped, as in a teleport, a respawn, or a hard correction:
+        // its cloth is carried along rigidly rather than swung by the jump. Jumps are also found on
+        // their own; see docs/EQUIPMENT_VISUALS_DESIGN.md.
+        public void NotifyDiscontinuity()
+        {
+            if (world != null && handle >= 0)
+            {
+                world.NotifyDiscontinuity(handle);
+            }
+        }
+
+        // Starts the body's springs again from its target pose, as when a motion starts over, so
+        // every run of it swings alike.
+        public void RestartSprings()
+        {
+            if (world != null && handle >= 0)
+            {
+                world.Restart(handle);
+            }
+        }
+
+        // Tells every solver on a body under a root that the body jumped.
+        public static void NotifyDiscontinuity(GameObject root)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            foreach (var solver in root.GetComponentsInChildren<ClothChainSolver>())
+            {
+                solver.NotifyDiscontinuity();
+            }
         }
 
         // Puts the chains of a kind back to their rest pose and stops moving them.
@@ -145,6 +230,28 @@ namespace Mmorpg.Client.Gameplay
             return found;
         }
 
+        // How far the last step's collision swung a chain's bones out of the body, from a bone on, at
+        // most, in degrees: where the legs push the cloth.
+        public float PushOf(ClothChain chain, int fromBone = 0)
+        {
+            var index = laid.IndexOf(chain);
+            return world == null || handle < 0 || index < 0 ? 0f : world.PushOf(handle, index, fromBone) * Mathf.Rad2Deg;
+        }
+
+        // Where the last step laid a chain in its target pose, which its springs swing on.
+        public IReadOnlyList<Vector3> TargetsOf(ClothChain chain)
+        {
+            var index = laid.IndexOf(chain);
+            if (world == null || handle < 0 || index < 0)
+            {
+                return Array.Empty<Vector3>();
+            }
+
+            var found = new List<Vector3>();
+            world.TargetsOf(handle, index, found);
+            return found;
+        }
+
         // The body as the last step laid it, as a case of the kinematic fixtures: its capsules as
         // posed and in the bind pose, its legs, its active chains as they hang from their animated
         // parents at rest and in the bind pose, and what ClothPose laid.
@@ -158,13 +265,15 @@ namespace Mmorpg.Client.Gameplay
             return ClothKinematicCase.Of(name, world.Snapshot(handle), capsules, laid);
         }
 
-        // The detail the chains of a body at this distance from the camera move with.
+        // The most the chains of a body at this distance from the camera move with: springs, which
+        // ClothChainScheduler gives only the bodies of its budget, or rest beyond the far distance.
         public static ClothDetail DetailAt(float distance)
         {
-            return distance <= FarDistance ? ClothDetail.Pose : ClothDetail.Rest;
+            return distance <= FarDistance ? ClothDetail.Spring : ClothDetail.Rest;
         }
 
-        // One step out of play, for the frame time and the camera the body is seen from.
+        // One step out of play, for the frame time and the camera the body is seen from: alone, a
+        // body near enough has its springs.
         public void Simulate(float deltaTime, Vector3 cameraPosition)
         {
             Simulate(deltaTime, DetailAt(Vector3.Distance(transform.position, cameraPosition)));
@@ -187,7 +296,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             world.SetDetail(handle, detail);
-            world.Step();
+            world.Step(deltaTime);
         }
 
         // Sets the detail ClothChainScheduler chose for the next step of its world.
@@ -480,6 +589,7 @@ namespace Mmorpg.Client.Gameplay
                     Right = right,
                     Margin = profile.Margin,
                     Slack = profile.Slack,
+                    Spring = profile.Spring,
                     Collides = CollidesWith(chain.Kind),
                     Bones = chainBones,
                     Particles = reach != null ? ClothParticles(reach) : null,

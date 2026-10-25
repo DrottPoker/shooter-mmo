@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Cloth;
 using Mmorpg.Client.Gameplay;
 using UnityEditor;
 using UnityEngine;
@@ -9,11 +10,12 @@ namespace Mmorpg.Client.Editor
     // MMORPG > Tools > Art Pipeline > Wardrobe: a body of the appearance catalogs dressed in the
     // garments ticked on the left, with the paint layers picked there, holding the attachments
     // ticked there on their sockets, playing Idle, Walk, Jog, or Death, or a cloth stress motion
-    // over them, on a moving ground with the cloth solver running, for reviewing garments and
-    // attachments in motion before approving them, in slow motion or frame by frame, with what
-    // ClothMotionMeter measures of the cloth. Drag in the view to turn the camera around the body,
-    // and scroll to come closer. The window's layout is a temporary tool interface;
-    // WardrobePreview does the work.
+    // over them, on a moving ground with the cloth solver running, with its springs or in its
+    // target pose alone, for reviewing garments and attachments in motion before approving them,
+    // in slow motion or frame by frame, with what ClothMotionMeter measures of the cloth. The cloth
+    // profiles' springs can be tuned there, and Log profiles writes the tuned values to the
+    // console. Drag in the view to turn the camera around the body, and scroll to come closer. The
+    // window's layout is a temporary tool interface; WardrobePreview does the work.
     public sealed class WardrobeWindow : EditorWindow
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Wardrobe";
@@ -24,6 +26,8 @@ namespace Mmorpg.Client.Editor
         private const int MeshEvery = 5;
 
         private static readonly float[] TimeScales = { 1f, 0.5f, 0.25f, 0.1f };
+
+        private static readonly ClothChainKind[] Kinds = { ClothChainKind.Skirt, ClothChainKind.Cloak, ClothChainKind.Hood };
         private static readonly string[] TimeScaleNames = { "1x", "0.5x", "0.25x", "0.1x" };
 
         private readonly HashSet<string> chosen = new HashSet<string>();
@@ -45,6 +49,7 @@ namespace Mmorpg.Client.Editor
         private double lastTime;
         private string problem;
         private Vector2 scroll;
+        private bool tuning;
 
         [MenuItem(MenuPath)]
         public static void Open()
@@ -308,6 +313,7 @@ namespace Mmorpg.Client.Editor
             }
 
             timeScale = EditorGUILayout.Popup("Playback", timeScale, TimeScaleNames);
+            preview.Springs = EditorGUILayout.ToggleLeft("Springs (off: the target pose alone)", preview.Springs);
             using (new EditorGUILayout.HorizontalScope())
             {
                 paused = EditorGUILayout.ToggleLeft("Paused", paused, GUILayout.Width(70f));
@@ -325,7 +331,11 @@ namespace Mmorpg.Client.Editor
             EditorGUILayout.LabelField("Drawn", string.Join(", ", preview.Worn.Select(garment => garment.Name)));
             EditorGUILayout.LabelField("Painted", string.Join(", ", preview.Painted.Select(paint => paint.Name)));
             EditorGUILayout.LabelField("Held", string.Join(", ", preview.Held.Select(attachment => attachment.Name)));
-            EditorGUILayout.LabelField("Cloth", preview.Solver.IsActive ? preview.Solver.CurrentDetail.ToString() : "none");
+            EditorGUILayout.LabelField("Cloth", !preview.Solver.IsActive
+                ? "none"
+                : preview.Solver.CurrentDetail + (preview.Solver.CurrentDetail == ClothDetail.Spring
+                    ? ", " + preview.Solver.SpringWeight.ToString("0.00") + (preview.Solver.Sleeps ? ", sleeping" : string.Empty)
+                    : string.Empty));
             if (preview.Stress != null)
             {
                 EditorGUILayout.LabelField("Time", preview.StressTime.ToString("0.00") + " of " + preview.Stress.Seconds.ToString("0.0") + " s");
@@ -337,6 +347,60 @@ namespace Mmorpg.Client.Editor
             EditorGUILayout.LabelField("Robe through cloak", report.LayerPoked + ", " + (report.LayerPokeDepth * 1000f).ToString("0") + " mm");
             EditorGUILayout.LabelField("Jerk", report.JerkRms.ToString("0") + " m/s^3 RMS");
             EditorGUILayout.LabelField("Flare, settle", (report.Flare * 100f).ToString("0.0") + " cm, " + report.SettleSeconds.ToString("0.00") + " s");
+            EditorGUILayout.LabelField("Cloak pushed", (report.CloakPushed * 100f).ToString("0") + "% of steady frames, "
+                + report.CloakPushDegrees.ToString("0") + " degrees at most");
+            DrawTuning();
+        }
+
+        // Sliders for the springs of every kind of cloth the body wears, which apply at once.
+        private void DrawTuning()
+        {
+            EditorGUILayout.Space();
+            tuning = EditorGUILayout.Foldout(tuning, "Tune the springs", true);
+            if (!tuning)
+            {
+                return;
+            }
+
+            foreach (var kind in Kinds)
+            {
+                if (!preview.Solver.ProfileOf(kind).HasValue)
+                {
+                    continue;
+                }
+
+                EditorGUILayout.LabelField(kind.ToString(), EditorStyles.boldLabel);
+                var profile = preview.ProfileOf(kind);
+                var tuned = profile;
+                tuned.FrequencyRoot = EditorGUILayout.Slider("Hz at root", profile.FrequencyRoot, 0.5f, 10f);
+                tuned.FrequencyTip = EditorGUILayout.Slider("Hz at tip", profile.FrequencyTip, 0.5f, 10f);
+                tuned.DampingRoot = EditorGUILayout.Slider("Damping at root", profile.DampingRoot, 0.05f, 1.5f);
+                tuned.DampingTip = EditorGUILayout.Slider("Damping at tip", profile.DampingTip, 0.05f, 1.5f);
+                tuned.ConeRoot = EditorGUILayout.Slider("Cone at root", profile.ConeRoot, 5f, 90f);
+                tuned.ConeTip = EditorGUILayout.Slider("Cone at tip", profile.ConeTip, 5f, 90f);
+                tuned.Twist = EditorGUILayout.Slider("Twist", profile.Twist, 0f, 45f);
+                tuned.Gravity = EditorGUILayout.Slider("Gravity", profile.Gravity, 0f, 3f);
+                tuned.SpeedLean = EditorGUILayout.Slider("Wind per m/s", profile.SpeedLean, 0f, 10f);
+                tuned.SpeedLeanLimit = EditorGUILayout.Slider("Wind at most", profile.SpeedLeanLimit, 0f, 30f);
+                if (!tuned.Equals(profile))
+                {
+                    preview.Tune(kind, tuned);
+                }
+
+                if (GUILayout.Button("Reset " + kind))
+                {
+                    preview.Tune(kind, ClothProfile.For(kind));
+                }
+            }
+
+            if (GUILayout.Button("Log profiles"))
+            {
+                foreach (var kind in Kinds)
+                {
+                    var profile = preview.ProfileOf(kind);
+                    Debug.Log("Cloth profile " + kind + ": " + JsonUtility.ToJson(profile));
+                }
+            }
         }
 
         private void DrawView(Rect area)

@@ -81,7 +81,7 @@ equipment slots in
 | --- | --- | --- |
 | E1 | What clothes and armor are made of | A 3D mesh per slot with its own volume and folds, skinned to the shared skeleton, as in The Elder Scrolls Online, Guild Wars 2, and New World. Paint over the skin is kept for what lies on the skin: tattoos, scars, makeup, and dirt. |
 | E2 | How a garment hides the body | A cover mask per garment and body type over the body's faces, computed by the pipeline from where the garment really covers the body, reading the garment's transparency. Not whole body zones. A garment texture with transparent parts gets masks of its own. |
-| E3 | How loose cloth moves | Standard cloth chains in the skeleton, driven at runtime by a solver that follows the legs, adds springs, and collides with the body. There is no cloth simulation, neither in the game nor in the pipeline: garments get their shape from the garment cage and from their makers. |
+| E3 | How loose cloth moves | Standard cloth chains in the skeleton, laid at runtime in a target pose that follows the legs and collides with the body, on which springs swing the cloth of the bodies largest on the screen within limits. There is no cloth simulation, neither in the game nor in the pipeline: garments get their shape from the garment cage and from their makers. |
 | E4 | Hair under headwear | Every hair has a compressed under-headwear form; headwear says whether hair is hidden, compressed, or shown. |
 | E5 | Transparent fabric | Sharp holes now: lace, net, holes, and torn cloth with alpha clipping. Soft see-through fabric such as veils later. |
 | E6 | Body variety | Fixed body types, the male and female humans now and other races later as bodies of their own. No body sliders. |
@@ -668,14 +668,13 @@ animation libraries are approved again once; their clips do not change.
 ### Runtime Solver
 
 The client lays the chains every frame, after the Animator posed the body and the
-camera moved, and before the bodies are drawn. Since the second step of the
-[Spring Bone Redesign](#spring-bone-redesign) every visible body shows the
-**target pose**: where the chains hang in a pose, without memory, so the same
-pose always lays them alike, whatever the frame rate, and exactly as the art
-pipeline's reviews and checks lay them. The springs of the third step will add
-swing on top of it for the nearest bodies; until then the cloth follows the body
-without inertia. The target pose is `ClothPose` in the assembly
-`Mmorpg.Client.Cloth`:
+camera moved, and before the bodies are drawn, as the
+[Spring Bone Redesign](#spring-bone-redesign) built them. Every visible body
+shows the **target pose**: where the chains hang in a pose, without memory, so
+the same pose always lays them alike, whatever the frame rate, and exactly as the
+art pipeline's reviews and checks lay them. On the bodies largest on the screen
+**springs** swing the cloth on it, with inertia, sway, and flare, within limits.
+The target pose is `ClothPose` in the assembly `Mmorpg.Client.Cloth`:
 
 - **Hang and follow**: every chain hangs from its animated parent with its bones
   at rest. Each bone beside a thigh or a shin, as the rig places the chains,
@@ -749,32 +748,102 @@ without inertia. The target pose is `ClothPose` in the assembly
   between them. The art pipeline's pair check lays both garments' chains the
   same way, at rest too, and a robe that lies through the cloak at rest breaks a
   rule.
+- **Springs**: `ClothSprings` gives every particle of a chain a place and a
+  speed in the frame of its anchor bone, the hips for a skirt, the upper chest
+  for a cloak, and the head for a hood, and springs it toward where the target
+  pose lays it, at a fixed 90 Hz whatever the frame rate, at most four steps a
+  frame, so a longer frame plays slower rather than throw the cloth. Each step
+  takes the bones and the target between the last frame and this one, and what
+  is shown lies between the last two steps. The anchor's motion in the world is
+  filtered over about 25 ms, its acceleration again, and reaches the cloth as
+  forces of inertia that change no faster than the limits allow: 20 m/s², 540
+  degrees a second, and 60 rad/s², smoothly across the steps of a frame. So a
+  stop from a jog swings the hem with the whole stop, spread over a quarter of a
+  second, and a spin of an attack at 1440 degrees a second flares the cloth only
+  as a spin at the limit does. Gravity counts only as far as the anchor leans
+  away from the bind pose, damping counts against the anchor, not the air, and
+  the anchor's speed leans the cloth back as a wind, the more the farther it
+  hangs from the anchor, up to a cap. Then each step keeps neighbouring chains
+  between 0.6 and 1.4 of how far apart the target lays them; the chains within
+  their twist around the anchor's upright axis from the target, the skirt 18 and
+  the cloak 9 degrees, and toward each neighbour within 0.45 of the angle to its
+  target, so two chains never meet however close the legs push their targets;
+  the bones at their lengths and within a cone around where the target points
+  them; and the speed under 8 m/s against the anchor. Last, the body pushes the
+  cloth out: no bone of the springs lies nearer the body than the target pose,
+  the way its chain faces, so the legs and the body decide where the cloth is
+  and the springs only swing it out and to the side, and a cloak over a robe is
+  kept outside the robe's swinging skirt in every step, so its pushes add up
+  over the steps. Such a push takes the speed into the body out of the cloth,
+  slides it with a friction of 0.3, and gives it at most 0.3 m/s, so a jolt of
+  a clip, as the `Jog` clip's knee that snaps straight, moves the cloth where it
+  pushes but does not fling it. What is shown is faded in over the target and
+  laid with the target pose's collision as the body stands this frame, without
+  the contact band and the arms, which lift a cloak by a share of how far they
+  come into it rather than out of it, and every sample may lie as deep in a
+  collider as it lies in the target pose, so a body in its target pose shows it
+  exactly. A chain with a broken value starts again on its target, and a body
+  whose cloth lay within 1 mm of its target for half a second sleeps on it until
+  a step would move it farther.
+- **Jumps**: a frame in which the body or an anchor moves more than 2 m, faster
+  than 20 m/s, or turns more than 150 degrees is a jump, and so is any frame the
+  game tells the solver of with `NotifyDiscontinuity`: the local player's hard
+  corrections and teleports, and every time `RemoteMovementPresenter` presents a
+  remote player or a Mob from a new start or a restarted clock. The cloth is
+  carried along: the anchors take their new place without it reaching their
+  filters, and last frame's bones move with the body's own jump, so the steps
+  see the clips move and not the jump.
 - **Profiles**: a garment names a cloth profile, such as `robe`, `cloak`, or
-  `hood`, with its margin and slack, and the stiffness, damping, and gravity the
-  springs will read.
+  `hood`, with its margin and slack, which the target pose reads, and its
+  springs in SI units, from the chain's root to its tip:
+
+  | Profile | Hz root, tip | Damping root, tip | Cone root, tip | Twist | Wind per m/s, at most |
+  | --- | --- | --- | --- | --- | --- |
+  | Robe | 4, 2.5 | 0.6, 0.4 | 35, 60 degrees | 18 degrees | 0.6, 4 m/s² |
+  | Cloak | 2.5, 2.5 | 0.6, 0.6 | 40, 55 degrees | 9 degrees | 8, 30 m/s² |
+  | Hood | 6, 6 | 0.7, 0.7 | 20, 20 degrees | none | 0.3, 2 m/s² |
+
+  Victor asked on 2026-10-25 for a cloak that the speed's wind leans back from
+  the heels and that stays taut rather than flick up at its hem, so it is as
+  stiff at the hem as at the top and more damped; every profile feels gravity in
+  full. The Wardrobe tunes them; see
+  [Art Pipeline](ART_PIPELINE.md#garments).
 - **Level of detail and jobs**: one `ClothWorld` holds every dressed body in play
   in fixed blocks, and `ClothChainScheduler` steps it once a frame from the main
   camera, after it moved (`PresentationExecutionOrder.Cloth`). Three Burst jobs
   run on the worker threads: one reads every body's bones, one lays every body
-  in view in its target pose, a body a job, and one turns the chain bones. Every
-  remote player is a root of its World scene, so the transform jobs take the
-  players side by side. A body whose cube of 4 m around it lies outside the
-  camera's view moves nothing; beyond 60 m the chains rest, and a body already at
-  rest writes nothing. Every body of one model shares what was measured of it,
+  in view in its target pose and swings its springs, a body a job, and one turns
+  the chain bones. Every remote player is a root of its World scene, so the
+  transform jobs take the players side by side. A body whose cube of 4 m around
+  it lies outside the camera's view moves nothing; beyond 60 m the chains rest,
+  and a body already at rest writes nothing. Of the bodies in view within 60 m,
+  the largest on the screen have springs, about 48 of them, a robe and a cloak
+  counting two, and a body that has them keeps them against one up to a quarter
+  larger, so no body flickers between the levels; every other body shows its
+  target pose. The springs fade in over 0.3 s, always from the target, and out
+  over 0.3 s; a body out of view or at rest starts again from the target when it
+  has springs again. `ClothChainScheduler.Plan` is a pure function of the bodies'
+  distances, views, sizes on the screen, costs, and last levels, which the tests
+  check, and the profiler marker `ClothChainScheduler.Step` shows what the cloth
+  costs the main thread. Every body of one model shares what was measured of it,
   its bind pose, capsules, and legs, and every garment model what was measured
   of its cloth; out of play, as in the Wardrobe and the tests, each body has a
   world of its own and measures its own, so a model exported again is measured
   again.
 
 Measured on 2026-10-25 in the Editor, with Burst's safety checks on as the Editor
-runs it, 100 bodies jogging in a robe and a cloak take 3.9 ms of a frame on 15
-worker threads, 0.5 ms of it reading, following, and writing and the rest the
-swing, about as much as the old solver's 2 to 3 ms for the 400 development bots
-with its turns and budget; one body takes 0.13 ms in a robe and 0.15 ms in a
-cloak. Without the safety checks it is about a third less. The cost is the
-number of bodies, bones, samples, and capsules, so the budget and the levels of
-detail of the third step, and the measurement with 400 bots, decide how far a
-crowd lays its cloth fully.
+runs it: a body jogging in a robe and a cloak takes 0.29 ms of one core in its
+target pose and 0.53 ms with its springs; 100 such bodies take about 3.5 ms of a
+frame on 15 worker threads in their target pose, and about 5.8 ms with springs
+on 48 of them. Without the safety checks it is about a third less. In the game,
+joined to Development World 2 with Victor's development bots, about 80 players in
+interest, 76 of them dressed, and the camera low over them, the cloth took 0.79
+ms of the main thread on average and 1.27 ms at the 95th percentile with every
+body in its target pose, at 108 FPS, and 1.22 and 1.90 ms with springs on the six
+bodies within 60 m in view, at 100 FPS. A body that springs is one job, so the
+main thread waits for the slowest of them; a body beyond 60 m costs nothing, so
+the chains still rest there without a fade. The target pose of every visible
+body stays within the redesign's goal of 1 ms of the main thread.
 
 The solver is presentation only. It runs the same for the local player, other
 players, and bots, and never reaches the server. It moves a few bones per chain
@@ -882,6 +951,62 @@ roots follow the hips and the thighs fold up 90 degrees; and a robe through a
 cloak where a knee lifts both. The zig-zag's chains depend on the frame time only
 as much as the clips' own sampling does, since the pose has no memory.
 
+The springs of the third step, measured on 2026-10-25 the same way with the
+profiles above; `Other` gives how far a spin flares the tips out, how long the
+cloth's swing on its target takes to settle after a stop or a spin, and how far
+the frame of a jump moves the chains:
+
+| Motion | Through cloth | Legs | Robe through cloak | Jerk RMS | Skirt out of order | Other |
+| --- | --- | --- | --- | --- | --- | --- |
+| Idle | none | none | none | 17 m/s³ | never | |
+| Walk | 27 vertices, 23 mm | 6 mm | none | 2,375 m/s³ | never | |
+| Jog | 45, 62 mm | 18 mm | 2, 8 mm | 7,188 m/s³ | never | |
+| Zig-zag | 51, 56 mm | 18 mm | 6, 23 mm | 7,274 m/s³ | never | |
+| Network 15 Hz | 49, 63 mm | 16 mm | 6, 34 mm | 7,308 m/s³ | never | |
+| Turn 180 | 45, 58 mm | 18 mm | 10, 119 mm | 7,134 m/s³ | never | |
+| Spin 720 | none | none | none | 17 m/s³ | never | flares 17.5 cm, settles in 0.6 s |
+| Spin 1440 | none | none | none | 17 m/s³ | never | flares 17.5 cm, settles in 0.6 s |
+| Spin 2880 | none | none | 3, 8 mm | 17 m/s³ | never | flares 17.7 cm, settles in 0.6 s |
+| Jog stop jog | 45, 58 mm | 18 mm | 2, 4 mm | 5,959 m/s³ | never | settles in 0.6 s |
+| Death | 122, 98 mm | 98 mm | 6, 12 mm | 21,804 m/s³ | 9 frames | |
+| Teleport, snap 3 m | 48, 62 mm | 18 mm | 2, 52 mm | 7,192 m/s³ | never | the jump moves the chains 57 mm |
+| Snap 180 | none | none | none | 17 m/s³ | never | the jump moves the chains 2 mm |
+
+The legs come through the cloth as far as in the target pose, since no bone of
+the springs lies nearer the body than it, and never through a cloak. The
+skirt's chains keep their order in every spin, and a spin flares the hems out by
+17 to 18 cm and lets them settle within 0.6 s of its end, where the target pose
+flared 2 cm. A jump moves the cloth no more than the jog's own legs move it in
+that frame: `ClothSpringTests` holds the jump's frame and the next within a
+centimeter of the same motion without the jump. The robe comes through a cloak
+by up to 12 cm only in a turn of 180 degrees in a quarter of a second, where the
+robe flares out below the cloak's hem. The cloth jerks less than in the target
+pose while walking, 2,375 against 3,545 m/s³, but as much while jogging and more
+while dying: where the legs push the cloth it goes with them, and the `Jog`
+clip's knee snaps straight at the toe off, as the target pose showed; the
+springs smooth everything the legs do not push. Of the steady frames of a jog,
+the legs push a cloak's lower half in about half, by up to 15 degrees, where
+the target pose had the heels kick it back by up to 71 degrees; the heel comes
+up behind nearly level in a jog and reaches a cloak to the middle of the calf
+however it hangs. `Settle` now counts the cloth settled when its swing on the
+target changes no faster than 10 cm/s beyond how fast the target itself moves,
+since springs trail a target that the clip keeps moving.
+
+How far the chains' tips in a zig-zag lie from where they lie stepped at 1/240 s,
+in centimeters at most and as RMS over the frames, the worst of both bodies and
+the three outfits, playing the clips and with the body's pose held so only its
+root moves:
+
+| Pose | 1/30 s | 1/60 s | 1/144 s | Jittery |
+| --- | --- | --- | --- | --- |
+| Clips | 22.7, 7.8 | 11.7, 3.7 | 10.8, 1.3 | 18.1, 5.8 |
+| Held | 4.3, 0.6 | 2.9, 0.4 | 3.5, 0.5 | 3.3, 0.7 |
+
+Playing the clips, the target pose alone differs as much, since the Animator
+samples the clips differently at different frame times; with the pose held, the
+springs keep their course within a centimeter as RMS at every frame time, which
+`ClothSpringTests` holds for a zig-zag and a spin.
+
 ### Spring Bone Redesign
 
 On 2026-10-25 Victor rejected the cloth as jittery, with legs that come through
@@ -923,9 +1048,21 @@ It is delivered in three pull requests, each measured with the stress motions:
    toward the neighbours rather than quads the legs collide with, since a bone
    swings rather than its particles moving; until the third step the nearest
    bodies also show the target pose, which is stiffer.
-3. The new springs and levels of detail: the springs in the jobs, the budget and
-   the fades, the jump signals, the old solver removed, the profiles tuned with
-   Victor in the Wardrobe and in the game, and the measurement with 400 bots.
+3. Done. The springs and levels of detail: the springs in the jobs, the budget
+   and the fades, the jump signals, the profiles in SI units and tuned with
+   Victor in the Wardrobe, and the measurement in the game, all described under
+   [Runtime Solver](#runtime-solver) and measured under
+   [Measuring The Cloth](#measuring-the-cloth). Three things went otherwise than
+   planned. The target pose is a floor the springs never come nearer the body
+   than, because springs that lagged behind it let the legs through a cloak by 3
+   cm between its samples. The springs' own steps collide only to keep a cloak
+   out of a robe's swinging skirt, and what is shown is laid with the target
+   pose's collision, letting every sample lie as deep as in the target, because
+   collision fed back into the springs pushed the cloth on and on: the contact
+   band and an arm's lift are not idempotent. And the chains rest beyond 60 m
+   without a fade, since the target pose of every visible body costs under 1 ms.
+   The old solver's per-frame stiffness, damping, and gravity are gone from
+   `ClothProfile`.
 
 ## Hair And Headwear
 
@@ -1342,9 +1479,8 @@ quarter of the triangles come with the first crowd measurement that needs them.
      [The Look On The Server](#the-look-on-the-server).
 7. With the first new race: making a body type from a human body, generalizing
    `Sync-HumanBase.ps1` to every body of the race, and adding it to the cage.
-8. Robust spring bones, as Victor accepted on 2026-10-25, in three steps; see
-   [Spring Bone Redesign](#spring-bone-redesign). Step 1, the measuring stick and
-   the parity, and step 2, the target pose on Burst, are done.
+8. Robust spring bones, as Victor accepted on 2026-10-25, in three steps, all
+   done; see [Spring Bone Redesign](#spring-bone-redesign).
 
 ## Open Questions
 

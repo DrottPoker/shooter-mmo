@@ -14,8 +14,9 @@ namespace Mmorpg.Client.Editor
     // MMORPG > Tools > Art Pipeline > Measure Cloth: both bodies in a robe, a cloak, and both, in
     // every cloth stress motion, measured by ClothMotionMeter, and how far the cloth's course
     // depends on the frame time: a zig-zag stepped at 1/30, 1/60, and 1/144 s and in jittery frames,
-    // against the same at 1/240 s. Writes a table to artifacts/cloth-measurements.md, which Git
-    // ignores; docs/EQUIPMENT_VISUALS_DESIGN.md keeps the numbers decisions rest on.
+    // against the same at 1/240 s, playing the clips and with the body's pose held, so only the
+    // springs and not the clips' sampling differ. Writes a table to artifacts/cloth-measurements.md,
+    // which Git ignores; docs/EQUIPMENT_VISUALS_DESIGN.md keeps the numbers decisions rest on.
     public static class ClothMeasurement
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Measure Cloth";
@@ -41,7 +42,8 @@ namespace Mmorpg.Client.Editor
                 .Append("Jerk RMS (m/s^3) | Flare (cm) | Settle (s) | Order breaks | Jump move (mm) |\n");
             text.Append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
             var deviations = new StringBuilder();
-            deviations.Append("\n| Body | Outfit | 1/30 s (cm) | 1/60 s (cm) | 1/144 s (cm) | Jittery (cm) |\n| --- | --- | --- | --- | --- | --- |\n");
+            deviations.Append("\n| Body | Outfit | Pose | 1/30 s (cm) | 1/60 s (cm) | 1/144 s (cm) | Jittery (cm) |\n")
+                .Append("| --- | --- | --- | --- | --- | --- | --- |\n");
             try
             {
                 foreach (var body in WardrobePreview.Bodies())
@@ -58,10 +60,15 @@ namespace Mmorpg.Client.Editor
                                 text.Append(Row(body.Name, label, motion.Name, report));
                             }
 
-                            var deviation = FrameTimeDeviations(preview, ClothStressMotion.Named("Zig-zag"));
-                            deviations.Append("| ").Append(body.Name).Append(" | ").Append(label).Append(" | ")
-                                .Append(string.Join(" | ", deviation.Select(each => Number(each.Largest * 100f) + " / " + Number(each.Rms * 100f))))
-                                .Append(" |\n");
+                            foreach (var frozen in new[] { false, true })
+                            {
+                                var deviation = FrameTimeDeviations(preview, ClothStressMotion.Named("Zig-zag"), frozen);
+                                deviations.Append("| ").Append(body.Name).Append(" | ").Append(label).Append(" | ")
+                                    .Append(frozen ? "held" : "clips").Append(" | ")
+                                    .Append(string.Join(" | ",
+                                        deviation.Select(each => Number(each.Largest * 100f) + " / " + Number(each.Rms * 100f))))
+                                    .Append(" |\n");
+                            }
                         }
                     }
                 }
@@ -108,13 +115,23 @@ namespace Mmorpg.Client.Editor
 
         // How far the chains' tips lie, in the frame of the bone they hang from, from where they lie
         // when the motion is stepped at 1/240 s, at 1/30, 1/60, and 1/144 s and in jittery frames:
-        // the largest distance at any frame, and the RMS over the frames.
-        public static (float Largest, float Rms)[] FrameTimeDeviations(WardrobePreview preview, ClothStressMotion motion)
+        // the largest distance at any frame, and the RMS over the frames. With the pose held only the
+        // body's root moves, so the clips' own sampling does not count.
+        public static (float Largest, float Rms)[] FrameTimeDeviations(WardrobePreview preview, ClothStressMotion motion, bool frozen = false)
         {
-            var reference = Course(preview, motion, 1f / 240f, false);
-            return new[] { 1f / 30f, 1f / 60f, 1f / 144f, -1f }
-                .Select(step => Deviation(reference, Course(preview, motion, Mathf.Abs(step), step < 0f)))
-                .ToArray();
+            var wasFrozen = preview.Frozen;
+            preview.Frozen = frozen;
+            try
+            {
+                var reference = Course(preview, motion, 1f / 240f, false);
+                return new[] { 1f / 30f, 1f / 60f, 1f / 144f, -1f }
+                    .Select(step => Deviation(reference, Course(preview, motion, Mathf.Abs(step), step < 0f)))
+                    .ToArray();
+            }
+            finally
+            {
+                preview.Frozen = wasFrozen;
+            }
         }
 
         private static List<(float Time, Vector3[] Tips)> Course(WardrobePreview preview, ClothStressMotion motion, float frameSeconds,

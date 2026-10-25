@@ -158,19 +158,37 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        [Test]
-        public void AMeasuredSpinKeepsTheCloakOnTheBodyAndSettlesIt()
+        // A spin flares the hems out, not stiffly, keeps the skirt's chains in their order and the
+        // legs and the robe under the cloth, and the cloth settles soon after it.
+        [TestCase("Spin 720")]
+        [TestCase("Spin 2880")]
+        public void ASpinFlaresTheClothOutAndItSettles(string name)
         {
             using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male")))
             {
                 preview.Wear(new[] { "WoolRobe", "WoolCloak" });
-                var report = ClothMeasurement.Run(preview, ClothStressMotion.Named("Spin 1440"), meshEvery: 10);
+                var report = ClothMeasurement.Run(preview, ClothStressMotion.Named(name), meshEvery: 10);
                 Assert.That(report.Frames, Is.GreaterThan(300));
-                // The target pose has no inertia, so the cloak follows the body round rather than flare
-                // out; the springs of docs/EQUIPMENT_VISUALS_DESIGN.md will swing it out.
-                Assert.That(report.Flare, Is.LessThan(0.05f));
-                Assert.That(report.SettleSeconds, Is.GreaterThan(0f).And.LessThan(ClothStressMotion.Named("Spin 1440").Seconds));
+                Assert.That(report.Flare, Is.GreaterThan(0.05f));
+                Assert.That(report.SettleSeconds, Is.LessThan(1.5f));
+                Assert.That(report.OrderBreaks, Is.EqualTo(0));
+                Assert.That(report.LegPokeDepth, Is.LessThanOrEqualTo(0f));
+                Assert.That(report.LayerPokeDepth, Is.LessThan(0.01f));
                 Assert.That(float.IsNaN(report.JerkRms) || float.IsInfinity(report.JerkRms), Is.False);
+            }
+        }
+
+        // A remote body seen through the network's 15 snapshots a second moves its cloth no more
+        // jerkily than the same course moved smoothly.
+        [Test]
+        public void TheNetworkDoesNotMakeTheClothJerkier()
+        {
+            using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male")))
+            {
+                preview.Wear(new[] { "WoolRobe", "WoolCloak" });
+                var smooth = ClothMeasurement.Run(preview, ClothStressMotion.Named("Zig-zag"), meshEvery: 1000);
+                var network = ClothMeasurement.Run(preview, ClothStressMotion.Named("Network 15 Hz"), meshEvery: 1000);
+                Assert.That(network.JerkRms, Is.LessThan(1.2f * smooth.JerkRms));
             }
         }
     }

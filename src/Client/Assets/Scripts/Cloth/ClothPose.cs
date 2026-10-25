@@ -272,13 +272,7 @@ namespace Mmorpg.Client.Cloth
             // Every chain as it follows the legs, before it swings: what the cloth toward a neighbour
             // is sampled toward.
             var first = chainCount > 0 ? chains[chainStart].ParticleStart : 0;
-            var count = 0;
-            for (var chainIndex = 0; chainIndex < chainCount; chainIndex++)
-            {
-                count += chains[chainStart + chainIndex].BoneCount + 1;
-            }
-
-            var followed = new NativeArray<float3>(math.max(count, 1), Allocator.Temp);
+            var followed = new NativeArray<float3>(math.max(ParticleCount(chainStart, chainCount, chains), 1), Allocator.Temp);
             for (var chainIndex = 0; chainIndex < chainCount; chainIndex++)
             {
                 var chain = chains[chainStart + chainIndex];
@@ -291,7 +285,45 @@ namespace Mmorpg.Client.Cloth
                     point += directions[chain.BoneStart + index] * length;
                     followed[chain.ParticleStart + index + 1 - first] = point;
                 }
+            }
 
+            Collide(chainStart, chainCount, boneStart, capsuleStart, capsuleCount, marginStart, scale, legs, frameCapsules, chains,
+                particles, capsules, radii, margins, hanging, followed, first, positions, directions, ClothRoles.None, true, default);
+            followed.Dispose();
+        }
+
+        // How many particles a body's chains have.
+        public static int ParticleCount(int chainStart, int chainCount, NativeArray<ClothChainData> chains)
+        {
+            var count = 0;
+            for (var chainIndex = 0; chainIndex < chainCount; chainIndex++)
+            {
+                count += chains[chainStart + chainIndex].BoneCount + 1;
+            }
+
+            return count;
+        }
+
+        // Lays every chain of a body from its root along the directions its bones were given, each
+        // bone swung out of what its kind collides with, but for the roles skipped: the last pass of
+        // the target pose, and of the springs on top of it. Followed holds where every chain lies
+        // before it swings, from its first particle at the offset on, which the cloth toward a
+        // neighbour is sampled toward. With the contact band the cloth gives way before a collider
+        // reaches it, as the target pose lays it; without, it is only taken out of the colliders,
+        // so laying cloth again that lies outside them leaves it where it is. The springs lay their
+        // cloth without the band and the arms, which lift a cloak by a share of how far they come
+        // into it rather than out of it; and they let every sample lie as deep in a collider as it
+        // lies where the target pose lays the chains, at the targets given, so the target pose stays
+        // where it is. Without targets, not created, no sample lies deeper than its margin allows.
+        public static void Collide(int chainStart, int chainCount, int boneStart, int capsuleStart, int capsuleCount, int marginStart,
+            float scale, in ClothLegs legs, NativeArray<int> frameCapsules, NativeArray<ClothChainData> chains,
+            NativeArray<ClothParticle> particles, NativeArray<ClothCapsule> capsules, NativeArray<float> radii, NativeArray<float> margins,
+            NativeArray<float3> hanging, NativeArray<float3> followed, int first, NativeArray<float3> positions, NativeArray<float3> directions,
+            ClothRoles skip, bool banded, NativeArray<float3> targets)
+        {
+            for (var chainIndex = 0; chainIndex < chainCount; chainIndex++)
+            {
+                var chain = chains[chainStart + chainIndex];
                 for (var index = 0; index <= chain.BoneCount; index++)
                 {
                     positions[chain.ParticleStart + index] = hanging[chain.ParticleStart + index];
@@ -301,6 +333,7 @@ namespace Mmorpg.Client.Cloth
             // The hips' upright axis, which a skirt hangs around however the body lies.
             var up = legs.Valid ? ClothMath.Normalized(math.cross(legs.Forward, legs.Right)) : new float3(0f, 1f, 0f);
             var surface = new NativeList<float3>(Allocator.Temp);
+            var targetSurface = new NativeList<float3>(Allocator.Temp);
             var surfaceBuilt = false;
             for (var kind = ClothKind.Skirt; kind <= ClothKind.Hood; kind++)
             {
@@ -317,7 +350,8 @@ namespace Mmorpg.Client.Cloth
                     for (var index = 0; index < chain.BoneCount; index++)
                     {
                         LayBone(chainStart, chain, index, outward, boneStart, capsuleStart, capsuleCount, marginStart, scale, up, legs,
-                            under, surface, chains, particles, capsules, radii, margins, hanging, followed, first, positions, directions);
+                            under, surface, targetSurface, chains, particles, capsules, radii, margins, hanging, followed, first, positions,
+                            directions, chain.Collides & ~skip, banded, targets);
                     }
                 }
 
@@ -326,11 +360,16 @@ namespace Mmorpg.Client.Cloth
                 {
                     BuildSurface(chainStart, chainCount, scale, legs, capsules, capsuleStart, frameCapsules, chains, particles, positions, surface);
                     surfaceBuilt = surface.Length > 0;
+                    if (targets.IsCreated)
+                    {
+                        BuildSurface(chainStart, chainCount, scale, legs, capsules, capsuleStart, frameCapsules, chains, particles, targets,
+                            targetSurface);
+                    }
                 }
             }
 
             surface.Dispose();
-            followed.Dispose();
+            targetSurface.Dispose();
         }
 
         private static bool Covers(int chainStart, int chainCount, NativeArray<ClothChainData> chains, ClothKind kind)
@@ -351,9 +390,11 @@ namespace Mmorpg.Client.Cloth
         // angle that clears its samples, and lays its end there.
         private static void LayBone(int chainStart, in ClothChainData chain, int index, float3 outward, int boneStart, int capsuleStart,
             int capsuleCount, int marginStart, float scale, float3 up, in ClothLegs legs, bool under, NativeList<float3> surface,
-            NativeArray<ClothChainData> chains, NativeArray<ClothParticle> particles, NativeArray<ClothCapsule> capsules,
+            NativeList<float3> targetSurface, NativeArray<ClothChainData> chains, NativeArray<ClothParticle> particles,
+            NativeArray<ClothCapsule> capsules,
             NativeArray<float> radii, NativeArray<float> margins, NativeArray<float3> hanging, NativeArray<float3> followed,
-            int followedOffset, NativeArray<float3> positions, NativeArray<float3> directions)
+            int followedOffset, NativeArray<float3> positions, NativeArray<float3> directions, ClothRoles collides, bool banded,
+            NativeArray<float3> targets)
         {
             var particle = chain.ParticleStart + index;
             var start = positions[particle];
@@ -387,20 +428,23 @@ namespace Mmorpg.Client.Cloth
                 CapsuleStart = capsuleStart,
                 CapsuleCount = capsuleCount,
                 Scale = scale,
+                Band = banded ? ContactBand * scale : 0f,
                 Up = up,
                 Hips = legs.Hips,
                 FollowedOffset = followedOffset,
+                Targets = targets,
+                TargetSurface = targetSurface,
             };
 
             // A capsule farther from the bone's start than the farthest its samples lie from there in
             // any swing, its widest radius, the largest margin a sample keeps from it, and the contact
             // band never reaches a sample.
-            var reach = swing.SampleReach(chains, followed) + ContactBand * scale;
+            var reach = swing.SampleReach(chains, followed) + swing.Band;
             var candidates = new FixedList64Bytes<byte>();
             for (var capsule = 0; capsule < capsuleCount && candidates.Length < candidates.Capacity; capsule++)
             {
                 var found = capsules[capsuleStart + capsule];
-                if ((found.Role & chain.Collides) != 0
+                if ((found.Role & collides) != 0
                     && math.distance(start, ClothMath.Closest(start, found.A, found.B)) - found.Widest
                     <= reach + swing.LargestMargin(capsule, margins))
                 {
@@ -458,6 +502,9 @@ namespace Mmorpg.Client.Cloth
             public int CapsuleStart;
             public int CapsuleCount;
             public float Scale;
+            public float Band;
+            public NativeArray<float3> Targets;
+            public NativeList<float3> TargetSurface;
             public float3 Up;
             public float3 Hips;
             public int FollowedOffset;
@@ -516,7 +563,7 @@ namespace Mmorpg.Client.Cloth
             // and between, a little more.
             public float BandDepth(float depth)
             {
-                var band = ContactBand * Scale;
+                var band = Band;
                 return depth <= -band ? 0f : depth >= band ? depth : (depth + band) * (depth + band) / (4f * band);
             }
 
@@ -541,6 +588,12 @@ namespace Mmorpg.Client.Cloth
                 NativeArray<float3> followed, NativeList<float3> surface)
             {
                 var hangingDepth = HangingDepth(sample, collider, hangingPoint, hangingWithin, capsules, radii, margins, surface);
+
+                // The springs let a sample lie as deep as it lies in the target pose.
+                var allowed = Targets.IsCreated && hangingDepth > -Band
+                    ? TargetDepth(sample, collider, chains, particles, capsules, radii, margins)
+                    : 0f;
+                hangingDepth -= allowed;
                 var bandDepth = BandDepth(hangingDepth);
                 if (bandDepth <= 0f)
                 {
@@ -559,7 +612,7 @@ namespace Mmorpg.Client.Cloth
                     before = angle;
                     beforeDepth = depth;
                     angle = math.min(angle + math.max(depth, 0f) / (AdvanceSafety * moves), largest);
-                    depth = DepthAt(angle, sample, collider, chains, particles, capsules, radii, margins, followed, surface) + clearance;
+                    depth = DepthAt(angle, sample, collider, chains, particles, capsules, radii, margins, followed, surface) - allowed + clearance;
                 }
 
                 // The last steps fall short where the sample leaves; a secant step through them reaches
@@ -570,16 +623,34 @@ namespace Mmorpg.Client.Cloth
                 }
 
                 math.sincos(angle, out var sin, out var cos);
-                var along = math.saturate(math.dot(OutOf(angle, sample, collider, chains, particles, capsules, followed),
+                var along = math.saturate(math.dot(OutOf(angle, sample, collider, chains, particles, capsules, followed, surface),
                     Side * cos - Direction * sin) / ExitAlong);
                 var fade = math.saturate((largest - angle) / math.radians(SwingFadeDegrees));
                 return angle * along * along * (3f - 2f * along) * fade * fade * (3f - 2f * fade);
             }
 
+            // How deep a sample lies in a collider where the target pose lays the chains, or 0 outside.
+            private float TargetDepth(int sample, int collider, NativeArray<ClothChainData> chains, NativeArray<ClothParticle> particles,
+                NativeArray<ClothCapsule> capsules, NativeArray<float> radii, NativeArray<float> margins)
+            {
+                var particle = Chain.ParticleStart + Index;
+                if (!SampleAt(ChainStart, Chain, Index, sample, Targets[particle], Targets[particle + 1], chains, Targets, 0, particles, Scale,
+                        out var point, out var within))
+                {
+                    return 0f;
+                }
+
+                var depth = collider == SurfaceCollider
+                    ? SurfaceDepth(TargetSurface, Hips, Up, point, LayerGap * Scale + within)
+                    : Depth(capsules[CapsuleStart + collider], radii, point, margins[Row + sample * CapsuleCount + collider] * Scale);
+                return math.max(depth, 0f);
+            }
+
             // The way out of a collider from a sample when the bone swings by an angle: away from a
             // capsule's axis, or away from the hips' upright axis for the outer side of a skirt.
             private float3 OutOf(float angle, int sample, int collider, NativeArray<ClothChainData> chains,
-                NativeArray<ClothParticle> particles, NativeArray<ClothCapsule> capsules, NativeArray<float3> followed)
+                NativeArray<ClothParticle> particles, NativeArray<ClothCapsule> capsules, NativeArray<float3> followed,
+                NativeList<float3> surface)
             {
                 SampleAt(ChainStart, Chain, Index, sample, Start, End(angle), chains, followed, FollowedOffset, particles, Scale, out var point,
                     out _);
@@ -610,7 +681,7 @@ namespace Mmorpg.Client.Cloth
                 var away = point - ClothMath.Closest(point, capsule.A, capsule.B);
                 var distance = math.length(away);
                 var widest = capsule.Widest + margin - distance;
-                return widest <= -ContactBand * Scale ? widest : RadiusToward(capsule, radii, away) + margin - distance;
+                return widest <= -Band ? widest : RadiusToward(capsule, radii, away) + margin - distance;
             }
 
             // How deep a sample lies in a collider when the bone swings by an angle.

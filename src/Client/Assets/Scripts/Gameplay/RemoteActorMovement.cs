@@ -44,6 +44,12 @@ namespace Mmorpg.Client.Gameplay
             get { return presenter.DelayTicks; }
         }
 
+        // How many times the presented pose jumped, as in a teleport or a start from the rest pose.
+        public int Discontinuities
+        {
+            get { return presenter.Discontinuities; }
+        }
+
         public int SnapshotIntervalTicks
         {
             get { return snapshotIntervalTicks; }
