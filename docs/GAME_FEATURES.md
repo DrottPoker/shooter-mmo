@@ -570,8 +570,9 @@ Status: MVP implemented with temporary presentation
   `Vendor` tab with the General Store and the current balance. Trading works
   only while the interaction stays open; walking out of range closes it.
 - The General Store sells Bronze Arrow for `1`, Minor Healing Potion for `25`,
-  Cooked Trout for `10`, and Starter Pickaxe for `50` Gold, at 100 percent of
-  each item's value, with unlimited stock. Each offer has a quantity field and a
+  Cooked Trout for `10`, and Starter Pickaxe for `50` Gold, the clothes, the
+  Iron Sword for `120`, and the Heater Shield for `80`, at 100 percent of each
+  item's value, with unlimited stock. Each offer has a quantity field and a
   button that names the total, such as `Buy for 50 Gold`.
 - A purchase goes into carried storage. It first tops up existing stacks, then
   fills free slots: matching specialized Bag slots, Permanent inventory, and
@@ -645,6 +646,11 @@ Combat is target based and server authoritative:
 - A bow needs arrows of its family in the Ammunition slot. Every shot spends one
   arrow, even when it flies at a target that died, and the inventory shows the
   live arrow count. An equipment change holds attacks for 1 second.
+- The Iron Sword, the first melee weapon, hits at once at 2.5 m for 11 to 19
+  every 2.4 seconds and needs no ammunition. The Heater Shield goes in the off
+  hand and has no armor values yet. Both show in the hands of their wearer, as
+  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#attachments) describes;
+  the Training Shortbow takes both hands.
 - The top-left frame shows health, arrows, and the attack status, such as `Out
   of range` or `No ammunition`. The target frame shows the target's health,
   damaged combatants get health bars, hits show white damage numbers, and
@@ -679,8 +685,8 @@ These categories are defined by the project direction but are not implemented.
 They remain in the MVP specification until working behavior is available:
 
 - Dynamic collision transform replication.
-- A threat table, Mob abilities and groups, melee and magic weapons, armor, and
-  final combat visuals.
+- A threat table, Mob abilities and groups, more melee weapons, magic weapons,
+  armor values, attack animations, and final combat visuals.
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
 - Final corpse art and loot presentation, and insurance or quest UI polish.

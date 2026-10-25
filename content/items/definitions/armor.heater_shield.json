@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "armor",
+  "defaultPolicies": [ ],
+  "displayName": "Heater Shield",
+  "equipmentSlots": [
+    "off_hand"
+  ],
+  "id": "armor.heater_shield",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 120,
+  "value": 80,
+  "weapon": null
+}

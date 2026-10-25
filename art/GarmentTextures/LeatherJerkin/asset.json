@@ -17,7 +17,7 @@
             { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/LeatherJerkin_Female.json", "dataSha256": "8b5beef9c04a54a32c8e8bd26fd6e98bbf29f5c2ccf065ead0bbd5f84fd7efe8" }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "75bcdc80b9c74a80d94341ac59ee13a44d6c86690fe9fb7d2053f0515f17a987" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
         ],
         "materials": [
             {

@@ -17,7 +17,8 @@ namespace Mmorpg.Client.Editor
     // A skinned model and an animation library get a Humanoid avatar mapped from their skeleton
     // definition and one animation clip per exported clip, as asset.json records them. A garment's
     // model is skinned to its body's armature without an avatar of its own, because the character
-    // it is put on animates it.
+    // it is put on animates it. An attachment's model is static and readable, because the body that
+    // holds it combines it.
     public sealed class ArtModelImportRules : AssetPostprocessor
     {
         public const string ModelFolder = "Assets/Art/Models";
@@ -67,6 +68,14 @@ namespace Mmorpg.Client.Editor
             ApplySharedModelSettings(importer);
             importer.importAnimation = false;
             importer.animationType = ModelImporterAnimationType.None;
+        }
+
+        // An attachment's model, such as a sword: static, but the game combines it with the body
+        // that holds it, which reads it.
+        public static void ApplyAttachmentModelSettings(ModelImporter importer)
+        {
+            ApplyStaticModelSettings(importer);
+            importer.isReadable = true;
         }
 
         public static void ApplySkinnedModelSettings(ModelImporter importer, ArtAssetManifest manifest, ArtSkeleton skeleton)
@@ -344,6 +353,10 @@ namespace Mmorpg.Client.Editor
             else if (manifest != null && manifest.IsGarment)
             {
                 ApplyGarmentModelSettings(importer, manifest);
+            }
+            else if (manifest != null && manifest.IsAttachment)
+            {
+                ApplyAttachmentModelSettings(importer);
             }
             else
             {

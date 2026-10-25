@@ -6,8 +6,9 @@ namespace Mmorpg.SimulationWorker.Appearance;
 
 // Dresses development bots, which have no stored look and no items: each bot gets a body model,
 // a look, and an outfit picked from its character id by a stable hash, so a crowd shows every
-// body, face, and garment and each bot keeps its own, as Victor decided on 2026-10-25. The outfit
-// is only shown; the bot owns none of it.
+// body, face, garment, weapon, and shield and each bot keeps its own, as Victor decided on
+// 2026-10-25. An item stays out of a slot that another item of the outfit blocks, such as a shield
+// beside a two-handed bow. The outfit is only shown; the bot owns none of it.
 public sealed class DevelopmentBotLooks
 {
     // The equipment slots a bot always wears something in; the other visible slots may stay empty.
@@ -15,6 +16,7 @@ public sealed class DevelopmentBotLooks
 
     private readonly CharacterAppearanceCatalog appearance;
     private readonly Dictionary<string, string[]> definitionsBySlot;
+    private readonly Dictionary<string, string[]> blockedSlots;
 
     public DevelopmentBotLooks(CharacterAppearanceCatalog appearance, ItemCatalogRuntimeDocument items)
     {
@@ -28,6 +30,10 @@ public sealed class DevelopmentBotLooks
                 .Select(definition => definition.Id)
                 .Order(StringComparer.Ordinal)
                 .ToArray(),
+            StringComparer.Ordinal);
+        blockedSlots = (items.Definitions ?? []).ToDictionary(
+            definition => definition.Id,
+            definition => definition.BlockedEquipmentSlots ?? [],
             StringComparer.Ordinal);
     }
 
@@ -49,8 +55,9 @@ public sealed class DevelopmentBotLooks
         }
 
         var outfit = new List<CharacterLookItem>();
-        foreach (var (slot, definitions) in definitionsBySlot)
+        foreach (var slot in appearance.VisibleEquipmentSlots)
         {
+            var definitions = definitionsBySlot[slot];
             if (definitions.Length == 0)
             {
                 continue;
@@ -63,6 +70,14 @@ public sealed class DevelopmentBotLooks
             {
                 outfit.Add(new CharacterLookItem(slot, definition));
             }
+        }
+
+        // An item in an earlier slot wins over one in a slot it blocks, as the main hand's bow
+        // keeps the off hand empty.
+        for (var index = 0; index < outfit.Count; index++)
+        {
+            var blocked = blockedSlots[outfit[index].DefinitionId];
+            outfit.RemoveAll(item => blocked.Contains(item.EquipmentSlotId, StringComparer.Ordinal));
         }
 
         return new CharacterLook(new SimulationAppearance(bodyModel, choices, HeadwearLowered: false), outfit);

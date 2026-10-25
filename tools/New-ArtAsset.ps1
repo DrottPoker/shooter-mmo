@@ -22,6 +22,9 @@ param(
     [string[]]$Roots = @(),
     # static: the largest number of triangles the model may export.
     [int]$TriangleBudget = 0,
+    # static: for an attachment, such as a weapon or a shield, the socket it is held on, such as
+    # main_hand; its one root object is then Grip, where it is held.
+    [string]$Socket,
     # animations: the skinned asset whose rig the clips are keyed on, and other bodies that show them.
     [string]$Rig = "art/Characters/Human_Male",
     [string[]]$Previews = @("art/Characters/Human_Female"),
@@ -87,6 +90,10 @@ if ($relative -cnotmatch '^art/[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$') {
     throw "Pass the new asset folder as art/<Category>/<Name>, such as art/WorldActors/Resource_CopperVein."
 }
 
+if (-not [string]::IsNullOrEmpty($Socket) -and $Kind -ne "static") {
+    throw "Only a static asset, an attachment, is held on a -Socket."
+}
+
 $parts = $relative.Split('/')
 $category, $name = $parts[1], $parts[2]
 $expectedCategory = @{ animations = "Animations"; paint = "Paint"; garment = "Garments"; cage = "Cages"; texture = "GarmentTextures" }[$Kind]
@@ -116,6 +123,18 @@ $lines.Add('    "schemaVersion": 1,')
 $lines.Add("    `"kind`": `"$Kind`",")
 switch ($Kind) {
     "static" {
+        if (-not [string]::IsNullOrEmpty($Socket)) {
+            if ($null -eq (Get-ArtSocket $Socket)) {
+                throw "No skeleton in art/Skeletons has the socket '$Socket'; an attachment is held on one, such as main_hand."
+            }
+
+            if ($Roots.Count -gt 0 -and ($Roots.Count -ne 1 -or $Roots[0] -cne "Grip")) {
+                throw "An attachment has one root object, Grip, where it is held; leave out -Roots."
+            }
+
+            $Roots = @("Grip")
+        }
+
         if ($Roots.Count -eq 0 -or $TriangleBudget -le 0) {
             throw "A static asset needs -Roots, the names of its top-level objects, and -TriangleBudget."
         }
@@ -128,6 +147,9 @@ switch ($Kind) {
         }
         $lines.Add("    ],")
         $lines.Add("    `"triangleBudget`": $TriangleBudget,")
+        if (-not [string]::IsNullOrEmpty($Socket)) {
+            $lines.Add("    `"socket`": `"$Socket`",")
+        }
     }
     "animations" {
         $rigManifest = Read-ArtAssetManifest (Resolve-ArtAssetDirectory $Rig)
@@ -390,7 +412,12 @@ Write-Host "Created $relative with asset.json and $name.blend."
 Write-Host "Open it in Blender: & `$env:BLENDER_PATH $relative/$name.blend"
 switch ($Kind) {
     "static" {
-        Write-Host "Model below the roots $($Roots -join ', ') in the Export collection, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Add A New Asset."
+        if (-not [string]::IsNullOrEmpty($Socket)) {
+            Write-Host "Model below Grip in the Export collection, held at the origin in the socket's axes (docs/ART_PIPELINE.md, Attachments), then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make An Attachment."
+        }
+        else {
+            Write-Host "Model below the roots $($Roots -join ', ') in the Export collection, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Add A New Asset."
+        }
     }
     "animations" {
         Write-Host "Make the clips on $($manifest.RootObjects[0]) and add their names to clips in asset.json, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Clip."

@@ -10,6 +10,7 @@ public sealed class ItemCatalogTests
     private static readonly string[] RepresentativeDefinitionIds =
     [
         "ammunition.bronze_arrow",
+        "armor.heater_shield",
         "armor.leather_boots",
         "armor.leather_gloves",
         "armor.leather_jerkin",
@@ -35,6 +36,7 @@ public sealed class ItemCatalogTests
         "potion.minor_healing",
         "quest_item.sealed_letter",
         "tool.starter_pickaxe",
+        "weapon.iron_sword",
         "weapon.training_shortbow"
     ];
 
@@ -56,15 +58,26 @@ public sealed class ItemCatalogTests
         Assert.Equal(1000, catalog.EquipmentSlots.Single(slot => slot.Id == "ammunition").MaximumQuantity);
         Assert.Equal(4, catalog.SecureContainerTiers.Single().SlotCapacity);
         Assert.Equal(200, catalog.Progression.MaximumCharacterLevel);
-        var bow = Assert.Single(catalog.WeaponFamilies);
+        Assert.Equal(2, catalog.WeaponFamilies.Length);
+        var bow = catalog.WeaponFamilies.Single(family => family.Id == "bow");
         Assert.Equal(
             ("bow", CombatStyleIds.Ranged, "arrow", 30f),
             (bow.Id, bow.CombatStyle, bow.AmmunitionFamily, bow.ProjectileSpeed));
+        // A melee family fires nothing and hits at once.
+        var sword = catalog.WeaponFamilies.Single(family => family.Id == "sword");
+        Assert.Equal(
+            (CombatStyleIds.Melee, string.Empty, 0f),
+            (sword.CombatStyle, sword.AmmunitionFamily, sword.ProjectileSpeed));
         var shortbow = Definition(catalog, "weapon.training_shortbow").Weapon;
         Assert.Equal(
             ("bow", DamageTypeIds.Normal, 10, 18),
             (shortbow.WeaponFamily, shortbow.DamageType, shortbow.MinimumDamage, shortbow.MaximumDamage));
         Assert.Equal((2.4f, 10f), (shortbow.AttackIntervalSeconds, shortbow.Range));
+        var ironSword = Definition(catalog, "weapon.iron_sword").Weapon;
+        Assert.Equal(
+            ("sword", DamageTypeIds.Normal, 11, 19),
+            (ironSword.WeaponFamily, ironSword.DamageType, ironSword.MinimumDamage, ironSword.MaximumDamage));
+        Assert.Equal((2.4f, 2.5f), (ironSword.AttackIntervalSeconds, ironSword.Range));
         var arrow = Definition(catalog, "ammunition.bronze_arrow").Ammunition;
         Assert.Equal(("arrow", 5), (arrow.AmmunitionFamily, arrow.DamageBonusPercent));
         Assert.All(catalog.Definitions, definition =>
@@ -187,7 +200,7 @@ public sealed class ItemCatalogTests
         var shortbow = AuthoringDefinition(authoring, "weapon.training_shortbow");
         shortbow.Weapon.MaximumDamage++;
         shortbow.RequiredCharacterLevel = 5;
-        authoring.WeaponFamilies.Single().ProjectileSpeed = 40f;
+        authoring.WeaponFamilies.Single(family => family.Id == "bow").ProjectileSpeed = 40f;
 
         var changed = ItemCatalogCompiler.Compile(authoring);
 
@@ -225,7 +238,7 @@ public sealed class ItemCatalogTests
         var shortbow = AuthoringDefinition(authoring, "weapon.training_shortbow");
         var arrow = AuthoringDefinition(authoring, "ammunition.bronze_arrow");
         var ore = AuthoringDefinition(authoring, "material.iron_ore");
-        var bow = authoring.WeaponFamilies.Single();
+        var bow = authoring.WeaponFamilies.Single(family => family.Id == "bow");
         switch (mutation)
         {
             case "missing-weapon":
@@ -383,7 +396,7 @@ public sealed class ItemCatalogTests
     public void WeaponSecureContainerEligibilityFailsValidation()
     {
         var authoring = ItemCatalogTestData.LoadAuthoring();
-        authoring.Definitions.Single(definition => definition.Category == ItemCategoryIds.Weapon)
+        authoring.Definitions.First(definition => definition.Category == ItemCategoryIds.Weapon)
             .LocationEligibility.SecureContainer = true;
 
         var exception = Assert.Throws<ItemCatalogValidationException>(

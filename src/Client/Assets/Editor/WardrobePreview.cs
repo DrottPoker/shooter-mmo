@@ -138,6 +138,11 @@ namespace Mmorpg.Client.Editor
             get { return appearance.Worn; }
         }
 
+        public IReadOnlyList<BodyAppearanceCatalog.Attachment> Held
+        {
+            get { return appearance.Held; }
+        }
+
         public ClothChainSolver Solver
         {
             get { return solver; }
@@ -150,8 +155,8 @@ namespace Mmorpg.Client.Editor
         }
 
         // Dresses the body in the garments of its catalog with these names, with these paint
-        // layers on its skin; its underwear is always worn.
-        public void Wear(IEnumerable<string> garments, IEnumerable<string> paints = null)
+        // layers on its skin, holding these attachments; its underwear is always worn.
+        public void Wear(IEnumerable<string> garments, IEnumerable<string> paints = null, IEnumerable<string> attachments = null)
         {
             var look = BodyLook.Default;
             foreach (var garment in garments)
@@ -162,6 +167,11 @@ namespace Mmorpg.Client.Editor
             foreach (var paint in paints ?? Enumerable.Empty<string>())
             {
                 look = look.WithPaint(paint, true);
+            }
+
+            foreach (var attachment in attachments ?? Enumerable.Empty<string>())
+            {
+                look = look.WithAttachment(attachment, true);
             }
 
             appearance.ApplyLook(look, materials);

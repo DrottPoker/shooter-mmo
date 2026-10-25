@@ -147,6 +147,8 @@
     "legs",
     "hands",
     "feet",
-    "back"
+    "back",
+    "main_hand",
+    "off_hand"
   ]
 }

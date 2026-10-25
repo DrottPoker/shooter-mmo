@@ -374,6 +374,34 @@ function Read-ArtSkeleton([string]$Name) {
     return $path
 }
 
+function Get-ArtSocket([string]$Socket) {
+    # The skeleton and bone of a socket that its bone names, such as main_hand on Socket_MainHand of
+    # the Humanoid skeleton, or $null when no skeleton definition has it.
+    foreach ($file in @(Get-ChildItem -LiteralPath $script:ArtSkeletonFolder -Filter "*.json" -File | Sort-Object Name)) {
+        $json = Get-Content -Raw -LiteralPath $file.FullName | ConvertFrom-Json
+        foreach ($bone in @($json.bones)) {
+            if ($null -ne $bone.socket -and [string]$bone.socket -ceq $Socket -and -not $bone.deform) {
+                return [pscustomobject]@{ Skeleton = [string]$json.name; Bone = [string]$bone.name }
+            }
+        }
+    }
+
+    return $null
+}
+
+function Get-ArtHeldLibrary([string]$Skeleton) {
+    # The animation library of a skeleton whose bodies hold an attachment in its review: the first
+    # with the clip Idle, with its armature, or $null without one.
+    foreach ($library in @(Get-ArtClipLibraries $Skeleton | Sort-Object Asset)) {
+        if ($library.Clips -ccontains "Idle") {
+            $json = Get-Content -Raw -LiteralPath (Join-Path $script:ArtRepositoryRoot "$($library.Asset)/asset.json") | ConvertFrom-Json
+            return [pscustomobject]@{ SourcePath = $library.SourcePath; Root = [string]@($json.rootObjects)[0] }
+        }
+    }
+
+    return $null
+}
+
 function Read-ArtRigReference([string]$Asset, [string]$Skeleton, [string]$Field) {
     # A skinned asset of the given skeleton that an animation library names: its repository path,
     # its .blend file, its armature, and its manifest path. Its approvals are checked on its own.
@@ -1832,6 +1860,27 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         $triangleBudget = [int]$json.triangleBudget
     }
 
+    # An attachment, such as a weapon or a shield, is a static asset held on a socket of a skeleton,
+    # named as the socket's bone names it, such as main_hand, with one root object Grip where it is
+    # held. A root Grip makes an attachment.
+    $socket = $null
+    if ($null -ne $json.PSObject.Properties['socket']) {
+        $socket = Get-ArtSocket ([string]$json.socket)
+        if ($kind -ne "static") {
+            $problems.Add("only a static asset has a socket")
+        }
+        elseif ($null -eq $socket) {
+            $problems.Add("socket must name a socket of a skeleton in art/Skeletons, such as main_hand")
+        }
+        else {
+            $socket | Add-Member -NotePropertyName Name -NotePropertyValue ([string]$json.socket)
+        }
+    }
+
+    if (($null -ne $json.PSObject.Properties['socket']) -ne (@($roots).Count -eq 1 -and [string]@($roots)[0] -ceq "Grip")) {
+        $problems.Add("an attachment has a socket and one root object, Grip, where it is held, and no other asset has either")
+    }
+
     # A skinned asset and an animation library name their shared skeleton and the animation clips
     # the game plays on it.
     $skeleton = $null
@@ -1944,10 +1993,14 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         elseif ($null -ne $json.export.materials -or $null -ne $json.export.textures) {
             $problems.Add("the export of an animation library has no materials or textures")
         }
-        elseif ($null -eq $clipRecords) {
-            $problems.Add("export.clips must list every clip of the manifest once with its name, frames, and loop")
-        }
         else {
+            # A record of other clips than the manifest's, such as before a clip that was added since,
+            # is stale: the next export replaces it, and the verification reports it until then.
+            if ($null -eq $clipRecords) {
+                $clipRecords = @()
+                $exportProblem = "export.clips must list every clip of the manifest once with its name, frames, and loop; export the library again"
+            }
+
             $export = [ordered]@{
                 sourceSha256 = [string]$json.export.sourceSha256
                 targetSha256 = [string]$json.export.targetSha256
@@ -2055,6 +2108,7 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         TargetPath = Join-Path $script:ArtRepositoryRoot $target
         RootObjects = [string[]]$roots
         TriangleBudget = $triangleBudget
+        Socket = $socket
         Skeleton = $skeleton
         SkeletonPath = $skeletonPath
         Rig = $rig
@@ -2113,6 +2167,10 @@ function Write-ArtAssetManifest($Manifest) {
     $lines.Add("    ],")
     if ($null -ne $Manifest.TriangleBudget) {
         $lines.Add("    `"triangleBudget`": $($Manifest.TriangleBudget),")
+    }
+
+    if ($null -ne $Manifest.Socket) {
+        $lines.Add("    `"socket`": `"$($Manifest.Socket.Name)`",")
     }
 
     if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {

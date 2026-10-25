@@ -152,8 +152,9 @@ Bronze Arrow (value 1), Minor Healing Potion (25), Cooked Trout (10), Starter
 Pickaxe (50), and every item that shows a garment except the Leather Jerkin: the
 Linen Shirt (12), Long-Sleeved Linen Shirt (16), Net Shirt (8), Wool Trousers
 (15), Leather Boots (30), Leather Gloves (18), the Wool Robe (40), Wool Hood (12),
-and Wool Cloak (35) with their blue and red ones (60, 18, and 50), and the Nasal
-Helm (60). It sells at `10000` and buys every category except quest items at
+and Wool Cloak (35) with their blue and red ones (60, 18, and 50), the Nasal
+Helm (60), the Iron Sword (120), and the Heater Shield (80). It sells at `10000`
+and buys every category except quest items at
 `4000`. Selling three Iron Ore of value 10 there pays 12, and selling one Wolf
 Pelt of value 15 pays 6.
 
@@ -276,6 +277,12 @@ garments. The Item Catalog window edits them as comma-separated lists, and
 `hands`, `feet`, or `back` slot shows garments that every body's appearance
 catalog has, in its own slot, with no more dye colors than they have dye
 channels; see [Equipment Visuals Design](../../docs/EQUIPMENT_VISUALS_DESIGN.md#items).
+Since format 4, `attachment` names the attachment an item holds on the socket of
+its equipment slot, such as `IronSword` for the Iron Sword in `main_hand`, or is
+empty. The Item Catalog window edits it as `Attachment`, and
+`ItemAttachmentTests` requires that every body's appearance catalog has it and
+that every equipment slot of the item is its socket; see
+[Attachments](../../docs/EQUIPMENT_VISUALS_DESIGN.md#attachments).
 Icon files are
 client-owned assets below `Assets/Content/Items/Icons` and use one Sprite per
 file. The catalog has a separate

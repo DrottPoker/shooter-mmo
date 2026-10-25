@@ -50,6 +50,23 @@ public sealed class CharacterLookTests
     }
 
     [Fact]
+    public void ACrowdOfBotsHoldsWeaponsAndShieldsButNothingInASlotAnotherItemBlocks()
+    {
+        var items = ItemCatalogTestData.CompileFixture();
+        var looks = new DevelopmentBotLooks(Catalog, items);
+        var blocked = items.Definitions!.ToDictionary(definition => definition.Id, definition => definition.BlockedEquipmentSlots ?? []);
+
+        var crowd = Enumerable.Range(1, 64).Select(Id).Select(looks.For).ToArray();
+
+        Assert.All(crowd, look => Assert.DoesNotContain(look.Outfit!, item =>
+            look.Outfit!.Any(other => blocked[other.DefinitionId].Contains(item.EquipmentSlotId))));
+        Assert.Contains(crowd, look => look.Outfit!.Any(item => item.EquipmentSlotId == "main_hand"));
+        Assert.Contains(crowd, look => look.Outfit!.Any(item => item.EquipmentSlotId == "off_hand"));
+        // The fixture bow blocks the off hand, so a bot with it holds nothing there.
+        Assert.Contains(crowd, look => look.Outfit!.Any(item => item.DefinitionId == "fixture.bow"));
+    }
+
+    [Fact]
     public void TheStoreKeepsEachLookFencedByItsSessionAndVersionsEveryChange()
     {
         var store = new CharacterLookStore();

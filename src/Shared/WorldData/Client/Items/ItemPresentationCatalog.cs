@@ -10,9 +10,10 @@ namespace Mmorpg.WorldData.Items.Presentation
 {
     public static class ItemPresentationCatalogFormat
     {
-        // Version 2 replaced the Resources icon path with an Addressables icon address, and
-        // version 3 added the garments an item shows and its dye colors.
-        public const int Version = 3;
+        // Version 2 replaced the Resources icon path with an Addressables icon address, version 3
+        // added the garments an item shows and its dye colors, and version 4 the attachment it
+        // holds on a socket.
+        public const int Version = 4;
 
         // The dye channels a garment texture may have, and so the most dye colors of an item.
         public const int MaximumDyes = 3;
@@ -53,6 +54,10 @@ namespace Mmorpg.WorldData.Items.Presentation
         // The colors of its garments' dye channels, "#RRGGBB" in channel order; none for their
         // natural colors.
         public string[] dyes = Array.Empty<string>();
+
+        // The attachment it shows held on the socket of its equipment slot, by the name of its art
+        // asset, such as IronSword; empty for an item that shows none.
+        public string attachment = string.Empty;
     }
 
     public sealed class ItemPresentationCatalogValidationException : Exception
@@ -218,6 +223,12 @@ namespace Mmorpg.WorldData.Items.Presentation
                     errors.Add(path + " has lowered garments or dyes but shows no garments.");
                 }
 
+                var attachment = NormalizeOptional(entry.attachment);
+                if (attachment.Any(character => character > 127 || !char.IsLetterOrDigit(character)))
+                {
+                    errors.Add(path + ".attachment must name an attachment with letters and digits.");
+                }
+
                 result.Add(new ItemPresentationEntry
                 {
                     definitionId = definitionId,
@@ -227,7 +238,8 @@ namespace Mmorpg.WorldData.Items.Presentation
                     prefabPresentationKey = NormalizeOptional(entry.prefabPresentationKey),
                     garments = garments,
                     loweredGarments = loweredGarments,
-                    dyes = dyes
+                    dyes = dyes,
+                    attachment = attachment
                 });
             }
 
@@ -343,6 +355,7 @@ namespace Mmorpg.WorldData.Items.Presentation
                     WriteList(writer, entry.garments);
                     WriteList(writer, entry.loweredGarments);
                     WriteList(writer, entry.dyes);
+                    writer.Write(entry.attachment);
                 }
 
                 writer.Flush();

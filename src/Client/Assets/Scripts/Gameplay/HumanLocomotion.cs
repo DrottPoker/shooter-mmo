@@ -37,6 +37,28 @@ namespace Mmorpg.Client.Gameplay
         public const string DeathClip = "Death";
         public const float DeathCrossfadeSeconds = 0.15f;
 
+        // While a socket in a hand holds an attachment, such as a sword, the fingers of that hand
+        // close around its grip: the clip Grip plays in the state Grip on a layer of that hand's
+        // fingers only, at full weight, over every other clip.
+        public const string GripClip = "Grip";
+        public const string GripState = "Grip";
+        public const string MainHandGripLayer = "MainHandGrip";
+        public const string OffHandGripLayer = "OffHandGrip";
+
+        // The grip layer of a socket bone, or null for a socket that is not in a hand.
+        public static string GripLayerFor(string socketBone)
+        {
+            switch (socketBone)
+            {
+                case "Socket_MainHand":
+                    return MainHandGripLayer;
+                case "Socket_OffHand":
+                    return OffHandGripLayer;
+                default:
+                    return null;
+            }
+        }
+
         public enum LifeChange
         {
             None,

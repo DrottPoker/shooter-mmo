@@ -115,7 +115,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 controller.parameters.Single(parameter => parameter.name == HumanLocomotion.RateParameter).defaultFloat,
                 Is.EqualTo(1f));
-            Assert.That(controller.layers, Has.Length.EqualTo(1));
+            // The locomotion, then a grip layer for each hand.
+            Assert.That(controller.layers, Has.Length.EqualTo(3));
 
             var machine = controller.layers[0].stateMachine;
             var states = machine.states.Select(child => child.state).ToDictionary(state => state.name);
@@ -172,6 +173,35 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(back.destinationState, Is.SameAs(states[HumanLocomotion.IdleState]));
             Assert.That(back.hasExitTime, Is.False);
             AssertCondition(back, AnimatorConditionMode.IfNot, HumanLocomotion.DeadParameter);
+        }
+
+        [TestCase(1, HumanLocomotion.MainHandGripLayer, AvatarMaskBodyPart.RightFingers)]
+        [TestCase(2, HumanLocomotion.OffHandGripLayer, AvatarMaskBodyPart.LeftFingers)]
+        public void TheFingersOfAHandThatHoldsSomethingCloseAroundItsGrip(int index, string name, AvatarMaskBodyPart fingers)
+        {
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+            var layer = controller.layers[index];
+            Assert.That(layer.name, Is.EqualTo(name));
+            // PlayerBodyAppearance turns the layer on while the hand's socket holds an attachment.
+            Assert.That(layer.defaultWeight, Is.EqualTo(0f));
+            Assert.That(layer.blendingMode, Is.EqualTo(AnimatorLayerBlendingMode.Override));
+            Assert.That(layer.iKPass, Is.False);
+            Assert.That(layer.avatarMask, Is.Not.Null, name);
+            foreach (AvatarMaskBodyPart part in System.Enum.GetValues(typeof(AvatarMaskBodyPart)))
+            {
+                if (part != AvatarMaskBodyPart.LastBodyPart)
+                {
+                    Assert.That(layer.avatarMask.GetHumanoidBodyPartActive(part), Is.EqualTo(part == fingers), name + " " + part);
+                }
+            }
+
+            var state = layer.stateMachine.states.Single().state;
+            Assert.That(state.name, Is.EqualTo(HumanLocomotion.GripState));
+            Assert.That(layer.stateMachine.defaultState, Is.SameAs(state));
+            AssertClip(state.motion, HumanLocomotion.GripClip);
+            var clip = (AnimationClip)state.motion;
+            Assert.That(clip.isHumanMotion, Is.True);
+            Assert.That(clip.isLooping, Is.True);
         }
 
         [Test]
