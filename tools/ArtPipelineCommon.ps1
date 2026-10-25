@@ -142,7 +142,9 @@ function Test-ArtNumber($Value) {
 function ConvertTo-ArtMaterialRecords($Records) {
     # Returns the material records as one array, or $null when the list is empty or any entry
     # is missing, malformed, or a duplicate, so no invalid entry can drop out unnoticed. A
-    # painted material names its texture in baseMap and has a white baseColor.
+    # painted material names its texture in baseMap and has a white baseColor. A dyeable garment
+    # texture's material names its dye mask in dyeMap and the natural color of each of its one to
+    # three channels in dyeColors.
     $result = New-Object System.Collections.Generic.List[object]
     $names = New-Object System.Collections.Generic.HashSet[string]
     foreach ($record in @($Records)) {
@@ -161,6 +163,20 @@ function ConvertTo-ArtMaterialRecords($Records) {
             }
         }
 
+        $dyeMap = $null
+        $dyeColors = @()
+        if ($null -ne $record.PSObject.Properties['dyeMap']) {
+            $dyeMap = [string]$record.dyeMap
+            $dyeColors = @($record.dyeColors | ForEach-Object { [string]$_ })
+            if ($null -eq $baseMap -or $dyeMap -cne "${baseMap}_Dye" -or $dyeColors.Count -lt 1 -or $dyeColors.Count -gt 3 -or
+                @($dyeColors | Where-Object { $_ -cnotmatch '^#[0-9A-F]{6}$' }).Count -gt 0) {
+                return $null
+            }
+        }
+        elseif ($null -ne $record.PSObject.Properties['dyeColors']) {
+            return $null
+        }
+
         $numbers = @()
         foreach ($field in @("metallic", "smoothness")) {
             $value = $record.$field
@@ -177,6 +193,11 @@ function ConvertTo-ArtMaterialRecords($Records) {
         }
         if ($null -ne $baseMap) {
             $material.baseMap = $baseMap
+        }
+
+        if ($null -ne $dyeMap) {
+            $material.dyeMap = $dyeMap
+            $material.dyeColors = [string[]]$dyeColors
         }
 
         $material.metallic = $numbers[0]
@@ -538,6 +559,13 @@ function Add-ArtMaterialLines($Lines, $Materials, [string]$Comma) {
         if ($material.Contains("baseMap")) {
             $Lines.Add("                `"baseMap`": `"$($material.baseMap)`",")
         }
+
+        if ($material.Contains("dyeMap")) {
+            $dyeColors = @($material.dyeColors | ForEach-Object { '"' + $_ + '"' }) -join ", "
+            $Lines.Add("                `"dyeMap`": `"$($material.dyeMap)`",")
+            $Lines.Add("                `"dyeColors`": [$dyeColors],")
+        }
+
         $Lines.Add("                `"metallic`": $(Format-ArtNumber $material.metallic),")
         $Lines.Add("                `"smoothness`": $(Format-ArtNumber $material.smoothness)")
         $Lines.Add("            }$separator")
@@ -1017,8 +1045,8 @@ function Read-ArtGarmentManifest([string]$AssetDirectory, $Json, [string]$Where,
         $problems.Add("cloth must be null or one of: $($script:ArtGarmentCloth -join ', ')")
     }
 
-    if (-not ($Json.dyes -is [int] -or $Json.dyes -is [long]) -or $Json.dyes -ne 0) {
-        $problems.Add("dyes must be 0; dye channels come with the garment shader")
+    if (-not ($Json.dyes -is [int] -or $Json.dyes -is [long]) -or $Json.dyes -lt 0 -or $Json.dyes -gt 3) {
+        $problems.Add("dyes must be the number of dye channels its textures may use, 0 to 3")
     }
 
     $triangleBudget = $null
@@ -1637,10 +1665,11 @@ function Read-ArtTextureManifest([string]$AssetDirectory, $Json, [string]$Where,
             $problems.Add("export.clipSources must list, for a texture with masks, every animation library its masks were checked in once, with its library (art/<Category>/<Name>) and the sourceSha256 of its export, and be empty without masks")
         }
         elseif ($null -eq $materials -or $materials.Count -ne 1 -or $materials[0].name -cne "M_Garment_$name" -or $materials[0].baseMap -cne "T_Garment_$name") {
-            $problems.Add("export.materials must hold the one material M_Garment_$name with its baseMap T_Garment_$name, metallic, and smoothness")
+            $problems.Add("export.materials must hold the one material M_Garment_$name with its baseMap T_Garment_$name, metallic, and smoothness, and for a dyeable texture its dyeMap T_Garment_${name}_Dye and dyeColors")
         }
-        elseif ($null -eq $textures -or $textures.Count -ne 1 -or $textures[0].name -cne "T_Garment_$name") {
-            $problems.Add("export.textures must hold the image T_Garment_$name with its target ($script:ArtGarmentTextureFolder/T_Garment_$name.png) and sha256")
+        elseif ($null -eq $textures -or
+            ((@($textures | ForEach-Object { $_.name }) -join ",") -cne (@("T_Garment_$name") + @($materials[0].dyeMap | Where-Object { $null -ne $_ }) -join ","))) {
+            $problems.Add("export.textures must hold the image T_Garment_$name, and the dye mask T_Garment_${name}_Dye of a dyeable texture, each with its target ($script:ArtGarmentTextureFolder/<name>.png) and sha256")
         }
         else {
             $export = [ordered]@{
@@ -2380,7 +2409,8 @@ function Get-ArtValidationArguments($Manifest, [string]$Stage) {
     # its masks in its template's band, checked in the clips of the skeleton's libraries.
     if ($Manifest.Kind -eq "texture") {
         return @("--kind", "texture", "--roots", ($Manifest.RootObjects -join ","), "--stage", $Stage,
-            "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath) +
+            "--texture", $Manifest.Name, "--garment", $Manifest.Garment.Name, "--garment-file", $Manifest.Garment.SourcePath,
+            "--dyes", [string]$Manifest.Garment.Dyes) +
             (Get-ArtGarmentCoverArguments $Manifest.Garment) + (Get-ArtGarmentClipArguments $Manifest)
     }
 

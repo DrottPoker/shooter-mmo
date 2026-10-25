@@ -83,15 +83,27 @@ ORDER = ("skirt", "cloak", "hood")
 
 def worn(arm: bpy.types.Object, garments: list[bpy.types.Object]) -> tuple[list[str], dict]:
     """The kinds of chains garments worn together hang on, from the inside out, and the reaches of the
-    cloth on each kind, of the outermost garment on it, as the runtime solver measures them when the
-    garments go on."""
-    kinds, reach = [], {}
+    cloth on each kind, as the runtime solver measures them when the garments go on: of the garment
+    whose cloth hangs on the kind, the one with the most vertices that the kind's bones move most, not
+    another that only blends into its weights, such as a hood's collar lying on a cloak."""
+    kinds, hanging = [], {}
     for obj in garments:
         for kind in kinds_of(obj):
             if kind not in kinds:
                 kinds.append(kind)
-            reach[kind] = reaches(arm, obj, kind)
-    return kinds, reach
+            count = _hanging_vertices(obj, kind)
+            if kind not in hanging or count > hanging[kind][0]:
+                hanging[kind] = (count, obj)
+    return kinds, {kind: reaches(arm, obj, kind) for kind, (_count, obj) in hanging.items()}
+
+
+def _hanging_vertices(obj: bpy.types.Object, kind: str) -> int:
+    """How many of a garment's vertices the bones of a kind's chains move most."""
+    names = [g.name for g in obj.vertex_groups]
+    chain = [index for index, name in enumerate(names) if name.startswith(PREFIXES[kind])]
+    weights = bodies.weights_of(obj, names)
+    moved = weights.max(axis=1) > 0.0
+    return int((moved & np.isin(weights.argmax(axis=1), chain)).sum())
 
 
 def kinds_of(obj: bpy.types.Object) -> list[str]:

@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "clothing",
+  "defaultPolicies": [ ],
+  "displayName": "Wool Robe",
+  "equipmentSlots": [
+    "body"
+  ],
+  "id": "clothing.wool_robe",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 120,
+  "value": 40,
+  "weapon": null
+}

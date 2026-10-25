@@ -461,29 +461,19 @@ namespace Mmorpg.Client.Ui
                 }
             }
 
-            // So are garments, until items show them. Trying one on takes off the other garment of
-            // its visual slot, since a body wears one per slot.
-            foreach (var garment in catalog.Garments)
+            // The hair is part of the look, a garment of the hair slot or none; every other garment
+            // comes from the equipped items.
+            var hairs = new List<BodyAppearanceCatalog.Garment> { null };
+            hairs.AddRange(catalog.Garments.Where(garment => garment != null && garment.Slot == BodyAppearanceCatalog.Garment.HairSlot));
+            if (hairs.Count > 1)
             {
-                if (garment == null)
+                var current = Math.Max(hairs.FindIndex(hair => hair != null && bodyLook.Look.HasGarment(hair.Name)), 0);
+                var step = StepButtons("Your hair: " + (hairs[current] != null ? hairs[current].Name : "none") + " (" + RuleText(AppearanceRules.Hair) + ")");
+                if (step != 0)
                 {
-                    continue;
-                }
-
-                var worn = bodyLook.Look.HasGarment(garment.Name);
-                var wear = GUILayout.Toggle(worn, " Try on garment: " + garment.Name);
-                if (wear != worn)
-                {
-                    var look = bodyLook.Look.WithGarment(garment.Name, wear);
-                    if (wear)
-                    {
-                        foreach (var other in catalog.OthersInSlot(garment))
-                        {
-                            look = look.WithGarment(other.Name, false);
-                        }
-                    }
-
-                    bodyLook.Look = look;
+                    var look = bodyLook.Look.WithoutGarments();
+                    var chosen = hairs[(current + step + hairs.Count) % hairs.Count];
+                    bodyLook.Look = chosen != null ? look.WithGarment(chosen.Name, true) : look;
                 }
             }
         }

@@ -6,9 +6,9 @@ namespace Mmorpg.Client.Gameplay
 {
     // The materials player bodies draw with when they look different from their model: a copy
     // of a body material with another painted image, such as another face, paint layers over
-    // its skin, such as a tattoo or underwear, a tint, or any of them together, shared by
-    // every body that looks the same. A property block on each body kept every body
-    // out of the SRP Batcher, so a dense crowd paid a full draw call setup per player. The
+    // its skin, such as a tattoo or underwear, a tint, a garment's dye colors, or any of them
+    // together, shared by every body that looks the same. A property block on each body kept every
+    // body out of the SRP Batcher, so a dense crowd paid a full draw call setup per player. The
     // owner destroys the copies.
     public sealed class PlayerBodyMaterials : IDisposable
     {
@@ -20,12 +20,19 @@ namespace Mmorpg.Client.Gameplay
         private static readonly int[] PaintMapIds = PaintIds("_PaintMap");
         private static readonly int[] PaintSurfaceIds = PaintIds("_PaintSurface");
         private static readonly int[] PaintRectIds = PaintIds("_PaintRect");
+        private static readonly int DyeCountId = Shader.PropertyToID("_DyeCount");
+        private static readonly int[] DyeColorIds = DyeIds();
 
         private static readonly IReadOnlyList<BodyAppearanceCatalog.Paint> NoPaints =
             new BodyAppearanceCatalog.Paint[0];
 
-        private readonly Dictionary<(Material Source, Texture BaseMap, Color Tint, string Paints), Material> materials =
-            new Dictionary<(Material Source, Texture BaseMap, Color Tint, string Paints), Material>();
+        private static readonly IReadOnlyList<Color> NoDyes = new Color[0];
+
+        private readonly Dictionary<(Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes), Material> materials =
+            new Dictionary<(Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes), Material>();
+
+        // The dye channels the garment shader, Mmorpg/Garment, has.
+        public const int MaximumDyes = 3;
 
         // The paint layers the skin shader, Mmorpg/Character Skin, draws over its base map.
         public const int MaximumPaintLayers = 4;
@@ -52,19 +59,29 @@ namespace Mmorpg.Client.Gameplay
         // draws with the skin shader; another shader ignores them.
         public Material For(Material source, Texture baseMap, Color tint, IReadOnlyList<BodyAppearanceCatalog.Paint> paints)
         {
+            return For(source, baseMap, tint, paints, NoDyes);
+        }
+
+        // Also with the colors of a garment's dye channels in place of its natural colors, when the
+        // source draws with the garment shader and has those channels; colors beyond its channels
+        // are left out.
+        public Material For(Material source, Texture baseMap, Color tint, IReadOnlyList<BodyAppearanceCatalog.Paint> paints,
+            IReadOnlyList<Color> dyes)
+        {
             if (source == null)
             {
                 throw new ArgumentNullException(nameof(source));
             }
 
             paints = paints != null && source.HasProperty(PaintCountId) ? paints : NoPaints;
-            if (baseMap == null && tint == Color.white && paints.Count == 0)
+            var dyeKey = DyeKeyOf(source, dyes);
+            if (baseMap == null && tint == Color.white && paints.Count == 0 && dyeKey.Length == 0)
             {
                 return source;
             }
 
             var paintKey = PaintKeyOf(paints);
-            var key = (source, baseMap, tint, paintKey);
+            var key = (source, baseMap, tint, paintKey, dyeKey);
             if (!materials.TryGetValue(key, out var material) || material == null)
             {
                 material = new Material(source)
@@ -72,9 +89,11 @@ namespace Mmorpg.Client.Gameplay
                     name = source.name
                         + (baseMap != null ? " " + baseMap.name : string.Empty)
                         + (paintKey.Length > 0 ? " " + paintKey : string.Empty)
+                        + (dyeKey.Length > 0 ? " " + dyeKey : string.Empty)
                         + (tint != Color.white ? " " + ColorUtility.ToHtmlStringRGB(tint) : string.Empty)
                 };
                 SetPaints(material, paints);
+                SetDyes(material, dyes, dyeKey);
                 if (baseMap != null)
                 {
                     SetTexture(material, BaseMapId, baseMap);
@@ -120,6 +139,53 @@ namespace Mmorpg.Client.Gameplay
             }
 
             return ids;
+        }
+
+        private static int[] DyeIds()
+        {
+            var ids = new int[MaximumDyes];
+            for (var index = 0; index < ids.Length; index++)
+            {
+                ids[index] = Shader.PropertyToID("_DyeColor" + (index + 1));
+            }
+
+            return ids;
+        }
+
+        // The dye colors the source takes, RRGGBB joined by dots, empty when it takes none: a
+        // material without dye channels, or colors equal to its natural ones, keeps its own.
+        private static string DyeKeyOf(Material source, IReadOnlyList<Color> dyes)
+        {
+            if (dyes == null || dyes.Count == 0 || !source.HasProperty(DyeCountId))
+            {
+                return string.Empty;
+            }
+
+            var count = Mathf.Min(dyes.Count, Mathf.Min(MaximumDyes, Mathf.RoundToInt(source.GetFloat(DyeCountId))));
+            var differs = false;
+            var key = string.Empty;
+            for (var index = 0; index < count; index++)
+            {
+                var color = ColorUtility.ToHtmlStringRGB(dyes[index]);
+                differs |= color != ColorUtility.ToHtmlStringRGB(source.GetColor(DyeColorIds[index]));
+                key += (index > 0 ? "." : string.Empty) + color;
+            }
+
+            return differs ? key : string.Empty;
+        }
+
+        private static void SetDyes(Material material, IReadOnlyList<Color> dyes, string dyeKey)
+        {
+            if (dyeKey.Length == 0)
+            {
+                return;
+            }
+
+            var count = dyeKey.Split('.').Length;
+            for (var index = 0; index < count; index++)
+            {
+                material.SetColor(DyeColorIds[index], dyes[index]);
+            }
         }
 
         private static string PaintKeyOf(IReadOnlyList<BodyAppearanceCatalog.Paint> paints)

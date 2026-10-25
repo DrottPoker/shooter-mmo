@@ -17,7 +17,8 @@ namespace Mmorpg.Client.Editor
     // existing material is never changed, so a material whose Blender look changed is updated by
     // hand from its record; ArtModelImportTests compares every material with its record. Only a
     // Lit material that a paint layer starts to paint, such as a face that gets a scar, takes the
-    // CharacterSkin shader, which keeps every Lit value.
+    // CharacterSkin shader, which keeps every Lit value, and a garment texture's material takes the
+    // dye mask and natural dye colors of its record, which the pipeline owns like the base map.
     public static class ArtMaterialCreator
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Create Missing Materials";
@@ -34,12 +35,14 @@ namespace Mmorpg.Client.Editor
         {
             var created = CreateMissingMaterials();
             var painted = GiveSkinShaderToPaintedMaterials();
-            Debug.Log(created.Count == 0 && painted.Count == 0
+            var dyed = GiveDyesToGarmentMaterials();
+            Debug.Log(created.Count == 0 && painted.Count == 0 && dyed.Count == 0
                 ? "Every exported art material has a project material."
                 : string.Join(" ", new[]
                 {
                     created.Count > 0 ? "Created " + string.Join(", ", created) + "." : string.Empty,
                     painted.Count > 0 ? "Gave " + string.Join(", ", painted) + " the skin shader for their paint layers." : string.Empty,
+                    dyed.Count > 0 ? "Gave " + string.Join(", ", dyed) + " the dyes of their textures." : string.Empty,
                 }.Where(text => text.Length > 0)));
         }
 
@@ -137,9 +140,101 @@ namespace Mmorpg.Client.Editor
             if (manifest.IsGarment || manifest.IsTexture)
             {
                 SetGarmentSurface(material);
+                SetDyes(material, manifest, record);
             }
 
             return material;
+        }
+
+        // Gives every garment material the dye mask and natural dye colors of its export record, so a
+        // texture that becomes dyeable, or whose natural colors change, draws as approved. Returns the
+        // paths of the changed materials. The dyes come from the pipeline like the base map, so they
+        // are set on existing materials too.
+        public static List<string> GiveDyesToGarmentMaterials()
+        {
+            var changed = new List<string>();
+            foreach (var manifest in ArtAssetManifests.ManifestPaths().Select(ArtAssetManifests.Load)
+                         .Where(manifest => manifest.IsExported && manifest.IsTexture))
+            {
+                foreach (var record in manifest.export.materials)
+                {
+                    var material = ArtModelImportRules.FindProjectMaterial(record.name);
+                    if (material == null || material.shader == null || material.shader.name != GarmentShader ||
+                        HasDyes(material, manifest, record))
+                    {
+                        continue;
+                    }
+
+                    SetDyes(material, manifest, record);
+                    EditorUtility.SetDirty(material);
+                    changed.Add(AssetDatabase.GetAssetPath(material));
+                }
+            }
+
+            AssetDatabase.SaveAssets();
+            return changed;
+        }
+
+        // The dye mask the record names, or null for a texture that is not dyeable.
+        public static Texture2D DyeMaskOf(ArtAssetManifest manifest, ArtMaterialRecord record)
+        {
+            if (string.IsNullOrEmpty(record.dyeMap))
+            {
+                return null;
+            }
+
+            var texture = manifest.export.textures.FirstOrDefault(t => t.name == record.dyeMap);
+            var mask = texture != null ? AssetDatabase.LoadAssetAtPath<Texture2D>(ArtAssetManifests.ToUnityPath(texture.target)) : null;
+            if (mask == null)
+            {
+                throw new System.InvalidOperationException(
+                    manifest.path + ": the dye mask " + record.dyeMap + " of " + record.name + " is not imported.");
+            }
+
+            return mask;
+        }
+
+        // Whether a material already has the record's dye mask, channels, and natural colors.
+        public static bool HasDyes(Material material, ArtAssetManifest manifest, ArtMaterialRecord record)
+        {
+            var mask = DyeMaskOf(manifest, record);
+            var count = mask != null ? record.dyeColors.Length : 0;
+            if (material.GetTexture("_DyeMask") != mask || !Mathf.Approximately(material.GetFloat("_DyeCount"), count))
+            {
+                return false;
+            }
+
+            for (var channel = 0; channel < count; channel++)
+            {
+                if (!ColorUtility.TryParseHtmlString(record.dyeColors[channel], out var natural) ||
+                    material.GetColor("_DyeColor" + (channel + 1)) != natural)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // The dye mask, the number of its channels, and the natural color of each, which the undyed
+        // garment wears; channels the texture does not use stay white.
+        private static void SetDyes(Material material, ArtAssetManifest manifest, ArtMaterialRecord record)
+        {
+            var mask = DyeMaskOf(manifest, record);
+            var count = mask != null ? record.dyeColors.Length : 0;
+            material.SetTexture("_DyeMask", mask);
+            material.SetFloat("_DyeCount", count);
+            for (var channel = 1; channel <= 3; channel++)
+            {
+                var color = Color.white;
+                if (channel <= count && !ColorUtility.TryParseHtmlString(record.dyeColors[channel - 1], out color))
+                {
+                    throw new System.InvalidOperationException(
+                        manifest.path + ": " + record.name + " has no valid dye color " + channel + ".");
+                }
+
+                material.SetColor("_DyeColor" + channel, color);
+            }
         }
 
         // An opaque surface cut at the garment's alpha and drawn from both sides, as the URP Lit

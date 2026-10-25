@@ -45,14 +45,16 @@ layers from the bottom up:
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
-| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, `WorldSceneContext` | Api, Core, Worlds, Networking |
+| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, `WorldSceneContext` | Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, the world menu and its providers, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
 | `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
 | `Mmorpg.Client.Ui` | Every panel including the combat HUD, drag and drop, `ClientOperationState` | Every row above it |
 | `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | Every row above it |
 
-Ui is the top feature area; only the App composition root, which creates the
-panels, sits above it. Ui and App reference Combat: the combat HUD and the
+Gameplay and App also reference the shared `Mmorpg.WorldData.Client`, the item
+presentation catalog, so a body reads the garments of the items it wears without
+the inventory's assembly. Ui is the top feature area; only the App composition
+root, which creates the panels, sits above it. Ui and App reference Combat: the combat HUD and the
 inventory's live arrow count read its state. Each namespace
 equals its assembly name. Areas that read `ClientSession` reference Api as
 well, because the session caches Api contracts. The Editor-only
@@ -795,7 +797,7 @@ GameService authority.
 The equipment column lays the catalog equipment slots out like a paper doll in
 three columns: tool, head, and Bag on top, ammunition, neck, and hands below
 them, main hand, body, and off hand in the middle, the two rings beside legs,
-and feet at the bottom. `EquipmentPaperDollLayout` owns these positions and
+and back and feet at the bottom. `EquipmentPaperDollLayout` owns these positions and
 appends any slot it does not know, such as one added to the catalog later, in
 extra rows. Every slot in every module shares one size, fitted to five columns
 in the character column. An occupied slot shows the item name, a category color
@@ -1430,7 +1432,7 @@ describes, in `PlayerBodyMeshes`:
 The combined mesh is shared by every body with the same parts, garments,
 garment materials, and blend shapes taken. A body wears one garment per visual slot, such as one chest
 piece: of two of a slot that its look names, the first in the catalog is worn,
-and trying one on in F2 or the Wardrobe takes off the other. It shows its paint
+and trying one on in the Wardrobe takes off the other. It shows its paint
 layers by `AppearanceRules`, as
 [The Look On The Skin](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-skin)
 describes: `BodyAppearanceCatalog.ShownPaints` takes of each category and slot
@@ -1444,10 +1446,33 @@ three dye channels, cut at alpha 0.5 and drawn from both sides; see
 `ClothChainSolver`, and a garment with loose cloth lets it move the chains of its
 profile: a robe the skirt chains, a cloak the cloak chains, and a hood the hood
 chain. In the Editor, `MMORPG > Tools > Art Pipeline > Wardrobe` shows a body in
-chosen garments playing its clips, and `WardrobePreviewTests` covers it. Until items show garments, the Presentation section of the World
-Debug panel has `Try on garment: <Name>` for every garment of the local body's
-catalog. Other players and bots wear none, and a corpse shows the default body
-model in its underwear.
+chosen garments playing its clips, and `WardrobePreviewTests` covers it.
+
+Items show their garments, as
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#items) describes. The
+item presentation catalog names the garments of every item and their dye
+colors, and `EquipmentGarments.Dress` dresses a look in the garments of the
+items it wears: it keeps the look's hair, the one garment of the `hair` slot that
+the look itself names, takes off every other garment the look names, and puts on
+the garments of the equipped items in their dye colors, one per visual slot, the
+garment of the item in the equipment slot of the visual slot's name first, and
+the lowered garments of a lowered item. The local player wears its equipment as
+its inventory shows it, with its predicted moves, so its body changes as soon
+as an item moves: `ClientBootstrap` keeps a `PlayerEquipment` of the equipped
+items and the presentation catalog up to date from the inventory state and
+passes it to `WorldSceneContext`, which dresses the look of the World Debug
+panel in it whenever either changes. A look names the dye colors of a dyed
+garment in its key, such as `Garment=WoolCloak@2B4364`, and the garment then
+draws with a copy of its texture's material in those colors, from
+`PlayerBodyMaterials`, shared by every body in the same colors; a garment in its
+natural colors, or without dye channels, draws with the material itself, so
+only the colors and not the mesh decide the copy. The Presentation section of
+the World Debug panel has `Your hair: <Name>` with `none` among the choices,
+since hair is part of the look. Other players and bots wear no garments yet, and
+a corpse shows the default body model in its underwear. `ItemGarmentTests`
+covers the garments of every item on every body, dressing a look, the rule of
+one garment per visual slot, the dyed materials, and the presentation catalog's
+rules.
 `PlayerBodyGarmentTests` covers what a worn garment hides and adds, layers, hidden
 slots, pull-in, sharing, and hair that headwear hides, compresses, or leaves.
 

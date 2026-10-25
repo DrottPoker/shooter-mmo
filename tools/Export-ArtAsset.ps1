@@ -189,12 +189,15 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
                 $texture = $_.Substring("ART_TEXTURE ".Length) | ConvertFrom-Json
                 [pscustomobject]@{ name = $texture.name; target = Get-ArtRelativePath $texture.path; sha256 = Get-ArtFileSha256 $texture.path }
             }) $folder
-    if ($null -eq $materials -or $null -eq $textures -or $textures.Count -ne 1) {
+    # The image, and the dye mask of a dyeable texture, which its material names.
+    $expected = @("T_Garment_$($Manifest.Name)") + @($materials | Where-Object { $null -ne $_ -and $_.Contains("dyeMap") } | ForEach-Object { $_.dyeMap })
+    if ($null -eq $materials -or $null -eq $textures -or (@($textures | ForEach-Object { $_.name }) -join ",") -cne ($expected -join ",")) {
         throw "Blender reported invalid material or texture records for $($Manifest.Name)."
     }
 
     if ($null -ne $Manifest.Export) {
         Remove-ArtStaleFiles @($Manifest.Export.masks | Where-Object { $null -ne $_ } | ForEach-Object { $_.data }) @($masks | ForEach-Object { $_.data })
+        Remove-ArtStaleFiles @($Manifest.Export.textures | ForEach-Object { $_.target }) @($textures | ForEach-Object { $_.target })
     }
 
     $Manifest.Export = [ordered]@{
@@ -211,7 +214,7 @@ function Export-ArtTexture([string]$Blender, $Manifest, [string]$SourceSha256) {
     }
 
     $maskNote = if ($masks.Count -gt 0) { " and its masks $(@($masks | ForEach-Object { $_.data }) -join ', ')" } else { "" }
-    Write-Host "Exported $($Manifest.Name) to $($textures[0].target) with its material $($materials[0].name)$maskNote."
+    Write-Host "Exported $($Manifest.Name) to $(@($textures | ForEach-Object { $_.target }) -join ', ') with its material $($materials[0].name)$maskNote."
 }
 
 function Export-ArtGarment([string]$Blender, $Manifest, [string]$SourceSha256) {

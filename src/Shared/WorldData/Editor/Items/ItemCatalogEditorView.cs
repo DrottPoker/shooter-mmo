@@ -746,6 +746,11 @@ namespace Mmorpg.WorldData.Editor.Items
             section.Add(form.Text("Localization Key", "presentation.localizationKey", entry => PresentationOf(entry)?.localizationKey, (entry, value) => SetPresentation(entry, presentation => presentation.localizationKey = value)));
             section.Add(form.Text("Fallback Display Name", "presentation.fallbackDisplayName", entry => PresentationOf(entry)?.fallbackDisplayName, (entry, value) => SetPresentation(entry, presentation => presentation.fallbackDisplayName = value)));
             section.Add(form.Text("Prefab Presentation Key", "presentation.prefabPresentationKey", entry => PresentationOf(entry)?.prefabPresentationKey, (entry, value) => SetPresentation(entry, presentation => presentation.prefabPresentationKey = value)));
+            // Lists separated by commas: the garment textures the item shows, those it shows
+            // lowered, and the colors of their dye channels.
+            section.Add(form.Text("Garments", "presentation.garments", entry => JoinList(PresentationOf(entry)?.garments), (entry, value) => SetPresentation(entry, presentation => presentation.garments = SplitList(value))));
+            section.Add(form.Text("Lowered Garments", "presentation.loweredGarments", entry => JoinList(PresentationOf(entry)?.loweredGarments), (entry, value) => SetPresentation(entry, presentation => presentation.loweredGarments = SplitList(value))));
+            section.Add(form.Text("Dye Colors", "presentation.dyes", entry => JoinList(PresentationOf(entry)?.dyes), (entry, value) => SetPresentation(entry, presentation => presentation.dyes = SplitList(value))));
 
             var icon = new ObjectField("Icon") { objectType = typeof(Sprite), allowSceneObjects = false };
             icon.RegisterValueChangedCallback(change => SetIcon(change.newValue as Sprite));
@@ -1063,6 +1068,20 @@ namespace Mmorpg.WorldData.Editor.Items
                     + action + ".",
                 "Confirm " + action,
                 "Cancel");
+        }
+
+        private static string JoinList(string[] values)
+        {
+            return values == null ? string.Empty : string.Join(", ", values);
+        }
+
+        private static string[] SplitList(string value)
+        {
+            return (value ?? string.Empty)
+                .Split(',')
+                .Select(item => item.Trim())
+                .Where(item => item.Length > 0)
+                .ToArray();
         }
 
         private Sprite ResolveIcon(string iconAddress)

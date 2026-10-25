@@ -37,6 +37,11 @@ namespace Mmorpg.Client.Gameplay
         // The body model, such as Human_Female: exactly one, chosen in character creation only.
         public static readonly Rule BodyModel = new Rule(true, false);
 
+        // The hairstyle with its color, such as DarkBrownHair, a garment of the hair slot: at most
+        // one, none for a bald head, chosen in character creation and changed in the game later,
+        // such as at a barber, as Victor decided on 2026-10-25.
+        public static readonly Rule Hair = new Rule(false, true);
+
         public static Rule For(AppearanceCategory category)
         {
             switch (category)

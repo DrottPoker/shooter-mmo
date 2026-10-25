@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "clothing",
+  "defaultPolicies": [ ],
+  "displayName": "Net Shirt",
+  "equipmentSlots": [
+    "body"
+  ],
+  "id": "clothing.net_shirt",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 15,
+  "value": 8,
+  "weapon": null
+}

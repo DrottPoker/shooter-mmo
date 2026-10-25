@@ -98,6 +98,31 @@
         { "definitionId": "material.iron_ore", "quantity": 8, "destination": "recovery", "slotIndex": null, "equipmentSlotId": null },
         { "definitionId": "potion.minor_healing", "quantity": 3, "destination": "recovery", "slotIndex": null, "equipmentSlotId": null }
       ]
+    },
+    {
+      "id": "outfits",
+      "displayName": "Outfits Test Pack",
+      "description": "Every item of clothing and armor that shows a garment, with the wool robe, hood, and cloak in every color, in Permanent Inventory, ready to wear.",
+      "expectedLoadPercent": null,
+      "grants": [
+        { "definitionId": "armor.leather_jerkin", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.linen_shirt", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.long_linen_shirt", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.net_shirt", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.wool_trousers", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "armor.leather_boots", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "armor.leather_gloves", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.wool_robe", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.blue_wool_robe", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.red_wool_robe", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.wool_hood", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.blue_wool_hood", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.red_wool_hood", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.wool_cloak", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.blue_wool_cloak", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "clothing.red_wool_cloak", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "armor.nasal_helm", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null }
+      ]
     }
   ]
 }

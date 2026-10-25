@@ -13,6 +13,54 @@
     },
     {
       "definitionId": "tool.starter_pickaxe"
+    },
+    {
+      "definitionId": "clothing.linen_shirt"
+    },
+    {
+      "definitionId": "clothing.long_linen_shirt"
+    },
+    {
+      "definitionId": "clothing.net_shirt"
+    },
+    {
+      "definitionId": "clothing.wool_trousers"
+    },
+    {
+      "definitionId": "armor.leather_boots"
+    },
+    {
+      "definitionId": "armor.leather_gloves"
+    },
+    {
+      "definitionId": "clothing.wool_robe"
+    },
+    {
+      "definitionId": "clothing.blue_wool_robe"
+    },
+    {
+      "definitionId": "clothing.red_wool_robe"
+    },
+    {
+      "definitionId": "clothing.wool_hood"
+    },
+    {
+      "definitionId": "clothing.blue_wool_hood"
+    },
+    {
+      "definitionId": "clothing.red_wool_hood"
+    },
+    {
+      "definitionId": "clothing.wool_cloak"
+    },
+    {
+      "definitionId": "clothing.blue_wool_cloak"
+    },
+    {
+      "definitionId": "clothing.red_wool_cloak"
+    },
+    {
+      "definitionId": "armor.nasal_helm"
     }
   ],
   "purchasePriceBasisPoints": 10000,
@@ -20,6 +68,7 @@
     "ammunition",
     "armor",
     "bag",
+    "clothing",
     "food",
     "jewelry",
     "material",

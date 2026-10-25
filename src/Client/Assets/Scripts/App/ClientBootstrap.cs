@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Combat;
 using Mmorpg.Client.Core;
@@ -41,6 +42,9 @@ namespace Mmorpg.Client.App
         private PlayerBodyTintSetting bodyTint;
         private PlayerBodyLookSetting bodyLook;
 
+        // The items the local player wears, from the inventory as it shows them.
+        private readonly PlayerEquipment playerEquipment = new PlayerEquipment();
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
@@ -76,6 +80,8 @@ namespace Mmorpg.Client.App
 
             inventoryController = GetOrAddComponent<InventoryClientController>();
             inventoryController.Initialize(apiClient, simulationClient, config.ItemGameplayCatalog);
+            inventoryController.State.Changed += UpdatePlayerEquipment;
+            UpdatePlayerEquipment();
 
             corpseController = GetOrAddComponent<CorpseClientController>();
             corpseController.Initialize(simulationClient, inventoryController);
@@ -132,6 +138,11 @@ namespace Mmorpg.Client.App
                 bodyLook.Changed -= SaveBodyLook;
             }
 
+            if (inventoryController != null)
+            {
+                inventoryController.State.Changed -= UpdatePlayerEquipment;
+            }
+
             apiClient?.Dispose();
             apiClient = null;
             ClientAssets.Release(configHandle);
@@ -149,6 +160,23 @@ namespace Mmorpg.Client.App
             PlayerPrefs.SetString(BodyLookPreference, bodyLook.Look.Key);
             PlayerPrefs.SetString(BodyModelPreference, bodyLook.Model ?? string.Empty);
             PlayerPrefs.Save();
+        }
+
+        // The equipped items of the shown inventory, with its predicted moves, so the local body
+        // changes its garments as soon as an item moves.
+        private void UpdatePlayerEquipment()
+        {
+            var state = inventoryController.State;
+            var snapshot = state.FullSnapshot;
+            playerEquipment.Set(
+                snapshot == null
+                    ? null
+                    : snapshot.Equipment
+                        .Where(slot => slot.Item != null)
+                        .OrderBy(slot => slot.SortOrder)
+                        .Select(slot => new EquippedItem(slot.SlotId, slot.Item.DefinitionId))
+                        .ToArray(),
+                state.Catalog != null ? state.Catalog.Presentation : null);
         }
 
         private T GetOrAddComponent<T>() where T : Component
@@ -305,7 +333,7 @@ namespace Mmorpg.Client.App
             {
                 foreach (var context in root.GetComponentsInChildren<WorldSceneContext>(true))
                 {
-                    context.Initialize(simulationClient, pointerFocus, bodyTint, bodyLook);
+                    context.Initialize(simulationClient, pointerFocus, bodyTint, bodyLook, playerEquipment);
                     sceneContext = sceneContext != null ? sceneContext : context;
                 }
             }

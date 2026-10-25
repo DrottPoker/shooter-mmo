@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "clothing",
+  "defaultPolicies": [ ],
+  "displayName": "Wool Trousers",
+  "equipmentSlots": [
+    "legs"
+  ],
+  "id": "clothing.wool_trousers",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 60,
+  "value": 15,
+  "weapon": null
+}

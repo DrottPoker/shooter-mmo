@@ -23,7 +23,7 @@
     "covers": true,
     "hair": null,
     "cloth": "robe",
-    "dyes": 0,
+    "dyes": 1,
     "triangleBudget": 4000,
     "approvals": {
         "model": {

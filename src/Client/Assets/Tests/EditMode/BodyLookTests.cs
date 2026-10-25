@@ -48,6 +48,23 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void ALookWearsDyedGarmentsWithTheirColorsInItsKey()
+        {
+            var look = BodyLook.Default.WithGarment("WoolCloak", new[] { "#2b4364" }).WithGarment("WoolRobe", true);
+
+            Assert.That(look.Key, Is.EqualTo("Garment=WoolCloak@2B4364+WoolRobe"));
+            Assert.That(look.DyesFor("WoolCloak"), Is.EqualTo(new[] { (UnityEngine.Color)new UnityEngine.Color32(0x2B, 0x43, 0x64, 255) }));
+            Assert.That(look.DyesFor("WoolRobe"), Is.Empty);
+            Assert.That(BodyLook.Parse(look.Key), Is.EqualTo(look));
+            Assert.That(BodyLook.Parse("Garment=WoolCloak@2B4364.FFFFFF").DyesFor("WoolCloak").Count, Is.EqualTo(2));
+            // Taking a garment off forgets its colors, and a broken color skips the garment.
+            Assert.That(look.WithGarment("WoolCloak", false).WithGarment("WoolCloak", true).Key, Is.EqualTo("Garment=WoolCloak+WoolRobe"));
+            Assert.That(BodyLook.Parse("Garment=WoolCloak@2B436+WoolRobe@ZZZZZZ+Hood@1@2").Key, Is.Empty);
+            Assert.That(look.WithoutGarments(), Is.EqualTo(BodyLook.Default));
+            Assert.Throws<System.ArgumentException>(() => BodyLook.Default.WithGarment("WoolCloak", new[] { "blue" }));
+        }
+
+        [Test]
         public void ALookComesBackFromItsKeyAndSkipsBrokenEntries()
         {
             var look = BodyLook.Parse("Eye=Brown;Face=Clean");

@@ -11,7 +11,8 @@
     "Mmorpg.Client.WorldActors",
     "Mmorpg.Client.Combat",
     "Mmorpg.Client.Ui",
-    "Unity.ResourceManager"
+    "Unity.ResourceManager",
+    "Mmorpg.WorldData.Client"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

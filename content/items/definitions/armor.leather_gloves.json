@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "armor",
+  "defaultPolicies": [ ],
+  "displayName": "Leather Gloves",
+  "equipmentSlots": [
+    "hands"
+  ],
+  "id": "armor.leather_gloves",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 30,
+  "value": 18,
+  "weapon": null
+}

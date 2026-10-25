@@ -142,7 +142,7 @@ weight, policy, death, and corpse rules are decided in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), and the
 MVP uses them as they are:
 
-- Slot-based inventory with stacks, a permanent character inventory, thirteen
+- Slot-based inventory with stacks, a permanent character inventory, fourteen
   equipment slots with a stack-holding ammunition slot, and physical Bags with
   general and specialized slots.
 - A per-character Bank, a protected Secure Container that works anywhere in the

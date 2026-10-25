@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "clothing",
+  "defaultPolicies": [ ],
+  "displayName": "Linen Shirt",
+  "equipmentSlots": [
+    "body"
+  ],
+  "id": "clothing.linen_shirt",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 30,
+  "value": 12,
+  "weapon": null
+}

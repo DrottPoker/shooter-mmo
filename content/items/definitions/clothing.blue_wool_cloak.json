@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "clothing",
+  "defaultPolicies": [ ],
+  "displayName": "Blue Wool Cloak",
+  "equipmentSlots": [
+    "back"
+  ],
+  "id": "clothing.blue_wool_cloak",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 100,
+  "value": 50,
+  "weapon": null
+}
