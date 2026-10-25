@@ -481,6 +481,60 @@ namespace Mmorpg.Client.Editor
     {
         public string name = string.Empty;
         public ArtSkeletonBone[] bones = Array.Empty<ArtSkeletonBone>();
+        // The constants of the cloth on its chains, which ClothChainSolver, ClothKinematics, and the
+        // art pipeline's cloth_core.py share.
+        public ArtSkeletonCloth cloth = new ArtSkeletonCloth();
+    }
+
+    [Serializable]
+    public sealed class ArtSkeletonCloth
+    {
+        public ArtSkeletonCapsule[] capsules = Array.Empty<ArtSkeletonCapsule>();
+        public int directions;
+        public int groovePasses;
+        public float fallbackRadius;
+        public float placeSpan;
+        public int resolveIterations;
+        public float minimumSlope;
+        public int chainPasses;
+        public float aheadBlend;
+        public float followReach;
+        public float layerGap;
+        public ArtSkeletonClothKind[] kinds = Array.Empty<ArtSkeletonClothKind>();
+    }
+
+    // A body bone the cloth collides with and the bone its capsule ends at, empty for a sphere.
+    [Serializable]
+    public sealed class ArtSkeletonCapsule
+    {
+        public string bone = string.Empty;
+        public string end = string.Empty;
+    }
+
+    // A kind of cloth chains, in the order the kinds lie on the body: the bone they hang from, their
+    // bones, the part of the legs beside each bone, their profile's margin and slack, the kind whose
+    // cloth they lie over, and their chains.
+    [Serializable]
+    public sealed class ArtSkeletonClothKind
+    {
+        public string kind = string.Empty;
+        public string parent = string.Empty;
+        public int bones;
+        public string[] beside = Array.Empty<string>();
+        public float margin;
+        public float slack;
+        public string over = string.Empty;
+        public ArtSkeletonClothChain[] chains = Array.Empty<ArtSkeletonClothChain>();
+    }
+
+    // A chain's name before its bone numbers, its angle around the hips from the front toward the
+    // right, and whether it is one on each side, _L at the negative angle and _R at the positive.
+    [Serializable]
+    public sealed class ArtSkeletonClothChain
+    {
+        public string name = string.Empty;
+        public float angle;
+        public bool sided;
     }
 
     [Serializable]

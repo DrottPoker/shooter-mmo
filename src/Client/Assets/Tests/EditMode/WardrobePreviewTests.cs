@@ -82,7 +82,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var rest = hips.localRotation;
                 for (var step = 0; step < 10; step++)
                 {
-                    preview.Step(0.1f, preview.Body.transform.position + new Vector3(0f, 1.5f, 3f));
+                    preview.Step(0.1f, new Vector3(0f, 0.4f, 3f));
                 }
 
                 Assert.That(preview.Body.transform.position.z, Is.EqualTo(HumanLocomotion.JogSpeed).Within(0.001f));
@@ -92,7 +92,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 preview.Play(WardrobePreview.Motion.Idle);
                 var stopped = preview.Body.transform.position;
-                preview.Step(0.5f, stopped + Vector3.forward * 3f);
+                preview.Step(0.5f, Vector3.forward * 3f);
                 Assert.That(preview.Body.transform.position, Is.EqualTo(stopped));
             }
         }
@@ -105,7 +105,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 preview.Play(WardrobePreview.Motion.Death);
                 for (var step = 0; step < 30; step++)
                 {
-                    preview.Step(0.1f, preview.Body.transform.position + Vector3.forward * 3f);
+                    preview.Step(0.1f, Vector3.forward * 3f);
                 }
 
                 var animator = preview.Body.GetComponent<Animator>();
