@@ -38,11 +38,13 @@ Task Workflow. These notes override the app's defaults where they differ.
   commit is in `origin/development`. Archiving hands the worktree back to the
   app's reuse pool, which the app reuses or removes itself. Never archive a
   session that is running or waits for Victor, or the session that started one,
-  because archiving a session also archives its finished side sessions. A
-  session cannot remove its own worktree while it runs, so the next task
-  archives it, and the finished session keeps its summary visible until then.
-  When the app blocks an archive, name the sessions in the summary so Victor can
-  archive them from the sidebar.
+  because archiving a session also archives its finished side sessions. Never
+  archive a session that is less than 48 hours old, counted from its last
+  activity (`lastActivityAt` in `list_sessions`), so Victor can still read and
+  continue recent chats. A session cannot remove its own worktree while it
+  runs, so a later task archives it, and the finished session keeps its summary
+  visible until then. When the app blocks an archive, name the sessions in the
+  summary so Victor can archive them from the sidebar.
 
 ## Verification
 
