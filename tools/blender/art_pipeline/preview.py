@@ -775,8 +775,9 @@ def render_attachment_sheet(output: str, cell: int, socket: str, library_path: s
     held = [_held_copy(root, arm, socket) for arm in arms]
     arm_parts = [o for o in loaded if o.type == "MESH" and o.name.endswith(HELD_ARM_PARTS)]
 
+    # The camera and the sun light every cell.
     def show(objects):
-        visible = set(objects)
+        visible = set(objects) | {camera, sun}
         for obj in scene.objects:
             obj.hide_render = obj not in visible
 
