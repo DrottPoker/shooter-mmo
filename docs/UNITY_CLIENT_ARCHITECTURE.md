@@ -1366,9 +1366,10 @@ a combined body skins every vertex where its parts do. When the outfit changes,
 drawing an enabled skinned renderer whose mesh changes to one of another size,
 with the error `does not match the expected mesh data size and vertex stride`,
 and `WardrobePreviewTests.ABodyDrawsAfterEveryChangeOfItsOutfit` renders every
-body after each change of its outfit. It needs a graphics device, so it runs in
-the Editor with `tools/Run-UnityEditorTests.ps1` and is skipped by the headless
-run with `-nographics`, such as CI's.
+body after each change of its outfit. It needs a graphics device, so it is in
+the `Graphics` category, which the Editor runs with
+`tools/Run-UnityEditorTests.ps1` and the headless run with `-nographics`, such
+as CI's, leaves out; see [Traits](../tests/README.md#traits).
 
 The World Debug panel (F2) has the setting
 `Tint bodies: you purple, players orange, bots blue`, off by default.

@@ -16,6 +16,9 @@ namespace Mmorpg.Client.Tests.EditMode
         private const string Jerkin = "LeatherJerkin";
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
 
+        // Tests that draw, which tools/Run-UnityTests.ps1 leaves out; see tests/README.md.
+        private const string GraphicsCategory = "Graphics";
+
         // A model without an Animator.
         private const string IronVeinPath = "Assets/Art/Models/WorldActors/Resource_IronVein.fbx";
 
@@ -43,15 +46,11 @@ namespace Mmorpg.Client.Tests.EditMode
         // A body still draws after its outfit changes the size of its combined mesh. Unity 6000.6 stopped
         // drawing an enabled skinned renderer whose mesh changed to one of another size, with the error
         // "does not match the expected mesh data size and vertex stride", which fails the test. It needs
-        // a graphics device, so the headless run with -nographics skips it.
+        // a graphics device, so the headless run with -nographics leaves its category out.
         [Test]
+        [Category(GraphicsCategory)]
         public void ABodyDrawsAfterEveryChangeOfItsOutfit()
         {
-            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
-            {
-                Assert.Ignore("Drawing needs a graphics device; run this test in the Editor.");
-            }
-
             foreach (var body in WardrobePreview.Bodies())
             {
                 using (var preview = new WardrobePreview(body))

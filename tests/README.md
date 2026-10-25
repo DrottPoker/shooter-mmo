@@ -134,6 +134,7 @@ budgets assume it; those projects finish before the Items tests anyway.
 | `Category=Integration` | `[PostgresIntegrationFact]` and `[RedisIntegrationFact]` | The test needs PostgreSQL or Redis |
 | `Infrastructure=Postgres` or `Infrastructure=Redis` | The same attributes | Which service the test needs |
 | `Category=Load` | `[Trait("Category", "Load")]` | Deterministic scalability workloads with a timing budget |
+| Unity `Graphics` | `[Category("Graphics")]` on a Unity test | The test draws with a camera, so it needs a graphics device |
 
 Use `--filter "Category!=Integration"` for a fast loop without containers and
 `--filter "Category=Integration"` for only the infrastructure tests. The
@@ -162,6 +163,12 @@ fails the job when any test in them did not run or pass. Each job uploads its
 `TestResults` folder as an artifact. The observability job needs no .NET and
 runs the pinned Collector and Prometheus images through the runner's Docker.
 
+The Unity job runs Unity without a graphics device (`-nographics`), where a
+camera cannot draw, so `tools/Run-UnityTests.ps1` leaves out the Unity tests of
+the `Graphics` category, such as
+`WardrobePreviewTests.ABodyDrawsAfterEveryChangeOfItsOutfit`, which renders
+every body after each change of its outfit; `tools/Run-UnityEditorTests.ps1`,
+which `tools/Test-Changes.ps1` runs before every push, runs them in the Editor.
 The Unity job needs an installed and licensed Unity Editor, so it runs on a
 self-hosted runner on the development machine and skips pull requests from
 forks. It fails when a Unity test fails, is skipped or inconclusive, or when a
