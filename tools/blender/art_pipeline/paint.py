@@ -729,9 +729,12 @@ def _skin_of(material: bpy.types.Material) -> tuple[bpy.types.Image, float, floa
     return _skin_image(material), float(roughness), float(bsdf.inputs["Metallic"].default_value)
 
 
-def layered_material(name: str, skin: tuple[bpy.types.Image, float, float], layers: list[bpy.types.Image]) -> bpy.types.Material:
+def layered_material(name: str, skin: tuple[bpy.types.Image, float, float], layers: list[bpy.types.Image],
+                     live: bool = False) -> bpy.types.Material:
     """A material that shows the skin with the layers laid over it in order by their alpha, with their
-    roughness, each read through the paint UV map at its crop and transparent outside it."""
+    roughness, each read through the paint UV map at its crop and transparent outside it. A live
+    material reads each layer's roughness from the image's custom property through a driver, so a
+    painter sees a change of it at once."""
     image, skin_roughness, metallic = skin
     material = bpy.data.materials.new(name)
     if material.node_tree is None:
@@ -777,6 +780,13 @@ def layered_material(name: str, skin: tuple[bpy.types.Image, float, float], laye
         else:
             links.new(roughness, rough.inputs["A"])
         rough.inputs["B"].default_value = float(layer.get("roughness", DEFAULT_ROUGHNESS))
+        if live:
+            driver = rough.inputs["B"].driver_add("default_value").driver
+            variable = driver.variables.new()
+            variable.targets[0].id_type = "IMAGE"
+            variable.targets[0].id = layer
+            variable.targets[0].data_path = '["roughness"]'
+            driver.expression = variable.name
         roughness = rough.outputs["Result"]
     links.new(color, bsdf.inputs["Base Color"])
     if roughness is not None:
@@ -784,11 +794,12 @@ def layered_material(name: str, skin: tuple[bpy.types.Image, float, float], laye
     return material
 
 
-def preview_material(obj: bpy.types.Object, index: int, name: str, layers: list[bpy.types.Image]) -> None:
-    """Gives the slot a material of that name that shows its skin with the layers, replacing an
-    earlier preview."""
+def preview_material(obj: bpy.types.Object, index: int, name: str, layers: list[bpy.types.Image],
+                     live: bool = False) -> None:
+    """Gives the slot a material of that name that shows its skin with the layers, live as
+    layered_material says, replacing an earlier preview."""
     old = obj.material_slots[index].material
-    material = layered_material("_preview", _skin_of(old), layers)
+    material = layered_material("_preview", _skin_of(old), layers, live)
     obj.material_slots[index].material = material
     if old.users == 0 and old.name.split(".")[0].startswith(("Preview_", "Canvas_")):
         bpy.data.materials.remove(old)
@@ -1065,7 +1076,7 @@ def _new_canvas(name: str, part: str, body: bpy.types.Object, label: str, cage_f
     if rgba is not None:
         store(image, rgba)
     image["roughness"], image["metallic"] = kept["roughness"], kept["metallic"]
-    preview_material(canvas, index, f"Canvas_{part}_{label}", [image])
+    preview_material(canvas, index, f"Canvas_{part}_{label}", [image], live=True)
 
 
 def _keep_cages(canvas: bpy.types.Object, joined: list[bpy.types.Object], labels: list[str], cage_file: str | None) -> None:
@@ -1149,9 +1160,12 @@ def sync(path: str, name: str, part: str, body_list: list[tuple[str, str]], cage
     for root in labels:
         _image(image_name(name, root), (CROP_BLOCK, CROP_BLOCK))
     refresh(name, part, labels)
-    # The previews read the images at their new crops.
+    # The previews read the images at their new crops, and the canvas the paint as it is painted.
     for body, root in zip(joined, labels):
         preview_material(body, _painted_index(body, part, root), f"Preview_{part}_{root}", [bpy.data.images[image_name(name, root)]])
+    canvas_label = canvas[CANVAS_BODY]
+    preview_material(canvas, _painted_index(canvas, part, canvas_label), f"Canvas_{part}_{canvas_label}",
+                     [bpy.data.images[image_name(name)]], live=True)
     _ground(reference, -BODY_SPACING, BODY_SPACING * (len(body_list) - 1))
     relative_image_paths()
     for screen in bpy.data.screens:
