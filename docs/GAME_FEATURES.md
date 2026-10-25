@@ -288,7 +288,9 @@ Status: Temporary UI presentation
 
 - The temporary World Client Debug panel is scrollable and anchored to the
   bottom-left corner.
-- F2 hides or restores the World Debug panel.
+- F2 hides or restores the World Debug panel. Its values refresh four times a
+  second, as often as the frame statistics change, so the open panel costs
+  little of the frame it measures.
 - The Presentation section has the setting `Tint bodies: you purple, players
   orange, bots blue`, off by default and kept between sessions.
 - During an authenticated simulation session, World Debug shows only information

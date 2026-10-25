@@ -1130,7 +1130,8 @@ mirrors the `Generated/WorldCollision` folder of the local
 synchronously and checksum-validates chunks at
 `WorldCollision/<WorldId>/<chunk>.bytes` around the initial player and the
 authoritative local owner snapshot. Remote snapshot scheduling cannot move the prediction collision
-window. The stream retains a larger chunk ring before unloading, which prevents
+window, and neither remote players nor Mobs load chunks: beyond the local
+player's chunks they show their replicated height. The stream retains a larger chunk ring before unloading, which prevents
 boundary churn. The join response carries SimulationWorker's collision revision,
 and `NetworkMovementSession` does not start when the local revision differs. A
 missing, corrupt, or coordinate-mismatched streamed chunk closes the active
@@ -1320,8 +1321,9 @@ Play Mode.
 A body is made of skinned parts, one per equipment zone plus the eyes, teeth,
 and tongue, so equipment can hide a zone later. Drawn as parts, a crowd paid
 for every part of every body: 200 bodies cost about 20 ms of main thread time
-per frame in the Editor. When `WorldSceneContext` spawns a player,
-`PlayerBodyAppearance.CombineParts` draws the visible parts as one skinned
+per frame in the Editor. When `WorldSceneContext` puts the body on a spawned
+player, a few players a frame as [Crowd Performance](#crowd-performance)
+describes, `PlayerBodyAppearance.CombineParts` draws the visible parts as one skinned
 renderer, `CombinedBody`, with one submesh per material, and hides the parts.
 `PlayerBodyMeshes`, owned by `WorldSceneContext`, builds the combined mesh once
 per model and set of visible parts and shares it between every body that has
@@ -1509,6 +1511,62 @@ garment of the hair slot. `RealtimeSimulationClient` keeps the latest
 catalogs and to `AppearanceRules`, and covers the choices, the dressed look of
 other players, the hood button, the creation rows, and the corpse body keys;
 `PlayerBodyLifePlayModeTests` bakes a corpse body per look.
+
+### Crowd Performance
+
+Victor saw the frame rate fall with 400 bots, and fall further once the bots
+wore clothes. Measured on 2026-10-25 with 400 ActiveSimulationBots on
+`local-shard-1` (Development World 2), about 170 dressed players in interest, in
+the Editor with the F2 panel open, the same crowd and camera before and after:
+
+| Measure | Before | After |
+| --- | ---: | ---: |
+| FPS, default camera | 24.0 | 82.7 |
+| Frame average / p95 / maximum | 41.6 / 61.3 / 102 ms | 12.1 / 16.5 / 37 ms |
+| FPS, camera low over the crowd | 24.2 | 78.8 |
+| Managed garbage per frame | 316 to 371 KB | 54 to 70 KB |
+
+What made the difference:
+
+- **Cloth.** `ClothChainSolver` took 78 ms of a profiled 110 ms frame: every
+  dressed body ran its full collision every frame, also behind the camera, and
+  a body farther than 25 m cost as much as a near one. `ClothChainScheduler`
+  now steps every solver once a frame from the camera, by view, distance, and a
+  budget, and the collision loops reject far capsules early; see
+  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#runtime-solver). The cloth
+  takes about 2 to 3 ms.
+- **Bodies come into view a few per frame.** Putting a body on a spawned player
+  took about 8 ms, 6 of them measuring the body and garments for the cloth, and
+  several bots often come into interest in one frame. The measures are shared
+  per model now, which leaves about 1.75 ms a body, and `WorldSceneContext` puts
+  bodies on for at most `BodyMillisecondsPerFrame` (3 ms) a frame, the nearest
+  to the camera first and at least one. A player whose body waits already
+  moves, is picked by its trigger, and gets the newest look the server sent
+  when its body goes on. The first body in a new combination of garments still
+  builds its combined mesh, about 10 ms once per combination.
+- **Remote players never load collision chunks**, like Mobs: a far spawn loaded
+  up to 25 chunks, about 1.7 ms, which the next owner snapshot unloaded again.
+- **The F2 panel** cost 2.8 ms and 95 KB of garbage a frame; it builds its
+  metric text four times a second, draws the metric rows without layout groups,
+  and builds the look rows when the look changes, for 1.4 ms and 34 KB.
+- **Hot paths allocate nothing**: `Mathf.Max` with three arguments allocates an
+  array, and a sort with a `Comparison` allocates a comparer.
+
+Where the 12 ms go now: the Editor's own loop about 3 ms, which a player build
+does not pay; rendering about 4 ms of main thread, every body drawing about ten
+submeshes in the camera and again in the shadow map, the shadows of the remote
+bodies about 1 ms; cloth 2 to 3 ms; the F2 panel 1.4 ms; and remote movement,
+animation, and skinning about 2.5 ms. The GPU takes under 1 ms. The next levers
+are the levels of detail at half and a quarter of the triangles that
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#budgets) plans, a
+shorter shadow distance for bodies, and animation that updates far bodies less
+often.
+
+To measure: start the bots on `local-shard-1` as in
+[Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md#visual-unity-test), join, and
+read FPS and frame times in F2 or record the Unity Profiler with Deep Profile
+off; `ClothChainScheduler.LateUpdate`, `WorldSceneContext.Update`, and
+`WorldScenePanel.OnGUI` show the costs above.
 
 ## World Actor And Interaction Client
 

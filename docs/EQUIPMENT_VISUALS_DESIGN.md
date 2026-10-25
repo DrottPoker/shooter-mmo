@@ -731,7 +731,33 @@ before the bodies are drawn:
   its values.
 - **Level of detail**: near the camera the springs run; farther away the chains
   only follow their targets; far away they rest. A clip may also key chain bones
-  for a special motion, and the solver blends toward the clip.
+  for a special motion, and the solver blends toward the clip. In play one
+  `ClothChainScheduler` steps every body's solver once a frame from the main
+  camera, so a crowd costs about as much as a few bodies:
+  - A body whose cube of 4 m around it lies outside the camera's view moves
+    nothing; its chains keep their pose and start again from their targets when
+    it comes into view.
+  - Beyond 60 m the chains rest, and a body already at rest writes nothing.
+  - The nearest eight bodies in view within 25 m spring every frame.
+  - The other bodies in view within 60 m follow their targets in turns, the ones
+    that waited longest first: at most 16 a frame, and no more once their steps
+    took 1.5 ms. Between its turns a chain keeps its pose against the bone it
+    hangs from.
+  - Every body of one model shares what the solver measured of it, its bind pose,
+    capsules, legs, and rest depths, and every garment model what was measured of
+    its cloth; measuring took about 6 ms a body, and a crowd spawns many. The
+    capsules fit the body's own parts, never the combined renderer with its
+    garments, so every body of a model collides alike whatever it wore first.
+    Out of play, as in the Wardrobe, each body measures its own, so a model
+    exported again is measured again.
+
+  Measured on 2026-10-25 with 400 development bots in Development World 2 and
+  about 170 dressed players in interest, in the Editor: before the scheduler the
+  solver took 78 ms of a profiled 110 ms frame (0.5 to 0.9 ms a dressed body, also
+  behind the camera); with it, the cloth takes about 2 to 3 ms, and the whole
+  frame, unprofiled, went from
+  41.6 ms (24 FPS) to 12.1 ms (83 FPS), see
+  [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance).
 
 The solver is presentation only. It runs the same for the local player, other
 players, and bots, and never reaches the server. It moves a few bones per chain

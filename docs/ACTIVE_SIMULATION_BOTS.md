@@ -274,6 +274,14 @@ the matching remote instance through a reliable despawn. The 64 m stress arena
 keeps every client, bot, and actor within the same interest area, so it is a
 dense visual crowd test.
 
+Bots that come into interest at once, as at a join, get their bodies over a few
+frames, the nearest first, so the frame rate does not drop while they appear.
+For the crowd as Victor plays it, run the population in Development World 2 with
+`--ActiveSimulationBots:ShardId local-shard-1` and join `Local Shard 1`. With
+400 bots, about 170 of them in interest and most of them dressed, the Editor
+showed about 80 FPS in F2 on 2026-10-25, where it showed 24 before; see
+[Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance).
+
 The F2 panel intentionally does not reveal the server-wide real-player count,
 bot count, CPU, memory, or internal tick timing. Verify those values in the
 SimulationWorker terminal status and performance lines.
