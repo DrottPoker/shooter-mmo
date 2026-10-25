@@ -794,7 +794,7 @@ For a manual default-state and reconnect check:
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm
    startup reports realtime protocol version `18` and simulation revision
    `movement-simulation-v6`.
-4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
+4. Open `src/Client` in Unity `6000.6.7f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
 5. Press F2 in the active World scene. A new empty character shows weight
    `0 / 2000`, movement `100%`, and its committed item-state revision.
@@ -854,7 +854,7 @@ For a manual runtime smoke check:
 3. Run `dotnet run --project src/Server/SimulationWorker` in a second terminal. Confirm it
    reports the current realtime protocol version and loads the configured World
    without a configuration error.
-4. Open `src/Client` in Unity `6000.5.4f1`, open LoginMenu,
+4. Open `src/Client` in Unity `6000.6.7f1`, open LoginMenu,
    enter Play Mode, log in, select a character and shard, and join the mapped
    development World scene.
 5. Press F2 and confirm movement and the admitted carry tuple remain available.
@@ -2454,7 +2454,7 @@ Working rules:
 
 Manual test of the assemblies and Addressables:
 
-1. Open `src/Client` in Unity 6000.5.4f1 and wait for the import. Expected
+1. Open `src/Client` in Unity 6000.6.7f1 and wait for the import. Expected
    result: the Console shows no compiler error, and the Project window shows
    one asmdef in each folder below `Assets/Scripts`.
 2. Open `Window > Asset Management > Addressables > Groups`. Expected result:
@@ -2597,6 +2597,41 @@ experimental, review its changelog, update it in a focused branch with
 `unity pipeline install --package-version <version>`, let Unity rewrite
 `packages-lock.json`, and run both Unity suites and the backend quality gate.
 
+## Upgrade The Unity Editor
+
+`src/Client/ProjectSettings/ProjectVersion.txt` pins one Editor version for the
+project, the CI runner, and the documentation. Upgrade it in a focused branch:
+
+1. Install the new Editor with Unity Hub in the default path on every machine
+   that opens the project, including the CI runner machine.
+2. In a worktree of the branch, let the new Editor upgrade the project once in
+   batch mode, so no dialog stops it. Replace the version and the paths:
+
+   ```powershell
+   & "C:\Program Files\Unity\Hub\Editor\<version>\Editor\Unity.exe" -batchmode -projectPath <worktree>\src\Client -quit -logFile <scratch>\upgrade.log
+   ```
+
+   Unity rewrites `ProjectVersion.txt`, `manifest.json`, `packages-lock.json`,
+   and the import settings and assets whose serialized format changed. Commit
+   these files as Unity wrote them.
+3. Read the log for `error CS`, `warning`, and import errors such as
+   `Rig Error`. The build stays at zero warnings, so fix every new warning in
+   the same branch. Never print the head of a Unity log: its command line holds
+   the Hub access token.
+4. Open the worktree with `unity open <worktree>\src\Client` and run both suites
+   with `tools/Run-UnityEditorTests.ps1`.
+5. Replace the old version in `README.md`, this document,
+   `docs/UNITY_CLIENT_ARCHITECTURE.md`, and the runner label in
+   `.github/workflows/ci.yml`, and add the new label to the runner as
+   [Operate The Runner](#operate-the-runner) describes.
+6. After the merge, close the old Editor before pulling `development` into a
+   checkout, because an old Editor that sees the new packages fails to compile
+   them. Then open `src/Client` in the new Editor, which imports the `Library`
+   folder again once.
+
+Expected result: the Unity quality gate passes on the new label, and every
+checkout opens in the new Editor without compile errors or warnings.
+
 ## Unity CI Runner
 
 The `Unity quality gate` job in `.github/workflows/ci.yml` runs both Unity
@@ -2670,7 +2705,7 @@ gh api -X PUT "repos/DrottPoker/shooter-mmo/rulesets/$rulesetId" --input .github
 
 Requirements on the machine:
 
-- Unity `6000.5.4f1` in the default Unity Hub path, and the Unity CLI signed in:
+- Unity `6000.6.7f1` in the default Unity Hub path, and the Unity CLI signed in:
   `unity license status` reports `License: active` and `Signed in: yes`.
 - Git for Windows and the GitHub CLI, signed in with admin access to the
   repository.
@@ -2697,7 +2732,7 @@ Remove-Item $zip
 
 # Register the runner. The registration token is valid for one hour and is never printed.
 $token = gh api -X POST repos/DrottPoker/shooter-mmo/actions/runners/registration-token --jq .token
-& C:\actions-runner\config.cmd --unattended --replace --url https://github.com/DrottPoker/shooter-mmo --token $token --name "$env:COMPUTERNAME-unity" --labels unity-6000.5.4f1 --work _work
+& C:\actions-runner\config.cmd --unattended --replace --url https://github.com/DrottPoker/shooter-mmo --token $token --name "$env:COMPUTERNAME-unity" --labels unity-6000.6.7f1 --work _work
 Remove-Variable token
 
 # Install the job-started hook outside the runner folder.
@@ -2725,7 +2760,7 @@ Expected result:
 
 - The task state is `Running`.
 - The runner is listed with name `<COMPUTERNAME>-unity`, status `online`, and
-  labels `self-hosted`, `Windows`, `X64`, and `unity-6000.5.4f1`.
+  labels `self-hosted`, `Windows`, `X64`, and `unity-6000.6.7f1`.
 - The manual CI run passes the `Unity quality gate` job. Its `Set up runner`
   step reports `This self-hosted runner accepted the workflow_dispatch job`,
   the job summary lists both suites as passed, and the run uploads the XML
@@ -2771,10 +2806,15 @@ ten minutes.
 - After a change to `tools/Assert-TrustedRunnerJob.ps1`, copy it to
   `C:\actions-runner-hooks` again. The runner runs that copy, not the
   repository file.
-- After a Unity Editor upgrade, change the label in the workflow and on the
-  runner in the same pull request:
+- After a Unity Editor upgrade, install the new Editor on the runner machine
+  and change the label in the workflow in the upgrade pull request. Before
+  that pull request runs CI, add the new label to the runner, so that it takes
+  jobs for both versions while other branches still name the old one:
+  `gh api -X POST "repos/DrottPoker/shooter-mmo/actions/runners/<id>/labels" -f "labels[]=unity-<version>"`.
+  After the merge, keep only the new label:
   `gh api -X PUT "repos/DrottPoker/shooter-mmo/actions/runners/<id>/labels" -f "labels[]=unity-<version>"`.
-  The runner id is in the runner listing above.
+  The runner id is in the runner listing above. The steps for the project
+  itself are in [Upgrade The Unity Editor](#upgrade-the-unity-editor).
 - To remove the runner, set `UNITY_CI_ENABLED` to `false`, run
   `Stop-ScheduledTask` and then
   `Unregister-ScheduledTask -Confirm:$false` on the task
@@ -4111,7 +4151,7 @@ Open `Window > General > Test Runner` and run both suites before delivering Unit
 changes. You can run the same suites outside the Editor with:
 
 ```powershell
-$env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.5.4f1\Editor\Unity.exe"
+$env:UNITY_EDITOR_PATH = "C:\Program Files\Unity\Hub\Editor\6000.6.7f1\Editor\Unity.exe"
 & .\tools\Run-UnityTests.ps1
 ```
 
@@ -4144,7 +4184,7 @@ these exact manual steps:
    icon.
 2. Start Unity Hub, sign in, and confirm that a valid Personal or organization
    license is active under `Preferences > Licenses`.
-3. Open this project with Unity `6000.5.4f1` once and wait for package import and
+3. Open this project with Unity `6000.6.7f1` once and wait for package import and
    script compilation to finish without a licensing error.
 4. Close the Editor, keep the signed-in Hub session available, and rerun
    `tools/Run-UnityTests.ps1`.

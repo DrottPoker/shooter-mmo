@@ -1,4 +1,4 @@
-// The input of the CharacterSkin shader: LitInput.hlsl of URP 17.5 with the paint layers in the
+// The input of the CharacterSkin shader: LitInput.hlsl of URP 17.6 with the paint layers in the
 // material constant buffer and laid over the albedo, smoothness, and metallic by
 // InitializeCharacterSkinSurfaceData, which the forward and GBuffer passes call with the paint
 // UVs. It also defines UNIVERSAL_LIT_INPUT_INCLUDED, so URP's own Lit input never joins it.

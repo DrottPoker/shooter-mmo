@@ -41,7 +41,7 @@ namespace Mmorpg.Client.Editor
 
         public override uint GetVersion()
         {
-            return 11;
+            return 12;
         }
 
         public static bool AppliesTo(string assetPath)
@@ -150,7 +150,16 @@ namespace Mmorpg.Client.Editor
             var result = new List<SkeletonBone>();
             for (var index = 0; index < pose.Length; index++)
             {
-                var bone = pose[index];
+                var source = pose[index];
+                // A new bone leaves out the other model's parent names, which Unity checks
+                // against this model's hierarchy and cannot be renamed through the API.
+                var bone = new SkeletonBone
+                {
+                    name = source.name,
+                    position = source.position,
+                    rotation = source.rotation,
+                    scale = source.scale
+                };
                 if (index == 0)
                 {
                     bone.name = root;

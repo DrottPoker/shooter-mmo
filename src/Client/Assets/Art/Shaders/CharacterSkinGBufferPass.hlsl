@@ -1,7 +1,7 @@
 #ifndef MMORPG_CHARACTER_SKIN_GBUFFER_PASS_INCLUDED
 #define MMORPG_CHARACTER_SKIN_GBUFFER_PASS_INCLUDED
 
-// The GBuffer pass of the skin shader: LitGBufferPass.hlsl of URP 17.5 with the paint UVs, the
+// The GBuffer pass of the skin shader: LitGBufferPass.hlsl of URP 17.6 with the paint UVs, the
 // mesh's second UV map, taken where Lit takes the lightmap UVs, which a skinned character never
 // has, and passed to the surface. Include after CharacterSkinInput.hlsl.
 
@@ -117,7 +117,7 @@ void InitializeInputData(Varyings input, half3 normalTS, out InputData inputData
 void InitializeBakedGIData(Varyings input, inout InputData inputData)
 {
 #if defined(_SCREEN_SPACE_IRRADIANCE)
-    inputData.bakedGI = SAMPLE_GI(_ScreenSpaceIrradiance, input.positionCS.xy);
+    inputData.bakedGI = SAMPLE_GI(_ScreenSpaceIrradiance, input.positionCS.xy, inputData.normalWS);
 #elif defined(DYNAMICLIGHTMAP_ON)
     inputData.bakedGI = SAMPLE_GI(input.staticLightmapUV, input.dynamicLightmapUV, input.vertexSH, inputData.normalWS);
     inputData.shadowMask = SAMPLE_SHADOWMASK(input.staticLightmapUV);

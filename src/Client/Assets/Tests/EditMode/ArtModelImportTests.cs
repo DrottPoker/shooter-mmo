@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Mmorpg.Client.Editor;
 using Mmorpg.Client.Gameplay;
@@ -17,6 +18,29 @@ namespace Mmorpg.Client.Tests.EditMode
     // docs/ART_PIPELINE.md.
     public sealed class ArtModelImportTests
     {
+        // The parent names of the pose a model's human description records.
+        private static IEnumerable<string> RecordedParentNames(string metaPath)
+        {
+            const string Prefix = "      parentName:";
+            var inSkeleton = false;
+            foreach (var line in File.ReadLines(metaPath))
+            {
+                if (line == "    skeleton:")
+                {
+                    inSkeleton = true;
+                }
+                else if (inSkeleton && line.StartsWith(Prefix, StringComparison.Ordinal))
+                {
+                    yield return line.Substring(Prefix.Length).Trim();
+                }
+                else if (inSkeleton && !line.StartsWith("    - ", StringComparison.Ordinal)
+                    && !line.StartsWith("      ", StringComparison.Ordinal))
+                {
+                    yield break;
+                }
+            }
+        }
+
         private static string[] ModelPaths()
         {
             return AssetDatabase.FindAssets("t:Model", new[] { ArtModelImportRules.ModelFolder })
@@ -144,6 +168,16 @@ namespace Mmorpg.Client.Tests.EditMode
                 var avatar = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Avatar>().Single();
                 Assert.That(avatar.isValid, Is.True, path);
                 var pose = avatar.humanDescription.skeleton.ToDictionary(bone => bone.name);
+                // Unity checks the recorded parent names against the library's own hierarchy.
+                // The API does not expose them, so they are read from the import settings.
+                var parents = RecordedParentNames(path + ".meta").ToArray();
+                Assert.That(parents, Is.Not.Empty, path);
+                foreach (var parent in parents)
+                {
+                    Assert.That(parent.Length == 0 || pose.ContainsKey(parent), Is.True,
+                        path + " records the parent " + parent + ", which its pose does not have.");
+                }
+
                 foreach (var bone in ArtAssetManifests.LoadSkeleton(library.skeleton).bones)
                 {
                     var where = path + " " + bone.name;

@@ -16,7 +16,7 @@ runtime claim.
 ## Project Boundary
 
 The Unity project lives in `src/Client` and targets Unity
-6000.5.4f1. Runtime code is compiled into ten area assemblies, described in
+6000.6.7f1. Runtime code is compiled into ten area assemblies, described in
 [Assemblies](#assemblies). All runtime content loads through Addressables, as
 described in [Content Loading With Addressables](#content-loading-with-addressables).
 EditMode and PlayMode tests use separate assemblies.
