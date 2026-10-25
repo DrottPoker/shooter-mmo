@@ -8,7 +8,8 @@
     "Mmorpg.Client.Networking",
     "Unity.InputSystem",
     "Mmorpg.GameProtocol",
-    "Mmorpg.GameSimulation"
+    "Mmorpg.GameSimulation",
+    "Mmorpg.WorldData.Client"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

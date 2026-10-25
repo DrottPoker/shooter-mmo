@@ -148,8 +148,12 @@ with `vendor_will_not_buy`, so the vendor never takes an item for nothing.
 
 The shipped `vendor.city_general_store`, "General Store", is the profile of the
 Trade capability of Mira the Quartermaster (`npc.city_services`). It offers
-Bronze Arrow (value 1), Minor Healing Potion (25), Cooked Trout (10), and Starter
-Pickaxe (50), sells at `10000`, and buys every category except quest items at
+Bronze Arrow (value 1), Minor Healing Potion (25), Cooked Trout (10), Starter
+Pickaxe (50), and every item that shows a garment except the Leather Jerkin: the
+Linen Shirt (12), Long-Sleeved Linen Shirt (16), Net Shirt (8), Wool Trousers
+(15), Leather Boots (30), Leather Gloves (18), the Wool Robe (40), Wool Hood (12),
+and Wool Cloak (35) with their blue and red ones (60, 18, and 50), and the Nasal
+Helm (60). It sells at `10000` and buys every category except quest items at
 `4000`. Selling three Iron Ore of value 10 there pays 12, and selling one Wolf
 Pelt of value 15 pays 6.
 
@@ -261,7 +265,18 @@ is updated in Actor Studio.
 Client presentation JSON is bundled through Addressables at
 `src/Client/Assets/Content/Items/Presentation/item-presentation-catalog.json`.
 It contains icon Addressables addresses below `Items/Icons/`, localization keys,
-fallback text, and optional prefab presentation keys. Icon files are
+fallback text, optional prefab presentation keys, and, since format 3, the
+garments an item shows on a body: `garments`, the names of their garment
+textures, such as `WoolCloak`, at most four; `loweredGarments`, those it shows
+instead while its wearer has lowered it, such as `WoolHoodDown` for the hood; and
+`dyes`, the colors of their dye channels as `#RRGGBB` with upper-case digits, at
+most three, or none for their natural colors. Lowered garments and dyes need
+garments. The Item Catalog window edits them as comma-separated lists, and
+`ItemGarmentTests` requires that every item of the `head`, `body`, `legs`,
+`hands`, `feet`, or `back` slot shows garments that every body's appearance
+catalog has, in its own slot, with no more dye colors than they have dye
+channels; see [Equipment Visuals Design](../../docs/EQUIPMENT_VISUALS_DESIGN.md#items).
+Icon files are
 client-owned assets below `Assets/Content/Items/Icons` and use one Sprite per
 file. The catalog has a separate
 deterministic presentation revision and records the exact source gameplay
@@ -301,6 +316,16 @@ From the repository root, compile an intentional authoring change:
 
 ```powershell
 dotnet run --project tools/ItemCatalogCompiler
+```
+
+Bake the gameplay and presentation catalogs without the window, such as after
+editing the authoring files or the presentation file by hand, with the Unity
+project closed in every Editor; structural changes are baked without asking:
+
+```powershell
+& "C:\Program Files\Unity\Hub\Editor\<version>\Editor\Unity.exe" -batchmode -nographics `
+  -projectPath src/Client -executeMethod Mmorpg.WorldData.Editor.Items.ItemCatalogCommandLine.SaveAndBake `
+  -quit -logFile -
 ```
 
 Verify that checked-in runtime content matches authoring:

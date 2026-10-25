@@ -1,6 +1,6 @@
 # Equipment Visuals Design
 
-Last updated: 2026-10-24
+Last updated: 2026-10-25
 
 Status: accepted by Victor on 2026-10-22, with the support of future races added.
 Extended on 2026-10-23, accepted by Victor, with the garment cage, garment
@@ -31,7 +31,10 @@ Step 5d makes paint layers independent of the bodies' topology, as Victor decide
 on 2026-10-24: each layer keeps its own canvas, a copy of the body it is painted
 on, and every body gets the paint by projection, through the bodies' new paint UV
 map, which lays the two sides of a mirrored body apart, so paint can be one-sided,
-as the new tattoo `ForearmRunes` on the left forearm is.
+as the new tattoo `ForearmRunes` on the left forearm is. Step 6, as Victor decided
+on 2026-10-25, makes items show their garments: its first part gives the items
+their garments and dye colors, the `back` slot, dyeable wool, and the local
+player dressed by its equipment; see [Items](#items).
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -180,16 +183,17 @@ An item names the garments it shows, so one item may show several garments,
 such as a robe with a hood. A garment may also hide whole slots below it, such
 as a floor-length robe that hides the `legs` slot. The item equipment slots
 `head`, `body`, `legs`, `hands`, and `feet` map to the visual slots of the same
-name. A cloak needs a `back` equipment slot, which the catalog does not have yet;
-it comes with the first cloak item. `neck`, `ring_1`, and `ring_2` show nothing,
-and `main_hand`, `off_hand`, and `bag` show attachments.
+name, and the cloak's `back` slot is an equipment slot too since 2026-10-25.
+`neck`, `ring_1`, and `ring_2` show nothing, and `main_hand`, `off_hand`, and
+`bag` will show attachments.
 
 One equipment slot holds one item, and a visual slot shows one garment: of two
 garments of a slot that a look names, the first in the catalog is worn, and
 trying one on takes off the other. An item may show garments of several slots,
 such as a robe with its hood in `head`; when another item's garment, such as a
-helmet, fills that slot too, the equipment decides which one is worn, which comes
-with the items in delivery step 6. Sleeves are part of a `body` garment, and
+helmet, fills that slot too, the garment of the item in the equipment slot of
+that visual slot's name is worn, and otherwise the item earlier in the
+equipment's order; see [Items](#items). Sleeves are part of a `body` garment, and
 gloves sit over them.
 
 ### The Garment Cage
@@ -536,10 +540,16 @@ channels mark up to three regions that a dye color tints, such as cloth, trim,
 and leather. The garment shader `Mmorpg/Garment` multiplies the painted color by
 the dye color as far as the region's channel reaches, so a dyeable region is
 painted in a light, neutral color with its folds and wear, and the dye gives it
-its hue. The undyed garment, with white dyes or no mask, shows its painted
-colors. Which colors an item has, per definition or per item, is decided with
-the items in delivery step 6; the dye mask comes with the first texture that has
-one.
+its hue. Every dyeable region's middle tone lies at the same level, 0.7 in
+linear values, so one dye color gives the same cloth on every garment. A dyeable
+texture names the natural color of each channel, which its undyed garment
+wears, so an existing texture becomes dyeable without being painted again:
+`Set-TextureDyes.ps1` divides its image by its natural colors where its mask
+reaches; see [Garment Textures](ART_PIPELINE.md#garment-textures). The wool of
+`WoolCloak`, `WoolRobe`, `WoolHoodUp`, and `WoolHoodDown` was the first, on
+2026-10-25, with one channel each, the clasps of the cloak left undyed. The dye
+colors belong to the item definition, as Victor decided on 2026-10-25: a Blue
+Wool Cloak is an item of its own; see [Items](#items).
 
 ## Fitting Every Body Type
 
@@ -764,6 +774,42 @@ Weapons, shields, quivers, and backpacks are static models on the skeleton's
 sockets. A static model's root object `Grip` marks where it is held, and the
 socket's position and turn on each body type place it. They follow the hands and
 the back without weights.
+
+## Items
+
+Items show their garments, as Victor decided on 2026-10-25:
+
+- **An item names its garments** in the client's item presentation, by the
+  names of their garment textures, such as `WoolCloak` on `Cloak`, which name a
+  template and its texture together, with the colors of their dye channels, or
+  none for the textures' natural colors. The presentation is the client's, next to
+  the item's icon and name; the server knows only the definition ids. Every item
+  of an equipment slot that has a visual slot of its name, `head`, `body`, `legs`,
+  `hands`, `feet`, and `back`, shows garments, and no other item does; an item
+  without a garment of its own shows nothing. The Unity tests hold every item to
+  this, and every garment it names to every body.
+- **Dye colors belong to the definition**: a Blue Wool Robe and a Red Wool Robe are
+  items of their own on the same garment. Dyeing an item in the game, such as at
+  a dyer, would put colors on each item later, and the look would take them from
+  there instead.
+- **One garment per visual slot**: of two items whose garments fill one visual
+  slot, the garment of the item in the equipment slot of the visual slot's name
+  wins, such as a helmet in `head` over a robe's hood, and otherwise the item
+  earlier in the equipment's order.
+- **The hood is its own item**, the Wool Hood in `head`, that can be lowered: an
+  item may name lowered garments, which it shows while its wearer has lowered
+  it, such as `WoolHoodDown` for `WoolHoodUp`. The player lowers and raises the
+  hood with a button in the inventory, and the server keeps the choice, which
+  comes with step 6b.
+- **Hair is part of the look**, not an item: a garment of the `hair` slot or none,
+  chosen in character creation and changed in the game later, such as at a
+  barber. Every other garment comes from the equipment.
+
+The items are the Leather Jerkin, Linen Shirt, Long-Sleeved Linen Shirt, Net
+Shirt, Wool Trousers, Leather Boots, Leather Gloves, Nasal Helm, and the Wool
+Robe, Wool Hood, and Wool Cloak, each also blue and red, with the new category
+`clothing` for the linen and wool and `armor` for the leather and iron. The
+General Store sells them, and the development package `outfits` holds them all.
 
 ## Putting A Character Together In Unity
 
@@ -1006,14 +1052,25 @@ quarter of the triangles come with the first crowd measurement that needs them.
      shader reading the paint UVs, the four layers moved to their canvases, and the
      one-sided tattoo `ForearmRunes`.
 6. Items: items show their garments as templates with textures, the `back` slot,
-   dye colors on items, and the look sent to every client with the body type.
+   dye colors on items, and the look sent to every client with the body type, as
+   Victor decided on 2026-10-25, in two parts:
+   - 6a. Done. Items show garments: the garments and dye colors of every item in
+     the item presentation, the `back` slot, the category `clothing`, the wool set
+     dyeable with its items in three colors, the General Store and a development
+     package with them, and the local player dressed by its equipment, with its
+     hair from F2.
+   - 6b. The look on the server: the body model and the look stored with the
+     character and chosen at its creation, sent to every client with the visible
+     equipment and the lowered hood, development bots dressed from their ids, and
+     player corpses wearing what is left in them.
 7. With the first new race: making a body type from a human body, generalizing
    `Sync-HumanBase.ps1` to every body of the race, and adding it to the cage.
 
 ## Open Questions
 
-- Whether a hood is toggled up and down by the player, and where.
-- Whether dye colors belong to the item definition or to each item.
+Both questions of step 6 were answered on 2026-10-25: the hood is an item of its
+own that the player lowers and raises in the inventory, and dye colors belong to
+the item definition; see [Items](#items).
 
 Helmets are skinned garments weighted to the head, as the first helmet,
 `NasalHelm`, shows; masks will be too.

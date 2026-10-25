@@ -306,6 +306,9 @@ namespace Mmorpg.Client.Editor
         public string name = string.Empty;
         public string baseColor = string.Empty;
         public string baseMap = string.Empty;
+        // A dyeable garment texture's dye mask and the natural color of each of its channels.
+        public string dyeMap = string.Empty;
+        public string[] dyeColors = Array.Empty<string>();
         public float metallic = -1f;
         public float smoothness = -1f;
     }

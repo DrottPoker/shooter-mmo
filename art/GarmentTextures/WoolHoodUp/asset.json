@@ -4,19 +4,21 @@
     "garment": "art/Garments/HoodUp",
     "approvals": {
         "texture": {
-            "date": "2026-10-24",
-            "sourceSha256": "ecb467315dba60791469f36e7f540153f951aff2a23ff62eb55258d5cf24a66b",
+            "date": "2026-10-25",
+            "sourceSha256": "af69d0fceb1d392e4f904e05134a3054d99ad1acbd902990dd442cce0730f5f9",
             "garmentSourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e"
         }
     },
     "export": {
-        "sourceSha256": "ecb467315dba60791469f36e7f540153f951aff2a23ff62eb55258d5cf24a66b",
+        "sourceSha256": "af69d0fceb1d392e4f904e05134a3054d99ad1acbd902990dd442cce0730f5f9",
         "garmentSourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e",
         "materials": [
             {
                 "name": "M_Garment_WoolHoodUp",
                 "baseColor": "#FFFFFF",
                 "baseMap": "T_Garment_WoolHoodUp",
+                "dyeMap": "T_Garment_WoolHoodUp_Dye",
+                "dyeColors": ["#8D806E"],
                 "metallic": 0.0,
                 "smoothness": 0.14
             }
@@ -25,7 +27,12 @@
             {
                 "name": "T_Garment_WoolHoodUp",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolHoodUp.png",
-                "sha256": "8b938b9a63c581773e73a39c31670f70bc7341e05bfbcebc2208ee3b08c059ad"
+                "sha256": "d313eec2f738a21e415839be8a2d4ecefba07d1de64529b91dc10894f87e9755"
+            },
+            {
+                "name": "T_Garment_WoolHoodUp_Dye",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolHoodUp_Dye.png",
+                "sha256": "6cbf17cd74c56a45f6d97c1e8bbe27ececf52a08464b5f4f60c4300b1c138bb6"
             }
         ]
     }

@@ -11,8 +11,9 @@ namespace Mmorpg.Client.Gameplay
     // color, paint layers over its skin, and garments, and a tint multiplies the skin materials by
     // a faint color and leaves the eyes, teeth, tongue, and garments as they are. Both come from
     // shared materials, so bodies that look the same draw with the same materials; the default
-    // look without a tint draws with the body's own materials. A garment with loose cloth lets
-    // the body's ClothChainSolver move its chains.
+    // look without a tint draws with the body's own materials. A garment draws in the look's dye
+    // colors or its natural ones. A garment with loose cloth lets the body's ClothChainSolver move
+    // its chains.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -264,7 +265,10 @@ namespace Mmorpg.Client.Gameplay
                     }
 
                     var skinTint = System.Array.IndexOf(skinMaterials, own) >= 0 ? tint : Color.white;
-                    applied[index] = materials.For(own, baseMap, skinTint, paints);
+                    // A worn garment draws with its texture's material, in the look's dye colors.
+                    var garment = worn.FirstOrDefault(candidate => candidate.Material == own);
+                    var dyes = garment != null ? look.DyesFor(garment.Name) : null;
+                    applied[index] = materials.For(own, baseMap, skinTint, paints, dyes);
                 }
 
                 entry.Key.sharedMaterials = applied;

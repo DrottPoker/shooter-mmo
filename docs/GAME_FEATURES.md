@@ -88,9 +88,13 @@ no local player exists in the scene.
 
 The test shard has no durable gameplay simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
-rendered from interpolated SimulationWorker snapshots. Every player, the local
-one included, shows the male human body, which stands, walks, and jogs with the
-speed it moves at; the body type at character creation is planned. With the
+rendered from interpolated SimulationWorker snapshots. Every player shows a human
+body, which stands, walks, and jogs with the speed it moves at: the local player
+the male or female body and the look chosen in the World Debug panel (F2), other
+players the male body, and development bots either body by their ids; the body
+type at character creation is planned. The local player wears the garments of
+the items it has equipped, such as a linen shirt, a wool robe, or a blue wool
+cloak, as soon as it equips them. With the
 World Debug setting `Tint bodies` on, off by default, the local player is tinted
 purple, other players orange, and synthetic development bots blue. SimulationWorker assigns each live
 player a network entity id. Reliable spawn and despawn messages decide when a

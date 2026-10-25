@@ -26,7 +26,7 @@
     "covers": false,
     "hair": null,
     "cloth": "cloak",
-    "dyes": 0,
+    "dyes": 1,
     "triangleBudget": 1500,
     "approvals": {
         "model": {

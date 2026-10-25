@@ -765,7 +765,7 @@ concurrent inspection, and authoritative looting:
 - The compiler emits sorted deterministic runtime content under
   `src/Shared/WorldData/Generated/Items`, including one catalog revision and structural
   fingerprints for every item definition and Secure Container tier.
-- The checked-in catalog has eleven fantasy definitions, thirteen equipment
+- The checked-in catalog has 27 fantasy definitions, fourteen equipment
   slots including a stack-holding ammunition slot, the potion, food, material,
   and ammunition tags, the `pickaxe` tool kind, one Bag layout with general and
   specialized slots, the four-slot base Secure Container tier shown as Warded

@@ -10,7 +10,7 @@ namespace Mmorpg.Client.Tests.EditMode
     {
         private static readonly string[] DesignSlotIds =
         {
-            "head", "neck", "body", "legs", "hands", "feet", "main_hand", "off_hand",
+            "head", "neck", "back", "body", "legs", "hands", "feet", "main_hand", "off_hand",
             "ammunition", "ring_1", "ring_2", "tool", "bag"
         };
 
@@ -52,6 +52,9 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(offHand.Row, Is.EqualTo(body.Row));
             Assert.That(mainHand.Column, Is.LessThan(body.Column));
             Assert.That(offHand.Column, Is.GreaterThan(body.Column));
+            // The cloak's slot sits beside the feet, below the silhouette's left column.
+            Assert.That(Cell(cells, "back").Row, Is.EqualTo(feet.Row));
+            Assert.That(Cell(cells, "back").Column, Is.EqualTo(0));
         }
 
         [Test]

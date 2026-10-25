@@ -3370,7 +3370,20 @@ the laces.
    and the test poses; for a texture with transparent parts also each body
    without it in the colors of the template's sheet, with the skin under the
    holes and along their edges visible.
-4. Approve, export, and verify:
+4. To make the texture dyeable, give its template dye channels in its
+   `asset.json`, such as `"dyes": 1`, and give the texture its dye mask, with a
+   regions PNG of the texture's size whose red channel marks the texels the first
+   channel tints, or none to tint every texel:
+
+   ```powershell
+   .\tools\Set-TextureDyes.ps1 -Asset art/GarmentTextures/WoolTunic -Regions <regions.png>
+   ```
+
+   Expected result: `WoolTunic: natural colors #RRGGBB; <n> texels too light to
+   be dyed in full.`, then the output of `Sync-TextureAsset.ps1` above. The
+   review sheet shows the texture as before, since the undyed texture wears its
+   natural colors.
+5. Approve, export, and verify:
 
    ```powershell
    .\tools\Approve-ArtAsset.ps1 -Asset art/GarmentTextures/WoolTunic -Stage texture
@@ -3388,9 +3401,13 @@ the laces.
    `Assets/Art/Materials/Garments/M_Garment_WoolTunic.mat` and updates the
    appearance catalogs: the Console lists `Garment WoolTunic` in both. Commit the
    `.blend` file, `asset.json`, the PNG and JSON files, the material, the
-   catalogs, and their `.meta` files together. A texture is exported again after
-   every export of its template. Wear it in the game with `Try on garment:
-   WoolTunic` in F2, as in
+   catalogs, and their `.meta` files together. A dyeable texture also exports
+   `T_Garment_WoolTunic_Dye.png`, and Unity gives the material its dye mask and
+   natural colors. A texture is exported again after every export of its
+   template. Try it on in the Wardrobe, and give it an item to
+   wear it in the game: an item definition whose presentation names
+   `WoolTunic` in `Garments`, as [Item Catalog Authoring](../content/items/README.md)
+   describes; see
    [Manual Test Of The Human Base Characters](#manual-test-of-the-human-base-characters).
 
 ### Manual Test Of The Human Base Characters
@@ -3524,9 +3541,13 @@ controller, and prefabs are committed.
     skin under the meshes left visible. In Unity, run the EditMode tests
     `EveryGarmentModelIsSkinnedToTheRigOfItsBody` and `EveryGarmentModelHasItsData`.
     Expected result: both pass.
-17. In a World scene, press F2 and in the Presentation section turn on
-    `Try on garment: WoolTrousers`, then `Try on garment: LeatherJerkin`.
-    Expected result: your body wears the brown wool trousers and the leather
+17. The steps that wear garments in the game wear them through items. With
+    the character offline, give it the `Outfits Test Pack` in
+    `MMORPG > Tools > Inventory Item Grants`, as
+    [Give A Character Development Items](#give-a-character-development-items)
+    describes, then join a World scene and press `C`. Drag `Wool Trousers` onto
+    the `Legs` slot, then `Leather Jerkin` onto `Body`.
+    Expected result: at each drop your body wears the brown wool trousers and the leather
     jerkin over them at the waist, both as meshes of their own close to the skin,
     the jerkin with its short sleeves, no collar, and the open V laced across,
     where the skin shows between the laces. The skin under the garments is gone
@@ -3534,15 +3555,16 @@ controller, and prefabs are committed.
     and a look into a sleeve, into the V, or at the hips below the hem shows
     skin, never a hole in the body. With the female body chosen, look at the
     shoulders from the side while you stand still. Expected result: no skin
-    shows through the jerkin at the shoulder seams. Turn on `Try on garment:
-    LinenShirt`.
-    Expected result: the linen shirt takes the jerkin's place, since a body wears
-    one chest piece. Choose `Your tattoo: Tattoo` and turn on `Try on garment:
-    NetShirt`. Expected result: the tattoo and the skin show through the net's
-    meshes, and on the woman the bra too, since the net shirt does not hide
-    underwear. Turn the garments off and the bare body is back.
-    The choice is kept between sessions like the face and the eyes; other
-    players and bots wear no garments.
+    shows through the jerkin at the shoulder seams. Drag `Linen Shirt` onto
+    `Body`.
+    Expected result: the linen shirt takes the jerkin's place, which moves into
+    the shirt's inventory slot, since a body wears one chest piece. In F2 choose
+    `Your tattoo: Tattoo` and drag `Net Shirt` onto `Body`. Expected result: the
+    tattoo and the skin show through the net's meshes, and on the woman the bra
+    too, since the net shirt does not hide underwear. Drag the items back into the
+    inventory and the bare body is back. What the character wears comes from its
+    equipment, so it is the same after a new join; other players and bots wear no
+    garments yet.
 18. In the Unity Editor, open `MMORPG > Tools > Art Pipeline > Wardrobe`.
     Expected result: the window shows `Human_Female` on a checkered ground; pick
     `Human_Male` in `Body` and tick `WoolTrousers` and `LeatherJerkin`. Expected
@@ -3556,8 +3578,8 @@ controller, and prefabs are committed.
     look up into a sleeve shows the arm going on into it. Press `Death`. Expected
     result: the body falls and lies on its back in the jerkin.
 19. In a World scene, press F2. The Presentation section starts with `Your body:
-    Human_Male (creation only)`. Choose `Your tattoo: Tattoo` and turn on `Try on
-    garment: NetShirt`, then press `>` next to `Your body`. Expected result: the
+    Human_Male (creation only)`. Choose `Your tattoo: Tattoo` and wear the `Net
+    Shirt` from the inventory, then press `>` next to `Your body`. Expected result: the
     row reads `Your body: Human_Female (creation only)`, your character is the
     woman at once, on the same spot, with the net shirt, the tattoo, the bra, and
     the briefs, and the face and eye rows list her options, `Blush`, `Freckles`,
@@ -3592,19 +3614,19 @@ controller, and prefabs are committed.
     welt; soft lighter brown gloves with stitched seams along the sides of the
     fingers, around the wrist, and on the inside of the cuff, and a stitched band
     at the cuff's edge.
-21. In a World scene, press F2 and in the Presentation section turn on
-    `Try on garment: WoolTrousers`, `Try on garment: LeatherBoots`,
-    `Try on garment: LinenLongShirt`, and `Try on garment: LeatherGloves`, on
-    the man and, after `>` next to `Your body`, on the woman.
+21. In a World scene, press `C` and wear `Wool Trousers`, `Leather Boots`,
+    `Long-Sleeved Linen Shirt`, and `Leather Gloves` from the `Outfits Test
+    Pack` of step 17, on the man and, after `>` next to `Your body` in F2, on
+    the woman.
     Expected result: your body wears the trousers tucked into brown leather
     boots that reach the middle of the calf, the long linen shirt, and brown
     leather gloves over its cuffs, with five fingers that follow your hands.
     No toes and no fingertips show through, and nothing of the trousers or the
     sleeves shows through the boots or the gloves when you walk, jog, and turn;
     a look into a boot's shaft or a glove's cuff shows the trouser leg or the
-    sleeve going on into it. The soles sink about 1 cm into the ground. Turn the
-    boots and the gloves off. Expected result: the bare feet and hands are back,
-    whole.
+    sleeve going on into it. The soles sink about 1 cm into the ground. Drag the
+    boots and the gloves back into the inventory. Expected result: the bare feet
+    and hands are back, whole.
 22. In the Unity Editor, open `MMORPG > Tools > Art Pipeline > Wardrobe`, pick
     each body in turn, and tick `WoolTrousers`, `LeatherBoots`,
     `LinenLongShirt`, and `LeatherGloves`. Expected result: `Drawn` reads
@@ -3641,22 +3663,21 @@ controller, and prefabs are committed.
     hems; dark brown wool with folds down the back, stitched hems, and in front
     only the cloth over the shoulders, down to a large round bronze clasp at the
     front of each shoulder.
-24. In a World scene, press F2 and in the Presentation section turn on
-    `Try on garment: LeatherBoots`, `Try on garment: WoolRobe`, and then
-    `Try on garment: LinenLongShirt` and `Try on garment: WoolCloak`. Expected
-    result: the robe reaches the ankles with the boots showing below it, and
-    turning on `LinenLongShirt` takes the robe's place, since both are chest
-    pieces; turn `WoolRobe` on again. The robe's skirt falls straight from the
+24. In a World scene, press `C` and wear `Leather Boots`, `Wool Robe`, and then
+    `Long-Sleeved Linen Shirt` and `Wool Cloak`, on the `Back` slot beside
+    `Feet`. Expected result: the robe reaches the ankles with the boots showing
+    below it, and the shirt takes the robe's place, since both are chest pieces;
+    wear `Wool Robe` again. The robe's skirt falls straight from the
     hips, wider toward the hem, without showing the shape of the legs. The cloak
     lies over the shoulders and is held by a large round bronze clasp at the
     front of each shoulder, with the throat and the chest free, and over the
     robe it falls straight from the shoulders out over the skirt, covering its
     back, with no skirt showing through it and no bulge in the middle of the
     back; everything under it, the robe or the shirt, stays whole when the cloak
-    swings. Turn off `WoolRobe` and turn on `LinenLongShirt` and
-    `WoolTrousers`. Expected result: the cloak hangs taut down the back to the
+    swings. Wear `Long-Sleeved Linen Shirt` in the robe's place and `Wool
+    Trousers`. Expected result: the cloak hangs taut down the back to the
     middle of the calves, close to the back without following it or the
-    buttocks. Turn `WoolRobe` on again. Walk, jog, stop, and turn. Expected
+    buttocks. Wear `Wool Robe` again. Walk, jog, stop, and turn. Expected
     result: the skirt follows the legs, the cloak is pushed back by the legs
     that kick back and swings behind over the skirt, both settle when you stop,
     and no leg pokes out through the skirt or the cloak, no skirt through the
@@ -3697,21 +3718,17 @@ controller, and prefabs are committed.
     shoulders; the hood down as a collar around the neck with its top rolled over
     and the hood folded on the upper back; and a pointed iron helmet with four
     raised bands, a brow band above the ears, and a nasal down the nose.
-28. In a World scene, press F2 and in the Presentation section turn on
-    `Try on garment: LinenLongShirt`, `Try on garment: WoolCloak`, and
-    `Try on garment: DarkBrownHair`, on the man and, after `>` next to `Your
-    body`, on the woman. Expected result: straight dark brown hair with a middle
-    parting and a short fringe covers the ears and falls to the shoulders, over
-    the cloak's yoke. Turn on `Try on garment: WoolHoodUp`. Expected result: the
-    grey-brown wool hood covers the head with the fringe and a little hair at
-    the sides of the face showing in its opening, the hair pressed flat under it
-    and nowhere through it, and its short collar lies over the neck and the
-    cloak, ending above the bronze clasps. Turn on `Try on garment:
-    WoolHoodDown`, which takes the hood up's place in the `head` slot. Expected
-    result: the hair falls as before, its ends inside the collar, which lies
-    around the neck with its top rolled over, and the hood lies folded on the
-    upper back over the cloak and the hair. Turn on `Try on garment:
-    IronNasalHelm`. Expected result: a pointed riveted iron helmet sits above
+28. In a World scene, press `C` and wear `Long-Sleeved Linen Shirt` and `Wool
+    Cloak`, and in F2 choose `Your hair: DarkBrownHair`, on the man and, after
+    `>` next to `Your body`, on the woman. Expected result: straight dark brown
+    hair with a middle parting and a short fringe covers the ears and falls to
+    the shoulders, over the cloak's yoke. Wear `Wool Hood` on `Head`. Expected
+    result: the grey-brown wool hood covers the head with the fringe and a little
+    hair at the sides of the face showing in its opening, the hair pressed flat
+    under it and nowhere through it, and its short collar lies over the neck and
+    the cloak, ending above the bronze clasps. The hood pushed back, `WoolHoodDown`,
+    is tried in the Wardrobe in step 29. Wear `Nasal Helm` on `Head`, which takes
+    the hood's place. Expected result: a pointed riveted iron helmet sits above
     the brows and the ears with the leather lining showing below the iron and
     the nasal down in front of the nose, and the hair pressed flat under it hangs
     out below it to the shoulders. Walk, jog, and turn with each. Expected
@@ -3727,7 +3744,45 @@ controller, and prefabs are committed.
     with the head, and the body falls and lies in the outfit without the hair or
     the cloak coming through the hood or the helmet.
 
-## One-Time Unity World Scene Authoring
+### Manual Test Of Items Showing Garments
+
+Items show their garments in their dye colors, as
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#items) describes. No
+manual Unity Editor steps are required: the dye masks, materials, catalogs, and
+item presentation are committed.
+
+1. Start the local stack and GameService as
+   [Backend Services](#backend-services) describes, open `LoginMenu` in Unity,
+   enter Play Mode, create a character, and join a World scene with the default
+   worker. Press `C`. Expected result: the equipment column shows a `Back` slot at
+   the bottom left, beside `Feet`.
+2. Walk to Mira the Quartermaster in the city and open her trade. Expected
+   result: the General Store lists the Linen Shirt, Long-Sleeved Linen Shirt, Net
+   Shirt, Wool Trousers, Leather Boots, Leather Gloves, the Wool Robe, Wool Hood,
+   and Wool Cloak, each also blue and red, and the Nasal Helm after the arrows,
+   potion, trout, and pickaxe. Buy the Wool Cloak (35 Gold) and the Blue Wool
+   Cloak (50 Gold) with the 100 Gold a new character starts with.
+3. Drag `Wool Cloak` onto `Back`. Expected result: at once the dark brown wool
+   cloak hangs down your back from the shoulders, held by its bronze clasps.
+   Drag `Blue Wool Cloak` onto `Back`. Expected result: the cloak turns dark
+   blue, its folds, hems, and stitches as before, and the clasps stay bronze;
+   the brown cloak moves into the inventory slot the blue one came from.
+4. Leave the shard, give the offline character the `Outfits Test Pack` in
+   `MMORPG > Tools > Inventory Item Grants` (see
+   [Give A Character Development Items](#give-a-character-development-items)),
+   and join again. Wear `Blue Wool Robe`, `Blue Wool Hood`, `Blue Wool Cloak`,
+   and `Leather Boots`. Expected result: the robe and the hood are the same
+   medium blue and the cloak a darker blue over them; with `Red Wool Robe`,
+   `Red Wool Hood`, and `Red Wool Cloak` the same in a warm madder red, the cloak
+   darker. With `Wool Robe`, `Wool Hood`, and `Wool Cloak` the set is the undyed
+   grey-brown robe and hood and the dark brown cloak, exactly as before.
+5. Wear `Nasal Helm` on `Head`. Expected result: the helmet takes the hood's
+   place, and the hood moves into the inventory. In F2 choose `Your hair:
+   DarkBrownHair` and then `none`. Expected result: the hair shows pressed flat
+   under the helmet, and none means a bald head; the hair is part of the look and
+   no item.
+6. Press `>` next to `Your body` in F2. Expected result: the woman wears the same
+   items in the same colors.
 
 The scenes, prefabs, and `PlayerControls` asset described here are already
 committed. Do not repeat these steps on an existing checkout, because recreating

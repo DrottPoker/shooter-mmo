@@ -1,84 +1,329 @@
 {
-    "formatVersion": 2,
-    "sourceCatalogRevision": "76c8cd8ae93a6fcd945d8be4ed992fff78df63d6ae0c72215ab86849c1babe16",
-    "presentationRevision": "7d0f9c18608ed42d54de744bae502fbea6cf70e2c88eea8aea40e2c0f4b54d36",
+    "formatVersion": 3,
+    "sourceCatalogRevision": "7720de5d0552e85507cd5aaa3183e40669d6f216b2c990e2ed0d7688d5a444ad",
+    "presentationRevision": "6c8c83170503c298215e56c12e61625f29c4a024177cfdd8f95fd546afddf02f",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
             "iconAddress": "",
             "localizationKey": "items.ammunition.bronze_arrow.name",
             "fallbackDisplayName": "Bronze Arrow",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "armor.leather_boots",
+            "iconAddress": "",
+            "localizationKey": "items.armor.leather_boots.name",
+            "fallbackDisplayName": "Leather Boots",
+            "prefabPresentationKey": "",
+            "garments": [
+                "LeatherBoots"
+            ],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "armor.leather_gloves",
+            "iconAddress": "",
+            "localizationKey": "items.armor.leather_gloves.name",
+            "fallbackDisplayName": "Leather Gloves",
+            "prefabPresentationKey": "",
+            "garments": [
+                "LeatherGloves"
+            ],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "armor.leather_jerkin",
             "iconAddress": "",
             "localizationKey": "items.armor.leather_jerkin.name",
             "fallbackDisplayName": "Leather Jerkin",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [
+                "LeatherJerkin"
+            ],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "armor.nasal_helm",
+            "iconAddress": "",
+            "localizationKey": "items.armor.nasal_helm.name",
+            "fallbackDisplayName": "Nasal Helm",
+            "prefabPresentationKey": "",
+            "garments": [
+                "IronNasalHelm"
+            ],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "bag.travelers_pack",
             "iconAddress": "",
             "localizationKey": "items.bag.travelers_pack.name",
             "fallbackDisplayName": "Traveler's Pack",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "clothing.blue_wool_cloak",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.blue_wool_cloak.name",
+            "fallbackDisplayName": "Blue Wool Cloak",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolCloak"
+            ],
+            "loweredGarments": [],
+            "dyes": [
+                "#2B4364"
+            ]
+        },
+        {
+            "definitionId": "clothing.blue_wool_hood",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.blue_wool_hood.name",
+            "fallbackDisplayName": "Blue Wool Hood",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolHoodUp"
+            ],
+            "loweredGarments": [
+                "WoolHoodDown"
+            ],
+            "dyes": [
+                "#3A5A85"
+            ]
+        },
+        {
+            "definitionId": "clothing.blue_wool_robe",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.blue_wool_robe.name",
+            "fallbackDisplayName": "Blue Wool Robe",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolRobe"
+            ],
+            "loweredGarments": [],
+            "dyes": [
+                "#3A5A85"
+            ]
+        },
+        {
+            "definitionId": "clothing.linen_shirt",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.linen_shirt.name",
+            "fallbackDisplayName": "Linen Shirt",
+            "prefabPresentationKey": "",
+            "garments": [
+                "LinenShirt"
+            ],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "clothing.long_linen_shirt",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.long_linen_shirt.name",
+            "fallbackDisplayName": "Long-Sleeved Linen Shirt",
+            "prefabPresentationKey": "",
+            "garments": [
+                "LinenLongShirt"
+            ],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "clothing.net_shirt",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.net_shirt.name",
+            "fallbackDisplayName": "Net Shirt",
+            "prefabPresentationKey": "",
+            "garments": [
+                "NetShirt"
+            ],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "clothing.red_wool_cloak",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.red_wool_cloak.name",
+            "fallbackDisplayName": "Red Wool Cloak",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolCloak"
+            ],
+            "loweredGarments": [],
+            "dyes": [
+                "#742519"
+            ]
+        },
+        {
+            "definitionId": "clothing.red_wool_hood",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.red_wool_hood.name",
+            "fallbackDisplayName": "Red Wool Hood",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolHoodUp"
+            ],
+            "loweredGarments": [
+                "WoolHoodDown"
+            ],
+            "dyes": [
+                "#9C3426"
+            ]
+        },
+        {
+            "definitionId": "clothing.red_wool_robe",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.red_wool_robe.name",
+            "fallbackDisplayName": "Red Wool Robe",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolRobe"
+            ],
+            "loweredGarments": [],
+            "dyes": [
+                "#9C3426"
+            ]
+        },
+        {
+            "definitionId": "clothing.wool_cloak",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.wool_cloak.name",
+            "fallbackDisplayName": "Wool Cloak",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolCloak"
+            ],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "clothing.wool_hood",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.wool_hood.name",
+            "fallbackDisplayName": "Wool Hood",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolHoodUp"
+            ],
+            "loweredGarments": [
+                "WoolHoodDown"
+            ],
+            "dyes": []
+        },
+        {
+            "definitionId": "clothing.wool_robe",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.wool_robe.name",
+            "fallbackDisplayName": "Wool Robe",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolRobe"
+            ],
+            "loweredGarments": [],
+            "dyes": []
+        },
+        {
+            "definitionId": "clothing.wool_trousers",
+            "iconAddress": "",
+            "localizationKey": "items.clothing.wool_trousers.name",
+            "fallbackDisplayName": "Wool Trousers",
+            "prefabPresentationKey": "",
+            "garments": [
+                "WoolTrousers"
+            ],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "food.cooked_trout",
             "iconAddress": "",
             "localizationKey": "items.food.cooked_trout.name",
             "fallbackDisplayName": "Cooked Trout",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "jewelry.copper_ring",
             "iconAddress": "",
             "localizationKey": "items.jewelry.copper_ring.name",
             "fallbackDisplayName": "Copper Ring",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "material.iron_ore",
             "iconAddress": "",
             "localizationKey": "items.material.iron_ore.name",
             "fallbackDisplayName": "Iron Ore",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "material.wolf_pelt",
             "iconAddress": "",
             "localizationKey": "items.material.wolf_pelt.name",
             "fallbackDisplayName": "Wolf Pelt",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "potion.minor_healing",
             "iconAddress": "",
             "localizationKey": "items.potion.minor_healing.name",
             "fallbackDisplayName": "Minor Healing Potion",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "quest_item.sealed_letter",
             "iconAddress": "",
             "localizationKey": "items.quest_item.sealed_letter.name",
             "fallbackDisplayName": "Sealed Letter",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "tool.starter_pickaxe",
             "iconAddress": "",
             "localizationKey": "items.tool.starter_pickaxe.name",
             "fallbackDisplayName": "Starter Pickaxe",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
         },
         {
             "definitionId": "weapon.training_shortbow",
             "iconAddress": "",
             "localizationKey": "items.weapon.training_shortbow.name",
             "fallbackDisplayName": "Training Shortbow",
-            "prefabPresentationKey": ""
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": []
         }
     ]
 }

@@ -21,6 +21,10 @@
       "id": "armor"
     },
     {
+      "displayName": "Clothing",
+      "id": "clothing"
+    },
+    {
       "displayName": "Jewelry",
       "id": "jewelry"
     },
@@ -67,6 +71,11 @@
     {
       "displayName": "Neck",
       "id": "neck",
+      "maximumQuantity": 1
+    },
+    {
+      "displayName": "Back",
+      "id": "back",
       "maximumQuantity": 1
     },
     {

@@ -6,7 +6,7 @@
 new-static writes the first file of a static asset, library-sync builds or updates an animation
 library, paint-sync a paint layer, garment-create and garment-sync a garment template,
 garment-review-file writes a template's review file, cage-create and cage-sync the garment cage,
-and texture-create and texture-sync a garment texture; they run without an open file. Every result
+texture-create and texture-sync a garment texture, and texture-dyes makes it dyeable; they run without an open file. Every result
 line starts with ART_ so the PowerShell scripts can read it from Blender's log.
 """
 
@@ -57,6 +57,7 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--cage-manifest", help="The asset.json of a garment template's cage.")
         command.add_argument("--texture", help="The name of a garment texture.")
         command.add_argument("--garment-file", help="The .blend file of a texture's template.")
+        command.add_argument("--dyes", type=int, default=0, help="The dye channels a texture's template allows.")
         command.add_argument("--pair", action="append", default=[],
                              help="<file.blend>=<Template>:<band> of a template of a lower layer that a garment is checked over.")
         if name == "export":
@@ -118,6 +119,13 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--size", type=int, default=1024)
             command.add_argument("--source-file", help="A .blend file whose mesh the texture's look is projected from.")
             command.add_argument("--source-object")
+    command = commands.add_parser("texture-dyes")
+    command.add_argument("--file", required=True, help="The texture .blend to make dyeable.")
+    command.add_argument("--texture", required=True)
+    command.add_argument("--regions", help="A PNG of the texture's size whose red, green, and blue mark the texels "
+                         "each dye channel tints; without it the first channel tints every texel.")
+    command.add_argument("--level", type=float, default=texture.DYE_LEVEL,
+                         help="The linear level of a region's middle tone in the neutral image.")
     for name in ("cage-create", "cage-sync"):
         command = commands.add_parser(name)
         command.add_argument("--file", required=True, help="The cage .blend to create or update.")
@@ -183,7 +191,7 @@ def _texture(args) -> int:
     garment_file = os.path.abspath(args.garment_file)
     if args.stage != "texture":
         raise ArtPipelineError(f'A garment texture has the review stage texture, not "{args.stage}".')
-    errors = texture.texture_errors(args.texture, garment_file, args.garment, labels[0])
+    errors = texture.texture_errors(args.texture, garment_file, args.garment, labels[0], args.dyes)
     for error in errors:
         print(f"ART_PIPELINE_ERROR {error}")
     if errors:
@@ -220,10 +228,11 @@ def _texture(args) -> int:
         print(f"ART_REPORT {args.texture} is opaque and uses the masks of its template {args.garment}.")
     print(f"ART_VALIDATION texture={texture.image_name(args.texture)}")
     if exported is not None:
-        path, record = exported
-        print(f"ART_TEXTURE {json.dumps({'name': texture.image_name(args.texture), 'path': path}, separators=(',', ':'))}")
+        written, record = exported
+        for name, path in written:
+            print(f"ART_TEXTURE {json.dumps({'name': name, 'path': path}, separators=(',', ':'))}")
+            print(f"ART_EXPORT {path}")
         print(f"ART_MATERIAL {json.dumps(record, separators=(',', ':'))}")
-        print(f"ART_EXPORT {path}")
     return 0
 
 
@@ -426,6 +435,11 @@ def main() -> int:
                                  args.label)
             state = "synced" if moved else "up-to-date"
         print(f"ART_TEXTURE_FILE {state} {args.file}")
+        return 0
+    if args.command == "texture-dyes":
+        texture.set_dyes(os.path.abspath(args.file), args.texture,
+                         os.path.abspath(args.regions) if args.regions else None, args.level)
+        print(f"ART_TEXTURE_FILE dyed {args.file}")
         return 0
     if args.command == "library-sync":
         previews = [tuple(p.rsplit("=", 1)) for p in args.preview]

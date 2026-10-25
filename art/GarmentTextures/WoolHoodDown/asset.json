@@ -4,19 +4,21 @@
     "garment": "art/Garments/HoodDown",
     "approvals": {
         "texture": {
-            "date": "2026-10-24",
-            "sourceSha256": "eb325668abcac56e618bccc9ed2b8f1f2fdf932991ceee87b2de6286f443d127",
+            "date": "2026-10-25",
+            "sourceSha256": "0324b81f1099d449c8c88ae74abeba239ae1fc2bfb2eb97ff29f26f03e8c0e8e",
             "garmentSourceSha256": "0d78779746a1e6b169dedb58aaca72491efee1ef7e30c7d8db781dd2c805a660"
         }
     },
     "export": {
-        "sourceSha256": "eb325668abcac56e618bccc9ed2b8f1f2fdf932991ceee87b2de6286f443d127",
+        "sourceSha256": "0324b81f1099d449c8c88ae74abeba239ae1fc2bfb2eb97ff29f26f03e8c0e8e",
         "garmentSourceSha256": "0d78779746a1e6b169dedb58aaca72491efee1ef7e30c7d8db781dd2c805a660",
         "materials": [
             {
                 "name": "M_Garment_WoolHoodDown",
                 "baseColor": "#FFFFFF",
                 "baseMap": "T_Garment_WoolHoodDown",
+                "dyeMap": "T_Garment_WoolHoodDown_Dye",
+                "dyeColors": ["#8D806E"],
                 "metallic": 0.0,
                 "smoothness": 0.14
             }
@@ -25,7 +27,12 @@
             {
                 "name": "T_Garment_WoolHoodDown",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolHoodDown.png",
-                "sha256": "bad5f063e63971c7d5cbf049c705eab5797d37b9694769c4a9551312d21bb70c"
+                "sha256": "228e06c40bc67633cbe2c97423889df8f3cc5ff7b06b47afe89d658ac6f22e04"
+            },
+            {
+                "name": "T_Garment_WoolHoodDown_Dye",
+                "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolHoodDown_Dye.png",
+                "sha256": "6cbf17cd74c56a45f6d97c1e8bbe27ececf52a08464b5f4f60c4300b1c138bb6"
             }
         ]
     }

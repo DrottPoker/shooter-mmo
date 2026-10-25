@@ -651,7 +651,10 @@ namespace Mmorpg.WorldData.Editor.Items
                     fallbackDisplayName = copy.displayName,
                     prefabPresentationKey = sourcePresentation == null
                         ? string.Empty
-                        : sourcePresentation.prefabPresentationKey
+                        : sourcePresentation.prefabPresentationKey,
+                    garments = (sourcePresentation?.garments ?? Array.Empty<string>()).ToArray(),
+                    loweredGarments = (sourcePresentation?.loweredGarments ?? Array.Empty<string>()).ToArray(),
+                    dyes = (sourcePresentation?.dyes ?? Array.Empty<string>()).ToArray()
                 }
             }).ToArray();
             return copy;

@@ -447,6 +447,10 @@ namespace Mmorpg.Client.Tests.EditMode
                         Assert.That(material.GetFloat("_Cutoff"), Is.EqualTo(ArtMaterialCreator.GarmentAlphaCutoff), where);
                         Assert.That(material.GetFloat("_Cull"), Is.EqualTo((float)CullMode.Off), where);
                         Assert.That(material.renderQueue, Is.EqualTo((int)RenderQueue.AlphaTest), where);
+                        // A dyeable texture's material has its dye mask and natural colors, and every
+                        // other garment material none.
+                        Assert.That(ArtMaterialCreator.HasDyes(material, manifest, record), Is.True,
+                            where + " lacks the dyes of its record; run MMORPG > Tools > Art Pipeline > Create Missing Materials");
                     }
 
                     var baseMap = material.GetTexture("_BaseMap");
@@ -482,7 +486,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(ArtModelImportRules.AppliesToTexture(path), Is.True, path);
                 var importer = (TextureImporter)AssetImporter.GetAtPath(path);
                 Assert.That(importer.textureType, Is.EqualTo(TextureImporterType.Default), path);
-                Assert.That(importer.sRGBTexture, Is.True, path);
+                // A dye mask holds data, which the shader reads as it is stored.
+                Assert.That(importer.sRGBTexture, Is.EqualTo(!ArtModelImportRules.IsDyeMask(path)), path);
                 Assert.That(importer.mipmapEnabled, Is.True, path);
                 Assert.That(importer.isReadable, Is.False, path);
                 Assert.That(importer.maxTextureSize, Is.EqualTo(ArtModelImportRules.MaximumTextureSizeOf(path)), path);

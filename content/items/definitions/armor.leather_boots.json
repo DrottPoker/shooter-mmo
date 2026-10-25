@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "armor",
+  "defaultPolicies": [ ],
+  "displayName": "Leather Boots",
+  "equipmentSlots": [
+    "feet"
+  ],
+  "id": "armor.leather_boots",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 90,
+  "value": 30,
+  "weapon": null
+}

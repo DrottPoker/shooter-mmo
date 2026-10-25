@@ -79,7 +79,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Networking",
                     "Unity.InputSystem",
                     "Mmorpg.GameProtocol",
-                    "Mmorpg.GameSimulation"
+                    "Mmorpg.GameSimulation",
+                    "Mmorpg.WorldData.Client"
                 },
                 ["Mmorpg.Client.WorldActors"] = new[]
                 {
@@ -132,7 +133,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.WorldActors",
                     "Mmorpg.Client.Combat",
                     "Mmorpg.Client.Ui",
-                    "Unity.ResourceManager"
+                    "Unity.ResourceManager",
+                    "Mmorpg.WorldData.Client"
                 },
                 ["Mmorpg.Client.Editor"] = new[]
                 {

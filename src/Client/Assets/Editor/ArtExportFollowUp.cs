@@ -37,6 +37,12 @@ namespace Mmorpg.Client.Editor
                 Debug.Log("Created the project materials " + string.Join(", ", created) + " for the exported art.");
             }
 
+            var dyed = ArtMaterialCreator.GiveDyesToGarmentMaterials();
+            if (dyed.Count > 0)
+            {
+                Debug.Log("Gave the garment materials " + string.Join(", ", dyed) + " the dyes of their textures.");
+            }
+
             ArtAppearanceCatalogs.UpdateAll();
         }
     }

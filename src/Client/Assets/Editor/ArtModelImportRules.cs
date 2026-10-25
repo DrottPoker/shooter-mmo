@@ -28,6 +28,8 @@ namespace Mmorpg.Client.Editor
         // theirs, which cuts holes, lace, and torn edges.
         public const string PaintTextureFolder = TextureFolder + "/Paint";
         public const string GarmentTextureFolder = TextureFolder + "/Garments";
+        // A dyeable garment texture's dye mask, whose channels are data, not colors.
+        public const string DyeMaskSuffix = "_Dye.png";
         public const int MaximumTextureSize = 2048;
         // A paint layer's image is cropped to its paint in a body's paint UVs, which are twice as
         // wide as the skin texture for a mirrored body, so it keeps its size, up to that width.
@@ -38,7 +40,7 @@ namespace Mmorpg.Client.Editor
 
         public override uint GetVersion()
         {
-            return 10;
+            return 11;
         }
 
         public static bool AppliesTo(string assetPath)
@@ -236,10 +238,15 @@ namespace Mmorpg.Client.Editor
             return assetPath.StartsWith(GarmentTextureFolder + "/", StringComparison.Ordinal);
         }
 
-        // Whether a texture's alpha is used: a paint layer's or a garment's.
+        public static bool IsDyeMask(string assetPath)
+        {
+            return IsGarmentTexture(assetPath) && assetPath.EndsWith(DyeMaskSuffix, StringComparison.Ordinal);
+        }
+
+        // Whether a texture's alpha is used: a paint layer's or a garment's, but not a dye mask's.
         public static bool KeepsAlpha(string assetPath)
         {
-            return IsPaintTexture(assetPath) || IsGarmentTexture(assetPath);
+            return IsPaintTexture(assetPath) || (IsGarmentTexture(assetPath) && !IsDyeMask(assetPath));
         }
 
         // The largest size a texture of the path keeps, and whether it keeps a size that is not a
@@ -255,11 +262,13 @@ namespace Mmorpg.Client.Editor
         }
 
         public static void ApplyTextureSettings(TextureImporter importer, bool alpha = false,
-            int maximumSize = MaximumTextureSize, TextureImporterNPOTScale nonPowerOfTwo = TextureImporterNPOTScale.ToNearest)
+            int maximumSize = MaximumTextureSize, TextureImporterNPOTScale nonPowerOfTwo = TextureImporterNPOTScale.ToNearest,
+            bool data = false)
         {
             importer.textureType = TextureImporterType.Default;
             importer.textureShape = TextureImporterShape.Texture2D;
-            importer.sRGBTexture = true;
+            // A dye mask holds how far each channel dyes, which the shader reads as it is stored.
+            importer.sRGBTexture = !data;
             // Transparent texels take the color of their neighbors, so filtering at the edges of a
             // paint layer never darkens the skin and the cut edges of a garment keep its color.
             importer.alphaSource = alpha ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None;
@@ -347,7 +356,7 @@ namespace Mmorpg.Client.Editor
             if (AppliesToTexture(assetPath))
             {
                 ApplyTextureSettings((TextureImporter)assetImporter, KeepsAlpha(assetPath), MaximumTextureSizeOf(assetPath),
-                    NonPowerOfTwoOf(assetPath));
+                    NonPowerOfTwoOf(assetPath), IsDyeMask(assetPath));
             }
         }
 

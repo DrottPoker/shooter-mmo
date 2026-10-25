@@ -76,6 +76,7 @@ content:
 - `weapon`
 - `ammunition`
 - `armor`
+- `clothing`
 - `jewelry`
 - `tool`
 - `bag`
@@ -146,8 +147,10 @@ Item data is split by responsibility:
 - WorldData gameplay definitions own category, tags, unitless weight, stack
   rules, equipment compatibility, location eligibility, policies, and Bag
   layout.
-- Unity client presentation owns icons, localization keys, visual prefabs, and
-  other non-authoritative presentation metadata.
+- Unity client presentation owns icons, localization keys, visual prefabs, the
+  garments an item shows on a body with their dye colors, and other
+  non-authoritative presentation metadata; see
+  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#items).
 - GameService owns durable instance state such as identity, quantity, custody,
   policy state, and revision.
 
@@ -210,6 +213,7 @@ order:
 
 - `head`
 - `neck`
+- `back`, for a cloak, added on 2026-10-25
 - `body`
 - `legs`
 - `hands`

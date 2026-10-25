@@ -26,6 +26,7 @@ namespace Mmorpg.Client.Gameplay
         private WorldPointerFocus pointerFocus;
         private PlayerBodyTintSetting bodyTint;
         private PlayerBodyLookSetting bodyLook;
+        private PlayerEquipment equipment;
         private LocalPlayerController localPlayer;
 
         // The local player of the joined session, or null before it spawned.
@@ -87,18 +88,21 @@ namespace Mmorpg.Client.Gameplay
             return remotePlayers.TryGetValue(entityId, out view) && view != null;
         }
 
-        // The composition root passes the persistent realtime client, the pointer focus, and
-        // the body tint and look settings when the scene loads, before Start runs.
+        // The composition root passes the persistent realtime client, the pointer focus, the
+        // body tint and look settings, and the local player's equipment when the scene loads,
+        // before Start runs.
         public void Initialize(
             RealtimeSimulationClient realtimeClient,
             WorldPointerFocus focus,
             PlayerBodyTintSetting tintSetting,
-            PlayerBodyLookSetting lookSetting)
+            PlayerBodyLookSetting lookSetting,
+            PlayerEquipment playerEquipment = null)
         {
             simulationClient = realtimeClient;
             pointerFocus = focus;
             bodyTint = tintSetting;
             bodyLook = lookSetting;
+            equipment = playerEquipment;
         }
 
         private void Start()
@@ -185,6 +189,11 @@ namespace Mmorpg.Client.Gameplay
                 bodyLook.Changed += OnBodyLookChanged;
             }
 
+            if (equipment != null)
+            {
+                equipment.Changed += ApplyLocalBodyLook;
+            }
+
             simulationClient.EntitySpawned += OnEntitySpawned;
             simulationClient.EntityDespawned += OnEntityDespawned;
             simulationClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
@@ -212,6 +221,11 @@ namespace Mmorpg.Client.Gameplay
             {
                 bodyLook.Changed -= OnBodyLookChanged;
                 bodyLook.Offer(null, null);
+            }
+
+            if (equipment != null)
+            {
+                equipment.Changed -= ApplyLocalBodyLook;
             }
 
             remotePlayers.Clear();
@@ -410,12 +424,20 @@ namespace Mmorpg.Client.Gameplay
             return slot != null && slot.Models != null ? slot.Models.Default : null;
         }
 
+        // The look the player chose, dressed in the garments of the items it wears.
         private void ApplyLocalBodyLook()
         {
             var appearance = LocalAppearance;
             if (appearance != null && bodyLook != null)
             {
-                appearance.ApplyLook(bodyLook.Look, bodyMaterials);
+                appearance.ApplyLook(
+                    EquipmentGarments.Dress(
+                        bodyLook.Look,
+                        appearance.Catalog,
+                        equipment != null ? equipment.Items : null,
+                        equipment != null ? equipment.Presentation : null,
+                        false),
+                    bodyMaterials);
             }
         }
 

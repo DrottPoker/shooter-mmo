@@ -10,8 +10,15 @@ namespace Mmorpg.WorldData.Items.Presentation
 {
     public static class ItemPresentationCatalogFormat
     {
-        // Version 2 replaced the Resources icon path with an Addressables icon address.
-        public const int Version = 2;
+        // Version 2 replaced the Resources icon path with an Addressables icon address, and
+        // version 3 added the garments an item shows and its dye colors.
+        public const int Version = 3;
+
+        // The dye channels a garment texture may have, and so the most dye colors of an item.
+        public const int MaximumDyes = 3;
+
+        // The most garments an item shows in one form.
+        public const int MaximumGarments = 4;
 
         // Every icon is an Addressables Sprite in the client's item icon folder entry.
         public const string IconAddressPrefix = "Items/Icons/";
@@ -34,6 +41,18 @@ namespace Mmorpg.WorldData.Items.Presentation
         public string localizationKey;
         public string fallbackDisplayName;
         public string prefabPresentationKey;
+
+        // The garments the item shows on a body when it is worn, by the name of their garment
+        // texture, such as WoolCloak; none for an item that shows no garment.
+        public string[] garments = Array.Empty<string>();
+
+        // The garments it shows instead while its wearer has lowered it, such as a hood pushed
+        // back; none for an item that cannot be lowered.
+        public string[] loweredGarments = Array.Empty<string>();
+
+        // The colors of its garments' dye channels, "#RRGGBB" in channel order; none for their
+        // natural colors.
+        public string[] dyes = Array.Empty<string>();
     }
 
     public sealed class ItemPresentationCatalogValidationException : Exception
@@ -191,13 +210,24 @@ namespace Mmorpg.WorldData.Items.Presentation
                     path + ".fallbackDisplayName",
                     errors);
 
+                var garments = NormalizeNames(entry.garments, path + ".garments", errors);
+                var loweredGarments = NormalizeNames(entry.loweredGarments, path + ".loweredGarments", errors);
+                var dyes = NormalizeDyes(entry.dyes, path + ".dyes", errors);
+                if (garments.Length == 0 && (loweredGarments.Length > 0 || dyes.Length > 0))
+                {
+                    errors.Add(path + " has lowered garments or dyes but shows no garments.");
+                }
+
                 result.Add(new ItemPresentationEntry
                 {
                     definitionId = definitionId,
                     iconAddress = iconAddress,
                     localizationKey = localizationKey,
                     fallbackDisplayName = fallbackDisplayName,
-                    prefabPresentationKey = NormalizeOptional(entry.prefabPresentationKey)
+                    prefabPresentationKey = NormalizeOptional(entry.prefabPresentationKey),
+                    garments = garments,
+                    loweredGarments = loweredGarments,
+                    dyes = dyes
                 });
             }
 
@@ -228,6 +258,52 @@ namespace Mmorpg.WorldData.Items.Presentation
                 errors.Add(path + " must be an Addressables address below '"
                     + ItemPresentationCatalogFormat.IconAddressPrefix + "'.");
             }
+        }
+
+        // Garment names are letters and digits, each once, as the appearance catalogs name them.
+        private static string[] NormalizeNames(
+            string[] values,
+            string path,
+            ICollection<string> errors)
+        {
+            var names = (values ?? Array.Empty<string>()).Select(NormalizeOptional).ToArray();
+            if (names.Length > ItemPresentationCatalogFormat.MaximumGarments)
+            {
+                errors.Add(path + " lists more than " + ItemPresentationCatalogFormat.MaximumGarments + " garments.");
+            }
+
+            if (names.Any(name => name.Length == 0 || name.Any(character => character > 127 || !char.IsLetterOrDigit(character))))
+            {
+                errors.Add(path + " must name garments with letters and digits.");
+            }
+
+            if (names.Distinct(StringComparer.Ordinal).Count() != names.Length)
+            {
+                errors.Add(path + " names a garment twice.");
+            }
+
+            return names;
+        }
+
+        // Dye colors are "#RRGGBB" with upper-case hexadecimal digits, at most one per dye channel.
+        private static string[] NormalizeDyes(
+            string[] values,
+            string path,
+            ICollection<string> errors)
+        {
+            var dyes = (values ?? Array.Empty<string>()).Select(NormalizeOptional).ToArray();
+            if (dyes.Length > ItemPresentationCatalogFormat.MaximumDyes)
+            {
+                errors.Add(path + " lists more than " + ItemPresentationCatalogFormat.MaximumDyes + " dye colors.");
+            }
+
+            if (dyes.Any(dye => dye.Length != 7 || dye[0] != '#' || dye.Skip(1).Any(character =>
+                    !((character >= '0' && character <= '9') || (character >= 'A' && character <= 'F')))))
+            {
+                errors.Add(path + " must hold colors as #RRGGBB with upper-case hexadecimal digits.");
+            }
+
+            return dyes;
         }
 
         private static string NormalizeRequired(
@@ -264,6 +340,9 @@ namespace Mmorpg.WorldData.Items.Presentation
                     writer.Write(entry.localizationKey);
                     writer.Write(entry.fallbackDisplayName);
                     writer.Write(entry.prefabPresentationKey);
+                    WriteList(writer, entry.garments);
+                    WriteList(writer, entry.loweredGarments);
+                    WriteList(writer, entry.dyes);
                 }
 
                 writer.Flush();
@@ -278,6 +357,15 @@ namespace Mmorpg.WorldData.Items.Presentation
 
                     return builder.ToString();
                 }
+            }
+        }
+
+        private static void WriteList(BinaryWriter writer, string[] values)
+        {
+            writer.Write(values.Length);
+            foreach (var value in values)
+            {
+                writer.Write(value);
             }
         }
 

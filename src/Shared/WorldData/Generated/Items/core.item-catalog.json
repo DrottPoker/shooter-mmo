@@ -1,7 +1,7 @@
 {
   "formatVersion": 5,
   "catalogId": "core",
-  "revision": "76c8cd8ae93a6fcd945d8be4ed992fff78df63d6ae0c72215ab86849c1babe16",
+  "revision": "7720de5d0552e85507cd5aaa3183e40669d6f216b2c990e2ed0d7688d5a444ad",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 2000,
@@ -27,6 +27,10 @@
     {
       "id": "bag",
       "displayName": "Bag"
+    },
+    {
+      "id": "clothing",
+      "displayName": "Clothing"
     },
     {
       "id": "food",
@@ -90,6 +94,11 @@
     {
       "id": "neck",
       "displayName": "Neck",
+      "maximumQuantity": 1
+    },
+    {
+      "id": "back",
+      "displayName": "Back",
       "maximumQuantity": 1
     },
     {
@@ -192,6 +201,48 @@
       "structuralFingerprint": "fa06e0a7bc54db1272427fc42b47209a84690c5c7c919fe41c759f9e3cf7ca5e"
     },
     {
+      "id": "armor.leather_boots",
+      "displayName": "Leather Boots",
+      "category": "armor",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 90,
+      "value": 30,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "feet"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "1413130ba55887a19c90ee3f4c11cf2c76a04e6ed49624435d0002567e883286"
+    },
+    {
+      "id": "armor.leather_gloves",
+      "displayName": "Leather Gloves",
+      "category": "armor",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 30,
+      "value": 18,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "hands"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "50e6d22b994e1bcda009accb56ad482e8306a2bc07b81e2bbd315f5fb4cf6169"
+    },
+    {
       "id": "armor.leather_jerkin",
       "displayName": "Leather Jerkin",
       "category": "armor",
@@ -211,6 +262,27 @@
       "defaultPolicies": [],
       "requiredCharacterLevel": 1,
       "structuralFingerprint": "c9d11b020651869e3ae8bf1bb79d171548904dae1780f5ea0c862f8a53ad389f"
+    },
+    {
+      "id": "armor.nasal_helm",
+      "displayName": "Nasal Helm",
+      "category": "armor",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 150,
+      "value": 60,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "head"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "7a42bf8da658b4a55c5117cce81bc0577e9342c8ce05fd36755ca17c3f3f5c7b"
     },
     {
       "id": "bag.travelers_pack",
@@ -279,6 +351,279 @@
       },
       "requiredCharacterLevel": 1,
       "structuralFingerprint": "c1278a32aa3887b0018bb55984230b9ee3e6dea83030f75ee9d5dfe97acd5680"
+    },
+    {
+      "id": "clothing.blue_wool_cloak",
+      "displayName": "Blue Wool Cloak",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 100,
+      "value": 50,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "back"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "f5713b8db468b25dcbca0013f8ea9fae36fb0b63bfef38929f643f7db25fb777"
+    },
+    {
+      "id": "clothing.blue_wool_hood",
+      "displayName": "Blue Wool Hood",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 30,
+      "value": 18,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "head"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "02b8f5d9a9ffca88bc058030d74ae5a8b3c3ede0d7147430d8b74d3d1fc93868"
+    },
+    {
+      "id": "clothing.blue_wool_robe",
+      "displayName": "Blue Wool Robe",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 120,
+      "value": 60,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "body"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "4e4bb72fbf363a1c6634316b5c088fd9ec70a63a62fcec4bf53de20cef003335"
+    },
+    {
+      "id": "clothing.linen_shirt",
+      "displayName": "Linen Shirt",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 30,
+      "value": 12,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "body"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "58b994962a21bea749106b067160d642ccf4e30f20b58cb06369dfbf48276bf2"
+    },
+    {
+      "id": "clothing.long_linen_shirt",
+      "displayName": "Long-Sleeved Linen Shirt",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 35,
+      "value": 16,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "body"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "516a24b906cc11c30186109fa8968c44d64ec194855a3919ac2e71ac5944944c"
+    },
+    {
+      "id": "clothing.net_shirt",
+      "displayName": "Net Shirt",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 15,
+      "value": 8,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "body"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "e1b89b08188df264a4e0715505e02783c795d3aae84e758fb7ac754bce857289"
+    },
+    {
+      "id": "clothing.red_wool_cloak",
+      "displayName": "Red Wool Cloak",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 100,
+      "value": 50,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "back"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "365493de275eca641878647a6d40d7d84d20ca3095b7abdf2274a9f6633d2c60"
+    },
+    {
+      "id": "clothing.red_wool_hood",
+      "displayName": "Red Wool Hood",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 30,
+      "value": 18,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "head"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "3836c719947b81357523741de4583d6a4199327116fac25e2f32609d270e5348"
+    },
+    {
+      "id": "clothing.red_wool_robe",
+      "displayName": "Red Wool Robe",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 120,
+      "value": 60,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "body"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "19f3f7fcb8bc3b175290f9d71bc4c2a8b91e8ff55e04ebb80307c8918cbcfa9b"
+    },
+    {
+      "id": "clothing.wool_cloak",
+      "displayName": "Wool Cloak",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 100,
+      "value": 35,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "back"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "cc3e68a1d8d2cd7fba91bc90e5edf838c86987e7d890895916e08dacc02b9235"
+    },
+    {
+      "id": "clothing.wool_hood",
+      "displayName": "Wool Hood",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 30,
+      "value": 12,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "head"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "94d5e2be2e59e59bd81e5c2ba1594d59bd8d42fe84bd4d64f5875ffc5c2bd84c"
+    },
+    {
+      "id": "clothing.wool_robe",
+      "displayName": "Wool Robe",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 120,
+      "value": 40,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "body"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "8555a6fc0b43675e4b22921e6cc2458d2bf08d3366a013588bf537abce6516b5"
+    },
+    {
+      "id": "clothing.wool_trousers",
+      "displayName": "Wool Trousers",
+      "category": "clothing",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 60,
+      "value": 15,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "legs"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "e15717533031ca42b08fe649be1b0e5311c5fae0675a3e5a855afa746ffb51b1"
     },
     {
       "id": "food.cooked_trout",
@@ -486,6 +831,54 @@
         },
         {
           "definitionId": "tool.starter_pickaxe"
+        },
+        {
+          "definitionId": "clothing.linen_shirt"
+        },
+        {
+          "definitionId": "clothing.long_linen_shirt"
+        },
+        {
+          "definitionId": "clothing.net_shirt"
+        },
+        {
+          "definitionId": "clothing.wool_trousers"
+        },
+        {
+          "definitionId": "armor.leather_boots"
+        },
+        {
+          "definitionId": "armor.leather_gloves"
+        },
+        {
+          "definitionId": "clothing.wool_robe"
+        },
+        {
+          "definitionId": "clothing.blue_wool_robe"
+        },
+        {
+          "definitionId": "clothing.red_wool_robe"
+        },
+        {
+          "definitionId": "clothing.wool_hood"
+        },
+        {
+          "definitionId": "clothing.blue_wool_hood"
+        },
+        {
+          "definitionId": "clothing.red_wool_hood"
+        },
+        {
+          "definitionId": "clothing.wool_cloak"
+        },
+        {
+          "definitionId": "clothing.blue_wool_cloak"
+        },
+        {
+          "definitionId": "clothing.red_wool_cloak"
+        },
+        {
+          "definitionId": "armor.nasal_helm"
         }
       ],
       "purchasePriceBasisPoints": 10000,
@@ -494,6 +887,7 @@
         "ammunition",
         "armor",
         "bag",
+        "clothing",
         "food",
         "jewelry",
         "material",

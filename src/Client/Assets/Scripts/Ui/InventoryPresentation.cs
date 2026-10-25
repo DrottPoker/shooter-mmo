@@ -45,6 +45,7 @@ namespace Mmorpg.Client.Ui
                 ["ring_1"] = (3, 0),
                 ["legs"] = (3, 1),
                 ["ring_2"] = (3, 2),
+                ["back"] = (4, 0),
                 ["feet"] = (4, 1)
             };
 
