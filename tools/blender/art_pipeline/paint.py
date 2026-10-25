@@ -628,12 +628,15 @@ def subdivided(body: bpy.types.Object) -> bpy.types.Object:
 
 def projection_report(name: str, part: str, labels: list[str], cage_file: str) -> tuple[list[tuple[str, dict]], list[str]]:
     """How the move through the cage, the one a body of another topology gets, compares with the
-    exact move: per body, its paint moved through the cage to a subdivided copy of it, against its
-    exact move, in the same paint layout, as the distance on the canvas between the points both
-    moves take, over every texel and over the painted ones, in millimeters. The canvas's own body
-    must come out where the exact move puts it, within PROJECTION_OWN_MEDIAN and PROJECTION_OWN_P95
-    over the painted texels; another body's distances are the part of the bodies' difference in
-    form that the cage and the landmarks place otherwise than the shared topology does."""
+    body's own move: per body, its paint moved through the cage to a subdivided copy of it, against
+    the body's own move, exact when it has the canvas's topology and through the cage otherwise, in
+    the same paint layout, as the distance on the canvas between the points both moves take, over
+    every texel and over the painted ones, in millimeters. The canvas's own body must come out where
+    the exact move puts it, within PROJECTION_OWN_MEDIAN and PROJECTION_OWN_P95 over the painted
+    texels. For another body of the canvas's topology the distances are the part of the bodies'
+    difference in form that the cage and the landmarks place otherwise than the shared topology
+    does, and for a body of another topology how much the move through the cage depends on the
+    body's own faces."""
     canvas, canvas_cage, _image_ = canvas_in_file(name)
     collection = _collection("_Projection")
     found, errors = [], []
@@ -642,13 +645,15 @@ def projection_report(name: str, part: str, labels: list[str], cage_file: str) -
             body = bpy.data.objects[f"Paint_{label}"]
             body_cage = _cage_version(cage_file, label, f"_Projection_Cage_{label}", collection)
             test = subdivided(body)
-            exact_texels, _uv, exact_points = correspondence(canvas, body, part, label, None, None)
+            exact = same_topology(canvas.data, body.data)
+            own = (None, None) if exact else (canvas_cage, body_cage)
+            exact_texels, _uv, exact_points = correspondence(canvas, body, part, label, *own)
             test_texels, _uv, test_points = correspondence(canvas, test, part, label, canvas_cage, body_cage)
-            exact_image = move(canvas, body, part, label, None, None)
+            exact_image = move(canvas, body, part, label, *own)
             shared, exact_at, test_at = np.intersect1d(exact_texels.places, test_texels.places, return_indices=True)
             distance = np.linalg.norm(exact_points[exact_at] - test_points[test_at], axis=1) * 1000.0
             painted = exact_image.reshape(-1, 4)[shared, 3] > 0.1
-            report = {"texels": int(len(shared)), "painted": int(painted.sum()),
+            report = {"move": "topology" if exact else "cage", "texels": int(len(shared)), "painted": int(painted.sum()),
                       "medianMm": round(float(np.median(distance)), 2), "p95Mm": round(float(np.percentile(distance, 95)), 2)}
             if painted.any():
                 report.update({"paintedMedianMm": round(float(np.median(distance[painted])), 2),

@@ -1,10 +1,11 @@
 # Checks the move of a paint layer that a body of another topology than its canvas gets, through
 # the garment cage and the rigs' landmarks: every body of the layer is cut into a subdivided copy,
 # another topology of the same surface, and the paint moved to it through the cage is compared with
-# the exact move to the body itself. The canvas's own body must take the paint within a millimeter
-# of its place; for the other bodies the script reports how far the cage places the paint from
-# where their shared topology does. Run it after a change of the move or the cage. It changes no
-# file. See docs/ART_PIPELINE.md.
+# the body's own move, exact for a body of the canvas's topology and through the cage otherwise.
+# The canvas's own body must take the paint within a millimeter of its place; for the other bodies
+# the script reports how far the cage places the paint from where their shared topology does, or
+# for a body of another topology how much its move through the cage depends on its faces. Run it
+# after a change of the move or the cage. It changes no file. See docs/ART_PIPELINE.md.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Asset,
@@ -37,8 +38,9 @@ foreach ($line in @($output | Where-Object { $_ -like "ART_PROJECTION *" })) {
         [string]::Format($culture, ", painted texels {0} mm (median) and {1} mm (95%)", $report.paintedMedianMm, $report.paintedP95Mm)
     }
     else { "" }
-    Write-Host ([string]::Format($culture, "{0}: through the cage {1} mm (median) and {2} mm (95%) from the exact move over {3} texels{4}.",
-            $report.body, $report.medianMm, $report.p95Mm, $report.texels, $painted))
+    $own = if ($report.move -ceq "topology") { "the exact move" } else { "its own move through the cage" }
+    Write-Host ([string]::Format($culture, "{0}: through the cage {1} mm (median) and {2} mm (95%) from {3} over {4} texels{5}.",
+            $report.body, $report.medianMm, $report.p95Mm, $own, $report.texels, $painted))
 }
 
 $errors = @($output | Where-Object { $_ -like "ART_PIPELINE_ERROR *" } | ForEach-Object { $_.Substring("ART_PIPELINE_ERROR ".Length) })

@@ -637,7 +637,8 @@ the woman instead of 72, since her cleavage has no counterpart on the man.
 bodies, another topology of the same surfaces: the canvas's own body must take
 the paint within 0.5 mm (median) and 1 mm (95%) of its place, and for the other
 bodies the script reports how far the cage places the paint from where their
-shared topology does.
+shared topology does, or, for a body of another topology than the canvas, from
+its own move through the cage.
 
 `Sync-PaintAsset.ps1 -Canvas <body>` moves the canvas to another body of the
 layer, with the paint moved to it, so the paint is painted on that body from then
