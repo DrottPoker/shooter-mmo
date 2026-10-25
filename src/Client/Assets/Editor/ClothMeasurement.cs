@@ -37,9 +37,9 @@ namespace Mmorpg.Client.Editor
             var text = new StringBuilder();
             text.Append("# Cloth Measurements\n\nWritten by ").Append(MenuPath).Append(" on ")
                 .Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)).Append(".\n\n");
-            text.Append("| Body | Outfit | Motion | Through cloth (vertices, mm) | Robe through cloak (vertices, mm) | ")
+            text.Append("| Body | Outfit | Motion | Through cloth (vertices, mm) | Legs through cloth (mm) | Robe through cloak (vertices, mm) | ")
                 .Append("Jerk RMS (m/s^3) | Flare (cm) | Settle (s) | Order breaks | Jump move (mm) |\n");
-            text.Append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
+            text.Append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
             var deviations = new StringBuilder();
             deviations.Append("\n| Body | Outfit | 1/30 s (cm) | 1/60 s (cm) | 1/144 s (cm) | Jittery (cm) |\n| --- | --- | --- | --- | --- | --- |\n");
             try
@@ -190,7 +190,8 @@ namespace Mmorpg.Client.Editor
         private static string Row(string body, string outfit, string motion, ClothMotionReport report)
         {
             return "| " + body + " | " + outfit + " | " + motion + " | "
-                + report.Poked + ", " + Number(report.PokeDepth * 1000f) + " | " + report.LayerPoked + ", " + Number(report.LayerPokeDepth * 1000f)
+                + report.Poked + ", " + Number(report.PokeDepth * 1000f) + " | " + Number(report.LegPokeDepth * 1000f) + " | "
+                + report.LayerPoked + ", " + Number(report.LayerPokeDepth * 1000f)
                 + " | " + Number(report.JerkRms) + " | " + Number(report.Flare * 100f) + " | " + Number(report.SettleSeconds) + " | "
                 + report.OrderBreaks + " | " + Number(report.JumpMove * 1000f) + " |\n";
         }

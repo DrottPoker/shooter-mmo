@@ -40,12 +40,13 @@ layers from the bottom up:
 
 | Assembly | Owns | Client references |
 |---|---|---|
+| `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
 | `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets` | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory and corpse client state, item catalog, presentation catalog loading | Api, Core, Networking |
-| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, `WorldSceneContext` | Api, Core, Worlds, Networking |
+| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, the world menu and its providers, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
 | `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
 | `Mmorpg.Client.Ui` | Every panel including the combat HUD, drag and drop, `ClientOperationState` | Every row above it |
@@ -53,12 +54,15 @@ layers from the bottom up:
 
 Gameplay and App also reference the shared `Mmorpg.WorldData.Client`, the item
 presentation catalog, so a body reads the garments of the items it wears without
-the inventory's assembly. Ui is the top feature area; only the App composition
+the inventory's assembly. Cloth references the packages `Unity.Burst`,
+`Unity.Collections`, and `Unity.Mathematics`, which `Packages/manifest.json`
+pins to exact versions, and Gameplay and Editor reference Cloth and
+`Unity.Mathematics`, Gameplay also `Unity.Collections`. Ui is the top feature area; only the App composition
 root, which creates the panels, sits above it. Ui and App reference Combat: the combat HUD and the
 inventory's live arrow count read its state. Each namespace
 equals its assembly name. Areas that read `ClientSession` reference Api as
 well, because the session caches Api contracts. The Editor-only
-`Mmorpg.Client.Editor` assembly references Core, Worlds, and Gameplay plus the
+`Mmorpg.Client.Editor` assembly references Core, Worlds, Gameplay, and Cloth plus the
 shared WorldData editor and the Addressables editor assemblies. It also holds
 `ArtModelImportRules`, the import rules for every model the art pipeline
 exports to `Assets/Art/Models`, and `ArtAppearanceCatalogs`, which writes the
@@ -105,9 +109,8 @@ WorldSceneContext
   +-- scene-authored LocalPlayer prefab reference
   +-- scene-authored PlayerSpawn
   +-- scene-authored RemotePlayer prefab reference
-  +-- scene-authored EntityPresentationRoot
   +-- runtime LocalPlayer instance after an accepted join
-  +-- runtime remote-player view instances below EntityPresentationRoot
+  +-- runtime remote-player view instances, each a root of the World scene
 
 LocalPlayer prefab
   +-- CharacterController
@@ -536,10 +539,12 @@ camera to input and CameraTarget. Opening a World scene without an active joined
 session creates no local player. The context never selects a global camera and
 never generates a player asset, map object, material, light, or collider.
 Runtime instances of the explicitly authored RemotePlayer prefab are created
-only from reliable player-entity spawn messages and are parented under the
-scene-authored `EntityPresentationRoot`. The runtime local player remains
-separate from that presentation hierarchy and is destroyed with the active
-World scene.
+only from reliable player-entity spawn messages, each a root of the World scene,
+so Unity's transform jobs, such as the cloth's, take the players' bones on their
+worker threads side by side; under one parent they took them one after another.
+The context destroys them when a player leaves interest and when the context
+goes, and the runtime local player, apart from them, is destroyed with the
+active World scene.
 
 `LocalPlayerInput` reads the `PlayerInput` instance owned by the LocalPlayer
 prefab. The referenced Input Actions asset defines the left select click, the
@@ -1202,7 +1207,8 @@ does not zoom. The cursor is never locked or hidden.
 
 `PresentationExecutionOrder` fixes the late presentation order of a frame.
 Characters move in `Update`, `OrbitCameraController` follows them in
-`LateUpdate` at order 100, and `TemporaryCombatHud` places health bars and
+`LateUpdate` at order 100, `ClothChainScheduler` lays the cloth of the bodies
+the camera now sees at order 110, and `TemporaryCombatHud` places health bars and
 damage numbers at order 200. Without a fixed order Unity could place them with
 the previous frame's camera, and a bar trailed the head it belongs to and
 jittered with the frame time.
@@ -1266,42 +1272,45 @@ faster. `PlayerBodyAssetTests` checks that the two speeds match
 The body's skeleton also has the cloth chains of
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#cloth-chains), which
 `ClothChains` lists: eight skirt chains on the hips, five cloak chains on the
-upper chest, and a hood chain on the head. `ClothChainSolver` moves the chains of
-the kinds a garment activates, with a `ClothProfile` for its stiffness, damping,
-gravity, and margin, in `LateUpdate` after the Animator posed the body
-(`PresentationExecutionOrder.Cloth`). Each step puts the chain bones back to
-their rest rotations, lets every chain particle spring toward hanging from its
-animated parent, or for a skirt or cloak chain toward following the legs, each
-bone beside a thigh or a shin turning with it as far as the leg pushes the
-cloth outward beyond the slack of its `ClothProfile`, the front chains with the
-leg in front, the back chains and the
-cloak with the leg behind, and the side chains with their own, with inertia and
-gravity, keeps the bone lengths, pushes the
-particles out of capsules around the hips, spine, neck, head, thighs, and shins,
-and turns the bones to point at them. Following the legs and leaving the body
-are `ClothKinematics`, which works on plain data, so the art pipeline's
-`cloth_core.py` is tested against the same cases; see
-[Art Pipeline](ART_PIPELINE.md#cloth-parity). A capsule's radius is the middle distance
-of the body vertices that its bone moves most, around the trunk in each of 16
-directions around the bone with narrow grooves filled, round around a leg,
-measured once from the body's own mesh in the bind pose, so the cloth lies on
-every body type's shape. `PlayerBodyAppearance`
+upper chest, and a hood chain on the head. `ClothChainSolver` on the body
+activates the chains of the kinds a garment hangs on, with a `ClothProfile` for
+its margin and slack, measures the body and its garments once, and describes
+them to a `ClothWorld` of `Mmorpg.Client.Cloth`; in play every body shares the
+world of `ClothChainScheduler`, which lays every body the camera sees within 60 m
+in its target pose once a frame after the camera moved
+(`PresentationExecutionOrder.Cloth`), in three Burst jobs: one reads the bodies'
+bones, one lays each body with `ClothPose`, and one turns the chain bones. The
+target pose hangs every chain from its animated parent with its bones at rest,
+turns each bone beside a thigh or a shin with that part of each leg as far as
+the leg pushes the cloth outward beyond the slack, and swings each bone outward
+by the smallest angle that leaves its samples, its end, its middle, and the
+cloth toward its neighbours, outside the capsules its kind collides with; see
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#runtime-solver). It has
+no memory, so the same pose always lays the cloth alike at every frame rate, and
+the art pipeline's `cloth_core.py` lays the same cases; see
+[Art Pipeline](ART_PIPELINE.md#cloth-parity). A capsule is measured once from the
+body's own mesh in the bind pose, from the vertices its bone moves most: around
+the trunk their middle distance in each of 16 directions around the bone with
+narrow grooves filled, round around a leg, a foot, or an arm out to 90 percent
+of them, so the cloth lies on every body type's shape. `PlayerBodyAppearance`
 hands the solver each worn garment's model, from which it measures how far the
-cloth reaches beyond and within the chains: a particle keeps the margin its
-cloth keeps from the body, from the trunk no more than it has in the bind pose,
-so a body standing still wears its garments as they were made, and the skirt
-chains are solved first, so a cloak's particles stay outside the envelope of a
-robe's skirt under it. Within
-25 m of the camera the springs run, to 60 m the chains follow their targets
-without inertia, and beyond they rest; a root that jumps more than 2 m in one
-step, as in a teleport, starts its chain again. With no garment the solver does
-nothing. `ClothChainSolverTests` poses the body with its Animator step by step
-and checks that a robe stays outside the legs while jogging and swings with
-them, that it drapes over thighs raised as in sitting, that a cloak is pushed
-back by a leg that kicks back, that a cloak lies over a robe's skirt while
-jogging, that the chains hang at rest as the garments were made, that the
-chains settle when the body stands, a teleport, the levels of detail, and the
-capsule radii, the chest's shallow behind the spine and deep in front.
+cloth reaches beyond and within the chains: a sample keeps the margin its cloth
+keeps from the body, but no more than it has in the bind pose, so a body
+standing still wears its garments as they were made, and the skirt chains are
+laid first, so a cloak keeps outside the outer side of a robe's skirt under it.
+A body out of view moves nothing, and beyond 60 m the chains rest. Out of play,
+as in the Wardrobe and the tests, each body lays its own chains in a world of
+its own. With no garment the solver does nothing. `ClothChainSolverTests` poses
+the body with its Animator step by step and checks that a robe stays outside the
+legs while jogging and swings with them, that it drapes over thighs raised as in
+sitting, that a cloak is pushed back by a leg that kicks back, that a cloak lies
+over a robe's skirt while jogging, that the chains hang at rest as the garments
+were made, that a resting body's cloth moves no faster than its legs, the levels
+of detail, and the capsule radii, the chest's shallow behind the spine and deep
+in front. `ClothPoseTests` checks the constants against the skeleton, the
+fixtures, that the world's Burst jobs lay what `ClothPose` lays, and that the
+pose has no memory; `ClothStressMotionTests` that the legs never come through a
+cloak and through a robe by at most 25 mm while walking and jogging.
 
 The controller's third state, `Death`, plays the handmade `Death` clip of the
 library. An Any State transition crossfades into it in 0.15 s while the bool `Dead` is
@@ -1543,10 +1552,13 @@ What made the difference:
 - **Cloth.** `ClothChainSolver` took 78 ms of a profiled 110 ms frame: every
   dressed body ran its full collision every frame, also behind the camera, and
   a body farther than 25 m cost as much as a near one. `ClothChainScheduler`
-  now steps every solver once a frame from the camera, by view, distance, and a
-  budget, and the collision loops reject far capsules early; see
-  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#runtime-solver). The cloth
-  takes about 2 to 3 ms.
+  then stepped every solver once a frame from the camera, by view, distance, and
+  a budget, and the cloth took about 2 to 3 ms. Since the target pose of the
+  spring bone redesign, Burst jobs on the worker threads lay every body in view
+  every frame; 100 bodies jogging in a robe and a cloak take about 3.9 ms in the
+  Editor; see
+  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#runtime-solver). The
+  measurement with the bots is part of the redesign's third step.
 - **Bodies come into view a few per frame.** Putting a body on a spawned player
   took about 8 ms, 6 of them measuring the body and garments for the cloth, and
   several bots often come into interest in one frame. The measures are shared

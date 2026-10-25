@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Cloth;
 using Mmorpg.Client.Gameplay;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -34,7 +35,11 @@ namespace Mmorpg.Client.Editor
         private readonly List<GameObject> measured = new List<GameObject>();
         private readonly List<Skin> limbs = new List<Skin>();
         private readonly List<Cloth> cloths = new List<Cloth>();
+        private readonly List<(Vector3 Vertex, string Bone, float Depth)> lastPokes = new List<(Vector3, string, float)>();
         private string wornKey;
+
+        // The hips' upright axis in the hips' own space, from the body's bind pose.
+        private Vector3? hipsUp;
         private float[] restTipRadius = new float[0];
         private int samples;
         private float time;
@@ -57,6 +62,10 @@ namespace Mmorpg.Client.Editor
 
         public float LastPokeDepth { get; private set; }
 
+        // Where the last frame that measured them found vertices through the loose cloth: each vertex,
+        // the bone it hangs on, and how far it came through.
+        public IReadOnlyList<(Vector3 Vertex, string Bone, float Depth)> LastPokes => lastPokes;
+
         public void Dispose()
         {
             Release();
@@ -77,7 +86,7 @@ namespace Mmorpg.Client.Editor
                 && motionTime <= motion.Settle.Value.End;
             time = motionTime;
             var hips = bones["Hips"];
-            var up = preview.Body.transform.up;
+            var up = hipsUp.HasValue ? hips.rotation * hipsUp.Value : preview.Body.transform.up;
             foreach (var chain in chains)
             {
                 var particles = preview.Solver.ParticlesOf(chain.Definition);
@@ -194,6 +203,8 @@ namespace Mmorpg.Client.Editor
         {
             var poked = 0;
             var pokeDepth = 0f;
+            var legPokeDepth = 0f;
+            lastPokes.Clear();
             foreach (var limb in limbs)
             {
                 limb.Bake();
@@ -216,6 +227,13 @@ namespace Mmorpg.Client.Editor
                         {
                             poked++;
                             pokeDepth = Mathf.Max(pokeDepth, depth);
+                            var bone = limb.BoneOf(index);
+                            if (ClothChainSolver.Capsule.RoleOf(bone) == ClothRoles.Leg)
+                            {
+                                legPokeDepth = Mathf.Max(legPokeDepth, depth);
+                            }
+
+                            lastPokes.Add((vertex, bone, depth));
                         }
                     }
                 }
@@ -249,6 +267,7 @@ namespace Mmorpg.Client.Editor
             LastPokeDepth = pokeDepth;
             report.Poked = Mathf.Max(report.Poked, poked);
             report.PokeDepth = Mathf.Max(report.PokeDepth, pokeDepth);
+            report.LegPokeDepth = Mathf.Max(report.LegPokeDepth, legPokeDepth);
             report.LayerPoked = Mathf.Max(report.LayerPoked, layerPoked);
         }
 
@@ -279,6 +298,13 @@ namespace Mmorpg.Client.Editor
                     if (skin != null)
                     {
                         limbs.Add(skin);
+                    }
+
+                    var hipsIndex = Array.FindIndex(part.bones, bone => bone != null && bone.name == "Hips");
+                    if (!hipsUp.HasValue && hipsIndex >= 0 && hipsIndex < part.sharedMesh.bindposes.Length)
+                    {
+                        var bodyUp = part.transform.InverseTransformDirection(preview.Body.transform.up);
+                        hipsUp = part.sharedMesh.bindposes[hipsIndex].MultiplyVector(bodyUp).normalized;
                     }
                 }
             }
@@ -540,6 +566,8 @@ namespace Mmorpg.Client.Editor
                 }
             }
 
+            public string BoneOf(int index) => from[index].name;
+
             // The point of the bone's segment nearest the vertex.
             public Vector3 Core(int index)
             {
@@ -728,6 +756,9 @@ namespace Mmorpg.Client.Editor
         public int Frames;
         public int Poked;
         public float PokeDepth;
+        // How far the legs and feet alone come through, which the cloth never lets them by design,
+        // whereas an arm comes through a cloak's edge once it lifted it as far as it lifts.
+        public float LegPokeDepth;
         public int LayerPoked;
         public float LayerPokeDepth;
         public float JerkRms;

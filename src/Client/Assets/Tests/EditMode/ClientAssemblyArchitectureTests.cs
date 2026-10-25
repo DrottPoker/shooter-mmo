@@ -22,6 +22,7 @@ namespace Mmorpg.Client.Tests.EditMode
         // App composition root sits above it.
         private static readonly string[] RuntimeLayers =
         {
+            "Mmorpg.Client.Cloth",
             "Mmorpg.Client.Api",
             "Mmorpg.Client.Core",
             "Mmorpg.Client.Worlds",
@@ -37,6 +38,12 @@ namespace Mmorpg.Client.Tests.EditMode
         private static readonly Dictionary<string, string[]> AllowedReferences =
             new Dictionary<string, string[]>(StringComparer.Ordinal)
             {
+                ["Mmorpg.Client.Cloth"] = new[]
+                {
+                    "Unity.Burst",
+                    "Unity.Collections",
+                    "Unity.Mathematics"
+                },
                 ["Mmorpg.Client.Api"] = Array.Empty<string>(),
                 ["Mmorpg.Client.Core"] = new[]
                 {
@@ -77,6 +84,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Core",
                     "Mmorpg.Client.Worlds",
                     "Mmorpg.Client.Networking",
+                    "Mmorpg.Client.Cloth",
+                    "Unity.Collections",
+                    "Unity.Mathematics",
                     "Unity.InputSystem",
                     "Mmorpg.GameProtocol",
                     "Mmorpg.GameSimulation",
@@ -142,6 +152,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 {
                     "Mmorpg.Client.Core",
                     "Mmorpg.Client.Gameplay",
+                    "Mmorpg.Client.Cloth",
+                    "Unity.Mathematics",
                     "Mmorpg.Client.Worlds",
                     "Mmorpg.GameSimulation",
                     "Mmorpg.WorldData",
@@ -210,6 +222,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     .Where(type => !type.IsNested
                         && !type.IsDefined(typeof(CompilerGeneratedAttribute), false)
                         && !type.Name.StartsWith("UnitySourceGenerated", StringComparison.Ordinal)
+                        && !type.Name.StartsWith("__JobReflectionRegistrationOutput__", StringComparison.Ordinal)
                         && !type.Name.StartsWith("<", StringComparison.Ordinal)
                         && type.Namespace != expected)
                     .Select(type => type.FullName)

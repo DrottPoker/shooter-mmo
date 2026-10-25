@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Mmorpg.Client.Cloth;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.WorldData.Editor;
 using UnityEditor;
@@ -128,6 +129,7 @@ namespace Mmorpg.Client.Editor
                     {
                         rest.Apply();
                         Place(animator, pose, randomPoses, body.transform);
+                        solver.Simulate(1f / 60f, ClothDetail.Pose);
                         fixture.cases.Add(solver.CaptureKinematics(bodyName.ToLowerInvariant() + "/" + label + "/" + pose));
                     }
                 }

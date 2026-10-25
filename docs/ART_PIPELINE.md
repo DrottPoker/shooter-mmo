@@ -84,7 +84,7 @@ models held on a socket of the skeleton.
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
 | `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, in `bodies.py` the body parts of a skinned character written from its editable body, and in `poses.py` the test poses of the `Humanoid` skeleton that the rig reviews use. |
-| `tools/blender/art_pipeline/cloth.py`, `cloth_core.py` | The cloth chains laid as the runtime solver lays them at its Follow detail, for the review sheets, review files, and checks: `cloth.py` measures in Blender, `cloth_core.py` lays on plain data with the standard library only; see [Cloth Parity](#cloth-parity). |
+| `tools/blender/art_pipeline/cloth.py`, `cloth_core.py` | The cloth chains laid in the target pose that every visible body in the game shows, for the review sheets, review files, and checks: `cloth.py` measures in Blender, `cloth_core.py` lays on plain data with the standard library only; see [Cloth Parity](#cloth-parity). |
 | `tools/blender/tests` | Python tests of the art pipeline that run without Blender, and their fixtures. |
 | `tools/blender/art_pipeline_cli.py` | Blender entry point for the scripts below. |
 | `tools/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
@@ -317,14 +317,18 @@ A chain bone's Z axis points away from the body, the way its cloth faces.
 
 The skeleton's `cloth` section holds the constants of the cloth on its chains,
 which the Unity client and the art pipeline share: the body bones the cloth
-collides with and where their capsules end, the directions and groove passes of
-a capsule's radius, how a garment's reach is measured, how often and how far the
-kinematic layer pushes a chain out of the body, how a chain follows the legs,
-the gap of a cloak over a robe, and per kind of chain, in the order their cloth
-lies on the body, its parent, its bones, the part of the legs beside each bone,
-its profile's margin and slack, the kind it lies over, and its chains with their
-angles around the hips. `ClothKinematicsTests` checks the client's constants
-against it, and `cloth_core.py` reads it; see [Cloth Parity](#cloth-parity).
+collides with, where their capsules end, and what each is around, the trunk, a
+leg, or an arm; the directions and groove passes of a capsule's radius and the
+share of a limb's vertices its round capsule reaches; how a garment's reach is
+measured; how a chain follows the legs; how the target pose swings a bone out of
+the body, its samples, its steps, its largest swing, the contact band, how far
+an arm lifts a cloak, and the share of a swing that moves a sample along a
+capsule rather than out of it; the gap of a cloak over a robe; and per kind of
+chain, in the order their cloth lies on the body, its parent, its bones, the part
+of the legs beside each bone, its profile's margin and slack, the kind it lies
+over, what it collides with, the bone its frame is, and its chains with their
+angles around the hips. `ClothPoseTests` checks the client's constants against
+it, and `cloth_core.py` reads it; see [Cloth Parity](#cloth-parity).
 
 The character faces +Y and its right is +X, so the `_R` bones sit at +X. Limbs
 bend about their bone X axis, arms rise about Z, and every bone twists about Y.
@@ -977,8 +981,8 @@ torso from the front and the back, or for a template shorter than 40 percent of
 the body, such as a glove or a boot, the one on the body's left up close from
 outside and from the front, the template showing a grid in its UVs, so
 the sheet shows how they stretch; the template in the test poses of `poses.py`,
-with the cloth chains of its loose parts laid as the runtime solver lays them at
-its Follow detail (`cloth.py`), so a skirt follows the legs; and the body without it, its covered faces orange, the skin kept visible at the
+with the cloth chains of its loose parts laid in the target pose that the game
+shows (`cloth.py`), so a skirt follows the legs; and the body without it, its covered faces orange, the skin kept visible at the
 template's edges yellow, the pulled-in vertices blue, and the skin that comes
 through it in motion red. The review file `artifacts/art-previews/<Name>_poses.blend`
 places the bodies side by side with an action that steps through the test
@@ -1009,10 +1013,9 @@ checked over a slot it hides, such as the robe over trousers. Hair is checked
 under headwear in the form the headwear gives it: in its shape key
 `UnderHeadwear` under `"hair": "compress"`, as it is under `"show"`, and not at
 all under `"hide"`. Both checks follow
-loose parts with their cloth chains laid in every pose and frame as the runtime
-solver lays them at its Follow detail (`cloth.py`), so they report a leg that
-comes through a skirt or a cloak; the swing of the springs is reviewed in the
-Wardrobe.
+loose parts with their cloth chains laid in every pose and frame in the target
+pose that the game shows (`cloth.py`), so they report a leg that comes through a
+skirt or a cloak; the swing of the springs is reviewed in the Wardrobe.
 A template is approved and exported only on an approved cage whose bodies still
 have the exports the cage was approved on, so it is never fitted to an obsolete
 cage.
@@ -1119,25 +1122,28 @@ to `artifacts/cloth-measurements.md`.
 
 ### Cloth Parity
 
-The review sheets, review files, and checks lay a garment's cloth chains as the
-runtime solver lays them at its Follow detail, without springs. The laying is
-`cloth_core.py`, which uses only the standard library and works on plain data,
-and the Unity client's `ClothKinematics` is its source: `cloth.py` measures in
-Blender what the laying needs, the capsules from the body's vertices, the legs'
-turns against the hips, the chains as they hang from their posed parents, how
-deep each particle lies in each of the trunk's capsules at rest, and the
-garment's reach about each particle, hands it to `cloth_core.lay`, and turns the
-chain bones to point at the laid particles. Both read their constants from the
-`cloth` section of the skeleton.
+The review sheets, review files, and checks lay a garment's cloth chains in the
+target pose that every visible body in the game shows, without springs. The
+laying is `cloth_core.py`, which uses only the standard library and works on
+plain data, and the Unity client's `ClothPose` is its source: `cloth.py`
+measures in Blender what the laying needs, the capsules from the body's vertices
+as posed and in the bind pose, the legs' turns against the hips, the chains as
+they hang from their posed parents and in the bind pose with their neighbours,
+and the garment's reach about each particle, hands it to `cloth_core.lay`, and
+turns the chain bones to point at the laid particles. Both read their constants
+from the `cloth` section of the skeleton; see
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#runtime-solver) for how
+the target pose lays the chains.
 
 `MMORPG > Tools > Art Pipeline > Write Cloth Fixtures` captures both bodies in
 the robe, the cloak, and both, in frames of their clips, in leg poses set by
-hand, and in seeded random leg poses, each with what `ClothKinematics` laid, and
-writes them to `tools/blender/tests/fixtures/cloth_kinematics.json`, one case per
-line. `ClothKinematicsTests` lays every case again with `ClothKinematics` and
-captures the bodies again, and fails with the menu to run when the solver, a
-body, or a garment changed; the Python tests lay every case with `cloth_core.py`
-and must come within 0.01 mm of it. They run without Blender, in CI and in
+hand, and in seeded random leg poses, each with what the client's Burst jobs
+laid, and writes them to `tools/blender/tests/fixtures/cloth_kinematics.json`,
+one case per line. `ClothPoseTests` lays every case again with `ClothPose` and
+captures the bodies again, and fails with the menu to run when the target pose,
+a body, or a garment changed; the Python tests lay every case with
+`cloth_core.py` and must come within 0.01 mm of it, and check that the bind pose
+moves nothing but a cloak over a robe. They run without Blender, in CI and in
 `tools/Test-Changes.ps1` for a change below `art/` or `tools/blender/`:
 
 ```powershell

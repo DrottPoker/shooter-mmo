@@ -1,25 +1,26 @@
-"""The cloth chains in a pose as the runtime solver lays them at its Follow detail, for the review sheets,
-the review files, and the checks of garments with loose parts: the Blender side of cloth_core.py, which
-lays them on plain data exactly as ClothKinematics in the Unity client does. See
+"""The cloth chains in a pose as every visible body in the game shows them, the target pose, for the
+review sheets, the review files, and the checks of garments with loose parts: the Blender side of
+cloth_core.py, which lays them on plain data exactly as ClothPose in the Unity client does. See
 docs/EQUIPMENT_VISUALS_DESIGN.md and docs/ART_PIPELINE.md.
 
-This measures what the kinematic layer needs from Blender's bodies and garments and hands it to
-cloth_core.lay: the capsules around the body's bones, the legs' turns against the hips, every chain as it
-hangs at rest from its posed parent, how deep each particle lies in each of the trunk's capsules at rest,
-and how far a garment's cloth reaches beyond and within each particle; then it turns every bone to point
-at its laid particle. A capsule's radius is the middle distance of the body's vertices that its bone moves
-most. Around the trunk it is taken in each of DIRECTIONS directions around the bone, of the vertices along
-its segment, with its narrow grooves filled: so a torso that is deep in front of the spine and shallow
-behind it keeps a cloak on its back, and the groove along the spine does not catch the cloth and swing it
-from side to side. The legs are about round and move under the cloth, which slides around them, so their
-capsules are round and push it straight away. Springs, inertia, and gravity are left out: the review
-shows where the cloth settles in a pose, so a robe's skirt drapes over bent legs as the game shows it.
+This measures what the target pose needs from Blender's bodies and garments and hands it to
+cloth_core.lay: the capsules around the body's bones as posed and in the bind pose, the legs' turns
+against the hips, every chain as it hangs from its posed parent at rest and in the bind pose with its
+neighbours, and how far a garment's cloth reaches beyond and within each particle; then it turns every
+bone to point at its laid particle. A capsule is measured from the body's vertices that its bone moves
+most. Around the trunk its radius is their middle distance in each of DIRECTIONS directions around the
+bone, of the vertices along its segment, with its narrow grooves filled: so a torso that is deep in
+front of the spine and shallow behind it keeps a cloak on its back, and the groove along the spine does
+not catch the cloth and swing it from side to side. A leg or an arm is about round and moves under the
+cloth, which slides around it, so its capsule is round and reaches out to LIMB_SHARE of its vertices, so
+the calf, the heel, and the back of the upper arm do not stand out of it; an arm's are those along its
+segment, so the shoulder does not widen it. Springs, inertia, and gravity are left out: the review shows
+the target pose, where the cloth hangs in a pose as the game lays it before its springs swing it.
 
 How far a garment's cloth reaches beyond and within each particle of its chains is measured from the
-garment at rest, as reaches gives it; a chain need not lie in its cloth. The trunk carries the chains,
-and no capsule follows its shape exactly, such as the hips' capsule at the small of the back, so against
-the capsules of the trunk a particle keeps no more than it has at rest: a body standing still wears its
-garments as they were made. The legs move under the cloth, so it keeps its margin from them."""
+garment at rest, as reaches gives it; a chain need not lie in its cloth. A body in its bind pose wears
+its garments as they were made: no part of the cloth keeps more margin from a capsule than it has
+there."""
 
 import math
 
@@ -29,11 +30,13 @@ from mathutils import Matrix, Vector
 
 from . import bodies, cloth_core
 
-# The body bones the cloth collides with, each with the bone its capsule ends at; the head is a
-# sphere around its own vertices. The legs' capsules move under the cloth; the others are the trunk's.
+# The body bones the cloth collides with, each with the bone its capsule ends at and what it is around;
+# the head is a sphere around its own vertices.
 CAPSULE_BONES = cloth_core.CAPSULE_BONES
-LEG_BONES = ("UpperLeg", "LowerLeg")
+ROLES = cloth_core.ROLES
 FALLBACK_RADIUS = cloth_core.FALLBACK_RADIUS
+# A limb's round capsule reaches out to this share of its vertices.
+LIMB_SHARE = cloth_core.LIMB_SHARE
 # A capsule has a radius in this many directions around its bone, from the body's front toward its
 # right at rest, with grooves filled this many times over; the head is a sphere with one radius.
 DIRECTIONS = cloth_core.DIRECTIONS
@@ -86,13 +89,14 @@ def kinds_of(obj: bpy.types.Object) -> list[str]:
 
 class Capsule:
     """A body bone's capsule, in the armature's space: its segment, and the body's distance from it in
-    each direction around it, from the body's front toward its right, or one radius for a sphere."""
+    each direction around it, from the body's front toward its right, or one radius for a round capsule
+    or a sphere; and what it is around."""
 
     def __init__(self, bone: str, a: Vector, b: Vector, radii: list[float], front: Vector, side: Vector):
         self.bone, self.local_a, self.local_b, self.radii = bone, a, b, radii
         self.local_front, self.local_side = front, side
         self.a, self.b, self.front, self.side = a, b, front, side
-        self.trunk = not bone.startswith(LEG_BONES)
+        self.role = ROLES[bone]
         # The middle of the radii, for reports.
         self.radius = float(np.median(radii))
 
@@ -103,25 +107,18 @@ class Capsule:
         rotation = matrix.to_3x3()
         self.front, self.side = rotation @ self.local_front, rotation @ self.local_side
 
-    def depth_at_rest(self, point: Vector) -> float:
-        """How far a point at rest lies inside the capsule at rest, its radius toward the point blended
-        between the two directions around it that were measured."""
-        away = point - _closest(point, self.local_a, self.local_b)
-        if len(self.radii) == 1:
-            return self.radii[0] - away.length
-        angle = math.atan2(away.dot(self.local_side), away.dot(self.local_front))
-        position = (angle + math.pi) / (2.0 * math.pi) * len(self.radii) - 0.5
-        lower = math.floor(position)
-        share = position - lower
-        radius = self.radii[lower % len(self.radii)] * (1.0 - share) + self.radii[(lower + 1) % len(self.radii)] * share
-        return radius - away.length
-
     def case(self) -> dict:
         """The capsule as posed, as cloth_core takes it; a point on its axis leaves along the armature's
         Y axis."""
-        return {"bone": self.bone, "a": _plain(self.a), "b": _plain(self.b), "front": _plain(self.front),
-                "side": _plain(self.side), "axisNormal": {"x": 0.0, "y": 1.0, "z": 0.0}, "scale": 1.0,
-                "radii": list(self.radii)}
+        return self._case(self.a, self.b, self.front, self.side)
+
+    def bind_case(self) -> dict:
+        """The capsule in the bind pose, as cloth_core takes it."""
+        return self._case(self.local_a, self.local_b, self.local_front, self.local_side)
+
+    def _case(self, a: Vector, b: Vector, front: Vector, side: Vector) -> dict:
+        return {"bone": self.bone, "role": self.role, "a": _plain(a), "b": _plain(b), "front": _plain(front),
+                "side": _plain(side), "axisNormal": {"x": 0.0, "y": 1.0, "z": 0.0}, "scale": 1.0, "radii": list(self.radii)}
 
 
 def _closest(point: Vector, a: Vector, b: Vector) -> Vector:
@@ -134,7 +131,13 @@ def _closest(point: Vector, a: Vector, b: Vector) -> Vector:
 
 
 def _median(values: np.ndarray) -> float:
-    return float(np.sort(values)[len(values) // 2])
+    return _share(values, 0.5)
+
+
+def _share(values: np.ndarray, share: float) -> float:
+    """The value that a share of the values lie at or below, as ClothChainSolver takes it."""
+    ordered = np.sort(values)
+    return float(ordered[min(len(ordered) - 1, int(len(ordered) * share))])
 
 
 def _filled(radii: list[float | None], fallback: float) -> list[float]:
@@ -168,11 +171,11 @@ def _without_grooves(radii: list[float]) -> list[float]:
 
 
 def capsules(arm: bpy.types.Object, body: bpy.types.Object) -> list[Capsule]:
-    """The capsules of a body at rest, in the armature's space: around each bone's segment, the
-    median distance of the body vertices whose largest weight is the bone's; around the trunk, of
-    those along the segment, in each of DIRECTIONS directions around it from the body's front toward
-    its right, with its narrow grooves filled, so the capsule takes the shape of the body around the
-    bone; round around a leg; and a sphere for the head."""
+    """The capsules of a body at rest, in the armature's space, from the body vertices whose largest
+    weight is the bone's: around the trunk, the median distance of those along the segment in each of
+    DIRECTIONS directions around it from the body's front toward its right, with its narrow grooves
+    filled, so the capsule takes the shape of the body around the bone; round around a limb, out to
+    LIMB_SHARE of them, along its segment for an arm; and a sphere for the head."""
     names = [b.name for b in arm.data.bones if b.use_deform]
     weights = bodies.weights_of(body, names)
     co = bodies.world_positions(body) @ np.array(arm.matrix_world.inverted())[:3, :3].T + \
@@ -193,17 +196,18 @@ def capsules(arm: bpy.types.Object, body: bpy.types.Object) -> list[Capsule]:
             found.append(Capsule(bone, middle, middle.copy(), [radius], forward, right))
             continue
         a, b = head.copy(), arm.data.bones[end].head_local.copy()
-        if bone.startswith(LEG_BONES):
-            distances = np.array([(Vector(p) - _closest(Vector(p), a, b)).length for p in points])
-            found.append(Capsule(bone, a, b, [_median(distances) if len(distances) else FALLBACK_RADIUS], forward, right))
-            continue
         axis = (b - a).normalized()
         front = (forward - axis * forward.dot(axis)).normalized()
         side = (right - axis * right.dot(axis) - front * right.dot(front)).normalized()
-        # Only the vertices along the segment, so the buttocks below the hips' bone do not widen its
-        # capsule at the small of the back.
-        along = (points - np.array(a)) @ np.array(b - a) / (b - a).length_squared if len(points) else np.empty(0)
-        points = points[(along > 0.0) & (along < 1.0)]
+        if ROLES[bone] != "leg":
+            # Only the vertices along the segment, so the buttocks below the hips' bone do not widen
+            # its capsule at the small of the back, nor the shoulder an upper arm's.
+            along = (points - np.array(a)) @ np.array(b - a) / (b - a).length_squared if len(points) else np.empty(0)
+            points = points[(along > 0.0) & (along < 1.0)]
+        if ROLES[bone] != "trunk":
+            distances = np.array([(Vector(p) - _closest(Vector(p), a, b)).length for p in points])
+            found.append(Capsule(bone, a, b, [_share(distances, LIMB_SHARE) if len(distances) else FALLBACK_RADIUS], front, side))
+            continue
         offsets = [Vector(p) - _closest(Vector(p), a, b) for p in points]
         distances = np.array([o.length for o in offsets])
         angles = np.array([math.atan2(o.dot(side), o.dot(front)) for o in offsets])
@@ -233,8 +237,8 @@ def _plain(value: Vector) -> dict:
 
 def _legs(arm: bpy.types.Object) -> dict:
     """How each part of each leg turns against the hips, from where it would point if it kept its rest
-    pose under the posed hips to where it points, the hips' forward and right axes and where they are,
-    and how far the right knee lies ahead of the left, as cloth_core takes them."""
+    pose under the posed hips to where it points, and the hips' forward and right axes and where they
+    are, as cloth_core takes them."""
     hips = arm.pose.bones["Hips"]
     carried = hips.matrix.to_3x3() @ hips.bone.matrix_local.to_3x3().inverted()
     along = Vector((0.0, 1.0, 0.0))
@@ -246,9 +250,8 @@ def _legs(arm: bpy.types.Object) -> dict:
             turn = rest.rotation_difference(arm.pose.bones[name].matrix.to_3x3() @ along)
             turns.append({"x": turn.x, "y": turn.y, "z": turn.z, "w": turn.w})
     forward = carried @ Vector((0.0, 1.0, 0.0))
-    ahead = (arm.pose.bones["LowerLeg_R"].head - arm.pose.bones["LowerLeg_L"].head).dot(forward)
     return {"hasLegs": True, "hips": _plain(hips.head), "forward": _plain(forward),
-            "right": _plain(carried @ _level_right(arm)), "ahead": float(ahead), "legTurns": turns}
+            "right": _plain(carried @ _level_right(arm)), "legTurns": turns}
 
 
 def _segment_of(arm: bpy.types.Object, names: list[str], index: int) -> tuple[Vector, Vector]:
@@ -263,6 +266,35 @@ def _outward(root: str, forward: Vector, right: Vector) -> Vector:
     base = root.rstrip("_LR").rstrip("0123456789")
     angle = math.radians(ANGLES[base] * (-1.0 if root.endswith("_L") else 1.0))
     return forward * math.cos(angle) + right * math.sin(angle)
+
+
+def _angle(root: str) -> float:
+    """A chain's angle around the hips, by its first bone, negative on the left."""
+    base = root.rstrip("_LR").rstrip("0123456789")
+    return ANGLES[base] * (-1.0 if root.endswith("_L") else 1.0)
+
+
+def _ring_order(kind: str, root: str) -> float:
+    """Where a chain lies among its kind's, as ClothChainSolver orders them: the skirt's ring from the
+    front toward the right, the cloak's sheet from the left across the back to the right."""
+    angle = _angle(root)
+    if kind == "cloak":
+        return (180.0 - angle + 180.0) % 360.0 - 180.0
+    return angle % 360.0
+
+
+def _neighbours(kinds: list[str], index: int) -> tuple[int, int]:
+    """A chain's neighbours among the laid chains, by their kinds: the skirt's ring around, the
+    cloak's sheet open, and none for a hood."""
+    kind = kinds[index]
+    first = kinds.index(kind)
+    count = kinds.count(kind)
+    place = index - first
+    if count < 2 or kind == "hood":
+        return -1, -1
+    if kind == "skirt":
+        return first + (place - 1 + count) % count, first + (place + 1) % count
+    return (index - 1 if place > 0 else -1), (index + 1 if place + 1 < count else -1)
 
 
 def _level_right(arm: bpy.types.Object) -> Vector:
@@ -340,53 +372,55 @@ def _along_chain(places: np.ndarray, beyond: np.ndarray, particles: int) -> list
 def follow(arm: bpy.types.Object, kinds: list[str], found: list[Capsule],
            reach: dict[str, dict[str, list[tuple[float, float] | None]]] | None = None) -> None:
     """Lays the chains of the kinds over the armature's current pose as cloth_core lays them: each hangs
-    from its animated parent, follows the legs, is pushed out of the capsules, and its bones turn to
-    point at its particles. With the reaches of the garments on them, a kind's chains also stay outside
-    the envelope of the cloth that it lies over."""
+    from its animated parent, follows the legs, swings out of what it collides with, and its bones turn
+    to point at its particles. With the reaches of the garments on them, a kind's chains keep the cloth
+    off the body by the cloth's own reach, and a cloak lies over the outer side of a robe's skirt."""
     if not kinds:
         return
     bpy.context.view_layer.update()
     for capsule in found:
         capsule.place(arm)
     reach = reach or {}
-    case = {"name": arm.name, "scale": 1.0, "up": {"x": 0.0, "y": 0.0, "z": 1.0}, "hasLegs": False,
-            "capsules": [capsule.case() for capsule in found], "chains": []}
+    head = next((index for index, capsule in enumerate(found) if capsule.bone == "Head"), -1)
+    case = {"name": arm.name, "scale": 1.0, "hasLegs": False, "capsules": [capsule.case() for capsule in found],
+            "bindCapsules": [capsule.bind_case() for capsule in found], "chains": []}
     if any(cloth_core.KINDS[kind]["beside"] for kind in kinds):
         case.update(_legs(arm))
+    laid = [(kind, names) for kind in sorted(kinds, key=ORDER.index)
+            for names in sorted(_chains(arm, kind), key=lambda names, kind=kind: _ring_order(kind, names[0]))]
+    laid_kinds = [kind for kind, _names in laid]
     laid_chains = []
-    for kind in sorted(kinds, key=ORDER.index):
-        for names in _chains(arm, kind):
-            parent = arm.data.bones[names[0]].parent
-            parent_matrix = arm.pose.bones[parent.name].matrix.copy() if parent else Matrix.Identity(4)
-            parent_rest = parent.matrix_local if parent else Matrix.Identity(4)
-            # Every bone at rest under the posed parent, and the particles at its joints and its tip.
-            matrices, matrix, rest_parent = [], parent_matrix, parent_rest
-            for name in names:
-                bone = arm.data.bones[name]
-                matrix = matrix @ rest_parent.inverted() @ bone.matrix_local
-                matrices.append(matrix)
-                rest_parent = bone.matrix_local
-            lengths = [arm.data.bones[n].length for n in names]
-            hanging = [m.translation.copy() for m in matrices]
-            hanging.append(matrices[-1] @ Vector((0.0, lengths[-1], 0.0)))
-            rest = [arm.data.bones[n].head_local.copy() for n in names] + [arm.data.bones[names[-1]].tail_local.copy()]
-            chain_reach = reach[kind].get(names[0]) if kind in reach else None
-            base = names[0].rstrip("_LR").rstrip("0123456789")
-            case["chains"].append({
-                "root": names[0], "kind": kind,
-                "angle": ANGLES[base] * (-1.0 if names[0].endswith("_L") else 1.0),
-                "beside": list(cloth_core.KINDS[kind]["beside"]),
-                "margin": cloth_core.KINDS[kind]["margin"], "slack": cloth_core.KINDS[kind]["slack"],
-                "hanging": [_plain(point) for point in hanging], "lengths": lengths,
-                # How deep each particle lies in each of the trunk's capsules at rest; no limit from the legs.
-                "restDepths": [capsule.depth_at_rest(point) if capsule.trunk else 0.0 for point in rest for capsule in found],
-                "restDepthKnown": [capsule.trunk for _point in rest for capsule in found],
-                "reachKnown": chain_reach is not None,
-                "hasReach": [r is not None for r in chain_reach] if chain_reach is not None else [],
-                "reach": [{"x": r[0], "y": r[1]} if r is not None else {"x": 0.0, "y": 0.0} for r in chain_reach]
-                if chain_reach is not None else [],
-            })
-            laid_chains.append((names, parent_matrix, parent_rest))
+    for index, (kind, names) in enumerate(laid):
+        parent = arm.data.bones[names[0]].parent
+        parent_matrix = arm.pose.bones[parent.name].matrix.copy() if parent else Matrix.Identity(4)
+        parent_rest = parent.matrix_local if parent else Matrix.Identity(4)
+        # Every bone at rest under the posed parent, and the particles at its joints and its tip.
+        matrices, matrix, rest_parent = [], parent_matrix, parent_rest
+        for name in names:
+            bone = arm.data.bones[name]
+            matrix = matrix @ rest_parent.inverted() @ bone.matrix_local
+            matrices.append(matrix)
+            rest_parent = bone.matrix_local
+        tip = arm.data.bones[names[-1]].length
+        hanging = [m.translation.copy() for m in matrices]
+        hanging.append(matrices[-1] @ Vector((0.0, tip, 0.0)))
+        rest = [arm.data.bones[n].head_local.copy() for n in names] + [arm.data.bones[names[-1]].tail_local.copy()]
+        chain_reach = reach[kind].get(names[0]) if kind in reach else None
+        beside = list(cloth_core.KINDS[kind]["beside"])
+        left, right = _neighbours(laid_kinds, index)
+        case["chains"].append({
+            "root": names[0], "kind": kind, "angle": _angle(names[0]),
+            "beside": (beside + ["none"] * len(names))[:len(names)],
+            "margin": cloth_core.KINDS[kind]["margin"], "slack": cloth_core.KINDS[kind]["slack"],
+            "collides": list(cloth_core.KINDS[kind]["collides"]), "left": left, "right": right,
+            "frameCapsule": head if cloth_core.KINDS[kind]["frame"] == "Head" else -1,
+            "hanging": [_plain(point) for point in hanging], "bindHanging": [_plain(point) for point in rest],
+            "reachKnown": chain_reach is not None,
+            "hasReach": [r is not None for r in chain_reach] if chain_reach is not None else [],
+            "reach": [{"x": r[0], "y": r[1]} if r is not None else {"x": 0.0, "y": 0.0} for r in chain_reach]
+            if chain_reach is not None else [],
+        })
+        laid_chains.append((names, parent_matrix, parent_rest))
     for (names, parent_matrix, parent_rest), positions in zip(laid_chains, cloth_core.lay(case)):
         positions = [Vector(point) for point in positions]
         # Turn every bone, from the root, to point at its next particle.
