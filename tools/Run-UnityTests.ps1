@@ -54,6 +54,11 @@ function ConvertTo-ProcessArgument {
     return $Value
 }
 
+# Unity runs here without a graphics device (-nographics), where a camera cannot draw, so the
+# tests of the Graphics category, which draw, are left out; tools/Run-UnityEditorTests.ps1 runs
+# them in the Editor. See tests/README.md.
+$excludedCategory = "!Graphics"
+
 foreach ($platform in @("EditMode", "PlayMode")) {
     $resultFile = Join-Path $ResultsPath "$platform-results.xml"
     $logFile = Join-Path $ResultsPath "$platform-unity.log"
@@ -71,6 +76,7 @@ foreach ($platform in @("EditMode", "PlayMode")) {
             "--timeout", "900",
             "--",
             "-nographics",
+            "-testCategory", $excludedCategory,
             "-logFile", $logFile
         )
     }
@@ -82,6 +88,7 @@ foreach ($platform in @("EditMode", "PlayMode")) {
             "-runTests",
             "-testPlatform", $platform,
             "-testResults", $resultFile,
+            "-testCategory", $excludedCategory,
             "-logFile", $logFile
         )
     }
