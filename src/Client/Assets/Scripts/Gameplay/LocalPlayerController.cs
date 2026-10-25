@@ -485,6 +485,8 @@ namespace Mmorpg.Client.Gameplay
                 groundedVerticalPresentation.Clear();
                 reconciliationOffset = Vector3.zero;
                 reconciliationYawOffset = 0f;
+                // The body jumps to the corrected place; its loose cloth is carried along.
+                ClothChainSolver.NotifyDiscontinuity(gameObject);
                 return;
             }
 
@@ -540,6 +542,7 @@ namespace Mmorpg.Client.Gameplay
             CacheComponents();
             characterBody.Teleport(position, rotation);
             groundedVerticalPresentation.Clear();
+            ClothChainSolver.NotifyDiscontinuity(gameObject);
         }
 
         public void RefreshCharacterDimensions()

@@ -17,6 +17,7 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly RemoteMovementPresenter movement = new RemoteMovementPresenter();
         private CharacterLocomotionAnimator body;
+        private int presentedDiscontinuities;
 
         public ulong NetworkEntityId { get; private set; }
 
@@ -174,6 +175,12 @@ namespace Mmorpg.Client.Gameplay
         private void ApplyPresentedPose()
         {
             transform.SetPositionAndRotation(movement.Position, movement.Rotation);
+            if (movement.Discontinuities != presentedDiscontinuities)
+            {
+                // The pose jumped: the loose cloth is carried along rather than swung by it.
+                presentedDiscontinuities = movement.Discontinuities;
+                ClothChainSolver.NotifyDiscontinuity(gameObject);
+            }
         }
     }
 }

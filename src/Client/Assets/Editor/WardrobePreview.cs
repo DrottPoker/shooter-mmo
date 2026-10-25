@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Cloth;
 using Mmorpg.Client.Gameplay;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -11,10 +12,11 @@ namespace Mmorpg.Client.Editor
 {
     // The Wardrobe preview: a body dressed in chosen garments of its appearance catalog, put
     // together as the game puts it together, that plays Idle, Walk, Jog, or Death, or a cloth
-    // stress motion over them, and runs the cloth solver, in a preview scene of its own. While it
-    // walks or jogs it moves forward at the clip's speed and the checkered ground moves along under
-    // it, so loose cloth lags as in the game; a stress motion moves and turns it along its course,
-    // in a network motion as a remote body shows it. WardrobeWindow shows it and ClothMeasurement
+    // stress motion over them, and runs the cloth solver, with its springs or in its target pose
+    // alone, in a preview scene of its own. While it walks or jogs it moves forward at the clip's
+    // speed and the checkered ground moves along under it, so loose cloth lags as in the game; a
+    // stress motion moves and turns it along its course, in a network motion as a remote body shows
+    // it. The cloth profiles can be tuned on it. WardrobeWindow shows it and ClothMeasurement
     // measures in it; see docs/EQUIPMENT_VISUALS_DESIGN.md.
     public sealed class WardrobePreview : IDisposable
     {
@@ -49,6 +51,7 @@ namespace Mmorpg.Client.Editor
         private readonly float walkCycleSeconds = 1f;
         private readonly float jogCycleSeconds = 1f;
         private readonly RemoteMovementPresenter network = new RemoteMovementPresenter();
+        private readonly Dictionary<ClothChainKind, ClothProfile> tuned = new Dictionary<ClothChainKind, ClothProfile>();
         private uint networkTick;
         private Scene scene;
 
@@ -157,6 +160,28 @@ namespace Mmorpg.Client.Editor
             get { return solver; }
         }
 
+        // Whether the cloth swings on its springs, as on the nearest bodies in the game, or shows its
+        // target pose alone, as every other body does.
+        public bool Springs { get; set; } = true;
+
+        // Whether the body holds its pose instead of playing its clips, so only its root moves along
+        // a motion: the springs' own dependence on the frame time, without the clips' sampling.
+        public bool Frozen { get; set; }
+
+        // The profile the cloth of a kind moves with: the game's, or as tuned.
+        public ClothProfile ProfileOf(ClothChainKind kind)
+        {
+            return tuned.TryGetValue(kind, out var profile) ? profile : ClothProfile.For(kind);
+        }
+
+        // Moves the cloth of a kind with another profile, also when other garments are worn, until it
+        // is tuned back; the springs start again from the target.
+        public void Tune(ClothChainKind kind, ClothProfile profile)
+        {
+            tuned[kind] = profile;
+            solver.Tune(kind, profile);
+        }
+
         // Where the camera looks: the body's chest.
         public Vector3 Focus
         {
@@ -184,6 +209,10 @@ namespace Mmorpg.Client.Editor
             }
 
             appearance.ApplyLook(look, materials);
+            foreach (var pair in tuned)
+            {
+                solver.Tune(pair.Key, pair.Value);
+            }
         }
 
         // The paint layers the body shows, by the rules of their categories.
@@ -224,6 +253,8 @@ namespace Mmorpg.Client.Editor
                 null, null);
             networkTick = 0;
             Place(motion.At(0f));
+            // Every run of a motion starts its springs again from the target, so runs compare.
+            solver.RestartSprings();
         }
 
         // Moves the body at the clip's speed, poses it, moves the ground along, and runs the
@@ -245,14 +276,18 @@ namespace Mmorpg.Client.Editor
             var position = Body.transform.position + Vector3.forward * (Speed * deltaTime);
             if (position.z > WrapDistance)
             {
-                // Back by whole squares, the ground looks the same; the solver starts the chains again.
+                // Back by whole squares, the ground looks the same; the cloth is carried along.
                 position.z -= Mathf.Floor(position.z / TileSize) * TileSize;
+                solver.NotifyDiscontinuity();
             }
 
             Body.transform.position = position;
             ground.position = new Vector3(0f, 0f, Mathf.Floor(position.z / TileSize) * TileSize);
-            animator.Update(deltaTime);
-            solver.Simulate(deltaTime, Focus + cameraOffset);
+            if (!Frozen)
+            {
+                animator.Update(deltaTime);
+            }
+            Simulate(deltaTime, cameraOffset);
         }
 
         private void StepStress(float deltaTime, Vector3 cameraOffset)
@@ -264,8 +299,18 @@ namespace Mmorpg.Client.Editor
             }
 
             Place(Stress.Network ? Networked(deltaTime) : Stress.At(StressTime));
-            animator.Update(deltaTime);
-            solver.Simulate(deltaTime, Focus + cameraOffset);
+            if (!Frozen)
+            {
+                animator.Update(deltaTime);
+            }
+            Simulate(deltaTime, cameraOffset);
+        }
+
+        // Runs the cloth as seen from the camera, with its springs or in its target pose alone.
+        private void Simulate(float deltaTime, Vector3 cameraOffset)
+        {
+            var detail = ClothChainSolver.DetailAt(Vector3.Distance(Body.transform.position, Focus + cameraOffset));
+            solver.Simulate(deltaTime, detail == ClothDetail.Spring && !Springs ? ClothDetail.Pose : detail);
         }
 
         // The course as a remote body shows it: snapshots of it at the network's rate, presented

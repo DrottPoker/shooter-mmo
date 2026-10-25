@@ -65,6 +65,10 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
+        // How many times the presented pose jumped rather than moved: the first state after a clear
+        // and every restart of the render clock. The body's loose cloth is carried along across them.
+        public int Discontinuities { get; private set; }
+
         // The presented ground point and facing.
         public Vector3 Position { get; private set; }
 
@@ -135,6 +139,7 @@ namespace Mmorpg.Client.Gameplay
             if (wasEmpty)
             {
                 Present(renderClock.Reset(interpolation.LatestServerTick, interpolationDelayTicks), 0f);
+                Discontinuities++;
             }
 
             return true;
@@ -149,6 +154,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             Present(renderClock.Reset(interpolation.LatestServerTick, interpolationDelayTicks), 0f);
+            Discontinuities++;
         }
 
         public bool TryGetNewestState(out uint serverTick, out PlayerMovementState state)

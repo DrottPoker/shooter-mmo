@@ -128,6 +128,7 @@ namespace Mmorpg.Client.WorldActors
     {
         private readonly RemoteActorMovement movement = new RemoteActorMovement();
         private long appliedStateRevision = long.MinValue;
+        private int presentedDiscontinuities;
         private Vector3 restPosition;
         private float restYawDegrees;
 
@@ -192,6 +193,12 @@ namespace Mmorpg.Client.WorldActors
         private void ApplyMovementPose()
         {
             transform.SetPositionAndRotation(movement.Position, movement.Rotation);
+            if (movement.Discontinuities != presentedDiscontinuities)
+            {
+                // A teleport or a start from the rest pose: loose cloth is carried along.
+                presentedDiscontinuities = movement.Discontinuities;
+                ClothChainSolver.NotifyDiscontinuity(gameObject);
+            }
         }
     }
 

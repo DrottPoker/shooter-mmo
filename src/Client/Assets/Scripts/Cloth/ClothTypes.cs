@@ -100,4 +100,64 @@ namespace Mmorpg.Client.Cloth
         public float Within;
         public bool HasCloth;
     }
+
+    // How a chain swings on its target pose, in SI units, from its root to its tip: how fast its
+    // particles spring back to the target, in Hz, and how much of their swing dies down, as a
+    // damping ratio; how far each bone may turn from where the target points it, and the chain
+    // around its anchor's upright axis, in radians, with no twist limit at zero; the share of
+    // gravity it feels against the bind pose; and how far the anchor's speed leans it back, in
+    // meters a second squared per meter a second, and at most.
+    public struct ClothSpring
+    {
+        public float FrequencyRoot;
+        public float FrequencyTip;
+        public float DampingRoot;
+        public float DampingTip;
+        public float ConeRoot;
+        public float ConeTip;
+        public float Twist;
+        public float Gravity;
+        public float SpeedLean;
+        public float SpeedLeanLimit;
+    }
+
+    // A chain's springs and the frame they run in: the slot and the kind of its anchor bone, and the
+    // body's upright axis in the anchor's own frame in the bind pose.
+    public struct ClothSpringChain
+    {
+        public ClothSpring Spring;
+        public int AnchorSlot;
+        public int Anchor;
+        public float3 Up;
+    }
+
+    // How an anchor bone moves in the world as the springs feel it: where it was last frame, its
+    // speed and turning filtered, and what the springs feel of them, limited.
+    public struct ClothAnchor
+    {
+        public float3 Position;
+        public quaternion Rotation;
+        public float3 Velocity;
+        public float3 AngularVelocity;
+        public float3 FeltVelocity;
+        public float3 FeltAcceleration;
+        public float3 FeltAngularVelocity;
+        public float3 FeltAngularAcceleration;
+
+        // 0 before the first frame, 1 after it, and 2 once it moved.
+        public byte Primed;
+    }
+
+    // A body's springs: whether they run and from where, how far they are faded in, the time not
+    // yet stepped, whether the body jumped, and whether its cloth sleeps on its target and for how
+    // long it lay within reach of it.
+    public struct ClothSpringBody
+    {
+        public bool Started;
+        public bool Jumped;
+        public bool Sleeping;
+        public float Weight;
+        public float Accumulator;
+        public float SleepTime;
+    }
 }
