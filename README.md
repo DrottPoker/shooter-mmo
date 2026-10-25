@@ -145,7 +145,7 @@ remain deferred.
 
 - .NET SDK 10.0.301 or a compatible .NET 10 feature band.
 - Docker Desktop with Linux containers.
-- Unity Editor 6000.5.4f1.
+- Unity Editor 6000.6.7f1.
 - Optional: Unity CLI for Editor automation and coding-agent access, described
   in [Local Development](docs/LOCAL_DEVELOPMENT.md#unity-editor-automation-with-unity-cli).
 

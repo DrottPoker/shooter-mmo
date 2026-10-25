@@ -7,6 +7,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
+using UnityEngine.Assemblies;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -208,7 +209,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EveryClientTypeLivesInTheNamespaceOfItsAssembly()
         {
-            var loaded = AppDomain.CurrentDomain.GetAssemblies()
+            var loaded = CurrentAssemblies.GetLoadedAssemblies()
                 .Where(assembly => RuntimeLayers.Contains(assembly.GetName().Name))
                 .ToArray();
             Assert.That(

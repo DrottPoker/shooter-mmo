@@ -16,7 +16,7 @@ runtime claim.
 ## Project Boundary
 
 The Unity project lives in `src/Client` and targets Unity
-6000.5.4f1. Runtime code is compiled into ten area assemblies, described in
+6000.6.7f1. Runtime code is compiled into ten area assemblies, described in
 [Assemblies](#assemblies). All runtime content loads through Addressables, as
 described in [Content Loading With Addressables](#content-loading-with-addressables).
 EditMode and PlayMode tests use separate assemblies.
@@ -410,7 +410,7 @@ and its Player server stays disabled because the Pipeline Runtime setting
 
 ## Content Loading With Addressables
 
-The client uses Addressables 2.9.1 for all runtime content; there is no
+The client uses Addressables 2.11.2 for all runtime content; there is no
 `Resources` folder and no `Resources.Load` call. Content lives in folders below
 `Assets/Content`. Each folder is one Addressables folder entry whose address is
 its path below `Assets/Content`, so an asset's address is its path below that

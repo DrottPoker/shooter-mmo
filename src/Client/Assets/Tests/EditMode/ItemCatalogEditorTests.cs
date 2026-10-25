@@ -10,6 +10,7 @@ using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
 using NUnit.Framework;
 using UnityEditor.Compilation;
+using UnityEngine.Assemblies;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -443,7 +444,7 @@ namespace Mmorpg.Client.Tests.EditMode
             };
             foreach (var assemblyName in runtimeAssemblyNames)
             {
-                var assembly = AppDomain.CurrentDomain.GetAssemblies().Single(candidate =>
+                var assembly = CurrentAssemblies.GetLoadedAssemblies().Single(candidate =>
                     string.Equals(
                         candidate.GetName().Name,
                         assemblyName,

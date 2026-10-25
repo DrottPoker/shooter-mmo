@@ -1,4 +1,4 @@
-// The input of the Garment shader: LitInput.hlsl of URP 17.5 with the dye channels in the material
+// The input of the Garment shader: LitInput.hlsl of URP 17.6 with the dye channels in the material
 // constant buffer and multiplied into the albedo by the dye mask. It also defines
 // UNIVERSAL_LIT_INPUT_INCLUDED, so URP's own Lit input never joins it.
 #ifndef MMORPG_GARMENT_INPUT_INCLUDED

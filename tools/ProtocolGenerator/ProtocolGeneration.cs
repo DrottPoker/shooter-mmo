@@ -72,7 +72,7 @@ public static class ProtocolGeneration
         return Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes(packagePath)));
     }
 
-    // The exact format Unity 6000.5 writes for a new script.
+    // The exact format Unity 6000.6 writes for a new script.
     private static string ScriptMeta(string relativePath)
     {
         return $"fileFormatVersion: 2\nguid: {AssetGuid(relativePath)}";
