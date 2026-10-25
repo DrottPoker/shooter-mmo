@@ -4,9 +4,11 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Characters;
 using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Items;
 using Mmorpg.Server.Telemetry;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
@@ -63,6 +65,7 @@ WorldActorProtocolCompatibility.Validate(worldActorRuntime);
 var itemCatalog = ItemCatalogFileLoader.Load(config.ItemCatalogPath);
 WorldActorItemReferences.Validate(worldActorRuntime, itemCatalog);
 var combatRules = CombatRulesLoader.Load(config.CombatRulesPath);
+var appearanceCatalog = CharacterAppearanceFileLoader.Load(config.CharacterAppearancePath);
 var developmentItemInteractionOptions =
     DevelopmentItemInteractionOptions.FromConfiguration(
         builder.Configuration,
@@ -89,6 +92,9 @@ builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(worldActorRuntime);
 builder.Services.AddSingleton(itemCatalog);
 builder.Services.AddSingleton(combatRules);
+builder.Services.AddSingleton(appearanceCatalog);
+builder.Services.AddSingleton<CharacterLookStore>();
+builder.Services.AddSingleton(new DevelopmentBotLooks(appearanceCatalog, itemCatalog));
 builder.Services.AddSingleton<SimulationShardRules>();
 builder.Services.AddSingleton<CombatMetrics>();
 builder.Services.AddSingleton(developmentItemInteractionOptions);

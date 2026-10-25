@@ -32,7 +32,28 @@ public sealed record ConsumedSimulationJoinTicketResponse(
 
     // What the character has equipped at ItemStateRevision.
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
+
+    // How the character looks; null for a development bot, which the worker dresses itself.
+    public SimulationAppearance? Appearance { get; init; }
 }
+
+// A character's body model, the choices of its look, and whether it lowered its headwear.
+public sealed record SimulationAppearance(
+    string BodyModel,
+    IReadOnlyList<SimulationAppearanceChoice> Choices,
+    bool HeadwearLowered);
+
+public sealed record SimulationAppearanceChoice(string Kind, string Slot, string Option);
+
+// A change of the look of a session's character: "headwear" with HeadwearLowered, or in
+// Development "development_look" with a body model and choices.
+public sealed record SimulationAppearanceChangeRequest(
+    string WorkerRuntimeId,
+    string SessionToken,
+    string Change,
+    bool? HeadwearLowered,
+    string? BodyModel,
+    IReadOnlyList<SimulationAppearanceChoice>? Choices);
 
 // One occupied equipment slot, such as the equipped weapon or the arrow stack.
 public sealed record SimulationEquippedItem(
@@ -329,7 +350,21 @@ public sealed record DurableCorpseResponse(
     DateTime CreatedAt,
     DateTime ExpiresAt,
     bool IsEmpty,
-    IReadOnlyList<CorpseSectionResponse> Sections);
+    IReadOnlyList<CorpseSectionResponse> Sections)
+{
+    // How a player corpse looks; null for a Mob corpse.
+    public CorpseLookResponse? Look { get; init; }
+}
+
+// The dead character's body model, look, and headwear, and the items still in the corpse's
+// equipment section, which the corpse wears until someone loots them.
+public sealed record CorpseLookResponse(
+    string BodyModel,
+    IReadOnlyList<SimulationAppearanceChoice> Choices,
+    IReadOnlyList<CorpseLookEquipmentResponse> Equipment,
+    bool HeadwearLowered);
+
+public sealed record CorpseLookEquipmentResponse(string EquipmentSlotId, string DefinitionId);
 
 public sealed record CorpseSectionResponse(
     string SectionKind,

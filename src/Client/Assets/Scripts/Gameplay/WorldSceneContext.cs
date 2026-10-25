@@ -4,6 +4,7 @@ using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -22,6 +23,12 @@ namespace Mmorpg.Client.Gameplay
         private readonly PlayerBodyMaterials bodyMaterials = new PlayerBodyMaterials();
         private readonly PlayerBodyMeshes bodyMeshes = new PlayerBodyMeshes();
         private readonly PlayerCorpseBodies corpseBodies = new PlayerCorpseBodies();
+        // Looks that wait for a dead body to live again: a dying body keeps its clothes until its
+        // character respawns, though its items already lie in its corpse.
+        private readonly Dictionary<ulong, RealtimeCharacterAppearance> deferredAppearances =
+            new Dictionary<ulong, RealtimeCharacterAppearance>();
+        private readonly List<ulong> revivedEntities = new List<ulong>();
+        private bool localLookDeferred;
         private RealtimeSimulationClient simulationClient;
         private WorldPointerFocus pointerFocus;
         private PlayerBodyTintSetting bodyTint;
@@ -41,12 +48,25 @@ namespace Mmorpg.Client.Gameplay
             get { return remotePlayers.Values; }
         }
 
-        // The lying body that player corpses show, from the default body model of the remote
-        // player prefab.
-        public bool TryGetCorpseBody(out Mesh mesh, out Material[] materials)
+        // The lying body of a player corpse in the dead character's body model and look, dressed in
+        // the garments of the items still in the corpse, or of the default model and look without
+        // one; the key names the body for KeepCorpseBodies.
+        public bool TryGetCorpseBody(RealtimeCharacterAppearance appearance, out string key, out Mesh mesh, out Material[] materials)
         {
-            var model = DefaultModelOf(remotePlayerPrefab);
-            return corpseBodies.TryGet(model != null ? model.Body : null, bodyMeshes, bodyMaterials, out mesh, out materials);
+            var slot = SlotOf(remotePlayerPrefab);
+            var model = slot != null && slot.Models != null
+                ? slot.Models.NamedOrDefault(appearance != null ? appearance.BodyModel : null)
+                : null;
+            var body = model != null ? model.Body : null;
+            var look = RemotePlayerView.DressedLook(appearance, body != null ? body.Catalog : null, Presentation);
+            key = PlayerCorpseBodies.KeyOf(model != null ? model.Name : null, look);
+            return corpseBodies.TryGet(key, body, look, bodyMeshes, bodyMaterials, out mesh, out materials);
+        }
+
+        // Destroys the lying bodies that no corpse in view shows.
+        public void KeepCorpseBodies(ICollection<string> keys)
+        {
+            corpseBodies.KeepOnly(keys);
         }
 
         // Whether a body that shows its character dead lies near the position, such as the body
@@ -191,11 +211,12 @@ namespace Mmorpg.Client.Gameplay
 
             if (equipment != null)
             {
-                equipment.Changed += ApplyLocalBodyLook;
+                equipment.Changed += OnEquipmentChanged;
             }
 
             simulationClient.EntitySpawned += OnEntitySpawned;
             simulationClient.EntityDespawned += OnEntityDespawned;
+            simulationClient.EntityAppearanceChanged += OnEntityAppearanceChanged;
             simulationClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
             foreach (var spawn in simulationClient.SpawnedEntities)
             {
@@ -209,6 +230,7 @@ namespace Mmorpg.Client.Gameplay
             {
                 simulationClient.EntitySpawned -= OnEntitySpawned;
                 simulationClient.EntityDespawned -= OnEntityDespawned;
+                simulationClient.EntityAppearanceChanged -= OnEntityAppearanceChanged;
                 simulationClient.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
             }
 
@@ -225,10 +247,11 @@ namespace Mmorpg.Client.Gameplay
 
             if (equipment != null)
             {
-                equipment.Changed -= ApplyLocalBodyLook;
+                equipment.Changed -= OnEquipmentChanged;
             }
 
             remotePlayers.Clear();
+            deferredAppearances.Clear();
             bodyMaterials.Dispose();
             corpseBodies.Dispose();
             bodyMeshes.Dispose();
@@ -284,11 +307,10 @@ namespace Mmorpg.Client.Gameplay
                         movementSession.SnapshotRateHz),
                     movementSession.CollisionWorld,
                     movementSession.Settings.CharacterCollision);
-                remotePlayer.ShowBody();
-                CombineBody(remotePlayer);
-                remotePlayer.ApplyBodyTint(BodiesTinted, bodyMaterials);
-                remotePlayer.ApplyBodyLook(bodyMaterials);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
+                PresentAppearance(
+                    remotePlayer,
+                    simulationClient.TryGetAppearance(spawn.EntityId, out var appearance) ? appearance : spawn.Appearance);
             }
 
             remotePlayer.PushSnapshot(spawn.ServerTick, spawn.InitialState);
@@ -302,7 +324,104 @@ namespace Mmorpg.Client.Gameplay
             }
 
             remotePlayers.Remove(despawn.EntityId);
+            deferredAppearances.Remove(despawn.EntityId);
             Destroy(remotePlayer.gameObject);
+        }
+
+        // The local player's look comes through the look setting.
+        private void OnEntityAppearanceChanged(RealtimeEntityAppearanceChanged change)
+        {
+            if (remotePlayers.TryGetValue(change.EntityId, out var remotePlayer) && remotePlayer != null)
+            {
+                PresentAppearance(remotePlayer, change.Appearance);
+            }
+        }
+
+        // Shows the body model and the dressed look, or keeps them for later while the body shows
+        // its character dead in the look it had.
+        private void PresentAppearance(RemotePlayerView remotePlayer, RealtimeCharacterAppearance appearance)
+        {
+            var body = remotePlayer.Body;
+            if (remotePlayer.Appearance != null && body != null && body.IsDead)
+            {
+                deferredAppearances[remotePlayer.NetworkEntityId] = appearance;
+                return;
+            }
+
+            deferredAppearances.Remove(remotePlayer.NetworkEntityId);
+            if (remotePlayer.ShowBody(appearance != null ? appearance.BodyModel : null) || remotePlayer.Appearance == null)
+            {
+                CombineBody(remotePlayer);
+                remotePlayer.ApplyBodyTint(BodiesTinted, bodyMaterials);
+            }
+
+            remotePlayer.ApplyAppearance(appearance, Presentation, bodyMaterials);
+        }
+
+        // A body that lives again shows the look it waited with.
+        private void Update()
+        {
+            if (localLookDeferred && !IsLocalBodyDead)
+            {
+                localLookDeferred = false;
+                OnBodyLookChanged();
+            }
+
+            if (deferredAppearances.Count == 0)
+            {
+                return;
+            }
+
+            revivedEntities.Clear();
+            foreach (var deferred in deferredAppearances)
+            {
+                if (!remotePlayers.TryGetValue(deferred.Key, out var remotePlayer)
+                    || remotePlayer == null
+                    || remotePlayer.Body == null
+                    || !remotePlayer.Body.IsDead)
+                {
+                    revivedEntities.Add(deferred.Key);
+                }
+            }
+
+            foreach (var entityId in revivedEntities)
+            {
+                var appearance = deferredAppearances[entityId];
+                deferredAppearances.Remove(entityId);
+                if (remotePlayers.TryGetValue(entityId, out var remotePlayer) && remotePlayer != null)
+                {
+                    PresentAppearance(remotePlayer, appearance);
+                }
+            }
+        }
+
+        // Equipment the local player put on or took off dresses its body; a presentation that
+        // arrived dresses every player.
+        private void OnEquipmentChanged()
+        {
+            ApplyLocalBodyLook();
+            foreach (var remotePlayer in remotePlayers.Values)
+            {
+                if (remotePlayer != null && remotePlayer.Appearance != null
+                    && !deferredAppearances.ContainsKey(remotePlayer.NetworkEntityId))
+                {
+                    PresentAppearance(remotePlayer, remotePlayer.Appearance);
+                }
+            }
+        }
+
+        private ItemPresentationCatalogIndex Presentation
+        {
+            get { return equipment != null ? equipment.Presentation : null; }
+        }
+
+        private bool IsLocalBodyDead
+        {
+            get
+            {
+                var body = localPlayer != null ? localPlayer.Body : null;
+                return body != null && body.IsDead;
+            }
         }
 
         // Moves remote players. The world actor presentation moves the Mobs of the same
@@ -378,9 +497,15 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Another model puts in another body, which is combined, tinted, and offered to the panel;
-        // either way the body shows the look.
+        // either way the body shows the look. A dead body keeps its look until it lives again.
         private void OnBodyLookChanged()
         {
+            if (IsLocalBodyDead)
+            {
+                localLookDeferred = true;
+                return;
+            }
+
             if (ShowLocalModel())
             {
                 CombineBody(localPlayer);
@@ -424,9 +549,17 @@ namespace Mmorpg.Client.Gameplay
             return slot != null && slot.Models != null ? slot.Models.Default : null;
         }
 
-        // The look the player chose, dressed in the garments of the items it wears.
+        // The character's look, dressed in the garments of the items it wears as the inventory
+        // shows them, with its headwear as the server stores it. A dead body keeps its look until
+        // it lives again.
         private void ApplyLocalBodyLook()
         {
+            if (IsLocalBodyDead)
+            {
+                localLookDeferred = true;
+                return;
+            }
+
             var appearance = LocalAppearance;
             if (appearance != null && bodyLook != null)
             {
@@ -435,8 +568,8 @@ namespace Mmorpg.Client.Gameplay
                         bodyLook.Look,
                         appearance.Catalog,
                         equipment != null ? equipment.Items : null,
-                        equipment != null ? equipment.Presentation : null,
-                        false),
+                        Presentation,
+                        bodyLook.HeadwearLowered),
                     bodyMaterials);
             }
         }

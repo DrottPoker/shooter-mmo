@@ -1,3 +1,4 @@
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Registry;
@@ -11,7 +12,9 @@ public sealed class SimulationJoinService(
     ActiveSimulationSessionStore sessionStore,
     CharacterItemStateStore itemStateStore,
     SimulationWorkerConfig config,
-    SimulationWorkerIdentity identity)
+    SimulationWorkerIdentity identity,
+    CharacterLookStore? lookStore = null,
+    DevelopmentBotLooks? botLooks = null)
 {
     // One span covers the ticket consumption and any release a rejected join needs.
     public async Task<SimulationJoinResult<ActiveSimulationSession>> JoinAsync(
@@ -121,6 +124,15 @@ public sealed class SimulationJoinService(
             session.SimulationSessionId,
             session.SimulationSessionToken,
             currentItemState.Carry);
+
+        // A development bot has no stored look, so the worker dresses it from its id.
+        var look = consumedTicket.Value.Appearance is { } appearance
+            ? new CharacterLook(appearance)
+            : botLooks?.For(session.CharacterId);
+        if (look is not null)
+        {
+            lookStore?.Register(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, look);
+        }
 
         sessionStore.TryGet(session.CharacterId, out var registeredSession);
 

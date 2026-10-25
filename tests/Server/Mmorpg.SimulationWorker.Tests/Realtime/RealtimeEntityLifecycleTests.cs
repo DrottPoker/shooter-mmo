@@ -402,7 +402,8 @@ public sealed class RealtimeEntityLifecycleTests
                     200,
                     false)
                 {
-                    SessionLeaseDurationMilliseconds = 30_000
+                    SessionLeaseDurationMilliseconds = 30_000,
+                    Appearance = CharacterStateTestData.Appearance
                 });
             }
 

@@ -1,11 +1,13 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // Presentation of another player. Its only collider is a runtime trigger capsule of the
-    // movement capsule's size, so the pointer can pick the player; it never blocks anything.
+    // Presentation of another player, in the body model, look, and garments the server sends for
+    // it. Its only collider is a runtime trigger capsule of the movement capsule's size, so the
+    // pointer can pick the player; it never blocks anything.
     // With the body tint setting on, the body is tinted orange for a person and blue for a
     // development bot, so neither can be taken for the purple local player.
     [DisallowMultipleComponent]
@@ -67,27 +69,15 @@ namespace Mmorpg.Client.Gameplay
             ConfigurePointerTarget(characterCollision);
         }
 
-        // Puts in the body of the player's model, before the body is combined and given its look
-        // and tint; true when it put in a new body.
-        public bool ShowBody()
+        // The look the server sent last, or null before one arrived.
+        public RealtimeCharacterAppearance Appearance { get; private set; }
+
+        // Puts in the body of the model, the default for none or an unknown name, before the body
+        // is combined and given its look and tint; true when it put in a new body.
+        public bool ShowBody(string bodyModel)
         {
             var slot = GetComponentInChildren<PlayerBodySlot>(true);
-            return slot != null && slot.Show(ModelFor(ArchetypeId, PersistentId, slot.Models));
-        }
-
-        // Every player shows the default model until body type is saved with characters and sent
-        // to other clients; a development bot shows a model of its own, picked from its persistent
-        // id, so a crowd of bots shows every model.
-        public static PlayerBodyModels.Model ModelFor(string archetypeId, string persistentId, PlayerBodyModels models)
-        {
-            if (models == null)
-            {
-                return null;
-            }
-
-            return string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal)
-                ? models.Varied(persistentId)
-                : models.Default;
+            return slot != null && slot.Models != null && slot.Show(slot.Models.NamedOrDefault(bodyModel));
         }
 
         public void ApplyBodyTint(bool tinted, PlayerBodyMaterials materials)
@@ -99,23 +89,35 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // Every player shows the default look until looks are saved with characters and sent to
-        // other clients; a development bot shows a look of its own from the catalog of its model,
-        // picked from its persistent id, so a crowd of bots shows every face and eye color.
-        public void ApplyBodyLook(PlayerBodyMaterials materials)
+        // Shows the look the server sent, dressed in the garments of the items others see.
+        public void ApplyAppearance(
+            RealtimeCharacterAppearance appearance,
+            ItemPresentationCatalogIndex presentation,
+            PlayerBodyMaterials materials)
         {
-            var appearance = GetComponentInChildren<PlayerBodyAppearance>(true);
-            if (appearance != null)
+            Appearance = appearance;
+            var body = GetComponentInChildren<PlayerBodyAppearance>(true);
+            if (body != null)
             {
-                appearance.ApplyLook(LookFor(ArchetypeId, PersistentId, appearance.Catalog), materials);
+                body.ApplyLook(DressedLook(appearance, body.Catalog, presentation), materials);
             }
         }
 
-        public static BodyLook LookFor(string archetypeId, string persistentId, BodyAppearanceCatalog catalog)
+        // The look of a character as others see it: its own look, its hair, and the garments of
+        // its visible items, with its headwear as it wears it.
+        public static BodyLook DressedLook(
+            RealtimeCharacterAppearance appearance,
+            BodyAppearanceCatalog catalog,
+            ItemPresentationCatalogIndex presentation)
         {
-            return string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal)
-                ? BodyLook.Varied(persistentId, catalog)
-                : BodyLook.Default;
+            return appearance == null
+                ? BodyLook.Default
+                : EquipmentGarments.Dress(
+                    CharacterLooks.LookOf(appearance.Choices),
+                    catalog,
+                    CharacterLooks.EquipmentOf(appearance),
+                    presentation,
+                    appearance.HeadwearLowered);
         }
 
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)

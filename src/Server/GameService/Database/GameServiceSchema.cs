@@ -34,7 +34,8 @@ public sealed class GameServiceSchema
         "202610181220_death_event_killer",
         "202610181230_worker_item_catalog_revision",
         "202610181240_character_currency_ledger",
-        "202610181250_item_economy"
+        "202610181250_item_economy",
+        "202610251200_character_appearance"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

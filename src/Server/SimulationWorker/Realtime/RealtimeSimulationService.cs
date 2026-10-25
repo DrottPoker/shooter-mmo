@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
@@ -12,6 +13,7 @@ using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Characters;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Realtime;
@@ -57,7 +59,9 @@ public sealed class RealtimeSimulationService(
     WorldActorRuntimeDocument? worldActorRuntime = null,
     GameServiceClient? gameServiceClient = null,
     MobCorpseLifecycleService? mobCorpses = null,
-    CombatMetrics? combatMetrics = null)
+    CombatMetrics? combatMetrics = null,
+    CharacterLookStore? lookStore = null,
+    CharacterAppearanceCatalog? appearanceCatalog = null)
     : BackgroundService
 {
     private readonly RealtimeServer server = RealtimeServerComposition.Create(
@@ -100,7 +104,13 @@ public sealed class RealtimeSimulationService(
                 shardRules ?? new SimulationShardRules(),
                 gameServiceClient,
                 mobCorpses,
-                combatMetrics)),
+                combatMetrics),
+            new AppearanceDependencies(
+                lookStore ?? new CharacterLookStore(),
+                appearanceCatalog is null
+                    ? AppearanceReplicationSettings.Default
+                    : new AppearanceReplicationSettings(appearanceCatalog.DefaultBodyModel, appearanceCatalog.VisibleEquipmentSlots),
+                gameServiceClient)),
         logger);
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)

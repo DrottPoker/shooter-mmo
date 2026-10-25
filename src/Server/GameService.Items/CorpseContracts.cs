@@ -107,7 +107,23 @@ internal sealed record DurableCorpseResponse(
     DateTime CreatedAt,
     DateTime ExpiresAt,
     bool IsEmpty,
-    IReadOnlyList<CorpseSectionResponse> Sections);
+    IReadOnlyList<CorpseSectionResponse> Sections)
+{
+    // How a player corpse looks; null for a Mob corpse.
+    public CorpseLookResponse? Look { get; init; }
+}
+
+// The dead character's body model, look, and headwear, and the items still in the corpse's
+// equipment section, which the corpse wears until someone loots them.
+internal sealed record CorpseLookResponse(
+    string BodyModel,
+    IReadOnlyList<CorpseLookChoiceResponse> Choices,
+    IReadOnlyList<CorpseLookEquipmentResponse> Equipment,
+    bool HeadwearLowered);
+
+internal sealed record CorpseLookChoiceResponse(string Kind, string Slot, string Option);
+
+internal sealed record CorpseLookEquipmentResponse(string EquipmentSlotId, string DefinitionId);
 
 internal sealed record CorpseSectionResponse(
     string SectionKind,

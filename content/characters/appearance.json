@@ -1,0 +1,152 @@
+{
+  "formatVersion": 1,
+  "kinds": [
+    {
+      "id": "face",
+      "required": true,
+      "changesInGame": false
+    },
+    {
+      "id": "eyes",
+      "required": true,
+      "changesInGame": false
+    },
+    {
+      "id": "scar",
+      "required": false,
+      "changesInGame": false
+    },
+    {
+      "id": "tattoo",
+      "required": false,
+      "changesInGame": true
+    },
+    {
+      "id": "underwear",
+      "required": true,
+      "changesInGame": true
+    },
+    {
+      "id": "hair",
+      "required": false,
+      "changesInGame": true
+    }
+  ],
+  "bodyModels": [
+    {
+      "id": "Human_Male",
+      "offers": [
+        {
+          "kind": "face",
+          "slot": "",
+          "options": [
+            "Stubble",
+            "Clean"
+          ]
+        },
+        {
+          "kind": "eyes",
+          "slot": "",
+          "options": [
+            "Teal",
+            "Brown"
+          ]
+        },
+        {
+          "kind": "scar",
+          "slot": "",
+          "options": [
+            "Scar"
+          ]
+        },
+        {
+          "kind": "tattoo",
+          "slot": "",
+          "options": [
+            "Tattoo",
+            "ForearmRunes"
+          ]
+        },
+        {
+          "kind": "underwear",
+          "slot": "legs",
+          "options": [
+            "Briefs"
+          ]
+        },
+        {
+          "kind": "hair",
+          "slot": "",
+          "options": [
+            "DarkBrownHair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Human_Female",
+      "offers": [
+        {
+          "kind": "face",
+          "slot": "",
+          "options": [
+            "Blush",
+            "Freckles"
+          ]
+        },
+        {
+          "kind": "eyes",
+          "slot": "",
+          "options": [
+            "Teal",
+            "Hazel"
+          ]
+        },
+        {
+          "kind": "scar",
+          "slot": "",
+          "options": [
+            "Scar"
+          ]
+        },
+        {
+          "kind": "tattoo",
+          "slot": "",
+          "options": [
+            "Tattoo",
+            "ForearmRunes"
+          ]
+        },
+        {
+          "kind": "underwear",
+          "slot": "body",
+          "options": [
+            "Bra"
+          ]
+        },
+        {
+          "kind": "underwear",
+          "slot": "legs",
+          "options": [
+            "Briefs"
+          ]
+        },
+        {
+          "kind": "hair",
+          "slot": "",
+          "options": [
+            "DarkBrownHair"
+          ]
+        }
+      ]
+    }
+  ],
+  "visibleEquipmentSlots": [
+    "head",
+    "body",
+    "legs",
+    "hands",
+    "feet",
+    "back"
+  ]
+}

@@ -40,6 +40,23 @@ namespace Mmorpg.Client.Api
     public sealed class CreateCharacterRequest
     {
         public string name;
+        public CharacterAppearanceRequest appearance;
+    }
+
+    // The body model and the look a new character is created with.
+    [Serializable]
+    public sealed class CharacterAppearanceRequest
+    {
+        public string bodyModel;
+        public CharacterAppearanceChoiceRequest[] choices;
+    }
+
+    [Serializable]
+    public sealed class CharacterAppearanceChoiceRequest
+    {
+        public string kind;
+        public string slot;
+        public string option;
     }
 
     [Serializable]
@@ -49,6 +66,39 @@ namespace Mmorpg.Client.Api
         public string name;
         public long currency;
         public string createdAt;
+        public string bodyModel;
+    }
+
+    // What character creation offers: the kinds of a look with their rules, and every body model,
+    // the default first, with its options per kind and slot, the first option of each its default.
+    [Serializable]
+    public sealed class CharacterAppearanceCatalogResponse
+    {
+        public CharacterAppearanceKindResponse[] kinds;
+        public CharacterBodyModelResponse[] bodyModels;
+    }
+
+    [Serializable]
+    public sealed class CharacterAppearanceKindResponse
+    {
+        public string id;
+        public bool required;
+        public bool changesInGame;
+    }
+
+    [Serializable]
+    public sealed class CharacterBodyModelResponse
+    {
+        public string id;
+        public CharacterAppearanceOfferResponse[] offers;
+    }
+
+    [Serializable]
+    public sealed class CharacterAppearanceOfferResponse
+    {
+        public string kind;
+        public string slot;
+        public string[] options;
     }
 
     [Serializable]

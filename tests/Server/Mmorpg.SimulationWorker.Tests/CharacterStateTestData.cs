@@ -7,6 +7,16 @@ namespace Mmorpg.SimulationWorker.Tests;
 // The post-commit character state that every GameService mutation response carries.
 internal static class CharacterStateTestData
 {
+    // The look GameService sends for a person's character; a development bot has none.
+    public static SimulationAppearance Appearance { get; } = new(
+        "Human_Male",
+        [
+            new SimulationAppearanceChoice("face", "", "Stubble"),
+            new SimulationAppearanceChoice("eyes", "", "Teal"),
+            new SimulationAppearanceChoice("underwear", "legs", "Briefs")
+        ],
+        false);
+
     public static SimulationCharacterState Create(
         Guid characterId,
         long itemStateRevision,

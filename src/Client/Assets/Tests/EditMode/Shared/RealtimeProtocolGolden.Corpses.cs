@@ -34,6 +34,14 @@ namespace Mmorpg.SharedTests
                     chunkCount: 1,
                     corpses: new[] { CorpsePresenceModel(G(10)) })));
             r.Vector(
+                "Corpses/CorpsePresenceSnapshotChunk/corpse with a look",
+                presence,
+                () => RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(new RealtimeCorpsePresenceSnapshotChunk(
+                    snapshotSequence: 0xA1B2C3D4,
+                    chunkIndex: 0,
+                    chunkCount: 1,
+                    corpses: new[] { CorpsePresenceModel(G(10), appearance: AppearanceModel()) })));
+            r.Vector(
                 "Corpses/CorpsePresenceSnapshotChunk/six corpses",
                 presence,
                 () => RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(new RealtimeCorpsePresenceSnapshotChunk(
@@ -188,6 +196,21 @@ namespace Mmorpg.SharedTests
         {
             r.Accepts("Corpses/CorpsePresenceSnapshotChunk/baseline", PresenceWire());
             r.Accepts("Corpses/CorpsePresenceSnapshotChunk/no corpses", PresenceWire(corpses: new Wire[0]));
+            r.Accepts(
+                "Corpses/CorpsePresenceSnapshotChunk/corpse with a look",
+                PresenceWire(corpses: new[] { PresenceEntryWire(appearance: AppearanceWire(headwearLowered: false)) }));
+            r.Rejects(
+                "Corpses/CorpsePresenceSnapshotChunk/look with an empty body model",
+                PresenceWire(corpses: new[] { PresenceEntryWire(appearance: AppearanceWire(bodyModel: "")) }));
+            r.Rejects(
+                "Corpses/CorpsePresenceSnapshotChunk/look flag without a look",
+                Wire.Message(RealtimeMessageType.CorpsePresenceSnapshotChunk)
+                    .U32(0xA1B2C3D4)
+                    .U16(0)
+                    .U16(1)
+                    .U8(1)
+                    .Append(PresenceEntryWire(withoutLookFlag: true))
+                    .Bool(true));
             r.Accepts(
                 "Corpses/CorpsePresenceSnapshotChunk/six corpses",
                 PresenceWire(corpses: Enumerable.Range(10, 6).Select(seed => PresenceEntryWire(G(seed))).ToArray()));
@@ -593,6 +616,7 @@ namespace Mmorpg.SharedTests
             Guid corpseId,
             bool isEmpty = false,
             long expiresAt = CorpseExpiresAt,
+            RealtimeCharacterAppearance appearance = null,
             string sourceDisplayName = "Grön Ödla")
         {
             return new RealtimeCorpsePresence(
@@ -604,7 +628,8 @@ namespace Mmorpg.SharedTests
                 expiresAtUnixMilliseconds: expiresAt,
                 isEmpty: isEmpty,
                 sourceDisplayName: sourceDisplayName,
-                presentationKey: "corpse.player");
+                presentationKey: "corpse.player",
+                appearance: appearance);
         }
 
         private static RealtimeCorpseInteractionResult CorpseResultModel(
@@ -717,9 +742,11 @@ namespace Mmorpg.SharedTests
             long expiresAt = CorpseExpiresAt,
             byte isEmpty = 0,
             WireText sourceDisplayName = null,
-            WireText presentationKey = null)
+            WireText presentationKey = null,
+            Wire appearance = null,
+            bool withoutLookFlag = false)
         {
-            return Wire.Fragment()
+            var wire = Wire.Fragment()
                 .Guid(corpseId ?? G(10))
                 .F32Or(5.5f, positionXBits)
                 .F32(0f)
@@ -729,6 +756,13 @@ namespace Mmorpg.SharedTests
                 .U8(isEmpty)
                 .Text(sourceDisplayName ?? "Grön Ödla")
                 .Text(presentationKey ?? "corpse.player");
+            if (withoutLookFlag)
+            {
+                return wire;
+            }
+
+            wire.Bool(appearance != null);
+            return appearance == null ? wire : wire.Append(appearance);
         }
 
         private static Wire PresenceWire(ushort chunkIndex = 0, ushort chunkCount = 1, Wire[] corpses = null)

@@ -103,6 +103,12 @@ namespace Mmorpg.WorldData.Content
             return Path.Combine(contentRoot, "actors");
         }
 
+        // The character appearance content: the kinds of a look and what every body model offers.
+        public static string CharacterAppearancePath(string contentRoot)
+        {
+            return Path.Combine(contentRoot, "characters", "appearance.json");
+        }
+
         // Development-only data, such as the item packages of the development item tool.
         public static string DevelopmentDirectory(string contentRoot)
         {

@@ -15,6 +15,9 @@ content/
     vendors/<vendor-id>.json        one vendor profile per file
   combat/
     combat-rules.json               player combat rules, arrow batching, and Shard rule sets
+  characters/
+    appearance.json                 the kinds of a character's look, the body models with their
+                                    options, and the equipment slots other players see
   development/
     item-packages.json              item states for the development item tool
   actors/
@@ -155,6 +158,29 @@ Every Shard in the GameService topology names a rule set, and the worker stops
 when its Shard names one that this file does not define.
 `EveryConfiguredShardRuleSetIsDefined` keeps the checked-in topology and
 this file in step.
+
+## Character Appearance
+
+`characters/appearance.json` names what a character's look can be, as
+[Equipment Visuals Design](../docs/EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server)
+describes. It has no compiler: the GameService and SimulationWorker builds copy it
+to `WorldData/Characters/appearance.json` in their output, and both validate it
+strictly at startup, with the same parser rules as the compilers. GameService
+checks every look it stores against it and refuses to start when a stored look
+names an option the file no longer offers; remove an option only after a data
+migration moved the looks that use it.
+
+| Field | Meaning |
+| --- | --- |
+| `formatVersion` | 1 |
+| `kinds` | Each kind once, one of `face`, `eyes`, `scar`, `tattoo`, `underwear`, and `hair`, with `required`, exactly one per offered slot instead of at most one, and `changesInGame`, changed in the game after creation |
+| `bodyModels` | 1 to 16 body models, the default first, each with its `offers`: a listed kind, a visual slot for a kind worn per slot such as `legs` for underwear or empty, and 1 to 32 options, the first the default |
+| `visibleEquipmentSlots` | At most 8 equipment slot ids, each once, whose items other players see, in the order the worker sends them |
+
+Body model ids and options are named as the body models and their appearance
+catalogs in the Unity project name them, such as `Human_Female` and `Freckles`;
+`CharacterLookTests` fails when the file and the catalogs disagree. Restart both
+services after a change.
 
 ## Generated Data
 

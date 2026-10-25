@@ -18,6 +18,9 @@ internal sealed class CorpsePresenceReplicator(
 {
     private uint corpsePresenceSequence;
 
+    // The equipment slots whose items a player corpse shows.
+    public IReadOnlyList<string> VisibleEquipmentSlots { get; init; } = [];
+
     public void Broadcast()
     {
         var durableCorpses = corpseStore.ListActive();
@@ -79,7 +82,8 @@ internal sealed class CorpsePresenceReplicator(
             context.CorpsePresenceSignature = signature;
             foreach (var chunk in CorpseRealtimePacketBuilder.BuildPresence(
                          corpsePresenceSequence,
-                         nearbyCorpses))
+                         nearbyCorpses,
+                         VisibleEquipmentSlots))
             {
                 sender.SendControl(
                     peer,
@@ -108,6 +112,6 @@ internal sealed class CorpsePresenceReplicator(
         return string.Join(
             '|',
             corpses.Select(corpse =>
-                $"{corpse.CorpseId:N}:{corpse.Revision}:{corpse.IsEmpty}"));
+                $"{corpse.CorpseId:N}:{corpse.Revision}:{corpse.IsEmpty}:{corpse.Look is not null}"));
     }
 }

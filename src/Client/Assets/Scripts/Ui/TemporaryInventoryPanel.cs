@@ -59,6 +59,7 @@ namespace Mmorpg.Client.Ui
         private RectTransform contextContent;
         private RectTransform characterContent;
         private RectTransform characterFooter;
+        private PlayerBodyLookSetting bodyLook;
         private RectTransform characterScroll;
         private Text equipmentHeader;
         private Text contextHeader;
@@ -115,13 +116,15 @@ namespace Mmorpg.Client.Ui
             CorpseClientController corpses,
             WorldInteractionClientController worldInteraction,
             CombatClientController combat,
-            WorldMenuController menu)
+            WorldMenuController menu,
+            PlayerBodyLookSetting lookSetting = null)
         {
             controller = inventory;
             corpseController = corpses;
             worldInteractionController = worldInteraction;
             combatController = combat;
             worldMenu = menu;
+            bodyLook = lookSetting;
         }
 
         private void Start()
@@ -146,6 +149,11 @@ namespace Mmorpg.Client.Ui
             if (combatController != null)
             {
                 combatController.State.Changed += OnCombatStateChanged;
+            }
+
+            if (bodyLook != null)
+            {
+                bodyLook.Changed += Rebuild;
             }
 
             FindPlayerPresentation();
@@ -226,6 +234,11 @@ namespace Mmorpg.Client.Ui
             if (combatController != null)
             {
                 combatController.State.Changed -= OnCombatStateChanged;
+            }
+
+            if (bodyLook != null)
+            {
+                bodyLook.Changed -= Rebuild;
             }
         }
 
@@ -534,8 +547,31 @@ namespace Mmorpg.Client.Ui
             }
 
             DrawCharacterInventory(state);
+            DrawHeadwearToggle(state);
             DrawSelectionFooter(state);
             FitCharacterFooter();
+        }
+
+        // Lowers or raises worn headwear that can be pushed back, such as a hood; the server
+        // stores it and every client shows it.
+        private void DrawHeadwearToggle(InventoryClientState state)
+        {
+            var headwear = InventorySlotPresentation.LowerableHeadwear(
+                state.FullSnapshot != null ? state.FullSnapshot.Equipment : null,
+                state.Catalog);
+            if (bodyLook == null || !bodyLook.Received || headwear == null)
+            {
+                return;
+            }
+
+            var lowered = bodyLook.HeadwearLowered;
+            var row = TemporaryUiKit.CreateRow(characterFooter, 34f, 6f);
+            TemporaryUiKit.CreateButton(
+                row,
+                (lowered ? "Raise " : "Lower ") + state.Catalog.GetDisplayName(headwear.DefinitionId),
+                () => bodyLook.RequestHeadwear(!lowered),
+                true,
+                lowered ? TemporaryButtonTone.Active : TemporaryButtonTone.Normal);
         }
 
         private void DrawEquipment(InventoryClientState state)

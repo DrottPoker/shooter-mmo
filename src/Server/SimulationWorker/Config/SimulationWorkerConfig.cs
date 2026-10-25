@@ -56,6 +56,7 @@ public sealed record SimulationWorkerConfig(
 
     public const string DefaultItemCatalogPath = "WorldData/Items/core.item-catalog.json";
     public const string DefaultCombatRulesPath = "WorldData/Combat/combat-rules.json";
+    public const string DefaultCharacterAppearancePath = "WorldData/Characters/appearance.json";
 
     public string ActorDataPath { get; init; } = string.Empty;
 
@@ -64,6 +65,9 @@ public sealed record SimulationWorkerConfig(
 
     // The player combat rules and the meaning of every Shard rule set.
     public string CombatRulesPath { get; init; } = string.Empty;
+
+    // The character appearance content: the equipment slots others see and the looks of bots.
+    public string CharacterAppearancePath { get; init; } = string.Empty;
 
     public static SimulationWorkerConfig FromConfiguration(IConfiguration configuration)
     {
@@ -600,7 +604,8 @@ public sealed record SimulationWorkerConfig(
                 worldDataPath!,
                 worldId!),
             ItemCatalogPath = ResolveOutputPath(section["ItemCatalogPath"], DefaultItemCatalogPath),
-            CombatRulesPath = ResolveOutputPath(section["CombatRulesPath"], DefaultCombatRulesPath)
+            CombatRulesPath = ResolveOutputPath(section["CombatRulesPath"], DefaultCombatRulesPath),
+            CharacterAppearancePath = ResolveOutputPath(section["CharacterAppearancePath"], DefaultCharacterAppearancePath)
         };
     }
 

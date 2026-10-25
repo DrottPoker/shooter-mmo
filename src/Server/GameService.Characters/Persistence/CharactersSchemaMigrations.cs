@@ -8,6 +8,7 @@ internal static class CharactersSchemaMigrations
     public static IReadOnlyList<DatabaseMigration> All { get; } =
     [
         new(CharacterLevelMigration.Id, CharacterLevelMigration.Sql),
-        new(CharacterCurrencyLedgerMigration.Id, CharacterCurrencyLedgerMigration.Sql)
+        new(CharacterCurrencyLedgerMigration.Id, CharacterCurrencyLedgerMigration.Sql),
+        new(CharacterAppearanceMigration.Id, CharacterAppearanceMigration.Sql)
     ];
 }

@@ -160,6 +160,20 @@ namespace Mmorpg.SharedTests
                 "04 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
                 "af 01 00 01 0c 00 00 00 00 00 00 00 d2 00 00 00 " +
                 "00 00 00 00 c8 00 00 00 00 00 00 00",
+            ["Corpses/CorpsePresenceSnapshotChunk/corpse with a look"] =
+                "d4 c3 b2 a1 00 00 01 00 01 a0 a1 a2 a3 a4 a5 a6 " +
+                "a7 a8 a9 aa ab ac ad ae af 00 00 b0 40 00 00 00 " +
+                "00 00 00 e8 c0 00 00 f7 42 00 c0 2c c8 99 01 00 " +
+                "00 00 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c 61 0d " +
+                "00 63 6f 72 70 73 65 2e 70 6c 61 79 65 72 01 0c " +
+                "00 48 75 6d 61 6e 5f 46 65 6d 61 6c 65 02 04 00 " +
+                "66 61 63 65 00 08 00 46 72 65 63 6b 6c 65 73 09 " +
+                "00 75 6e 64 65 72 77 65 61 72 01 04 00 6c 65 67 " +
+                "73 06 00 42 72 69 65 66 73 02 04 00 68 65 61 64 " +
+                "17 00 63 6c 6f 74 68 69 6e 67 2e 62 6c 75 65 5f " +
+                "77 6f 6f 6c 5f 68 6f 6f 64 04 00 62 61 63 6b 13 " +
+                "00 63 6c 6f 74 68 69 6e 67 2e 77 6f 6f 6c 5f 63 " +
+                "6c 6f 61 6b 01",
             ["Corpses/CorpsePresenceSnapshotChunk/empty"] =
                 "01 00 00 00 00 00 01 00 00",
             ["Corpses/CorpsePresenceSnapshotChunk/one corpse"] =
@@ -167,8 +181,8 @@ namespace Mmorpg.SharedTests
                 "a7 a8 a9 aa ab ac ad ae af 00 00 b0 40 00 00 00 " +
                 "00 00 00 e8 c0 00 00 f7 42 00 c0 2c c8 99 01 00 " +
                 "00 00 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c 61 0d " +
-                "00 63 6f 72 70 73 65 2e 70 6c 61 79 65 72",
-            ["Corpses/CorpsePresenceSnapshotChunk/six corpses"] = "sha256:423:b25546275206767ea588cd1a7124363ad93f6eefe3c56fc55a181f8b492bc63f",
+                "00 63 6f 72 70 73 65 2e 70 6c 61 79 65 72 00",
+            ["Corpses/CorpsePresenceSnapshotChunk/six corpses"] = "sha256:429:8a9637563c36d63e9175b016e4d44a3d64c672e21f92a08b6f76a7d7dbde987e",
             ["Corpses/CorpseViewClosed/typical"] =
                 "a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae af " +
                 "0e 00 63 6f 72 70 73 65 5f 65 78 70 69 72 65 64 " +
@@ -276,6 +290,16 @@ namespace Mmorpg.SharedTests
                 "33 34 35 36 37 38 39 3a 3b 3c 3d 3e 3f 09 00 00 " +
                 "00 00 00 00 00 01 50 51 52 53 54 55 56 57 58 59 " +
                 "5a 5b 5c 5d 5e 5f",
+            ["Items/OwnerItemQuantityChanged/arrows spent"] =
+                "01 0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 " +
+                "00 d2 00 00 00 00 00 00 00 c8 00 00 00 00 00 00 " +
+                "00 50 51 52 53 54 55 56 57 58 59 5a 5b 5c 5d 5e " +
+                "5f e3 03 00 00 29 00 00 00 00 00 00 00",
+            ["Items/OwnerItemQuantityChanged/last arrows spent"] =
+                "01 0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 " +
+                "00 d2 00 00 00 00 00 00 00 c8 00 00 00 00 00 00 " +
+                "00 50 51 52 53 54 55 56 57 58 59 5a 5b 5c 5d 5e " +
+                "5f 00 00 00 00 00 00 00 00 00 00 00 00",
             ["Items/OwnerItemStateChanged/equipped Bag and claimed delivery"] =
                 "60 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e 6f " +
                 "0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 00 " +
@@ -289,7 +313,6 @@ namespace Mmorpg.SharedTests
                 "00 70 71 72 73 74 75 76 77 78 79 7a 7b 7c 7d 7e " +
                 "7f 05 00 00 00 00 00 00 00 01 80 81 82 83 84 85 " +
                 "86 87 88 89 8a 8b 8c 8d 8e 8f",
-            ["Items/OwnerItemStateChanged/swap with an equipped item"] = "sha256:293:d99661e59782fa7bc6e27b0b66552bcd5cc726453326549032fb3a6f46f0c61b",
             ["Items/OwnerItemStateChanged/merge removed the source"] =
                 "60 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e 6f " +
                 "0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 00 " +
@@ -312,16 +335,7 @@ namespace Mmorpg.SharedTests
                 "0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 00 " +
                 "d2 00 00 00 00 00 00 00 c8 00 00 00 00 00 00 00 " +
                 "fa 00 00 00 00 00 00 00 00 00 00",
-            ["Items/OwnerItemQuantityChanged/arrows spent"] =
-                "01 0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 " +
-                "00 d2 00 00 00 00 00 00 00 c8 00 00 00 00 00 00 " +
-                "00 50 51 52 53 54 55 56 57 58 59 5a 5b 5c 5d 5e " +
-                "5f e3 03 00 00 29 00 00 00 00 00 00 00",
-            ["Items/OwnerItemQuantityChanged/last arrows spent"] =
-                "01 0b 00 00 00 00 00 00 00 0c 00 00 00 00 00 00 " +
-                "00 d2 00 00 00 00 00 00 00 c8 00 00 00 00 00 00 " +
-                "00 50 51 52 53 54 55 56 57 58 59 5a 5b 5c 5d 5e " +
-                "5f 00 00 00 00 00 00 00 00 00 00 00 00",
+            ["Items/OwnerItemStateChanged/swap with an equipped item"] = "sha256:293:d99661e59782fa7bc6e27b0b66552bcd5cc726453326549032fb3a6f46f0c61b",
             ["Movement/MovementInputBatch/four"] =
                 "04 01 00 00 00 e9 03 00 00 00 00 00 00 ff ff ff " +
                 "ff 00 00 00 00 00 00 00 00 03 00 00 00 04 03 02 " +
@@ -343,6 +357,40 @@ namespace Mmorpg.SharedTests
                 "44 33 22 11 88 77 66 55 cc bb aa 99 00 00 48 41 " +
                 "00 00 50 c0 00 18 80 44 00 00 00 3f 00 00 1c c1 " +
                 "00 00 08 40 00 40 87 43 01 0d 0c 0b 0a 03 02",
+            ["Replication/AppearanceIntent/lower headwear"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "01",
+            ["Replication/AppearanceIntent/raise headwear"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "02",
+            ["Replication/AppearanceIntent/set development look"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "03 0c 00 48 75 6d 61 6e 5f 46 65 6d 61 6c 65 02 " +
+                "04 00 66 61 63 65 00 08 00 46 72 65 63 6b 6c 65 " +
+                "73 09 00 75 6e 64 65 72 77 65 61 72 01 04 00 6c " +
+                "65 67 73 06 00 42 72 69 65 66 73",
+            ["Replication/AppearanceIntentResult/accepted"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "01 01",
+            ["Replication/AppearanceIntentResult/rejected"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "03 00 19 00 64 65 76 65 6c 6f 70 6d 65 6e 74 5f " +
+                "6c 6f 6f 6b 5f 64 69 73 61 62 6c 65 64 2e 00 4f " +
+                "6e 6c 79 20 61 20 44 65 76 65 6c 6f 70 6d 65 6e " +
+                "74 20 47 61 6d 65 53 65 72 76 69 63 65 20 63 68 " +
+                "61 6e 67 65 73 20 61 20 6c 6f 6f 6b 2e",
+            ["Replication/EntityAppearanceChanged/bare"] =
+                "07 00 00 00 00 00 00 00 0a 00 48 75 6d 61 6e 5f " +
+                "4d 61 6c 65 00 00 00",
+            ["Replication/EntityAppearanceChanged/typical"] =
+                "07 00 00 00 00 00 00 00 0c 00 48 75 6d 61 6e 5f " +
+                "46 65 6d 61 6c 65 02 04 00 66 61 63 65 00 08 00 " +
+                "46 72 65 63 6b 6c 65 73 09 00 75 6e 64 65 72 77 " +
+                "65 61 72 01 04 00 6c 65 67 73 06 00 42 72 69 65 " +
+                "66 73 02 04 00 68 65 61 64 17 00 63 6c 6f 74 68 " +
+                "69 6e 67 2e 62 6c 75 65 5f 77 6f 6f 6c 5f 68 6f " +
+                "6f 64 04 00 62 61 63 6b 13 00 63 6c 6f 74 68 69 " +
+                "6e 67 2e 77 6f 6f 6c 5f 63 6c 6f 61 6b 01",
             ["Replication/EntityDespawn/typical"] =
                 "07 00 00 00 00 00 00 00 0f 00 6f 75 74 5f 6f 66 " +
                 "5f 69 6e 74 65 72 65 73 74",
@@ -353,7 +401,15 @@ namespace Mmorpg.SharedTests
                 "7d 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c 61 0e 00 " +
                 "70 6c 61 79 65 72 2d 64 65 66 61 75 6c 74 40 e2 " +
                 "01 00 00 00 00 80 01 00 00 00 ff ff 7f 7f ff ff " +
-                "7f ff 01 00 00 80 ee e3 6c 00 df ff b3 c3 00",
+                "7f ff 01 00 00 80 ee e3 6c 00 df ff b3 c3 00 0c " +
+                "00 48 75 6d 61 6e 5f 46 65 6d 61 6c 65 02 04 00 " +
+                "66 61 63 65 00 08 00 46 72 65 63 6b 6c 65 73 09 " +
+                "00 75 6e 64 65 72 77 65 61 72 01 04 00 6c 65 67 " +
+                "73 06 00 42 72 69 65 66 73 02 04 00 68 65 61 64 " +
+                "17 00 63 6c 6f 74 68 69 6e 67 2e 62 6c 75 65 5f " +
+                "77 6f 6f 6c 5f 68 6f 6f 64 04 00 62 61 63 6b 13 " +
+                "00 63 6c 6f 74 68 69 6e 67 2e 77 6f 6f 6c 5f 63 " +
+                "6c 6f 61 6b 01",
             ["Replication/EntitySpawn/typical"] =
                 "11 10 0f 0e 0d 0c 0b 0a 01 24 00 38 63 33 64 32 " +
                 "65 31 66 2d 30 62 34 61 2d 34 63 35 64 2d 39 65 " +
@@ -361,7 +417,15 @@ namespace Mmorpg.SharedTests
                 "00 47 72 c3 b6 6e 20 c3 96 64 6c 61 0e 00 70 6c " +
                 "61 79 65 72 2d 64 65 66 61 75 6c 74 40 e2 01 00 " +
                 "00 00 48 41 00 00 50 c0 00 18 80 44 00 00 00 3f " +
-                "00 00 1c c1 00 00 08 40 00 40 87 43 01",
+                "00 00 1c c1 00 00 08 40 00 40 87 43 01 0c 00 48 " +
+                "75 6d 61 6e 5f 46 65 6d 61 6c 65 02 04 00 66 61 " +
+                "63 65 00 08 00 46 72 65 63 6b 6c 65 73 09 00 75 " +
+                "6e 64 65 72 77 65 61 72 01 04 00 6c 65 67 73 06 " +
+                "00 42 72 69 65 66 73 02 04 00 68 65 61 64 17 00 " +
+                "63 6c 6f 74 68 69 6e 67 2e 62 6c 75 65 5f 77 6f " +
+                "6f 6c 5f 68 6f 6f 64 04 00 62 61 63 6b 13 00 63 " +
+                "6c 6f 74 68 69 6e 67 2e 77 6f 6f 6c 5f 63 6c 6f " +
+                "61 6b 01",
             ["Replication/SimulationSnapshot/full chunk"] = "sha256:997:463fa3b27bbfcb34175c3d0642e78be59ea7530fc188e8827bf694e91a384b4d",
             ["Replication/SimulationSnapshot/single entity"] =
                 "04 03 02 01 08 07 06 05 00 00 01 00 01 2a 00 00 " +

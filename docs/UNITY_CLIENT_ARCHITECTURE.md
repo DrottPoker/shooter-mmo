@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-23
+Last updated: 2026-10-25
 
 ## Purpose
 
@@ -993,19 +993,22 @@ refresh.
 
 `CorpsePresentationController` creates one presentation for every nearby
 presence entry and updates it from server position, facing, and presentation
-key. A player corpse, presentation key `corpse.remains`, shows the body lying in
-the last pose of the handmade `Death` clip, turned by the presence's
-`YawDegrees`, so it lies where and as the body fell. `PlayerCorpseBodies` in
-`WorldSceneContext` bakes that body once, from the remote player prefab's body
-playing the end of `Death`, into a static mesh that every player corpse shares,
-so a field of corpses costs no animation or skinning; the corpse has a box
-collider around it for the pointer. While a body that shows its character dead
-lies within 1.5 m, the corpse stays hidden, so the dying body and its remains
-never show twice; it appears when the character respawns at the World spawn. The
-corpse shows the default look, with the body's underwear, until looks are sent to
-other clients: the hidden copy of the body takes the look from the shared
+key. A player corpse, presentation key `corpse.remains`, shows the dead
+character's body lying in the last pose of the handmade `Death` clip, turned by
+the presence's `YawDegrees`, so it lies where and as the body fell, in the body
+model, look, and headwear of the presence's `Appearance`, wearing the garments of
+the items still in the corpse. `PlayerCorpseBodies` in `WorldSceneContext` bakes
+one body per body model and dressed look, keyed by the model's name and the
+look's key, from the remote player prefab's body playing the end of `Death`, into
+a static mesh that every corpse of that look shares, so a field of corpses costs
+no animation or skinning; the corpse has a box collider around it for the
+pointer. The hidden copy of the body takes the look from the shared
 `PlayerBodyMaterials` before it is baked, since the underwear is paint over the
-skin. Every
+skin. A corpse whose look changes, such as when someone loots its cloak, swaps to
+the body of its new look, and a baked body that no corpse in view shows any more
+is destroyed. While a body that shows its character dead lies within 1.5 m, the
+corpse stays hidden, so the dying body and its remains never show twice; it
+appears when the character respawns at the World spawn. Every
 other corpse, such as a Mob corpse with presentation key `corpse.mob`, is a
 generic capsule with a shared renderer property block on the runtime primitive
 material, which never creates per-frame materials.
@@ -1231,14 +1234,11 @@ the old one leaves the player at once, is hidden, and is destroyed, and
 once the one they found left the player. `WorldSceneContext` refuses to start
 when either player prefab has no slot with a default model.
 
-Until body type is chosen at character creation, saved with the character, and
-sent to other clients, the local player's model comes from the World Debug
-panel (F2), other players show the default model, and a development bot shows a
-model picked from its persistent id with a mixed FNV-1a hash,
-`PlayerBodyModels.Varied`, so a crowd of bots shows both bodies and each bot
-keeps its own. Every player corpse shows the default model. The body has no
-collider; the movement capsule, the remote pointer trigger, and the health bar
-height stay as they were.
+Every player shows the body model the server stores with its character, chosen
+at character creation; see [Character Looks](#character-looks). A model the
+client does not know shows the default. The body has no collider; the movement
+capsule, the remote pointer trigger, and the health bar height stay as they
+were.
 
 The body's Animator uses its Humanoid avatar,
 `Assets/Art/Animation/HumanLocomotion.controller`, no root motion, and
@@ -1347,32 +1347,20 @@ A body also shows a look: another face or eye color from the
 woman's has `Eye` (`Teal`, `Hazel`) and `Face` (`Blush`, `Freckles`). A
 `BodyLook` is a value that names one option per slot, with a stable key such as
 `Eye=Brown;Face=Clean`; a slot it does not name shows the material's own
-image. Until the body model and the look are chosen at character creation,
-saved with the character, and sent to other clients, the local player's come
-from the World Debug panel (F2). Its Presentation section first has
-`Your body: Human_Male (creation only)`, which steps through the body models
-with `<` and `>`, and then steps through every slot of the local body's catalog.
-`ClientBootstrap` owns this `PlayerBodyLookSetting`, keeps the look's key and
-the model's name in `PlayerPrefs`, and passes it to the panel and to
-`WorldSceneContext`, which offers the setting the body models and the local
-body's catalog and shows a new look at once. A new model puts in the other
-body, combines it, gives it the tint and the look, and offers its catalog. One
-look serves both models: an option, paint layer, or garment that the shown
-body's catalog lacks, such as `Face=Stubble` on the woman or the bra on the
-man, is not shown and comes back with the body that has it, while garments, the
-tattoo, the scar, and the briefs, which both bodies have, carry over. Other
-players show the default look, and a development bot shows a look from the
-catalog of its model, picked from its persistent id with a mixed FNV-1a hash,
-`BodyLook.Varied`, so a crowd of bots shows every combination and each bot keeps
-its look.
+image. A new model puts in the other body, combines it, gives it the tint and
+the look, and offers its catalog. One look serves both models: an option, paint
+layer, or garment that the shown body's catalog lacks, such as `Face=Stubble` on
+the woman or the bra on the man, is not shown and comes back with the body that
+has it, while garments, the tattoo, the scar, and the briefs, which both bodies
+have, carry over.
 
 A look also names the paint layers its body wears, such as `Tattoo`, which the
 catalog lists for its body with their category, slot, material, image, its crop
-of the body's paint UVs, layer, smoothness, and metallic. Until character creation, the Presentation section of
+of the body's paint UVs, layer, smoothness, and metallic. The Presentation section of
 the World Debug panel has a row per category and slot of the local body's
 catalog, such as `Your tattoo: <Name>` and `Your underwear (legs): <Name>`, that
 steps through its choices with `<` and `>`, with `none` for a scar or a tattoo,
-and shows when a player chooses it. The body materials that paint layers paint draw with the skin
+shows when a player chooses it, and asks the server for the look. The body materials that paint layers paint draw with the skin
 shader `Mmorpg/Character Skin`, URP Lit with up to four paint layers; see
 [Art Pipeline](ART_PIPELINE.md#paint-layers). A look's paint layers on such a
 material go into its copy, from the lowest layer up, and a material with another
@@ -1460,21 +1448,67 @@ the lowered garments of a lowered item. The local player wears its equipment as
 its inventory shows it, with its predicted moves, so its body changes as soon
 as an item moves: `ClientBootstrap` keeps a `PlayerEquipment` of the equipped
 items and the presentation catalog up to date from the inventory state and
-passes it to `WorldSceneContext`, which dresses the look of the World Debug
-panel in it whenever either changes. A look names the dye colors of a dyed
+passes it to `WorldSceneContext`, which dresses the local player's look in it
+whenever either changes. A look names the dye colors of a dyed
 garment in its key, such as `Garment=WoolCloak@2B4364`, and the garment then
 draws with a copy of its texture's material in those colors, from
 `PlayerBodyMaterials`, shared by every body in the same colors; a garment in its
 natural colors, or without dye channels, draws with the material itself, so
 only the colors and not the mesh decide the copy. The Presentation section of
 the World Debug panel has `Your hair: <Name>` with `none` among the choices,
-since hair is part of the look. Other players and bots wear no garments yet, and
-a corpse shows the default body model in its underwear. `ItemGarmentTests`
+since hair is part of the look. Other players, bots, and corpses wear the
+garments of the items the server sends for them; see
+[Character Looks](#character-looks). `ItemGarmentTests`
 covers the garments of every item on every body, dressing a look, the rule of
 one garment per visual slot, the dyed materials, and the presentation catalog's
 rules.
 `PlayerBodyGarmentTests` covers what a worn garment hides and adds, layers, hidden
 slots, pull-in, sharing, and hair that headwear hides, compresses, or leaves.
+
+### Character Looks
+
+The body model, the look, and the headwear of every character come from the
+server, as [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server)
+describes. `CharacterLooks` turns the choices the server sends into the
+`BodyLook` a body shows, and back: `face` and `eyes` are options of the `Face`
+and `Eye` slots, `underwear`, `scar`, and `tattoo` paint layers, and `hair` a
+garment of the hair slot. `RealtimeSimulationClient` keeps the latest
+`CharacterAppearance` of every spawned player and of the controlled one, from
+`EntitySpawn` and `EntityAppearanceChanged`, and sends `AppearanceIntent`.
+
+- **The local player.** `ClientBootstrap` owns the `PlayerBodyLookSetting`, the
+  body model, look, and headwear the server stores for the joined character, and
+  `PlayerLookLink` keeps it in step: it stores the look the worker sends for the
+  controlled player, forgets it when the session ends, sends the changes the
+  World Debug panel and the inventory ask for, and shows a refused change in the
+  game messages. `WorldSceneContext` shows the model and dresses the look in the
+  inventory's equipment, with its predicted moves, and the stored headwear.
+- **Other players.** `RemotePlayerView.ApplyAppearance` shows the sent body
+  model and dresses the look in the garments of the sent visible equipment with
+  the sent headwear, from the item presentation of `PlayerEquipment`; a new
+  presentation dresses every player again.
+- **A dying body keeps its clothes.** While a body shows its character dead,
+  `WorldSceneContext` keeps every new look for it and shows the last one once the
+  body lives again, since its items lie in its corpse already.
+- **The World Debug panel (F2)**, in its Presentation section, shows the stored
+  body model and look with a row per body model, slot, paint category and slot,
+  and hair, and asks the worker for the stepped look; only a GameService in the
+  Development environment stores it, and the new look shows when the worker sends
+  it back.
+- **The inventory** shows `Lower <item>` or `Raise <item>` in its footer while the
+  character wears an item whose presentation has lowered garments, such as the
+  Wool Hood, and asks for the other headwear state.
+- **Character Select** loads what creation offers from
+  `GET /api/character-appearance` and shows temporary rows, `CharacterCreationLook`,
+  that step through the body models and the options of every kind and slot of
+  the chosen body, the first by default and `none` for a kind a character may go
+  without; `Create Character` sends the chosen body model and look, and the list
+  names each character's body model.
+
+`CharacterLookTests` holds `content/characters/appearance.json` to both bodies'
+catalogs and to `AppearanceRules`, and covers the choices, the dressed look of
+other players, the hood button, the creation rows, and the corpse body keys;
+`PlayerBodyLifePlayModeTests` bakes a corpse body per look.
 
 ## World Actor And Interaction Client
 

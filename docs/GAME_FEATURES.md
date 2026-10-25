@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-10-21
+Last updated: 2026-10-25
 
 ## Purpose
 
@@ -28,16 +28,18 @@ Status: UI prototype on implemented character flow
 
 The temporary CharacterSelect UI supports:
 
-- Loading the account's characters.
-- Creating a character.
+- Loading the account's characters, each with its body model.
+- Creating a character with temporary rows that choose its body model, face,
+  eyes, scar, tattoo, underwear, and hair, or none for a bald head.
 - Selecting one character for shard entry.
 - Loading and selecting an online shard with region, fleet, player count, and
   capacity information.
 - Requesting and validating a simulation join in one sequential operation.
 - Logging out before returning to LoginMenu.
 
-Character appearance, customization, deletion, progression, and statistics are
-not implemented.
+The body model and the look are stored with the character and every client shows
+them. Changing a look in the game, such as at a barber, deletion, progression,
+and statistics are not implemented.
 
 ## Shard Entry And Exit
 
@@ -89,12 +91,16 @@ no local player exists in the scene.
 The test shard has no durable gameplay simulation yet. During authenticated play, other
 connected characters are represented by an authored RemotePlayer prefab and
 rendered from interpolated SimulationWorker snapshots. Every player shows a human
-body, which stands, walks, and jogs with the speed it moves at: the local player
-the male or female body and the look chosen in the World Debug panel (F2), other
-players the male body, and development bots either body by their ids; the body
-type at character creation is planned. The local player wears the garments of
-the items it has equipped, such as a linen shirt, a wool robe, or a blue wool
-cloak, as soon as it equips them. With the
+body, which stands, walks, and jogs with the speed it moves at, in the body
+model and look stored with its character, and development bots either body and
+a varied look and outfit by their ids. Every player wears the garments of the
+items it has equipped, such as a linen shirt, a wool robe, or a blue wool cloak:
+the local player as soon as it equips them, and others as the worker sends them.
+The inventory lowers and raises a worn Wool Hood, which every client shows. A
+dying body keeps its clothes until its character respawns, and a player corpse
+shows the dead character's body, look, and the garments still in it. In the
+Development environment the World Debug panel (F2) changes the stored body model
+and look. With the
 World Debug setting `Tint bodies` on, off by default, the local player is tinted
 purple, other players orange, and synthetic development bots blue. SimulationWorker assigns each live
 player a network entity id. Reliable spawn and despawn messages decide when a

@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-10-20
+Last updated: 2026-10-25
 
 ## Purpose
 
@@ -39,8 +39,9 @@ worker. Zone and layer partitioning are not implemented.
 | `GET /api/accounts/session` | Account session | Validate the current session |
 | `POST /api/accounts/logout` | Account session | Revoke current session and dependent access |
 | `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
-| `GET /api/characters` | Account session | List owned characters |
-| `POST /api/characters` | Account session | Create a character |
+| `GET /api/characters` | Account session | List owned characters with their body models |
+| `POST /api/characters` | Account session | Create a character with its body model and look, checked against `content/characters/appearance.json`, or the default look of the default body model without one |
+| `GET /api/character-appearance` | Account session | Return what character creation offers: the kinds of a look with their rules and every body model with its options per kind and slot |
 | `GET /api/item-catalog` | Account session | Return the neutral current catalog with revision ETag validation |
 | `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot, including the currency balance |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
@@ -57,6 +58,7 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket |
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
+| `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session active-character item mutation, vendor trade, or gathering yield through the durable kernel |
 | `POST /api/simulation-sessions/{id}/ammunition-consumptions` | Worker service policy | Commit one idempotent batch of shots from the exact-session character's equipped ammunition stack |
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |

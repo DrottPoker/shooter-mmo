@@ -74,58 +74,6 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(BodyLook.Parse(null), Is.EqualTo(BodyLook.Default));
         }
 
-        [Test]
-        public void AVariedLookIsTheSameForASeedAndCoversEveryOption()
-        {
-            var catalog = Catalog();
-            try
-            {
-                Assert.That(BodyLook.Varied("bot-7", catalog), Is.EqualTo(BodyLook.Varied("bot-7", catalog)));
-                // Every combination shows up: the slots of one seed pick independently.
-                var looks = new HashSet<string>();
-                for (var index = 0; index < 64; index++)
-                {
-                    looks.Add(BodyLook.Varied("bot-" + index, catalog).Key);
-                }
-
-                Assert.That(looks, Is.EquivalentTo(new[]
-                {
-                    "Eye=Brown;Face=Clean", "Eye=Brown;Face=Stubble", "Eye=Teal;Face=Clean", "Eye=Teal;Face=Stubble",
-                }));
-                Assert.That(BodyLook.Varied("bot-7", null), Is.EqualTo(BodyLook.Default));
-            }
-            finally
-            {
-                Object.DestroyImmediate(catalog);
-            }
-        }
-
-        [Test]
-        public void TheStableHashIsFowlerNollVo()
-        {
-            Assert.That(BodyLook.StableHash(string.Empty), Is.EqualTo(2166136261u));
-            Assert.That(BodyLook.StableHash("a"), Is.EqualTo(0xE40C292Cu));
-        }
-
-        [Test]
-        public void OnlyDevelopmentBotsShowAVariedLook()
-        {
-            var catalog = Catalog();
-            try
-            {
-                Assert.That(
-                    RemotePlayerView.LookFor(RealtimePlayerArchetypeIds.DevelopmentBot, "bot-3", catalog),
-                    Is.EqualTo(BodyLook.Varied("bot-3", catalog)));
-                Assert.That(
-                    RemotePlayerView.LookFor(RealtimePlayerArchetypeIds.Player, "character-3", catalog),
-                    Is.EqualTo(BodyLook.Default));
-            }
-            finally
-            {
-                Object.DestroyImmediate(catalog);
-            }
-        }
-
         // A catalog with the Face and Eye slots of the male body, without materials or images.
         internal static BodyAppearanceCatalog Catalog(Material face = null, Texture2D clean = null)
         {

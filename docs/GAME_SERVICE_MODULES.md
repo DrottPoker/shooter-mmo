@@ -1,6 +1,6 @@
 # GameService Modules
 
-Last updated: 2026-10-21
+Last updated: 2026-10-25
 
 ## Status
 
@@ -106,7 +106,7 @@ tests. Startup runs in this order:
 | --- | --- |
 | Platform | `schema_migrations`; advisory lock `7104202607071600` |
 | Accounts | `accounts`, `account_sessions` |
-| Characters | `characters`, including `currency` and `level`, and `character_currency_ledger` |
+| Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, and `character_appearances` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
 | Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, the catalog advisory lock `7104202607151230`, and the per-account Secure Container entitlement advisory lock |
 
@@ -154,6 +154,7 @@ caller keeps its own check order, error codes, and messages.
 | `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order |
 | `ICharacterWallet` | Characters | Items | Debit or credit character currency with a `CurrencyChangeSource` and one ledger row, for insurance, vendor trades, the starting balance, and the Development item tool |
 | `ICharacterProgression` | Characters | Items | Set a character's level for the Development item tool |
+| `ICharacterAppearances` | Characters | Placement, Items | Read a character's body model, look, and headwear, also of deleted characters for their corpses, lower or raise the headwear, and store a development look, each checked against the appearance content |
 | `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state and credit the starting balance for a new character |
 | `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, the character level fragment, and the currency balance fragment |
 | `SimulationWorkerLeasePolicy` | Placement | Items | The worker heartbeat timeout |
@@ -429,12 +430,18 @@ migration's SQL.
 | 22 | `202610181230_worker_item_catalog_revision` | Placement |
 | 23 | `202610181240_character_currency_ledger` | Characters |
 | 24 | `202610181250_item_economy` | Items |
+| 25 | `202610251200_character_appearance` | Characters |
 
 Migration #23 adds the balance range check on `characters.currency`, creates
 `character_currency_ledger`, and opens the ledger with one `opening_balance` row
 for every existing nonzero balance. Migration #24 adds `item_definitions.value`,
 the tool kind tables, the currency settings in `item_system_settings`, and the
-vendor tables.
+vendor tables. Migration #25 creates `character_appearances`, one row per
+character with its body model, its choices as JSONB, and whether its headwear is
+lowered, deleted with its character, and gives every existing character
+`Human_Male` with its default look. `CharacterAppearanceVerifier`, a database
+seeder, refuses to start when `content/characters/appearance.json` no longer
+offers what a stored look names.
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.

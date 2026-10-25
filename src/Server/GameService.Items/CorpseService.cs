@@ -1,5 +1,6 @@
 using System.Data;
 using Dapper;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
@@ -17,6 +18,7 @@ internal sealed partial class CorpseService(
     ISimulationWorkerAuthority workerAuthority,
     ISimulationSessionAuthority sessionAuthority,
     SimulationCharacterStates characterStates,
+    ICharacterAppearances characterAppearances,
     ILogger<CorpseService> logger)
 {
     private NpgsqlDataSource DataSource => dataSource;
@@ -468,8 +470,12 @@ internal sealed partial class CorpseService(
                 },
                 transaction,
                 cancellationToken: cancellationToken))).ToArray();
+            var corpse = (await WithLooksAsync(
+                connection,
+                transaction,
+                [CreateCorpseResponse(row, sections[row.CorpseId])],
+                cancellationToken))[0];
             await transaction.CommitAsync(cancellationToken);
-            var corpse = CreateCorpseResponse(row, sections[row.CorpseId]);
             return new CorpsePartitionRecord(
                 row.DeathEventId,
                 row.OriginalOperationId,
@@ -489,7 +495,7 @@ internal sealed partial class CorpseService(
         }
     }
 
-    private static async Task<IReadOnlyList<DurableCorpseResponse>> LoadOpenCorpsesAsync(
+    private async Task<IReadOnlyList<DurableCorpseResponse>> LoadOpenCorpsesAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string shardId,
@@ -532,9 +538,11 @@ internal sealed partial class CorpseService(
             transaction,
             rows.Select(row => row.CorpseId).ToArray(),
             cancellationToken);
-        return rows
-            .Select(row => CreateCorpseResponse(row, sections[row.CorpseId]))
-            .ToArray();
+        return await WithLooksAsync(
+            connection,
+            transaction,
+            rows.Select(row => CreateCorpseResponse(row, sections[row.CorpseId])).ToArray(),
+            cancellationToken);
     }
 
     private async Task<DurableCorpseResponse?> LoadCorpseByIdAsync(
@@ -587,8 +595,13 @@ internal sealed partial class CorpseService(
                 transaction,
                 [corpseId],
                 cancellationToken);
+            var corpse = (await WithLooksAsync(
+                connection,
+                transaction,
+                [CreateCorpseResponse(row, sections[corpseId])],
+                cancellationToken))[0];
             await transaction.CommitAsync(cancellationToken);
-            return CreateCorpseResponse(row, sections[corpseId]);
+            return corpse;
         }
         catch
         {
@@ -636,6 +649,60 @@ internal sealed partial class CorpseService(
                     row.ContainerRevision,
                     row.ItemCount))
                 .ToArray());
+    }
+
+    // The look of every player corpse: its source character's body model and look, through the
+    // Characters contract, and the definitions in the slots of its equipment section.
+    private async Task<IReadOnlyList<DurableCorpseResponse>> WithLooksAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        IReadOnlyList<DurableCorpseResponse> corpses,
+        CancellationToken cancellationToken)
+    {
+        var players = corpses.Where(corpse => corpse.SourceCharacterId is not null).ToArray();
+        if (players.Length == 0)
+        {
+            return corpses;
+        }
+
+        var appearances = await characterAppearances.ReadManyAsync(
+            new PostgresTransactionScope(connection, transaction),
+            players.Select(corpse => corpse.SourceCharacterId!.Value).ToArray(),
+            cancellationToken);
+        var equipment = (await connection.QueryAsync<CorpseEquipmentRow>(new CommandDefinition(
+            """
+            select
+                section.corpse_id as "CorpseId",
+                slot.equipment_slot_id as "EquipmentSlotId",
+                item.definition_id as "DefinitionId"
+            from corpse_sections section
+            join item_container_slots slot on slot.container_id = section.container_id
+            join item_instances item
+              on item.container_id = slot.container_id
+             and item.container_slot_index = slot.slot_index
+            where section.corpse_id = any(@CorpseIds)
+              and section.section_kind = 'equipment'
+              and slot.equipment_slot_id is not null
+            order by section.corpse_id, slot.slot_index;
+            """,
+            new { CorpseIds = players.Select(corpse => corpse.CorpseId).ToArray() },
+            transaction,
+            cancellationToken: cancellationToken))).ToLookup(row => row.CorpseId);
+        return corpses
+            .Select(corpse => corpse.SourceCharacterId is { } characterId
+                && appearances.TryGetValue(characterId, out var appearance)
+                ? corpse with
+                {
+                    Look = new CorpseLookResponse(
+                        appearance.BodyModel,
+                        appearance.Choices.Select(choice => new CorpseLookChoiceResponse(choice.Kind, choice.Slot, choice.Option)).ToArray(),
+                        equipment[corpse.CorpseId]
+                            .Select(row => new CorpseLookEquipmentResponse(row.EquipmentSlotId, row.DefinitionId))
+                            .ToArray(),
+                        appearance.HeadwearLowered)
+                }
+                : corpse)
+            .ToArray();
     }
 
     private async Task<CorpseExpiryCandidate?> LoadExpiryCandidateAsync(
@@ -828,6 +895,15 @@ internal sealed partial class CorpseService(
                     request.DestinationSlotIndex));
     }
 
+
+    private sealed class CorpseEquipmentRow
+    {
+        public Guid CorpseId { get; init; }
+
+        public string EquipmentSlotId { get; init; } = string.Empty;
+
+        public string DefinitionId { get; init; } = string.Empty;
+    }
 
     private interface ICorpseRow
     {

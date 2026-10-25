@@ -43,7 +43,8 @@ public sealed class MigrationHistoryTests
         "202610181220_death_event_killer 09fb4d69cc355228ee97913167e229a61980866fcb1f7d28c355d82cd2ff4023",
         "202610181230_worker_item_catalog_revision 7a4e0382848e0e09f7b5a5b3551c18938c19a9db004ea5134258852c3f0917c8",
         "202610181240_character_currency_ledger 9d092d7b4f1c7c0c7c67bf16ed59ee8f1604084fbc898c1a06f528d44b208856",
-        "202610181250_item_economy b9120a4bd9f1db4e920a4b7ecece2a23de9fa7d1ba851a4cbd725f295cf2be98"
+        "202610181250_item_economy b9120a4bd9f1db4e920a4b7ecece2a23de9fa7d1ba851a4cbd725f295cf2be98",
+        "202610251200_character_appearance 17d6ebdb9a9e5050d742da7656b81794accf4c59c27acf111f03fcb083538870"
     ];
 
     [Fact]

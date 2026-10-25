@@ -3,6 +3,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
+using Mmorpg.WorldData.Characters;
 using Npgsql;
 
 namespace Mmorpg.GameService.Characters;
@@ -11,17 +12,20 @@ internal sealed class CharacterService(
     NpgsqlDataSource dataSource,
     CharactersModuleOptions options,
     IAccountLocks accountLocks,
-    ICharacterLifecycleHandler characterLifecycleHandler)
+    ICharacterLifecycleHandler characterLifecycleHandler,
+    CharacterAppearances appearances)
 {
     public async Task<ServiceResult<IReadOnlyCollection<CharacterResponse>>> ListAsync(
         Guid accountId,
         CancellationToken cancellationToken)
     {
         const string sql = """
-            select id as "Id", name as "Name", currency as "Currency", created_at as "CreatedAt"
-            from characters
-            where account_id = @AccountId and deleted_at is null
-            order by created_at asc;
+            select character.id as "Id", character.name as "Name", character.currency as "Currency",
+                   character.created_at as "CreatedAt", appearance.body_model as "BodyModel"
+            from characters character
+            join character_appearances appearance on appearance.character_id = character.id
+            where character.account_id = @AccountId and character.deleted_at is null
+            order by character.created_at asc;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -40,6 +44,12 @@ internal sealed class CharacterService(
         if (nameError is not null)
         {
             return ServiceResult<CharacterResponse>.BadRequest("invalid_character_name", nameError);
+        }
+
+        var (bodyModel, choices, appearanceError) = ReadAppearance(request.Appearance);
+        if (appearanceError is not null)
+        {
+            return ServiceResult<CharacterResponse>.BadRequest(CharacterAppearances.InvalidAppearanceCode, appearanceError);
         }
 
         var maxCharacters = options.MaxCharactersPerAccount;
@@ -82,7 +92,8 @@ internal sealed class CharacterService(
             const string insertSql = """
                 insert into characters (id, account_id, name, normalized_name)
                 values (@Id, @AccountId, @Name, @NormalizedName)
-                returning id as "Id", name as "Name", currency as "Currency", created_at as "CreatedAt";
+                returning id as "Id", name as "Name", currency as "Currency", created_at as "CreatedAt",
+                          @BodyModel as "BodyModel";
                 """;
 
             var characterId = Guid.NewGuid();
@@ -94,10 +105,13 @@ internal sealed class CharacterService(
                         Id = characterId,
                         AccountId = accountId,
                         Name = name,
-                        NormalizedName = normalizedName
+                        NormalizedName = normalizedName,
+                        BodyModel = bodyModel
                     },
                     transaction,
                     cancellationToken: cancellationToken));
+
+            await appearances.InsertAsync(scope, characterId, bodyModel, choices, cancellationToken);
 
             await characterLifecycleHandler.OnCharacterCreatedAsync(
                 scope,
@@ -129,5 +143,39 @@ internal sealed class CharacterService(
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    // What character creation offers, from the appearance content.
+    public CharacterAppearanceCatalogResponse AppearanceCatalog()
+    {
+        var catalog = appearances.Catalog;
+        return new CharacterAppearanceCatalogResponse(
+            catalog.Kinds.Select(kind => new CharacterAppearanceKindResponse(kind.Id, kind.Required, kind.ChangesInGame)).ToArray(),
+            catalog.BodyModels.Select(bodyModel => new CharacterBodyModelResponse(
+                bodyModel,
+                catalog.OffersFor(bodyModel)
+                    .Select(offer => new CharacterAppearanceOfferResponse(offer.Kind, offer.Slot, offer.Options.ToArray()))
+                    .ToArray())).ToArray());
+    }
+
+    // The requested body model and look, checked as character creation allows them: the default
+    // look of the default body model when none is requested, and of the requested body model when
+    // it names no choices.
+    private (string BodyModel, IReadOnlyList<CharacterAppearanceChoice> Choices, string? Error) ReadAppearance(
+        CharacterAppearanceRequest? request)
+    {
+        var catalog = appearances.Catalog;
+        var bodyModel = string.IsNullOrWhiteSpace(request?.BodyModel) ? catalog.DefaultBodyModel : request!.BodyModel!;
+        if (request?.Choices is null)
+        {
+            return catalog.HasBodyModel(bodyModel)
+                ? (bodyModel, catalog.DefaultChoices(bodyModel), null)
+                : (bodyModel, [], $"The body model '{bodyModel}' does not exist.");
+        }
+
+        var choices = request.Choices
+            .Select(choice => new CharacterAppearanceChoice(choice?.Kind, choice?.Slot, choice?.Option))
+            .ToArray();
+        return (bodyModel, choices, catalog.CreationError(bodyModel, choices));
     }
 }

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
@@ -48,7 +49,16 @@ internal sealed record RealtimeServerDependencies(
     DevelopmentItemInteractionOptions? DevelopmentItemInteractions,
     IWorldActorCapabilityAvailabilityPolicy? CapabilityAvailability,
     SimulationGatheringService? GatheringService = null,
-    CombatDependencies? Combat = null);
+    CombatDependencies? Combat = null,
+    AppearanceDependencies? Appearance = null);
+
+// What looks need beyond the realtime services: the looks of the active characters, the
+// appearance content's defaults, and GameService for changes. Without it no player has a look
+// and no look changes.
+internal sealed record AppearanceDependencies(
+    CharacterLookStore Looks,
+    AppearanceReplicationSettings Settings,
+    GameServiceClient? GameServiceClient);
 
 // What combat needs beyond the realtime services. Without it the worker runs combat with
 // the default rules, an empty item catalog, and Mobs that leave no corpse.
@@ -125,6 +135,8 @@ internal static class RealtimeServerComposition
             completions,
             operationTracker,
             logger);
+        var appearanceDependencies = dependencies.Appearance
+            ?? new AppearanceDependencies(new CharacterLookStore(), AppearanceReplicationSettings.Default, null);
         var teardown = new RealtimeSessionTeardown(
             peers,
             sender,
@@ -135,7 +147,26 @@ internal static class RealtimeServerComposition
             worldInteractionLeases,
             connectionBindings,
             entityRegistry,
-            networkMetrics);
+            networkMetrics,
+            appearanceDependencies.Looks);
+        var appearances = new AppearanceReplicator(
+            peers,
+            sender,
+            presence,
+            entityRegistry,
+            connectionBindings,
+            itemStateStore,
+            appearanceDependencies.Looks,
+            appearanceDependencies.Settings);
+        presence.Appearances = appearances;
+        var appearanceIntents = new AppearanceIntentHandler(
+            peers,
+            sender,
+            appearanceDependencies.Looks,
+            operationTracker,
+            completions,
+            appearanceDependencies.GameServiceClient,
+            logger);
         var authorityScheduler = new AuthorityOperationScheduler(peers);
         var combatDependencies = dependencies.Combat ?? new CombatDependencies(
             CombatRules.Default,
@@ -201,7 +232,10 @@ internal static class RealtimeServerComposition
             dependencies.CorpseRuntimeMetrics,
             corpseViews,
             peers,
-            sender);
+            sender)
+        {
+            VisibleEquipmentSlots = appearanceDependencies.Settings.VisibleEquipmentSlots
+        };
         var corpseAuthority = new CorpseAuthorityOperations(
             dependencies.CorpseInteractionService,
             dependencies.LiveMobCorpseInteractionService,
@@ -400,7 +434,10 @@ internal static class RealtimeServerComposition
             corpsePresence,
             dependencies.CollisionStreamingStore,
             performanceMetrics,
-            logger);
+            logger)
+        {
+            Appearances = appearances
+        };
         var supervisor = new RealtimePeerSupervisor(
             config,
             peers,
@@ -436,7 +473,8 @@ internal static class RealtimeServerComposition
                 corpseInteractions.HandleIntent,
                 worldInteractions.HandleIntent,
                 sessions.HandleLeaveRequest,
-                combat.HandleIntent));
+                combat.HandleIntent,
+                appearanceIntents.HandleIntent));
         var completionProcessor = new RealtimeCompletionProcessor(
             completions,
             peers,

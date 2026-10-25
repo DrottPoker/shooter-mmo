@@ -56,7 +56,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 ExpiresAtUnixMilliseconds,
                 false,
                 name,
-                "corpse.remains");
+                "corpse.remains",
+                null);
         }
 
         internal static RealtimeCorpseViewStateChunk[] CreateSnapshot(

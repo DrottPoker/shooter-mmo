@@ -10,6 +10,8 @@
   <ItemGroup>
     <Compile Include="..\..\WorldData\Runtime\ItemDomain\**\*.cs"
              Link="Runtime\ItemDomain\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\WorldData\Runtime\CharacterDomain\**\*.cs"
+             Link="Runtime\CharacterDomain\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\WorldData\Runtime\CombatDomain\**\*.cs"
              Link="Runtime\CombatDomain\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\WorldData\Runtime\ContentDomain\**\*.cs"

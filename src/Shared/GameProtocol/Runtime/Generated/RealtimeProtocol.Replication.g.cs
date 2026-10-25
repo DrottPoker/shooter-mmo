@@ -15,6 +15,16 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
+    /// What an appearance intent asks for.
+    /// </summary>
+    public enum RealtimeAppearanceIntentKind : byte
+    {
+        LowerHeadwear = 1,
+        RaiseHeadwear = 2,
+        SetDevelopmentLook = 3
+    }
+
+    /// <summary>
     /// The state of one remote entity in a simulation snapshot.
     /// </summary>
     public sealed partial class RealtimeEntitySnapshot
@@ -43,6 +53,99 @@ namespace Mmorpg.GameProtocol
         /// The entity's authoritative movement state.
         /// </summary>
         public RealtimePlayerState State { get; }
+    }
+
+    /// <summary>
+    /// One choice of a character's look: an option of a kind, in a slot for a kind worn per slot.
+    /// </summary>
+    public sealed partial class RealtimeAppearanceChoice
+    {
+        public RealtimeAppearanceChoice(
+            string kind,
+            string slot,
+            string option)
+        {
+            Kind = kind;
+            Slot = slot ?? string.Empty;
+            Option = option;
+        }
+
+        /// <summary>
+        /// The kind of look, such as face, tattoo, underwear, or hair.
+        /// </summary>
+        public string Kind { get; }
+
+        /// <summary>
+        /// The visual slot of a kind worn per slot, such as legs for underwear, or empty.
+        /// </summary>
+        public string Slot { get; }
+
+        /// <summary>
+        /// The chosen option, such as Clean or DarkBrownHair.
+        /// </summary>
+        public string Option { get; }
+    }
+
+    /// <summary>
+    /// An equipped item that other players see on a character, by its definition, which names the garments it shows.
+    /// </summary>
+    public sealed partial class RealtimeVisibleEquipment
+    {
+        public RealtimeVisibleEquipment(
+            string equipmentSlotId,
+            string definitionId)
+        {
+            EquipmentSlotId = equipmentSlotId;
+            DefinitionId = definitionId;
+        }
+
+        /// <summary>
+        /// The equipment slot, such as back.
+        /// </summary>
+        public string EquipmentSlotId { get; }
+
+        /// <summary>
+        /// The item definition.
+        /// </summary>
+        public string DefinitionId { get; }
+    }
+
+    /// <summary>
+    /// How a character looks to every client: its body model, the choices of its look, the items others see on it, and whether it lowered its headwear.
+    /// </summary>
+    public sealed partial class RealtimeCharacterAppearance
+    {
+        public RealtimeCharacterAppearance(
+            string bodyModel,
+            RealtimeAppearanceChoice[] choices,
+            RealtimeVisibleEquipment[] equipment,
+            bool headwearLowered)
+        {
+            BodyModel = bodyModel;
+            Choices = choices ?? Array.Empty<RealtimeAppearanceChoice>();
+            Equipment = equipment ?? Array.Empty<RealtimeVisibleEquipment>();
+            HeadwearLowered = headwearLowered;
+        }
+
+        /// <summary>
+        /// The body model, such as Human_Female.
+        /// </summary>
+        public string BodyModel { get; }
+
+        /// <summary>
+        /// The choices of the look, such as its face, eyes, tattoo, underwear, and hair.
+        /// </summary>
+        public RealtimeAppearanceChoice[] Choices { get; }
+
+        /// <summary>
+        /// The items others see on the character, one per equipment slot.
+        /// </summary>
+        public RealtimeVisibleEquipment[] Equipment { get; }
+
+        /// <summary>
+        /// Whether the character lowered its headwear, such as a hood pushed back.
+        /// </summary>
+        public bool HeadwearLowered { get; }
     }
 
     /// <summary>
@@ -102,7 +205,8 @@ namespace Mmorpg.GameProtocol
             string displayName,
             string archetypeId,
             uint serverTick,
-            RealtimePlayerState initialState)
+            RealtimePlayerState initialState,
+            RealtimeCharacterAppearance appearance)
         {
             EntityId = entityId;
             Kind = kind;
@@ -111,6 +215,7 @@ namespace Mmorpg.GameProtocol
             ArchetypeId = archetypeId;
             ServerTick = serverTick;
             InitialState = initialState;
+            Appearance = appearance;
         }
 
         /// <summary>
@@ -147,6 +252,11 @@ namespace Mmorpg.GameProtocol
         /// The movement state when the entity entered interest.
         /// </summary>
         public RealtimePlayerState InitialState { get; }
+
+        /// <summary>
+        /// How the character looks when it entered interest.
+        /// </summary>
+        public RealtimeCharacterAppearance Appearance { get; }
     }
 
     /// <summary>
@@ -171,6 +281,138 @@ namespace Mmorpg.GameProtocol
         /// Why the entity left interest, as a code.
         /// </summary>
         public string Reason { get; }
+    }
+
+    /// <summary>
+    /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, or in Development its body model or look.
+    /// </summary>
+    public sealed partial class RealtimeEntityAppearanceChanged
+    {
+        public RealtimeEntityAppearanceChanged(
+            ulong entityId,
+            RealtimeCharacterAppearance appearance)
+        {
+            EntityId = entityId;
+            Appearance = appearance;
+        }
+
+        /// <summary>
+        /// The network entity of the character.
+        /// </summary>
+        public ulong EntityId { get; }
+
+        /// <summary>
+        /// How the character looks now.
+        /// </summary>
+        public RealtimeCharacterAppearance Appearance { get; }
+    }
+
+    /// <summary>
+    /// Lowers or raises the character's headwear, or in Development gives it another body model and look.
+    /// </summary>
+    public sealed partial class RealtimeAppearanceIntent
+    {
+        internal RealtimeAppearanceIntent(
+            Guid operationId,
+            RealtimeAppearanceIntentKind kind,
+            string bodyModel,
+            RealtimeAppearanceChoice[] choices)
+        {
+            OperationId = operationId;
+            Kind = kind;
+            BodyModel = bodyModel;
+            Choices = choices;
+        }
+
+        /// <summary>
+        /// Correlates the result.
+        /// </summary>
+        public Guid OperationId { get; }
+
+        /// <summary>
+        /// What the intent asks for.
+        /// </summary>
+        public RealtimeAppearanceIntentKind Kind { get; }
+
+        /// <summary>
+        /// The body model of the new look.
+        /// </summary>
+        public string BodyModel { get; }
+
+        /// <summary>
+        /// The choices of the new look.
+        /// </summary>
+        public RealtimeAppearanceChoice[] Choices { get; }
+
+        public static RealtimeAppearanceIntent CreateLowerHeadwear(
+            Guid operationId)
+        {
+            return new RealtimeAppearanceIntent(
+                operationId,
+                RealtimeAppearanceIntentKind.LowerHeadwear,
+                string.Empty,
+                Array.Empty<RealtimeAppearanceChoice>());
+        }
+
+        public static RealtimeAppearanceIntent CreateRaiseHeadwear(
+            Guid operationId)
+        {
+            return new RealtimeAppearanceIntent(
+                operationId,
+                RealtimeAppearanceIntentKind.RaiseHeadwear,
+                string.Empty,
+                Array.Empty<RealtimeAppearanceChoice>());
+        }
+
+        public static RealtimeAppearanceIntent CreateSetDevelopmentLook(
+            Guid operationId,
+            string bodyModel,
+            RealtimeAppearanceChoice[] choices)
+        {
+            return new RealtimeAppearanceIntent(
+                operationId,
+                RealtimeAppearanceIntentKind.SetDevelopmentLook,
+                bodyModel,
+                choices);
+        }
+    }
+
+    /// <summary>
+    /// The outcome of an appearance intent; the new look follows as an EntityAppearanceChanged.
+    /// </summary>
+    public sealed partial class RealtimeAppearanceIntentResult
+    {
+        public RealtimeAppearanceIntentResult(
+            Guid operationId,
+            RealtimeAppearanceIntentKind kind,
+            bool succeeded,
+            RealtimeError error)
+        {
+            OperationId = operationId;
+            Kind = kind;
+            Succeeded = succeeded;
+            Error = error;
+        }
+
+        /// <summary>
+        /// The intent this answers.
+        /// </summary>
+        public Guid OperationId { get; }
+
+        /// <summary>
+        /// What the intent asked for.
+        /// </summary>
+        public RealtimeAppearanceIntentKind Kind { get; }
+
+        /// <summary>
+        /// Whether the worker stored the change.
+        /// </summary>
+        public bool Succeeded { get; }
+
+        /// <summary>
+        /// Why the intent failed.
+        /// </summary>
+        public RealtimeError Error { get; }
     }
 
     // Encoding, decoding, and validation of the Replication family.
@@ -357,6 +599,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteString(value.ArchetypeId);
             writer.WriteUInt32(value.ServerTick);
             WritePlayerState(ref writer, value.InitialState);
+            WriteCharacterAppearance(ref writer, value.Appearance);
         }
 
         private static int SizeOfEntitySpawn(RealtimeEntitySpawn value)
@@ -365,6 +608,7 @@ namespace Mmorpg.GameProtocol
             size += StringSize(value.PersistentId);
             size += StringSize(value.DisplayName);
             size += StringSize(value.ArchetypeId);
+            size += SizeOfCharacterAppearance(value.Appearance);
             return size;
         }
 
@@ -408,7 +652,12 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeEntitySpawn(entityId, kind, persistentId, displayName, archetypeId, serverTick, initialState);
+            if (!TryReadCharacterAppearance(ref reader, out var appearance, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeEntitySpawn(entityId, kind, persistentId, displayName, archetypeId, serverTick, initialState, appearance);
             return true;
         }
 
@@ -424,7 +673,8 @@ namespace Mmorpg.GameProtocol
                 || value.DisplayName.Length > MaximumNameLength
                 || string.IsNullOrWhiteSpace(value.ArchetypeId)
                 || value.ArchetypeId.Length > MaximumIdentifierLength
-                || !IsValidPlayerState(value.InitialState))
+                || !IsValidPlayerState(value.InitialState)
+                || !IsValidCharacterAppearance(value.Appearance))
             {
                 return false;
             }
@@ -510,6 +760,393 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
+        /// <summary>
+        /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, or in Development its body model or look.
+        /// </summary>
+        public static byte[] EncodeEntityAppearanceChanged(RealtimeEntityAppearanceChanged change)
+        {
+            if (!IsValidEntityAppearanceChanged(change))
+            {
+                throw new ArgumentException("Entity appearance changed is invalid.", nameof(change));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.EntityAppearanceChanged, SizeOfEntityAppearanceChanged(change));
+            WriteEntityAppearanceChanged(ref writer, change);
+            return writer.Finish();
+        }
+
+        public static bool TryDecodeEntityAppearanceChanged(byte[] data, out RealtimeEntityAppearanceChanged change, out string error)
+        {
+            change = null;
+            if (!TryStartPacket(data, RealtimeMessageType.EntityAppearanceChanged, out var reader, out error)
+                || !TryReadEntityAppearanceChanged(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidEntityAppearanceChanged(decoded))
+            {
+                error = "Entity appearance changed is invalid.";
+                return false;
+            }
+
+            change = decoded;
+            return true;
+        }
+
+        private static void WriteEntityAppearanceChanged(ref PacketWriter writer, RealtimeEntityAppearanceChanged value)
+        {
+            writer.WriteUInt64(value.EntityId);
+            WriteCharacterAppearance(ref writer, value.Appearance);
+        }
+
+        private static int SizeOfEntityAppearanceChanged(RealtimeEntityAppearanceChanged value)
+        {
+            var size = 8;
+            size += SizeOfCharacterAppearance(value.Appearance);
+            return size;
+        }
+
+        private static bool TryReadEntityAppearanceChanged(ref PacketReader reader, out RealtimeEntityAppearanceChanged value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadUInt64(out var entityId, out error))
+            {
+                return false;
+            }
+
+            if (!TryReadCharacterAppearance(ref reader, out var appearance, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeEntityAppearanceChanged(entityId, appearance);
+            return true;
+        }
+
+        private static bool IsValidEntityAppearanceChanged(RealtimeEntityAppearanceChanged value)
+        {
+            if (value == null
+                || value.EntityId < 1
+                || !IsValidCharacterAppearance(value.Appearance))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Lowers or raises the character's headwear, or in Development gives it another body model and look.
+        /// </summary>
+        public static byte[] EncodeAppearanceIntent(RealtimeAppearanceIntent intent)
+        {
+            if (!IsValidAppearanceIntent(intent))
+            {
+                throw new ArgumentException("Appearance intent is invalid.", nameof(intent));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.AppearanceIntent, SizeOfAppearanceIntent(intent));
+            WriteAppearanceIntent(ref writer, intent);
+            return writer.Finish();
+        }
+
+        public static bool TryDecodeAppearanceIntent(byte[] data, out RealtimeAppearanceIntent intent, out string error)
+        {
+            intent = null;
+            if (!TryStartPacket(data, RealtimeMessageType.AppearanceIntent, out var reader, out error)
+                || !TryReadAppearanceIntent(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidAppearanceIntent(decoded))
+            {
+                error = "Appearance intent is invalid.";
+                return false;
+            }
+
+            intent = decoded;
+            return true;
+        }
+
+        private static void WriteAppearanceIntent(ref PacketWriter writer, RealtimeAppearanceIntent value)
+        {
+            writer.WriteGuid(value.OperationId);
+            writer.WriteByte((byte)value.Kind);
+
+            switch (value.Kind)
+            {
+                case RealtimeAppearanceIntentKind.LowerHeadwear:
+                case RealtimeAppearanceIntentKind.RaiseHeadwear:
+                {
+                    break;
+                }
+                case RealtimeAppearanceIntentKind.SetDevelopmentLook:
+                {
+                    writer.WriteString(value.BodyModel);
+                    writer.WriteByte((byte)value.Choices.Length);
+                    foreach (var item in value.Choices)
+                    {
+                        WriteAppearanceChoice(ref writer, item);
+                    }
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("Appearance intent is invalid.", nameof(value));
+                }
+            }
+        }
+
+        private static int SizeOfAppearanceIntent(RealtimeAppearanceIntent value)
+        {
+            var size = 17;
+            switch (value.Kind)
+            {
+                case RealtimeAppearanceIntentKind.LowerHeadwear:
+                case RealtimeAppearanceIntentKind.RaiseHeadwear:
+                {
+                    break;
+                }
+                case RealtimeAppearanceIntentKind.SetDevelopmentLook:
+                {
+                    size += StringSize(value.BodyModel);
+                    size += 1;
+                    foreach (var item in value.Choices)
+                    {
+                        size += SizeOfAppearanceChoice(item);
+                    }
+
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("Appearance intent is invalid.", nameof(value));
+                }
+            }
+
+            return size;
+        }
+
+        private static bool TryReadAppearanceIntent(ref PacketReader reader, out RealtimeAppearanceIntent value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadGuid(out var operationId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var kindByte, out error))
+            {
+                return false;
+            }
+
+            var kind = (RealtimeAppearanceIntentKind)kindByte;
+
+            string bodyModel = string.Empty;
+            RealtimeAppearanceChoice[] choices = Array.Empty<RealtimeAppearanceChoice>();
+
+            switch (kind)
+            {
+                case RealtimeAppearanceIntentKind.LowerHeadwear:
+                case RealtimeAppearanceIntentKind.RaiseHeadwear:
+                {
+                    break;
+                }
+                case RealtimeAppearanceIntentKind.SetDevelopmentLook:
+                {
+                    if (!reader.TryReadString(MaximumAppearanceNameLength, out bodyModel, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadByte(out var choicesCount, out error))
+                    {
+                        return false;
+                    }
+
+                    if (choicesCount > MaximumAppearanceChoices)
+                    {
+                        error = "Appearance intent choices count is invalid.";
+                        return false;
+                    }
+
+                    choices = new RealtimeAppearanceChoice[choicesCount];
+                    for (var index = 0; index < choices.Length; index++)
+                    {
+                        if (!TryReadAppearanceChoice(ref reader, out var element, out error))
+                        {
+                            return false;
+                        }
+
+                        choices[index] = element;
+                    }
+
+                    break;
+                }
+                default:
+                {
+                    error = "Appearance intent kind is invalid.";
+                    return false;
+                }
+            }
+
+            value = new RealtimeAppearanceIntent(operationId, kind, bodyModel, choices);
+            return true;
+        }
+
+        private static bool IsValidAppearanceIntent(RealtimeAppearanceIntent value)
+        {
+            if (value == null
+                || value.OperationId == Guid.Empty
+                || !IsDefined(value.Kind))
+            {
+                return false;
+            }
+
+            switch (value.Kind)
+            {
+                case RealtimeAppearanceIntentKind.LowerHeadwear:
+                case RealtimeAppearanceIntentKind.RaiseHeadwear:
+                {
+                    break;
+                }
+                case RealtimeAppearanceIntentKind.SetDevelopmentLook:
+                {
+                    if (string.IsNullOrWhiteSpace(value.BodyModel)
+                        || value.BodyModel.Length > MaximumAppearanceNameLength
+                        || value.Choices == null
+                        || value.Choices.Length > MaximumAppearanceChoices)
+                    {
+                        return false;
+                    }
+
+                    foreach (var item in value.Choices)
+                    {
+                        if (!IsValidAppearanceChoice(item))
+                        {
+                            return false;
+                        }
+                    }
+
+                    break;
+                }
+                default:
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// The outcome of an appearance intent; the new look follows as an EntityAppearanceChanged.
+        /// </summary>
+        public static byte[] EncodeAppearanceIntentResult(RealtimeAppearanceIntentResult result)
+        {
+            if (!IsValidAppearanceIntentResult(result))
+            {
+                throw new ArgumentException("Appearance intent result is invalid.", nameof(result));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.AppearanceIntentResult, SizeOfAppearanceIntentResult(result));
+            WriteAppearanceIntentResult(ref writer, result);
+            return writer.Finish();
+        }
+
+        public static bool TryDecodeAppearanceIntentResult(byte[] data, out RealtimeAppearanceIntentResult result, out string error)
+        {
+            result = null;
+            if (!TryStartPacket(data, RealtimeMessageType.AppearanceIntentResult, out var reader, out error)
+                || !TryReadAppearanceIntentResult(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidAppearanceIntentResult(decoded))
+            {
+                error = "Appearance intent result is invalid.";
+                return false;
+            }
+
+            result = decoded;
+            return true;
+        }
+
+        private static void WriteAppearanceIntentResult(ref PacketWriter writer, RealtimeAppearanceIntentResult value)
+        {
+            writer.WriteGuid(value.OperationId);
+            writer.WriteByte((byte)value.Kind);
+            writer.WriteBoolean(value.Succeeded);
+            if (!value.Succeeded)
+            {
+                WriteError(ref writer, value.Error);
+            }
+        }
+
+        private static int SizeOfAppearanceIntentResult(RealtimeAppearanceIntentResult value)
+        {
+            var size = 18;
+            if (!value.Succeeded)
+            {
+                size += SizeOfError(value.Error);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadAppearanceIntentResult(ref PacketReader reader, out RealtimeAppearanceIntentResult value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadGuid(out var operationId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var kindByte, out error))
+            {
+                return false;
+            }
+
+            var kind = (RealtimeAppearanceIntentKind)kindByte;
+
+            if (!reader.TryReadBoolean(out var succeeded, out error))
+            {
+                return false;
+            }
+
+            RealtimeError errorValue = null;
+            if (!succeeded)
+            {
+                if (!TryReadError(ref reader, out errorValue, out error))
+                {
+                    return false;
+                }
+            }
+
+            value = new RealtimeAppearanceIntentResult(operationId, kind, succeeded, errorValue);
+            return true;
+        }
+
+        private static bool IsValidAppearanceIntentResult(RealtimeAppearanceIntentResult value)
+        {
+            if (value == null
+                || value.OperationId == Guid.Empty
+                || !IsDefined(value.Kind)
+                || !value.Succeeded != (value.Error != null)
+                || (value.Error != null && !IsValidError(value.Error)))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
         private static void WriteEntitySnapshot(ref PacketWriter writer, RealtimeEntitySnapshot value)
         {
             writer.WriteUInt64(value.EntityId);
@@ -551,9 +1188,270 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
+        private static void WriteAppearanceChoice(ref PacketWriter writer, RealtimeAppearanceChoice value)
+        {
+            writer.WriteString(value.Kind);
+            var hasSlot = !string.IsNullOrWhiteSpace(value.Slot);
+            writer.WriteBoolean(hasSlot);
+            if (hasSlot)
+            {
+                writer.WriteString(value.Slot);
+            }
+            writer.WriteString(value.Option);
+        }
+
+        private static int SizeOfAppearanceChoice(RealtimeAppearanceChoice value)
+        {
+            var size = 1;
+            size += StringSize(value.Kind);
+            if (!string.IsNullOrWhiteSpace(value.Slot))
+            {
+                size += StringSize(value.Slot);
+            }
+
+            size += StringSize(value.Option);
+            return size;
+        }
+
+        private static bool TryReadAppearanceChoice(ref PacketReader reader, out RealtimeAppearanceChoice value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadString(MaximumAppearanceKindLength, out var kind, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadBoolean(out var hasSlot, out error))
+            {
+                return false;
+            }
+
+            string slot = string.Empty;
+            if (hasSlot)
+            {
+                if (!reader.TryReadString(MaximumAppearanceSlotLength, out slot, out error))
+                {
+                    return false;
+                }
+            }
+
+            if (!reader.TryReadString(MaximumAppearanceNameLength, out var option, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeAppearanceChoice(kind, slot, option);
+            return true;
+        }
+
+        private static bool IsValidAppearanceChoice(RealtimeAppearanceChoice value)
+        {
+            if (value == null
+                || string.IsNullOrWhiteSpace(value.Kind)
+                || value.Kind.Length > MaximumAppearanceKindLength
+                || value.Slot == null
+                || value.Slot.Length > MaximumAppearanceSlotLength
+                || string.IsNullOrWhiteSpace(value.Option)
+                || value.Option.Length > MaximumAppearanceNameLength)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WriteVisibleEquipment(ref PacketWriter writer, RealtimeVisibleEquipment value)
+        {
+            writer.WriteString(value.EquipmentSlotId);
+            writer.WriteString(value.DefinitionId);
+        }
+
+        private static int SizeOfVisibleEquipment(RealtimeVisibleEquipment value)
+        {
+            var size = 0;
+            size += StringSize(value.EquipmentSlotId);
+            size += StringSize(value.DefinitionId);
+            return size;
+        }
+
+        private static bool TryReadVisibleEquipment(ref PacketReader reader, out RealtimeVisibleEquipment value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadString(MaximumEquipmentSlotIdLength, out var equipmentSlotId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadString(MaximumDefinitionIdLength, out var definitionId, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeVisibleEquipment(equipmentSlotId, definitionId);
+            return true;
+        }
+
+        private static bool IsValidVisibleEquipment(RealtimeVisibleEquipment value)
+        {
+            if (value == null
+                || string.IsNullOrWhiteSpace(value.EquipmentSlotId)
+                || value.EquipmentSlotId.Length > MaximumEquipmentSlotIdLength
+                || string.IsNullOrWhiteSpace(value.DefinitionId)
+                || value.DefinitionId.Length > MaximumDefinitionIdLength)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void WriteCharacterAppearance(ref PacketWriter writer, RealtimeCharacterAppearance value)
+        {
+            writer.WriteString(value.BodyModel);
+            writer.WriteByte((byte)value.Choices.Length);
+            foreach (var item in value.Choices)
+            {
+                WriteAppearanceChoice(ref writer, item);
+            }
+            writer.WriteByte((byte)value.Equipment.Length);
+            foreach (var item in value.Equipment)
+            {
+                WriteVisibleEquipment(ref writer, item);
+            }
+            writer.WriteBoolean(value.HeadwearLowered);
+        }
+
+        private static int SizeOfCharacterAppearance(RealtimeCharacterAppearance value)
+        {
+            var size = 1;
+            size += StringSize(value.BodyModel);
+            size += 1;
+            foreach (var item in value.Choices)
+            {
+                size += SizeOfAppearanceChoice(item);
+            }
+
+            size += 1;
+            foreach (var item in value.Equipment)
+            {
+                size += SizeOfVisibleEquipment(item);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadCharacterAppearance(ref PacketReader reader, out RealtimeCharacterAppearance value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadString(MaximumAppearanceNameLength, out var bodyModel, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var choicesCount, out error))
+            {
+                return false;
+            }
+
+            if (choicesCount > MaximumAppearanceChoices)
+            {
+                error = "Character appearance choices count is invalid.";
+                return false;
+            }
+
+            var choices = new RealtimeAppearanceChoice[choicesCount];
+            for (var index = 0; index < choices.Length; index++)
+            {
+                if (!TryReadAppearanceChoice(ref reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                choices[index] = element;
+            }
+
+            if (!reader.TryReadByte(out var equipmentCount, out error))
+            {
+                return false;
+            }
+
+            if (equipmentCount > MaximumVisibleEquipment)
+            {
+                error = "Character appearance equipment count is invalid.";
+                return false;
+            }
+
+            var equipment = new RealtimeVisibleEquipment[equipmentCount];
+            for (var index = 0; index < equipment.Length; index++)
+            {
+                if (!TryReadVisibleEquipment(ref reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                equipment[index] = element;
+            }
+
+            if (!reader.TryReadBoolean(out var headwearLowered, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeCharacterAppearance(bodyModel, choices, equipment, headwearLowered);
+            return true;
+        }
+
+        private static bool IsValidCharacterAppearance(RealtimeCharacterAppearance value)
+        {
+            if (value == null
+                || string.IsNullOrWhiteSpace(value.BodyModel)
+                || value.BodyModel.Length > MaximumAppearanceNameLength
+                || value.Choices == null
+                || value.Choices.Length > MaximumAppearanceChoices
+                || value.Equipment == null
+                || value.Equipment.Length > MaximumVisibleEquipment)
+            {
+                return false;
+            }
+
+            foreach (var item in value.Choices)
+            {
+                if (!IsValidAppearanceChoice(item))
+                {
+                    return false;
+                }
+            }
+
+            foreach (var item in value.Equipment)
+            {
+                if (!IsValidVisibleEquipment(item))
+                {
+                    return false;
+                }
+            }
+
+            for (var first = 0; first < value.Equipment.Length; first++)
+            {
+                for (var second = first + 1; second < value.Equipment.Length; second++)
+                {
+                    if (value.Equipment[first].EquipmentSlotId == value.Equipment[second].EquipmentSlotId)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
         private static bool IsDefined(RealtimeEntityKind value)
         {
             return (byte)value >= 1 && (byte)value <= 1;
+        }
+
+        private static bool IsDefined(RealtimeAppearanceIntentKind value)
+        {
+            return (byte)value >= 1 && (byte)value <= 3;
         }
     }
 }

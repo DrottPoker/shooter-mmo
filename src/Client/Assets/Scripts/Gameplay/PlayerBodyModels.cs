@@ -43,15 +43,6 @@ namespace Mmorpg.Client.Gameplay
             return Default;
         }
 
-        // A model picked by a stable hash of the seed, such as the persistent id of a development
-        // bot, so a crowd shows every model and each bot keeps its own.
-        public Model Varied(string seed)
-        {
-            return models.Length > 0
-                ? models[(int)(BodyLook.Mix(BodyLook.StableHash(seed + "/Model")) % (uint)models.Length)]
-                : null;
-        }
-
         [Serializable]
         public sealed class Model
         {

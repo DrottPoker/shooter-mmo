@@ -34,13 +34,21 @@ namespace Mmorpg.Client.App
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
         private readonly GameMessageLog gameMessages = new GameMessageLog();
 
-        // The World Debug panel's body tint, look, and body model settings, kept between sessions;
-        // the tint is off and the model the default by default.
+        // The World Debug panel's body tint, kept between sessions and off by default.
         private const string BodyTintPreference = "Mmorpg.Debug.TintPlayerBodies";
-        private const string BodyLookPreference = "Mmorpg.Debug.PlayerBodyLook";
-        private const string BodyModelPreference = "Mmorpg.Debug.PlayerBodyModel";
+
+        // Where the panel kept a look and body model before the server stored them; removed at start.
+        private static readonly string[] RetiredPreferences =
+        {
+            "Mmorpg.Debug.PlayerBodyLook",
+            "Mmorpg.Debug.PlayerBodyModel"
+        };
+
         private PlayerBodyTintSetting bodyTint;
-        private PlayerBodyLookSetting bodyLook;
+
+        // The local player's look as the server stores it, kept in step by the look link.
+        private readonly PlayerBodyLookSetting bodyLook = new PlayerBodyLookSetting();
+        private PlayerLookLink lookLink;
 
         // The items the local player wears, from the inventory as it shows them.
         private readonly PlayerEquipment playerEquipment = new PlayerEquipment();
@@ -72,11 +80,9 @@ namespace Mmorpg.Client.App
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
             bodyTint = new PlayerBodyTintSetting(PlayerPrefs.GetInt(BodyTintPreference, 0) == 1);
             bodyTint.Changed += SaveBodyTint;
-            bodyLook = new PlayerBodyLookSetting(
-                BodyLook.Parse(PlayerPrefs.GetString(BodyLookPreference, string.Empty)),
-                PlayerPrefs.GetString(BodyModelPreference, string.Empty));
-            bodyLook.Changed += SaveBodyLook;
+            DeleteRetiredPreferences();
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
+            lookLink = new PlayerLookLink(simulationClient, bodyLook, gameMessages);
 
             inventoryController = GetOrAddComponent<InventoryClientController>();
             inventoryController.Initialize(apiClient, simulationClient, config.ItemGameplayCatalog);
@@ -133,10 +139,8 @@ namespace Mmorpg.Client.App
                 bodyTint.Changed -= SaveBodyTint;
             }
 
-            if (bodyLook != null)
-            {
-                bodyLook.Changed -= SaveBodyLook;
-            }
+            lookLink?.Dispose();
+            lookLink = null;
 
             if (inventoryController != null)
             {
@@ -155,11 +159,12 @@ namespace Mmorpg.Client.App
             PlayerPrefs.Save();
         }
 
-        private void SaveBodyLook()
+        private static void DeleteRetiredPreferences()
         {
-            PlayerPrefs.SetString(BodyLookPreference, bodyLook.Look.Key);
-            PlayerPrefs.SetString(BodyModelPreference, bodyLook.Model ?? string.Empty);
-            PlayerPrefs.Save();
+            foreach (var key in RetiredPreferences)
+            {
+                PlayerPrefs.DeleteKey(key);
+            }
         }
 
         // The equipped items of the shown inventory, with its predicted moves, so the local body
@@ -350,7 +355,8 @@ namespace Mmorpg.Client.App
                     corpseController,
                     worldInteractionController,
                     combatController,
-                    worldMenu));
+                    worldMenu,
+                    bodyLook));
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(corpseController, runtimePrimitiveMaterial, sceneContext));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(

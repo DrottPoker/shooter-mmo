@@ -120,7 +120,16 @@ namespace Mmorpg.SharedTests
                     RealtimeProtocol.EncodeOwnerItemStateChanged),
                 [RealtimeMessageType.GatheringState] = Typed<RealtimeGatheringState>(
                     RealtimeProtocol.TryDecodeGatheringState,
-                    RealtimeProtocol.EncodeGatheringState)
+                    RealtimeProtocol.EncodeGatheringState),
+                [RealtimeMessageType.EntityAppearanceChanged] = Typed<RealtimeEntityAppearanceChanged>(
+                    RealtimeProtocol.TryDecodeEntityAppearanceChanged,
+                    RealtimeProtocol.EncodeEntityAppearanceChanged),
+                [RealtimeMessageType.AppearanceIntent] = Typed<RealtimeAppearanceIntent>(
+                    RealtimeProtocol.TryDecodeAppearanceIntent,
+                    RealtimeProtocol.EncodeAppearanceIntent),
+                [RealtimeMessageType.AppearanceIntentResult] = Typed<RealtimeAppearanceIntentResult>(
+                    RealtimeProtocol.TryDecodeAppearanceIntentResult,
+                    RealtimeProtocol.EncodeAppearanceIntentResult)
             };
         }
 

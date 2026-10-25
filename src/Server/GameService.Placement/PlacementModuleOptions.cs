@@ -17,6 +17,11 @@ public sealed record PlacementModuleOptions(
 
     public SimulationWorkerLeasePolicy WorkerLeasePolicy => new(WorkerHeartbeatTimeout);
 
+    // Whether a worker may give a character another body model and look for development tools,
+    // such as the World Debug panel; only in the Development environment, since character
+    // creation chooses them otherwise.
+    public bool DevelopmentLooks { get; init; }
+
     // How often the shard gauges re-read the shard list. Optional, 15 seconds by default.
     public TimeSpan MetricsInterval { get; init; } = TimeSpan.FromSeconds(15);
 

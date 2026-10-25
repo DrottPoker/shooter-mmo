@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 23,
+    "version": 24,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -178,6 +178,36 @@
       "description": "Corpses in one presence snapshot chunk."
     },
     {
+      "name": "MaximumAppearanceKindLength",
+      "value": 32,
+      "visibility": "public",
+      "description": "Characters in the kind of a look, such as underwear."
+    },
+    {
+      "name": "MaximumAppearanceSlotLength",
+      "value": 32,
+      "visibility": "public",
+      "description": "Characters in the visual slot of a kind worn per slot, such as legs."
+    },
+    {
+      "name": "MaximumAppearanceNameLength",
+      "value": 64,
+      "visibility": "public",
+      "description": "Characters in a body model or an option of a look, such as Human_Female or Freckles."
+    },
+    {
+      "name": "MaximumAppearanceChoices",
+      "value": 16,
+      "visibility": "public",
+      "description": "Choices in one look."
+    },
+    {
+      "name": "MaximumVisibleEquipment",
+      "value": 8,
+      "visibility": "public",
+      "description": "Equipped items that other players see on one character."
+    },
+    {
       "name": "MaximumCorpseViewSlotsPerChunk",
       "value": 4,
       "visibility": "private",
@@ -349,6 +379,16 @@
       "family": "Combat",
       "description": "What a combat intent asks for.",
       "values": [ { "name": "AttackTarget", "value": 1 }, { "name": "ClearTarget", "value": 2 } ]
+    },
+    {
+      "name": "AppearanceIntentKind",
+      "family": "Replication",
+      "description": "What an appearance intent asks for.",
+      "values": [
+        { "name": "LowerHeadwear", "value": 1 },
+        { "name": "RaiseHeadwear", "value": 2 },
+        { "name": "SetDevelopmentLook", "value": 3 }
+      ]
     },
     {
       "name": "CombatLifeState",
@@ -809,6 +849,87 @@
       ]
     },
     {
+      "name": "AppearanceChoice",
+      "family": "Replication",
+      "description": "One choice of a character's look: an option of a kind, in a slot for a kind worn per slot.",
+      "fields": [
+        {
+          "name": "Kind",
+          "type": "string",
+          "maxLength": "MaximumAppearanceKindLength",
+          "description": "The kind of look, such as face, tattoo, underwear, or hair."
+        },
+        {
+          "name": "Slot",
+          "type": "string",
+          "maxLength": "MaximumAppearanceSlotLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The visual slot of a kind worn per slot, such as legs for underwear, or empty."
+        },
+        {
+          "name": "Option",
+          "type": "string",
+          "maxLength": "MaximumAppearanceNameLength",
+          "description": "The chosen option, such as Clean or DarkBrownHair."
+        }
+      ]
+    },
+    {
+      "name": "VisibleEquipment",
+      "family": "Replication",
+      "description": "An equipped item that other players see on a character, by its definition, which names the garments it shows.",
+      "fields": [
+        {
+          "name": "EquipmentSlotId",
+          "type": "string",
+          "maxLength": "MaximumEquipmentSlotIdLength",
+          "description": "The equipment slot, such as back."
+        },
+        {
+          "name": "DefinitionId",
+          "type": "string",
+          "maxLength": "MaximumDefinitionIdLength",
+          "description": "The item definition."
+        }
+      ]
+    },
+    {
+      "name": "CharacterAppearance",
+      "family": "Replication",
+      "description": "How a character looks to every client: its body model, the choices of its look, the items others see on it, and whether it lowered its headwear.",
+      "fields": [
+        {
+          "name": "BodyModel",
+          "type": "string",
+          "maxLength": "MaximumAppearanceNameLength",
+          "description": "The body model, such as Human_Female."
+        },
+        {
+          "name": "Choices",
+          "type": "array",
+          "items": "AppearanceChoice",
+          "maxCount": "MaximumAppearanceChoices",
+          "nullAsEmpty": true,
+          "description": "The choices of the look, such as its face, eyes, tattoo, underwear, and hair."
+        },
+        {
+          "name": "Equipment",
+          "type": "array",
+          "items": "VisibleEquipment",
+          "maxCount": "MaximumVisibleEquipment",
+          "distinctBy": "EquipmentSlotId",
+          "nullAsEmpty": true,
+          "description": "The items others see on the character, one per equipment slot."
+        },
+        {
+          "name": "HeadwearLowered",
+          "type": "bool",
+          "description": "Whether the character lowered its headwear, such as a hood pushed back."
+        }
+      ]
+    },
+    {
       "name": "CorpsePresence",
       "family": "Corpses",
       "description": "A corpse near the character, as the world shows it before it is opened.",
@@ -840,6 +961,12 @@
           "type": "string",
           "maxLength": "MaximumCorpsePresentationKeyLength",
           "description": "The presentation the client renders."
+        },
+        {
+          "name": "Appearance",
+          "type": "CharacterAppearance",
+          "optional": true,
+          "description": "How a player corpse looks: the dead character's body model and look, wearing the items still in its equipment section; absent for a Mob corpse."
         }
       ]
     },
@@ -1229,6 +1356,11 @@
           "name": "InitialState",
           "type": "PlayerState",
           "description": "The movement state when the entity entered interest."
+        },
+        {
+          "name": "Appearance",
+          "type": "CharacterAppearance",
+          "description": "How the character looks when it entered interest."
         }
       ]
     },
@@ -2599,6 +2731,84 @@
           "nullAsEmpty": true,
           "description": "The Recovery deliveries the transaction claimed, which leave Recovery Storage."
         }
+      ]
+    },
+    {
+      "name": "EntityAppearanceChanged",
+      "id": 36,
+      "family": "Replication",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, or in Development its body model or look.",
+      "parameter": "change",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the character." },
+        { "name": "Appearance", "type": "CharacterAppearance", "description": "How the character looks now." }
+      ]
+    },
+    {
+      "name": "AppearanceIntent",
+      "id": 37,
+      "family": "Replication",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Lowers or raises the character's headwear, or in Development gives it another body model and look.",
+      "parameter": "intent",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "Correlates the result." },
+        { "name": "Kind", "type": "AppearanceIntentKind", "description": "What the intent asks for." }
+      ],
+      "variants": {
+        "discriminator": "Kind",
+        "fields": [
+          {
+            "name": "BodyModel",
+            "type": "string",
+            "maxLength": "MaximumAppearanceNameLength",
+            "description": "The body model of the new look."
+          },
+          {
+            "name": "Choices",
+            "type": "array",
+            "items": "AppearanceChoice",
+            "maxCount": "MaximumAppearanceChoices",
+            "description": "The choices of the new look."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [
+              { "kind": "LowerHeadwear", "factory": "CreateLowerHeadwear" },
+              { "kind": "RaiseHeadwear", "factory": "CreateRaiseHeadwear" }
+            ],
+            "fields": []
+          },
+          {
+            "kinds": [ { "kind": "SetDevelopmentLook", "factory": "CreateSetDevelopmentLook" } ],
+            "fields": [ { "field": "BodyModel" }, { "field": "Choices" } ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "AppearanceIntentResult",
+      "id": 38,
+      "family": "Replication",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The outcome of an appearance intent; the new look follows as an EntityAppearanceChanged.",
+      "parameter": "result",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "The intent this answers." },
+        { "name": "Kind", "type": "AppearanceIntentKind", "description": "What the intent asked for." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the worker stored the change." },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the intent failed." }
       ]
     }
   ]

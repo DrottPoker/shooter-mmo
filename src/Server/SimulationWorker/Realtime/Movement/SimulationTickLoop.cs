@@ -32,6 +32,9 @@ internal sealed class SimulationTickLoop(
     private readonly List<SimulationVector3> collisionAnchorBuffer = [];
     private readonly PlayerSpatialGrid playerGrid = new();
 
+    // Sends the looks that changed with the snapshots.
+    public AppearanceReplicator? Appearances { get; init; }
+
     public void ProcessDueTicks(
         TimeSpan elapsed,
         TimeSpan simulationInterval,
@@ -81,6 +84,7 @@ internal sealed class SimulationTickLoop(
             var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
             if (clock.ServerTick % snapshotIntervalTicks == 0)
             {
+                Appearances?.Broadcast();
                 snapshots.Broadcast();
             }
 

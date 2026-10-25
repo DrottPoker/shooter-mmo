@@ -150,6 +150,21 @@ namespace Mmorpg.Client.Api
                 onError);
         }
 
+        public IEnumerator GetCharacterAppearanceCatalog(
+            string gameServiceBaseUrl,
+            string sessionToken,
+            Action<CharacterAppearanceCatalogResponse> onSuccess,
+            Action<ApiError> onError)
+        {
+            return SendJson(
+                "GET",
+                CombineUrl(gameServiceBaseUrl, "/api/character-appearance"),
+                null,
+                sessionToken,
+                onSuccess,
+                onError);
+        }
+
         public IEnumerator GetShards(
             string gameServiceBaseUrl,
             Action<ShardResponse[]> onSuccess,

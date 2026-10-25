@@ -14,9 +14,9 @@ namespace Mmorpg.Client.Gameplay
         Tattoo,
     }
 
-    // When a player chooses each kind of look and how many a body shows. Character creation, the
-    // look a server stores, and the NPC who changes a tattoo come later and follow these rules;
-    // until then F2 and the Wardrobe show them.
+    // When a player chooses each kind of look and how many a body shows. The appearance content
+    // that the server checks every look against, content/characters/appearance.json, has the same
+    // rules, which CharacterLookTests holds; F2 and the Wardrobe show them.
     public static class AppearanceRules
     {
         public readonly struct Rule

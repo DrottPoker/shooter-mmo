@@ -47,7 +47,8 @@ namespace Mmorpg.GameProtocol
             long expiresAtUnixMilliseconds,
             bool isEmpty,
             string sourceDisplayName,
-            string presentationKey)
+            string presentationKey,
+            RealtimeCharacterAppearance appearance)
         {
             CorpseId = corpseId;
             PositionX = positionX;
@@ -58,6 +59,7 @@ namespace Mmorpg.GameProtocol
             IsEmpty = isEmpty;
             SourceDisplayName = sourceDisplayName;
             PresentationKey = presentationKey;
+            Appearance = appearance;
         }
 
         /// <summary>
@@ -104,6 +106,11 @@ namespace Mmorpg.GameProtocol
         /// The presentation the client renders.
         /// </summary>
         public string PresentationKey { get; }
+
+        /// <summary>
+        /// How a player corpse looks: the dead character's body model and look, wearing the items still in its equipment section; absent for a Mob corpse.
+        /// </summary>
+        public RealtimeCharacterAppearance Appearance { get; }
     }
 
     /// <summary>
@@ -2124,13 +2131,24 @@ namespace Mmorpg.GameProtocol
             writer.WriteBoolean(value.IsEmpty);
             writer.WriteString(value.SourceDisplayName);
             writer.WriteString(value.PresentationKey);
+            var hasAppearance = value.Appearance != null;
+            writer.WriteBoolean(hasAppearance);
+            if (hasAppearance)
+            {
+                WriteCharacterAppearance(ref writer, value.Appearance);
+            }
         }
 
         private static int SizeOfCorpsePresence(RealtimeCorpsePresence value)
         {
-            var size = 41;
+            var size = 42;
             size += StringSize(value.SourceDisplayName);
             size += StringSize(value.PresentationKey);
+            if (value.Appearance != null)
+            {
+                size += SizeOfCharacterAppearance(value.Appearance);
+            }
+
             return size;
         }
 
@@ -2182,7 +2200,21 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, yawDegrees, expiresAtUnixMilliseconds, isEmpty, sourceDisplayName, presentationKey);
+            if (!reader.TryReadBoolean(out var hasAppearance, out error))
+            {
+                return false;
+            }
+
+            RealtimeCharacterAppearance appearance = null;
+            if (hasAppearance)
+            {
+                if (!TryReadCharacterAppearance(ref reader, out appearance, out error))
+                {
+                    return false;
+                }
+            }
+
+            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, yawDegrees, expiresAtUnixMilliseconds, isEmpty, sourceDisplayName, presentationKey, appearance);
             return true;
         }
 
@@ -2198,7 +2230,8 @@ namespace Mmorpg.GameProtocol
                 || string.IsNullOrWhiteSpace(value.SourceDisplayName)
                 || value.SourceDisplayName.Length > MaximumCorpseSourceNameLength
                 || string.IsNullOrWhiteSpace(value.PresentationKey)
-                || value.PresentationKey.Length > MaximumCorpsePresentationKeyLength)
+                || value.PresentationKey.Length > MaximumCorpsePresentationKeyLength
+                || (value.Appearance != null && !IsValidCharacterAppearance(value.Appearance)))
             {
                 return false;
             }
