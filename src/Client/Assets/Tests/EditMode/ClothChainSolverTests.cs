@@ -21,6 +21,7 @@ namespace Mmorpg.Client.Tests.EditMode
         private static readonly int MovingId = Animator.StringToHash(HumanLocomotion.MovingParameter);
         private static readonly int RateId = Animator.StringToHash(HumanLocomotion.RateParameter);
 
+        private readonly List<GameObject> others = new List<GameObject>();
         private GameObject body;
 
         [TearDown]
@@ -30,6 +31,15 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 Object.DestroyImmediate(body);
             }
+
+            foreach (var other in others)
+            {
+                Object.DestroyImmediate(other);
+            }
+
+            others.Clear();
+            ClothChainSolver.SharesMeasuresOutOfPlay = false;
+            ClothChainSolver.ForgetSharedMeasures();
         }
 
         [Test]
@@ -318,6 +328,88 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void OutOfViewTheChainsKeepTheirPoseAndStartAgainWhenSeen()
+        {
+            var (animator, solver) = Dress(ClothChainKind.Skirt);
+            Move(animator, HumanLocomotion.JogSpeed);
+            Run(animator, solver, 60);
+            var pose = ClothChains.All.SelectMany(chain => chain.Bones).ToDictionary(bone => bone, bone => Bone(bone).localRotation);
+            animator.Update(Step);
+            solver.Simulate(Step, ClothChainSolver.Detail.Hidden);
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothChainSolver.Detail.Hidden));
+            foreach (var pair in pose)
+            {
+                Assert.That(Bone(pair.Key).localRotation, Is.EqualTo(pair.Value), pair.Key);
+            }
+
+            // The body moved far while out of view; seen again, its chains hang from it at once
+            // instead of swinging after where they were.
+            Move(animator, 0f);
+            body.transform.position += new Vector3(1.5f, 0f, 0f);
+            animator.Update(Step);
+            solver.Simulate(Step, ClothChainSolver.Detail.Springs);
+            foreach (var chain in ClothChains.All.Where(chain => chain.Kind == ClothChainKind.Skirt))
+            {
+                var root = Bone(chain.Bones[0]);
+                var tip = Bone(chain.Bones[chain.Bones.Count - 1]);
+                Assert.That(root.position.y - tip.position.y, Is.GreaterThan(0.4f), chain.Bones[0]);
+            }
+        }
+
+        [Test]
+        public void InPlayBodiesOfOneModelShareWhatWasMeasuredAndMoveAlike()
+        {
+            // A body that measured itself, as every body does out of play.
+            var (aloneAnimator, alone) = Dress(ClothChainKind.Skirt, ClothChainKind.Cloak);
+            ClothChainSolver.SharesMeasuresOutOfPlay = true;
+            var (firstAnimator, first) = DressOther(ClothChainKind.Skirt, ClothChainKind.Cloak);
+            var (secondAnimator, second) = DressOther(ClothChainKind.Skirt, ClothChainKind.Cloak);
+            Assert.That(second.Capsules.Select(capsule => capsule.Radius), Is.EqualTo(alone.Capsules.Select(capsule => capsule.Radius)));
+
+            foreach (var animator in new[] { aloneAnimator, firstAnimator, secondAnimator })
+            {
+                Move(animator, HumanLocomotion.JogSpeed);
+            }
+
+            for (var step = 0; step < 120; step++)
+            {
+                foreach (var (animator, solver) in new[] { (aloneAnimator, alone), (firstAnimator, first), (secondAnimator, second) })
+                {
+                    animator.Update(Step);
+                    solver.Simulate(Step, ClothChainSolver.Detail.Springs);
+                }
+            }
+
+            foreach (var chain in ClothChains.All.Where(chain => chain.Kind != ClothChainKind.Hood))
+            {
+                var expected = alone.ParticlesOf(chain);
+                foreach (var solver in new[] { first, second })
+                {
+                    var particles = solver.ParticlesOf(chain);
+                    for (var index = 0; index < expected.Count; index++)
+                    {
+                        Assert.That(Vector3.Distance(particles[index], expected[index]), Is.LessThan(1e-4f), chain.Bones[0] + " " + index);
+                    }
+                }
+            }
+        }
+
+        // A body's capsules fit the body alone, not the garments drawn with it, so every body of a
+        // model collides alike whatever it wore when its cloth went on.
+        [Test]
+        public void TheCapsulesFitTheBodyAloneNotTheGarmentsItWears()
+        {
+            var (_, bare) = Dress(ClothChainKind.Cloak);
+            var expected = bare.Capsules.Select(capsule => capsule.Radius).ToArray();
+            using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(candidate => candidate.Name == "Human_Male")))
+            {
+                preview.Wear(new[] { "WoolTrousers", "LinenLongShirt", "WoolCloak" });
+                Assert.That(preview.Solver.IsActive, Is.True);
+                Assert.That(preview.Solver.Capsules.Select(capsule => capsule.Radius), Is.EqualTo(expected).Within(1e-5f));
+            }
+        }
+
+        [Test]
         public void ABodyWithoutClothLeavesItsChainsAlone()
         {
             SpawnBody();
@@ -361,6 +453,25 @@ namespace Mmorpg.Client.Tests.EditMode
             }
 
             Assert.That(solver.IsActive, Is.True);
+            return (animator, solver);
+        }
+
+        // Another body, dressed like Dress dresses the test's own.
+        private (Animator Animator, ClothChainSolver Solver) DressOther(params ClothChainKind[] kinds)
+        {
+            var other = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath));
+            other.hideFlags = HideFlags.HideAndDontSave;
+            others.Add(other);
+            var animator = other.GetComponent<Animator>();
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.Rebind();
+            animator.Update(0f);
+            var solver = other.GetComponent<ClothChainSolver>();
+            foreach (var kind in kinds)
+            {
+                solver.Activate(kind, ClothProfile.For(kind));
+            }
+
             return (animator, solver);
         }
 
