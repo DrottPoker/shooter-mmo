@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.Tools.ActiveSimulationBots;
 
@@ -51,7 +52,7 @@ public sealed class ActiveSimulationBotAuthorityClient(
                         (int)response.StatusCode,
                         "invalid_authority_response",
                         "GameService returned an empty development bot ticket response.")
-                    : ActiveSimulationBotTicketResult.Success(ticket);
+                    : Validate(ticket, (int)response.StatusCode);
             }
 
             var problem = await TryReadProblemAsync(response, cancellationToken);
@@ -75,6 +76,45 @@ public sealed class ActiveSimulationBotAuthorityClient(
                 "authority_unavailable",
                 exception.Message);
         }
+    }
+
+    // A ticket the bot cannot use counts as a rejection instead of stopping the tool. Like the
+    // Unity client, a bot never connects to a worker that runs another protocol version.
+    private ActiveSimulationBotTicketResult Validate(ActiveSimulationBotTicket ticket, int statusCode)
+    {
+        var endpoint = ticket.Endpoint;
+        if (ticket.AccountId == Guid.Empty
+            || ticket.CharacterId == Guid.Empty
+            || string.IsNullOrWhiteSpace(ticket.CharacterName)
+            || string.IsNullOrWhiteSpace(ticket.WorldId)
+            || string.IsNullOrWhiteSpace(ticket.JoinTicket)
+            || endpoint is null
+            || string.IsNullOrWhiteSpace(endpoint.Host)
+            || endpoint.UdpPort is < 1 or > ushort.MaxValue)
+        {
+            return ActiveSimulationBotTicketResult.Failure(
+                statusCode,
+                "invalid_authority_response",
+                "GameService returned an incomplete development bot ticket.");
+        }
+
+        if (!string.Equals(ticket.ShardId, options.ShardId, StringComparison.Ordinal))
+        {
+            return ActiveSimulationBotTicketResult.Failure(
+                statusCode,
+                "invalid_authority_response",
+                $"GameService issued a ticket for shard {ticket.ShardId} instead of {options.ShardId}.");
+        }
+
+        if (endpoint.ProtocolVersion != RealtimeProtocol.Version)
+        {
+            return ActiveSimulationBotTicketResult.Failure(
+                statusCode,
+                "protocol_version_mismatch",
+                $"SimulationWorker runs protocol version {endpoint.ProtocolVersion}, but the bots require version {RealtimeProtocol.Version}.");
+        }
+
+        return ActiveSimulationBotTicketResult.Success(ticket);
     }
 
     private static async Task<ActiveSimulationBotProblem?> TryReadProblemAsync(

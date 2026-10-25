@@ -34,7 +34,7 @@ public sealed class ActiveSimulationBotInputSource : ISimulationBotInputSource
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.navigation = navigation;
-        random = new Random(HashCode.Combine(options.Seed, botIndex));
+        random = new Random(RandomSeed(options.Seed, botIndex));
     }
 
     public int PlannedWalks { get; private set; }
@@ -150,6 +150,13 @@ public sealed class ActiveSimulationBotInputSource : ISimulationBotInputSource
         }
 
         return lastPathId;
+    }
+
+    // The same seed gives a bot the same walks in every run. System.HashCode is seeded per
+    // process, so it gave every run other walks.
+    private static int RandomSeed(int seed, int botIndex)
+    {
+        return unchecked((int)(((uint)seed * 0x9E3779B1u) ^ ((uint)botIndex * 0x85EBCA6Bu)));
     }
 
     private double RandomBetween(double minimum, double maximum)

@@ -40,6 +40,12 @@ public interface ISimulationBotInputSource
         SimulationBotPosition position);
 }
 
+// Sends one encoded message on the channel and with the delivery its protocol descriptor names.
+public interface ISimulationBotTransport
+{
+    void Send(byte[] packet, byte channel, RealtimeDelivery delivery);
+}
+
 public interface ISimulationBotRealtimeObserver
 {
     void OnJoined(RealtimeJoinAccepted session);

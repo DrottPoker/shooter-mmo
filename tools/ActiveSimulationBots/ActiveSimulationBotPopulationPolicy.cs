@@ -38,4 +38,28 @@ public static class ActiveSimulationBotPopulationPolicy
         return desiredOnlineBots < targetPopulation
             && connectionOccupancy < maximumActiveBots;
     }
+
+    // Doubles from the minimum with every consecutive failure up to the maximum, then scales
+    // by a jitter between 0.75 and 1.25 drawn from jitterSample in [0, 1).
+    public static TimeSpan GetRetryDelay(
+        int consecutiveFailures,
+        TimeSpan minimumRetryDelay,
+        TimeSpan maximumRetryDelay,
+        double jitterSample)
+    {
+        if (consecutiveFailures < 1
+            || minimumRetryDelay <= TimeSpan.Zero
+            || maximumRetryDelay < minimumRetryDelay
+            || jitterSample is < 0d or >= 1d)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(consecutiveFailures),
+                "Retry values are outside their valid range.");
+        }
+
+        var exponentialSeconds = minimumRetryDelay.TotalSeconds
+            * Math.Pow(2d, Math.Min(consecutiveFailures, 10) - 1);
+        var cappedSeconds = Math.Min(maximumRetryDelay.TotalSeconds, exponentialSeconds);
+        return TimeSpan.FromSeconds(cappedSeconds * (0.75d + (jitterSample * 0.5d)));
+    }
 }

@@ -1,6 +1,6 @@
 # Stack Stress Testing
 
-Last updated: 2026-10-21
+Last updated: 2026-10-25
 
 ## Purpose
 
@@ -74,7 +74,9 @@ Each full-stack bot completes the normal public lifecycle:
 5. Optionally repeat authenticated session validation requests to isolate the
    Redis cache and PostgreSQL fallback cost.
 6. List characters and shards.
-7. Request a normal join ticket through GameService placement.
+7. Request a normal join ticket through GameService placement. Like the Unity
+   client, the bot refuses a placement whose worker runs another protocol
+   version, with `protocol_version_mismatch`.
 8. Join SimulationWorker over UDP and run the same realtime workload as
    worker-only mode.
 9. Leave the simulation cleanly and log out the account session.
@@ -223,9 +225,12 @@ Expected result:
 - Bots ramp in groups of 25 until all 100 have started.
 - The steady interval starts after every bot has joined or failed.
 - Joined bots send movement at the worker-provided simulation rate.
-- Bots validate reliable player, actor, corpse-presence, and carry-state
-  packets plus unreliable snapshots, and decode the gathering, combat, and owner
-  item quantity messages a real client receives.
+- Bots check that every message arrives with the channel and delivery the
+  protocol names and decodes, as
+  [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md#protocol-handling)
+  describes, and act on owner snapshots and the results of their own item and
+  corpse operations. A bot that fails releases its worker connection at once,
+  so its character does not stay joined until the run ends.
 - Every joined bot requests a graceful leave after the steady interval.
 - The command exits zero only when every requested bot joined and left cleanly.
 - A JSON report is written under `artifacts/stress`.

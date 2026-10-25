@@ -108,6 +108,25 @@ public sealed class ActiveSimulationBotNavigationTests
         Assert.Equal(1, source.StraightWalks);
     }
 
+    // Pinned, so a random source seeded per process, like System.HashCode, fails here.
+    [Fact]
+    public void TheSameSeedGivesABotTheSameWalkInEveryRun()
+    {
+        var path = new ActiveSimulationBotInputSource(WalkingOptions(), 3).SelectPath(
+            1,
+            JoinedSession("collision-revision"),
+            new SimulationBotPosition(0f, 0f, -8f));
+        var otherBot = new ActiveSimulationBotInputSource(WalkingOptions(), 4).SelectPath(
+            1,
+            JoinedSession("collision-revision"),
+            new SimulationBotPosition(0f, 0f, -8f));
+
+        var waypoint = Assert.Single(path!.Waypoints);
+        Assert.Equal(2.3779707f, waypoint.X, 0.0001f);
+        Assert.Equal(7.6748405f, waypoint.Z, 0.0001f);
+        Assert.NotEqual(waypoint.X, Assert.Single(otherBot!.Waypoints).X);
+    }
+
     // A 28 m ground with a wall across the middle, 8 m wide, between the bot and its goal.
     private static ChunkedStaticCollisionWorld WorldWithWall()
     {

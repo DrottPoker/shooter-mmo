@@ -548,6 +548,11 @@ only on a worker with its own version.
   a peer accepts, including limits, enum values, and validation rules.
 - Never reuse the id of a removed message or the value of a removed enum
   member.
+- Give every new message type a golden vector, and handle every new
+  server-to-client type in the Unity client and in `SimulationBotSession`, which
+  every development and stress bot runs. The golden tests fail for a type
+  without a vector, and `SimulationBotSessionTests` fails for a type the bots do
+  not handle.
 - The connection key stays `Mmorpg.Realtime.v8`, so a version mismatch is
   reported as a clear protocol error instead of a refused connection.
 

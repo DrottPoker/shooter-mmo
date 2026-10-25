@@ -151,6 +151,80 @@ public sealed class DevelopmentSimulationBotAuthorityTests
     }
 
     [Fact]
+    public void ANewTicketSupersedesTheUnconsumedTicketOfTheSameBot()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var request = new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 1, "local-shard-1");
+        var abandoned = authority.IssueTicket(request, CreatePlacement());
+
+        var reissued = authority.IssueTicket(request, CreatePlacement());
+
+        Assert.True(abandoned.Succeeded && reissued.Succeeded, reissued.Error?.Message);
+        Assert.Equal(abandoned.Value!.CharacterId, reissued.Value!.CharacterId);
+        Assert.Equal(1, authority.CaptureSnapshot().PendingTickets);
+        Assert.True(authority.TryConsumeTicket(
+            new ConsumeSimulationJoinTicketRequest(
+                abandoned.Value.JoinTicket,
+                "worker-1",
+                "runtime-1",
+                "local-shard-1"),
+            out var consumedAbandoned));
+        Assert.Equal("invalid_join_ticket", consumedAbandoned.Error!.Code);
+        Assert.True(authority.TryConsumeTicket(
+            new ConsumeSimulationJoinTicketRequest(
+                reissued.Value.JoinTicket,
+                "worker-1",
+                "runtime-1",
+                "local-shard-1"),
+            out var consumed));
+        Assert.True(consumed.Succeeded);
+    }
+
+    [Fact]
+    public void ASupersededTicketStopsHoldingAConnection()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var placement = CreatePlacement() with { MaxConnections = 1 };
+        var request = new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 1, "local-shard-1");
+        Assert.True(authority.IssueTicket(request, placement).Succeeded);
+
+        var reissued = authority.IssueTicket(request, placement);
+        var otherBot = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 2, "local-shard-1"),
+            placement);
+
+        Assert.True(reissued.Succeeded, reissued.Error?.Message);
+        Assert.Equal("development_bot_worker_capacity_reached", otherBot.Error!.Code);
+    }
+
+    [Fact]
+    public void ABotWithAnActiveSessionGetsNoSecondTicket()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var request = new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 1, "local-shard-1");
+        var issued = authority.IssueTicket(request, CreatePlacement());
+        Assert.True(authority.TryConsumeTicket(
+            new ConsumeSimulationJoinTicketRequest(
+                issued.Value!.JoinTicket,
+                "worker-1",
+                "runtime-1",
+                "local-shard-1"),
+            out var consumed));
+        Assert.True(consumed.Succeeded);
+
+        var second = authority.IssueTicket(request, CreatePlacement());
+
+        Assert.Equal("development_bot_already_active", second.Error!.Code);
+        Assert.Equal(0, authority.CaptureSnapshot().PendingTickets);
+    }
+
+    [Fact]
     public void ReservationsGroupPendingTicketsAndActiveSessionsPerRuntime()
     {
         var authority = new DevelopmentSimulationBotAuthority(

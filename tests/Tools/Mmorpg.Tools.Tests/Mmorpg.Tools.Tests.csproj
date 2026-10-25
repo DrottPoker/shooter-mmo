@@ -9,4 +9,10 @@
     <ProjectReference Include="..\..\Testing\Mmorpg.Testing\Mmorpg.Testing.csproj" />
     <ProjectReference Include="..\..\Testing\Mmorpg.Testing.Content\Mmorpg.Testing.Content.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- The realtime protocol vectors, so the bot client is tested against every message type. -->
+    <Compile Include="..\..\..\src\Client\Assets\Tests\EditMode\Shared\RealtimeProtocolGolden*.cs"
+             Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

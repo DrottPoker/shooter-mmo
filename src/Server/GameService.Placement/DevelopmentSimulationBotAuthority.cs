@@ -38,6 +38,34 @@ internal sealed class DevelopmentSimulationBotAuthority(
         lock (gate)
         {
             Cleanup(now);
+            if (sessions.Values.Any(session =>
+                    session.BotInstanceId == request.BotInstanceId
+                    && session.ReleasedAt is null
+                    && session.ExpiresAt > now))
+            {
+                return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
+                    "development_bot_already_active",
+                    "This development bot already has an active simulation session.");
+            }
+
+            if (identities.TryGetValue(request.BotInstanceId, out var known)
+                && known.BotIndex != request.BotIndex)
+            {
+                return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
+                    "development_bot_identity_changed",
+                    "A development bot instance cannot change its bot index while GameService is running.");
+            }
+
+            // A bot asks again only after it gave up its connection, so its own unconsumed
+            // ticket is superseded, as a player's is, and stops holding a connection.
+            foreach (var supersededHash in pendingTickets
+                         .Where(pair => pair.Value.BotInstanceId == request.BotInstanceId)
+                         .Select(pair => pair.Key)
+                         .ToArray())
+            {
+                pendingTickets.Remove(supersededHash);
+            }
+
             var pendingForRuntime = pendingTickets.Values.Count(ticket =>
                 ticket.ExpiresAt > now
                 && string.Equals(ticket.WorkerId, placement.WorkerId, StringComparison.Ordinal)
@@ -64,47 +92,16 @@ internal sealed class DevelopmentSimulationBotAuthority(
                     "The selected SimulationWorker has reached its connection capacity.");
             }
 
-            if (pendingTickets.Values.Any(ticket =>
-                    ticket.BotInstanceId == request.BotInstanceId
-                    && ticket.ExpiresAt > now))
-            {
-                return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
-                    "development_bot_ticket_pending",
-                    "This development bot already has an unconsumed join ticket.");
-            }
-
-            if (sessions.Values.Any(session =>
-                    session.BotInstanceId == request.BotInstanceId
-                    && session.ReleasedAt is null
-                    && session.ExpiresAt > now))
-            {
-                return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
-                    "development_bot_already_active",
-                    "This development bot already has an active simulation session.");
-            }
-
-            if (!identities.TryGetValue(request.BotInstanceId, out var identity))
-            {
-                identity = new BotIdentity(
+            var identity = known is null
+                ? new BotIdentity(
                     request.BotInstanceId,
                     request.BotIndex,
                     Guid.NewGuid(),
                     Guid.NewGuid(),
                     $"{options.CharacterNamePrefix} {request.BotIndex}",
-                    now);
-                identities.Add(request.BotInstanceId, identity);
-            }
-            else if (identity.BotIndex != request.BotIndex)
-            {
-                return ServiceResult<DevelopmentSimulationBotTicketResponse>.Conflict(
-                    "development_bot_identity_changed",
-                    "A development bot instance cannot change its bot index while GameService is running.");
-            }
-            else
-            {
-                identity = identity with { LastTouchedAt = now };
-                identities[request.BotInstanceId] = identity;
-            }
+                    now)
+                : known with { LastTouchedAt = now };
+            identities[request.BotInstanceId] = identity;
 
             var ticket = TicketPrefix + TokenGenerator.CreateToken();
             var expiresAt = now.Add(options.JoinTicketLifetime);

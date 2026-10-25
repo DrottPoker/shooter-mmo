@@ -78,7 +78,9 @@ separate secret. Its identities, tickets, and sessions remain in memory and are
 never durable account or character data. SimulationWorker uses the same worker
 service routes for real and bot credentials; GameService routes recognized bot
 credentials to the in-memory authority and every other request to the existing
-PostgreSQL services.
+PostgreSQL services. A new ticket request of a bot supersedes the bot's own
+unconsumed ticket, as a player's join supersedes the account's pending ticket,
+so an abandoned bot ticket neither blocks the bot nor holds a connection.
 
 ## Accounts And Authentication
 
