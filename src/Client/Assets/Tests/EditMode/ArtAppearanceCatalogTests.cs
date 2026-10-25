@@ -58,6 +58,10 @@ namespace Mmorpg.Client.Tests.EditMode
                     ArtAppearanceCatalogs.Matches(catalog, ArtAppearanceCatalogs.PartsFor(manifest), ArtAppearanceCatalogs.GarmentsFor(manifest)),
                     Is.True,
                     path + " has other parts or garments than the exports give; run " + ArtAppearanceCatalogs.MenuPath);
+                Assert.That(
+                    ArtAppearanceCatalogs.Matches(catalog, ArtAppearanceCatalogs.AttachmentsFor(manifest)),
+                    Is.True,
+                    path + " has other attachments than the exports give; run " + ArtAppearanceCatalogs.MenuPath);
             }
 
             Assert.That(

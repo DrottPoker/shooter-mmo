@@ -13,7 +13,8 @@ namespace Mmorpg.Client.Gameplay
     // shared materials, so bodies that look the same draw with the same materials; the default
     // look without a tint draws with the body's own materials. A garment draws in the look's dye
     // colors or its natural ones. A garment with loose cloth lets the body's ClothChainSolver move
-    // its chains.
+    // its chains. An attachment the look holds, such as a sword, is part of the combined renderer on
+    // its socket, and the fingers of a hand that holds one close around its grip.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -24,18 +25,22 @@ namespace Mmorpg.Client.Gameplay
 
         private static readonly BodyAppearanceCatalog.Garment[] NoGarments = new BodyAppearanceCatalog.Garment[0];
 
+        private static readonly string[] GripLayers = { HumanLocomotion.MainHandGripLayer, HumanLocomotion.OffHandGripLayer };
+
         [SerializeField] private Material[] skinMaterials = new Material[0];
         [SerializeField] private BodyAppearanceCatalog catalog;
 
         private readonly Dictionary<Renderer, Material[]> ownMaterials = new Dictionary<Renderer, Material[]>();
         private readonly List<BodyAppearanceCatalog.Paint> paints = new List<BodyAppearanceCatalog.Paint>();
         private readonly List<BodyAppearanceCatalog.Garment> worn = new List<BodyAppearanceCatalog.Garment>();
+        private List<BodyAppearanceCatalog.Attachment> held = new List<BodyAppearanceCatalog.Attachment>();
         private SkinnedMeshRenderer[] parts = new SkinnedMeshRenderer[0];
         private PlayerBodyMeshes meshes;
         private string wornKey = string.Empty;
         private SkinnedMeshRenderer combinedRenderer;
         private PlayerBodyMaterials materials;
         private BodyLook look = BodyLook.Default;
+        private bool gripPending;
         private bool tinted;
         private Color tintColor = Color.white;
 
@@ -65,6 +70,12 @@ namespace Mmorpg.Client.Gameplay
         public IReadOnlyList<BodyAppearanceCatalog.Garment> Worn
         {
             get { return worn; }
+        }
+
+        // The attachments the body holds, one per socket, as the look names them.
+        public IReadOnlyList<BodyAppearanceCatalog.Attachment> Held
+        {
+            get { return held; }
         }
 
         // Draws the visible parts and the worn garments as one skinned renderer with the shared
@@ -108,6 +119,8 @@ namespace Mmorpg.Client.Gameplay
             {
                 animator.Rebind();
             }
+
+            Grip();
         }
 
         public static Color TintFor(Color color)
@@ -132,12 +145,14 @@ namespace Mmorpg.Client.Gameplay
             Refresh();
         }
 
-        // The garments of the catalog that the look names, from the lowest layer up; true when
-        // they changed. A body wears one garment per visual slot, such as one chest piece: of two
-        // of a slot that the look names, the first in the catalog is worn.
+        // The garments of the catalog that the look names, from the lowest layer up, and its
+        // attachments; true when they changed. A body wears one garment per visual slot, such as one
+        // chest piece: of two of a slot that the look names, the first in the catalog is worn. It
+        // holds one attachment per socket the same way.
         private bool WearLook()
         {
             worn.Clear();
+            held = new List<BodyAppearanceCatalog.Attachment>();
             if (catalog != null)
             {
                 var slots = new HashSet<string>(StringComparer.Ordinal);
@@ -148,18 +163,23 @@ namespace Mmorpg.Client.Gameplay
                         worn.Add(garment);
                     }
                 }
+
+                held = PlayerBodyMeshes.Held(catalog.Attachments.Where(attachment =>
+                    attachment != null && look.HasAttachment(attachment.Name)).ToList());
             }
 
-            var key = string.Join("+", worn.Select(garment => garment.Name));
+            var key = string.Join("+", worn.Select(garment => garment.Name))
+                + "#" + string.Join("+", held.Select(attachment => attachment.Name));
             var changed = key != wornKey;
             wornKey = key;
             return changed;
         }
 
-        // The combined renderer draws the shared mesh of the parts and the worn garments.
+        // The combined renderer draws the shared mesh of the parts, the worn garments, and the held
+        // attachments.
         private void Assemble()
         {
-            var combined = meshes.For(parts, transform, catalog, worn);
+            var combined = meshes.For(parts, transform, catalog, worn, held);
             var transforms = new Dictionary<string, Transform>();
             foreach (var child in GetComponentsInChildren<Transform>(true))
             {
@@ -175,7 +195,52 @@ namespace Mmorpg.Client.Gameplay
             combinedRenderer.sharedMaterials = combined.Materials.ToArray();
             ownMaterials[combinedRenderer] = combined.Materials.ToArray();
             MoveCloth();
+            Grip();
             Refresh();
+        }
+
+        // An Animator that is enabled again starts from its controller's layer weights.
+        private void OnEnable()
+        {
+            gripPending = true;
+        }
+
+        private void LateUpdate()
+        {
+            if (gripPending)
+            {
+                Grip();
+            }
+        }
+
+        // The fingers of each hand whose socket holds an attachment close around its grip; the
+        // others play the clips as they are. An Animator that does not play yet takes the weights
+        // in the next LateUpdate.
+        private void Grip()
+        {
+            var animator = GetComponent<Animator>();
+            gripPending = false;
+            if (animator == null || animator.runtimeAnimatorController == null)
+            {
+                return;
+            }
+
+            if (!animator.isActiveAndEnabled || !animator.isInitialized)
+            {
+                gripPending = true;
+                return;
+            }
+
+            foreach (var layer in GripLayers)
+            {
+                var index = animator.GetLayerIndex(layer);
+                if (index >= 0)
+                {
+                    var holds = combinedRenderer != null && held.Any(attachment =>
+                        string.Equals(HumanLocomotion.GripLayerFor(attachment.Bone), layer, StringComparison.Ordinal));
+                    animator.SetLayerWeight(index, holds ? 1f : 0f);
+                }
+            }
         }
 
         // The chains of the worn garments' cloth move, each with its garment's model, so a cloak lies

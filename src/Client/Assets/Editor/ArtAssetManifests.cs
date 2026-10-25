@@ -65,6 +65,31 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
         }
 
+        // The exported attachments, static models held on a socket, such as a sword or a shield.
+        public static ArtAssetManifest[] Attachments()
+        {
+            return ManifestPaths()
+                .Select(Load)
+                .Where(manifest => manifest.IsAttachment && manifest.IsExported)
+                .ToArray();
+        }
+
+        // The skeletons with a bone of the socket, such as Socket_MainHand of the Humanoid skeleton
+        // for main_hand.
+        public static (string Skeleton, string Bone)[] SocketBones(string socket)
+        {
+            var folder = Path.Combine(RepositoryLayout.FindRoot(), "art", "Skeletons");
+            return Directory.Exists(folder)
+                ? Directory.GetFiles(folder, "*.json")
+                    .OrderBy(path => path, StringComparer.Ordinal)
+                    .Select(path => JsonUtility.FromJson<ArtSkeleton>(File.ReadAllText(path)))
+                    .SelectMany(skeleton => skeleton.bones
+                        .Where(bone => !bone.deform && string.Equals(bone.socket, socket, StringComparison.Ordinal))
+                        .Select(bone => (skeleton.name, bone.name)))
+                    .ToArray()
+                : Array.Empty<(string, string)>();
+        }
+
         // The exported garment textures, each the look of one template.
         public static ArtAssetManifest[] Textures()
         {
@@ -172,6 +197,9 @@ namespace Mmorpg.Client.Editor
         public bool covers = true;
         // A garment texture: the template it belongs to, such as art/Garments/Shirt.
         public string garment = string.Empty;
+        // An attachment, a static model held on a socket of a skeleton: the socket, such as
+        // main_hand, as its bone names it.
+        public string socket = string.Empty;
         public ArtAssetExport export = new ArtAssetExport();
 
         // The asset's name, its folder, such as LeatherJerkin.
@@ -204,6 +232,11 @@ namespace Mmorpg.Client.Editor
         public bool IsTexture
         {
             get { return string.Equals(kind, ArtAssetManifests.TextureKind, StringComparison.Ordinal); }
+        }
+
+        public bool IsAttachment
+        {
+            get { return !string.IsNullOrEmpty(socket); }
         }
 
         public string UnityTargetPath
@@ -514,5 +547,8 @@ namespace Mmorpg.Client.Editor
         public bool deform;
         // The cloth chain of the bone, such as skirt, cloak, or hood, empty for every other bone.
         public string chain = string.Empty;
+        // The socket the bone is, such as main_hand, the equipment slot whose item it holds; empty
+        // for every other bone.
+        public string socket = string.Empty;
     }
 }

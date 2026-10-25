@@ -1,6 +1,7 @@
 """Renders a review sheet for an asset: one row per exported root object, seen from four
 sides at the game camera pitch, plus a fifth view with a 1.8 m mannequin for scale. Only
-the Export collection is rendered, on a dark green ground. The sheet of an animation library
+the Export collection is rendered, on a dark green ground. The sheet of an attachment shows it alone
+and held on its socket by the bodies of an animation library. The sheet of an animation library
 shows every clip on the bodies of its Reference collection instead: two rows of frames per clip,
 from the front right and from the back left. The sheet of a garment shows it on every body, at rest
 and in the test poses. The sheet of a paint layer shows it on every body as the game does, up close
@@ -13,6 +14,7 @@ import tempfile
 import bmesh
 import bpy
 import numpy as np
+from bpy_extras import anim_utils
 from mathutils import Matrix, Vector
 from mathutils.kdtree import KDTree
 
@@ -693,6 +695,136 @@ def render_cage_sheet(output: str, cell: int, labels: list[str], lines: list[dic
 
 CLIP_FRAMES = 8
 CLIP_YAWS = (35.0, 215.0)
+
+
+# An attachment is shown held in the first frame of this clip, with the hand pose of the other.
+HELD_CLIP = "Idle"
+GRIP_CLIP = "Grip"
+# The close-up of the hand that holds an attachment, and the room around a whole body.
+HAND_RADIUS = 0.15
+BODY_RADIUS = 1.1
+# The meshes of a body that the close-up from inside the arm shows, so the thigh hides nothing.
+HELD_ARM_PARTS = ("_Hands", "_Forearms", "_UpperArms")
+
+
+def _append_held(path: str, root: str) -> tuple[list[bpy.types.Object], list[bpy.types.Object]]:
+    """Every object of an animation library and its clips HELD_CLIP and GRIP_CLIP, appended into this
+    file; returns the armatures, the library's own first, and every appended object."""
+    with bpy.data.libraries.load(path, link=False) as (source, target):
+        if root not in source.objects:
+            raise ArtPipelineError(f'{path} has no object "{root}".')
+        if HELD_CLIP not in source.actions:
+            raise ArtPipelineError(f'{path} has no clip "{HELD_CLIP}" to show an attachment held in.')
+        target.objects = list(source.objects)
+        target.actions = [name for name in (HELD_CLIP, GRIP_CLIP) if name in source.actions]
+    loaded = [o for o in target.objects if o is not None]
+    for obj in loaded:
+        bpy.context.scene.collection.objects.link(obj)
+    arms = sorted((o for o in loaded if o.type == "ARMATURE"), key=lambda o: (o.name != root, o.name))
+    return arms, loaded
+
+
+def _hold_pose(arm: bpy.types.Object) -> None:
+    """The armature in the first frame of HELD_CLIP with the hand pose of GRIP_CLIP over it, as the
+    game layers them, without an action, so the pose stays."""
+    pose = {}
+    for name in (HELD_CLIP, GRIP_CLIP):
+        action = bpy.data.actions.get(name)
+        if action is None or not action.slots:
+            continue
+        channelbag = anim_utils.action_get_channelbag_for_slot(action, action.slots[0])
+        for fc in channelbag.fcurves if channelbag is not None else []:
+            pose[(fc.data_path, fc.array_index)] = fc.evaluate(0.0)
+    poses.rest(arm)
+    for (path, index), value in pose.items():
+        bone, channel = path.split('"')[1], path.rsplit(".", 1)[1]
+        getattr(arm.pose.bones[bone], channel)[index] = value
+    bpy.context.view_layer.update()
+
+
+def _held_copy(root: bpy.types.Object, arm: bpy.types.Object, socket: str) -> list[bpy.types.Object]:
+    """A copy of the attachment whose root lies on the armature's socket, as the game puts it there."""
+    copies = {}
+    for obj in descendants(root):
+        copy = obj.copy()
+        bpy.context.scene.collection.objects.link(copy)
+        copies[obj] = copy
+    for obj, copy in copies.items():
+        if obj.parent in copies:
+            copy.parent = copies[obj.parent]
+            copy.matrix_parent_inverse = obj.matrix_parent_inverse.copy()
+    copies[root].parent = None
+    copies[root].matrix_world = arm.matrix_world @ arm.pose.bones[socket].matrix
+    bpy.context.view_layer.update()
+    return list(copies.values())
+
+
+def render_attachment_sheet(output: str, cell: int, socket: str, library_path: str, library_root: str) -> str:
+    """An attachment alone from four sides and up close where it is held, and held on its socket by
+    every body of an animation library, in the first frame of Idle with the hand pose Grip when the
+    library has it: a row per body with the whole body, the attachment seen from outside the arm,
+    and the hand up close from the front, from inside with only the arms shown, and from behind."""
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    scene = bpy.context.scene
+    exported = export_objects()
+    root = root_objects()[0]
+    camera, sun = _studio(scene, cell)
+    arms, loaded = _append_held(library_path, library_root)
+    # The other bodies copy the pose of the library's armature.
+    _hold_pose(arms[0])
+    held = [_held_copy(root, arm, socket) for arm in arms]
+    arm_parts = [o for o in loaded if o.type == "MESH" and o.name.endswith(HELD_ARM_PARTS)]
+
+    # The camera and the sun light every cell.
+    def show(objects):
+        visible = set(objects) | {camera, sun}
+        for obj in scene.objects:
+            obj.hide_render = obj not in visible
+
+    cells = []
+    low, high = _bounds(exported)
+    center = (low + high) / 2.0
+    radius = max((high - low).length / 2.0, 0.1)
+    # Held in a hand, an attachment shows every side, so every other view looks from below.
+    for index, yaw in enumerate(YAWS):
+        pitch = math.radians(PITCH if index % 2 == 0 else -PITCH)
+        direction = Vector((math.sin(math.radians(yaw)) * math.cos(pitch),
+                            -math.cos(math.radians(yaw)) * math.cos(pitch), math.sin(pitch)))
+        cells.append((exported, lambda d=direction: _aim_from(camera, sun, center, radius, d)))
+    cells.append((exported, lambda: _aim(camera, sun, root.matrix_world.translation, HAND_RADIUS, YAWS[0])))
+    for arm, copy in zip(arms, held):
+        bone = arm.matrix_world @ arm.pose.bones[socket].head
+        side = 1.0 if bone.x > arm.matrix_world.translation.x else -1.0
+        body_center = Vector((arm.matrix_world.translation.x, 0.0, 0.95))
+        item_low, item_high = _bounds(copy)
+        item_center = (item_low + item_high) / 2.0
+        item_radius = max((item_high - item_low).length / 2.0, HAND_RADIUS)
+        cells += [
+            (loaded + copy, lambda c=body_center, s=side: _aim_from(
+                camera, sun, c, BODY_RADIUS, Vector((s * 0.55, 1.0, 0.35)))),
+            (loaded + copy, lambda c=item_center, r=item_radius, s=side: _aim_from(
+                camera, sun, c, r, Vector((s * 1.0, 0.45, 0.25)))),
+            (loaded + copy, lambda c=bone, s=side: _aim_from(
+                camera, sun, c, HAND_RADIUS, Vector((s * 0.3, 1.0, 0.15)))),
+            (arm_parts + copy, lambda c=bone, s=side: _aim_from(
+                camera, sun, c, HAND_RADIUS, Vector((-s * 1.0, 0.3, 0.1)))),
+            (loaded + copy, lambda c=bone, s=side: _aim_from(
+                camera, sun, c, HAND_RADIUS, Vector((s * 0.3, -1.0, 0.3)))),
+        ]
+
+    columns = len(YAWS) + 1
+    rows = (len(cells) + columns - 1) // columns
+    sheet = np.zeros((cell * rows, cell * columns, 4), dtype=np.float32)
+    with tempfile.TemporaryDirectory() as scratch:
+        for index, (objects, aim) in enumerate(cells):
+            show(objects)
+            aim()
+            pixels = _render(scene, os.path.join(scratch, f"{index}.png"))
+            row, column = divmod(index, columns)
+            # Image rows run bottom up, so the first row is drawn at the top.
+            bottom = sheet.shape[0] - (row + 1) * cell
+            sheet[bottom:bottom + cell, column * cell:(column + 1) * cell] = pixels
+    return _save(sheet, output)
 
 
 def render_clip_sheet(output: str, cell: int) -> str:

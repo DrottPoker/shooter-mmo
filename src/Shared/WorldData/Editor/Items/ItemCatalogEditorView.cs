@@ -751,6 +751,8 @@ namespace Mmorpg.WorldData.Editor.Items
             section.Add(form.Text("Garments", "presentation.garments", entry => JoinList(PresentationOf(entry)?.garments), (entry, value) => SetPresentation(entry, presentation => presentation.garments = SplitList(value))));
             section.Add(form.Text("Lowered Garments", "presentation.loweredGarments", entry => JoinList(PresentationOf(entry)?.loweredGarments), (entry, value) => SetPresentation(entry, presentation => presentation.loweredGarments = SplitList(value))));
             section.Add(form.Text("Dye Colors", "presentation.dyes", entry => JoinList(PresentationOf(entry)?.dyes), (entry, value) => SetPresentation(entry, presentation => presentation.dyes = SplitList(value))));
+            // The attachment the item holds on the socket of its equipment slot, such as IronSword.
+            section.Add(form.Text("Attachment", "presentation.attachment", entry => PresentationOf(entry)?.attachment, (entry, value) => SetPresentation(entry, presentation => presentation.attachment = value)));
 
             var icon = new ObjectField("Icon") { objectType = typeof(Sprite), allowSceneObjects = false };
             icon.RegisterValueChangedCallback(change => SetIcon(change.newValue as Sprite));

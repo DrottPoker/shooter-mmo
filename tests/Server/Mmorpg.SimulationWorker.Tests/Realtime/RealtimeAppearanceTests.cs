@@ -20,7 +20,7 @@ public sealed class RealtimeAppearanceTests
     public async Task ASpawnShowsTheLookAndOnlyTheVisibleEquipmentAndTheOwnerGetsItsOwnLook()
     {
         await using var harness = RealtimeServerHarness.Create();
-        var dressed = AddCharacter(harness, "Dressed Hero", WovenLook, Equipped("main_hand", "item.short_bow"), Equipped("back", "clothing.wool_cloak"), Equipped("head", "clothing.wool_hood"));
+        var dressed = AddCharacter(harness, "Dressed Hero", WovenLook, Equipped("ring_1", "jewelry.copper_ring"), Equipped("main_hand", "item.short_bow"), Equipped("back", "clothing.wool_cloak"), Equipped("head", "clothing.wool_hood"));
         var viewer = harness.AddCharacter("Viewer Hero");
         await harness.StartAsync();
 
@@ -36,8 +36,8 @@ public sealed class RealtimeAppearanceTests
         {
             Assert.Equal("Human_Female", appearance.BodyModel);
             Assert.Equal(["face=Freckles", "hair=DarkBrownHair"], appearance.Choices.Select(choice => $"{choice.Kind}{choice.Slot}={choice.Option}"));
-            // Content order of the visible slots; the bow is not a garment others see.
-            Assert.Equal(["head", "back"], appearance.Equipment.Select(item => item.EquipmentSlotId));
+            // Content order of the visible slots; others see what the hands hold, but not the ring.
+            Assert.Equal(["head", "back", "main_hand"], appearance.Equipment.Select(item => item.EquipmentSlotId));
             Assert.False(appearance.HeadwearLowered);
         }
     }

@@ -654,7 +654,8 @@ namespace Mmorpg.WorldData.Editor.Items
                         : sourcePresentation.prefabPresentationKey,
                     garments = (sourcePresentation?.garments ?? Array.Empty<string>()).ToArray(),
                     loweredGarments = (sourcePresentation?.loweredGarments ?? Array.Empty<string>()).ToArray(),
-                    dyes = (sourcePresentation?.dyes ?? Array.Empty<string>()).ToArray()
+                    dyes = (sourcePresentation?.dyes ?? Array.Empty<string>()).ToArray(),
+                    attachment = sourcePresentation?.attachment ?? string.Empty
                 }
             }).ToArray();
             return copy;

@@ -81,6 +81,8 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--paint", help="The name of a paint layer.")
     command.add_argument("--part", help="The painted material part of a paint layer.")
     command.add_argument("--layer", type=int, help="The layer a paint layer is drawn at.")
+    command.add_argument("--socket-bone", help="The socket bone an attachment is held on, such as Socket_MainHand.")
+    command.add_argument("--held-library", help="<file.blend>=<armature> of the animation library whose bodies hold it.")
     command.add_argument("--other-paint", action="append", default=[],
                          help="<file.blend>=<Name>:<layer> of a paint layer that a body always wears with it, such as underwear.")
     command = commands.add_parser("library-sync")
@@ -364,6 +366,12 @@ def main() -> int:
                       for path, rest in (e.rsplit("=", 1) for e in args.other_paint)]
             path = preview.render_paint_sheet(os.path.abspath(args.output), args.cell_size, args.paint, args.part,
                                               args.roots.split(","), args.layer, others)
+            print(f"ART_PREVIEW {path}")
+            return 0
+        if args.socket_bone:
+            held_path, held_root = args.held_library.rsplit("=", 1)
+            path = preview.render_attachment_sheet(os.path.abspath(args.output), args.cell_size, args.socket_bone,
+                                                   os.path.abspath(held_path), held_root)
             print(f"ART_PREVIEW {path}")
             return 0
         render = {"animations": preview.render_clip_sheet}.get(args.kind, preview.render_sheet)

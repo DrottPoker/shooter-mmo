@@ -7,16 +7,17 @@ namespace Mmorpg.Client.Gameplay
     // The looks a body model offers, from the approved exports of its art assets: one slot per
     // painted material that can show other images, such as the Face and the Eye, with its
     // options, the material's own image first, the paint layers that fit the body, such as its
-    // underwear and a tattoo, in the order they are drawn, and the garments that fit it, with
-    // the faces of the body's editable mesh that each part's triangles come from. MMORPG > Tools >
-    // Art Pipeline > Update Appearance Catalogs writes it from asset.json; see
-    // docs/ART_PIPELINE.md and docs/EQUIPMENT_VISUALS_DESIGN.md.
+    // underwear and a tattoo, in the order they are drawn, the garments that fit it, with the faces
+    // of the body's editable mesh that each part's triangles come from, and the attachments its
+    // sockets can hold, such as a sword. MMORPG > Tools > Art Pipeline > Update Appearance Catalogs
+    // writes it from asset.json; see docs/ART_PIPELINE.md and docs/EQUIPMENT_VISUALS_DESIGN.md.
     public sealed class BodyAppearanceCatalog : ScriptableObject
     {
         [SerializeField] private Slot[] slots = Array.Empty<Slot>();
         [SerializeField] private Paint[] paints = Array.Empty<Paint>();
         [SerializeField] private Part[] parts = Array.Empty<Part>();
         [SerializeField] private Garment[] garments = Array.Empty<Garment>();
+        [SerializeField] private Attachment[] attachments = Array.Empty<Attachment>();
 
         public IReadOnlyList<Slot> Slots
         {
@@ -41,13 +42,33 @@ namespace Mmorpg.Client.Gameplay
             get { return garments; }
         }
 
+        // By name.
+        public IReadOnlyList<Attachment> Attachments
+        {
+            get { return attachments ?? Array.Empty<Attachment>(); }
+        }
+
         public void Configure(Slot[] catalogSlots, Paint[] catalogPaints = null, Part[] catalogParts = null,
-            Garment[] catalogGarments = null)
+            Garment[] catalogGarments = null, Attachment[] catalogAttachments = null)
         {
             slots = catalogSlots ?? Array.Empty<Slot>();
             paints = catalogPaints ?? Array.Empty<Paint>();
             parts = catalogParts ?? Array.Empty<Part>();
             garments = catalogGarments ?? Array.Empty<Garment>();
+            attachments = catalogAttachments ?? Array.Empty<Attachment>();
+        }
+
+        public Attachment AttachmentNamed(string name)
+        {
+            foreach (var attachment in Attachments)
+            {
+                if (attachment != null && string.Equals(attachment.Name, name, StringComparison.Ordinal))
+                {
+                    return attachment;
+                }
+            }
+
+            return null;
         }
 
         public Part PartNamed(string name)
@@ -506,6 +527,49 @@ namespace Mmorpg.Client.Gameplay
             public IReadOnlyList<float> PullInDistances
             {
                 get { return pullInDistances ?? Array.Empty<float>(); }
+            }
+        }
+
+        // A static model a socket of the body holds, such as a sword in the right hand: its model,
+        // whose root object Grip lies on the socket bone, the socket, the equipment slot whose item
+        // it shows, and the bone.
+        [Serializable]
+        public sealed class Attachment
+        {
+            [SerializeField] private string name;
+            [SerializeField] private string socket;
+            [SerializeField] private string bone;
+            [SerializeField] private GameObject model;
+
+            public Attachment(string name, string socket, string bone, GameObject model)
+            {
+                this.name = name;
+                this.socket = socket ?? string.Empty;
+                this.bone = bone ?? string.Empty;
+                this.model = model;
+            }
+
+            // Such as IronSword, from the attachment art/Attachments/IronSword.
+            public string Name
+            {
+                get { return name; }
+            }
+
+            // Such as main_hand.
+            public string Socket
+            {
+                get { return socket ?? string.Empty; }
+            }
+
+            // Such as Socket_MainHand.
+            public string Bone
+            {
+                get { return bone ?? string.Empty; }
+            }
+
+            public GameObject Model
+            {
+                get { return model; }
             }
         }
 

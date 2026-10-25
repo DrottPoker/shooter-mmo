@@ -22,6 +22,8 @@ ARMATURE_KINDS = {"animations"}
 # Kinds whose materials may take the Base Color from one packed image, such as a painted body.
 TEXTURED_KINDS = {"skinned"}
 TOLERANCE = 1e-4
+# The one root object of an attachment, at the point of its socket where it is held.
+GRIP_ROOT = "Grip"
 
 
 def principled_inputs(material: bpy.types.Material) -> dict[str, bpy.types.NodeSocket] | None:
@@ -146,6 +148,9 @@ def validate(kind: str, roots: list[str], triangle_budget: int | None, stage: st
                           "because its origin is the actor position in the game.")
         if kind == "skinned":
             errors += bodies.part_errors(root.name)
+        # An attachment's root Grip only marks where it is held; its meshes hang below it.
+        if roots == [GRIP_ROOT] and (root.type != "EMPTY" or not root.children):
+            errors.append(f'The root object "{GRIP_ROOT}" of an attachment must be an empty with the meshes as its children.')
 
     if rigged:
         skeleton = skeleton_definition.load(skeleton_path)

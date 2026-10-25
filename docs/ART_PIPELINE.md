@@ -1,6 +1,6 @@
 # Art Pipeline
 
-Last updated: 2026-10-23
+Last updated: 2026-10-25
 
 This document describes how 3D models travel from Blender to the Unity client:
 where the files live, the review stages an asset passes before it may reach the
@@ -47,6 +47,7 @@ between the export and the game.
 | To | Start with | Recipe |
 | --- | --- | --- |
 | Add a model for the world, such as a resource node or a prop | `New-ArtAsset.ps1 -Kind static` | [Add A New Asset](LOCAL_DEVELOPMENT.md#add-a-new-asset) |
+| Add an attachment, a model held on a socket, such as a weapon or a shield | `New-ArtAsset.ps1 -Kind static -Socket main_hand` | [Make An Attachment](LOCAL_DEVELOPMENT.md#make-an-attachment) |
 | Change a human body: its shape, skin texture, or weights | the body's `.blend` file, then `Sync-HumanBase.ps1` | [Edit The Human Base Characters](LOCAL_DEVELOPMENT.md#edit-the-human-base-characters) |
 | Add a face or an eye color | an image packed into the body's `.blend` file | [Add A Face Or Eye Variant](LOCAL_DEVELOPMENT.md#add-a-face-or-eye-variant) |
 | Change a clip or add one | the library's `.blend` file, or `Sync-AnimationLibrary.ps1 -Generate` for a gait | [Make A Clip](LOCAL_DEVELOPMENT.md#make-a-clip) |
@@ -58,7 +59,8 @@ between the export and the game.
 | Paint the look of a garment template, with holes where the skin shows | `New-ArtAsset.ps1 -Kind texture`, then `Sync-TextureAsset.ps1` | [Make A Garment Texture](LOCAL_DEVELOPMENT.md#make-a-garment-texture) |
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](LOCAL_DEVELOPMENT.md#review-approve-and-export-an-asset) |
 
-Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers).
+Weapons, shields, quivers, and backpacks are [attachments](#attachments): static
+models held on a socket of the skeleton.
 
 ## Layout
 
@@ -70,6 +72,7 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the layer's own canvas, a copy of a body, and moved to every body by projection. |
 | `art/Garments/<Name>/<Name>.blend` | A [garment template](#garments): the form of clothes or armor, built from a recipe on the garment cage and fitted to every body of the cage, one version per body. |
 | `art/GarmentTextures/<Name>/<Name>.blend` | A [garment texture](#garment-textures): the look of one template, its image in the template's UVs. |
+| `art/Attachments/<Name>/<Name>.blend` | An [attachment](#attachments): a static model below its root `Grip`, held on a socket, such as a sword or a shield. |
 | `art/Cages/<Skeleton>/<Skeleton>.blend` | The [garment cage](#garment-cage) of a skeleton: the net of fixed topology that garments are made on, fitted to every body of the skeleton, with its standard lines. |
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, a garment template one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it, and a garment texture with transparent parts its own data per body, `Models/Garments/<Name>_<Label>.json`. |
@@ -113,7 +116,8 @@ any `clips` of its own are written by hand when an asset is created.
 | `schemaVersion` | `2` for a garment template, which has a `cage` and a `recipe`; `1` for every other kind. |
 | `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries), `paint` for a [paint layer](#paint-layers), `garment` for a [garment template](#garments), `texture` for a [garment texture](#garment-textures), `cage` for the [garment cage](#garment-cage). A paint layer has no `target`, `rootObjects`, or `triangleBudget`, a garment template no `target`, `rootObjects`, or `bodies`: its models and roots follow from its cage's bodies, a texture none of them, and a cage no `target`, `rootObjects`, `triangleBudget`, or `export`. |
 | `target` | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx`, where `<Name>` is the folder name. |
-| `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. The one root object of an animation library is its armature, named after its skeleton. |
+| `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. The one root object of an animation library is its armature, named after its skeleton, and that of an attachment is `Grip`. |
+| `socket` | Attachments only: the socket the model is held on, as a bone of a skeleton definition names it in its `socket`, such as `main_hand` for `Socket_MainHand`. A static asset has a socket exactly when its one root object is `Grip`. |
 | `triangleBudget` | The maximum number of exported triangles, after modifiers. An animation library exports no meshes and has none. A garment's budget holds for each body's version. |
 | `skeleton` | Skinned assets and animation libraries: the name of the skeleton definition in `art/Skeletons`, such as `Humanoid`. |
 | `rig` | Animation libraries only: the skinned asset whose rig the clips are keyed on, such as `art/Characters/Human_Male`. |
@@ -220,6 +224,7 @@ asset that breaks one of these rules:
 - The exported triangles stay within `triangleBudget`.
 - Every variant image is packed into the file as a PNG of the same size as the
   image of its material, so it fits the material's UV layout.
+- The root `Grip` of an attachment is an empty with the meshes below it.
 
 The `rig` stage of a skinned asset adds these rules:
 
@@ -375,7 +380,8 @@ said before:
   garment keeps its shape key `UnderHeadwear` as a blend shape, with calculated
   normals, which Unity takes in full under headwear that compresses the hair.
 - Mesh data is uncompressed, with imported normals and calculated tangents, and
-  not readable for a static model.
+  not readable for a static model, except an attachment, which the body that
+  holds it combines.
 - Materials are imported from the model and then remapped by name to the one
   project material of the same name below `Assets/Art/Materials`. The remap is
   stored in the model's `.meta` file.
@@ -516,7 +522,8 @@ models, and both player prefabs.
 Clips live in animation libraries: art assets of kind `animations` below
 `art/Animations`, keyed on the rig of one character and played on every body of
 the skeleton. `art/Animations/Human_Actions` holds every clip of the human bodies,
-`Idle`, `Walk`, `Jog`, and `Death`, and the bodies hold none:
+`Idle`, `Walk`, `Jog`, `Death`, and the hand pose `Grip`, and the bodies hold
+none:
 
 - The `Export` collection holds the armature `Humanoid`, a copy of the rig of
   `Human_Male` named after its skeleton. Every clip is an action keyed on it, at
@@ -561,9 +568,23 @@ approval, the file is saved with `Humanoid` in its rest pose and without an
 active action. The library's review sheet shows every clip as eight frames on
 both bodies, from the front right and from the back left.
 
+A clip may key only some bones: `Grip` keys only the fingers and thumbs of both
+hands, closed around a handle of 29 mm on each hand's socket, and the game plays
+it over the other clips on the fingers of a hand that holds an
+[attachment](#attachments). Its finger angles were fitted so that every segment
+of every finger touches that handle without going into it, the distal joint bent
+by a share of the middle one, as a hand closes, and were approved on 2026-10-25.
+A clip added by hand is named in `clips` in `asset.json`; until the library is
+exported again, the record of its last export lists other clips, which the
+verification reports as a stale export.
+
 In Unity, `Human_Actions.fbx` brings its clips as Humanoid motion, and
 `HumanLocomotion.controller` plays them on every player body; see
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
+Adding a clip to the library changes its export, which every garment template
+and every garment texture with masks records as a clip source they were checked
+in, so they are exported again after it: `Export-ArtAsset.ps1` checks them in
+the new clip, and their approvals stay, since their files do not change.
 
 ## Appearance Layers
 
@@ -579,6 +600,7 @@ the others as they are.
 | Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Clean` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
 | Paint layers | Transparent paint over the skin in the bodies' paint UV map, of a category, `underwear`, `scar`, or `tattoo`, such as the briefs, a scar, or a tattoo, in a [paint layer](#paint-layers) asset of its own. Painted once on the layer's canvas and moved to every body by projection, also to a body of another topology, and one-sided where it is painted so. | The skin shader lays it over the skin when the body is drawn, by the rules of its category. | Implemented. |
 | Garments | Meshes skinned to the shared skeleton, such as clothes, armor, and hair: [garment templates](#garments) built on the [garment cage](#garment-cage) and fitted to every body of it, each worn with a [garment texture](#garment-textures) of its own asset. | Combined with the visible body parts into the body's one mesh; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md). | Implemented, with the Wardrobe preview and trying garments on in F2. |
+| Attachments | Static models held on a socket, such as a sword or a shield, in an [attachment](#attachments) asset of its own. | Combined rigidly on its socket bone into the body's one mesh, with the hand closed around it. | Implemented, with the Wardrobe preview. |
 
 The faces and eyes of the human base characters are variants: images packed into
 the character's file, shown by the model review, and exported with the model
@@ -1226,6 +1248,50 @@ garment per visual slot: trying one on takes off the other garment of its slot,
 such as another chest piece, and of two of a slot that a look names, the first
 in the catalog is worn.
 
+## Attachments
+
+An attachment is a static model that a socket of a skeleton holds, such as a
+sword in the right hand or a shield in the left: an asset of kind `static` below
+`art/Attachments` with a `socket` in `asset.json` and one root object, the empty
+`Grip`, at the origin. Its meshes lie below `Grip` in the socket's own axes, so
+the model stands on the socket bone as it stands on the origin. The socket bones
+of `Humanoid` place every attachment on every body; an attachment never moves
+them, and a place that suits only one item is that item's own geometry.
+
+The axes of a hand's socket, in the model's file:
+
+| Axis | `Socket_MainHand`, the right hand | `Socket_OffHand`, the left hand |
+| --- | --- | --- |
+| Origin | The middle of the fist: the knuckles' centre, 28 mm toward the palm, where a handle of 29 mm lies. | The same on the left hand. |
+| +Y | Out of the thumb side of the fist, forward when the arm hangs: a blade or the point of a spear. | The same. |
+| +Z | Out of the palm, toward the body when the arm hangs. | The same. |
+| +X | Toward the wrist. | Toward the knuckles, down when the arm hangs. |
+
+A sword's grip therefore runs along Y through the origin with the blade toward
++Y, its edges along X and its flats facing Z. A shield held by a handle and a
+strap on the forearm lies against the back of the hand and the forearm, toward
+-Z, along the forearm. The fingers close around the handle in the clip `Grip`,
+so every handle that a hand holds is about 29 mm thick at the origin.
+
+`New-ArtAsset.ps1 -Kind static -Asset art/Attachments/<Name> -Socket main_hand
+-TriangleBudget <n>` creates it. Its review sheet shows it alone from four sides,
+from above and from below in turn, and up close around `Grip`, and then a row per
+body of the animation library of its socket's skeleton that has `Idle`: each
+body in the first frame of `Idle` with the fingers of `Grip`, holding the model
+on its socket, whole, from outside the arm, and its hand up close from the front,
+from inside with only the arms shown, and from behind.
+
+In Unity the model imports readable. The appearance catalog of every body of its
+socket's skeleton lists it as an attachment with its socket and socket bone,
+`PlayerBodyMeshes` combines it into the body's one mesh with every vertex
+weighted fully to the socket bone, which stands on its parent as in the model's
+bind pose, and the animator layer of that hand plays `Grip`; see
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#attachments).
+`ItemAttachmentTests` fails when an item names an attachment that a body's
+catalog lacks or that its slot does not hold, when a model has another root than
+`Grip` at its origin, or when a body in a jog pose draws an attachment's vertex
+more than 1 mm from where its model puts it on the socket.
+
 ## Live Work With The Blender MCP Server
 
 The Blender Lab MCP server lets Claude Code inspect and change the Blender file
@@ -1369,7 +1435,9 @@ weights.
 
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
-| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. |
+| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. `Grip`, one frame, looping, keys only the fingers and thumbs: both hands closed around a handle of 29 mm on their sockets. Approved 2026-10-25. |
+| `art/Attachments/HeaterShield` | `static` | `Grip` | A small heater shield held on `off_hand`, 1,436 triangles: a board 56 cm wide and 70 cm from the straight top to the point, 12 mm thick and bowed 4 cm toward the arm at its sides, its face painted blue, its back plain wood, an iron edging bent over the edge, a leather-wrapped handle in the fist on two straps, a loose leather strap around the forearm 20 cm toward the elbow, and iron rivets through both faces where the straps hold. It lies 76 mm behind the handle along the forearm, turned 12 degrees toward the little finger, as the wrist of `Idle` turns the hand, so it hangs outward at the side with its point down. Approved 2026-10-25. |
+| `art/Attachments/IronSword` | `static` | `Grip` | A plain iron arming sword held on `main_hand`, 1,008 triangles, 94 cm: a disc pommel with a peened tang end, a leather grip of 10 cm swelling slightly in the middle, a straight cross guard of 19 cm, and a blade of 74 cm, 5 cm wide at the guard, with a fuller over 70 % of it, tapering to the point. Approved 2026-10-25. |
 | `art/GarmentTextures/DarkBrownHair` | `texture` | none | Dark brown hair on `ShoulderHair`, 1024 px, painted by a script in the template's UVs, which run around the head through the locks and down along the hair: lighter strands of random width along the hair, deep grooves between the locks, a soft sheen around the crown, darker roots, and slightly lighter tips. Roughness 0.55. Approved 2026-10-24. |
 | `art/GarmentTextures/IronNasalHelm` | `texture` | none | Matte wrought iron on `NasalHelm`, 1024 px, painted by a script from each texel's point and from the part of the helmet its face is, which the template marks in the face attribute `paint_part`: hammered plates darkened by patina with a few rust specks toward the rim and into the corners beside the bands, the bands a little lighter and worn bright along their edges, domed rivets down every band, round the brow band, at the cap, and two on the nasal, the iron's dark underside at the rim, and the brown leather lining below it. Roughness 0.55, metallic 0.45. Approved 2026-10-24. |
 | `art/GarmentTextures/LeatherBoots` | `texture` | none | Dark brown leather on `Boots`, 1024 px, painted by a script from each texel's point on the template: fine grain and blotches, a darker band with stitches along the top of the shaft, stitched seams around the ankle and up the inside of the shaft and the back of the heel, a burnished toe cap and heel counter, and a near-black sole with a darker welt stitched around it. Roughness 0.55. Approved 2026-10-24. |
@@ -1412,9 +1480,7 @@ weights.
 - A model fix of the low armpits, where the triceps meet the torso, and of the
   female's bra straps, which are painted up her neck, above the collar of chest
   paint.
-- Attachments: hair, beards, and the modeled parts of armor as meshes skinned to
-  the shared skeleton, combined with the body's parts; the first is the leather
-  jerkin's collar and shoulder flaps, together with the jerkin as an item that
-  shows its paint when equipped.
+- Hold poses for attachments, such as a sword raised or a shield in guard, and
+  weapons sheathed at the hip or on the back while out of combat.
 - A shared palette texture for stylized models, level-of-detail meshes, and
   per-asset collision proxies if presentation ever needs them.

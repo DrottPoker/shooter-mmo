@@ -61,6 +61,12 @@
     },
     {
       "definitionId": "armor.nasal_helm"
+    },
+    {
+      "definitionId": "weapon.iron_sword"
+    },
+    {
+      "definitionId": "armor.heater_shield"
     }
   ],
   "purchasePriceBasisPoints": 10000,

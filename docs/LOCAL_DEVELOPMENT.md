@@ -108,7 +108,7 @@ Expected result:
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, and the absence of tracked
   client builds.
-- Art asset verification reports `Verified 17 art asset(s).`: every asset below
+- Art asset verification reports `Verified 36 art asset(s).`: every asset below
   `art/` is approved for its current `.blend` file, every model below
   `src/Client/Assets/Art/Models` is the recorded export of one of them, and an
   asset in review, such as a character before its rig, has no model yet. It needs
@@ -969,6 +969,7 @@ routed through the worker that currently owns the character.
    - Encumbrance 140% Pack
    - Secure Container Pack
    - Recovery Delivery Pack
+   - Outfits Test Pack
 
    Expected result: an empty offline character receives the selected
    deterministic state. The Full Inventory Test Pack reports weight `1040 / 2500`. The
@@ -2867,7 +2868,7 @@ When the reviewer approves the model, record the approval and export:
 Expected result: `Approved the 'model' stage of Resource_IronVein
 (triangles=878).`, `Exported Resource_IronVein to
 src/Client/Assets/Art/Models/WorldActors/Resource_IronVein.fbx
-(triangles=878).`, and `Verified 17 art asset(s).` Unity imports the model the
+(triangles=878).`, and `Verified 36 art asset(s).` Unity imports the model the
 next time it gets focus. Commit the `.blend` file, `asset.json`, the FBX, and
 its `.meta` file together.
 
@@ -2926,6 +2927,73 @@ Prefab Variant, and the registry entry are committed.
    visible from every camera angle, and a click on the rocks opens the vein.
 3. Mine a vein until it depletes. Expected result: it switches to the depleted
    model and returns with ore about 30 seconds later.
+
+### Make An Attachment
+
+[Attachments](ART_PIPELINE.md#attachments) describes models held on a socket,
+such as a weapon or a shield, and the axes of each hand's socket.
+
+1. Create the asset with its socket and triangle budget:
+
+   ```powershell
+   .\tools\New-ArtAsset.ps1 -Kind static -Asset art/Attachments/IronAxe -Socket main_hand -TriangleBudget 1500
+   ```
+
+   Expected result: `Created art/Attachments/IronAxe with asset.json and
+   IronAxe.blend.` `asset.json` names the socket and the one root object `Grip`,
+   and the file holds the `Export` collection with the empty `Grip` at the
+   origin. A socket no skeleton has stops the command with `No skeleton in
+   art/Skeletons has the socket ...`.
+2. Model below `Grip` in the socket's axes, with the handle along Y through the
+   origin and about 29 mm thick, flat materials named `M_IronAxe_<Part>`, and
+   save.
+3. Render the review sheet:
+
+   ```powershell
+   .\tools\Render-ArtPreview.ps1 -Asset art/Attachments/IronAxe
+   ```
+
+   Expected result: `Review sheet for IronAxe:
+   artifacts\art-previews\IronAxe.png`: the model from four sides and up close at
+   its grip, then each body holding it in `Idle` with its hand closed, whole, from
+   outside the arm, and its hand from the front, from inside, and from behind.
+4. When the reviewer approves, approve the `model` stage, export, and verify as in
+   [Review, Approve, And Export An Asset](#review-approve-and-export-an-asset).
+   Expected result: when Unity gets focus, it creates the materials below
+   `Assets/Art/Materials/Attachments` and the Console lists both appearance
+   catalogs with `Attachment IronAxe`. Commit the `.blend` file, `asset.json`,
+   the FBX, the materials, the catalogs, and their `.meta` files together.
+5. Let an item show it: in `MMORPG > Tools > Item Catalog`, select an item of the
+   socket's equipment slot, such as `main_hand`, enter `IronAxe` in
+   `Attachment` under `Client Presentation`, and `Save And Bake`. Expected
+   result: `ItemAttachmentTests` passes, and `MMORPG > Tools > Art Pipeline >
+   Wardrobe` lists `IronAxe (main_hand)` under `Attachments`.
+
+### Manual Test Of The Sword And Shield
+
+No manual Unity Editor steps are required: the models, materials, catalogs, the
+controller's grip layers, and the items are committed.
+
+1. In Unity, open `MMORPG > Tools > Art Pipeline > Wardrobe`, tick `IronSword`
+   and `HeaterShield` under `Attachments`, and play `Idle`, `Walk`, and `Jog` on
+   both bodies. Expected result: the sword lies in the closed right hand with the
+   blade forward, the shield hangs from the closed left hand outward along the
+   forearm with its point down, both follow the hands, and `Held` lists both.
+2. Start the local stack as described in [Backend Services](#backend-services),
+   and with a new character offline grant the `equipment` package, as described
+   in [Give A Character Development Items](#give-a-character-development-items).
+   Enter Play Mode, join `local-shard-1`, press `C`, and equip `Iron Sword` in
+   Main Hand and `Heater Shield` in Off Hand. Expected result: your character
+   holds them at once, as in the Wardrobe; unequipping one opens its hand.
+3. Equip `Training Shortbow`. Expected result: it takes the main hand and blocks
+   the off hand, so the sword and the shield go to the inventory and both hands
+   open.
+4. With `Iron Sword` equipped, attack a Feral Wolf. Expected result: the
+   character walks to 2.5 m and hits without an arrow, and the damage numbers
+   show 11 to 19.
+5. With development bots running, look at a crowd. Expected result: some bots
+   hold a sword, a shield, both, or a shortbow, but never a shield together with
+   a shortbow.
 
 ### Edit The Human Base Characters
 
@@ -2993,7 +3061,7 @@ by hand:
    src/Client/Assets/Art/Models/Characters/Human_Male.fbx (triangles=9202).` and
    the same for the female, `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
-   (clips=Death,Idle,Walk,Jog).`, and `Verified 17 art asset(s).` The library is
+   (clips=Death,Idle,Walk,Jog,Grip).`, and `Verified 36 art asset(s).` The library is
    exported with the characters because it records the export of its rig;
    `Verify-ArtAssets.ps1` otherwise stops with `was exported against another
    export of its rig`. After `-Rig`, sync the library first and review its clips
@@ -3038,7 +3106,8 @@ A face or an eye color is another image of a body's face or eye material; see
 
 [Animation Libraries](ART_PIPELINE.md#animation-libraries) describes where
 clips live and the rules they follow. `art/Animations/Human_Actions` holds every
-clip of the human bodies: `Idle`, `Walk`, `Jog`, and `Death`.
+clip of the human bodies: `Idle`, `Walk`, `Jog`, `Death`, and the hand pose
+`Grip`.
 
 1. Bring the library up to date with the rig it is keyed on:
 
@@ -3075,9 +3144,12 @@ clip of the human bodies: `Idle`, `Walk`, `Jog`, and `Death`.
    the Action Editor, or change the keys of an existing one, and key poses on its
    bones. Both bodies follow every pose.
 3. Give the action the custom property `loop` (true or false), a manual frame
-   range from frame 0 in the Action properties, and add its name to `clips` in
-   `asset.json`. Then clear the armature's active action, reset its pose to the
-   rest pose (`Alt+G`, `Alt+R` on every bone), and save.
+   range from frame 0 in the Action properties, and a fake user (the shield
+   button in the Action Editor), so Blender keeps it when no armature plays it,
+   and add its name to `clips` in `asset.json`. Then clear the armature's active
+   action, reset its pose to the rest pose (`Alt+G`, `Alt+R` on every bone), and
+   save. Until the library is exported again, `Verify-ArtAssets.ps1` reports its
+   export record as stale.
 4. Render the review sheet, review it and the clip in Blender, then approve,
    export, and verify:
 
@@ -3091,10 +3163,10 @@ clip of the human bodies: `Idle`, `Walk`, `Jog`, and `Death`.
    Expected result: `Review sheet for Human_Actions:
    artifacts\art-previews\Human_Actions.png` with two rows of eight frames per
    clip, `Approved the 'animation' stage of Human_Actions
-   (clips=Death,Idle,Walk,Jog).`, `Exported Human_Actions to
+   (clips=Death,Idle,Walk,Jog,Grip).`, `Exported Human_Actions to
    src/Client/Assets/Art/Models/Animations/Human_Actions.fbx
-   (clips=Death,Idle,Walk,Jog).`,
-   and `Verified 17 art asset(s).` Unity imports the clips as Humanoid motion when
+   (clips=Death,Idle,Walk,Jog,Grip).`,
+   and `Verified 36 art asset(s).` Unity imports the clips as Humanoid motion when
    it gets focus. A library whose armature is not the current rig stops the
    approval and the export with `The armature "Humanoid" is not the current rig
    "Male" ...`; sync it first. Commit the `.blend` file, `asset.json`, the FBX,
@@ -3104,6 +3176,21 @@ When the characters are exported again, for example after an edit, export the
 library again too. `Verify-ArtAssets.ps1` otherwise stops with `was exported
 against another export of its rig`. If the edit changed the rig, the sync
 changes the library, and it needs a new review and approval first.
+
+Every garment template and every garment texture with masks records the library
+exports it was checked in, so after a new export of the library, export them
+again; their files do not change, so their approvals stay:
+
+```powershell
+.\tools\Export-ArtAsset.ps1 -Asset (Get-ChildItem art\Garments -Directory | ForEach-Object { "art/Garments/$($_.Name)" })
+.\tools\Export-ArtAsset.ps1 -Asset (Get-ChildItem art\GarmentTextures -Directory | ForEach-Object { "art/GarmentTextures/$($_.Name)" })
+```
+
+Expected result: one `Exported <Name> ...` line per template and texture, the
+models and data unchanged and only their `asset.json` files rewritten, and then
+`Verified 36 art asset(s).` A template that comes through a lower layer in the new
+clip stops its export with the check that failed; fix it in its `.blend` file
+and review it again.
 
 ### Make A Paint Layer
 
@@ -3241,7 +3328,7 @@ its `-Bodies`, with a `-Figure` of 0.06 m and the standard lines.
    ```
 
    Expected result: `Approved the 'model' stage of Humanoid (faces=2880).` and
-   `Verified 21 art asset(s).` The cage has no export; commit the `.blend` file
+   `Verified 36 art asset(s).` The cage has no export; commit the `.blend` file
    and `asset.json` together. Every template on the cage records its approved
    file, so sync, review, approve, and export its templates again, in the order
    of their layers, and their textures after them; a template whose regions did

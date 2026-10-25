@@ -168,7 +168,7 @@ namespace Mmorpg.Client.App
         }
 
         // The equipped items of the shown inventory, with its predicted moves, so the local body
-        // changes its garments as soon as an item moves.
+        // changes its garments and attachments as soon as an item moves.
         private void UpdatePlayerEquipment()
         {
             var state = inventoryController.State;

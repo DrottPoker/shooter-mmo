@@ -30,6 +30,16 @@ if ($manifest.Kind -eq "garment") {
     $arguments += @("--garment", $manifest.Name) + (Get-ArtGarmentCoverArguments $manifest) +
         (Get-ArtGarmentClipArguments $manifest)
 }
+elseif ($null -ne $manifest.Socket) {
+    # The sheet of an attachment also shows it held on its socket by the bodies of the animation
+    # library of its skeleton, in the first frame of Idle with the hand pose Grip when the library has it.
+    $library = Get-ArtHeldLibrary $manifest.Socket.Skeleton
+    if ($null -eq $library) {
+        throw "No animation library of the $($manifest.Socket.Skeleton) skeleton has the clip Idle to show $($manifest.Name) held."
+    }
+
+    $arguments += @("--socket-bone", $manifest.Socket.Bone, "--held-library", "$($library.SourcePath)=$($library.Root)")
+}
 elseif ($manifest.Kind -eq "cage") {
     $arguments += @("--roots", ($manifest.RootObjects -join ","), "--manifest", $manifest.ManifestPath)
 }
