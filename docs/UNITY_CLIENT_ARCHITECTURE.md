@@ -1278,7 +1278,10 @@ leg in front, the back chains and the
 cloak with the leg behind, and the side chains with their own, with inertia and
 gravity, keeps the bone lengths, pushes the
 particles out of capsules around the hips, spine, neck, head, thighs, and shins,
-and turns the bones to point at them. A capsule's radius is the middle distance
+and turns the bones to point at them. Following the legs and leaving the body
+are `ClothKinematics`, which works on plain data, so the art pipeline's
+`cloth_core.py` is tested against the same cases; see
+[Art Pipeline](ART_PIPELINE.md#cloth-parity). A capsule's radius is the middle distance
 of the body vertices that its bone moves most, around the trunk in each of 16
 directions around the bone with narrow grooves filled, round around a leg,
 measured once from the body's own mesh in the bind pose, so the cloth lies on

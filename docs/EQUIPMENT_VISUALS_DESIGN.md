@@ -763,6 +763,122 @@ The solver is presentation only. It runs the same for the local player, other
 players, and bots, and never reaches the server. It moves a few bones per chain
 and is not a cloth simulation; see E3.
 
+### Kinematic Layer And Parity
+
+The part of the solver without springs, what the Follow detail shows and what
+the art pipeline's reviews and checks lay, is `ClothKinematics`: on plain data,
+every chain hangs from its posed parent, its bones beside a thigh or a shin
+follow the legs, and its particles leave the capsules and the cloth under it.
+`tools/blender/art_pipeline/cloth_core.py` does the same in Python with Unity's
+own vector and rotation arithmetic, such as `Quaternion.Slerp`, which above a
+dot of 0.95 blends straight and normalizes; `cloth.py` measures the bodies and
+garments in Blender and hands them to it, as
+[Art Pipeline](ART_PIPELINE.md#cloth-parity) describes. Their constants are the
+`cloth` section of `art/Skeletons/Humanoid.json`, which `ClothKinematicsTests`
+checks against the client's. `MMORPG > Tools > Art Pipeline > Write Cloth
+Fixtures` captures both bodies in the robe, the cloak, and both, in 39 poses of
+their clips, set by hand, and random, with what `ClothKinematics` laid, in
+`tools/blender/tests/fixtures/cloth_kinematics.json`. The Unity tests lay every
+case again and capture the bodies again, so a change of the solver, a body, or a
+garment shows as a change of the fixtures, and the Python tests, which CI runs,
+lay every case with `cloth_core.py` within 0.01 mm. On 2026-10-25 the two agreed
+within 0.0002 mm, and the Blender checks of `Robe` and `Cloak` reported the same
+as before the kinematic layer had its own module.
+
+### Measuring The Cloth
+
+`ClothStressMotion` lists the motions loose cloth is measured and reviewed in:
+Idle, Walk, Jog, and Death, and stress motions that move and turn the root over
+them, with no clip of their own. They are spins of 720, 1440, and 2880 degrees a
+second with a stop, turns of 90 and 180 degrees at the simulation's 720 degrees a
+second while jogging, a jog with a stop, a zig-zag of sharp corners, the zig-zag
+as a remote body shows it through `RemoteMovementPresenter` at 15 snapshots a
+second, a jog in jittery frame times between 1/240 and 1/20 s, a teleport, a hard
+correction of 3 m, and a turn of 180 degrees at once. `ClothMotionMeter`
+measures every frame:
+
+- how many of the body's leg and arm vertices come through the loose cloth, and
+  how far: a vertex comes through when the cloth crosses the way to it from the
+  bone it hangs on;
+- how many of a robe's loose cloth come through a cloak over it, seen from the
+  hips' upright axis;
+- how much the chains jerk, the third difference of their particles in the frame
+  of the bone they hang from, as RMS over the steady phases;
+- how far a spin flares the chains' tips out, and how long they take to settle
+  after a stop or a spin;
+- whether the skirt's chains keep their order around the hips;
+- how far the frame of a jump moves the chains in the frame of their bone.
+
+`MMORPG > Tools > Art Pipeline > Measure Cloth` runs every motion on both bodies
+in the robe, the cloak, and both, and steps a zig-zag at 1/30, 1/60, and 1/144 s
+and in jittery frames against the same at 1/240 s, into
+`artifacts/cloth-measurements.md`. Each run starts the clips and the chains
+again, so runs compare. The solver above measured on 2026-10-25, the worst of
+both bodies and the three outfits:
+
+| Motion | Through cloth | Robe through cloak | Jerk RMS | Skirt out of order | Other |
+| --- | --- | --- | --- | --- | --- |
+| Idle | none | none | 4 m/s³ | never | |
+| Walk | 69 vertices, 61 mm | 6, 44 mm | 525 m/s³ | 1 frame | |
+| Jog | 130, 95 mm | 10, 65 mm | 1,819 m/s³ | 132 of 360 frames | |
+| Zig-zag | 150, 122 mm | 14, 65 mm | 5,093 m/s³ | 114 frames | |
+| Network 15 Hz | 184, 116 mm | 23, 129 mm | 4,811 m/s³ | 114 frames | |
+| Spin 1440 | 200, 116 mm | 143, 392 mm | 1,097 m/s³ | never | flares 72 cm, not settled after 3 s |
+| Jog stop jog | 280, 109 mm | 113, 287 mm | 1,564 m/s³ | 83 frames | not settled after 2 s |
+| Death | 217, 110 mm | 79, 820 mm | 13,425 m/s³ | 177 frames | |
+| Teleport, snap 3 m | 132, 95 mm | 8, 78 mm | 1,745 m/s³ | 89 frames | the jump moves the chains 238 mm |
+| Snap 180 | 179, 100 mm | 145, 256 mm | 1,513 m/s³ | never | the jump moves the chains 530 mm |
+
+In the zig-zag the chains' tips lay up to 119 cm, and 8 to 35 cm as RMS, from
+where they lie stepped at 1/240 s, so the cloth's course depends on the frame
+time. At rest no vertex comes through; in motion the legs come through the robe
+and the cloak by up to 12 cm, between and past the chains, and the springs
+tangle the skirt's chains. These numbers are what the redesign below is
+measured against.
+
+### Spring Bone Redesign
+
+On 2026-10-25 Victor rejected the cloth as jittery, with legs that come through
+the robe and the cloak, and unreliable, and accepted a redesign: spring bones on
+today's chains, as FFXIV, GW2, and many other MMOs move skirts and cloaks, with
+no cloth simulation and no stiff cloth, robust also in hectic motions such as the
+spin of an attack. Animation and the legs decide where the cloth is; the springs
+only add swing within limits.
+
+| # | Decision |
+| --- | --- |
+| T1 | Spring bones on today's chains, no cloth simulation. The rig stays: eight skirt chains of four bones, five cloak chains of five, and the hood's two, so no body, clip, cage, template, or texture is approved again. |
+| T2 | A target pose, without memory, for every visible body every frame, so no body waits for its turn; the same last collision pass at every level of detail, so no body shows a pose the Blender checks would fail. |
+| T3 | The legs collide with a surface: quads between neighbouring chains on the cloth's inner side, not only its particles, and they push it outward only, since the legs are always inside the skirt and in front of the cloak. |
+| T4 | A body in the bind pose wears its garments exactly as they were made: every collision keeps no more margin than the bind pose has, gravity counts against the bind pose, and cloth that nearly stands still sleeps on its target. |
+| T5 | The springs run in the frame of the chain's anchor bone, the hips, the upper chest, or the head, at a fixed 90 Hz, whatever the frame rate. Motion and turning in the world reach the cloth as smoothed and limited forces, 20 m/s², 540 degrees a second, and 60 rad/s²: below the limits the cloth lags, swings, and sways as with real inertia, above them it feels only the limit. |
+| T6 | Every chain bone has a cone around its target direction, and the chains a twist limit around the hips' upright axis, so they never cross in a spin. |
+| T7 | Neighbouring chains are tied by soft links between 0.6 and 1.4 of their rest distance, so the skirt hangs together and a knee tents it. |
+| T8 | A collision does not bounce: the speed into the body goes, and the cloth slides with a little friction. The cloth has a speed limit, and a broken value starts its chain again on the target. |
+| T9 | A cloak over a robe stays outside the robe's outer surface, which replaces the envelope; the cloak also collides with the arms; the hood uses the same system, stiffer. |
+| T10 | A teleport, a respawn, or a hard correction carries the cloth along rigidly for that frame instead of starting it again, and the player code says so; jumps are also found on their own. |
+| T11 | Burst and jobs on the other processor cores; remote players are created at the scene root so the transform jobs run in parallel. |
+| T12 | The cloth's constants in `Humanoid.json`, Blender laying the target pose exactly as Unity does, and a parity test in CI. |
+| T13 | The stress motions in tests and in the Wardrobe; Victor approves the motion in the Wardrobe. |
+| T14 | Springs for a budget of about 48 bodies, chosen by their size on screen with a margin against flicker between the levels, faded in and out over 0.3 s; every other visible body shows its target pose. |
+
+It is delivered in three pull requests, each measured with the stress motions:
+
+1. Done. The measuring stick and the parity, with no visible change: the stress
+   motions and `ClothMotionMeter` in tests and the Wardrobe, the cloth section of
+   `Humanoid.json`, `ClothKinematics` and `cloth_core.py`, the fixtures with
+   their C# and Python tests in CI, and the numbers above.
+2. The new target pose on Burst: the packages, the assembly `Mmorpg.Client.Cloth`,
+   a disposable `ClothWorld` and its jobs, remote players at the scene root, and
+   the new collision with surfaces, outward pushes, the bind pose's clearance,
+   and the cloak over the robe's outer surface, in C# and Python with new
+   fixtures, for every visible body every frame; `Robe` and `Cloak` are checked
+   and rendered again, and Victor approves them again if they changed. Until the
+   third step the nearest bodies also show the target pose, which is stiffer.
+3. The new springs and levels of detail: the springs in the jobs, the budget and
+   the fades, the jump signals, the old solver removed, the profiles tuned with
+   Victor in the Wardrobe and in the game, and the measurement with 400 bots.
+
 ## Hair And Headwear
 
 Hair is a garment of its own visual slot, `hair`, with a shape key
@@ -1043,8 +1159,10 @@ body without it in the colors of the template's sheet, with its own mask and
 the skin that comes through it in motion.
 
 Cloth motion is reviewed in the Wardrobe preview, a Unity Editor window that
-dresses a body in chosen garments with their textures, plays a clip on a moving
-ground, and runs the cloth solver.
+dresses a body in chosen garments with their textures, plays a clip or a cloth
+stress motion on a moving ground, and runs the cloth solver, at full speed, in
+slow motion down to a tenth, or a frame at a time, with what `ClothMotionMeter`
+measures beside it; see [Measuring The Cloth](#measuring-the-cloth).
 
 ## Budgets
 
@@ -1137,6 +1255,9 @@ quarter of the triangles come with the first crowd measurement that needs them.
      [The Look On The Server](#the-look-on-the-server).
 7. With the first new race: making a body type from a human body, generalizing
    `Sync-HumanBase.ps1` to every body of the race, and adding it to the cage.
+8. Robust spring bones, as Victor accepted on 2026-10-25, in three steps; see
+   [Spring Bone Redesign](#spring-bone-redesign). Step 1, the measuring stick and
+   the parity, is done.
 
 ## Open Questions
 

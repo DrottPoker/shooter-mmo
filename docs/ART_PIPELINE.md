@@ -75,10 +75,14 @@ Modeled clothes, armor, and hair come next, as [attachments](#appearance-layers)
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, a garment template one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it, and a garment texture with transparent parts its own data per body, `Models/Garments/<Name>_<Label>.json`. |
 | `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint`, each image cropped to its paint, and garment textures to `Textures/Garments`. |
 | `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces. |
-| `src/Client/Assets/Editor/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`: a body dressed in chosen garments, playing its clips on a moving ground with the cloth solver running. |
+| `src/Client/Assets/Editor/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`: a body dressed in chosen garments, playing its clips or a cloth stress motion on a moving ground with the cloth solver running. |
+| `src/Client/Assets/Editor/ClothStressMotion.cs`, `ClothMotionMeter.cs`, `ClothMeasurement.cs` | The cloth stress motions, what is measured of the cloth in them, and `MMORPG > Tools > Art Pipeline > Measure Cloth`, which writes `artifacts/cloth-measurements.md`; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#measuring-the-cloth). |
+| `src/Client/Assets/Editor/ClothKinematicFixtures.cs` | `MMORPG > Tools > Art Pipeline > Write Cloth Fixtures`: writes the kinematic fixtures of [Cloth Parity](#cloth-parity). |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, such as `HumanLocomotion.controller`. |
 | `tools/blender/art_pipeline` | Python that runs inside Blender: validation, FBX export, the review sheet, in `bodies.py` the body parts of a skinned character written from its editable body, and in `poses.py` the test poses of the `Humanoid` skeleton that the rig reviews use. |
+| `tools/blender/art_pipeline/cloth.py`, `cloth_core.py` | The cloth chains laid as the runtime solver lays them at its Follow detail, for the review sheets, review files, and checks: `cloth.py` measures in Blender, `cloth_core.py` lays on plain data with the standard library only; see [Cloth Parity](#cloth-parity). |
+| `tools/blender/tests` | Python tests of the art pipeline that run without Blender, and their fixtures. |
 | `tools/blender/art_pipeline_cli.py` | Blender entry point for the scripts below. |
 | `tools/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
 | `tools/Render-ArtPreview.ps1`, `tools/Approve-ArtAsset.ps1`, `tools/Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/ArtPipelineCommon.ps1`. |
@@ -305,6 +309,17 @@ to them, and the runtime cloth solver moves them for the garments that use them
 | `hood` | `Hood1`, `Hood2` | `Head` | Behind the head at eye height, stepping down and back. |
 
 A chain bone's Z axis points away from the body, the way its cloth faces.
+
+The skeleton's `cloth` section holds the constants of the cloth on its chains,
+which the Unity client and the art pipeline share: the body bones the cloth
+collides with and where their capsules end, the directions and groove passes of
+a capsule's radius, how a garment's reach is measured, how often and how far the
+kinematic layer pushes a chain out of the body, how a chain follows the legs,
+the gap of a cloak over a robe, and per kind of chain, in the order their cloth
+lies on the body, its parent, its bones, the part of the legs beside each bone,
+its profile's margin and slack, the kind it lies over, and its chains with their
+angles around the hips. `ClothKinematicsTests` checks the client's constants
+against it, and `cloth_core.py` reads it; see [Cloth Parity](#cloth-parity).
 
 The character faces +Y and its right is +X, so the `_R` bones sit at +X. Limbs
 bend about their bone X axis, arms rise about Z, and every bone twists about Y.
@@ -1066,10 +1081,50 @@ overlap.
 
 Cloth in motion is reviewed in Unity with `MMORPG > Tools > Art Pipeline >
 Wardrobe`: pick a body, tick the garments it wears, and play `Idle`, `Walk`,
-`Jog`, or `Death`. The body is put together as the game puts it together, walks
-and jogs forward at the clips' speeds over a checkered ground that the camera
-follows, so loose cloth lags as in the game, and the cloth solver runs. Drag in
-the view to turn the camera and scroll to come closer.
+`Jog`, or `Death`, or a stress motion such as a spin, a sharp turn, a stop, a
+zig-zag, the zig-zag as the network shows a remote body, jittery frames, or a
+jump. The body is put together as the game puts it together, walks and jogs
+forward at the clips' speeds over a checkered ground that the camera follows, so
+loose cloth lags as in the game, and the cloth solver runs. `Playback` slows it
+down to a tenth, and `Step 1/60 s` steps a paused body a frame at a time. Beside
+it the window shows what `ClothMotionMeter` measures: how many leg and arm
+vertices come through the loose cloth now and at most, a robe through a cloak,
+the chains' jerk, and how far a spin flares them and how long they take to
+settle. Drag in the view to turn the camera and scroll to come closer.
+`MMORPG > Tools > Art Pipeline > Measure Cloth` measures every motion on both
+bodies in the robe, the cloak, and both, in about a minute, and writes the table
+to `artifacts/cloth-measurements.md`.
+
+### Cloth Parity
+
+The review sheets, review files, and checks lay a garment's cloth chains as the
+runtime solver lays them at its Follow detail, without springs. The laying is
+`cloth_core.py`, which uses only the standard library and works on plain data,
+and the Unity client's `ClothKinematics` is its source: `cloth.py` measures in
+Blender what the laying needs, the capsules from the body's vertices, the legs'
+turns against the hips, the chains as they hang from their posed parents, how
+deep each particle lies in each of the trunk's capsules at rest, and the
+garment's reach about each particle, hands it to `cloth_core.lay`, and turns the
+chain bones to point at the laid particles. Both read their constants from the
+`cloth` section of the skeleton.
+
+`MMORPG > Tools > Art Pipeline > Write Cloth Fixtures` captures both bodies in
+the robe, the cloak, and both, in frames of their clips, in leg poses set by
+hand, and in seeded random leg poses, each with what `ClothKinematics` laid, and
+writes them to `tools/blender/tests/fixtures/cloth_kinematics.json`, one case per
+line. `ClothKinematicsTests` lays every case again with `ClothKinematics` and
+captures the bodies again, and fails with the menu to run when the solver, a
+body, or a garment changed; the Python tests lay every case with `cloth_core.py`
+and must come within 0.01 mm of it. They run without Blender, in CI and in
+`tools/Test-Changes.ps1` for a change below `art/` or `tools/blender/`:
+
+```powershell
+python -m unittest discover -s tools/blender/tests
+```
+
+Expected result: `Ran 3 tests` and `OK`. After a change of the cloth in the
+client or of a body or garment that it hangs on, run the menu, commit the
+fixtures, and run the Python tests again.
 
 ## Garment Textures
 

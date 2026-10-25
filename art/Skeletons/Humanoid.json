@@ -119,5 +119,58 @@
         {"name": "CloakOuter5_R", "parent": "CloakOuter4_R", "deform": true, "chain": "cloak"},
         {"name": "Hood1", "parent": "Head", "deform": true, "chain": "hood"},
         {"name": "Hood2", "parent": "Hood1", "deform": true, "chain": "hood"}
-    ]
+    ],
+    "cloth": {
+        "capsules": [
+            {"bone": "Hips", "end": "Spine"},
+            {"bone": "Spine", "end": "Chest"},
+            {"bone": "Chest", "end": "UpperChest"},
+            {"bone": "UpperChest", "end": "Neck"},
+            {"bone": "Neck", "end": "Head"},
+            {"bone": "Head", "end": null},
+            {"bone": "UpperLeg_L", "end": "LowerLeg_L"},
+            {"bone": "LowerLeg_L", "end": "Foot_L"},
+            {"bone": "UpperLeg_R", "end": "LowerLeg_R"},
+            {"bone": "LowerLeg_R", "end": "Foot_R"}
+        ],
+        "directions": 16,
+        "groovePasses": 2,
+        "fallbackRadius": 0.05,
+        "placeSpan": 0.05,
+        "resolveIterations": 8,
+        "minimumSlope": 0.2,
+        "chainPasses": 3,
+        "aheadBlend": 0.05,
+        "followReach": 0.3,
+        "layerGap": 0.01,
+        "kinds": [
+            {
+                "kind": "skirt", "parent": "Hips", "bones": 4, "beside": ["thigh", "thigh", "shin", "shin"],
+                "margin": 0.012, "slack": 0.1, "over": null,
+                "chains": [
+                    {"name": "SkirtFront", "angle": 0, "sided": false},
+                    {"name": "SkirtFrontSide", "angle": 45, "sided": true},
+                    {"name": "SkirtSide", "angle": 90, "sided": true},
+                    {"name": "SkirtBackSide", "angle": 135, "sided": true},
+                    {"name": "SkirtBack", "angle": 180, "sided": false}
+                ]
+            },
+            {
+                "kind": "cloak", "parent": "UpperChest", "bones": 5, "beside": ["none", "none", "thigh", "thigh", "shin"],
+                "margin": 0.02, "slack": 0.05, "over": "skirt",
+                "chains": [
+                    {"name": "CloakCenter", "angle": 180, "sided": false},
+                    {"name": "CloakInner", "angle": 157.5, "sided": true},
+                    {"name": "CloakOuter", "angle": 135, "sided": true}
+                ]
+            },
+            {
+                "kind": "hood", "parent": "Head", "bones": 2, "beside": [],
+                "margin": 0.01, "slack": 0, "over": null,
+                "chains": [
+                    {"name": "Hood", "angle": 180, "sided": false}
+                ]
+            }
+        ]
+    }
 }

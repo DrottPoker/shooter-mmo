@@ -8,20 +8,32 @@ namespace Mmorpg.Client.Editor
 {
     // MMORPG > Tools > Art Pipeline > Wardrobe: a body of the appearance catalogs dressed in the
     // garments ticked on the left, with the paint layers picked there, playing Idle, Walk, Jog, or
-    // Death on a moving ground with the cloth solver running, for reviewing garments in motion
-    // before approving them. Drag in the view to turn the camera around the body, and scroll to
-    // come closer. The window's layout is a temporary tool interface; WardrobePreview does the work.
+    // Death, or a cloth stress motion over them, on a moving ground with the cloth solver running,
+    // for reviewing garments in motion before approving them, in slow motion or frame by frame,
+    // with what ClothMotionMeter measures of the cloth. Drag in the view to turn the camera around
+    // the body, and scroll to come closer. The window's layout is a temporary tool interface;
+    // WardrobePreview does the work.
     public sealed class WardrobeWindow : EditorWindow
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Wardrobe";
 
         private const float SidebarWidth = 220f;
 
+        // The vertices that come through the cloth are measured every this many frames.
+        private const int MeshEvery = 5;
+
+        private static readonly float[] TimeScales = { 1f, 0.5f, 0.25f, 0.1f };
+        private static readonly string[] TimeScaleNames = { "1x", "0.5x", "0.25x", "0.1x" };
+
         private readonly HashSet<string> chosen = new HashSet<string>();
         private readonly HashSet<string> chosenPaints = new HashSet<string>();
         private ArtAssetManifest[] bodies = new ArtAssetManifest[0];
         private int bodyIndex;
         private WardrobePreview preview;
+        private ClothMotionMeter meter;
+        private int timeScale;
+        private int frame;
+        private float lastStressTime;
         private Camera previewCamera;
         private RenderTexture texture;
         private bool paused;
@@ -69,6 +81,7 @@ namespace Mmorpg.Client.Editor
                 chosen.IntersectWith(preview.Catalog.Garments.Select(garment => garment.Name));
                 chosenPaints.IntersectWith(preview.Catalog.Paints.Select(paint => paint.Name));
                 preview.Wear(chosen, chosenPaints);
+                meter = new ClothMotionMeter(preview);
             }
             catch (System.Exception error)
             {
@@ -89,6 +102,8 @@ namespace Mmorpg.Client.Editor
 
         private void Release()
         {
+            meter?.Dispose();
+            meter = null;
             preview?.Dispose();
             preview = null;
             if (previewCamera != null)
@@ -115,8 +130,25 @@ namespace Mmorpg.Client.Editor
                 return;
             }
 
+            if (preview.Stress != null && preview.Stress.JitteryFrames)
+            {
+                deltaTime = Mathf.Lerp(1f / 240f, 1f / 20f, Random.value);
+            }
+
+            Advance(deltaTime * TimeScales[timeScale]);
+        }
+
+        private void Advance(float deltaTime)
+        {
+            preview.Step(deltaTime, Quaternion.Euler(pitch, yaw, 0f) * (Vector3.back * distance));
             AimCamera();
-            preview.Step(deltaTime, previewCamera.transform.position);
+            if (preview.StressTime < lastStressTime)
+            {
+                meter.Reset();
+            }
+
+            lastStressTime = preview.StressTime;
+            meter.Sample(preview.Stress, preview.StressTime, deltaTime, frame++ % MeshEvery == 0);
             Repaint();
         }
 
@@ -234,18 +266,54 @@ namespace Mmorpg.Client.Editor
             EditorGUILayout.LabelField("Motion", EditorStyles.boldLabel);
             foreach (WardrobePreview.Motion motion in System.Enum.GetValues(typeof(WardrobePreview.Motion)))
             {
-                if (GUILayout.Toggle(preview.Playing == motion, motion.ToString(), EditorStyles.miniButton) && preview.Playing != motion)
+                if (GUILayout.Toggle(preview.Stress == null && preview.Playing == motion, motion.ToString(), EditorStyles.miniButton)
+                    && (preview.Stress != null || preview.Playing != motion))
                 {
                     preview.Play(motion);
+                    meter.Reset();
                 }
             }
 
-            paused = EditorGUILayout.ToggleLeft("Paused", paused);
+            EditorGUILayout.LabelField("Stress motion", EditorStyles.boldLabel);
+            foreach (var motion in ClothStressMotion.All)
+            {
+                if (GUILayout.Toggle(preview.Stress == motion, motion.Name, EditorStyles.miniButton) && preview.Stress != motion)
+                {
+                    preview.Play(motion);
+                    meter.Reset();
+                    lastStressTime = 0f;
+                }
+            }
+
+            timeScale = EditorGUILayout.Popup("Playback", timeScale, TimeScaleNames);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                paused = EditorGUILayout.ToggleLeft("Paused", paused, GUILayout.Width(70f));
+                using (new EditorGUI.DisabledScope(!paused))
+                {
+                    if (GUILayout.Button("Step 1/60 s"))
+                    {
+                        Advance(1f / 60f);
+                    }
+                }
+            }
+
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Speed", preview.Speed.ToString("0.0") + " m/s");
             EditorGUILayout.LabelField("Drawn", string.Join(", ", preview.Worn.Select(garment => garment.Name)));
             EditorGUILayout.LabelField("Painted", string.Join(", ", preview.Painted.Select(paint => paint.Name)));
             EditorGUILayout.LabelField("Cloth", preview.Solver.IsActive ? preview.Solver.CurrentDetail.ToString() : "none");
+            if (preview.Stress != null)
+            {
+                EditorGUILayout.LabelField("Time", preview.StressTime.ToString("0.00") + " of " + preview.Stress.Seconds.ToString("0.0") + " s");
+            }
+
+            var report = meter.Report;
+            EditorGUILayout.LabelField("Through cloth", meter.LastPoked + " now, " + report.Poked + " at most, "
+                + (report.PokeDepth * 1000f).ToString("0") + " mm");
+            EditorGUILayout.LabelField("Robe through cloak", report.LayerPoked + ", " + (report.LayerPokeDepth * 1000f).ToString("0") + " mm");
+            EditorGUILayout.LabelField("Jerk", report.JerkRms.ToString("0") + " m/s^3 RMS");
+            EditorGUILayout.LabelField("Flare, settle", (report.Flare * 100f).ToString("0.0") + " cm, " + report.SettleSeconds.ToString("0.00") + " s");
         }
 
         private void DrawView(Rect area)

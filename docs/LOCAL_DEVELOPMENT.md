@@ -88,6 +88,7 @@ dotnet restore Mmorpg.slnx --locked-mode
 & .\tools\Test-Changes.ps1 -VerifyRules
 & .\tools\Verify-DependencyPolicy.ps1
 & .\tools\Verify-ArtAssets.ps1
+python -m unittest discover -s tools/blender/tests
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
 dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
@@ -214,9 +215,10 @@ ends with a summary:
   fixtures, and generated World data run every test project, both Unity suites,
   and the content verifiers. Unity client and shared package files run both
   Unity suites, and their linked .NET code the projects that compile it. Art
-  sources and the Blender scripts run `Verify-ArtAssets.ps1` and both Unity
-  suites, because the Editor reads the art manifests and a test reads the clip
-  speeds in the animation script; the art pipeline scripts run
+  sources and the Blender scripts run `Verify-ArtAssets.ps1`, the art
+  pipeline's Python tests in `tools/blender/tests`, and both Unity suites,
+  because the Editor reads the art manifests and a test reads the clip speeds in
+  the animation script; the art pipeline scripts run
   `Verify-ArtAssets.ps1`. Monitoring configuration runs
   `Verify-Observability.ps1` and every test project. Documentation runs nothing, except
   `docs/SERVICE_FEATURES.md`, which a test reads. Shared build, format, and test

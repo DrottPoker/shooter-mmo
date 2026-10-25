@@ -10,10 +10,12 @@ using UnityEngine.SceneManagement;
 namespace Mmorpg.Client.Editor
 {
     // The Wardrobe preview: a body dressed in chosen garments of its appearance catalog, put
-    // together as the game puts it together, that plays Idle, Walk, Jog, or Death and runs the
-    // cloth solver, in a preview scene of its own. While it walks or jogs it moves forward at the
-    // clip's speed and the checkered ground moves along under it, so loose cloth lags as in the
-    // game. WardrobeWindow shows it; see docs/EQUIPMENT_VISUALS_DESIGN.md.
+    // together as the game puts it together, that plays Idle, Walk, Jog, or Death, or a cloth
+    // stress motion over them, and runs the cloth solver, in a preview scene of its own. While it
+    // walks or jogs it moves forward at the clip's speed and the checkered ground moves along under
+    // it, so loose cloth lags as in the game; a stress motion moves and turns it along its course,
+    // in a network motion as a remote body shows it. WardrobeWindow shows it and ClothMeasurement
+    // measures in it; see docs/EQUIPMENT_VISUALS_DESIGN.md.
     public sealed class WardrobePreview : IDisposable
     {
         public const string ControllerPath = "Assets/Art/Animation/HumanLocomotion.controller";
@@ -46,6 +48,8 @@ namespace Mmorpg.Client.Editor
         private readonly Transform ground;
         private readonly float walkCycleSeconds = 1f;
         private readonly float jogCycleSeconds = 1f;
+        private readonly RemoteMovementPresenter network = new RemoteMovementPresenter();
+        private uint networkTick;
         private Scene scene;
 
         public WardrobePreview(ArtAssetManifest body)
@@ -127,6 +131,11 @@ namespace Mmorpg.Client.Editor
 
         public Motion Playing { get; private set; }
 
+        // The stress motion it plays, or null for the plain clip, and how far into it it is.
+        public ClothStressMotion Stress { get; private set; }
+
+        public float StressTime { get; private set; }
+
         // The clip's speed over the ground, in meters per second.
         public float Speed
         {
@@ -181,19 +190,39 @@ namespace Mmorpg.Client.Editor
         public void Play(Motion motion)
         {
             Playing = motion;
-            HumanLocomotion.Evaluate(Speed, walkCycleSeconds, jogCycleSeconds, out var blend, out var rate);
-            animator.SetBool(MovingId, Speed >= HumanLocomotion.MovingSpeed);
-            animator.SetFloat(SpeedId, blend);
-            animator.SetFloat(RateId, rate);
-            animator.SetBool(DeadId, motion == Motion.Death);
+            Stress = null;
+            Animate(Speed, motion == Motion.Death);
+        }
+
+        // Plays a stress motion from its start: its clips from their start, and the chains from
+        // where they hang, so every run of a motion is alike; at its end it starts again.
+        public void Play(ClothStressMotion motion)
+        {
+            Stress = motion;
+            StressTime = 0f;
+            animator.Rebind();
+            animator.Update(0f);
+            solver.Restart();
+            network.Configure(ClothStressMotion.NetworkTickRateHz,
+                RemoteMovementPresenter.InterpolationDelayTicks(ClothStressMotion.NetworkTickRateHz, ClothStressMotion.NetworkSnapshotRateHz),
+                null, null);
+            networkTick = 0;
+            Place(motion.At(0f));
         }
 
         // Moves the body at the clip's speed, poses it, moves the ground along, and runs the
-        // cloth solver as seen from the camera.
-        public void Step(float deltaTime, Vector3 cameraPosition)
+        // cloth solver as seen from a camera this far from the body's chest once the body moved, so
+        // the camera keeps up with a jump.
+        public void Step(float deltaTime, Vector3 cameraOffset)
         {
             if (deltaTime <= 0f)
             {
+                return;
+            }
+
+            if (Stress != null)
+            {
+                StepStress(deltaTime, cameraOffset);
                 return;
             }
 
@@ -207,7 +236,65 @@ namespace Mmorpg.Client.Editor
             Body.transform.position = position;
             ground.position = new Vector3(0f, 0f, Mathf.Floor(position.z / TileSize) * TileSize);
             animator.Update(deltaTime);
-            solver.Simulate(deltaTime, cameraPosition);
+            solver.Simulate(deltaTime, Focus + cameraOffset);
+        }
+
+        private void StepStress(float deltaTime, Vector3 cameraOffset)
+        {
+            StressTime += deltaTime;
+            if (StressTime > Stress.Seconds)
+            {
+                Play(Stress);
+            }
+
+            Place(Stress.Network ? Networked(deltaTime) : Stress.At(StressTime));
+            animator.Update(deltaTime);
+            solver.Simulate(deltaTime, Focus + cameraOffset);
+        }
+
+        // The course as a remote body shows it: snapshots of it at the network's rate, presented
+        // by the game's own presenter, a few ticks behind.
+        private ClothStressMotion.Pose Networked(float deltaTime)
+        {
+            var tickSeconds = 1f / ClothStressMotion.NetworkTickRateHz;
+            var everyTicks = ClothStressMotion.NetworkTickRateHz / ClothStressMotion.NetworkSnapshotRateHz;
+            for (; networkTick * tickSeconds <= StressTime; networkTick++)
+            {
+                if (networkTick % everyTicks != 0)
+                {
+                    continue;
+                }
+
+                var at = Stress.At(networkTick * tickSeconds);
+                var before = Stress.At(((int)networkTick - 1) * tickSeconds);
+                var velocity = (at.Position - before.Position) / tickSeconds;
+                network.Push(networkTick, new Mmorpg.GameSimulation.PlayerMovementState(at.Position.x, at.Position.y, at.Position.z,
+                    velocity.x, velocity.y, velocity.z, at.Yaw, true));
+            }
+
+            network.Advance(deltaTime, deltaTime);
+            var delay = network.DelayTicks * tickSeconds;
+            var played = Stress.At(StressTime - delay);
+            return new ClothStressMotion.Pose(network.Position, network.YawDegrees, played.Speed, played.Dead);
+        }
+
+        // Stands the body where a pose of a stress motion puts it, the ground under it, its clips at
+        // the pose's speed.
+        private void Place(ClothStressMotion.Pose pose)
+        {
+            Body.transform.SetPositionAndRotation(pose.Position, Quaternion.Euler(0f, pose.Yaw, 0f));
+            ground.position = new Vector3(Mathf.Floor(pose.Position.x / TileSize) * TileSize, 0f,
+                Mathf.Floor(pose.Position.z / TileSize) * TileSize);
+            Animate(pose.Speed, pose.Dead);
+        }
+
+        private void Animate(float speed, bool dead)
+        {
+            HumanLocomotion.Evaluate(speed, walkCycleSeconds, jogCycleSeconds, out var blend, out var rate);
+            animator.SetBool(MovingId, speed >= HumanLocomotion.MovingSpeed);
+            animator.SetFloat(SpeedId, blend);
+            animator.SetFloat(RateId, rate);
+            animator.SetBool(DeadId, dead);
         }
 
         // Renders the scene from the camera into the texture.

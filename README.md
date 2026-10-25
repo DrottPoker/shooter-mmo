@@ -222,6 +222,7 @@ dotnet restore Mmorpg.slnx --locked-mode
 & ./tools/Test-Changes.ps1 -VerifyRules
 & ./tools/Verify-DependencyPolicy.ps1
 & ./tools/Verify-ArtAssets.ps1
+python -m unittest discover -s tools/blender/tests
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
 dotnet test Mmorpg.slnx --configuration Release --no-build

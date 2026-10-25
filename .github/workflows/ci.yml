@@ -45,6 +45,10 @@ jobs:
         shell: pwsh
         run: ./tools/Verify-ArtAssets.ps1
 
+      # The art pipeline's kinematic cloth lays the chains as the Unity client does.
+      - name: Test the art pipeline's Python
+        run: python3 -m unittest discover -s tools/blender/tests -v
+
       # Every tracked file must match a rule of the local change-based checks.
       - name: Verify test selection rules
         shell: pwsh

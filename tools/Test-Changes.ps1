@@ -42,6 +42,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 #   test:<project>   one .NET test project
 #   unity            the Unity EditMode and PlayMode suites
 #   art              tools/Verify-ArtAssets.ps1
+#   blender-python   the art pipeline's Python tests in tools/blender/tests, without Blender
 #   deps             tools/Verify-DependencyPolicy.ps1
 #   observability    tools/Verify-Observability.ps1
 #   verify-content   the item catalog, world collision, and world actor verifiers
@@ -76,7 +77,7 @@ $rules = @(
     # The Unity Editor reads the art manifests and skeletons, and a Unity test the clip speeds in
     # the Blender animation script.
     @{ Pattern = '^(art|tools/blender)/'
-        Checks = @("art", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
+        Checks = @("art", "blender-python", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
     @{ Pattern = '^tools/([^/]*Art[^/]*|Sync-[^/]+)\.ps1$'
         Checks = @("art"); Reason = "the art pipeline" },
     @{ Pattern = '^tools/Verify-DependencyPolicy\.ps1$'
@@ -520,6 +521,7 @@ try {
     elseif ($scripts.Count -gt 0) { Write-Host "  PowerShell syntax of the changed scripts: $($scripts -join ', ')" }
     if ($full -or $tokens.Contains("deps")) { Write-Host "  dependency policy" }
     if ($full -or $tokens.Contains("art")) { Write-Host "  art assets" }
+    if ($full -or $tokens.Contains("blender-python")) { Write-Host "  art pipeline Python tests" }
     if ($full -or $tokens.Contains("observability")) { Write-Host "  observability configuration" }
     if ($runDotNet) {
         $buildScope = if ($full) { "the solution" } else { "projects: $($buildNames -join ', ')" }
@@ -540,7 +542,7 @@ try {
         $unityScope = if ($SkipUnity) { " (skipped by -SkipUnity; CI runs them)" } else { "" }
         Write-Host "  Unity EditMode and PlayMode tests$unityScope"
     }
-    if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("observability"))) {
+    if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("blender-python") -or $tokens.Contains("observability"))) {
         Write-Host "  none; no change can affect a check"
     }
     if ($Plan) {
@@ -570,6 +572,13 @@ try {
     }
     if ($full -or $tokens.Contains("art")) {
         $null = Invoke-Check "Art assets" { (Invoke-Script "Verify-ArtAssets.ps1") -eq 0 }
+    }
+    if ($full -or $tokens.Contains("blender-python")) {
+        # Windows installs Python as python, and its python3 may be a store stub.
+        $python = if ($env:OS -eq "Windows_NT") { "python" } else { "python3" }
+        $null = Invoke-Check "Art pipeline Python tests" {
+            (Invoke-Native $python @("-m", "unittest", "discover", "-s", (Join-Path $repositoryRoot "tools/blender/tests"))) -eq 0
+        }
     }
     if ($full -or $tokens.Contains("observability")) {
         $null = Invoke-Check "Observability configuration" { (Invoke-Script "Verify-Observability.ps1") -eq 0 }

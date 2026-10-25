@@ -1,0 +1,117 @@
+using System.Linq;
+using Mmorpg.Client.Editor;
+using Mmorpg.Client.Gameplay;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace Mmorpg.Client.Tests.EditMode
+{
+    // The cloth stress motions keep their courses, the Wardrobe plays them as the game shows a body,
+    // and ClothMotionMeter finds what it measures, as docs/EQUIPMENT_VISUALS_DESIGN.md describes
+    // under Review.
+    public sealed class ClothStressMotionTests
+    {
+        private const float Step = 1f / 60f;
+
+        [Test]
+        public void EveryMotionStartsWhereTheBodyStandsAndKeepsItsPhasesInside()
+        {
+            Assert.That(ClothStressMotion.All.Select(motion => motion.Name).Distinct().Count(), Is.EqualTo(ClothStressMotion.All.Count));
+            foreach (var motion in ClothStressMotion.All)
+            {
+                Assert.That(motion.Seconds, Is.GreaterThan(1f), motion.Name);
+                Assert.That(motion.At(0f).Position.magnitude, Is.LessThan(1e-4f), motion.Name);
+                foreach (var (start, end) in motion.Steady)
+                {
+                    Assert.That(start, Is.GreaterThanOrEqualTo(0f).And.LessThan(end), motion.Name);
+                    Assert.That(end, Is.LessThanOrEqualTo(motion.Seconds + 1e-4f), motion.Name);
+                }
+
+                Assert.That(motion.Jumps.All(jump => jump > 0f && jump < motion.Seconds), Is.True, motion.Name);
+                Assert.That(motion.Frames().Sum(), Is.GreaterThanOrEqualTo(motion.Seconds), motion.Name);
+            }
+        }
+
+        [TestCase("Spin 720", 720f)]
+        [TestCase("Spin 2880", 2880f)]
+        public void ASpinTurnsTheBodyAtItsRateOnTheSpot(string name, float rate)
+        {
+            var motion = ClothStressMotion.Named(name);
+            var (start, end) = motion.Spin.Value;
+            var quarter = 90f / rate;
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(motion.At(start).Yaw + 90f, motion.At(start + quarter).Yaw)), Is.LessThan(1f));
+            Assert.That(Vector3.Distance(motion.At(start).Position, motion.At(end).Position), Is.LessThan(1e-3f));
+            Assert.That(motion.Settle.Value.Start, Is.EqualTo(end).Within(1e-4f));
+            Assert.That(motion.Settle.Value.End, Is.EqualTo(motion.Seconds).Within(1e-4f));
+        }
+
+        [Test]
+        public void AJumpLandsAtOnce()
+        {
+            var motion = ClothStressMotion.Named("Snap 3 m");
+            var jump = motion.Jumps.Single();
+            var before = motion.At(jump - 0.0005f).Position;
+            var after = motion.At(jump + 0.0005f).Position;
+            Assert.That(Vector3.Distance(before, after), Is.EqualTo(3f).Within(0.02f));
+            Assert.That(Vector3.Distance(motion.At(jump - 0.1f).Position, before), Is.EqualTo(0.1f * HumanLocomotion.JogSpeed).Within(0.02f));
+        }
+
+        [Test]
+        public void TheNetworkMotionShowsTheCourseAsTheGamePresentsARemoteBody()
+        {
+            using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male")))
+            {
+                var motion = ClothStressMotion.Named("Network 15 Hz");
+                preview.Play(motion);
+                for (var frame = 0; frame < 90; frame++)
+                {
+                    preview.Step(Step, Vector3.back * 3f);
+                }
+
+                // Four ticks behind the newest snapshot, as remote bodies are shown at 30 ticks and 15 snapshots a second.
+                var delay = RemoteMovementPresenter.InterpolationDelayTicks(ClothStressMotion.NetworkTickRateHz,
+                    ClothStressMotion.NetworkSnapshotRateHz) / (float)ClothStressMotion.NetworkTickRateHz;
+                var shown = preview.Body.transform.position;
+                Assert.That(Vector3.Distance(shown, motion.At(preview.StressTime - delay).Position), Is.LessThan(0.15f));
+                Assert.That(Vector3.Distance(shown, motion.At(preview.StressTime).Position), Is.GreaterThan(0.3f));
+            }
+        }
+
+        [Test]
+        public void TheMeterFindsALegThatComesThroughTheCloth()
+        {
+            using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male")))
+            using (var meter = new ClothMotionMeter(preview))
+            {
+                preview.Wear(new[] { "WoolRobe" });
+                preview.Step(Step, Vector3.back * 3f);
+                meter.Sample(null, 0f, Step, true);
+                Assert.That(meter.LastPoked, Is.EqualTo(0), "standing");
+
+                // The knee raised high in front, and the robe's chains left where they hang.
+                var bones = preview.Body.GetComponentsInChildren<Transform>(true).GroupBy(bone => bone.name)
+                    .ToDictionary(group => group.Key, group => group.First());
+                var thigh = bones["UpperLeg_R"];
+                var along = (bones["LowerLeg_R"].position - thigh.position).normalized;
+                thigh.rotation = Quaternion.FromToRotation(along, preview.Body.transform.forward) * thigh.rotation;
+                meter.Sample(null, 0f, Step, true);
+                Assert.That(meter.LastPoked, Is.GreaterThan(10));
+                Assert.That(meter.LastPokeDepth, Is.GreaterThan(0.03f));
+            }
+        }
+
+        [Test]
+        public void AMeasuredSpinFlaresTheCloakAndSettlesIt()
+        {
+            using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male")))
+            {
+                preview.Wear(new[] { "WoolRobe", "WoolCloak" });
+                var report = ClothMeasurement.Run(preview, ClothStressMotion.Named("Spin 1440"), meshEvery: 10);
+                Assert.That(report.Frames, Is.GreaterThan(300));
+                Assert.That(report.Flare, Is.GreaterThan(0.05f));
+                Assert.That(report.SettleSeconds, Is.GreaterThan(0f).And.LessThan(ClothStressMotion.Named("Spin 1440").Seconds));
+                Assert.That(float.IsNaN(report.JerkRms) || float.IsInfinity(report.JerkRms), Is.False);
+            }
+        }
+    }
+}
