@@ -86,6 +86,22 @@ namespace Mmorpg.Client.Gameplay
         // Lets tests share measures out of play.
         internal static bool SharesMeasuresOutOfPlay { get; set; }
 
+        // Moves the body out of play into a world shared with other bodies, as tests of a crowd do; the
+        // body starts its springs again there, and the world's owner disposes it.
+        internal void ShareWorld(ClothWorld shared)
+        {
+            if (world != null && handle >= 0)
+            {
+                world.Remove(handle);
+            }
+
+            handle = -1;
+            ownWorld?.Dispose();
+            ownWorld = null;
+            world = shared;
+            Describe();
+        }
+
         private static bool SharesMeasures => Application.isPlaying || SharesMeasuresOutOfPlay;
 
         public ClothDetail CurrentDetail { get; private set; } = ClothDetail.Rest;

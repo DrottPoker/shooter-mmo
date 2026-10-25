@@ -702,9 +702,21 @@ namespace Mmorpg.Client.Cloth
             transformsDirty = false;
         }
 
-        // A world for more bodies: the bodies are written again into the new blocks.
+        // A world for more bodies: the bodies are written again into the new blocks, and what moves
+        // with time, their springs, the frames of their anchors, and last frame's bones, is kept, so
+        // growing the world neither starts their springs again nor jolts their cloth. A body keeps
+        // its block, which starts at its handle times the layout's size whatever the capacity.
         private void Grow(int bodyCapacity)
         {
+            var keptSlots = new NativeArray<ClothBodySlot>(slots, Allocator.Temp);
+            var keptSpringBodies = new NativeArray<ClothSpringBody>(springBodies, Allocator.Temp);
+            var keptAnchors = new NativeArray<ClothAnchor>(anchors, Allocator.Temp);
+            var keptMatrices = new NativeArray<float4x4>(previousMatrices, Allocator.Temp);
+            var keptStates = new NativeArray<float3>(states, Allocator.Temp);
+            var keptPreviousStates = new NativeArray<float3>(previousStates, Allocator.Temp);
+            var keptVelocities = new NativeArray<float3>(velocities, Allocator.Temp);
+            var keptTargetStates = new NativeArray<float3>(targetStates, Allocator.Temp);
+            var keptTargets = new NativeArray<float3>(targets, Allocator.Temp);
             DisposeArrays();
             Allocate(bodyCapacity);
             for (var handle = 0; handle < bodies.Count; handle++)
@@ -714,6 +726,37 @@ namespace Mmorpg.Client.Cloth
                     Write(handle, bodies[handle]);
                 }
             }
+
+            NativeArray<ClothSpringBody>.Copy(keptSpringBodies, springBodies, keptSpringBodies.Length);
+            NativeArray<ClothAnchor>.Copy(keptAnchors, anchors, keptAnchors.Length);
+            NativeArray<float4x4>.Copy(keptMatrices, previousMatrices, keptMatrices.Length);
+            NativeArray<float3>.Copy(keptStates, states, keptStates.Length);
+            NativeArray<float3>.Copy(keptPreviousStates, previousStates, keptPreviousStates.Length);
+            NativeArray<float3>.Copy(keptVelocities, velocities, keptVelocities.Length);
+            NativeArray<float3>.Copy(keptTargetStates, targetStates, keptTargetStates.Length);
+            NativeArray<float3>.Copy(keptTargets, targets, keptTargets.Length);
+            for (var handle = 0; handle < keptSlots.Length; handle++)
+            {
+                var slot = slots[handle];
+                if (!slot.Active)
+                {
+                    continue;
+                }
+
+                slot.Detail = keptSlots[handle].Detail;
+                slot.Resting = keptSlots[handle].Resting;
+                slots[handle] = slot;
+            }
+
+            keptSlots.Dispose();
+            keptSpringBodies.Dispose();
+            keptAnchors.Dispose();
+            keptMatrices.Dispose();
+            keptStates.Dispose();
+            keptPreviousStates.Dispose();
+            keptVelocities.Dispose();
+            keptTargetStates.Dispose();
+            keptTargets.Dispose();
         }
 
         private void DisposeArrays()

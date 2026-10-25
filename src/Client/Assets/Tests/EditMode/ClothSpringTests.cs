@@ -242,6 +242,37 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A world that grows for another body keeps the springs of the bodies already in it: their
+        // cloth swings on as the same body's cloth in a world that did not grow.
+        [Test]
+        public void AGrowingWorldKeepsTheSwingOfItsBodies()
+        {
+            using (var kept = Preview(new[] { "WoolRobe", "WoolCloak" }))
+            using (var grown = Preview(new[] { "WoolRobe", "WoolCloak" }))
+            using (var joining = Preview(new[] { "WoolCloak" }))
+            {
+                kept.Play(WardrobePreview.Motion.Jog);
+                grown.Play(WardrobePreview.Motion.Jog);
+                for (var frame = 0; frame < 60; frame++)
+                {
+                    kept.Step(Step, CameraOffset);
+                    grown.Step(Step, CameraOffset);
+                }
+
+                Assert.That(Apart(kept, grown), Is.LessThan(0.0001f));
+
+                // The world held one body; the joining body makes it grow.
+                joining.Solver.ShareWorld(grown.Solver.World);
+                for (var frame = 0; frame < 10; frame++)
+                {
+                    kept.Step(Step, CameraOffset);
+                    grown.Step(Step, CameraOffset);
+                    Assert.That(grown.Solver.SpringWeight, Is.EqualTo(1f), "frame " + frame);
+                    Assert.That(Apart(kept, grown), Is.LessThan(0.001f), "frame " + frame);
+                }
+            }
+        }
+
         private static WardrobePreview Preview(string[] garments)
         {
             var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male"));
