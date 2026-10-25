@@ -152,7 +152,8 @@ def recipe_text(recipe) -> str:
         if not recipe.get("over"):
             recipe.pop("over", None)
         if recipe.get("hang"):
-            recipe["hang"] = [{**part, "flare": float(part["flare"])} for part in recipe["hang"]]
+            recipe["hang"] = [{**part, **{key: float(part[key]) for key in ("flare", "top", "width") if key in part}}
+                              for part in recipe["hang"]]
         else:
             recipe.pop("hang", None)
     return json.dumps(recipe, sort_keys=True, separators=(",", ":"))
@@ -658,6 +659,11 @@ def _cut(cage_obj: bpy.types.Object, arm: bpy.types.Object, recipe: dict, lines:
             geom = list({e for f in faces for e in f.edges}) + verts + faces
             bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=point, plane_no=normal,
                                    clear_outer=cut["keep"] == "head", clear_inner=cut["keep"] == "tail")
+    # A part across the back with a top trims the template to a yoke it hangs from.
+    for part in hang.parts(recipe):
+        if part.get("top") is not None:
+            _side, point, normal = cage.line_planes(arm.name, by_name[part["line"]])[0]
+            hang.trim(bm, part, arm, point, normal)
     loose = [v for v in bm.verts if not v.link_faces]
     bmesh.ops.delete(bm, geom=loose, context="VERTS")
     bm.normal_update()

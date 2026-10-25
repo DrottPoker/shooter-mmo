@@ -6,12 +6,12 @@
         "texture": {
             "date": "2026-10-25",
             "sourceSha256": "af69d0fceb1d392e4f904e05134a3054d99ad1acbd902990dd442cce0730f5f9",
-            "garmentSourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e"
+            "garmentSourceSha256": "bfff1b9feecdfd9948ab6596bb938c8faf114c6ae06e237884ccd6a43e1edc44"
         }
     },
     "export": {
         "sourceSha256": "af69d0fceb1d392e4f904e05134a3054d99ad1acbd902990dd442cce0730f5f9",
-        "garmentSourceSha256": "174725f73c3d0482cf64fac604e37b24c717f234f8c67433cc4799d7a756b29e",
+        "garmentSourceSha256": "bfff1b9feecdfd9948ab6596bb938c8faf114c6ae06e237884ccd6a43e1edc44",
         "materials": [
             {
                 "name": "M_Garment_WoolHoodUp",

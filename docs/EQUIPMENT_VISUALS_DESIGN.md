@@ -289,8 +289,10 @@ of the cage's `neck` region, reaches out over the shoulders.
 | --- | --- | --- | --- |
 | `CollarStand` | `neck` | on the neck, 2 to 3 cm above its base | a stand collar's top |
 | `Neckline` | `neck` | round the neck's base, just above the throat's hollow, up its sides | a round neckline: the shirts, the robe, the cloak |
-| `CloakYoke` | `trunk` | a few centimeters below the collarbones, above the armpits | a cloak's yoke, where its back hangs from between the arms |
+| `CloakNape` | `trunk` | a few centimeters below the base of the neck at the back | where a cloak's back hangs from |
+| `CloakYoke` | `trunk` | a few centimeters below the collarbones, above the armpits | where a cloak's yoke ends in front |
 | `HemCrop` | `trunk` | under the bust, above the navel | a crop top's hem |
+| `SkirtWaist` | `trunk` | just below the navel | a robe's waist seam, where its skirt starts |
 | `Waist` | `trunk` | at the hip bones | the trousers' waistband |
 | `HemHip` | `trunk` | below `Waist` by the overlap | a top's hem, over the trousers |
 | `SleeveShort` | `arms` | over half the upper arm, about 9 cm below the armpit | a short sleeve |
@@ -405,10 +407,18 @@ farthest, and hangs straight down from there, spanning the hollows. A skirt's
 columns lie around the hips between the chains, 30 mm outside the outline, so
 the thighs of a jog stay under it, and flare by the part's flare toward the
 hem, so it falls from the widest of the hips and the legs and never narrows. A
-cloak's columns lie across the back, 20 mm behind it, and grow wider toward the
-hem by the flare. A loose part takes the weights
-of its chains, two neighbouring chains blended across, and blends into the
-weights of the edge it hangs from over its first rings. Its first version is
+cloak's columns lie across the back, 20 mm behind it and a skirt's margin and
+10 mm behind the hips, so a cloak hangs clear of a skirt from the waist, and
+grow wider toward the hem by the flare. A part across the back may hang high,
+from the nape, as Victor asked on 2026-10-25: with a `top` the template keeps
+only its middle that wide, so a cloak's yoke lies on the trapezius and not on
+the shoulder muscle, and its back only above the part's line, and with a
+`width` the part fans out to that width by the first joint of its chains, both
+shares of how far the shoulder joints lie from the middle, so they fit every
+body. A loose part takes the weights of its chains, two neighbouring chains
+blended across, and blends into the weights of the edge it hangs from over its
+first ring, or down to where its chains hang from when its edge lies above
+them, such as a skirt from the waist, which moves with the hips there. Its first version is
 built on the first body's scaffold; every other version is bound to that
 scaffold and placed on its own body's. Loose parts have no band; the motion and
 pair checks follow them with their chains laid as the solver lays them, so they
@@ -1443,15 +1453,16 @@ quarter of the triangles come with the first crowd measurement that needs them.
         over every sleeve below `SleeveLong`, with the leather textures
         `LeatherBoots` and `LeatherGloves`.
      3. Done. A robe with the skirt chains and a cloak with the cloak chains:
-        the templates `Robe`, a long-sleeved top with a skirt from `HemHip` to
-        the ankles that hides the `legs` slot, and `Cloak`, a yoke over the
-        shoulders down to `CloakYoke` below the collarbones with a taut sheet
-        down the back to the middle of the calves, which covers nothing; the
-        textures `WoolRobe` and `WoolCloak`, whose front keeps only the cloth
-        over the shoulders, held by a large bronze clasp at the front of each
-        shoulder; loose parts; skirt and cloak chains that follow the legs; and
-        a cage that keeps all skin inside it, so no garment shows skin through
-        it at rest.
+        the templates `Robe`, a long-sleeved top with a skirt from `SkirtWaist`,
+        just below the navel, to the ankles that hides the `legs` slot, and
+        `Cloak`, a yoke over the trapezius, not the shoulders, down to
+        `CloakYoke` below the collarbones in front, with a taut sheet from the
+        nape down the back to the middle of the calves between the arms, which
+        covers nothing, as Victor reshaped them on 2026-10-25; the textures
+        `WoolRobe` and `WoolCloak`, whose front fans out like a triangle from a
+        large bronze clasp on each side; loose parts; skirt and cloak chains
+        that follow the legs; and a cage that keeps all skin inside it, so no
+        garment shows skin through it at rest.
      4. Done. The cage's head region, a shoulder-length hairstyle with its
         compressed form, the robe's hood up and down, and a nasal helmet that
         Victor added: the templates `ShoulderHair`, `HoodUp`, `HoodDown`, and

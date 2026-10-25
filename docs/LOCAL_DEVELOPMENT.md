@@ -3764,49 +3764,49 @@ controller, and prefabs are committed.
     the boots follow the feet and bend at the front of the ankle, the gloves'
     fingers follow the hands, and the body falls and lies in the outfit.
 23. Run `.\tools\Sync-GarmentAsset.ps1 -Asset art/Garments/Robe`, then the same
-    for `art/Garments/Cloak`. Expected result: `Robe_Male: 2924 triangles, 0.0
-    to 7.8 mm from the cage, median 2.0 mm, 384 vertices hanging on the skirt
-    chains`, `Robe_Male: of the 236 visible vertices under it, 5 come through
-    it ... by at most 5.4 mm (Pelvis in Death frame 33)`, on the female 25 by at
-    most 10.4 mm at the hips in `Death`, like the shirts, and no leg through the
-    skirt, `Robe_Male: covers 774 of 4358 body faces`, the legs under the skirt
-    left visible; then `Cloak_Male: 940 triangles, 8.7 to 17.7 mm from the
-    cage, median 11.7 mm, 226 vertices hanging on the cloak chains`,
-    `Cloak_Male: covers 0 of 4358 body faces, leaves 0 at its edges visible`,
-    shins through the cloak only in `Death`, `LongShirt under Cloak_Male: ... 2
-    come through it ... by at most 9.6 mm (Torso in arms_up)`, `Robe under
-    Cloak_Male: ...` with the robe through the cloak only in `Death`, where the
-    legs swing up, and `... meets every rule, and both stages are approved for
-    this file.` Open
-    `artifacts\art-previews\Robe.png` and `artifacts\art-previews\Cloak.png`.
-    Expected result: the robe with `LongShirt`'s top and its round neckline and
-    a skirt that falls straight from the hips to the ankles, wider at the hem,
-    closed all round, which follows the legs in the stride and drapes over the
-    knees when sitting, and on the mask rows the legs not orange; the cloak a
-    yoke over the shoulders from the round neckline to below the collarbones
-    with a taut sheet down the back to the middle of the calves, which a leg
-    that kicks back pushes back, and no orange on its mask rows. Then run
+    for `art/Garments/Cloak`. Expected result: `Robe_Male: 2860 triangles, 0.0
+    to 7.8 mm from the cage, median 2.0 mm, 416 vertices hanging on the skirt
+    chains`, `Robe_Male: none of the 239 visible vertices under it comes
+    through it`, on the female 12 by at most 9.2 mm at the armpits in `Jog`,
+    like the shirts, and no leg through the skirt, `Robe_Male: covers 712 of
+    4358 body faces`, the legs under the skirt left visible; then `Cloak_Male:
+    920 triangles, 8.7 to 17.7 mm from the cage, median 11.6 mm, 243 vertices
+    hanging on the cloak chains`, `Cloak_Male: covers 0 of 4358 body faces,
+    leaves 0 at its edges visible`, nothing through the cloak on either body,
+    `Robe under Cloak_Male: ...` with the robe through the cloak only in
+    `Death`, where the legs swing up, and `... meets every rule, and both stages
+    are approved for this file.` Open `artifacts\art-previews\Robe.png` and
+    `artifacts\art-previews\Cloak.png`. Expected result: the robe with
+    `LongShirt`'s top and its round neckline down to just below the navel and a
+    skirt from there that falls straight over the hips to the ankles, wider at
+    the hem, closed all round, which follows the legs in the stride and drapes
+    over the knees when sitting, and on the mask rows the legs not orange; the
+    cloak a yoke over the trapezius, not the shoulder muscle, from the round
+    neckline to below the collarbones in front, with a taut sheet from the nape
+    down the back to the middle of the calves between the arms, which a leg that
+    kicks back pushes back, and no orange on its mask rows. Then run
     `.\tools\Sync-TextureAsset.ps1 -Asset art/GarmentTextures/WoolRobe` and the
     same for `WoolCloak` and open their sheets. Expected result: undyed
-    grey-brown wool with folds down the skirt, wear at its bottom, and stitched
-    hems; dark brown wool with folds down the back, stitched hems, and in front
-    only the cloth over the shoulders, down to a large round bronze clasp at the
-    front of each shoulder.
+    grey-brown wool with folds down the skirt, a stitched seam at the waist, and
+    stitched hems; dark brown wool with folds down the back, stitched hems, and
+    in front a triangle of cloth on each side that fans out from a large round
+    bronze clasp up over the shoulder, with no cloth around the clasp.
 24. In a World scene, press `C` and wear `Leather Boots`, `Wool Robe`, and then
     `Long-Sleeved Linen Shirt` and `Wool Cloak`, on the `Back` slot beside
     `Feet`. Expected result: the robe reaches the ankles with the boots showing
     below it, and the shirt takes the robe's place, since both are chest pieces;
-    wear `Wool Robe` again. The robe's skirt falls straight from the
-    hips, wider toward the hem, without showing the shape of the legs. The cloak
-    lies over the shoulders and is held by a large round bronze clasp at the
-    front of each shoulder, with the throat and the chest free, and over the
-    robe it falls straight from the shoulders out over the skirt, covering its
-    back, with no skirt showing through it and no bulge in the middle of the
-    back; everything under it, the robe or the shirt, stays whole when the cloak
+    wear `Wool Robe` again. The robe's skirt starts just below the navel and
+    falls straight over the hips, wider toward the hem, without showing the
+    shape of the legs. The cloak lies on the trapezius beside the neck, not on
+    the shoulder muscle, and fans out in front from a large round bronze clasp
+    on each side, with the throat and the chest free; its back hangs from the
+    nape between the arms, and over the robe it falls straight out over the
+    skirt, covering its back, with no skirt showing through it and no bulge in
+    the middle of the back; everything under it, the robe or the shirt, stays whole when the cloak
     swings. Wear `Long-Sleeved Linen Shirt` in the robe's place and `Wool
-    Trousers`. Expected result: the cloak hangs taut down the back to the
-    middle of the calves, close to the back without following it or the
-    buttocks. Wear `Wool Robe` again. Walk, jog, stop, and turn. Expected
+    Trousers`. Expected result: the cloak hangs taut from the nape down the back
+    to the middle of the calves, between the arms, without following the back or
+    the buttocks. Wear `Wool Robe` again. Walk, jog, stop, and turn. Expected
     result: the skirt follows the legs, the cloak is pushed back by the legs
     that kick back and swings behind over the skirt, both settle when you stop,
     and no leg pokes out through the skirt or the cloak, no skirt through the
@@ -3851,7 +3851,7 @@ controller, and prefabs are committed.
     Cloak`, and in F2 choose `Your hair: DarkBrownHair`, on the man and, after
     `>` next to `Your body`, on the woman. Expected result: straight dark brown
     hair with a middle parting and a short fringe covers the ears and falls to
-    the shoulders, over the cloak's yoke. Wear `Wool Hood` on `Head`. Expected
+    the shoulders, over the cloak. Wear `Wool Hood` on `Head`. Expected
     result: the grey-brown wool hood covers the head with the fringe and a little
     hair at the sides of the face showing in its opening, the hair pressed flat
     under it and nowhere through it, and its short collar lies over the neck and
@@ -3892,7 +3892,7 @@ item presentation are committed.
    potion, trout, and pickaxe. Buy the Wool Cloak (35 Gold) and the Blue Wool
    Cloak (50 Gold) with the 100 Gold a new character starts with.
 3. Drag `Wool Cloak` onto `Back`. Expected result: at once the dark brown wool
-   cloak hangs down your back from the shoulders, held by its bronze clasps.
+   cloak hangs down your back from the nape, held in front by its bronze clasps.
    Drag `Blue Wool Cloak` onto `Back`. Expected result: the cloak turns dark
    blue, its folds, hems, and stitches as before, and the clasps stay bronze;
    the brown cloak moves into the inventory slot the blue one came from.

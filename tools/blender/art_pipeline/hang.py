@@ -9,10 +9,15 @@ over the body's outline, the margin of the chains' cloth profile outside it, to 
 reaches out farthest, and hangs straight down from there, spanning the hollows. A skirt's columns
 lie around the hips between the chains and widen by the part's flare toward the hem, so it falls
 from the widest of the hips and the legs and never narrows; a cloak's columns lie across the back
-and grow wider by the flare toward the hem. Every scaffold point takes the weights
-of the chain bones around it, those of the two chains beside it and of the two bones along them,
-blended from the edge's own weights at the top, so the cloth moves with the chains that the runtime
-solver swings.
+and grow wider by the flare toward the hem. A part across the back with a top hangs high, from
+the nape: the template keeps only its middle that wide, so a cloak's yoke lies on the trapezius
+and not on the shoulders, and its back only above the part's line, where the part hangs from. With
+a width the part fans out to that width by the first joint of its chains. Top and width are shares
+of how far the shoulder joints lie from the middle. Every scaffold point takes the weights of the
+chain bones around it, those of the two chains beside it and of the two bones along them, blended
+from the edge's own weights at the top down to where the chains hang from, so the cloth moves with
+the chains that the runtime solver swings, and cloth above them, such as a skirt from the waist,
+with the body.
 
 The template's first version takes the scaffold's points as its loose vertices. Every other version
 binds them to the scaffold of the first body and places them on its own, as the rest of a template is
@@ -51,21 +56,43 @@ MARGINS = {"skirt": 0.03, "cloak": 0.02}
 RING_SPACING = 0.09
 RING_EASING = 1.4
 # The scaffold's weights blend from the edge it hangs from into the chains over this many rings, so
-# the cloth right below a hip line already follows a raised thigh.
+# the cloth right below a hip line already follows a raised thigh; from an edge above where the
+# chains hang from, they blend over the height down to there instead.
 TOP_BLEND = 1
+# A vertex of a template this close to where a part's trim cuts it moves onto the cut first, as at
+# the template's lines.
+TRIM_SNAP = 0.008
 # The body is measured at heights this far apart. Right below the edge it hangs from, cloth keeps the
 # edge's own gap from the body and leaves the body by this much per meter down until it keeps the
 # margin.
 STRING_STEP = 0.01
 EDGE_GAP = 0.004
 LEAVE = 0.5
-# The zones whose outline a part keeps outside of.
-OUTLINE_ZONES = {"skirt": ("Pelvis", "Thighs", "Shins", "Feet"),
+# The zones whose outline a part keeps outside of; a skirt from the waist spans the belly too.
+OUTLINE_ZONES = {"skirt": ("Torso", "Pelvis", "Thighs", "Shins", "Feet"),
                  "cloak": ("Torso", "UpperArms", "Pelvis", "Thighs", "Shins")}
+# A cloak keeps clear of a skirt that may be under it, by this much more than the skirt keeps from the
+# hips and the legs, as the runtime solver lays a cloak over a skirt: a skirt from the waist bulges
+# over the hips above its chains, where the solver does not lay the cloak over it.
+SKIRT_ZONES = ("Pelvis", "Thighs", "Shins", "Feet")
+SKIRT_CLEARANCE = 0.01
 
 
 def parts(recipe) -> list[dict]:
     return list(recipe.get("hang", [])) if isinstance(recipe, dict) else []
+
+
+def shoulder_half(arm: bpy.types.Object) -> float:
+    """How far the shoulder joints lie from the middle at rest, which a part's top and width are
+    shares of."""
+    return float(np.mean([abs((arm.matrix_world @ arm.data.bones[f"UpperArm_{side}"].head_local).x)
+                          for side in ("L", "R")]))
+
+
+def top_half(part: dict, arm: bpy.types.Object) -> float | None:
+    """How far from the middle the edge of a part across the back reaches, or None for one that
+    hangs from the whole back of its line."""
+    return float(part["top"]) * shoulder_half(arm) if part.get("top") is not None else None
 
 
 def chains(arm: bpy.types.Object, kind: str) -> list[tuple[list[str], np.ndarray]]:
@@ -194,34 +221,51 @@ def _back(convex: np.ndarray | None, x: float) -> float | None:
     return min(found) if found else None
 
 
-def _taut(outline: Outline, top: np.ndarray, heights: np.ndarray, drop: float, widen: float, margin: float) -> list:
+def _spread(depth: float, fan: float) -> float:
+    """How far a part across the back has fanned out to its width this far below its edge: from
+    none at the edge to all of it at the depth of the first joint of its chains, easing in and out."""
+    return _smooth(depth / fan) if fan > 0.0 else 1.0
+
+
+def _half(part: dict, top_half: float, width_half: float, fan: float, drop: float, depth: float) -> float:
+    """How far from the middle the outermost column of a part across the back lies this far below
+    its edge: fanned out from its top to its width, and wider by its flare toward the hem."""
+    return top_half + (width_half - top_half) * _spread(depth, fan) + float(part["flare"]) * depth / drop
+
+
+def _taut(outlines: list[tuple[Outline, float]], top: np.ndarray, heights: np.ndarray, across) -> list:
     """How far behind its top every cloak column lies below it: its string over the back of the body,
-    measured from the body's convex outline at each height, so it spans the hollow along the spine.
-    widen is how much wider each column's X grows over the whole drop, as a share of it."""
-    hulls = [cage.hull(s) if len(s) >= 3 else None for s in (outline.section(z) for z in heights)]
+    measured from the body's convex outlines at each height, each with the margin the cloak keeps
+    from it, so it spans the hollow along the spine. across(c, depth) is the X of column c that far
+    below the edge."""
+    sections = [[cage.hull(s) if len(s) >= 3 else None for s in (outline.section(z) for z in heights)]
+                for outline, _margin in outlines]
     depth = heights[0] - heights
     profiles = []
     for c in range(len(top)):
         needed = np.zeros(len(heights))
-        for i, hull in enumerate(hulls):
-            back = _back(hull, top[c, 0] * (1.0 + widen * depth[i] / drop))
-            if back is not None:
-                needed[i] = max(top[c, 1] - (back - _gap(depth[i], margin)), 0.0)
+        for (_outline, margin), hulls in zip(outlines, sections):
+            for i, hull in enumerate(hulls):
+                back = _back(hull, across(c, depth[i]))
+                if back is not None:
+                    needed[i] = max(needed[i], top[c, 1] - (back - _gap(depth[i], margin)))
         needed[0] = 0.0
         profiles.append(_string(depth, needed))
     return profiles
 
 
 def _flared(outline: Outline, starts: np.ndarray, chain_radii: np.ndarray, angles: np.ndarray, centre: np.ndarray,
-            heights: np.ndarray, margin: float) -> list:
+            heights: np.ndarray, z_root: float, margin: float) -> list:
     """How far from the hips' centre every skirt column lies below its edge: its string over the
-    body's outline, so the skirt falls from the widest of the hips and the legs and never narrows."""
+    body's outline, and below where the chains hang from over them, so the skirt falls from the
+    widest of the hips and the legs and never narrows."""
     hulls = [cage.hull(s) if len(s) >= 3 else None for s in (outline.section(z) for z in heights)]
     depth = heights[0] - heights
     profiles = []
     for c in range(len(starts)):
-        needed = np.array([max(chain_radii[c], _reach(hull, centre, angles[c]) + _gap(d, margin))
-                           for hull, d in zip(hulls, depth)])
+        needed = np.array([max(chain_radii[c] if z <= z_root else 0.0,
+                               _reach(hull, centre, angles[c]) + _gap(d, margin))
+                           for hull, d, z in zip(hulls, depth, heights)])
         needed[0] = starts[c]
         profiles.append(_string(depth, needed))
     return profiles
@@ -247,6 +291,8 @@ def scaffold(part: dict, arm: bpy.types.Object, body: bpy.types.Object, top: np.
     column = {name: i for i, name in enumerate(names)}
     z_top = float(top[:, 2].mean())
     z_tip = float(np.mean([j[-1, 2] for _n, j in found]))
+    # Above where the chains hang from, the cloth moves with the body, as its edge does.
+    z_root = float(np.mean([j[0, 2] for _n, j in found]))
     co = np.zeros((rings + 1, len(top), 3))
     weights = np.zeros((rings + 1, len(top), len(names)))
     co[0] = top
@@ -269,18 +315,27 @@ def scaffold(part: dict, arm: bpy.types.Object, body: bpy.types.Object, top: np.
             pairs.append(((before, 1.0 - t), (after, t)))
         chain_radii = np.array([sum(w * np.linalg.norm(found[i][1][0, :2] - centre) for i, w in pair) for pair in pairs])
         strings = _flared(outline, np.linalg.norm(top[:, :2] - centre, axis=1), chain_radii, columns, centre, heights,
-                          margin)
+                          z_root, margin)
     else:
         across = np.array([j[0, 0] for _n, j in found])
         order = np.argsort(across)
         found = [found[i] for i in order]
         across = across[order]
-        widen = float(part["flare"]) / max(float(np.abs(top[:, 0]).max()), 1e-6)
-        strings = _taut(outline, top, heights, z_top - z_tip, widen, margin)
+        # Every column keeps its share of the outermost one's distance from the middle.
+        reach = max(float(np.abs(top[:, 0]).max()), 1e-6)
+        width_half = float(part["width"]) * shoulder_half(arm) if part.get("width") is not None else reach
+        fan = z_top - float(np.mean([j[1, 2] for _n, j in found]))
+        drop = z_top - z_tip
+
+        def column_x(c: int, depth: float) -> float:
+            return float(top[c, 0]) / reach * _half(part, reach, width_half, fan, drop, depth)
+
+        under = Outline(body, SKIRT_ZONES)
+        strings = _taut([(outline, margin), (under, MARGINS["skirt"] + SKIRT_CLEARANCE)], top, heights, column_x)
     for k in range(1, rings + 1):
         down = (k / rings) ** RING_EASING
         z = z_top + (z_tip - z_top) * down
-        share = _smooth(k / TOP_BLEND)
+        share = _smooth(k / TOP_BLEND) if z <= z_root else _smooth((z_top - z) / (z_top - z_root))
         points = [_down(j, z) for _n, j in found]
         for c in range(len(top)):
             chain_weights = np.zeros(len(names))
@@ -290,14 +345,13 @@ def scaffold(part: dict, arm: bpy.types.Object, body: bpy.types.Object, top: np.
                 radius = float(np.interp(z_top - z, *strings[c])) + float(part["flare"]) * down
                 co[k, c] = (centre[0] + radius * math.sin(columns[c]), centre[1] + radius * math.cos(columns[c]), z)
             else:
-                x = top[c, 0]
+                x = column_x(c, z_top - z)
                 after = int(np.clip(np.searchsorted(across, x), 1, len(across) - 1))
                 t = float(np.clip((x - across[after - 1]) / max(across[after] - across[after - 1], 1e-9), 0.0, 1.0))
                 pair = ((after - 1, 1.0 - t), (after, t))
-                # On the column's string, wider by the share of the drop.
-                along = (z_top - z) / (z_top - z_tip)
+                # On the column's string, fanned out and wider by the flare.
                 behind = float(np.interp(z_top - z, *strings[c]))
-                co[k, c] = (x * (1.0 + widen * along), top[c, 1] - behind, z)
+                co[k, c] = (x, top[c, 1] - behind, z)
             for i, w in pair:
                 bones, _joints = found[i]
                 for bone, carried in zip(bones, _tent(points[i][1], len(bones))):
@@ -330,15 +384,49 @@ def remove(obj: bpy.types.Object) -> None:
     bpy.data.meshes.remove(mesh)
 
 
+def _bisect(bm: bmesh.types.BMesh, faces: list, point, normal, clear_outer: bool = False,
+            clear_inner: bool = False) -> None:
+    """Cuts faces at a plane, as a template is cut at its lines: their vertices this close to it
+    first move onto it, so the cut leaves no slivers."""
+    faces = [f for f in faces if f.is_valid]
+    point, normal = Vector(point), Vector(normal).normalized()
+    verts = list({v for f in faces for v in f.verts})
+    for v in verts:
+        distance = (v.co - point).dot(normal)
+        if abs(distance) < TRIM_SNAP:
+            v.co -= normal * distance
+    geom = list({e for f in faces for e in f.edges}) + verts + faces
+    bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=point, plane_no=normal, clear_outer=clear_outer,
+                           clear_inner=clear_inner)
+
+
+def trim(bm: bmesh.types.BMesh, part: dict, arm: bpy.types.Object, line_point: Vector,
+         line_normal: Vector) -> None:
+    """Trims a template for a part across the back with a top: its back, behind the bone at the
+    part's line, goes below the line, where the part hangs from, and it keeps only its middle within
+    the top, cut straight down there, so it lies on nothing beyond, such as the shoulders."""
+    half = top_half(part, arm)
+    _bisect(bm, [f for f in bm.faces if f.calc_center_median().y < line_point.y], line_point, line_normal,
+            clear_inner=True)
+    for sign in (1.0, -1.0):
+        _bisect(bm, list(bm.faces), (sign * half, 0.0, 0.0), (sign, 0.0, 0.0), clear_outer=True)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+
+
 def edge(bm: bmesh.types.BMesh, part: dict, line_point: Vector, line_normal: Vector) -> list:
     """The open edge a part hangs from: the border vertices of the template on the plane of its line,
-    those behind their middle for a cloak, in their order along the border, from the left across the
-    back for a cloak and around the hips from the front for a skirt."""
+    those behind their middle for a cloak, or behind the bone at the line for one with a top, in their
+    order along the border, from the left across the back for a cloak and around the hips from the
+    front for a skirt."""
     on = {v for e in bm.edges if e.is_boundary for v in e.verts if abs((v.co - line_point).dot(line_normal)) < 1e-4}
     if not on:
         raise ArtPipelineError(f"The template has no open edge at {part['line']} for a part to hang from.")
     if part["side"] == "back":
-        middle = (max(v.co.y for v in on) + min(v.co.y for v in on)) / 2.0
+        # A part with a top has a yoke that comes over to the front, beside the neck.
+        if part.get("top") is not None:
+            middle = line_point.y
+        else:
+            middle = (max(v.co.y for v in on) + min(v.co.y for v in on)) / 2.0
         on = {v for v in on if v.co.y < middle}
     neighbors = {v: [w for e in v.link_edges if e.is_boundary for w in e.verts if w is not v and w in on] for v in on}
     ends = [v for v, n in neighbors.items() if len(n) < 2]

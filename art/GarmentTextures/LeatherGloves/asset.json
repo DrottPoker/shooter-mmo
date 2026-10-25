@@ -4,14 +4,14 @@
     "garment": "art/Garments/Gloves",
     "approvals": {
         "texture": {
-            "date": "2026-10-24",
+            "date": "2026-10-25",
             "sourceSha256": "90af16497811e8584f39af1448dc72da49d1655e7bccb6bb7f157303ada0e6d1",
-            "garmentSourceSha256": "b7e0e6181ce8373a7fc56efd055e112837e4b2a5ce29c3586211c7e965e09707"
+            "garmentSourceSha256": "2af2c7601fa6f946c714f04697c2bedb941c808bce9d19c277169a9070c1af67"
         }
     },
     "export": {
         "sourceSha256": "90af16497811e8584f39af1448dc72da49d1655e7bccb6bb7f157303ada0e6d1",
-        "garmentSourceSha256": "b7e0e6181ce8373a7fc56efd055e112837e4b2a5ce29c3586211c7e965e09707",
+        "garmentSourceSha256": "2af2c7601fa6f946c714f04697c2bedb941c808bce9d19c277169a9070c1af67",
         "materials": [
             {
                 "name": "M_Garment_LeatherGloves",

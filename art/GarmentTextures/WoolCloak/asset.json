@@ -5,16 +5,16 @@
     "approvals": {
         "texture": {
             "date": "2026-10-25",
-            "sourceSha256": "a3d4b9c47ec4b7fe52123134bee77c16fe495f36bd749b5cca5ee58dd34c87ed",
-            "garmentSourceSha256": "4a7ba335ab0237ad2f1d9ae6d430093274b871fa357e19cc45665cf36e3d5e47"
+            "sourceSha256": "89deb07dcd1b327416003626e92ccbdf3ab8f3274fc5f00a6c109ea19cba3c18",
+            "garmentSourceSha256": "78a795692c9aaf446884fe63a1e6fe2c0a2c48a769c804b7a10c646f882bd641"
         }
     },
     "export": {
-        "sourceSha256": "a3d4b9c47ec4b7fe52123134bee77c16fe495f36bd749b5cca5ee58dd34c87ed",
-        "garmentSourceSha256": "4a7ba335ab0237ad2f1d9ae6d430093274b871fa357e19cc45665cf36e3d5e47",
+        "sourceSha256": "89deb07dcd1b327416003626e92ccbdf3ab8f3274fc5f00a6c109ea19cba3c18",
+        "garmentSourceSha256": "78a795692c9aaf446884fe63a1e6fe2c0a2c48a769c804b7a10c646f882bd641",
         "masks": [
-            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Male.json", "dataSha256": "725a11869ebbe89c0cce16fbee30dd56a71cdd980d490c03e5fc594e69e99e57" },
-            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Female.json", "dataSha256": "381e5936a559ff298b69a634f72d5d41ea095ed6b55a58ab8ed60ab393f7f32f" }
+            { "body": "Male", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Male.json", "dataSha256": "fe607fddeae17e48b88872bae33f8515b2019127df909497bfb6325cab977492" },
+            { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Female.json", "dataSha256": "6a2d8419a9f543a45bdb1548d0de48966802d31bab27508275387b9a53290262" }
         ],
         "clipSources": [
             { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
@@ -34,12 +34,12 @@
             {
                 "name": "T_Garment_WoolCloak",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolCloak.png",
-                "sha256": "62f00335a5997b63972b38be82fb13b199814bc60e2d54cc98c5af82266b6926"
+                "sha256": "46fa5e6522e169e74baa7f5f12829b1f4f92f7d0d46c795c6e1c23a54f77a9bc"
             },
             {
                 "name": "T_Garment_WoolCloak_Dye",
                 "target": "src/Client/Assets/Art/Textures/Garments/T_Garment_WoolCloak_Dye.png",
-                "sha256": "cd471e9e6e06f68817303a0b1a9f48bd04c87d1578f49c6b43c596a74cb085cc"
+                "sha256": "bccbf006084409ad2c359527670038dca07e024a917ff9b170077ae03faf176b"
             }
         ]
     }

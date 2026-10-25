@@ -64,9 +64,12 @@ param(
     # garment: what it lies over beyond a line, each <Line>:<head|tail>:<band>, the side the inner
     # garment keeps and its band, such as Waist:head:mid for a top over trousers.
     [string[]]$Over = @(),
-    # garment: its loose parts, each <Line>:<all|back>:<skirt|cloak>:<flare>, the line of the trunk it
-    # hangs from, all around or across the back, the cloth chains it hangs on, and how much wider it
-    # grows toward its hem, in meters, such as HemHip:all:skirt:0.03 for a robe's skirt.
+    # garment: its loose parts, each <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>], the line
+    # of the trunk it hangs from, all around or across the back, the cloth chains it hangs on, how much
+    # wider it grows toward its hem, in meters, and across the back optionally the half width of its
+    # top and its yoke and the half width it fans out to, as shares of how far the shoulder joints lie
+    # from the middle, such as SkirtWaist:all:skirt:0.08 for a robe's skirt and
+    # CloakNape:back:cloak:0.03:0.72:0.8 for a cloak.
     [string[]]$Hang = @(),
     [double]$Ease = 0.0,
     [double]$Hem = 0.004,
@@ -251,11 +254,18 @@ switch ($Kind) {
                     })
                 hang = @($Hang | ForEach-Object {
                         $parts = $_.Split(":")
-                        if ($parts.Count -ne 4) {
-                            throw "Pass each -Hang as <Line>:<all|back>:<skirt|cloak>:<flare>, such as HemHip:all:skirt:0.03."
+                        if ($parts.Count -ne 4 -and $parts.Count -ne 6) {
+                            throw "Pass each -Hang as <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>], such as SkirtWaist:all:skirt:0.08 or CloakNape:back:cloak:0.03:0.72:0.8."
                         }
 
-                        [ordered]@{ line = $parts[0]; side = $parts[1]; chains = $parts[2]; flare = [double]::Parse($parts[3], [System.Globalization.CultureInfo]::InvariantCulture) }
+                        $culture = [System.Globalization.CultureInfo]::InvariantCulture
+                        $part = [ordered]@{ line = $parts[0]; side = $parts[1]; chains = $parts[2]; flare = [double]::Parse($parts[3], $culture) }
+                        if ($parts.Count -eq 6) {
+                            $part.top = [double]::Parse($parts[4], $culture)
+                            $part.width = [double]::Parse($parts[5], $culture)
+                        }
+
+                        $part
                     })
                 ease = $Ease
                 hem = $Hem
@@ -263,7 +273,7 @@ switch ($Kind) {
         }
 
         if ($null -eq (ConvertTo-ArtGarmentRecipe ([pscustomobject]$recipe) $cageManifest) -and -not $Modeled) {
-            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, optionally -Hang at lines of the trunk, each <Line>:<all|back>:<skirt|cloak>:<flare> with a flare from 0 to $script:ArtGarmentFlareLimit, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
+            throw "The recipe needs -Regions of the cage ($($script:ArtCageRegions -join ', ')), -Cuts at its lines in those regions, each <Line>:head or <Line>:tail, optionally -Over at lines in those regions, each <Line>:<head|tail>:<band>, optionally -Hang at lines of the trunk, each <Line>:<all|back>:<skirt|cloak>:<flare>[:<top>:<width>] with a flare from 0 to $script:ArtGarmentFlareLimit and across the back a top and a width up to $script:ArtGarmentHangShareLimit, -Ease from 0 to $script:ArtGarmentEaseLimit, and -Hem from 0 to $script:ArtGarmentHemLimit."
         }
 
         Add-ArtRecipeLines $lines $recipe
@@ -292,8 +302,10 @@ switch ($Kind) {
         $standard = @(
             @("CollarStand", "neck", "Neck", 0.3),
             @("Neckline", "neck", "Neck", 0.19, 5.3),
+            @("CloakNape", "trunk", "UpperChest", 0.85),
             @("CloakYoke", "trunk", "UpperChest", 0.55),
             @("HemCrop", "trunk", "Chest", 0.5),
+            @("SkirtWaist", "trunk", "Spine", 0.45),
             @("Waist", "trunk", "Spine", 0.1),
             @("HemHip", "trunk", "Hips", 0.72),
             @("SleeveShort", "arms", "UpperArm", 0.6),
