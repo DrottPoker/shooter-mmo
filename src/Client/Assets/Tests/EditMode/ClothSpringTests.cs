@@ -164,7 +164,11 @@ namespace Mmorpg.Client.Tests.EditMode
                 preview.Body.GetComponent<Animator>().enabled = false;
                 var bones = preview.Body.GetComponentsInChildren<Transform>(true).GroupBy(bone => bone.name)
                     .ToDictionary(group => group.Key, group => group.First());
-                var moved = new[] { "Hips", "Spine", "Chest", "UpperChest", "UpperLeg_L", "UpperLeg_R", "LowerLeg_L", "LowerLeg_R", "UpperArm_L", "UpperArm_R" }
+                var moved = new[]
+                    {
+                        "Hips", "Spine", "Chest", "UpperChest", "UpperLeg_L", "UpperLeg_R", "LowerLeg_L", "LowerLeg_R", "UpperArm_L",
+                        "UpperArm_R",
+                    }
                     .Select(name => (Bone: bones[name], Held: bones[name].localRotation)).ToArray();
                 float Range(float low, float high) => low + (high - low) * (float)random.NextDouble();
                 for (var frame = 0; frame < 400; frame++)
@@ -176,7 +180,8 @@ namespace Mmorpg.Client.Tests.EditMode
 
                     var root = preview.Body.transform;
                     var jump = random.NextDouble();
-                    root.position += jump < 0.05 ? new Vector3(Range(-50f, 50f), 0f, Range(-50f, 50f)) : new Vector3(Range(-0.1f, 0.1f), 0f, Range(-0.1f, 0.1f));
+                    var span = jump < 0.05 ? 50f : 0.1f;
+                    root.position += new Vector3(Range(-span, span), 0f, Range(-span, span));
                     root.rotation *= Quaternion.Euler(0f, jump > 0.95 ? Range(-180f, 180f) : Range(-20f, 20f), 0f);
                     var dt = random.NextDouble() < 0.05 ? 0f : Range(0.001f, 0.25f);
                     preview.Step(Mathf.Max(dt, 1e-4f), CameraOffset);
@@ -304,7 +309,9 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var a = Local(first);
             var b = Local(second);
-            return a.Count == b.Count ? a.Select((place, index) => Vector3.Distance(place, b[index])).DefaultIfEmpty(0f).Max() : float.PositiveInfinity;
+            return a.Count == b.Count
+                ? a.Select((place, index) => Vector3.Distance(place, b[index])).DefaultIfEmpty(0f).Max()
+                : float.PositiveInfinity;
         }
     }
 }

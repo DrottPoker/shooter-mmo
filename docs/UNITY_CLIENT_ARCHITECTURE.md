@@ -40,7 +40,7 @@ layers from the bottom up:
 
 | Assembly | Owns | Client references |
 |---|---|---|
-| `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
+| `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothSprings`, the springs that swing the cloth on it, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
 | `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets` | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
@@ -1274,12 +1274,14 @@ The body's skeleton also has the cloth chains of
 `ClothChains` lists: eight skirt chains on the hips, five cloak chains on the
 upper chest, and a hood chain on the head. `ClothChainSolver` on the body
 activates the chains of the kinds a garment hangs on, with a `ClothProfile` for
-its margin and slack, measures the body and its garments once, and describes
-them to a `ClothWorld` of `Mmorpg.Client.Cloth`; in play every body shares the
-world of `ClothChainScheduler`, which lays every body the camera sees within 60 m
-in its target pose once a frame after the camera moved
-(`PresentationExecutionOrder.Cloth`), in three Burst jobs: one reads the bodies'
-bones, one lays each body with `ClothPose`, and one turns the chain bones. The
+its margin and slack and its springs, measures the body and its garments once,
+and describes them to a `ClothWorld` of `Mmorpg.Client.Cloth`; in play every body
+shares the world of `ClothChainScheduler`, which lays every body the camera sees
+within 60 m in its target pose once a frame after the camera moved
+(`PresentationExecutionOrder.Cloth`), and gives springs to the bodies largest on
+the screen, about 48 of them, in three Burst jobs: one reads the bodies' bones,
+one lays each body with `ClothPose` and swings its springs with `ClothSprings`,
+and one turns the chain bones. The
 target pose hangs every chain from its animated parent with its bones at rest,
 turns each bone beside a thigh or a shin with that part of each leg as far as
 the leg pushes the cloth outward beyond the slack, and swings each bone outward
@@ -1298,9 +1300,18 @@ cloth reaches beyond and within the chains: a sample keeps the margin its cloth
 keeps from the body, but no more than it has in the bind pose, so a body
 standing still wears its garments as they were made, and the skirt chains are
 laid first, so a cloak keeps outside the outer side of a robe's skirt under it.
-A body out of view moves nothing, and beyond 60 m the chains rest. Out of play,
-as in the Wardrobe and the tests, each body lays its own chains in a world of
-its own. With no garment the solver does nothing. `ClothChainSolverTests` poses
+A body out of view moves nothing, and beyond 60 m the chains rest. The springs
+give the cloth inertia, sway, and flare on the target pose, at a fixed 90 Hz in
+the frame of each chain's anchor bone, within limits that keep it on the body in
+the spin of an attack, and never nearer the body than the target pose, so the
+legs and the body decide where the cloth is; they fade in and out over 0.3 s.
+A jump carries the cloth along: the solver finds one on its own, and the game
+says so with `ClothChainSolver.NotifyDiscontinuity`, the local player on a hard
+correction or a teleport, and `RemotePlayerView` and `MobView` whenever
+`RemoteMovementPresenter` presents a new start or restarts its clock. Out of
+play, as in the Wardrobe and the tests, each body lays its own chains in a world
+of its own and, near the camera, swings them. With no garment the solver does
+nothing. `ClothChainSolverTests` poses
 the body with its Animator step by step and checks that a robe stays outside the
 legs while jogging and swings with them, that it drapes over thighs raised as in
 sitting, that a cloak is pushed back by a leg that kicks back, that a cloak lies
@@ -1310,7 +1321,15 @@ of detail, and the capsule radii, the chest's shallow behind the spine and deep
 in front. `ClothPoseTests` checks the constants against the skeleton, the
 fixtures, that the world's Burst jobs lay what `ClothPose` lays, and that the
 pose has no memory; `ClothStressMotionTests` that the legs never come through a
-cloak and through a robe by at most 25 mm while walking and jogging.
+cloak and through a robe by at most 25 mm while walking and jogging, that a spin
+flares the hems out by more than 5 cm, keeps the skirt in order, and settles in
+1.5 s, and that the network does not make the cloth jerkier;
+`ClothSpringTests` that a body in its bind pose shows its garments as they were
+made, that a jump carries the cloth along, that the swing hardly depends on the
+frame time, that random poses and frame times break nothing, and that a change
+of the level of detail does not jolt the cloth; and `ClothChainSchedulerTests`
+that the largest bodies on the screen have springs as far as the budget holds
+and keep them against a slightly larger one.
 
 The controller's third state, `Death`, plays the handmade `Death` clip of the
 library. An Any State transition crossfades into it in 0.15 s while the bool `Dead` is
@@ -1553,12 +1572,16 @@ What made the difference:
   dressed body ran its full collision every frame, also behind the camera, and
   a body farther than 25 m cost as much as a near one. `ClothChainScheduler`
   then stepped every solver once a frame from the camera, by view, distance, and
-  a budget, and the cloth took about 2 to 3 ms. Since the target pose of the
-  spring bone redesign, Burst jobs on the worker threads lay every body in view
-  every frame; 100 bodies jogging in a robe and a cloak take about 3.9 ms in the
-  Editor; see
-  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#runtime-solver). The
-  measurement with the bots is part of the redesign's third step.
+  a budget, and the cloth took about 2 to 3 ms. Since the spring bone redesign,
+  Burst jobs on the worker threads lay every body in view every frame in its
+  target pose and swing the cloth of the largest on the screen with springs; see
+  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#runtime-solver).
+  Measured on 2026-10-25 in Development World 2 with Victor's development bots,
+  about 80 players in interest and 76 of them dressed, with the camera low over
+  them, the cloth took 0.79 ms of the main thread on average with every body in
+  its target pose, at 108 FPS, and 1.22 ms with springs on the six bodies within
+  60 m in view, at 100 FPS. Set `ClothChainScheduler.Budget` to compare, and
+  read the profiler marker `ClothChainScheduler.Step`.
 - **Bodies come into view a few per frame.** Putting a body on a spawned player
   took about 8 ms, 6 of them measuring the body and garments for the cloth, and
   several bots often come into interest in one frame. The measures are shared

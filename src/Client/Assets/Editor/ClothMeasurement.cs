@@ -65,7 +65,8 @@ namespace Mmorpg.Client.Editor
                                 var deviation = FrameTimeDeviations(preview, ClothStressMotion.Named("Zig-zag"), frozen);
                                 deviations.Append("| ").Append(body.Name).Append(" | ").Append(label).Append(" | ")
                                     .Append(frozen ? "held" : "clips").Append(" | ")
-                                    .Append(string.Join(" | ", deviation.Select(each => Number(each.Largest * 100f) + " / " + Number(each.Rms * 100f))))
+                                    .Append(string.Join(" | ",
+                                        deviation.Select(each => Number(each.Largest * 100f) + " / " + Number(each.Rms * 100f))))
                                     .Append(" |\n");
                             }
                         }

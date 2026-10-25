@@ -390,7 +390,8 @@ namespace Mmorpg.Client.Cloth
         // angle that clears its samples, and lays its end there.
         private static void LayBone(int chainStart, in ClothChainData chain, int index, float3 outward, int boneStart, int capsuleStart,
             int capsuleCount, int marginStart, float scale, float3 up, in ClothLegs legs, bool under, NativeList<float3> surface,
-            NativeList<float3> targetSurface, NativeArray<ClothChainData> chains, NativeArray<ClothParticle> particles, NativeArray<ClothCapsule> capsules,
+            NativeList<float3> targetSurface, NativeArray<ClothChainData> chains, NativeArray<ClothParticle> particles,
+            NativeArray<ClothCapsule> capsules,
             NativeArray<float> radii, NativeArray<float> margins, NativeArray<float3> hanging, NativeArray<float3> followed,
             int followedOffset, NativeArray<float3> positions, NativeArray<float3> directions, ClothRoles collides, bool banded,
             NativeArray<float3> targets)
@@ -589,7 +590,9 @@ namespace Mmorpg.Client.Cloth
                 var hangingDepth = HangingDepth(sample, collider, hangingPoint, hangingWithin, capsules, radii, margins, surface);
 
                 // The springs let a sample lie as deep as it lies in the target pose.
-                var allowed = Targets.IsCreated && hangingDepth > -Band ? TargetDepth(sample, collider, chains, particles, capsules, radii, margins) : 0f;
+                var allowed = Targets.IsCreated && hangingDepth > -Band
+                    ? TargetDepth(sample, collider, chains, particles, capsules, radii, margins)
+                    : 0f;
                 hangingDepth -= allowed;
                 var bandDepth = BandDepth(hangingDepth);
                 if (bandDepth <= 0f)

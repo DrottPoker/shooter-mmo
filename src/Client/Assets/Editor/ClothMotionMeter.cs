@@ -556,7 +556,8 @@ namespace Mmorpg.Client.Editor
             private readonly int[] chosen;
             private readonly Transform[] from;
             private readonly Transform[] to;
-            private readonly Mesh baked = new Mesh();
+            // Kept by Unity's unloading of unused assets, as when a scene loads, which would destroy it.
+            private readonly Mesh baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
             private readonly List<Vector3> bakedVertices = new List<Vector3>();
             private readonly List<Vector3> vertices = new List<Vector3>();
 
@@ -649,7 +650,7 @@ namespace Mmorpg.Client.Editor
             {
                 this.renderer = renderer;
                 Layer = layer;
-                baked = new Mesh();
+                baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
                 owned.Add(baked);
                 var mesh = renderer.sharedMesh;
                 var dominant = DominantBones(mesh);

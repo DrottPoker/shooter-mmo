@@ -1110,15 +1110,23 @@ Wardrobe`: pick a body, tick the garments it wears, and play `Idle`, `Walk`,
 zig-zag, the zig-zag as the network shows a remote body, jittery frames, or a
 jump. The body is put together as the game puts it together, walks and jogs
 forward at the clips' speeds over a checkered ground that the camera follows, so
-loose cloth lags as in the game, and the cloth solver runs. `Playback` slows it
-down to a tenth, and `Step 1/60 s` steps a paused body a frame at a time. Beside
-it the window shows what `ClothMotionMeter` measures: how many leg and arm
-vertices come through the loose cloth now and at most, a robe through a cloak,
-the chains' jerk, and how far a spin flares them and how long they take to
-settle. Drag in the view to turn the camera and scroll to come closer.
-`MMORPG > Tools > Art Pipeline > Measure Cloth` measures every motion on both
-bodies in the robe, the cloak, and both, in about a minute, and writes the table
-to `artifacts/cloth-measurements.md`.
+loose cloth lags as in the game, and the cloth solver runs with its springs, as
+on the bodies nearest the camera in the game; untick `Springs` to see the target
+pose alone, as every other body shows it. `Playback` slows it down to a tenth,
+and `Step 1/60 s` steps a paused body a frame at a time. Beside it the window
+shows what `ClothMotionMeter` measures: the solver's level, how far its springs
+are faded in and whether its cloth sleeps, how many leg and arm vertices come
+through the loose cloth now and at most, a robe through a cloak, the chains'
+jerk, how far a spin flares them and how long their swing takes to settle, and
+how often the legs push a cloak's lower half. `Tune the springs` has a slider
+for every spring value of every profile the body wears, which applies at once
+and keeps while other garments are worn, `Reset` puts a profile back, and
+`Log profiles` writes the tuned profiles to the console, from which they go
+into `ClothProfile`. Drag in the view to turn the camera and scroll to come
+closer. `MMORPG > Tools > Art Pipeline > Measure Cloth` measures every motion on
+both bodies in the robe, the cloak, and both, and a zig-zag at other frame times
+playing the clips and with the pose held, in about a minute and a half, and
+writes the table to `artifacts/cloth-measurements.md`.
 
 ### Cloth Parity
 
