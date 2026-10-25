@@ -1361,7 +1361,12 @@ per model and set of visible parts and shares it between every body that has
 them; each body binds it to its own bones. 200 combined bodies cost about 6 ms,
 with skinning down from 4.3 to 0.3 ms and culling from 3.4 to 0.35 ms. The
 context destroys the meshes with the scene. `PlayerBodyMeshesTests` checks that
-a combined body skins every vertex where its parts do.
+a combined body skins every vertex where its parts do. When the outfit changes,
+`CombinedBody` takes the new mesh while it is turned off: Unity 6000.6 stops
+drawing an enabled skinned renderer whose mesh changes to one of another size,
+with the error `does not match the expected mesh data size and vertex stride`,
+and `WardrobePreviewTests.ABodyDrawsAfterEveryChangeOfItsOutfit` renders every
+body after each change of its outfit.
 
 The World Debug panel (F2) has the setting
 `Tint bodies: you purple, players orange, bots blue`, off by default.

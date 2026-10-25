@@ -186,12 +186,17 @@ namespace Mmorpg.Client.Gameplay
                 transforms[child.name] = child;
             }
 
+            // Unity 6000.6 stops drawing an enabled skinned renderer whose mesh changes to one of
+            // another size; a renderer that is off while it changes draws the new mesh.
+            var enabled = combinedRenderer.enabled;
+            combinedRenderer.enabled = false;
             combinedRenderer.sharedMesh = combined.Mesh;
             combinedRenderer.bones = combined.BoneNames.Select(boneName => transforms[boneName]).ToArray();
             combinedRenderer.rootBone = transforms.TryGetValue(combined.RootBoneName, out var rootBone)
                 ? rootBone
                 : transform;
             combinedRenderer.localBounds = combined.LocalBounds;
+            combinedRenderer.enabled = enabled;
             combinedRenderer.sharedMaterials = combined.Materials.ToArray();
             ownMaterials[combinedRenderer] = combined.Materials.ToArray();
             MoveCloth();

@@ -40,6 +40,43 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A body still draws after its outfit changes the size of its combined mesh. Unity 6000.6 stopped
+        // drawing an enabled skinned renderer whose mesh changed to one of another size, with the error
+        // "does not match the expected mesh data size and vertex stride", which fails the test.
+        [Test]
+        public void ABodyDrawsAfterEveryChangeOfItsOutfit()
+        {
+            foreach (var body in WardrobePreview.Bodies())
+            {
+                using (var preview = new WardrobePreview(body))
+                {
+                    var cameraObject = new GameObject("TestCamera") { hideFlags = HideFlags.HideAndDontSave };
+                    var target = new RenderTexture(64, 64, 24);
+                    try
+                    {
+                        var camera = cameraObject.AddComponent<Camera>();
+                        camera.enabled = false;
+                        camera.scene = preview.Scene;
+                        camera.targetTexture = target;
+                        camera.transform.position = preview.Focus + Vector3.forward * 3f;
+                        camera.transform.LookAt(preview.Focus);
+                        camera.Render();
+                        foreach (var outfit in new[] { new[] { "WoolRobe" }, new[] { "WoolRobe", "WoolCloak" }, new string[0] })
+                        {
+                            preview.Wear(outfit);
+                            preview.Step(1f / 60f, Vector3.back * 3f);
+                            camera.Render();
+                        }
+                    }
+                    finally
+                    {
+                        UnityEngine.Object.DestroyImmediate(cameraObject);
+                        UnityEngine.Object.DestroyImmediate(target);
+                    }
+                }
+            }
+        }
+
         [Test]
         public void TheWardrobeDressesEveryBodyInBootsAndGlovesOverItsTrousersAndSleeves()
         {
