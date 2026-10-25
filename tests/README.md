@@ -267,6 +267,7 @@ cover four groups:
 - Vectors: every message type and variant encodes to the payload pinned in
   `RealtimeProtocolGoldenVectors.cs`, and decoding then encoding it again gives
   the same bytes. Payloads above 256 bytes are pinned by length and SHA-256.
+  Every message type has at least one vector.
 - Structural rejections: every vector is rejected when truncated at any byte,
   extended by one byte, or given another magic, version, or message type.
 - Decode cases: packets built byte by byte, without the protocol code, that
@@ -279,6 +280,11 @@ cover four groups:
 Error texts are not pinned, only the accept or reject outcome. The vectors
 change only together with an intended protocol change and a protocol version
 bump. Never update them to make a failing refactor pass.
+
+`RealtimeProtocolGolden.EncodeVectors()` returns the packet of every vector by
+name for tests of a receiver. `Mmorpg.Tools.Tests` links the golden files and
+feeds every server-to-client vector through the bot's `SimulationBotSession`, so
+a message type the bots do not handle fails there.
 
 ## Test Output Placeholders
 

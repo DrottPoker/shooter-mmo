@@ -97,6 +97,15 @@ namespace Mmorpg.SharedTests
                 }
             }
 
+            // Receivers test against these vectors, so every message type needs one.
+            foreach (RealtimeMessageType type in Enum.GetValues(typeof(RealtimeMessageType)))
+            {
+                if (registry.Vectors.All(vector => vector.Type != type))
+                {
+                    failures.Add($"{type}: no vector covers the message type.");
+                }
+            }
+
             return failures;
         }
 
@@ -351,6 +360,16 @@ namespace Mmorpg.SharedTests
                 true,
                 RealtimeMessageType.JoinRequest);
             return failures;
+        }
+
+        // The packet of every vector by name, for tests of a receiver that must accept every
+        // message type, such as the headless simulation bot.
+        public static IReadOnlyDictionary<string, byte[]> EncodeVectors()
+        {
+            return Cases.Value.Vectors.ToDictionary(
+                vector => vector.Name,
+                vector => vector.Encode(),
+                StringComparer.Ordinal);
         }
 
         // Prints the payload of every vector in the layout of RealtimeProtocolGoldenVectors.cs.
