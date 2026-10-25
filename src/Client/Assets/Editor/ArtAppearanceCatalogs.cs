@@ -13,7 +13,8 @@ namespace Mmorpg.Client.Editor
     // variants, its own image first, the paint layers of the body in the order they are drawn, the
     // body parts with the faces of the editable mesh their triangles come from, and the garments of
     // the body from the lowest layer up, one per garment texture, each its template's model and data
-    // with the texture's material, as Assets/Art/Appearance/<Model>_Appearance.asset. It
+    // with the texture's material, and the attachments its sockets can hold, as
+    // Assets/Art/Appearance/<Model>_Appearance.asset. It
     // writes only catalogs that differ, and ArtExportFollowUp runs it after every export.
     // ArtAppearanceCatalogTests fails when a catalog differs from what this writes. See
     // docs/ART_PIPELINE.md.
@@ -41,8 +42,10 @@ namespace Mmorpg.Client.Editor
                 var paints = PaintsFor(manifest);
                 var parts = PartsFor(manifest);
                 var garments = GarmentsFor(manifest);
+                var attachments = AttachmentsFor(manifest);
                 var catalog = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(path);
-                if (catalog != null && Matches(catalog, slots, paints) && Matches(catalog, parts, garments))
+                if (catalog != null && Matches(catalog, slots, paints) && Matches(catalog, parts, garments)
+                    && Matches(catalog, attachments))
                 {
                     continue;
                 }
@@ -51,12 +54,12 @@ namespace Mmorpg.Client.Editor
                 {
                     Directory.CreateDirectory(Folder);
                     catalog = ScriptableObject.CreateInstance<BodyAppearanceCatalog>();
-                    catalog.Configure(slots, paints, parts, garments);
+                    catalog.Configure(slots, paints, parts, garments, attachments);
                     AssetDatabase.CreateAsset(catalog, path);
                 }
                 else
                 {
-                    catalog.Configure(slots, paints, parts, garments);
+                    catalog.Configure(slots, paints, parts, garments, attachments);
                     EditorUtility.SetDirty(catalog);
                 }
 
@@ -64,7 +67,8 @@ namespace Mmorpg.Client.Editor
                 Debug.Log("Wrote the appearance catalog " + path + " with " + string.Join(", ",
                     slots.Select(slot => slot.Name + " (" + string.Join(", ", slot.Options.Select(option => option.Name)) + ")")
                         .Concat(paints.Select(paint => "Paint " + paint.Name))
-                        .Concat(garments.Select(garment => "Garment " + garment.Name))));
+                        .Concat(garments.Select(garment => "Garment " + garment.Name))
+                        .Concat(attachments.Select(attachment => "Attachment " + attachment.Name))));
             }
 
             if (written > 0)
@@ -126,15 +130,52 @@ namespace Mmorpg.Client.Editor
                     .All(same => same);
         }
 
-        // Every exported body with variants, or with a paint layer or a garment that fits it.
+        public static bool Matches(BodyAppearanceCatalog catalog, BodyAppearanceCatalog.Attachment[] attachments)
+        {
+            return catalog.Attachments.Count == attachments.Length
+                && catalog.Attachments.Zip(attachments, (actual, expected) =>
+                    actual.Name == expected.Name
+                    && actual.Socket == expected.Socket
+                    && actual.Bone == expected.Bone
+                    && actual.Model == expected.Model)
+                    .All(same => same);
+        }
+
+        // Every exported body with variants, with a paint layer or a garment that fits it, or with a
+        // socket of its skeleton that an attachment is held on.
         public static ArtAssetManifest[] ManifestsWithLooks()
         {
             var painted = ArtAssetManifests.PaintLayers().SelectMany(paint => paint.bodies).ToArray();
             var dressed = ArtAssetManifests.Garments().SelectMany(ArtAssetManifests.BodiesOf).ToArray();
+            var holding = ArtAssetManifests.Attachments()
+                .SelectMany(attachment => ArtAssetManifests.SocketBones(attachment.socket).Select(socket => socket.Skeleton))
+                .ToArray();
             return ArtAssetManifests.ManifestPaths()
                 .Select(ArtAssetManifests.Load)
                 .Where(manifest => manifest.IsSkinned && manifest.IsExported
-                    && (manifest.variants.Length > 0 || painted.Contains(manifest.AssetPath) || dressed.Contains(manifest.AssetPath)))
+                    && (manifest.variants.Length > 0 || painted.Contains(manifest.AssetPath) || dressed.Contains(manifest.AssetPath)
+                        || holding.Contains(manifest.skeleton)))
+                .ToArray();
+        }
+
+        // The attachments a body's sockets can hold, by name: every exported attachment whose socket
+        // is a bone of the body's skeleton, with its model.
+        public static BodyAppearanceCatalog.Attachment[] AttachmentsFor(ArtAssetManifest body)
+        {
+            return ArtAssetManifests.Attachments()
+                .OrderBy(attachment => attachment.Name, StringComparer.Ordinal)
+                .SelectMany(attachment => ArtAssetManifests.SocketBones(attachment.socket)
+                    .Where(socket => socket.Skeleton == body.skeleton)
+                    .Select(socket =>
+                    {
+                        var model = AssetDatabase.LoadAssetAtPath<GameObject>(attachment.UnityTargetPath);
+                        if (model == null)
+                        {
+                            throw new InvalidOperationException(attachment.path + ": the model of the attachment is not imported.");
+                        }
+
+                        return new BodyAppearanceCatalog.Attachment(attachment.Name, attachment.socket, socket.Bone, model);
+                    }))
                 .ToArray();
         }
 

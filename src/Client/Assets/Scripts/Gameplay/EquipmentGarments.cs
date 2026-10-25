@@ -35,7 +35,8 @@ namespace Mmorpg.Client.Gameplay
     }
 
     // Dresses a body in the garments of its equipped items, as the item presentation names them,
-    // in the items' dye colors. See docs/EQUIPMENT_VISUALS_DESIGN.md.
+    // in the items' dye colors, and puts the attachments they name, such as a sword, on the sockets
+    // of their equipment slots. See docs/EQUIPMENT_VISUALS_DESIGN.md.
     public static class EquipmentGarments
     {
         // The look a character chose, with its hair, dressed in the garments of its items in place
@@ -43,7 +44,8 @@ namespace Mmorpg.Client.Gameplay
         // lowered garments when it has them. A body wears one garment per visual slot: the garment
         // of the item in the equipment slot of that name wins, such as a helmet in head over a robe's
         // hood, and otherwise the item earlier in the equipment. A garment the body's catalog lacks
-        // is not worn.
+        // is not worn. An item's attachment is held only on the socket of the equipment slot the item
+        // is in, such as a sword in main_hand on Socket_MainHand, and only when the catalog has it.
         public static BodyLook Dress(
             BodyLook own,
             BodyAppearanceCatalog catalog,
@@ -57,7 +59,7 @@ namespace Mmorpg.Client.Gameplay
                 return look;
             }
 
-            var dressed = look.WithoutGarments();
+            var dressed = look.WithoutGarments().WithoutAttachments();
             foreach (var hair in look.Garments)
             {
                 var garment = catalog.GarmentNamed(hair);
@@ -76,7 +78,18 @@ namespace Mmorpg.Client.Gameplay
             var chosen = new Dictionary<string, (string Name, string[] Dyes, bool OwnSlot)>(StringComparer.Ordinal);
             foreach (var item in equipment)
             {
-                if (!presentation.TryGet(item.DefinitionId, out var entry) || entry.garments == null)
+                if (!presentation.TryGet(item.DefinitionId, out var entry))
+                {
+                    continue;
+                }
+
+                var attachment = catalog.AttachmentNamed(entry.attachment);
+                if (attachment != null && string.Equals(attachment.Socket, item.SlotId, StringComparison.Ordinal))
+                {
+                    dressed = dressed.WithAttachment(attachment.Name, true);
+                }
+
+                if (entry.garments == null)
                 {
                     continue;
                 }

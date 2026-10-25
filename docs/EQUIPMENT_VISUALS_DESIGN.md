@@ -801,7 +801,34 @@ the hair.
 Weapons, shields, quivers, and backpacks are static models on the skeleton's
 sockets. A static model's root object `Grip` marks where it is held, and the
 socket's position and turn on each body type place it. They follow the hands and
-the back without weights.
+the back without weights. The first two, the Iron Sword and the Heater Shield,
+were made on 2026-10-25 to test the hands' sockets, as Victor asked:
+
+- **The model is the socket's**: an attachment is an art asset of its own with
+  its socket in `asset.json`, modeled in the socket's axes around `Grip`; see
+  [Art Pipeline](ART_PIPELINE.md#attachments). The sockets stay as the rig places
+  them, since a socket that moved would change the rig every garment, the cage,
+  and the clips are fitted to; an item that needs another place carries it in its
+  own model.
+- **One renderer**: the body combines an attachment into its one mesh like a
+  garment, every vertex weighted fully to the socket bone, so a crowd of armed
+  bodies costs no renderer more, and a corpse is baked with what it still holds.
+  The body's bounds leave room for the hand to swing with it.
+- **The hand closes**: the clip `Grip` closes the fingers around a handle of
+  29 mm on the socket. `HumanLocomotion.controller` plays it on the layers
+  `MainHandGrip` and `OffHandGrip`, each masked to one hand's fingers, and the body
+  turns a layer on while that hand's socket holds an attachment, over every other
+  clip, also `Death`.
+- **One per socket**: an item shows its attachment only in the equipment slot
+  of its socket, `main_hand` on `Socket_MainHand` and `off_hand` on
+  `Socket_OffHand`, so a body holds one attachment per socket.
+- **A shield lies along the forearm**: the Heater Shield hangs from a handle in
+  the fist and a strap around the forearm, so it hangs outward at the side with
+  its point down in the gaits and will face forward when a later clip raises the
+  arm in guard. A round shield with a centre grip would lie flat under a hanging
+  hand until such a clip exists.
+
+Hold poses for raised weapons and sheathed weapons are later work.
 
 ## Items
 
@@ -832,12 +859,20 @@ Items show their garments, as Victor decided on 2026-10-25:
 - **Hair is part of the look**, not an item: a garment of the `hair` slot or none,
   chosen in character creation and changed in the game later, such as at a
   barber. Every other garment comes from the equipment.
+- **An item names its attachment** in the presentation the same way, since
+  presentation format 4, by the name of its attachment asset, such as
+  `IronSword`; see [Attachments](#attachments). Every equipment slot of such an
+  item is the attachment's socket, which the Unity tests hold every item to.
 
 The items are the Leather Jerkin, Linen Shirt, Long-Sleeved Linen Shirt, Net
 Shirt, Wool Trousers, Leather Boots, Leather Gloves, Nasal Helm, and the Wool
 Robe, Wool Hood, and Wool Cloak, each also blue and red, with the new category
 `clothing` for the linen and wool and `armor` for the leather and iron. The
 General Store sells them, and the development package `outfits` holds them all.
+Since 2026-10-25 the Iron Sword in `main_hand`, the first melee weapon, and the
+Heater Shield in `off_hand`, `armor` without armor values yet, show their
+attachments; the General Store sells them, and the development package
+`equipment` holds them.
 
 ### The Look On The Server
 
@@ -876,7 +911,10 @@ Every client sees a character as the server stores it, as Victor decided on
 - **Development bots** have no stored look and no items: the worker gives each a
   body model, a look, and an outfit of catalog items picked from its character id
   by a stable hash, so a crowd shows every body, face, and garment, and each bot
-  keeps its own. The outfit is only shown.
+  keeps its own. The outfit is only shown. Since 2026-10-25 the visible slots
+  include `main_hand` and `off_hand`, so bots hold weapons and shields too, and an
+  item stays out of a slot that an item of an earlier slot blocks, such as a
+  shield beside a two-handed bow.
 - **A dying body keeps its clothes** until its character respawns, though its
   items already lie in its corpse. A player corpse shows the dead character's
   body model and look, with its headwear, wearing the items still in the corpse's
@@ -896,8 +934,9 @@ puts the character together:
    higher layer covers, and every slot a worn garment hides is left out.
 3. Hair in its normal or compressed form, or none under headwear that hides it.
 4. One combined skinned mesh on the character's skeleton, the cloth chains with
-   it, with one submesh per material. Materials are shared copies keyed by their
-   texture, dye colors, and paint layers, so characters that look alike batch.
+   it, and the attachments on their socket bones, with one submesh per material.
+   Materials are shared copies keyed by their texture, dye colors, and paint
+   layers, so characters that look alike batch.
 5. The combined mesh is cached by the look's key, so every character with the
    same look shares one mesh, as development bots do.
 

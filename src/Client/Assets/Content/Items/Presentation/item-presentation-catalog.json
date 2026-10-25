@@ -1,7 +1,7 @@
 {
-    "formatVersion": 3,
-    "sourceCatalogRevision": "7720de5d0552e85507cd5aaa3183e40669d6f216b2c990e2ed0d7688d5a444ad",
-    "presentationRevision": "6c8c83170503c298215e56c12e61625f29c4a024177cfdd8f95fd546afddf02f",
+    "formatVersion": 4,
+    "sourceCatalogRevision": "477a207d25605a4b53fe1e89edd609de3336706cc2b8eb1dab81e9c3a8ce3545",
+    "presentationRevision": "4464ac60d5ad98a484bcd00facdf710615212bf62f3a0362d354d135e099a61e",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
@@ -11,7 +11,19 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
+        },
+        {
+            "definitionId": "armor.heater_shield",
+            "iconAddress": "",
+            "localizationKey": "items.armor.heater_shield.name",
+            "fallbackDisplayName": "Heater Shield",
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": [],
+            "attachment": "HeaterShield"
         },
         {
             "definitionId": "armor.leather_boots",
@@ -23,7 +35,8 @@
                 "LeatherBoots"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "armor.leather_gloves",
@@ -35,7 +48,8 @@
                 "LeatherGloves"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "armor.leather_jerkin",
@@ -47,7 +61,8 @@
                 "LeatherJerkin"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "armor.nasal_helm",
@@ -59,7 +74,8 @@
                 "IronNasalHelm"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "bag.travelers_pack",
@@ -69,7 +85,8 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.blue_wool_cloak",
@@ -83,7 +100,8 @@
             "loweredGarments": [],
             "dyes": [
                 "#2B4364"
-            ]
+            ],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.blue_wool_hood",
@@ -99,7 +117,8 @@
             ],
             "dyes": [
                 "#3A5A85"
-            ]
+            ],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.blue_wool_robe",
@@ -113,7 +132,8 @@
             "loweredGarments": [],
             "dyes": [
                 "#3A5A85"
-            ]
+            ],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.linen_shirt",
@@ -125,7 +145,8 @@
                 "LinenShirt"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.long_linen_shirt",
@@ -137,7 +158,8 @@
                 "LinenLongShirt"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.net_shirt",
@@ -149,7 +171,8 @@
                 "NetShirt"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.red_wool_cloak",
@@ -163,7 +186,8 @@
             "loweredGarments": [],
             "dyes": [
                 "#742519"
-            ]
+            ],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.red_wool_hood",
@@ -179,7 +203,8 @@
             ],
             "dyes": [
                 "#9C3426"
-            ]
+            ],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.red_wool_robe",
@@ -193,7 +218,8 @@
             "loweredGarments": [],
             "dyes": [
                 "#9C3426"
-            ]
+            ],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.wool_cloak",
@@ -205,7 +231,8 @@
                 "WoolCloak"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.wool_hood",
@@ -219,7 +246,8 @@
             "loweredGarments": [
                 "WoolHoodDown"
             ],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.wool_robe",
@@ -231,7 +259,8 @@
                 "WoolRobe"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "clothing.wool_trousers",
@@ -243,7 +272,8 @@
                 "WoolTrousers"
             ],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "food.cooked_trout",
@@ -253,7 +283,8 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "jewelry.copper_ring",
@@ -263,7 +294,8 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "material.iron_ore",
@@ -273,7 +305,8 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "material.wolf_pelt",
@@ -283,7 +316,8 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "potion.minor_healing",
@@ -293,7 +327,8 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "quest_item.sealed_letter",
@@ -303,7 +338,8 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         },
         {
             "definitionId": "tool.starter_pickaxe",
@@ -313,7 +349,19 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
+        },
+        {
+            "definitionId": "weapon.iron_sword",
+            "iconAddress": "",
+            "localizationKey": "items.weapon.iron_sword.name",
+            "fallbackDisplayName": "Iron Sword",
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": [],
+            "attachment": "IronSword"
         },
         {
             "definitionId": "weapon.training_shortbow",
@@ -323,7 +371,8 @@
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
-            "dyes": []
+            "dyes": [],
+            "attachment": ""
         }
     ]
 }

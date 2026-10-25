@@ -1,0 +1,40 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/Attachments/IronSword.fbx",
+    "rootObjects": [
+        "Grip"
+    ],
+    "triangleBudget": 1500,
+    "socket": "main_hand",
+    "approvals": {
+        "model": {
+            "date": "2026-10-25",
+            "sourceSha256": "8d7e6068e9415ec0a1840dd68e920ac90b3398c047c5fa009dabeeea81a0a676"
+        }
+    },
+    "export": {
+        "sourceSha256": "8d7e6068e9415ec0a1840dd68e920ac90b3398c047c5fa009dabeeea81a0a676",
+        "targetSha256": "468245c58cacc33da776726bac8c8b573bd8e4f928aaf81905f95ca26a53a8f5",
+        "materials": [
+            {
+                "name": "M_IronSword_Blade",
+                "baseColor": "#B4B9BF",
+                "metallic": 0.6,
+                "smoothness": 0.6
+            },
+            {
+                "name": "M_IronSword_Fittings",
+                "baseColor": "#6B6F74",
+                "metallic": 0.45,
+                "smoothness": 0.45
+            },
+            {
+                "name": "M_IronSword_Grip",
+                "baseColor": "#4A3121",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            }
+        ]
+    }
+}

@@ -53,7 +53,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 // Only hair keeps its shape keys, its form under headwear.
                 Assert.That(importer.importBlendShapes, Is.EqualTo(ArtModelImportRules.HasShapeKeys(manifest)), path);
                 Assert.That(importer.addCollider, Is.False, path);
-                Assert.That(importer.isReadable, Is.EqualTo(manifest.IsSkinned || manifest.IsGarment), path);
+                // The game combines bodies, garments, and attachments, which reads their meshes.
+                Assert.That(importer.isReadable, Is.EqualTo(manifest.IsSkinned || manifest.IsGarment || manifest.IsAttachment), path);
                 Assert.That(importer.importNormals, Is.EqualTo(ModelImporterNormals.Import), path);
                 if (manifest.IsGarment)
                 {

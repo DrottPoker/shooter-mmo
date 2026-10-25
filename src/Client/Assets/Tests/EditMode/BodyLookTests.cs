@@ -65,6 +65,24 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void ALookHoldsAttachmentsInItsKey()
+        {
+            var look = BodyLook.Default.WithGarment("LeatherJerkin", true).WithAttachment("IronSword", true)
+                .WithAttachment("HeaterShield", true);
+
+            Assert.That(look.Key, Is.EqualTo("Attachment=HeaterShield+IronSword;Garment=LeatherJerkin"));
+            Assert.That(look.HasAttachment("IronSword"), Is.True);
+            Assert.That(look.HasGarment("IronSword"), Is.False);
+            Assert.That(BodyLook.Parse(look.Key), Is.EqualTo(look));
+            Assert.That(look.WithAttachment("HeaterShield", false).Key, Is.EqualTo("Attachment=IronSword;Garment=LeatherJerkin"));
+            // Garments and attachments come off apart, as equipment dresses a look.
+            Assert.That(look.WithoutGarments().Key, Is.EqualTo("Attachment=HeaterShield+IronSword"));
+            Assert.That(look.WithoutAttachments().Key, Is.EqualTo("Garment=LeatherJerkin"));
+            Assert.Throws<System.ArgumentException>(() => BodyLook.Default.With(BodyLook.AttachmentKey, "IronSword"));
+            Assert.Throws<System.ArgumentException>(() => BodyLook.Default.WithAttachment("Iron Sword", true));
+        }
+
+        [Test]
         public void ALookComesBackFromItsKeyAndSkipsBrokenEntries()
         {
             var look = BodyLook.Parse("Eye=Brown;Face=Clean");

@@ -1486,9 +1486,18 @@ garment of the hair slot. `RealtimeSimulationClient` keeps the latest
   game messages. `WorldSceneContext` shows the model and dresses the look in the
   inventory's equipment, with its predicted moves, and the stored headwear.
 - **Other players.** `RemotePlayerView.ApplyAppearance` shows the sent body
-  model and dresses the look in the garments of the sent visible equipment with
-  the sent headwear, from the item presentation of `PlayerEquipment`; a new
-  presentation dresses every player again.
+  model and dresses the look in the garments and attachments of the sent visible
+  equipment with the sent headwear, from the item presentation of
+  `PlayerEquipment`; a new presentation dresses every player again.
+- **Attachments.** `EquipmentGarments.Dress` puts an item's attachment, such as
+  the Iron Sword, into the look when the item is in the slot of the attachment's
+  socket. `PlayerBodyAppearance` takes the catalog's attachments that the look
+  names, one per socket, `PlayerBodyMeshes` combines them rigidly on their
+  socket bones into the body's one mesh, and the body turns on the animator layer
+  `MainHandGrip` or `OffHandGrip` of each hand that holds one, which plays the
+  clip `Grip` on that hand's fingers. An Animator that is enabled again takes the
+  layer weights in the next `LateUpdate`. A corpse is baked with the attachments
+  of the items still in its equipment.
 - **A dying body keeps its clothes.** While a body shows its character dead,
   `WorldSceneContext` keeps every new look for it and shows the last one once the
   body lives again, since its items lie in its corpse already.

@@ -13,13 +13,21 @@ namespace Mmorpg.Client.Gameplay
     // the garment faces whose underlay a garment of a higher layer covers, leaves out every
     // garment of a slot that a worn garment of a higher layer hides, and leaves out the hair
     // under headwear that hides it or draws it in its form under headwear that presses it flat;
-    // see docs/EQUIPMENT_VISUALS_DESIGN.md. Every
-    // body with the same visible parts of the same model and the same garments shares one mesh.
-    // The owner destroys the meshes.
+    // see docs/EQUIPMENT_VISUALS_DESIGN.md. Attachments, such as a sword, are rigid meshes weighted
+    // fully to their socket bone, so a body holding them is still one renderer. Every body with the
+    // same visible parts of the same model, the same garments, and the same attachments shares one
+    // mesh. The owner destroys the meshes.
     public sealed class PlayerBodyMeshes : IDisposable
     {
         private static readonly IReadOnlyList<BodyAppearanceCatalog.Garment> NoGarments =
             new BodyAppearanceCatalog.Garment[0];
+
+        private static readonly IReadOnlyList<BodyAppearanceCatalog.Attachment> NoAttachments =
+            new BodyAppearanceCatalog.Attachment[0];
+
+        // How far a hand swings from where it is in the bind pose, in meters, which the bounds of a
+        // body leave room for around what it holds.
+        public const float AttachmentReach = 0.35f;
 
         private readonly Dictionary<string, Combined> meshes = new Dictionary<string, Combined>();
 
@@ -36,15 +44,16 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Also wearing the garments of the catalog, whose models are skinned to bones of the same
-        // names as the parts' skeleton.
+        // names as the parts' skeleton, and holding its attachments on their sockets below the root.
         public Combined For(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
-            IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
+            IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
         {
             garments = garments ?? NoGarments;
-            var key = KeyOf(parts, garments);
+            attachments = attachments ?? NoAttachments;
+            var key = KeyOf(parts, garments, attachments);
             if (!meshes.TryGetValue(key, out var combined) || combined.Mesh == null)
             {
-                combined = Build(parts, root, catalog, garments);
+                combined = Build(parts, root, catalog, garments, attachments);
                 meshes[key] = combined;
             }
 
@@ -142,9 +151,11 @@ namespace Mmorpg.Client.Gameplay
 
         // Every part's and every drawn garment's mesh in the root's space, the bones of all of them
         // in one list by name, and the triangles of each material in one submesh, in the order the
-        // materials first appear; vertices no triangle uses are left out.
+        // materials first appear; vertices no triangle uses are left out. Each attachment's meshes
+        // lie on its socket bone as the socket stands on its parent bone in the bind pose, with its
+        // root object Grip on the socket.
         public static Combined Build(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
-            IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
+            IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
         {
             if (parts == null || parts.Count == 0)
             {
@@ -202,7 +213,37 @@ namespace Mmorpg.Client.Gameplay
                     null, garment.Material, ShapeOf(garment, drawn));
             }
 
+            foreach (var attachment in Held(attachments ?? NoAttachments))
+            {
+                var socket = FindDescendant(root, attachment.Bone);
+                if (socket == null || socket.parent == null || !builder.TryGetBoneToRoot(socket.parent.name, out var parentToRoot))
+                {
+                    continue;
+                }
+
+                // A socket is never animated, so it stands on its parent as it does in the model.
+                builder.AddRigid(attachment.Model, attachment.Bone,
+                    parentToRoot * Matrix4x4.TRS(socket.localPosition, socket.localRotation, socket.localScale));
+            }
+
             return builder.Finish(parts[0].sharedMesh.name + " combined");
+        }
+
+        // The attachments with a model, one per socket bone, by name.
+        public static List<BodyAppearanceCatalog.Attachment> Held(IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments)
+        {
+            var held = new List<BodyAppearanceCatalog.Attachment>();
+            foreach (var attachment in attachments)
+            {
+                if (attachment != null && attachment.Model != null
+                    && !held.Exists(other => string.Equals(other.Bone, attachment.Bone, StringComparison.Ordinal)))
+                {
+                    held.Add(attachment);
+                }
+            }
+
+            held.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
+            return held;
         }
 
         private static bool Contains(IReadOnlyList<string> names, string name)
@@ -253,7 +294,8 @@ namespace Mmorpg.Client.Gameplay
             return result;
         }
 
-        private static string KeyOf(IReadOnlyList<SkinnedMeshRenderer> parts, IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
+        private static string KeyOf(IReadOnlyList<SkinnedMeshRenderer> parts, IReadOnlyList<BodyAppearanceCatalog.Garment> garments,
+            IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments)
         {
             var key = new System.Text.StringBuilder();
             foreach (var part in parts)
@@ -273,6 +315,12 @@ namespace Mmorpg.Client.Gameplay
                 key.Append('|').Append(garment.Name).Append('@').Append(garment.Model.GetEntityId().ToString())
                     .Append('/').Append(garment.Material != null ? garment.Material.GetEntityId().ToString() : "-")
                     .Append('~').Append(ShapeOf(garment, drawn) ?? string.Empty);
+            }
+
+            foreach (var attachment in Held(attachments))
+            {
+                key.Append('#').Append(attachment.Name).Append('@').Append(attachment.Model.GetEntityId().ToString())
+                    .Append('/').Append(attachment.Bone);
             }
 
             return key.ToString();
@@ -446,6 +494,113 @@ namespace Mmorpg.Client.Gameplay
                 else
                 {
                     bounds = meshBounds;
+                    hasBounds = true;
+                }
+            }
+
+            // Where a bone of the meshes added so far stands in the root's space in the bind pose.
+            public bool TryGetBoneToRoot(string bone, out Matrix4x4 boneToRoot)
+            {
+                if (!boneIndex.TryGetValue(bone, out var index))
+                {
+                    boneToRoot = Matrix4x4.identity;
+                    return false;
+                }
+
+                boneToRoot = bindposes[index].inverse;
+                return true;
+            }
+
+            // Every mesh of a rigid model, such as a sword, given in the space of the model's root,
+            // weighted fully to one bone that stands at boneToRoot in the root's space. The body's
+            // bounds leave room around it for the bone to swing with the hand.
+            public void AddRigid(GameObject model, string bone, Matrix4x4 boneToRoot)
+            {
+                if (!boneIndex.TryGetValue(bone, out var unified))
+                {
+                    unified = bones.Count;
+                    boneIndex.Add(bone, unified);
+                    bones.Add(bone);
+                    bindposes.Add(boneToRoot.inverse);
+                }
+
+                var reach = 0f;
+                foreach (var filter in model.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    var mesh = filter.sharedMesh;
+                    var renderer = filter.GetComponent<MeshRenderer>();
+                    if (mesh == null || renderer == null)
+                    {
+                        continue;
+                    }
+
+                    if (!mesh.isReadable)
+                    {
+                        throw new InvalidOperationException("Attachment mesh '" + mesh.name + "' has no readable mesh.");
+                    }
+
+                    var toBone = model.transform.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                    var toRoot = boneToRoot * toBone;
+                    var normalMatrix = toRoot.inverse.transpose;
+                    var first = positions.Count;
+                    mesh.GetVertices(meshVertices);
+                    mesh.GetNormals(meshNormals);
+                    mesh.GetTangents(meshTangents);
+                    mesh.GetUVs(0, meshUvs);
+                    for (var index = 0; index < meshVertices.Count; index++)
+                    {
+                        reach = Mathf.Max(reach, toBone.MultiplyPoint3x4(meshVertices[index]).magnitude);
+                        positions.Add(toRoot.MultiplyPoint3x4(meshVertices[index]));
+                        normals.Add(index < meshNormals.Count ? normalMatrix.MultiplyVector(meshNormals[index]).normalized : Vector3.up);
+                        if (index < meshTangents.Count)
+                        {
+                            var tangent = toRoot.MultiplyVector(meshTangents[index]).normalized;
+                            tangents.Add(new Vector4(tangent.x, tangent.y, tangent.z, meshTangents[index].w));
+                        }
+                        else
+                        {
+                            tangents.Add(new Vector4(1f, 0f, 0f, 1f));
+                        }
+
+                        uvs.Add(index < meshUvs.Count ? meshUvs[index] : Vector2.zero);
+                        paintUvs.Add(Vector2.zero);
+                        bonesPerVertex.Add(1);
+                        firstWeight.Add(weights.Count);
+                        weights.Add(new BoneWeight1 { boneIndex = unified, weight = 1f });
+                    }
+
+                    var meshMaterials = renderer.sharedMaterials;
+                    for (var submesh = 0; submesh < mesh.subMeshCount; submesh++)
+                    {
+                        var drawn = submesh < meshMaterials.Length ? meshMaterials[submesh] : null;
+                        var slot = materials.IndexOf(drawn);
+                        if (slot < 0)
+                        {
+                            slot = materials.Count;
+                            materials.Add(drawn);
+                            triangles.Add(new List<int>());
+                        }
+
+                        mesh.GetTriangles(meshTriangles, submesh);
+                        foreach (var vertex in meshTriangles)
+                        {
+                            triangles[slot].Add(first + vertex);
+                        }
+                    }
+                }
+
+                // The bounds are in the space of the root bone in the bind pose.
+                var centre = TryGetBoneToRoot(rootBone.name, out var rootBoneToRoot)
+                    ? rootBoneToRoot.inverse.MultiplyPoint3x4(boneToRoot.GetColumn(3))
+                    : (Vector3)boneToRoot.GetColumn(3);
+                var room = new Bounds(centre, Vector3.one * (2f * (reach + AttachmentReach)));
+                if (hasBounds)
+                {
+                    bounds.Encapsulate(room);
+                }
+                else
+                {
+                    bounds = room;
                     hasBounds = true;
                 }
             }

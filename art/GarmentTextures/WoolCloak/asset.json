@@ -17,7 +17,7 @@
             { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/WoolCloak_Female.json", "dataSha256": "381e5936a559ff298b69a634f72d5d41ea095ed6b55a58ab8ed60ab393f7f32f" }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "75bcdc80b9c74a80d94341ac59ee13a44d6c86690fe9fb7d2053f0515f17a987" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
         ],
         "materials": [
             {

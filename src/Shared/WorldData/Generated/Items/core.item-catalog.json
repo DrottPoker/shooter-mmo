@@ -1,7 +1,7 @@
 {
   "formatVersion": 5,
   "catalogId": "core",
-  "revision": "7720de5d0552e85507cd5aaa3183e40669d6f216b2c990e2ed0d7688d5a444ad",
+  "revision": "477a207d25605a4b53fe1e89edd609de3336706cc2b8eb1dab81e9c3a8ce3545",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 2000,
@@ -164,6 +164,13 @@
       "combatStyle": "ranged",
       "ammunitionFamily": "arrow",
       "projectileSpeed": 30
+    },
+    {
+      "id": "sword",
+      "displayName": "Sword",
+      "combatStyle": "melee",
+      "ammunitionFamily": "",
+      "projectileSpeed": 0
     }
   ],
   "ammunitionFamilies": [
@@ -199,6 +206,27 @@
         "damageBonusPercent": 5
       },
       "structuralFingerprint": "fa06e0a7bc54db1272427fc42b47209a84690c5c7c919fe41c759f9e3cf7ca5e"
+    },
+    {
+      "id": "armor.heater_shield",
+      "displayName": "Heater Shield",
+      "category": "armor",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 120,
+      "value": 80,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "off_hand"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "76118d0319a2449e7cde49dc5dd9bcc39c23368bfda16938a34907990c0ce69b"
     },
     {
       "id": "armor.leather_boots",
@@ -776,6 +804,35 @@
       "structuralFingerprint": "f5e00ea2809b4aeabf79ae97c1c0b09d9d360f6dca98579bb05a85392eadefef"
     },
     {
+      "id": "weapon.iron_sword",
+      "displayName": "Iron Sword",
+      "category": "weapon",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 100,
+      "value": 120,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "main_hand"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": false
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "weapon": {
+        "weaponFamily": "sword",
+        "damageType": "normal",
+        "minimumDamage": 11,
+        "maximumDamage": 19,
+        "attackIntervalSeconds": 2.4,
+        "range": 2.5
+      },
+      "structuralFingerprint": "52509c503e8ac36450e02072864ef28566b6223804280c0a5a0b0f70b8c34bcf"
+    },
+    {
       "id": "weapon.training_shortbow",
       "displayName": "Training Shortbow",
       "category": "weapon",
@@ -879,6 +936,12 @@
         },
         {
           "definitionId": "armor.nasal_helm"
+        },
+        {
+          "definitionId": "weapon.iron_sword"
+        },
+        {
+          "definitionId": "armor.heater_shield"
         }
       ],
       "purchasePriceBasisPoints": 10000,

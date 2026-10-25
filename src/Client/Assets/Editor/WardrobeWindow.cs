@@ -7,9 +7,9 @@ using UnityEngine;
 namespace Mmorpg.Client.Editor
 {
     // MMORPG > Tools > Art Pipeline > Wardrobe: a body of the appearance catalogs dressed in the
-    // garments ticked on the left, with the paint layers picked there, playing Idle, Walk, Jog, or
-    // Death on a moving ground with the cloth solver running, for reviewing garments in motion
-    // before approving them. Drag in the view to turn the camera around the body, and scroll to
+    // garments ticked on the left, with the paint layers picked there, holding the attachments
+    // ticked there on their sockets, playing Idle, Walk, Jog, or Death on a moving ground with the
+    // cloth solver running, for reviewing garments and attachments in motion before approving them. Drag in the view to turn the camera around the body, and scroll to
     // come closer. The window's layout is a temporary tool interface; WardrobePreview does the work.
     public sealed class WardrobeWindow : EditorWindow
     {
@@ -19,6 +19,7 @@ namespace Mmorpg.Client.Editor
 
         private readonly HashSet<string> chosen = new HashSet<string>();
         private readonly HashSet<string> chosenPaints = new HashSet<string>();
+        private readonly HashSet<string> chosenAttachments = new HashSet<string>();
         private ArtAssetManifest[] bodies = new ArtAssetManifest[0];
         private int bodyIndex;
         private WardrobePreview preview;
@@ -68,7 +69,8 @@ namespace Mmorpg.Client.Editor
                 preview = new WardrobePreview(bodies[bodyIndex]);
                 chosen.IntersectWith(preview.Catalog.Garments.Select(garment => garment.Name));
                 chosenPaints.IntersectWith(preview.Catalog.Paints.Select(paint => paint.Name));
-                preview.Wear(chosen, chosenPaints);
+                chosenAttachments.IntersectWith(preview.Catalog.Attachments.Select(attachment => attachment.Name));
+                preview.Wear(chosen, chosenPaints, chosenAttachments);
             }
             catch (System.Exception error)
             {
@@ -195,7 +197,7 @@ namespace Mmorpg.Client.Editor
                         chosen.Remove(garment.Name);
                     }
 
-                    preview.Wear(chosen, chosenPaints);
+                    preview.Wear(chosen, chosenPaints, chosenAttachments);
                 }
             }
 
@@ -226,7 +228,26 @@ namespace Mmorpg.Client.Editor
                         chosenPaints.Add(choices[picked]);
                     }
 
-                    preview.Wear(chosen, chosenPaints);
+                    preview.Wear(chosen, chosenPaints, chosenAttachments);
+                }
+            }
+
+            // One attachment per socket.
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Attachments", EditorStyles.boldLabel);
+            foreach (var attachment in preview.Catalog.Attachments)
+            {
+                var held = chosenAttachments.Contains(attachment.Name);
+                var hold = EditorGUILayout.ToggleLeft(attachment.Name + "  (" + attachment.Socket + ")", held);
+                if (hold != held)
+                {
+                    chosenAttachments.RemoveWhere(name => preview.Catalog.AttachmentNamed(name)?.Bone == attachment.Bone);
+                    if (hold)
+                    {
+                        chosenAttachments.Add(attachment.Name);
+                    }
+
+                    preview.Wear(chosen, chosenPaints, chosenAttachments);
                 }
             }
 
@@ -245,6 +266,7 @@ namespace Mmorpg.Client.Editor
             EditorGUILayout.LabelField("Speed", preview.Speed.ToString("0.0") + " m/s");
             EditorGUILayout.LabelField("Drawn", string.Join(", ", preview.Worn.Select(garment => garment.Name)));
             EditorGUILayout.LabelField("Painted", string.Join(", ", preview.Painted.Select(paint => paint.Name)));
+            EditorGUILayout.LabelField("Held", string.Join(", ", preview.Held.Select(attachment => attachment.Name)));
             EditorGUILayout.LabelField("Cloth", preview.Solver.IsActive ? preview.Solver.CurrentDetail.ToString() : "none");
         }
 

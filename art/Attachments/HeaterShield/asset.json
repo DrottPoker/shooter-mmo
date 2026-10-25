@@ -1,0 +1,46 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/Attachments/HeaterShield.fbx",
+    "rootObjects": [
+        "Grip"
+    ],
+    "triangleBudget": 2000,
+    "socket": "off_hand",
+    "approvals": {
+        "model": {
+            "date": "2026-10-25",
+            "sourceSha256": "46334fe3cd85a9e97047c085bdea90696cb6ed78181c9de11113d50b98e3c74d"
+        }
+    },
+    "export": {
+        "sourceSha256": "46334fe3cd85a9e97047c085bdea90696cb6ed78181c9de11113d50b98e3c74d",
+        "targetSha256": "8bb70a8cf81c222405a1983ee54ab615db9d98b61784ab4b0e70d5f377549a30",
+        "materials": [
+            {
+                "name": "M_HeaterShield_Face",
+                "baseColor": "#3D5A80",
+                "metallic": 0.0,
+                "smoothness": 0.4
+            },
+            {
+                "name": "M_HeaterShield_Iron",
+                "baseColor": "#5E6268",
+                "metallic": 0.45,
+                "smoothness": 0.45
+            },
+            {
+                "name": "M_HeaterShield_Leather",
+                "baseColor": "#4A3121",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            },
+            {
+                "name": "M_HeaterShield_Wood",
+                "baseColor": "#7A5A3C",
+                "metallic": 0.0,
+                "smoothness": 0.2
+            }
+        ]
+    }
+}

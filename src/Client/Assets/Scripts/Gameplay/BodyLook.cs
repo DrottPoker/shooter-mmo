@@ -7,9 +7,10 @@ using UnityEngine;
 namespace Mmorpg.Client.Gameplay
 {
     // What a body looks like: for appearance slots of its catalog, such as Face or Eye, the
-    // option it shows, the paint layers it wears, such as Tattoo, and the garments it wears, each
-    // in the colors of its dye channels or in its natural colors. A slot the look does not name
-    // shows the material's own image. Looks are values; equal looks have equal keys.
+    // option it shows, the paint layers it wears, such as Tattoo, the garments it wears, each in
+    // the colors of its dye channels or in its natural colors, and the attachments its sockets
+    // hold, such as a sword. A slot the look does not name shows the material's own image. Looks
+    // are values; equal looks have equal keys.
     public sealed class BodyLook : IEquatable<BodyLook>
     {
         // The key entry of the paint layers, Paint=A+B.
@@ -18,6 +19,9 @@ namespace Mmorpg.Client.Gameplay
         // The key entry of the garments, Garment=A+B, where a dyed garment is followed by the
         // colors of its dye channels, such as WoolCloak@2B4364.
         public const string GarmentKey = "Garment";
+
+        // The key entry of the attachments, Attachment=A+B.
+        public const string AttachmentKey = "Attachment";
 
         private const char DyeSeparator = '@';
         private const char DyeColorSeparator = '.';
@@ -28,25 +32,28 @@ namespace Mmorpg.Client.Gameplay
             new SortedDictionary<string, string>(StringComparer.Ordinal),
             new SortedSet<string>(StringComparer.Ordinal),
             new SortedSet<string>(StringComparer.Ordinal),
-            new SortedDictionary<string, string>(StringComparer.Ordinal));
+            new SortedDictionary<string, string>(StringComparer.Ordinal),
+            new SortedSet<string>(StringComparer.Ordinal));
 
         private readonly SortedDictionary<string, string> options;
         private readonly SortedSet<string> paints;
         private readonly SortedSet<string> garments;
         // The dye colors of the dyed garments, RRGGBB joined by dots, by garment.
         private readonly SortedDictionary<string, string> dyes;
+        private readonly SortedSet<string> attachments;
 
         private BodyLook(SortedDictionary<string, string> options, SortedSet<string> paints, SortedSet<string> garments,
-            SortedDictionary<string, string> dyes)
+            SortedDictionary<string, string> dyes, SortedSet<string> attachments)
         {
             this.options = options;
             this.paints = paints;
             this.garments = garments;
             this.dyes = dyes;
-            Key = KeyOf(options, paints, garments, dyes);
+            this.attachments = attachments;
+            Key = KeyOf(options, paints, garments, dyes, attachments);
         }
 
-        // Such as "Eye=Brown;Face=Clean;Garment=LeatherJerkin+WoolCloak@2B4364;Paint=Tattoo",
+        // Such as "Attachment=IronSword;Eye=Brown;Face=Clean;Garment=LeatherJerkin+WoolCloak@2B4364;Paint=Tattoo",
         // empty for the default look.
         public string Key { get; }
 
@@ -59,6 +66,17 @@ namespace Mmorpg.Client.Gameplay
         public IReadOnlyCollection<string> Garments
         {
             get { return garments; }
+        }
+
+        // By name; each is held on its own socket.
+        public IReadOnlyCollection<string> Attachments
+        {
+            get { return attachments; }
+        }
+
+        public bool HasAttachment(string attachment)
+        {
+            return attachment != null && attachments.Contains(attachment);
         }
 
         public bool HasPaint(string paint)
@@ -93,7 +111,7 @@ namespace Mmorpg.Client.Gameplay
                 throw new ArgumentException("Paint layers are names of letters and digits.");
             }
 
-            return new BodyLook(options, Toggled(paints, paint, worn), garments, dyes);
+            return new BodyLook(options, Toggled(paints, paint, worn), garments, dyes, attachments);
         }
 
         // The look with or without one garment, worn in its natural colors.
@@ -131,7 +149,7 @@ namespace Mmorpg.Client.Gameplay
                 changedDyes[garment] = string.Join(DyeColorSeparator.ToString(), colors.Select(color => color.ToUpperInvariant()));
             }
 
-            return new BodyLook(options, paints, Toggled(garments, garment, worn), changedDyes);
+            return new BodyLook(options, paints, Toggled(garments, garment, worn), changedDyes, attachments);
         }
 
         // The look without its garments, such as the look a character chose, before its equipment
@@ -139,7 +157,25 @@ namespace Mmorpg.Client.Gameplay
         public BodyLook WithoutGarments()
         {
             return new BodyLook(options, paints, new SortedSet<string>(StringComparer.Ordinal),
-                new SortedDictionary<string, string>(StringComparer.Ordinal));
+                new SortedDictionary<string, string>(StringComparer.Ordinal), attachments);
+        }
+
+        // The look with or without one attachment held on its socket.
+        public BodyLook WithAttachment(string attachment, bool held)
+        {
+            if (!IsName(attachment))
+            {
+                throw new ArgumentException("Attachments are names of letters and digits.");
+            }
+
+            return new BodyLook(options, paints, garments, dyes, Toggled(attachments, attachment, held));
+        }
+
+        // The look holding nothing, such as the look a character chose, before its equipment fills
+        // its hands.
+        public BodyLook WithoutAttachments()
+        {
+            return new BodyLook(options, paints, garments, dyes, new SortedSet<string>(StringComparer.Ordinal));
         }
 
         private static SortedSet<string> Toggled(SortedSet<string> names, string name, bool worn)
@@ -166,7 +202,8 @@ namespace Mmorpg.Client.Gameplay
         // The look with another option in one slot; null or empty restores the slot's own image.
         public BodyLook With(string slot, string option)
         {
-            if (!IsName(slot) || slot == PaintKey || slot == GarmentKey || (!string.IsNullOrEmpty(option) && !IsName(option)))
+            if (!IsName(slot) || slot == PaintKey || slot == GarmentKey || slot == AttachmentKey
+                || (!string.IsNullOrEmpty(option) && !IsName(option)))
             {
                 throw new ArgumentException("Slots and options are names of letters and digits.");
             }
@@ -181,7 +218,7 @@ namespace Mmorpg.Client.Gameplay
                 changed[slot] = option;
             }
 
-            return new BodyLook(changed, paints, garments, dyes);
+            return new BodyLook(changed, paints, garments, dyes, attachments);
         }
 
         // The look of a key, skipping entries that are not slot=option names.
@@ -205,6 +242,16 @@ namespace Mmorpg.Client.Gameplay
                         if (IsName(name))
                         {
                             look = look.WithPaint(name, true);
+                        }
+                    }
+                }
+                else if (slot == AttachmentKey)
+                {
+                    foreach (var name in value.Split('+'))
+                    {
+                        if (IsName(name))
+                        {
+                            look = look.WithAttachment(name, true);
                         }
                     }
                 }
@@ -276,9 +323,14 @@ namespace Mmorpg.Client.Gameplay
 
         // The entries in the ordinal order of their names, so Garment comes before Paint.
         private static string KeyOf(SortedDictionary<string, string> options, SortedSet<string> paints, SortedSet<string> garments,
-            SortedDictionary<string, string> dyes)
+            SortedDictionary<string, string> dyes, SortedSet<string> attachments)
         {
             var entries = new SortedDictionary<string, string>(options, StringComparer.Ordinal);
+            if (attachments.Count > 0)
+            {
+                entries[AttachmentKey] = string.Join("+", attachments);
+            }
+
             if (paints.Count > 0)
             {
                 entries[PaintKey] = string.Join("+", paints);

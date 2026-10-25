@@ -11,7 +11,7 @@ public sealed class CharacterAppearanceFileLoaderTests
         var catalog = CharacterAppearanceFileLoader.Load(RepositoryPaths.CharacterAppearancePath);
 
         Assert.Equal(["Human_Male", "Human_Female"], catalog.BodyModels);
-        Assert.Equal(["head", "body", "legs", "hands", "feet", "back"], catalog.VisibleEquipmentSlots);
+        Assert.Equal(["head", "body", "legs", "hands", "feet", "back", "main_hand", "off_hand"], catalog.VisibleEquipmentSlots);
         Assert.Equal(
             ["face", "eyes", "scar", "tattoo", "underwear", "hair"],
             catalog.Kinds.Select(kind => kind.Id));

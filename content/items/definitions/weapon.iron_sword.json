@@ -1,0 +1,30 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "weapon",
+  "defaultPolicies": [ ],
+  "displayName": "Iron Sword",
+  "equipmentSlots": [
+    "main_hand"
+  ],
+  "id": "weapon.iron_sword",
+  "locationEligibility": {
+    "secureContainer": false
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 100,
+  "value": 120,
+  "weapon": {
+    "attackIntervalSeconds": 2.4,
+    "damageType": "normal",
+    "maximumDamage": 19,
+    "minimumDamage": 11,
+    "range": 2.5,
+    "weaponFamily": "sword"
+  }
+}

@@ -199,6 +199,13 @@
       "displayName": "Bow",
       "id": "bow",
       "projectileSpeed": 30
+    },
+    {
+      "ammunitionFamily": "",
+      "combatStyle": "melee",
+      "displayName": "Sword",
+      "id": "sword",
+      "projectileSpeed": 0
     }
   ]
 }
