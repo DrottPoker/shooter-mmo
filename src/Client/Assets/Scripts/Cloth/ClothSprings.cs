@@ -89,6 +89,7 @@ namespace Mmorpg.Client.Cloth
         // feels no start.
         public static void Move(ref ClothAnchor anchor, float3 position, quaternion rotation, float deltaTime)
         {
+            Keep(ref anchor);
             if (anchor.Primed == 0 || deltaTime <= 0f)
             {
                 anchor.Position = position;
@@ -133,9 +134,31 @@ namespace Mmorpg.Client.Cloth
         // jumped.
         public static void Carry(ref ClothAnchor anchor, float3 position, quaternion rotation)
         {
+            Keep(ref anchor);
             anchor.Position = position;
             anchor.Rotation = rotation;
             anchor.Primed = anchor.Primed == 0 ? (byte)1 : anchor.Primed;
+        }
+
+        // What the springs felt of an anchor last frame.
+        private static void Keep(ref ClothAnchor anchor)
+        {
+            anchor.LastFeltVelocity = anchor.FeltVelocity;
+            anchor.LastFeltAcceleration = anchor.FeltAcceleration;
+            anchor.LastFeltAngularVelocity = anchor.FeltAngularVelocity;
+            anchor.LastFeltAngularAcceleration = anchor.FeltAngularAcceleration;
+        }
+
+        // What the springs feel of an anchor at a share of the way from last frame to this one, so the
+        // steps between frames feel its motion change smoothly, whatever the frame time.
+        public static ClothAnchor Between(in ClothAnchor anchor, float share)
+        {
+            var between = anchor;
+            between.FeltVelocity = math.lerp(anchor.LastFeltVelocity, anchor.FeltVelocity, share);
+            between.FeltAcceleration = math.lerp(anchor.LastFeltAcceleration, anchor.FeltAcceleration, share);
+            between.FeltAngularVelocity = math.lerp(anchor.LastFeltAngularVelocity, anchor.FeltAngularVelocity, share);
+            between.FeltAngularAcceleration = math.lerp(anchor.LastFeltAngularAcceleration, anchor.FeltAngularAcceleration, share);
+            return between;
         }
 
         // Whether a bone jumped between two frames.

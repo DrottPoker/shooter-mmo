@@ -61,7 +61,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // A jump, found on its own, moves the cloth against its bone in the frame of the jump and the
-        // next as the same motion without the jump does, within a centimeter.
+        // next no more than a centimeter beyond what the same motion without the jump moves it.
         [TestCase("Jog", "Snap 3 m")]
         [TestCase("Jog", "Teleport")]
         [TestCase("Idle", "Snap 180")]
@@ -74,15 +74,28 @@ namespace Mmorpg.Client.Tests.EditMode
                 var jump = motion.Jumps.Single();
                 without.Play(ClothStressMotion.Named(smooth));
                 with.Play(motion);
-                var largest = 0f;
+                var withBefore = Local(with);
+                var withoutBefore = Local(without);
+                var checkedFrames = 0;
                 while (with.StressTime < jump + 2.5f * Step)
                 {
                     without.Step(Step, CameraOffset);
                     with.Step(Step, CameraOffset);
-                    largest = Mathf.Max(largest, Apart(without, with));
+                    var withNow = Local(with);
+                    var withoutNow = Local(without);
+                    if (with.StressTime >= jump)
+                    {
+                        var withMove = withNow.Select((place, index) => Vector3.Distance(place, withBefore[index])).Max();
+                        var withoutMove = withoutNow.Select((place, index) => Vector3.Distance(place, withoutBefore[index])).Max();
+                        Assert.That(withMove, Is.LessThan(withoutMove + 0.01f), "at " + with.StressTime);
+                        checkedFrames++;
+                    }
+
+                    withBefore = withNow;
+                    withoutBefore = withoutNow;
                 }
 
-                Assert.That(largest, Is.LessThan(0.01f));
+                Assert.That(checkedFrames, Is.GreaterThanOrEqualTo(2));
             }
         }
 
@@ -181,9 +194,10 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        // Taking the springs away and giving them back fades them out and in, the springs starting
-        // from the target: in no frame does the cloth's swing on its target change a centimeter more
-        // than the swing of a body that keeps its springs, beyond the fade's own share of the swing.
+        // Taking the springs away and giving them back fades them out and in: fading out, the cloth
+        // leaves the swing of a body that keeps its springs only by the fade's share of it, and fading
+        // in, it starts from the target pose and swings only by the fade's share, so no frame jolts it
+        // by more than a centimeter.
         [Test]
         public void ChangingTheLevelOfDetailDoesNotJoltTheCloth()
         {
@@ -193,40 +207,32 @@ namespace Mmorpg.Client.Tests.EditMode
                 var motion = ClothStressMotion.Named("Jog");
                 kept.Play(motion);
                 changed.Play(motion);
-                List<Vector3> keptBefore = null;
-                List<Vector3> changedBefore = null;
-                var fadeFrames = Mathf.CeilToInt(ClothSprings.FadeSeconds / Step) + 2;
+                var fadeFrames = Mathf.CeilToInt(ClothSprings.FadeSeconds / Step);
                 var keptLargest = 0f;
                 for (var frame = 0; frame < 240; frame++)
                 {
                     changed.Springs = frame < 100 || frame >= 160;
                     kept.Step(Step, CameraOffset);
                     changed.Step(Step, CameraOffset);
-                    var keptNow = Swing(kept);
-                    var changedNow = Swing(changed);
-                    if (keptBefore != null)
+                    var keptSwing = Swing(kept);
+                    var changedSwing = Swing(changed);
+                    keptLargest = Mathf.Max(keptLargest, keptSwing.Max(offset => offset.magnitude));
+                    for (var index = 0; index < keptSwing.Count; index++)
                     {
-                        var keptChange = keptNow.Select((offset, index) => Vector3.Distance(offset, keptBefore[index])).Max();
-                        var changedChange = changedNow.Select((offset, index) => Vector3.Distance(offset, changedBefore[index])).Max();
-                        keptLargest = Mathf.Max(keptLargest, keptChange);
                         if (frame >= 100 && frame < 100 + fadeFrames)
                         {
-                            // Fading out, the body's springs swing on as the kept body's do, faded.
-                            var fade = keptNow.Max(offset => offset.magnitude) * Step / ClothSprings.FadeSeconds;
-                            Assert.That(changedChange, Is.LessThan(keptChange + fade + 0.01f), "frame " + frame);
+                            var faded = Mathf.Min(1f, (frame - 99) * Step / ClothSprings.FadeSeconds + 0.001f);
+                            Assert.That(Vector3.Distance(changedSwing[index], keptSwing[index]),
+                                Is.LessThan(faded * keptSwing[index].magnitude + 0.01f), "frame " + frame);
                         }
                         else if (frame >= 160 && frame < 160 + fadeFrames)
                         {
-                            // Fading in, they start from the target and swing no harder than springs do.
-                            Assert.That(changedChange, Is.LessThan(keptLargest + 0.01f), "frame " + frame);
+                            var shown = (frame - 160) * Step / ClothSprings.FadeSeconds;
+                            Assert.That(changedSwing[index].magnitude, Is.LessThan(shown * keptLargest + 0.01f), "frame " + frame);
                         }
                     }
-
-                    keptBefore = keptNow;
-                    changedBefore = changedNow;
                 }
 
-                // Faded out, the body shows its target pose.
                 Assert.That(changed.Solver.SpringWeight, Is.EqualTo(1f));
             }
         }

@@ -29,22 +29,23 @@ namespace Mmorpg.Client.Gameplay
             SpeedLeanLimit = 4f,
         };
 
-        // A cloak: lighter, it lags behind turns and sways longer, and a leg that kicks back pushes it
-        // along soon.
+        // A cloak: it lags behind turns and sways, as stiff at its hem as at its top, so it stays
+        // taut rather than flick, as Victor asked on 2026-10-25, and the wind of its speed leans it
+        // back from the heels.
         public static readonly ClothProfile Cloak = new ClothProfile
         {
             Margin = 0.02f,
             Slack = 0.05f,
-            FrequencyRoot = 3f,
-            FrequencyTip = 1.6f,
-            DampingRoot = 0.5f,
-            DampingTip = 0.35f,
+            FrequencyRoot = 2.5f,
+            FrequencyTip = 2.5f,
+            DampingRoot = 0.6f,
+            DampingTip = 0.6f,
             ConeRoot = 40f,
-            ConeTip = 75f,
+            ConeTip = 55f,
             Twist = 9f,
             Gravity = 1f,
-            SpeedLean = 6f,
-            SpeedLeanLimit = 20f,
+            SpeedLean = 8f,
+            SpeedLeanLimit = 30f,
         };
 
         // A hood: stiff, it only gives a little.

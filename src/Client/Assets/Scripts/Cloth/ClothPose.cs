@@ -312,11 +312,9 @@ namespace Mmorpg.Client.Cloth
         // reaches it, as the target pose lays it; without, it is only taken out of the colliders,
         // so laying cloth again that lies outside them leaves it where it is. The springs lay their
         // cloth without the band and the arms, which lift a cloak by a share of how far they come
-        // into it rather than out of it; they let every sample lie as deep in a collider as it lies
-        // where the target pose lays the chains, at the targets given, so the target pose stays
-        // where it is; and they see a skirt's outer side from the hips rather than from their upright
-        // axis, so a skirt flared out level still lies under a cloak. Without targets, not created,
-        // no sample lies deeper than its margin allows.
+        // into it rather than out of it; and they let every sample lie as deep in a collider as it
+        // lies where the target pose lays the chains, at the targets given, so the target pose stays
+        // where it is. Without targets, not created, no sample lies deeper than its margin allows.
         public static void Collide(int chainStart, int chainCount, int boneStart, int capsuleStart, int capsuleCount, int marginStart,
             float scale, in ClothLegs legs, NativeArray<int> frameCapsules, NativeArray<ClothChainData> chains,
             NativeArray<ClothParticle> particles, NativeArray<ClothCapsule> capsules, NativeArray<float> radii, NativeArray<float> margins,
@@ -430,7 +428,6 @@ namespace Mmorpg.Client.Cloth
                 CapsuleCount = capsuleCount,
                 Scale = scale,
                 Band = banded ? ContactBand * scale : 0f,
-                FromHips = !banded,
                 Up = up,
                 Hips = legs.Hips,
                 FollowedOffset = followedOffset,
@@ -505,7 +502,6 @@ namespace Mmorpg.Client.Cloth
             public int CapsuleCount;
             public float Scale;
             public float Band;
-            public bool FromHips;
             public NativeArray<float3> Targets;
             public NativeList<float3> TargetSurface;
             public float3 Up;
@@ -624,7 +620,7 @@ namespace Mmorpg.Client.Cloth
                 }
 
                 math.sincos(angle, out var sin, out var cos);
-                var along = math.saturate(math.dot(OutOf(angle, sample, collider, chains, particles, capsules, followed),
+                var along = math.saturate(math.dot(OutOf(angle, sample, collider, chains, particles, capsules, followed, surface),
                     Side * cos - Direction * sin) / ExitAlong);
                 var fade = math.saturate((largest - angle) / math.radians(SwingFadeDegrees));
                 return angle * along * along * (3f - 2f * along) * fade * fade * (3f - 2f * fade);
@@ -642,7 +638,7 @@ namespace Mmorpg.Client.Cloth
                 }
 
                 var depth = collider == SurfaceCollider
-                    ? TargetSurface.Length > 0 ? SurfaceDepthFrom(TargetSurface, Hips, point, LayerGap * Scale + within) : 0f
+                    ? SurfaceDepth(TargetSurface, Hips, Up, point, LayerGap * Scale + within)
                     : Depth(capsules[CapsuleStart + collider], radii, point, margins[Row + sample * CapsuleCount + collider] * Scale);
                 return math.max(depth, 0f);
             }
@@ -650,14 +646,15 @@ namespace Mmorpg.Client.Cloth
             // The way out of a collider from a sample when the bone swings by an angle: away from a
             // capsule's axis, or away from the hips' upright axis for the outer side of a skirt.
             private float3 OutOf(float angle, int sample, int collider, NativeArray<ClothChainData> chains,
-                NativeArray<ClothParticle> particles, NativeArray<ClothCapsule> capsules, NativeArray<float3> followed)
+                NativeArray<ClothParticle> particles, NativeArray<ClothCapsule> capsules, NativeArray<float3> followed,
+                NativeList<float3> surface)
             {
                 SampleAt(ChainStart, Chain, Index, sample, Start, End(angle), chains, followed, FollowedOffset, particles, Scale, out var point,
                     out _);
                 if (collider == SurfaceCollider)
                 {
                     var flat = point - Hips;
-                    return ClothMath.Normalized(FromHips ? flat : flat - Up * math.dot(flat, Up));
+                    return ClothMath.Normalized(flat - Up * math.dot(flat, Up));
                 }
 
                 var capsule = capsules[CapsuleStart + collider];
@@ -673,9 +670,7 @@ namespace Mmorpg.Client.Cloth
             {
                 if (collider == SurfaceCollider)
                 {
-                    return FromHips
-                        ? SurfaceDepthFrom(surface, Hips, point, LayerGap * Scale + within)
-                        : SurfaceDepth(surface, Hips, Up, point, LayerGap * Scale + within);
+                    return SurfaceDepth(surface, Hips, Up, point, LayerGap * Scale + within);
                 }
 
                 var capsule = capsules[CapsuleStart + collider];
@@ -695,9 +690,7 @@ namespace Mmorpg.Client.Cloth
                     out var within);
                 if (collider == SurfaceCollider)
                 {
-                    return FromHips
-                        ? SurfaceDepthFrom(surface, Hips, point, LayerGap * Scale + within)
-                        : SurfaceDepth(surface, Hips, Up, point, LayerGap * Scale + within);
+                    return SurfaceDepth(surface, Hips, Up, point, LayerGap * Scale + within);
                 }
 
                 return Depth(capsules[CapsuleStart + collider], radii, point, margins[Row + sample * CapsuleCount + collider] * Scale);
@@ -756,13 +749,7 @@ namespace Mmorpg.Client.Cloth
         // point; no depth where nothing crosses.
         public static float SurfaceDepth(NativeList<float3> surface, float3 hips, float3 up, float3 point, float gap)
         {
-            return SurfaceDepthFrom(surface, hips + up * math.dot(point - hips, up), point, gap);
-        }
-
-        // How far a point lies inside the outer side of a skirt and a gap, seen from an origin: the
-        // farthest crossing of the way out through it beyond the point; no depth where nothing crosses.
-        public static float SurfaceDepthFrom(NativeList<float3> surface, float3 axis, float3 point, float gap)
-        {
+            var axis = hips + up * math.dot(point - hips, up);
             var way = point - axis;
             var radius = math.length(way);
             if (radius < 1e-6f)

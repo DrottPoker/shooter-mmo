@@ -988,7 +988,7 @@ namespace Mmorpg.Client.Cloth
                             stepTargets[index] = math.lerp(TargetStates[first + index], now[index], share);
                         }
 
-                        StepSprings(handle, slot, scale, ref body, stepMatrices, stepTargets, places, speeds, starts, frees);
+                        StepSprings(handle, slot, scale, share, ref body, stepMatrices, stepTargets, places, speeds, starts, frees);
                     }
 
                     stepMatrices.Dispose();
@@ -1145,7 +1145,7 @@ namespace Mmorpg.Client.Cloth
             // feels of its anchor's motion, the constraints are held, and the body pushes the cloth
             // out no nearer than the target, which also takes the speed into the body out of the
             // particles it moved.
-            private void StepSprings(int handle, in ClothBodySlot slot, float scale, ref ClothSpringBody body,
+            private void StepSprings(int handle, in ClothBodySlot slot, float scale, float share, ref ClothSpringBody body,
                 NativeArray<float4x4> stepMatrices, NativeArray<float3> stepTargets, NativeArray<float3> places, NativeArray<float3> speeds,
                 NativeArray<float3> starts, NativeArray<float3> frees)
             {
@@ -1164,7 +1164,7 @@ namespace Mmorpg.Client.Cloth
                     var chain = Chains[slot.ChainStart + chainIndex];
                     var springChain = SpringChains[slot.ChainStart + chainIndex];
                     var spring = springChain.Spring;
-                    var anchor = Anchors[handle * ClothSprings.Anchors + springChain.Anchor];
+                    var anchor = ClothSprings.Between(Anchors[handle * ClothSprings.Anchors + springChain.Anchor], share);
                     var rotation = RotationOf(stepMatrices[springChain.AnchorSlot]);
                     var start = chain.ParticleStart - first;
                     places[start] = stepTargets[start];
@@ -1271,6 +1271,13 @@ namespace Mmorpg.Client.Cloth
                         math.mul(math.conjugate(rotation), OutwardOf(handle, slot, chainIndex)));
                 }
 
+                // A cloak over a robe is pushed out of the robe's swinging skirt in every step, so the
+                // pushes add up even where one takes it out only in part.
+                if (Layered(slot))
+                {
+                    KeepOutOfSkirt(handle, slot, scale, stepMatrices, places);
+                }
+
                 farthest = 0f;
                 for (var index = 0; index < count; index++)
                 {
@@ -1307,6 +1314,47 @@ namespace Mmorpg.Client.Cloth
                     States[first + index] = body.Sleeping ? stepTargets[index] : places[index];
                     Velocities[first + index] = body.Sleeping ? float3.zero : speeds[index];
                 }
+            }
+
+            // Whether a body wears a cloak with its cloth's reach over a skirt with its own.
+            private bool Layered(in ClothBodySlot slot)
+            {
+                var skirt = false;
+                var cloak = false;
+                for (var chainIndex = 0; chainIndex < slot.ChainCount; chainIndex++)
+                {
+                    var chain = Chains[slot.ChainStart + chainIndex];
+                    skirt |= chain.Kind == ClothKind.Skirt && chain.ReachKnown;
+                    cloak |= chain.Kind == ClothKind.Cloak && chain.ReachKnown;
+                }
+
+                return skirt && cloak;
+            }
+
+            // Lays a body's sprung chains, in the frames of their anchors as the body stands at a
+            // step, out of the outer side of its skirt alone, and takes them back.
+            private void KeepOutOfSkirt(int handle, in ClothBodySlot slot, float scale, NativeArray<float4x4> stepMatrices,
+                NativeArray<float3> places)
+            {
+                var first = slot.ParticleStart;
+                var followed = new NativeArray<float3>(places.Length, Allocator.Temp);
+                ToWorld(slot, stepMatrices, 0, places, followed);
+                PointAlong(slot, followed, first);
+                ClothPose.Collide(slot.ChainStart, slot.ChainCount, slot.BoneStart, slot.CapsuleStart, slot.CapsuleCount, slot.MarginStart,
+                    scale, Legs[handle], FrameCapsules, Chains, Particles, Capsules, Radii, Margins, Hanging, followed, first, Positions,
+                    Directions, ClothRoles.Trunk | ClothRoles.Leg | ClothRoles.Arm, false, Targets);
+                for (var chainIndex = 0; chainIndex < slot.ChainCount; chainIndex++)
+                {
+                    var chain = Chains[slot.ChainStart + chainIndex];
+                    var matrix = stepMatrices[SpringChains[slot.ChainStart + chainIndex].AnchorSlot];
+                    var inverse = math.conjugate(RotationOf(matrix));
+                    for (var index = 0; index <= chain.BoneCount; index++)
+                    {
+                        places[chain.ParticleStart - first + index] = math.mul(inverse, Positions[chain.ParticleStart + index] - matrix.c3.xyz);
+                    }
+                }
+
+                followed.Dispose();
             }
 
             // Shows a body's springs between their last two steps, faded in over its target, no

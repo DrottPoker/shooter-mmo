@@ -132,7 +132,8 @@ namespace Mmorpg.Client.Cloth
     }
 
     // How an anchor bone moves in the world as the springs feel it: where it was last frame, its
-    // speed and turning filtered, and what the springs feel of them, limited.
+    // speed and turning filtered, and what the springs feel of them, limited, this frame and the
+    // last, which the steps between them take in between.
     public struct ClothAnchor
     {
         public float3 Position;
@@ -143,6 +144,10 @@ namespace Mmorpg.Client.Cloth
         public float3 FeltAcceleration;
         public float3 FeltAngularVelocity;
         public float3 FeltAngularAcceleration;
+        public float3 LastFeltVelocity;
+        public float3 LastFeltAcceleration;
+        public float3 LastFeltAngularVelocity;
+        public float3 LastFeltAngularAcceleration;
 
         // 0 before the first frame, 1 after it, and 2 once it moved.
         public byte Primed;
