@@ -1,0 +1,174 @@
+using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.Appearance;
+using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.Items;
+
+namespace Mmorpg.SimulationWorker.Realtime;
+
+// Gives every spawn the look of its player, and sends a new look to every connection that sees
+// the player and to its owner when it changes: its visible equipment, its lowered headwear, or
+// in Development its body model and look. The owner gets its own look when it joins, since it
+// never spawns its own player. Loop-confined.
+internal sealed class AppearanceReplicator(
+    RealtimePeerRegistry peers,
+    RealtimePeerSender sender,
+    EntityPresenceReplicator presence,
+    SimulationEntityRegistry entityRegistry,
+    ConnectionEntityBindingRegistry connectionBindings,
+    CharacterItemStateStore itemStates,
+    CharacterLookStore looks,
+    AppearanceReplicationSettings settings)
+{
+    private readonly List<PlayerSimulationEntity> playerBuffer = [];
+    private readonly HashSet<ulong> seen = [];
+    private readonly Dictionary<ulong, Sent> sent = [];
+
+    // The look a spawn of the player carries.
+    public RealtimeCharacterAppearance AppearanceOf(PlayerSimulationEntity entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        var session = entity.Session;
+        if (!looks.TryGet(session.CharacterId, session.SimulationSessionId, out var look, out _))
+        {
+            return new RealtimeCharacterAppearance(settings.DefaultBodyModel, [], [], false);
+        }
+
+        IEnumerable<CharacterLookItem> worn = look!.Outfit
+            ?? (itemStates.TryGetItemState(session.CharacterId, session.SimulationSessionId, out var state)
+                ? state!.Equipment.Select(item => new CharacterLookItem(item.EquipmentSlotId, item.DefinitionId))
+                : []);
+        var visible = worn
+            .Where(item => settings.VisibleEquipmentSlots.Contains(item.EquipmentSlotId, StringComparer.Ordinal))
+            .OrderBy(item => settings.SlotOrder(item.EquipmentSlotId))
+            .Take(RealtimeProtocolLimits.MaximumVisibleEquipment)
+            .Select(item => new RealtimeVisibleEquipment(item.EquipmentSlotId, item.DefinitionId))
+            .ToArray();
+        var appearance = look.Appearance;
+        return new RealtimeCharacterAppearance(
+            appearance.BodyModel,
+            appearance.Choices
+                .Take(RealtimeProtocolLimits.MaximumAppearanceChoices)
+                .Select(choice => new RealtimeAppearanceChoice(choice.Kind, choice.Slot, choice.Option))
+                .ToArray(),
+            visible,
+            appearance.HeadwearLowered);
+    }
+
+    // Sends the looks that changed since the last call. A look is built again only when the
+    // player's look version, its item-state revision, or its owner's connection moved.
+    public void Broadcast()
+    {
+        entityRegistry.CopyPlayersTo(playerBuffer);
+        seen.Clear();
+        foreach (var entity in playerBuffer)
+        {
+            seen.Add(entity.NetworkEntityId);
+            var session = entity.Session;
+            looks.TryGet(session.CharacterId, session.SimulationSessionId, out _, out var lookVersion);
+            var itemRevision = itemStates.TryGetItemState(session.CharacterId, session.SimulationSessionId, out var state)
+                ? state!.ItemStateRevision
+                : -1;
+            var owner = connectionBindings.TryGetConnectionId(entity.NetworkEntityId, out var connectionId)
+                ? connectionId
+                : -1;
+            var known = sent.TryGetValue(entity.NetworkEntityId, out var previous);
+            if (known && previous.LookVersion == lookVersion && previous.ItemRevision == itemRevision && previous.Owner == owner)
+            {
+                continue;
+            }
+
+            var appearance = AppearanceOf(entity);
+            var key = KeyOf(appearance);
+            var changed = known && !string.Equals(previous.Key, key, StringComparison.Ordinal);
+            byte[]? packet = null;
+            if (changed)
+            {
+                packet = Encode(entity.NetworkEntityId, appearance);
+                SendToViewers(entity.NetworkEntityId, packet, owner);
+            }
+
+            if (owner >= 0 && (!known || changed || previous.Owner != owner))
+            {
+                SendTo(owner, packet ?? Encode(entity.NetworkEntityId, appearance));
+            }
+
+            sent[entity.NetworkEntityId] = new Sent(lookVersion, itemRevision, owner, key);
+        }
+
+        if (sent.Count > seen.Count)
+        {
+            foreach (var entityId in sent.Keys.Where(entityId => !seen.Contains(entityId)).ToArray())
+            {
+                sent.Remove(entityId);
+            }
+        }
+    }
+
+    public void Clear()
+    {
+        sent.Clear();
+    }
+
+    private void SendToViewers(ulong entityId, byte[] packet, int owner)
+    {
+        foreach (var context in peers.Contexts)
+        {
+            if (context.PeerId != owner
+                && context.Session is not null
+                && presence.IsVisibleTo(context.PeerId, entityId)
+                && peers.TryGetCurrentPeer(context, out var peer))
+            {
+                sender.SendControl(peer, packet);
+            }
+        }
+    }
+
+    private void SendTo(int connectionId, byte[] packet)
+    {
+        if (peers.TryGetContext(connectionId, out var context)
+            && context.Session is not null
+            && peers.TryGetCurrentPeer(context, out var peer))
+        {
+            sender.SendControl(peer, packet);
+        }
+    }
+
+    private static byte[] Encode(ulong entityId, RealtimeCharacterAppearance appearance)
+    {
+        return RealtimeProtocol.EncodeEntityAppearanceChanged(new RealtimeEntityAppearanceChanged(entityId, appearance));
+    }
+
+    private static string KeyOf(RealtimeCharacterAppearance appearance)
+    {
+        return string.Join(
+            "|",
+            appearance.BodyModel,
+            string.Join(";", appearance.Choices.Select(choice => $"{choice.Kind}/{choice.Slot}={choice.Option}")),
+            string.Join(";", appearance.Equipment.Select(item => $"{item.EquipmentSlotId}={item.DefinitionId}")),
+            appearance.HeadwearLowered ? "lowered" : "raised");
+    }
+
+    private readonly record struct Sent(long LookVersion, long ItemRevision, int Owner, string Key);
+}
+
+// What the appearance replicator takes from content: the body model of a player whose look is not
+// known yet, and the equipment slots whose items others see, in order.
+internal sealed record AppearanceReplicationSettings(string DefaultBodyModel, IReadOnlyList<string> VisibleEquipmentSlots)
+{
+    public static AppearanceReplicationSettings Default { get; } =
+        new("Human_Male", ["head", "body", "legs", "hands", "feet", "back"]);
+
+    // The place of a visible equipment slot in content order.
+    public int SlotOrder(string equipmentSlotId)
+    {
+        for (var index = 0; index < VisibleEquipmentSlots.Count; index++)
+        {
+            if (string.Equals(VisibleEquipmentSlots[index], equipmentSlotId, StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return VisibleEquipmentSlots.Count;
+    }
+}

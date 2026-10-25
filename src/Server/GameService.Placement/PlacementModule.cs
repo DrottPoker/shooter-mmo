@@ -34,6 +34,7 @@ public sealed class PlacementModule(PlacementModuleOptions options) : IGameServi
         services.AddSingleton<PlacementMetrics>();
         services.AddScoped<ShardService>();
         services.AddScoped<SimulationSessionService>();
+        services.AddScoped<SimulationAppearanceService>();
         services.AddScoped<SimulationWorkerRegistryService>();
         services.AddScoped<DevelopmentSimulationBotPlacementService>();
         services.AddScoped<DevelopmentSimulationBotTicketService>();

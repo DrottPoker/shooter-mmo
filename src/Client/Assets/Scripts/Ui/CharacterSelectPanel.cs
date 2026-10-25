@@ -15,6 +15,7 @@ namespace Mmorpg.Client.Ui
         private ApiClient apiClient;
         private RealtimeSimulationClient simulationClient;
         private string characterName = "Hero One";
+        private CharacterCreationLook creationLook;
         private string status = "Select or create a character, then join a shard.";
         private CharacterResponse[] characters = new CharacterResponse[0];
         private ShardResponse[] shards = new ShardResponse[0];
@@ -116,6 +117,7 @@ namespace Mmorpg.Client.Ui
         {
             GUILayout.Label("Characters");
             characterName = TemporaryPanelStyles.LabeledTextField("Name", characterName);
+            DrawCreationLook();
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Create Character", GUILayout.Height(32f)))
@@ -135,7 +137,8 @@ namespace Mmorpg.Client.Ui
                 var labels = new string[characters.Length];
                 for (var index = 0; index < characters.Length; index++)
                 {
-                    labels[index] = characters[index].name;
+                    labels[index] = characters[index].name
+                        + (string.IsNullOrEmpty(characters[index].bodyModel) ? string.Empty : " (" + characters[index].bodyModel + ")");
                 }
 
                 selectedCharacterIndex = GUILayout.SelectionGrid(selectedCharacterIndex, labels, 1);
@@ -147,6 +150,33 @@ namespace Mmorpg.Client.Ui
             }
 
             GUILayout.Space(12f);
+        }
+
+        // Temporary rows that step through the body models and the options of every kind of look
+        // the body offers.
+        private void DrawCreationLook()
+        {
+            if (creationLook == null || !creationLook.IsAvailable)
+            {
+                return;
+            }
+
+            creationLook.StepBodyModel(StepRow("Body", creationLook.BodyModel));
+            for (var offer = 0; offer < creationLook.OfferCount; offer++)
+            {
+                creationLook.StepOption(offer, StepRow(creationLook.OfferLabel(offer), creationLook.OptionLabel(offer)));
+            }
+        }
+
+        // A row with a label and buttons that step back and forth: -1, 1, or 0 when neither was pressed.
+        private static int StepRow(string label, string value)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label + ": " + value, GUILayout.Width(360f));
+            var step = GUILayout.Button("<", GUILayout.Width(40f)) ? -1 : 0;
+            step = GUILayout.Button(">", GUILayout.Width(40f)) ? 1 : step;
+            GUILayout.EndHorizontal();
+            return step;
         }
 
         private void DrawShardSection()
@@ -197,6 +227,12 @@ namespace Mmorpg.Client.Ui
             }
 
             yield return RefreshShardsRoutine();
+            if (operationStepFailed)
+            {
+                yield break;
+            }
+
+            yield return LoadCreationLookRoutine();
             status = "Character and shard data loaded.";
         }
 
@@ -207,9 +243,24 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
+            // JsonUtility writes a missing appearance as an empty one, which GameService refuses, so
+            // a character is always created with the offers loaded.
+            if (creationLook == null || !creationLook.IsAvailable)
+            {
+                yield return LoadCreationLookRoutine();
+                if (creationLook == null || !creationLook.IsAvailable)
+                {
+                    yield break;
+                }
+            }
+
             CharacterResponse createdCharacter = null;
             ApiError error = null;
-            var request = new CreateCharacterRequest { name = characterName };
+            var request = new CreateCharacterRequest
+            {
+                name = characterName,
+                appearance = creationLook.ToRequest()
+            };
 
             yield return apiClient.CreateCharacter(
                 ClientSession.GameServiceBaseUrl,
@@ -225,6 +276,25 @@ namespace Mmorpg.Client.Ui
 
             status = "Created character " + createdCharacter.name + ".";
             yield return RefreshCharactersRoutine();
+        }
+
+        // What character creation offers; without it a new character gets the default look.
+        private IEnumerator LoadCreationLookRoutine()
+        {
+            CharacterAppearanceCatalogResponse result = null;
+            ApiError error = null;
+            yield return apiClient.GetCharacterAppearanceCatalog(
+                ClientSession.GameServiceBaseUrl,
+                ClientSession.SessionToken,
+                value => result = value,
+                value => error = value);
+
+            if (HandleError(error))
+            {
+                yield break;
+            }
+
+            creationLook = new CharacterCreationLook(result);
         }
 
         private IEnumerator RefreshCharactersRoutine()

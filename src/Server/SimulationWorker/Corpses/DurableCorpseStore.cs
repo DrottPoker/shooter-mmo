@@ -1,3 +1,4 @@
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.GameServiceApi;
 
 namespace Mmorpg.SimulationWorker.Corpses;
@@ -17,6 +18,25 @@ public interface ICorpseRuntimePresence
     DateTime CreatedAt { get; }
     DateTime ExpiresAt { get; }
     bool IsEmpty { get; }
+    // How a player corpse looks; null for a Mob corpse.
+    CorpseLook? Look { get; }
+}
+
+// The dead character's body model, look, and headwear, and the items still in the corpse's
+// equipment section, which it wears until someone loots them.
+public sealed record CorpseLook(
+    string BodyModel,
+    IReadOnlyList<SimulationAppearanceChoice> Choices,
+    IReadOnlyList<CharacterLookItem> Equipment,
+    bool HeadwearLowered)
+{
+    public static CorpseLook? From(CorpseLookResponse? look) => look is null
+        ? null
+        : new CorpseLook(
+            look.BodyModel,
+            look.Choices,
+            look.Equipment.Select(item => new CharacterLookItem(item.EquipmentSlotId, item.DefinitionId)).ToArray(),
+            look.HeadwearLowered);
 }
 
 public sealed record DurableCorpseState(
@@ -39,6 +59,8 @@ public sealed record DurableCorpseState(
     IReadOnlyList<CorpseSectionState> Sections) : ICorpseRuntimePresence
 {
     public float YawDegrees => CorpseFacing.YawDegrees(RotationX, RotationY, RotationZ, RotationW);
+
+    public CorpseLook? Look { get; init; }
 }
 
 public static class CorpseFacing
@@ -112,7 +134,10 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                         section.ContainerId,
                         section.ContainerRevision,
                         section.ItemCount))
-                    .ToArray());
+                    .ToArray())
+            {
+                Look = CorpseLook.From(corpse.Look)
+            };
             if (!replacement.TryAdd(state.CorpseId, state))
             {
                 throw new ArgumentException(
@@ -176,9 +201,23 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
         }
     }
 
+    // A view snapshot has no facing and no look of its own: the corpse keeps the facing and the
+    // body model and look it had, and wears what is left in its equipment section now.
     public void ApplySnapshot(CorpseViewSnapshotResponse snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        DurableCorpseState? current;
+        lock (sync)
+        {
+            corpses.TryGetValue(snapshot.CorpseId, out current);
+        }
+
+        var equipment = snapshot.Sections
+            .Where(section => string.Equals(section.SectionKind, "equipment", StringComparison.Ordinal))
+            .SelectMany(section => section.Slots)
+            .Where(slot => slot.Item is not null && !string.IsNullOrEmpty(slot.EquipmentSlotId))
+            .Select(slot => new CharacterLookItem(slot.EquipmentSlotId, slot.Item!.DefinitionId))
+            .ToArray();
         var state = new DurableCorpseState(
             snapshot.CorpseId,
             snapshot.SourceCharacterId,
@@ -187,10 +226,10 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
             snapshot.PositionX,
             snapshot.PositionY,
             snapshot.PositionZ,
-            0d,
-            0d,
-            0d,
-            1d,
+            current?.RotationX ?? 0d,
+            current?.RotationY ?? 0d,
+            current?.RotationZ ?? 0d,
+            current?.RotationW ?? 1d,
             snapshot.PresentationKey,
             snapshot.Revision,
             snapshot.CreatedAt,
@@ -202,7 +241,10 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                     section.ContainerId,
                     section.ContainerRevision,
                     section.Slots.Count(slot => slot.Item is not null)))
-                .ToArray());
+                .ToArray())
+        {
+            Look = current?.Look is { } look ? look with { Equipment = equipment } : null
+        };
         ApplyState(state);
     }
 
@@ -232,7 +274,10 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                     section.ContainerId,
                     section.ContainerRevision,
                     section.ItemCount))
-                .ToArray()));
+                .ToArray())
+        {
+            Look = CorpseLook.From(corpse.Look)
+        });
     }
 
     private void ApplyState(DurableCorpseState state)

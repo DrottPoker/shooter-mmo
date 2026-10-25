@@ -145,6 +145,23 @@ internal static class SimulationEndpoints
             return result.ToHttpResult();
         }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
 
+        // A session's character lowers or raises its headwear, or in Development takes another
+        // body model and look.
+        app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/appearance", async (
+            Guid simulationSessionId,
+            SimulationAppearanceChangeRequest request,
+            ClaimsPrincipal principal,
+            SimulationAppearanceService appearanceService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await appearanceService.ChangeAsync(
+                simulationSessionId,
+                principal.GetSimulationWorkerId(),
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
+
         app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/release", async (
             Guid simulationSessionId,
             SimulationSessionCredentialRequest request,

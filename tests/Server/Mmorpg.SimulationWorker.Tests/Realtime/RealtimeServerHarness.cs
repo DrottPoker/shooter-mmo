@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Characters;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
@@ -13,8 +15,10 @@ using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.Testing;
 using Mmorpg.Testing.Content;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Characters;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
@@ -76,6 +80,9 @@ internal sealed record RealtimeTestCharacter(string Ticket, string Name)
     public long SessionLeaseDurationMilliseconds { get; init; } = 30_000;
 
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
+
+    // Ignored for a development bot, which the worker dresses itself.
+    public SimulationAppearance Appearance { get; init; } = CharacterStateTestData.Appearance;
 }
 
 // Owns one realtime service with every collaborator exposed, a scripted GameService and
@@ -165,7 +172,9 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 SessionStore,
                 CharacterItemStateStore,
                 Config,
-                Identity),
+                Identity,
+                Looks,
+                new DevelopmentBotLooks(AppearanceCatalog, options.ItemCatalog ?? ItemCatalogTestData.CompileFixture())),
             new SimulationSessionReleaseService(
                 GameServiceClient,
                 SessionStore,
@@ -201,8 +210,18 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             worldActorRuntime: WorldActorDocument,
             gameServiceClient: GameServiceClient,
             mobCorpses: mobCorpses,
-            combatMetrics: CombatMetrics);
+            combatMetrics: CombatMetrics,
+            lookStore: Looks,
+            appearanceCatalog: AppearanceCatalog);
     }
+
+    // The checked-in appearance content, as the worker loads it.
+    public static CharacterAppearanceCatalog AppearanceCatalog => LoadedAppearanceCatalog.Value;
+
+    private static readonly Lazy<CharacterAppearanceCatalog> LoadedAppearanceCatalog = new(
+        () => CharacterAppearanceFileLoader.Load(RepositoryPaths.CharacterAppearancePath));
+
+    public CharacterLookStore Looks { get; } = new();
 
     public WorldActorRuntimeDocument? WorldActorDocument { get; }
 
@@ -515,6 +534,36 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             CommittedMobLootGrant(request, 1, 1, 200));
         OnAmmunitionConsumption = (_, request, _) => Task.FromResult(DefaultAmmunitionConsumption(request));
         OnPlayerDeath = (_, request, _) => Task.FromResult(DefaultPlayerDeath(request));
+        OnAppearanceChange = (sessionId, request, _) => Task.FromResult(DefaultAppearanceChange(sessionId, request));
+    }
+
+    public Func<Guid, SimulationAppearanceChangeRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnAppearanceChange
+    { get; set; }
+
+    public List<SimulationAppearanceChangeRequest> AppearanceChanges { get; } = [];
+
+    private readonly Dictionary<Guid, SimulationAppearance> appearanceBySession = [];
+
+    // Stores the change on the session's look as GameService would.
+    public HttpResponseMessage DefaultAppearanceChange(Guid simulationSessionId, SimulationAppearanceChangeRequest request)
+    {
+        SimulationAppearance changed;
+        lock (sync)
+        {
+            if (!charactersBySession.TryGetValue(simulationSessionId, out var character))
+            {
+                return Problem(HttpStatusCode.Unauthorized, "invalid_simulation_session", "The session is not active.");
+            }
+
+            var current = appearanceBySession.GetValueOrDefault(simulationSessionId, character.Appearance);
+            changed = request.Change == "headwear"
+                ? current with { HeadwearLowered = request.HeadwearLowered!.Value }
+                : current with { BodyModel = request.BodyModel!, Choices = request.Choices!.ToArray() };
+            appearanceBySession[simulationSessionId] = changed;
+        }
+
+        return Json(changed);
     }
 
     public Func<Guid, SimulationAmmunitionConsumptionRequest, CancellationToken, Task<HttpResponseMessage>>
@@ -679,7 +728,8 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         {
             SessionLeaseDurationMilliseconds = character.SessionLeaseDurationMilliseconds,
             IsSyntheticBot = character.IsSyntheticBot,
-            Equipment = character.Equipment
+            Equipment = character.Equipment,
+            Appearance = character.IsSyntheticBot ? null : character.Appearance
         });
     }
 
@@ -839,6 +889,18 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 var grant = await request.Content!
                     .ReadFromJsonAsync<SimulationMobLootGrantRequest>(cancellationToken);
                 return await OnMobLootGrant(simulationSessionId, grant!, cancellationToken);
+            }
+
+            if (segments.Length == 4 && segments[3] == "appearance")
+            {
+                var change = await request.Content!
+                    .ReadFromJsonAsync<SimulationAppearanceChangeRequest>(cancellationToken);
+                lock (sync)
+                {
+                    AppearanceChanges.Add(change!);
+                }
+
+                return await OnAppearanceChange(simulationSessionId, change!, cancellationToken);
             }
 
             if (segments.Length == 4 && segments[3] == "item-operations")

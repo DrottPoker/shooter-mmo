@@ -34,6 +34,11 @@ internal static class CharacterEndpoints
             return result.ToHttpResult();
         });
 
+        // What character creation offers: the body models and the options of every kind of look.
+        app.MapGet("/api/character-appearance", (CharacterService characterService) =>
+                Results.Ok(characterService.AppearanceCatalog()))
+            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+
         return app;
     }
 }

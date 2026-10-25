@@ -188,7 +188,14 @@ public sealed class RealtimeCorpseProtocolTests
                     DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds(),
                     index == 2,
                     "Corpse " + index,
-                    "player_corpse"))
+                    "player_corpse",
+                    index == 1
+                        ? null
+                        : new RealtimeCharacterAppearance(
+                            "Human_Female",
+                            [new RealtimeAppearanceChoice("underwear", "legs", "Briefs")],
+                            [new RealtimeVisibleEquipment("back", "clothing.wool_cloak")],
+                            false)))
                 .ToArray());
 
         var packet = RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(expected);
@@ -202,6 +209,11 @@ public sealed class RealtimeCorpseProtocolTests
         Assert.Equal(expected.SnapshotSequence, actual.SnapshotSequence);
         Assert.Equal(expected.Corpses.Select(corpse => corpse.CorpseId),
             actual.Corpses.Select(corpse => corpse.CorpseId));
+        // A player corpse carries its look; a Mob corpse has none.
+        Assert.Null(actual.Corpses[1].Appearance);
+        Assert.Equal("Human_Female", actual.Corpses[0].Appearance.BodyModel);
+        Assert.Equal("legs", actual.Corpses[0].Appearance.Choices.Single().Slot);
+        Assert.Equal("clothing.wool_cloak", actual.Corpses[2].Appearance.Equipment.Single().DefinitionId);
     }
 
     [Fact]

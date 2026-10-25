@@ -340,7 +340,8 @@ public sealed class RealtimeMessageDispatcherTests
                     Record("corpse"),
                     Record("world"),
                     Record("leave"),
-                    Record("combat")));
+                    Record("combat"),
+                    Record("appearance")));
         }
 
         public RealtimeNetworkMetrics Metrics { get; } = new();

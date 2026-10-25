@@ -1,6 +1,6 @@
 # Realtime Protocol
 
-Last updated: 2026-10-21
+Last updated: 2026-10-25
 
 The realtime protocol is the binary contract between SimulationWorker and the
 Unity client over LiteNetLib. Its single source is the local Unity package
@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 23 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 24 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -254,6 +254,9 @@ of every message type, generated from the schema:
 | 33 | `OwnerCombatState` | Combat | Server to client | Control | Reliable ordered |
 | 34 | `OwnerItemQuantityChanged` | Items | Server to client | Control | Reliable ordered |
 | 35 | `OwnerItemStateChanged` | Items | Server to client | Control | Reliable ordered |
+| 36 | `EntityAppearanceChanged` | Replication | Server to client | Control | Reliable ordered |
+| 37 | `AppearanceIntent` | Replication | Client to server | Control | Reliable ordered |
+| 38 | `AppearanceIntentResult` | Replication | Server to client | Control | Reliable ordered |
 
 The control channel is 0, the movement input channel is 1, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
@@ -497,6 +500,40 @@ distinct `CapabilityId` values. Each option names a capability, its
 capability order. The spawn carries no availability, revision, or profile: those
 stay in the player-specific capability summary of `WorldInteractionOpened`. Both
 limits are public, and `WorldActorTextRules` in WorldData must fit them.
+
+## Character Appearance
+
+Protocol version 24 sends every client how a player looks, as
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server)
+describes. `CharacterAppearance` holds the `BodyModel`, such as `Human_Female`,
+up to `MaximumAppearanceChoices` (16) `AppearanceChoice` structs, each a `Kind`,
+an optional `Slot` for a kind worn per slot such as underwear in `legs`, and an
+`Option`, up to `MaximumVisibleEquipment` (8) `VisibleEquipment` structs, each an
+equipment slot and an item definition with distinct slots, and `HeadwearLowered`.
+Kinds and slots are at most `MaximumAppearanceKindLength` and
+`MaximumAppearanceSlotLength` (32) characters, and body models, options, and
+definitions at most `MaximumAppearanceNameLength` (64).
+
+- `EntitySpawn` appends the player's `Appearance`. The worker fills it from the
+  look GameService sent with the join ticket, the items of the visible equipment
+  slots of `content/characters/appearance.json` in their content order, and for a
+  development bot the look and outfit it picks from the bot's character id.
+- `EntityAppearanceChanged` (36) sends a player's new look, by its entity id, to
+  every connection that sees the player and to its owner. The owner gets its own
+  look after the join, since it never receives a spawn of its own player. The
+  worker sends it when the look, the visible equipment, or the headwear changed,
+  and the client drops a change for a player it does not see.
+- `AppearanceIntent` (37) asks to lower the headwear (`LowerHeadwear` = 1), raise
+  it (`RaiseHeadwear` = 2), or in Development set another body model and look
+  (`SetDevelopmentLook` = 3, with `BodyModel` and `Choices`). The worker asks
+  GameService, which refuses a development look outside the Development
+  environment, and answers with `AppearanceIntentResult` (38), which echoes the
+  operation id and kind; the new look follows as `EntityAppearanceChanged`. A
+  development bot cannot change its look, and one change per peer runs at a time.
+- `CorpsePresence` appends an optional `Appearance`: a player corpse shows the
+  dead character's body model, look, and headwear, with the items still in the
+  corpse's equipment section, and a Mob corpse has none. A corpse whose look would
+  not fit one presence packet is sent without it and shows the default body.
 
 ## Versioning
 

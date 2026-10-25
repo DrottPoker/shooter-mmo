@@ -241,6 +241,20 @@ public sealed class GameServiceClient(HttpClient httpClient)
             cancellationToken);
     }
 
+    // Lowers or raises a session's headwear, or in Development stores another body model and look.
+    public Task<GameServiceResult<SimulationAppearance>> ChangeAppearanceAsync(
+        Guid simulationSessionId,
+        SimulationAppearanceChangeRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationAppearanceChangeRequest, SimulationAppearance>(
+            "GameService.ChangeAppearance",
+            $"/api/simulation-sessions/{simulationSessionId}/appearance",
+            request,
+            IsValidAppearance,
+            cancellationToken);
+    }
+
     public Task<GameServiceResult<SimulationSessionLeaseResponse>> ReleaseSimulationSessionAsync(
         Guid simulationSessionId,
         string workerRuntimeId,
@@ -507,7 +521,20 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 response.ItemStateRevision,
                 response.CarriedWeight,
                 response.CarryCapacity)
-            && IsValidEquipment(response.Equipment);
+            && IsValidEquipment(response.Equipment)
+            // A person's character always has a look; a development bot is dressed by the worker.
+            && (response.IsSyntheticBot ? response.Appearance is null : IsValidAppearance(response.Appearance));
+    }
+
+    public static bool IsValidAppearance(SimulationAppearance? appearance)
+    {
+        return appearance is not null
+            && !string.IsNullOrWhiteSpace(appearance.BodyModel)
+            && appearance.Choices is not null
+            && appearance.Choices.All(choice => choice is not null
+                && !string.IsNullOrWhiteSpace(choice.Kind)
+                && choice.Slot is not null
+                && !string.IsNullOrWhiteSpace(choice.Option));
     }
 
     private static bool IsValidSimulationSessionLease(

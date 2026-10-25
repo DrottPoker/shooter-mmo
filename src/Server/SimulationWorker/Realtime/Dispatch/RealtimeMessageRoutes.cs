@@ -33,7 +33,8 @@ internal static class RealtimeMessageRoutes
         RealtimeMessageHandler corpseInteraction,
         RealtimeMessageHandler worldInteraction,
         RealtimeMessageHandler leave,
-        RealtimeMessageHandler combat)
+        RealtimeMessageHandler combat,
+        RealtimeMessageHandler appearance)
     {
         return
         [
@@ -67,6 +68,12 @@ internal static class RealtimeMessageRoutes
                     "invalid_combat_delivery",
                     "Combat intents require the reliable ordered control channel."),
                 combat),
+            Route(
+                RealtimeMessageType.AppearanceIntent,
+                new RealtimeRejection(
+                    "invalid_appearance_delivery",
+                    "Appearance intents require the reliable ordered control channel."),
+                appearance),
             Route(RealtimeMessageType.LeaveRequest, UnexpectedMessage, leave) with
             {
                 RejectWhen = static context => context.LeaveStarted

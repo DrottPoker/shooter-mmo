@@ -1,6 +1,6 @@
 # Inventory And Death Loot Design
 
-Last updated: 2026-10-20
+Last updated: 2026-10-25
 
 Status: Decided. Every rule in the sections below is decided and implemented
 unless it says planned. Planned work, proposals, and open questions are collected
@@ -527,6 +527,9 @@ The Unity inventory presentation uses a stable three-column layout:
   authoritative transfers have a clear source and destination.
 - The character-only and equipment views hide columns and never move the
   character column.
+- While the character wears an item that can be lowered, such as the Wool Hood,
+  the footer of the character column shows `Lower <item>` or `Raise <item>`; the
+  server stores the choice with the character's look and every client shows it.
 
 This is a presentation contract only. Server authority, revisions, slot rules,
 and transaction behavior do not depend on screen layout.
@@ -757,6 +760,11 @@ section even though the real Bag has moved to Recovery Storage.
   Death, at the recorded location and facing while preserving the same durable
   corpse id and custody. A Mob corpse uses `corpse.mob` and keeps the generic
   capsule.
+- A player corpse shows the dead character's body model, look, and headwear,
+  wearing the items still in its equipment section that others see, so looting a
+  garment takes it off the lying body; see
+  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server).
+  The dying body keeps its clothes until the character respawns.
 - When expiry wins the corpse lock, all remaining loot is destroyed with audit
   records and the live representation is removed.
 - An in-flight committed loot transaction wins before cleanup. A request that

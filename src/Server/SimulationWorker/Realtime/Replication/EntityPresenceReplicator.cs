@@ -32,6 +32,9 @@ internal sealed class EntityPresenceReplicator(
 
     public IEntitySpawnObserver? SpawnObserver { get; set; }
 
+    // The looks that player spawns carry.
+    public AppearanceReplicator? Appearances { get; set; }
+
     public bool IsVisibleTo(int connectionId, ulong entityId)
     {
         return interestManager.GetVisible(connectionId).Contains(entityId);
@@ -267,7 +270,9 @@ internal sealed class EntityPresenceReplicator(
             entity.Session.CharacterName,
             entity.ArchetypeId,
             clock.ServerTick,
-            RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State));
+            RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State),
+            Appearances?.AppearanceOf(entity)
+                ?? new RealtimeCharacterAppearance(AppearanceReplicationSettings.Default.DefaultBodyModel, [], [], false));
     }
 
     public void RebuildInterestIndex(IReadOnlyList<PlayerSimulationEntity> players)

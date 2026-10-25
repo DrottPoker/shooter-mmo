@@ -1,4 +1,5 @@
 using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.GameServiceApi;
 
@@ -236,6 +237,56 @@ public sealed class CorpseRealtimeStateTests
 
         Assert.Equal(yawDegrees, presence.YawDegrees, 3);
         Assert.Equal(0f, CorpseFacing.YawDegrees(0, 0, 0, 1));
+    }
+
+    [Fact]
+    public void PresenceShowsAPlayerCorpsesLookWithOnlyItsVisibleEquipmentInSlotOrder()
+    {
+        var now = DateTime.UtcNow;
+        var player = new DurableCorpseState(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Fallen Hero",
+            "local-shard-1",
+            1,
+            0,
+            2,
+            0,
+            0,
+            0,
+            1,
+            "corpse.player",
+            1,
+            now,
+            now.AddMinutes(5),
+            false,
+            Array.Empty<CorpseSectionState>())
+        {
+            Look = new CorpseLook(
+                "Human_Female",
+                [new SimulationAppearanceChoice("hair", "", "DarkBrownHair")],
+                [
+                    new CharacterLookItem("main_hand", "item.short_bow"),
+                    new CharacterLookItem("back", "clothing.wool_cloak"),
+                    new CharacterLookItem("head", "clothing.wool_hood")
+                ],
+                HeadwearLowered: true)
+        };
+        var mob = player with { CorpseId = Guid.NewGuid(), SourceCharacterId = null, Look = null };
+
+        var presence = CorpseRealtimePacketBuilder
+            .BuildPresence(1, [player, mob], ["head", "body", "back"])
+            .Single()
+            .Corpses
+            .ToDictionary(corpse => corpse.CorpseId);
+
+        var appearance = presence[player.CorpseId].Appearance;
+        Assert.Equal("Human_Female", appearance!.BodyModel);
+        Assert.Equal("DarkBrownHair", Assert.Single(appearance.Choices).Option);
+        Assert.Equal(["head", "back"], appearance.Equipment.Select(item => item.EquipmentSlotId));
+        // The corpse keeps the hood as the character wore it when it died.
+        Assert.True(appearance.HeadwearLowered);
+        Assert.Null(presence[mob.CorpseId].Appearance);
     }
 
     [Fact]

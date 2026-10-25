@@ -324,6 +324,29 @@ namespace Mmorpg.Client.Ui
                     : slotId ?? string.Empty;
         }
 
+        // The first equipped item whose presentation has lowered garments, such as a hood that
+        // can be pushed back, or null; the inventory offers to lower or raise it.
+        public static InventoryItem LowerableHeadwear(IReadOnlyList<InventoryEquipmentSlot> equipment, ClientItemCatalog catalog)
+        {
+            if (equipment == null || catalog == null || catalog.Presentation == null)
+            {
+                return null;
+            }
+
+            foreach (var slot in equipment.OrderBy(slot => slot.SortOrder))
+            {
+                if (slot.Item != null
+                    && catalog.Presentation.TryGet(slot.Item.DefinitionId, out var entry)
+                    && entry.loweredGarments != null
+                    && entry.loweredGarments.Length > 0)
+                {
+                    return slot.Item;
+                }
+            }
+
+            return null;
+        }
+
         public static string CategoryId(ClientItemCatalog catalog, string definitionId)
         {
             return catalog != null && catalog.TryGetDefinition(definitionId, out var definition)

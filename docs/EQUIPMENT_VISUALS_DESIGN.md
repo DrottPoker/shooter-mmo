@@ -34,7 +34,9 @@ map, which lays the two sides of a mirrored body apart, so paint can be one-side
 as the new tattoo `ForearmRunes` on the left forearm is. Step 6, as Victor decided
 on 2026-10-25, makes items show their garments: its first part gives the items
 their garments and dye colors, the `back` slot, dyeable wool, and the local
-player dressed by its equipment; see [Items](#items).
+player dressed by its equipment, and its second stores the body model and the
+look with the character and sends them to every client with the visible
+equipment and the lowered hood; see [Items](#items).
 
 This document is the source of truth for how clothes, armor, hair, and carried
 equipment look on the player bodies: what they are made of, how they fit every
@@ -799,8 +801,8 @@ Items show their garments, as Victor decided on 2026-10-25:
 - **The hood is its own item**, the Wool Hood in `head`, that can be lowered: an
   item may name lowered garments, which it shows while its wearer has lowered
   it, such as `WoolHoodDown` for `WoolHoodUp`. The player lowers and raises the
-  hood with a button in the inventory, and the server keeps the choice, which
-  comes with step 6b.
+  hood with a button in the inventory, and the server keeps the choice with the
+  character's look.
 - **Hair is part of the look**, not an item: a garment of the `hair` slot or none,
   chosen in character creation and changed in the game later, such as at a
   barber. Every other garment comes from the equipment.
@@ -810,6 +812,49 @@ Shirt, Wool Trousers, Leather Boots, Leather Gloves, Nasal Helm, and the Wool
 Robe, Wool Hood, and Wool Cloak, each also blue and red, with the new category
 `clothing` for the linen and wool and `armor` for the leather and iron. The
 General Store sells them, and the development package `outfits` holds them all.
+
+### The Look On The Server
+
+Every client sees a character as the server stores it, as Victor decided on
+2026-10-25:
+
+- **Content names what a look can be.** `content/characters/appearance.json`
+  lists the kinds of a look, `face`, `eyes`, `scar`, `tattoo`, `underwear`, and
+  `hair`, each with its rule, the body models, the default first, with the
+  options each offers per kind and visual slot, the first of each its default,
+  and the equipment slots whose items other players see. Options are named as
+  the bodies' appearance catalogs name them; a Unity test holds the content to
+  both catalogs and to `AppearanceRules`.
+- **GameService stores the look with the character**: the body model, the
+  choices, and whether the headwear is lowered, in `character_appearances`,
+  owned by Characters. Character creation chooses the body model and the look
+  and checks them strictly against what the body model offers; a character
+  created without a look gets the default look of the default body model.
+  Characters that existed before the look was stored got `Human_Male` with its
+  default look. GameService refuses to start when the content no longer offers
+  what a stored look names, as the item catalog does.
+- **One look serves every body.** A stored choice that the body model lacks,
+  such as a face of the other body, is kept, and the body shows its own default
+  there, so a body change in Development keeps the rest of the look.
+- **The worker sends the look to every client.** The join ticket carries the
+  look; every `EntitySpawn` carries the player's body model, choices, the items
+  of its visible equipment slots in content order, and its headwear, and
+  `EntityAppearanceChanged` sends a new look to everyone who sees the player and
+  to the player itself, which gets its own look after the join. A change of
+  equipment, a lowered or raised headwear, or in Development another body model
+  or look sends it.
+- **The player lowers and raises the hood** with `AppearanceIntent`; GameService
+  stores it, and the worker answers with `AppearanceIntentResult`. Only a
+  GameService in the Development environment changes a body model or look in the
+  game, for the World Debug panel; character creation chooses them otherwise.
+- **Development bots** have no stored look and no items: the worker gives each a
+  body model, a look, and an outfit of catalog items picked from its character id
+  by a stable hash, so a crowd shows every body, face, and garment, and each bot
+  keeps its own. The outfit is only shown.
+- **A dying body keeps its clothes** until its character respawns, though its
+  items already lie in its corpse. A player corpse shows the dead character's
+  body model and look, with its headwear, wearing the items still in the corpse's
+  equipment section, so a looted cloak leaves the corpse.
 
 ## Putting A Character Together In Unity
 
@@ -1051,18 +1096,19 @@ quarter of the triangles come with the first crowd measurement that needs them.
      canvas moved to another body, the images cropped to their paint, the skin
      shader reading the paint UVs, the four layers moved to their canvases, and the
      one-sided tattoo `ForearmRunes`.
-6. Items: items show their garments as templates with textures, the `back` slot,
-   dye colors on items, and the look sent to every client with the body type, as
-   Victor decided on 2026-10-25, in two parts:
+6. Done. Items: items show their garments as templates with textures, the `back`
+   slot, dye colors on items, and the look sent to every client with the body
+   type, as Victor decided on 2026-10-25, in two parts:
    - 6a. Done. Items show garments: the garments and dye colors of every item in
      the item presentation, the `back` slot, the category `clothing`, the wool set
      dyeable with its items in three colors, the General Store and a development
      package with them, and the local player dressed by its equipment, with its
      hair from F2.
-   - 6b. The look on the server: the body model and the look stored with the
-     character and chosen at its creation, sent to every client with the visible
-     equipment and the lowered hood, development bots dressed from their ids, and
-     player corpses wearing what is left in them.
+   - 6b. Done. The look on the server: the body model and the look stored with
+     the character and chosen at its creation, sent to every client with the
+     visible equipment and the lowered hood, development bots dressed from their
+     ids, and player corpses wearing what is left in them; see
+     [The Look On The Server](#the-look-on-the-server).
 7. With the first new race: making a body type from a human body, generalizing
    `Sync-HumanBase.ps1` to every body of the race, and adding it to the cage.
 

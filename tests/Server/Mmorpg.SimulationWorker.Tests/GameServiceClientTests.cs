@@ -29,7 +29,8 @@ public sealed class GameServiceClientTests
             itemStateRevision = 12,
             carriedWeight = 210,
             carryCapacity = 200,
-            isReconnect = false
+            isReconnect = false,
+            appearance = Look()
         }));
         var client = CreateClient(handler);
 
@@ -911,13 +912,73 @@ public sealed class GameServiceClientTests
             itemStateRevision = 1,
             carriedWeight = 348,
             carryCapacity = 200,
-            isReconnect = false
+            isReconnect = false,
+            appearance = Look()
         }));
 
         var result = await ConsumeAsync(CreateClient(handler));
 
         Assert.True(result.Succeeded, result.Error?.Message);
         Assert.Equal(348, result.Value!.CarriedWeight);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task APersonWithoutALookOrABotWithOneReturnsBadGateway(bool isSyntheticBot, bool withLook)
+    {
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            accountId = Guid.NewGuid(),
+            characterId = Guid.NewGuid(),
+            characterName = "Hero One",
+            shardId = "local-shard-1",
+            worldId = "development-world-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
+            simulationSessionId = Guid.NewGuid(),
+            simulationSessionToken = "simulation-session-token",
+            sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            sessionLeaseDurationMilliseconds = 30_000,
+            itemStateRevision = 1,
+            carriedWeight = 0,
+            carryCapacity = 200,
+            isReconnect = false,
+            isSyntheticBot,
+            appearance = withLook ? Look() : null
+        }));
+
+        var result = await ConsumeAsync(CreateClient(handler));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task AnAppearanceChangeUsesTheSessionRouteAndChecksTheStoredLook()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var lookWithoutBody = false;
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(lookWithoutBody
+            ? new { bodyModel = "", choices = Array.Empty<object>(), headwearLowered = true }
+            : Look(headwearLowered: true)));
+        var client = CreateClient(handler);
+        var request = new SimulationAppearanceChangeRequest("runtime-1", "session-token", "headwear", true, null, null);
+
+        var result = await client.ChangeAppearanceAsync(simulationSessionId, request, CancellationToken.None);
+        lookWithoutBody = true;
+        var invalid = await client.ChangeAppearanceAsync(simulationSessionId, request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.True(result.Value!.HeadwearLowered);
+        Assert.Equal("Stubble", Assert.Single(result.Value.Choices).Option);
+        Assert.False(invalid.Succeeded);
+        Assert.Equal(502, invalid.StatusCode);
+        Assert.Equal($"/api/simulation-sessions/{simulationSessionId}/appearance", handler.Requests[0].Path);
+        using var body = JsonDocument.Parse(handler.Requests[0].Body);
+        Assert.Equal("headwear", body.RootElement.GetProperty("change").GetString());
+        Assert.True(body.RootElement.GetProperty("headwearLowered").GetBoolean());
     }
 
     [Fact]
@@ -998,6 +1059,17 @@ public sealed class GameServiceClientTests
         RealtimeProtocol.EncodeServerDisconnect(
             GameServiceClient.NormalizeForwardedErrorCode("Bad Code"),
             GameServiceClient.NormalizeForwardedErrorMessage(new string('å', 2_000)));
+    }
+
+    // A person's look as GameService sends it with a consumed ticket.
+    private static object Look(bool headwearLowered = false)
+    {
+        return new
+        {
+            bodyModel = "Human_Male",
+            choices = new[] { new { kind = "face", slot = "", option = "Stubble" } },
+            headwearLowered
+        };
     }
 
     private static Task<GameServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeAsync(

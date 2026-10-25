@@ -53,7 +53,8 @@ internal sealed record GameServiceConfiguration(
             core.Placement with
             {
                 Worlds = worlds,
-                DevelopmentSimulationBots = developmentSimulationBots
+                DevelopmentSimulationBots = developmentSimulationBots,
+                DevelopmentLooks = environment.IsDevelopment()
             },
             new ItemsModuleOptions(
                 itemCatalog,

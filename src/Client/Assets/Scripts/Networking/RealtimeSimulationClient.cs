@@ -41,6 +41,9 @@ namespace Mmorpg.Client.Networking
         private float latestSnapshotReceivedAt = -1f;
         private readonly Dictionary<ulong, RealtimeEntitySpawn> spawnedEntities =
             new Dictionary<ulong, RealtimeEntitySpawn>();
+        // The latest look of every spawned player and of the controlled one.
+        private readonly Dictionary<ulong, RealtimeCharacterAppearance> appearances =
+            new Dictionary<ulong, RealtimeCharacterAppearance>();
         private readonly Dictionary<ulong, RealtimeWorldActorSpawn> spawnedWorldActors =
             new Dictionary<ulong, RealtimeWorldActorSpawn>();
         private readonly Dictionary<ulong, long> worldActorStateRevisions =
@@ -104,6 +107,11 @@ namespace Mmorpg.Client.Networking
         // Raised after the carry state of the change has advanced the movement session.
         public event Action<RealtimeOwnerItemStateChanged> OwnerItemStateChanged;
 
+        // A spawned player, or the controlled one, changed how it looks.
+        public event Action<RealtimeEntityAppearanceChanged> EntityAppearanceChanged;
+
+        public event Action<RealtimeAppearanceIntentResult> AppearanceIntentCompleted;
+
         public RealtimeConnectionState State { get; private set; }
 
         // The gameplay rules of the joined Shard, or null outside a joined session.
@@ -162,6 +170,13 @@ namespace Mmorpg.Client.Networking
         public int SpawnedEntityCount
         {
             get { return spawnedEntities.Count; }
+        }
+
+        // The latest look of a spawned player or of the controlled one, which the worker sends
+        // after the join.
+        public bool TryGetAppearance(ulong entityId, out RealtimeCharacterAppearance appearance)
+        {
+            return appearances.TryGetValue(entityId, out appearance);
         }
 
         public IReadOnlyCollection<RealtimeWorldActorSpawn> SpawnedWorldActors
@@ -583,6 +598,35 @@ namespace Mmorpg.Client.Networking
             }
         }
 
+        public bool TrySendAppearanceIntent(RealtimeAppearanceIntent intent)
+        {
+            if (State != RealtimeConnectionState.Joined
+                || serverPeer == null
+                || intent == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var packet = RealtimeProtocol.EncodeAppearanceIntent(intent);
+                serverPeer.Send(
+                    packet,
+                    RealtimeProtocol.ControlChannel,
+                    DeliveryMethod.ReliableOrdered);
+                RecordSentPacket(packet.Length);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException || exception is InvalidOperationException)
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Client,
+                    "Appearance intent could not be encoded: " + exception.Message);
+                return false;
+            }
+        }
+
         public bool TrySendCombatIntent(RealtimeCombatIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
@@ -836,6 +880,12 @@ namespace Mmorpg.Client.Networking
                     case RealtimeMessageType.OwnerItemStateChanged:
                         HandleOwnerItemStateChanged(packet);
                         break;
+                    case RealtimeMessageType.EntityAppearanceChanged:
+                        HandleEntityAppearanceChanged(packet);
+                        break;
+                    case RealtimeMessageType.AppearanceIntentResult:
+                        HandleAppearanceIntentResult(packet);
+                        break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
                         break;
@@ -879,6 +929,8 @@ namespace Mmorpg.Client.Networking
                 case RealtimeMessageType.OwnerCombatState:
                 case RealtimeMessageType.OwnerItemQuantityChanged:
                 case RealtimeMessageType.OwnerItemStateChanged:
+                case RealtimeMessageType.EntityAppearanceChanged:
+                case RealtimeMessageType.AppearanceIntentResult:
                     return true;
                 default:
                     return false;
@@ -1613,7 +1665,55 @@ namespace Mmorpg.Client.Networking
             }
 
             spawnedEntities[spawn.EntityId] = spawn;
+            appearances[spawn.EntityId] = spawn.Appearance;
             EntitySpawned?.Invoke(spawn);
+        }
+
+        // A look for a player the client does not see, as one that despawned while the change
+        // was on its way, is dropped.
+        private void HandleEntityAppearanceChanged(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined || MovementSession == null)
+            {
+                FailProtocol(
+                    "unexpected_entity_appearance_changed",
+                    "An appearance change arrived without an active movement session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeEntityAppearanceChanged(packet, out var change, out var error))
+            {
+                FailProtocol("invalid_entity_appearance_changed", error);
+                return;
+            }
+
+            if (change.EntityId != MovementSession.ControlledEntityId
+                && !spawnedEntities.ContainsKey(change.EntityId))
+            {
+                return;
+            }
+
+            appearances[change.EntityId] = change.Appearance;
+            EntityAppearanceChanged?.Invoke(change);
+        }
+
+        private void HandleAppearanceIntentResult(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_appearance_intent_result",
+                    "An appearance intent result arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeAppearanceIntentResult(packet, out var result, out var error))
+            {
+                FailProtocol("invalid_appearance_intent_result", error);
+                return;
+            }
+
+            AppearanceIntentCompleted?.Invoke(result);
         }
 
         private static bool HasSameWorldActorPresenceIdentity(
@@ -1660,6 +1760,11 @@ namespace Mmorpg.Client.Networking
             }
 
             spawnedEntities.Remove(despawn.EntityId);
+            if (MovementSession == null || despawn.EntityId != MovementSession.ControlledEntityId)
+            {
+                appearances.Remove(despawn.EntityId);
+            }
+
             EntityDespawned?.Invoke(despawn);
         }
 
@@ -1853,6 +1958,7 @@ namespace Mmorpg.Client.Networking
         {
             var entityIds = new List<ulong>(spawnedEntities.Keys);
             spawnedEntities.Clear();
+            appearances.Clear();
             for (var index = 0; index < entityIds.Count; index++)
             {
                 EntityDespawned?.Invoke(new RealtimeEntityDespawn(entityIds[index], reason));

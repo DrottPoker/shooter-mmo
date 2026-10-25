@@ -35,6 +35,9 @@ public sealed record LiveMobCorpseState(
 
     // Mob corpses have no model that faces anywhere yet.
     public float YawDegrees => 0f;
+
+    // A Mob corpse has no character look.
+    public CorpseLook? Look => null;
 }
 
 public sealed class LiveMobCorpseStore(TimeProvider timeProvider)

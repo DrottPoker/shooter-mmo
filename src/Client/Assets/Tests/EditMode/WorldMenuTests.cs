@@ -377,7 +377,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 2_000_000_000_000L,
                 false,
                 sourceName,
-                "corpse.remains")));
+                "corpse.remains",
+                null)));
             return corpse;
         }
 

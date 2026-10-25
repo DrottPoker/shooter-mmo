@@ -356,8 +356,12 @@ namespace Mmorpg.Client.Ui
             bodyTint.Enabled = GUILayout.Toggle(
                 bodyTint.Enabled,
                 " Tint bodies: you purple, players orange, bots blue");
-            DrawBodyModel();
-            DrawBodyLook();
+            if (bodyLook != null && bodyLook.Received)
+            {
+                GUILayout.Label("Your look is stored on the server; only a Development GameService changes it here.");
+                DrawBodyModel();
+                DrawBodyLook();
+            }
         }
 
         // A row that steps through the body models of the World scene, such as Human_Male and
@@ -386,7 +390,7 @@ namespace Mmorpg.Client.Ui
                 var chosen = models.Models[(current + step + models.Models.Count) % models.Models.Count];
                 if (chosen != null)
                 {
-                    bodyLook.Model = chosen.Name;
+                    bodyLook.RequestDevelopmentLook(chosen.Name, bodyLook.Look);
                 }
             }
         }
@@ -424,7 +428,9 @@ namespace Mmorpg.Client.Ui
                 var step = StepButtons("Your " + slot.Name.ToLowerInvariant() + ": " + options[current].Name + rule);
                 if (step != 0)
                 {
-                    bodyLook.Look = bodyLook.Look.With(slot.Name, options[(current + step + options.Count) % options.Count].Name);
+                    bodyLook.RequestDevelopmentLook(
+                        null,
+                        bodyLook.Look.With(slot.Name, options[(current + step + options.Count) % options.Count].Name));
                 }
             }
 
@@ -457,7 +463,7 @@ namespace Mmorpg.Client.Ui
                     }
 
                     var chosen = choices[(current + step + choices.Count) % choices.Count];
-                    bodyLook.Look = chosen != null ? look.WithPaint(chosen.Name, true) : look;
+                    bodyLook.RequestDevelopmentLook(null, chosen != null ? look.WithPaint(chosen.Name, true) : look);
                 }
             }
 
@@ -473,12 +479,12 @@ namespace Mmorpg.Client.Ui
                 {
                     var look = bodyLook.Look.WithoutGarments();
                     var chosen = hairs[(current + step + hairs.Count) % hairs.Count];
-                    bodyLook.Look = chosen != null ? look.WithGarment(chosen.Name, true) : look;
+                    bodyLook.RequestDevelopmentLook(null, chosen != null ? look.WithGarment(chosen.Name, true) : look);
                 }
             }
         }
 
-        // When a player chooses a kind of look; until character creation it only shows in F2.
+        // When a player chooses a kind of look: in character creation, and for some kinds in the game.
         private static string RuleText(AppearanceRules.Rule rule)
         {
             return rule.ChangesInGame ? "creation, in game" : "creation only";

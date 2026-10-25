@@ -106,9 +106,10 @@ namespace Mmorpg.Client.Tests.PlayMode
             using (var bodyMaterials = new PlayerBodyMaterials())
             using (var corpses = new PlayerCorpseBodies())
             {
-                Assert.That(corpses.TryGet(prefab, meshes, bodyMaterials, out var mesh, out var materials), Is.True);
-                Assert.That(corpses.TryGet(prefab, meshes, bodyMaterials, out var again, out _), Is.True);
-                Assert.That(again, Is.SameAs(mesh), "every player corpse shares one baked body");
+                var plainKey = PlayerCorpseBodies.KeyOf("Human_Male", BodyLook.Default);
+                Assert.That(corpses.TryGet(plainKey, prefab, BodyLook.Default, meshes, bodyMaterials, out var mesh, out var materials), Is.True);
+                Assert.That(corpses.TryGet(plainKey, prefab, BodyLook.Default, meshes, bodyMaterials, out var again, out _), Is.True);
+                Assert.That(again, Is.SameAs(mesh), "every player corpse of one look shares one baked body");
                 Assert.That(materials, Is.Not.Empty);
                 // The corpse wears the body's underwear, which is paint over its skin.
                 Assert.That(materials.Any(material => material.HasProperty("_PaintCount") && material.GetFloat("_PaintCount") >= 1f),
@@ -119,6 +120,19 @@ namespace Mmorpg.Client.Tests.PlayMode
                 Assert.That(bounds.max.y, Is.LessThan(0.6f));
                 Assert.That(bounds.min.y, Is.GreaterThan(-0.1f));
                 Assert.That(Mathf.Max(bounds.size.x, bounds.size.z), Is.GreaterThan(1.3f));
+
+                // Another look, such as a corpse still wearing a cloak, bakes a body of its own,
+                // and a look no corpse shows any more is destroyed.
+                var cloaked = BodyLook.Default.WithGarment("WoolCloak", true);
+                var cloakedKey = PlayerCorpseBodies.KeyOf("Human_Male", cloaked);
+                Assert.That(corpses.TryGet(cloakedKey, prefab, cloaked, meshes, bodyMaterials, out var wrapped, out _), Is.True);
+                Assert.That(wrapped, Is.Not.SameAs(mesh));
+                Assert.That(wrapped.vertexCount, Is.GreaterThan(mesh.vertexCount));
+                Assert.That(corpses.Count, Is.EqualTo(2));
+                corpses.KeepOnly(new[] { cloakedKey });
+                yield return null;
+                Assert.That(corpses.Count, Is.EqualTo(1));
+                Assert.That(mesh == null, Is.True);
             }
         }
 

@@ -1,4 +1,5 @@
 using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Items;
@@ -20,7 +21,8 @@ internal sealed class RealtimeSessionTeardown(
     WorldInteractionLeaseRegistry? worldInteractionLeases,
     ConnectionEntityBindingRegistry connectionBindings,
     SimulationEntityRegistry entityRegistry,
-    RealtimeNetworkMetrics networkMetrics)
+    RealtimeNetworkMetrics networkMetrics,
+    CharacterLookStore? lookStore = null)
 {
     public IPlayerEntityRemovalObserver? RemovalObserver { get; set; }
 
@@ -42,6 +44,7 @@ internal sealed class RealtimeSessionTeardown(
         }
 
         itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+        lookStore?.Remove(session.CharacterId, session.SimulationSessionId);
         connectionBindings.UnbindConnection(context.PeerId, out _);
         presence.ForgetConnection(context.PeerId);
         presence.BroadcastEntityDespawn(entityId, reason, context.PeerId);
@@ -91,6 +94,9 @@ internal sealed class RealtimeSessionTeardown(
         itemStateStore.Remove(
             replacedEntity.Session.CharacterId,
             replacedEntity.Session.SimulationSessionId);
+        lookStore?.Remove(
+            replacedEntity.Session.CharacterId,
+            replacedEntity.Session.SimulationSessionId);
         int? replacedConnectionId = null;
         if (connectionBindings.UnbindEntity(
                 replacedEntity.NetworkEntityId,
@@ -127,6 +133,7 @@ internal sealed class RealtimeSessionTeardown(
             message);
         RemoveBoundEntity(context, session, code);
         itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+        lookStore?.Remove(session.CharacterId, session.SimulationSessionId);
         context.AuthorityOperationQueue.Clear();
         corpseViewers.RemovePeer(context.PeerId);
         worldInteractionLeases?.RemovePeer(context.PeerId);

@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 
 namespace Mmorpg.GameService.Placement;
@@ -105,7 +106,32 @@ internal sealed record ConsumedSimulationJoinTicketResponse(
 
     // What the character has equipped at ItemStateRevision.
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
+
+    // How the character looks; null for a development bot, which the worker dresses itself.
+    public SimulationAppearance? Appearance { get; init; }
 }
+
+// A character's look as the worker sends it to every client: its body model, the choices of its
+// look, and whether it lowered its headwear.
+internal sealed record SimulationAppearance(string BodyModel, SimulationAppearanceChoice[] Choices, bool HeadwearLowered)
+{
+    public static SimulationAppearance From(CharacterAppearanceState state) => new(
+        state.BodyModel,
+        state.Choices.Select(choice => new SimulationAppearanceChoice(choice.Kind, choice.Slot, choice.Option)).ToArray(),
+        state.HeadwearLowered);
+}
+
+internal sealed record SimulationAppearanceChoice(string Kind, string Slot, string Option);
+
+// A change of the look of a session's character: lowering or raising its headwear, or in
+// Development another body model and look.
+internal sealed record SimulationAppearanceChangeRequest(
+    string? WorkerRuntimeId,
+    string? SessionToken,
+    string? Change,
+    bool? HeadwearLowered,
+    string? BodyModel,
+    SimulationAppearanceChoice[]? Choices);
 
 internal sealed record SimulationSessionCredentialRequest(
     string? WorkerRuntimeId,

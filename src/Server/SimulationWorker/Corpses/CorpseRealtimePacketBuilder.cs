@@ -9,23 +9,21 @@ public static class CorpseRealtimePacketBuilder
     private const int SlotsPerChunk = 4;
     private const int MaximumTargetedSlots = 8;
 
+    // A player corpse carries its look with the items of its visible equipment slots, in their
+    // order; without visible slots it wears nothing.
     public static IReadOnlyList<RealtimeCorpsePresenceSnapshotChunk> BuildPresence(
         uint sequence,
-        IReadOnlyList<ICorpseRuntimePresence> corpses)
+        IReadOnlyList<ICorpseRuntimePresence> corpses,
+        IReadOnlyList<string>? visibleEquipmentSlots = null)
     {
         ArgumentNullException.ThrowIfNull(corpses);
+        var visible = visibleEquipmentSlots ?? [];
         var entries = corpses
             .OrderBy(corpse => corpse.CorpseId)
-            .Select(corpse => new RealtimeCorpsePresence(
-                corpse.CorpseId,
-                checked((float)corpse.PositionX),
-                checked((float)corpse.PositionY),
-                checked((float)corpse.PositionZ),
-                corpse.YawDegrees,
-                ToUnixMilliseconds(corpse.ExpiresAt),
-                corpse.IsEmpty,
-                corpse.SourceDisplayName,
-                corpse.PresentationKey))
+            .Select(corpse => Presence(corpse, AppearanceOf(corpse.Look, visible)))
+            .Select(entry => FitsPresencePacket(sequence, [entry])
+                ? entry
+                : WithoutAppearance(entry))
             .ToArray();
         var batches = new List<IReadOnlyList<RealtimeCorpsePresence>>();
         var current = new List<RealtimeCorpsePresence>();
@@ -62,6 +60,59 @@ public static class CorpseRealtimePacketBuilder
                 batch.ToArray())).ToArray();
 
         return chunks;
+    }
+
+    private static RealtimeCorpsePresence Presence(ICorpseRuntimePresence corpse, RealtimeCharacterAppearance? appearance)
+    {
+        return new RealtimeCorpsePresence(
+            corpse.CorpseId,
+            checked((float)corpse.PositionX),
+            checked((float)corpse.PositionY),
+            checked((float)corpse.PositionZ),
+            corpse.YawDegrees,
+            ToUnixMilliseconds(corpse.ExpiresAt),
+            corpse.IsEmpty,
+            corpse.SourceDisplayName,
+            corpse.PresentationKey,
+            appearance);
+    }
+
+    // A corpse whose look would not fit one packet shows the default body instead.
+    private static RealtimeCorpsePresence WithoutAppearance(RealtimeCorpsePresence entry)
+    {
+        return new RealtimeCorpsePresence(
+            entry.CorpseId,
+            entry.PositionX,
+            entry.PositionY,
+            entry.PositionZ,
+            entry.YawDegrees,
+            entry.ExpiresAtUnixMilliseconds,
+            entry.IsEmpty,
+            entry.SourceDisplayName,
+            entry.PresentationKey,
+            null);
+    }
+
+    private static RealtimeCharacterAppearance? AppearanceOf(CorpseLook? look, IReadOnlyList<string> visibleEquipmentSlots)
+    {
+        if (look is null)
+        {
+            return null;
+        }
+
+        return new RealtimeCharacterAppearance(
+            look.BodyModel,
+            look.Choices
+                .Take(RealtimeProtocolLimits.MaximumAppearanceChoices)
+                .Select(choice => new RealtimeAppearanceChoice(choice.Kind, choice.Slot, choice.Option))
+                .ToArray(),
+            visibleEquipmentSlots
+                .Select(slot => look.Equipment.FirstOrDefault(item => string.Equals(item.EquipmentSlotId, slot, StringComparison.Ordinal)))
+                .Where(item => item is not null)
+                .Take(RealtimeProtocolLimits.MaximumVisibleEquipment)
+                .Select(item => new RealtimeVisibleEquipment(item!.EquipmentSlotId, item.DefinitionId))
+                .ToArray(),
+            look.HeadwearLowered);
     }
 
     private static bool FitsPresencePacket(

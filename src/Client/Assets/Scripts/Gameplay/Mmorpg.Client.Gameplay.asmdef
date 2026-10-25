@@ -9,6 +9,7 @@
     "Unity.InputSystem",
     "Mmorpg.GameProtocol",
     "Mmorpg.GameSimulation",
+    "Mmorpg.WorldData",
     "Mmorpg.WorldData.Client"
   ],
   "includePlatforms": [],

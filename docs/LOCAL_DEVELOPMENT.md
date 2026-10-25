@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-23
+Last updated: 2026-10-25
 
 ## Requirements
 
@@ -117,7 +117,7 @@ Expected result:
 - Build completes with zero warnings and zero errors.
 - Item catalog verification reports eleven definitions, one base Secure
   Container tier, and the deterministic checked-in revision.
-- Protocol verification reports realtime protocol version 23 with 35 messages
+- Protocol verification reports realtime protocol version 24 with 38 messages
   and finds every generated file current.
 - Observability verification validates the collector and Prometheus
   configuration, passes the alert rule tests, and parses both dashboards. It
@@ -349,9 +349,9 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 23 with 35
+Expected result: both commands report realtime protocol version 24 with 38
 messages and 18 generated files, and the second prints
-`Realtime protocol version 23 verified: 35 messages, 18 generated files.`
+`Realtime protocol version 24 verified: 38 messages, 18 generated files.`
 The first command rewrites only changed files and removes files that the schema
 no longer produces. The second fails and names the file when a generated file
 is stale, missing, or not produced by the schema. Commit the schema,
@@ -2172,7 +2172,7 @@ dotnet run --project src/Server/SimulationWorker
 SimulationWorker is a headless .NET Generic Host. It does not expose HTTP routes.
 A successful start logs worker `local-simulation-worker-1`, fleet `local-fleet`,
 node `local-node-1`, shard `local-shard-1`, World `development-world-2`, UDP port
-`27015`, runtime id, realtime protocol version 23, simulation revision,
+`27015`, runtime id, realtime protocol version 24, simulation revision,
 collision revision, world-actor revision and population, and loaded collision
 chunks. Every 30 seconds it also logs aggregate
 realtime packet, byte, entity, peer, quota, and snapshot counters. The same
@@ -3783,6 +3783,55 @@ item presentation are committed.
    no item.
 6. Press `>` next to `Your body` in F2. Expected result: the woman wears the same
    items in the same colors.
+
+### Manual Test Of The Look On The Server
+
+The body model, the look, and the hood are stored with the character and every
+client shows them, as
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server)
+describes. No manual Unity Editor steps are required. Run GameService in the
+Development environment, as `dotnet run` does, so the World Debug panel may
+change a look.
+
+1. Start the local stack, GameService, and the default worker as
+   [Backend Services](#backend-services) describes. Open `LoginMenu` in Unity,
+   enter Play Mode, and log in. Expected result: below the character name,
+   Character Select shows the rows `Body: Human_Male`, `face: Stubble`,
+   `eyes: Teal`, `scar: none`, `tattoo: none`, `underwear (legs): Briefs`, and
+   `hair: none`, each with `<` and `>`.
+2. Press `>` next to `Body`, choose `face: Freckles`, `eyes: Hazel`, and
+   `hair: DarkBrownHair`, name the character, and press `Create Character`.
+   Expected result: the list shows the new character with `(Human_Female)`.
+3. Join a World scene with it. Expected result: the woman shows the freckled
+   face, hazel eyes, and the dark brown hair, wearing her underwear.
+4. Give the offline character the `Outfits Test Pack` (see step 4 of
+   [Manual Test Of Items Showing Garments](#manual-test-of-items-showing-garments)),
+   join, wear `Wool Hood`, `Wool Robe`, and `Wool Cloak`, and press `C`. Expected
+   result: the inventory footer shows `Lower Wool Hood`. Press it. Expected
+   result: the hood falls back onto the shoulders and the button reads
+   `Raise Wool Hood`; press it again to raise it. Leave the shard and join again
+   with the hood lowered. Expected result: the hood is still down.
+5. Build a second client (`File > Build And Run`), log in with another account,
+   and join the same shard near the first character. Expected result: each client
+   shows the other player in its own body model, look, hair, robe, hood, and
+   cloak; lowering or raising the hood, or changing an item in the first client,
+   changes it in the second within a moment.
+6. In the first client press F2, step `Your face` and `Your body`. Expected
+   result: the look changes after a moment in both clients, and stays after
+   leaving and joining again. Against a GameService outside Development the game
+   messages show `Only a Development GameService changes a body model or a look;
+   character creation chooses them.` and nothing changes.
+7. Start the stress arena worker as
+   [Run The Stress Arena Shard](#run-the-stress-arena-shard) describes, start
+   development bots on it as [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md)
+   describes, and join `Local Stress Arena`. Expected result: the bots show both bodies, varied faces,
+   eyes, hair, and outfits of shirts, trousers, boots, robes, and cloaks, and each
+   bot keeps its look while it walks in and out of view.
+8. Let the dressed character die, such as to the wolves. Expected result: the
+   dying body keeps its clothes until you respawn; then the corpse lies there in
+   the character's body and look, with its hood as it was, wearing the robe,
+   hood, and cloak. Loot the cloak from the corpse with the second character.
+   Expected result: the cloak leaves the lying body at once.
 
 The scenes, prefabs, and `PlayerControls` asset described here are already
 committed. Do not repeat these steps on an existing checkout, because recreating

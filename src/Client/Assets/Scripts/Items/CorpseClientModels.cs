@@ -65,6 +65,7 @@ namespace Mmorpg.Client.Items
             IsEmpty = source.IsEmpty;
             SourceDisplayName = source.SourceDisplayName ?? string.Empty;
             PresentationKey = source.PresentationKey ?? string.Empty;
+            Appearance = source.Appearance;
         }
 
         public Guid CorpseId { get; }
@@ -85,6 +86,10 @@ namespace Mmorpg.Client.Items
         public string SourceDisplayName { get; }
 
         public string PresentationKey { get; }
+
+        // The dead character's body model and look, with the items left in the corpse's equipment
+        // that others see; null for a Mob corpse.
+        public RealtimeCharacterAppearance Appearance { get; }
     }
 
     public sealed class CorpseLootItem

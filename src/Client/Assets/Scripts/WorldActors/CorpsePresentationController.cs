@@ -8,15 +8,18 @@ using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
 {
-    // One presentation per nearby corpse. A player corpse shows the body lying in the last pose
-    // of Death, turned as its character faced, and stays hidden while the dead body of its
-    // character still lies there; every other corpse is a generic capsule for now.
+    // One presentation per nearby corpse. A player corpse shows the dead character's body lying
+    // in the last pose of Death, turned as its character faced, in its look and the garments still
+    // in the corpse, and stays hidden while the dead body of its character still lies there; every
+    // other corpse is a generic capsule for now.
     [DisallowMultipleComponent]
     public sealed class CorpsePresentationController : MonoBehaviour
     {
         private readonly Dictionary<Guid, GameObject> presentations =
             new Dictionary<Guid, GameObject>();
         private readonly Dictionary<Guid, Renderer> playerBodies = new Dictionary<Guid, Renderer>();
+        // The lying body each player corpse shows, by the key of its model and look.
+        private readonly Dictionary<Guid, string> playerBodyKeys = new Dictionary<Guid, string>();
         private MaterialPropertyBlock colorProperties;
         private CorpseClientController controller;
         private Material primitiveMaterial;
@@ -106,6 +109,11 @@ namespace Mmorpg.Client.WorldActors
                 }
 
                 var isBody = playerBodies.ContainsKey(corpse.CorpseId);
+                if (isBody)
+                {
+                    ShowLyingBody(corpse, presentation);
+                }
+
                 presentation.transform.position = new Vector3(
                     corpse.PositionX,
                     corpse.PositionY + (isBody ? 0f : 0.2f),
@@ -136,6 +144,30 @@ namespace Mmorpg.Client.WorldActors
                     renderer.SetPropertyBlock(colorProperties);
                 }
             }
+
+            if (sceneContext != null)
+            {
+                sceneContext.KeepCorpseBodies(new HashSet<string>(playerBodyKeys.Values));
+            }
+        }
+
+        // A corpse whose look changed, as when someone loots its cloak, shows the lying body of
+        // the new look.
+        private void ShowLyingBody(CorpsePresenceEntry corpse, GameObject presentation)
+        {
+            if (sceneContext == null
+                || !sceneContext.TryGetCorpseBody(corpse.Appearance, out var key, out var mesh, out var materials)
+                || (playerBodyKeys.TryGetValue(corpse.CorpseId, out var shown) && shown == key))
+            {
+                return;
+            }
+
+            playerBodyKeys[corpse.CorpseId] = key;
+            presentation.GetComponent<MeshFilter>().sharedMesh = mesh;
+            presentation.GetComponent<MeshRenderer>().sharedMaterials = materials;
+            var box = presentation.GetComponent<BoxCollider>();
+            box.center = mesh.bounds.center;
+            box.size = mesh.bounds.size + new Vector3(0.1f, 0.1f, 0.1f);
         }
 
         private GameObject CreatePresentation(CorpsePresenceEntry corpse)
@@ -143,7 +175,7 @@ namespace Mmorpg.Client.WorldActors
             GameObject presentation;
             if (PlayerCorpseBodies.IsPlayerCorpse(corpse.PresentationKey)
                 && sceneContext != null
-                && sceneContext.TryGetCorpseBody(out var mesh, out var materials))
+                && sceneContext.TryGetCorpseBody(corpse.Appearance, out var key, out var mesh, out var materials))
             {
                 presentation = new GameObject("PlayerCorpseBody");
                 presentation.transform.SetParent(transform, false);
@@ -155,6 +187,7 @@ namespace Mmorpg.Client.WorldActors
                 box.center = mesh.bounds.center;
                 box.size = mesh.bounds.size + new Vector3(0.1f, 0.1f, 0.1f);
                 playerBodies[corpse.CorpseId] = bodyRenderer;
+                playerBodyKeys[corpse.CorpseId] = key;
             }
             else if (corpsePrefab != null)
             {
@@ -186,6 +219,7 @@ namespace Mmorpg.Client.WorldActors
         private void DestroyPresentation(Guid corpseId)
         {
             playerBodies.Remove(corpseId);
+            playerBodyKeys.Remove(corpseId);
             if (!presentations.Remove(corpseId, out var presentation)
                 || presentation == null)
             {

@@ -14,6 +14,9 @@ namespace Mmorpg.SharedTests
             const RealtimeMessageType entitySpawn = RealtimeMessageType.EntitySpawn;
             const RealtimeMessageType entityDespawn = RealtimeMessageType.EntityDespawn;
             const RealtimeMessageType simulationSnapshot = RealtimeMessageType.SimulationSnapshot;
+            const RealtimeMessageType appearanceChanged = RealtimeMessageType.EntityAppearanceChanged;
+            const RealtimeMessageType appearanceIntent = RealtimeMessageType.AppearanceIntent;
+            const RealtimeMessageType appearanceResult = RealtimeMessageType.AppearanceIntentResult;
 
             r.Vector("Replication/EntitySpawn/typical", entitySpawn, () => RealtimeProtocol.EncodeEntitySpawn(EntitySpawnModel()));
             r.Vector(
@@ -45,7 +48,72 @@ namespace Mmorpg.SharedTests
                     chunkCount: 3,
                     entities: Enumerable.Range(1, 24).Select(index => EntitySnapshotModel((ulong)index * 1000003)).ToArray())));
 
+            r.Vector(
+                "Replication/EntityAppearanceChanged/typical",
+                appearanceChanged,
+                () => RealtimeProtocol.EncodeEntityAppearanceChanged(new RealtimeEntityAppearanceChanged(7, AppearanceModel())));
+            r.Vector(
+                "Replication/EntityAppearanceChanged/bare",
+                appearanceChanged,
+                () => RealtimeProtocol.EncodeEntityAppearanceChanged(new RealtimeEntityAppearanceChanged(
+                    7,
+                    new RealtimeCharacterAppearance("Human_Male", null, null, false))));
+            r.Vector(
+                "Replication/AppearanceIntent/lower headwear",
+                appearanceIntent,
+                () => RealtimeProtocol.EncodeAppearanceIntent(RealtimeAppearanceIntent.CreateLowerHeadwear(G(1))));
+            r.Vector(
+                "Replication/AppearanceIntent/raise headwear",
+                appearanceIntent,
+                () => RealtimeProtocol.EncodeAppearanceIntent(RealtimeAppearanceIntent.CreateRaiseHeadwear(G(1))));
+            r.Vector(
+                "Replication/AppearanceIntent/set development look",
+                appearanceIntent,
+                () => RealtimeProtocol.EncodeAppearanceIntent(RealtimeAppearanceIntent.CreateSetDevelopmentLook(
+                    G(1),
+                    "Human_Female",
+                    AppearanceModel().Choices)));
+            r.Vector(
+                "Replication/AppearanceIntentResult/accepted",
+                appearanceResult,
+                () => RealtimeProtocol.EncodeAppearanceIntentResult(new RealtimeAppearanceIntentResult(
+                    G(1),
+                    RealtimeAppearanceIntentKind.LowerHeadwear,
+                    true,
+                    null)));
+            r.Vector(
+                "Replication/AppearanceIntentResult/rejected",
+                appearanceResult,
+                () => RealtimeProtocol.EncodeAppearanceIntentResult(new RealtimeAppearanceIntentResult(
+                    G(1),
+                    RealtimeAppearanceIntentKind.SetDevelopmentLook,
+                    false,
+                    new RealtimeError("development_look_disabled", "Only a Development GameService changes a look."))));
+
             r.Accepts("Replication/EntitySpawn/baseline", EntitySpawnWire());
+            r.Rejects(
+                "Replication/EntitySpawn/empty body model",
+                EntitySpawnWire(appearance: AppearanceWire(bodyModel: "")));
+            r.Rejects(
+                "Replication/EntitySpawn/duplicate equipment slot",
+                EntitySpawnWire(appearance: AppearanceWire(equipment: new[] { ("back", "clothing.wool_cloak"), ("back", "clothing.red_wool_cloak") })));
+            r.Accepts(
+                "Replication/EntitySpawn/eight equipped items",
+                EntitySpawnWire(appearance: AppearanceWire(equipment: Enumerable.Range(1, 8).Select(index => ("slot" + index, "item." + index)).ToArray())));
+            r.Rejects(
+                "Replication/EntitySpawn/nine equipped items",
+                EntitySpawnWire(appearance: AppearanceWire(equipment: Enumerable.Range(1, 9).Select(index => ("slot" + index, "item." + index)).ToArray())));
+            r.Accepts("Replication/EntityAppearanceChanged/baseline", Wire.Message(appearanceChanged).U64(7).Append(AppearanceWire()));
+            r.Rejects("Replication/EntityAppearanceChanged/entity zero", Wire.Message(appearanceChanged).U64(0).Append(AppearanceWire()));
+            r.Rejects(
+                "Replication/EntityAppearanceChanged/blank choice kind",
+                Wire.Message(appearanceChanged).U64(7).Append(AppearanceWire(choices: new[] { (" ", "", "Clean") })));
+            r.Accepts(
+                "Replication/AppearanceIntent/lower headwear",
+                Wire.Message(appearanceIntent).Guid(G(1)).U8(1));
+            r.Rejects("Replication/AppearanceIntent/kind 0", Wire.Message(appearanceIntent).Guid(G(1)).U8(0));
+            r.Rejects("Replication/AppearanceIntent/kind 4", Wire.Message(appearanceIntent).Guid(G(1)).U8(4));
+            r.Rejects("Replication/AppearanceIntent/empty operation", Wire.Message(appearanceIntent).Guid(System.Guid.Empty).U8(2));
             r.Rejects("Replication/EntitySpawn/entity zero", EntitySpawnWire(entityId: 0));
             r.Rejects("Replication/EntitySpawn/kind 0", EntitySpawnWire(kind: 0));
             r.Rejects("Replication/EntitySpawn/kind 2", EntitySpawnWire(kind: 2));
@@ -109,6 +177,20 @@ namespace Mmorpg.SharedTests
             r.RejectsEncode(
                 "Replication/EntitySpawn/null state",
                 () => RealtimeProtocol.EncodeEntitySpawn(EntitySpawnModel(state: Null<RealtimePlayerState>())));
+            r.RejectsEncode(
+                "Replication/EntitySpawn/null appearance",
+                () => RealtimeProtocol.EncodeEntitySpawn(EntitySpawnModel(appearance: Null<RealtimeCharacterAppearance>())));
+            r.RejectsEncode(
+                "Replication/EntityAppearanceChanged/65 character body model",
+                () => RealtimeProtocol.EncodeEntityAppearanceChanged(new RealtimeEntityAppearanceChanged(
+                    7,
+                    new RealtimeCharacterAppearance(Repeat("b", 65), null, null, false))));
+            r.RejectsEncode(
+                "Replication/AppearanceIntent/blank development body model",
+                () => RealtimeProtocol.EncodeAppearanceIntent(RealtimeAppearanceIntent.CreateSetDevelopmentLook(
+                    G(1),
+                    " ",
+                    System.Array.Empty<RealtimeAppearanceChoice>())));
             r.RejectsEncode("Replication/EntityDespawn/null despawn", () => RealtimeProtocol.EncodeEntityDespawn(null));
             r.RejectsEncode(
                 "Replication/EntityDespawn/entity zero",
@@ -158,7 +240,8 @@ namespace Mmorpg.SharedTests
             string persistentId = PersistentPlayerId,
             string displayName = "Grön Ödla",
             string archetypeId = "player-default",
-            Optional<RealtimePlayerState> state = default)
+            Optional<RealtimePlayerState> state = default,
+            Optional<RealtimeCharacterAppearance> appearance = default)
         {
             return new RealtimeEntitySpawn(
                 entityId: entityId,
@@ -167,7 +250,54 @@ namespace Mmorpg.SharedTests
                 displayName: displayName,
                 archetypeId: archetypeId,
                 serverTick: 123456,
-                initialState: state.Or(PlayerStateModel()));
+                initialState: state.Or(PlayerStateModel()),
+                appearance: appearance.Or(AppearanceModel()));
+        }
+
+        private static RealtimeCharacterAppearance AppearanceModel()
+        {
+            return new RealtimeCharacterAppearance(
+                bodyModel: "Human_Female",
+                choices: new[]
+                {
+                    new RealtimeAppearanceChoice("face", "", "Freckles"),
+                    new RealtimeAppearanceChoice("underwear", "legs", "Briefs"),
+                },
+                equipment: new[]
+                {
+                    new RealtimeVisibleEquipment("head", "clothing.blue_wool_hood"),
+                    new RealtimeVisibleEquipment("back", "clothing.wool_cloak"),
+                },
+                headwearLowered: true);
+        }
+
+        private static Wire AppearanceWire(
+            WireText bodyModel = null,
+            (string Kind, string Slot, string Option)[] choices = null,
+            (string Slot, string Definition)[] equipment = null,
+            bool headwearLowered = true)
+        {
+            choices = choices ?? new[] { ("face", "", "Freckles"), ("underwear", "legs", "Briefs") };
+            equipment = equipment ?? new[] { ("head", "clothing.blue_wool_hood"), ("back", "clothing.wool_cloak") };
+            var wire = Wire.Fragment().Text(bodyModel ?? "Human_Female").U8((byte)choices.Length);
+            foreach (var choice in choices)
+            {
+                wire.Text(choice.Kind).Bool(choice.Slot.Length > 0);
+                if (choice.Slot.Length > 0)
+                {
+                    wire.Text(choice.Slot);
+                }
+
+                wire.Text(choice.Option);
+            }
+
+            wire.U8((byte)equipment.Length);
+            foreach (var item in equipment)
+            {
+                wire.Text(item.Slot).Text(item.Definition);
+            }
+
+            return wire.Bool(headwearLowered);
         }
 
         private static RealtimeEntitySnapshot EntitySnapshotModel(ulong entityId)
@@ -197,7 +327,8 @@ namespace Mmorpg.SharedTests
             WireText persistentId = null,
             WireText displayName = null,
             WireText archetypeId = null,
-            Wire state = null)
+            Wire state = null,
+            Wire appearance = null)
         {
             return Wire.Message(RealtimeMessageType.EntitySpawn)
                 .U64(entityId)
@@ -206,7 +337,8 @@ namespace Mmorpg.SharedTests
                 .Text(displayName ?? "Grön Ödla")
                 .Text(archetypeId ?? "player-default")
                 .U32(123456)
-                .Append(state ?? PlayerStateWire());
+                .Append(state ?? PlayerStateWire())
+                .Append(appearance ?? AppearanceWire());
         }
 
         private static Wire EntityDespawnWire(ulong entityId = 7, WireText reason = null)

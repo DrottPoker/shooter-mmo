@@ -16,6 +16,7 @@ public sealed partial class TableOwnershipTests
             ["account_sessions"] = GameServiceSourceMap.Accounts,
             ["characters"] = GameServiceSourceMap.Characters,
             ["character_currency_ledger"] = GameServiceSourceMap.Characters,
+            ["character_appearances"] = GameServiceSourceMap.Characters,
             ["world_definitions"] = GameServiceSourceMap.Placement,
             ["fleets"] = GameServiceSourceMap.Placement,
             ["simulation_nodes"] = GameServiceSourceMap.Placement,

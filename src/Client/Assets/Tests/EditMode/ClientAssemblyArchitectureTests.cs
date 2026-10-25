@@ -80,6 +80,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Unity.InputSystem",
                     "Mmorpg.GameProtocol",
                     "Mmorpg.GameSimulation",
+                    "Mmorpg.WorldData",
                     "Mmorpg.WorldData.Client"
                 },
                 ["Mmorpg.Client.WorldActors"] = new[]
@@ -120,6 +121,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.GameProtocol",
                     "Mmorpg.GameSimulation",
                     "Mmorpg.WorldData",
+                    "Mmorpg.WorldData.Client",
                     "Unity.ResourceManager"
                 },
                 ["Mmorpg.Client.App"] = new[]

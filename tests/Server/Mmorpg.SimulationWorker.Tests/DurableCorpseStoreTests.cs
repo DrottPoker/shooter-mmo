@@ -156,6 +156,71 @@ public sealed class DurableCorpseStoreTests
         Assert.Equal(createdAfterSnapshot.CorpseId, Assert.Single(store.ListActive()).CorpseId);
     }
 
+    [Fact]
+    public void ASnapshotKeepsTheFacingAndBodyAndWearsWhatIsLeftInTheEquipmentSection()
+    {
+        var databaseTime = DateTime.UtcNow;
+        var corpseId = Guid.NewGuid();
+        var store = new DurableCorpseStore(TimeProvider.System);
+        store.Replace(
+            new CorpseRestoreResponse(
+                databaseTime,
+                [CreateCorpse(corpseId, databaseTime.AddMinutes(-1), databaseTime.AddMinutes(4), isEmpty: false) with
+                {
+                    RotationY = 0.6d,
+                    RotationW = 0.8d,
+                    Look = new CorpseLookResponse(
+                        "Human_Female",
+                        [new SimulationAppearanceChoice("face", "", "Freckles")],
+                        [
+                            new CorpseLookEquipmentResponse("body", "clothing.wool_robe"),
+                            new CorpseLookEquipmentResponse("back", "clothing.wool_cloak")
+                        ],
+                        HeadwearLowered: true)
+                }]),
+            "local-shard-1");
+        var snapshot = CreateSnapshot(corpseId, Guid.NewGuid(), revision: 2, databaseTime.AddMinutes(-1), databaseTime.AddMinutes(4));
+        var robe = new CorpseViewItemResponse(Guid.NewGuid(), "clothing.wool_robe", 1, 1, null, null);
+
+        // Someone looted the cloak: only the robe is left in the equipment section.
+        store.ApplySnapshot(snapshot with
+        {
+            Sections = snapshot.Sections
+                .Select(section => section.SectionKind == "equipment"
+                    ? section with
+                    {
+                        Slots =
+                        [
+                            new CorpseViewSlotResponse(0, "equipment", [], robe, "body"),
+                            new CorpseViewSlotResponse(1, "equipment", [], null, "back")
+                        ]
+                    }
+                    : section)
+                .ToArray()
+        });
+
+        var active = Assert.Single(store.ListActive());
+        Assert.Equal(2, active.Revision);
+        Assert.Equal(0.6d, active.RotationY);
+        Assert.Equal(0.8d, active.RotationW);
+        Assert.Equal("Human_Female", active.Look!.BodyModel);
+        Assert.Equal("Freckles", Assert.Single(active.Look.Choices).Option);
+        Assert.True(active.Look.HeadwearLowered);
+        Assert.Equal("body=clothing.wool_robe", Assert.Single(active.Look.Equipment.Select(item => $"{item.EquipmentSlotId}={item.DefinitionId}")));
+    }
+
+    [Fact]
+    public void AMobCorpseSnapshotHasNoLook()
+    {
+        var databaseTime = DateTime.UtcNow;
+        var corpseId = Guid.NewGuid();
+        var store = new DurableCorpseStore(TimeProvider.System);
+
+        store.ApplySnapshot(CreateSnapshot(corpseId, Guid.NewGuid(), revision: 1, databaseTime.AddMinutes(-1), databaseTime.AddMinutes(4)));
+
+        Assert.Null(Assert.Single(store.ListActive()).Look);
+    }
+
     private static DurableCorpseResponse CreateCorpse(
         Guid corpseId,
         DateTime createdAt,

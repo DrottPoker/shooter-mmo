@@ -329,7 +329,12 @@ public sealed class RealtimeProtocolTests
             "Protocol Hero",
             "player.default",
             90,
-            CreatePlayerState(3f));
+            CreatePlayerState(3f),
+            new RealtimeCharacterAppearance(
+                "Human_Female",
+                [new RealtimeAppearanceChoice("face", null, "Freckles"), new RealtimeAppearanceChoice("hair", "", "DarkBrownHair")],
+                [new RealtimeVisibleEquipment("head", "clothing.wool_hood"), new RealtimeVisibleEquipment("body", "clothing.blue_wool_robe")],
+                true));
 
         Assert.True(RealtimeProtocol.TryDecodeEntitySpawn(
             RealtimeProtocol.EncodeEntitySpawn(expectedSpawn),
@@ -341,6 +346,10 @@ public sealed class RealtimeProtocolTests
         Assert.Equal("Protocol Hero", spawn.DisplayName);
         Assert.Equal("player.default", spawn.ArchetypeId);
         Assert.Equal(90u, spawn.ServerTick);
+        Assert.Equal("Human_Female", spawn.Appearance.BodyModel);
+        Assert.Equal(["face=Freckles", "hair=DarkBrownHair"], spawn.Appearance.Choices.Select(choice => $"{choice.Kind}{choice.Slot}={choice.Option}"));
+        Assert.Equal(["head", "body"], spawn.Appearance.Equipment.Select(item => item.EquipmentSlotId));
+        Assert.True(spawn.Appearance.HeadwearLowered);
 
         var expectedDespawn = new RealtimeEntityDespawn(73, "left_shard");
         Assert.True(RealtimeProtocol.TryDecodeEntityDespawn(
@@ -435,7 +444,8 @@ public sealed class RealtimeProtocolTests
                 "Invalid Hero",
                 "player.default",
                 1,
-                CreatePlayerState(0f))));
+                CreatePlayerState(0f),
+                new RealtimeCharacterAppearance("Human_Male", null, null, false))));
         Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntityDespawn(
             new RealtimeEntityDespawn(0, "left_shard")));
         Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeSimulationSnapshot(

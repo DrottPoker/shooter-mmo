@@ -183,7 +183,22 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// Every item change of one committed transaction of the owner, so the client patches its inventory without a refresh. The worker sends it before the result of the operation that caused it, and only when it lists the whole change.
         /// </summary>
-        OwnerItemStateChanged = 35
+        OwnerItemStateChanged = 35,
+
+        /// <summary>
+        /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, or in Development its body model or look.
+        /// </summary>
+        EntityAppearanceChanged = 36,
+
+        /// <summary>
+        /// Lowers or raises the character's headwear, or in Development gives it another body model and look.
+        /// </summary>
+        AppearanceIntent = 37,
+
+        /// <summary>
+        /// The outcome of an appearance intent; the new look follows as an EntityAppearanceChanged.
+        /// </summary>
+        AppearanceIntentResult = 38
     }
 
     /// <summary>
@@ -281,6 +296,31 @@ namespace Mmorpg.GameProtocol
         public const int MaximumWorldActorMenuOptionLength = 32;
 
         /// <summary>
+        /// Characters in the kind of a look, such as underwear.
+        /// </summary>
+        public const int MaximumAppearanceKindLength = 32;
+
+        /// <summary>
+        /// Characters in the visual slot of a kind worn per slot, such as legs.
+        /// </summary>
+        public const int MaximumAppearanceSlotLength = 32;
+
+        /// <summary>
+        /// Characters in a body model or an option of a look, such as Human_Female or Freckles.
+        /// </summary>
+        public const int MaximumAppearanceNameLength = 64;
+
+        /// <summary>
+        /// Choices in one look.
+        /// </summary>
+        public const int MaximumAppearanceChoices = 16;
+
+        /// <summary>
+        /// Equipped items that other players see on one character.
+        /// </summary>
+        public const int MaximumVisibleEquipment = 8;
+
+        /// <summary>
         /// Chunks in one corpse presence snapshot or corpse view update.
         /// </summary>
         public const int MaximumCorpseChunkCount = 256;
@@ -307,7 +347,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 23;
+        public const ushort Version = 24;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -364,6 +404,11 @@ namespace Mmorpg.GameProtocol
         private const int MaximumMovementPathWaypoints = RealtimeProtocolLimits.MaximumMovementPathWaypoints;
         private const int MaximumWorldActorExamineTextLength = RealtimeProtocolLimits.MaximumWorldActorExamineTextLength;
         private const int MaximumWorldActorMenuOptionLength = RealtimeProtocolLimits.MaximumWorldActorMenuOptionLength;
+        private const int MaximumAppearanceKindLength = RealtimeProtocolLimits.MaximumAppearanceKindLength;
+        private const int MaximumAppearanceSlotLength = RealtimeProtocolLimits.MaximumAppearanceSlotLength;
+        private const int MaximumAppearanceNameLength = RealtimeProtocolLimits.MaximumAppearanceNameLength;
+        private const int MaximumAppearanceChoices = RealtimeProtocolLimits.MaximumAppearanceChoices;
+        private const int MaximumVisibleEquipment = RealtimeProtocolLimits.MaximumVisibleEquipment;
         private const int MaximumCorpseChunkCount = RealtimeProtocolLimits.MaximumCorpseChunkCount;
         private const int MaximumCorpsePresentationKeyLength = RealtimeProtocolLimits.MaximumCorpsePresentationKeyLength;
         private const int MaximumCorpseSectionSlotCapacity = RealtimeProtocolLimits.MaximumCorpseSectionSlotCapacity;
@@ -427,7 +472,10 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.CombatEventBatch, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.OwnerCombatState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemQuantityChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.EntityAppearanceChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>
