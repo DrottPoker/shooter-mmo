@@ -197,10 +197,18 @@ namespace Mmorpg.Client.Editor
             }
         }
 
+        // Plays a clip; a body that leaves a stress motion faces forward again, the way a walk or a
+        // jog moves it, and its chains start again from where they hang.
         public void Play(Motion motion)
         {
             Playing = motion;
-            Stress = null;
+            if (Stress != null)
+            {
+                Stress = null;
+                Body.transform.rotation = Quaternion.identity;
+                solver.Restart();
+            }
+
             Animate(Speed, motion == Motion.Death);
         }
 

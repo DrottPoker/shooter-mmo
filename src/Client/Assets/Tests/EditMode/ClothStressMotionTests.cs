@@ -96,6 +96,27 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void AJogAfterATurnMovesForwardAgain()
+        {
+            using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male")))
+            {
+                preview.Play(ClothStressMotion.Named("Turn 90"));
+                for (var frame = 0; frame < 180; frame++)
+                {
+                    preview.Step(Step, Vector3.back * 3f);
+                }
+
+                Assert.That(Quaternion.Angle(preview.Body.transform.rotation, Quaternion.identity), Is.GreaterThan(45f), "turned");
+                preview.Play(WardrobePreview.Motion.Jog);
+                var start = preview.Body.transform.position;
+                preview.Step(0.5f, Vector3.back * 3f);
+                Assert.That(Quaternion.Angle(preview.Body.transform.rotation, Quaternion.identity), Is.LessThan(1e-3f));
+                Assert.That(Vector3.Distance(preview.Body.transform.position, start + Vector3.forward * (0.5f * HumanLocomotion.JogSpeed)),
+                    Is.LessThan(1e-3f));
+            }
+        }
+
+        [Test]
         public void TheMeterFindsALegThatComesThroughTheCloth()
         {
             using (var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male")))
