@@ -481,8 +481,8 @@ namespace Mmorpg.Client.Editor
     {
         public string name = string.Empty;
         public ArtSkeletonBone[] bones = Array.Empty<ArtSkeletonBone>();
-        // The constants of the cloth on its chains, which ClothChainSolver, ClothKinematics, and the
-        // art pipeline's cloth_core.py share.
+        // The constants of the cloth on its chains, which ClothChainSolver, ClothPose, and the art
+        // pipeline's cloth_core.py share.
         public ArtSkeletonCloth cloth = new ArtSkeletonCloth();
     }
 
@@ -494,26 +494,35 @@ namespace Mmorpg.Client.Editor
         public int groovePasses;
         public float fallbackRadius;
         public float placeSpan;
-        public int resolveIterations;
-        public float minimumSlope;
-        public int chainPasses;
-        public float aheadBlend;
+        public float limbShare;
         public float followReach;
         public float layerGap;
+        public int samples;
+        public float maxSwingDegrees;
+        public float swingFadeDegrees;
+        public int advanceSteps;
+        public float advanceSafety;
+        public float exitAlong;
+        public float contactBand;
+        public float armPush;
+        public float straightBlendDot;
         public ArtSkeletonClothKind[] kinds = Array.Empty<ArtSkeletonClothKind>();
     }
 
-    // A body bone the cloth collides with and the bone its capsule ends at, empty for a sphere.
+    // A body bone the cloth collides with, the bone its capsule ends at, empty for a sphere, and
+    // what it is around: the trunk, a leg, or an arm.
     [Serializable]
     public sealed class ArtSkeletonCapsule
     {
         public string bone = string.Empty;
         public string end = string.Empty;
+        public string role = string.Empty;
     }
 
     // A kind of cloth chains, in the order the kinds lie on the body: the bone they hang from, their
     // bones, the part of the legs beside each bone, their profile's margin and slack, the kind whose
-    // cloth they lie over, and their chains.
+    // cloth they lie over, what they collide with, the capsule whose front they face from, or the
+    // hips' for none, and their chains.
     [Serializable]
     public sealed class ArtSkeletonClothKind
     {
@@ -524,6 +533,8 @@ namespace Mmorpg.Client.Editor
         public float margin;
         public float slack;
         public string over = string.Empty;
+        public string[] collides = Array.Empty<string>();
+        public string frame = string.Empty;
         public ArtSkeletonClothChain[] chains = Array.Empty<ArtSkeletonClothChain>();
     }
 

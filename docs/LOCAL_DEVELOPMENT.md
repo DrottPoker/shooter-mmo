@@ -4093,18 +4093,18 @@ builders do not change apart from the `PlayerSpawn` transform:
 - No LocalPlayer instance and no separate Main Camera. The player exists only
   after an accepted character join, and the runtime LocalPlayer owns the only
   gameplay camera and AudioListener.
-- `Gameplay/EntityPresentationRoot`, which owns runtime views for replicated
-  entities and is never a child of LocalPlayer.
 - A `WorldSceneContext` object whose component references the
-  `LocalPlayer.prefab` and `RemotePlayer.prefab` assets, `PlayerSpawn`, and
-  `EntityPresentationRoot`.
+  `LocalPlayer.prefab` and `RemotePlayer.prefab` assets and `PlayerSpawn`.
+  Runtime views of other players are roots of the World scene, so Unity's
+  transform jobs, such as the cloth's, take them side by side, and never
+  children of LocalPlayer.
 - One Directional Light.
 
 Expected result: a World scene contains no LocalPlayer or gameplay camera
 before a join. After an accepted join, WorldSceneContext creates one LocalPlayer
 from the assigned prefab at PlayerSpawn, connects it to the authoritative
-movement state, and connects its camera. Runtime remote views remain below
-`EntityPresentationRoot`. Opening a World scene directly without a joined
+movement state, and connects its camera. Runtime remote views are roots of the
+World scene. Opening a World scene directly without a joined
 session creates no player and reports no missing-reference error.
 The Unity project also contains separate EditMode and PlayMode test assemblies.
 Open `Window > General > Test Runner` and run both suites before delivering Unity
@@ -4512,9 +4512,8 @@ Remote interpolation test with a standalone build:
 5. Click to walk with each character while watching it from the other client.
 
 Expected result: each client owns one predicted local player and creates one
-presentation-only RemotePlayer instance for the other character under
-`Gameplay/EntityPresentationRoot`. The local player is not duplicated under
-that root. Remote motion is interpolated instead of jumping directly between 15
+presentation-only RemotePlayer instance for the other character, a root of the
+World scene. The local player is not duplicated. Remote motion is interpolated instead of jumping directly between 15
 Hz snapshots. After a temporary network or frame stall, the remote render clock
 restores its intended buffer instead of retaining permanent extra delay.
 Leaving or disconnecting sends reliable despawn and removes the corresponding

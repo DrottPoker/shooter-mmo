@@ -1,6 +1,6 @@
 """The art pipeline's kinematic cloth lays the chains as the Unity client does: every case of the
 fixtures that ClothKinematicFixtures writes from the Unity bodies is laid again with cloth_core.py and
-compared with what ClothKinematics laid. Runs without Blender:
+compared with what ClothPose laid. Runs without Blender:
 python -m unittest discover -s tools/blender/tests. See docs/ART_PIPELINE.md."""
 
 import json
@@ -29,7 +29,7 @@ class ClothCoreTests(unittest.TestCase):
             cls.fixture = json.load(file)
 
     def test_every_case_lays_as_unity_laid_it(self):
-        self.assertEqual(self.fixture["version"], 1)
+        self.assertEqual(self.fixture["version"], 2)
         self.assertTrue(self.fixture["cases"])
         worst = (0.0, "")
         for case in self.fixture["cases"]:
@@ -43,7 +43,7 @@ class ClothCoreTests(unittest.TestCase):
         self.assertLessEqual(worst[0], TOLERANCE, f"farthest from Unity: {worst[1]} by {worst[0] * 1000:.3f} mm")
 
     def test_a_body_at_rest_wears_its_cloth_as_made(self):
-        # In the bind pose nothing pushes a chain away from where it hangs, but a cloak over a robe
+        # In the bind pose nothing swings a chain away from where it hangs, but a cloak over a robe
         # lies over the robe's skirt.
         for case in self.fixture["cases"]:
             if not case["name"].endswith("/rest"):

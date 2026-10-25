@@ -365,17 +365,16 @@ namespace Mmorpg.Client.Tests.EditMode
                 var gameplay = FindGameObject(scene, "Gameplay");
                 var spawnPoint = FindGameObject(scene, "PlayerSpawn");
                 var context = FindGameObject(scene, "WorldSceneContext");
-                var entityPresentationRoot = FindGameObject(scene, "EntityPresentationRoot");
 
                 Assert.That(environment, Is.Not.Null);
                 Assert.That(gameplay, Is.Not.Null);
                 Assert.That(spawnPoint, Is.Not.Null);
                 Assert.That(context, Is.Not.Null);
-                Assert.That(entityPresentationRoot, Is.Not.Null);
+                // Remote players are roots of the scene, so no root gathers them.
+                Assert.That(FindGameObject(scene, "EntityPresentationRoot"), Is.Null);
                 Assert.That(FindGameObject(scene, "Main Camera"), Is.Null);
                 Assert.That(FindGameObject(scene, "LocalPlayer"), Is.Null);
                 Assert.That(spawnPoint.transform.parent, Is.EqualTo(gameplay.transform));
-                Assert.That(entityPresentationRoot.transform.parent, Is.EqualTo(gameplay.transform));
 
                 // PlayerSpawn follows the World manifest, which the worker uses.
                 Assert.That(
@@ -392,8 +391,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var remotePlayerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(RemotePlayerPrefabPath);
                 Assert.That(contextProperties.FindProperty("remotePlayerPrefab").objectReferenceValue,
                     Is.EqualTo(remotePlayerPrefab.GetComponent<RemotePlayerView>()));
-                Assert.That(contextProperties.FindProperty("entityPresentationRoot").objectReferenceValue,
-                    Is.EqualTo(entityPresentationRoot.transform));
+                Assert.That(contextProperties.FindProperty("entityPresentationRoot"), Is.Null);
 
                 var authoring = scene.GetRootGameObjects()
                     .SelectMany(root => root.GetComponentsInChildren<WorldCollisionAuthoring>(true))

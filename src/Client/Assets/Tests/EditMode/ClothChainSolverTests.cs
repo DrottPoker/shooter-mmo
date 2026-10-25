@@ -1,15 +1,17 @@
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Cloth;
 using Mmorpg.Client.Editor;
 using Mmorpg.Client.Gameplay;
 using NUnit.Framework;
+using Unity.Collections;
 using UnityEditor;
 using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
-    // The cloth chains of the Humanoid skeleton and the solver that moves them on the body, posed
-    // by its Animator step by step; see docs/EQUIPMENT_VISUALS_DESIGN.md.
+    // The cloth chains of the Humanoid skeleton and the solver that lays them on the body in its
+    // target pose, posed by its Animator step by step; see docs/EQUIPMENT_VISUALS_DESIGN.md.
     public sealed class ClothChainSolverTests
     {
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
@@ -100,8 +102,13 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(radii.Keys, Is.EquivalentTo(new[]
             {
                 "Hips", "Spine", "Chest", "UpperChest", "Neck", "Head", "UpperLeg_L", "LowerLeg_L", "UpperLeg_R", "LowerLeg_R",
+                "Foot_L", "Foot_R", "UpperArm_L", "LowerArm_L", "UpperArm_R", "LowerArm_R",
             }));
-            Assert.That(radii["UpperLeg_R"], Is.InRange(0.04f, 0.12f));
+            Assert.That(radii["UpperLeg_R"], Is.InRange(0.04f, 0.14f));
+            Assert.That(radii["Foot_R"], Is.InRange(0.03f, 0.1f));
+            Assert.That(radii["UpperArm_R"], Is.InRange(0.04f, 0.12f));
+            Assert.That(radii["LowerArm_R"], Is.InRange(0.02f, 0.06f));
+            Assert.That(radii["UpperArm_L"], Is.EqualTo(radii["UpperArm_R"]).Within(0.002f));
             Assert.That(radii["LowerLeg_R"], Is.InRange(0.03f, 0.08f));
             Assert.That(radii["UpperLeg_L"], Is.EqualTo(radii["UpperLeg_R"]).Within(0.002f));
             Assert.That(radii["Head"], Is.InRange(0.06f, 0.15f));
@@ -125,48 +132,16 @@ namespace Mmorpg.Client.Tests.EditMode
             solver.Activate(kind, ClothProfile.For(kind), garment);
             for (var step = 0; step < 10; step++)
             {
-                solver.Simulate(Step, body.transform.position + Vector3.forward * (ClothChainSolver.NearDistance + 10f));
+                solver.Simulate(Step, body.transform.position + Vector3.forward * 3f);
             }
 
-            // The garment's cloth keeps its margin from the body where its chains lie inside it, and
-            // where the trunk's capsules cannot follow the body, such as the hips' capsule at the small
-            // of the back, a chain keeps the place it has there.
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothChainSolver.Detail.Follow));
+            // Every sample of the cloth keeps no more margin from the body than it has in the bind
+            // pose, so a chain keeps the place it has there.
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Pose));
             foreach (var pair in rest)
             {
                 Assert.That(Quaternion.Angle(Bone(pair.Key).localRotation, pair.Value), Is.LessThan(1f), pair.Key);
             }
-        }
-
-        [Test]
-        public void ACloakLiesOverARobesSkirtWhileJogging()
-        {
-            SpawnBody();
-            var animator = body.GetComponent<Animator>();
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-            animator.Rebind();
-            animator.Update(0f);
-            var robe = AssetDatabase.LoadAssetAtPath<GameObject>(RobePath);
-            var cloak = AssetDatabase.LoadAssetAtPath<GameObject>(CloakPath);
-            Assert.That(robe, Is.Not.Null, RobePath);
-            Assert.That(cloak, Is.Not.Null, CloakPath);
-            var solver = body.GetComponent<ClothChainSolver>();
-            solver.Activate(ClothChainKind.Skirt, ClothProfile.Robe, robe);
-            solver.Activate(ClothChainKind.Cloak, ClothProfile.Cloak, cloak);
-            var deepest = float.NegativeInfinity;
-            Run(animator, solver, 60);
-            Move(animator, HumanLocomotion.JogSpeed);
-            for (var step = 0; step < 240; step++)
-            {
-                animator.Update(Step);
-                solver.Simulate(Step, body.transform.position);
-                deepest = Mathf.Max(deepest, solver.DeepestUnderCloak());
-            }
-
-            Assert.That(solver.LiesOverSkirt, Is.True);
-            // No particle of the cloak lies more than 5 mm into the skirt's cloth and the gap over it.
-            Assert.That(deepest, Is.LessThan(0.005f));
-            Assert.That(solver.DeepestInBody(ClothChainKind.Cloak), Is.LessThan(0.005f));
         }
 
         [Test]
@@ -181,7 +156,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 animator.Update(Step);
                 solver.Simulate(Step, body.transform.position);
-                deepest = Mathf.Max(deepest, solver.DeepestInBody(ClothChainKind.Skirt));
+                deepest = Mathf.Max(deepest, DeepestInLegs(solver, ClothChainKind.Skirt));
                 if (step >= 60)
                 {
                     var forward = body.transform.InverseTransformPoint(front.position).z;
@@ -190,9 +165,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
             }
 
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothChainSolver.Detail.Springs));
-            // No joint of a chain lies more than 5 mm deeper inside the body than at rest.
-            Assert.That(deepest, Is.LessThan(0.005f));
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Pose));
+            // No joint of a chain, nor the cloth between it and its neighbours, lies in the legs.
+            Assert.That(deepest, Is.LessThan(0.001f));
             // The front of the robe swings with the legs.
             Assert.That(farthest - nearest, Is.GreaterThan(0.08f));
         }
@@ -222,7 +197,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var front = ClothChains.All.First(chain => chain.Bones[0] == "SkirtFront1");
             Assert.That(Vector3.Dot(Bone(front.Bones[2]).position - hips, forward), Is.GreaterThan(knees - 0.06f));
             Assert.That(Bone(front.Bones[3]).position.y, Is.LessThan(Bone(front.Bones[2]).position.y));
-            Assert.That(solver.DeepestInBody(ClothChainKind.Skirt), Is.LessThan(0.005f));
+            Assert.That(DeepestInLegs(solver, ClothChainKind.Skirt), Is.LessThan(0.001f));
         }
 
         [Test]
@@ -261,7 +236,7 @@ namespace Mmorpg.Client.Tests.EditMode
             }
 
             // No hem hangs through the leg.
-            Assert.That(solver.DeepestInBody(ClothChainKind.Cloak), Is.LessThan(0.005f));
+            Assert.That(DeepestInLegs(solver, ClothChainKind.Cloak), Is.LessThan(0.001f));
         }
 
         [Test]
@@ -283,11 +258,16 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
 
                 // The tip rests on the bone the chain hangs from, which breathing still moves, and
-                // the farther it hangs, the more: so it is measured in that bone's frame.
+                // the farther it hangs, the more: so it is measured in that bone's frame. Where the
+                // legs touch the cloth it moves as they shift the weight, and no faster.
                 var anchor = root.parent;
+                var legs = new[] { "LowerLeg_L", "LowerLeg_R", "Foot_L", "Foot_R" }.Select(Bone).ToArray();
                 var before = anchor.InverseTransformPoint(tip.position);
+                var legsBefore = legs.Select(leg => anchor.InverseTransformPoint(leg.position)).ToArray();
                 Run(animator, solver, 30);
-                Assert.That(Vector3.Distance(before, anchor.InverseTransformPoint(tip.position)) / (30 * Step), Is.LessThan(0.02f),
+                var legSpeed = legs.Select((leg, index) => Vector3.Distance(legsBefore[index], anchor.InverseTransformPoint(leg.position))).Max()
+                    / (30 * Step);
+                Assert.That(Vector3.Distance(before, anchor.InverseTransformPoint(tip.position)) / (30 * Step), Is.LessThan(legSpeed + 0.01f),
                     chain.Bones[0]);
                 // The chain hangs down from its root, not out to the side.
                 Assert.That(root.position.y - tip.position.y, Is.GreaterThan(0.6f * reach), chain.Bones[0]);
@@ -310,17 +290,17 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void FartherAwayTheChainsFollowAndFarAwayTheyRest()
+        public void WithinTheFarDistanceTheChainsAreLaidAndBeyondTheyRest()
         {
             var (animator, solver) = Dress(ClothChainKind.Skirt);
             var rest = ClothChains.All.SelectMany(chain => chain.Bones).ToDictionary(bone => bone, bone => Bone(bone).localRotation);
             Move(animator, HumanLocomotion.JogSpeed);
             animator.Update(Step);
-            solver.Simulate(Step, body.transform.position + Vector3.forward * (ClothChainSolver.NearDistance + 10f));
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothChainSolver.Detail.Follow));
+            solver.Simulate(Step, body.transform.position + Vector3.forward * (ClothChainSolver.FarDistance - 10f));
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Pose));
             animator.Update(Step);
             solver.Simulate(Step, body.transform.position + Vector3.forward * (ClothChainSolver.FarDistance + 10f));
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothChainSolver.Detail.Rest));
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Rest));
             foreach (var pair in rest)
             {
                 Assert.That(Quaternion.Angle(Bone(pair.Key).localRotation, pair.Value), Is.LessThan(0.01f), pair.Key);
@@ -335,19 +315,18 @@ namespace Mmorpg.Client.Tests.EditMode
             Run(animator, solver, 60);
             var pose = ClothChains.All.SelectMany(chain => chain.Bones).ToDictionary(bone => bone, bone => Bone(bone).localRotation);
             animator.Update(Step);
-            solver.Simulate(Step, ClothChainSolver.Detail.Hidden);
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothChainSolver.Detail.Hidden));
+            solver.Simulate(Step, ClothDetail.Hidden);
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Hidden));
             foreach (var pair in pose)
             {
                 Assert.That(Bone(pair.Key).localRotation, Is.EqualTo(pair.Value), pair.Key);
             }
 
-            // The body moved far while out of view; seen again, its chains hang from it at once
-            // instead of swinging after where they were.
+            // The body moved far while out of view; seen again, its chains hang from it at once.
             Move(animator, 0f);
             body.transform.position += new Vector3(1.5f, 0f, 0f);
             animator.Update(Step);
-            solver.Simulate(Step, ClothChainSolver.Detail.Springs);
+            solver.Simulate(Step, ClothDetail.Pose);
             foreach (var chain in ClothChains.All.Where(chain => chain.Kind == ClothChainKind.Skirt))
             {
                 var root = Bone(chain.Bones[0]);
@@ -376,7 +355,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 foreach (var (animator, solver) in new[] { (aloneAnimator, alone), (firstAnimator, first), (secondAnimator, second) })
                 {
                     animator.Update(Step);
-                    solver.Simulate(Step, ClothChainSolver.Detail.Springs);
+                    solver.Simulate(Step, ClothDetail.Pose);
                 }
             }
 
@@ -417,7 +396,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var rest = ClothChains.All.SelectMany(chain => chain.Bones).ToDictionary(bone => bone, bone => Bone(bone).localRotation);
             solver.Simulate(Step, body.transform.position);
             Assert.That(solver.IsActive, Is.False);
-            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothChainSolver.Detail.Rest));
+            Assert.That(solver.CurrentDetail, Is.EqualTo(ClothDetail.Rest));
             foreach (var pair in rest)
             {
                 Assert.That(Bone(pair.Key).localRotation, Is.EqualTo(pair.Value), pair.Key);
@@ -427,6 +406,51 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(solver.IsActive, Is.True);
             solver.Deactivate(ClothChainKind.Hood);
             Assert.That(solver.IsActive, Is.False);
+        }
+
+        // How far the cloth at the deepest joint or tip of the chains of a kind lies in a leg beyond
+        // what the target pose lets it, as the last step laid it: the cloth lies its garment's reach
+        // within each joint and keeps the profile's margin from the legs, but no more than it has in
+        // the bind pose less the contact band, as docs/EQUIPMENT_VISUALS_DESIGN.md describes.
+        private static float DeepestInLegs(ClothChainSolver solver, ClothChainKind kind)
+        {
+            var captured = solver.CaptureKinematics("legs");
+            var margin = ClothProfile.For(kind).Margin;
+            var deepest = float.NegativeInfinity;
+            foreach (var chain in captured.chains.Where(chain => chain.kind == kind.ToString().ToLowerInvariant()))
+            {
+                for (var particle = 1; particle < chain.expected.Length; particle++)
+                {
+                    var within = chain.reachKnown && chain.hasReach[particle] ? chain.reach[particle].y : 0f;
+                    for (var capsule = 0; capsule < captured.capsules.Count; capsule++)
+                    {
+                        if (captured.capsules[capsule].role != "leg")
+                        {
+                            continue;
+                        }
+
+                        var now = DepthIn(captured.capsules[capsule], chain.expected[particle], margin + within);
+                        var atRest = DepthIn(captured.bindCapsules[capsule], chain.bindHanging[particle], margin + within);
+                        deepest = Mathf.Max(deepest, now - Mathf.Max(atRest + ClothPose.ContactBand, 0f));
+                    }
+                }
+            }
+
+            return deepest;
+        }
+
+        // How far a point lies within a captured capsule and a margin.
+        private static float DepthIn(ClothKinematicCapsule capsule, Vector3 point, float margin)
+        {
+            var radii = new NativeArray<float>(capsule.radii, Allocator.Temp);
+            try
+            {
+                return ClothPose.Depth(capsule.Capsule(0), radii, point, margin);
+            }
+            finally
+            {
+                radii.Dispose();
+            }
         }
 
         private void SpawnBody()

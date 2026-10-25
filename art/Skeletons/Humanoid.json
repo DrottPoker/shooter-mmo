@@ -122,31 +122,43 @@
     ],
     "cloth": {
         "capsules": [
-            {"bone": "Hips", "end": "Spine"},
-            {"bone": "Spine", "end": "Chest"},
-            {"bone": "Chest", "end": "UpperChest"},
-            {"bone": "UpperChest", "end": "Neck"},
-            {"bone": "Neck", "end": "Head"},
-            {"bone": "Head", "end": null},
-            {"bone": "UpperLeg_L", "end": "LowerLeg_L"},
-            {"bone": "LowerLeg_L", "end": "Foot_L"},
-            {"bone": "UpperLeg_R", "end": "LowerLeg_R"},
-            {"bone": "LowerLeg_R", "end": "Foot_R"}
+            {"bone": "Hips", "end": "Spine", "role": "trunk"},
+            {"bone": "Spine", "end": "Chest", "role": "trunk"},
+            {"bone": "Chest", "end": "UpperChest", "role": "trunk"},
+            {"bone": "UpperChest", "end": "Neck", "role": "trunk"},
+            {"bone": "Neck", "end": "Head", "role": "trunk"},
+            {"bone": "Head", "end": null, "role": "trunk"},
+            {"bone": "UpperLeg_L", "end": "LowerLeg_L", "role": "leg"},
+            {"bone": "LowerLeg_L", "end": "Foot_L", "role": "leg"},
+            {"bone": "UpperLeg_R", "end": "LowerLeg_R", "role": "leg"},
+            {"bone": "LowerLeg_R", "end": "Foot_R", "role": "leg"},
+            {"bone": "Foot_L", "end": "Toes_L", "role": "leg"},
+            {"bone": "Foot_R", "end": "Toes_R", "role": "leg"},
+            {"bone": "UpperArm_L", "end": "LowerArm_L", "role": "arm"},
+            {"bone": "LowerArm_L", "end": "Hand_L", "role": "arm"},
+            {"bone": "UpperArm_R", "end": "LowerArm_R", "role": "arm"},
+            {"bone": "LowerArm_R", "end": "Hand_R", "role": "arm"}
         ],
         "directions": 16,
         "groovePasses": 2,
         "fallbackRadius": 0.05,
         "placeSpan": 0.05,
-        "resolveIterations": 8,
-        "minimumSlope": 0.2,
-        "chainPasses": 3,
-        "aheadBlend": 0.05,
+        "limbShare": 0.9,
         "followReach": 0.3,
         "layerGap": 0.01,
+        "samples": 6,
+        "maxSwingDegrees": 165,
+        "swingFadeDegrees": 30,
+        "advanceSteps": 8,
+        "advanceSafety": 1.5,
+        "exitAlong": 0.3,
+        "contactBand": 0.02,
+        "armPush": 0.08,
+        "straightBlendDot": 0.95,
         "kinds": [
             {
                 "kind": "skirt", "parent": "Hips", "bones": 4, "beside": ["thigh", "thigh", "shin", "shin"],
-                "margin": 0.012, "slack": 0.1, "over": null,
+                "margin": 0.012, "slack": 0.1, "over": null, "collides": ["trunk", "leg"], "frame": null,
                 "chains": [
                     {"name": "SkirtFront", "angle": 0, "sided": false},
                     {"name": "SkirtFrontSide", "angle": 45, "sided": true},
@@ -157,7 +169,7 @@
             },
             {
                 "kind": "cloak", "parent": "UpperChest", "bones": 5, "beside": ["none", "none", "thigh", "thigh", "shin"],
-                "margin": 0.02, "slack": 0.05, "over": "skirt",
+                "margin": 0.02, "slack": 0.05, "over": "skirt", "collides": ["trunk", "leg", "arm"], "frame": null,
                 "chains": [
                     {"name": "CloakCenter", "angle": 180, "sided": false},
                     {"name": "CloakInner", "angle": 157.5, "sided": true},
@@ -166,7 +178,7 @@
             },
             {
                 "kind": "hood", "parent": "Head", "bones": 2, "beside": [],
-                "margin": 0.01, "slack": 0, "over": null,
+                "margin": 0.01, "slack": 0, "over": null, "collides": ["trunk"], "frame": "Head",
                 "chains": [
                     {"name": "Hood", "angle": 180, "sided": false}
                 ]

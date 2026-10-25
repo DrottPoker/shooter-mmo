@@ -105,8 +105,8 @@ World Debug setting `Tint bodies` on, off by default, the local player is tinted
 purple, other players orange, and synthetic development bots blue. SimulationWorker assigns each live
 player a network entity id. Reliable spawn and despawn messages decide when a
 remote player exists, while unreliable snapshots update only its movement.
-Remote instances are kept under the active World scene's separate
-`EntityPresentationRoot`, outside the runtime LocalPlayer hierarchy.
+Remote instances are roots of the active World scene, outside the runtime
+LocalPlayer hierarchy.
 SimulationWorker uses distance-based interest management, so distant entities are
 removed reliably and recreated reliably when they enter the configured area of
 interest. Snapshot loss never decides whether a remote player exists.

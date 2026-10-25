@@ -198,7 +198,7 @@ namespace Mmorpg.Client.Editor
         }
 
         // Plays a clip; a body that leaves a stress motion faces forward again, the way a walk or a
-        // jog moves it, and its chains start again from where they hang.
+        // jog moves it.
         public void Play(Motion motion)
         {
             Playing = motion;
@@ -206,21 +206,19 @@ namespace Mmorpg.Client.Editor
             {
                 Stress = null;
                 Body.transform.rotation = Quaternion.identity;
-                solver.Restart();
             }
 
             Animate(Speed, motion == Motion.Death);
         }
 
-        // Plays a stress motion from its start: its clips from their start, and the chains from
-        // where they hang, so every run of a motion is alike; at its end it starts again.
+        // Plays a stress motion from its start, its clips from their start, so every run of a motion
+        // is alike; at its end it starts again.
         public void Play(ClothStressMotion motion)
         {
             Stress = motion;
             StressTime = 0f;
             animator.Rebind();
             animator.Update(0f);
-            solver.Restart();
             network.Configure(ClothStressMotion.NetworkTickRateHz,
                 RemoteMovementPresenter.InterpolationDelayTicks(ClothStressMotion.NetworkTickRateHz, ClothStressMotion.NetworkSnapshotRateHz),
                 null, null);

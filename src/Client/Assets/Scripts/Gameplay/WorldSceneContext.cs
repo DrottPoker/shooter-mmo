@@ -20,7 +20,6 @@ namespace Mmorpg.Client.Gameplay
         [SerializeField] private LocalPlayerController localPlayerPrefab;
         [SerializeField] private Transform playerSpawnPoint;
         [SerializeField] private RemotePlayerView remotePlayerPrefab;
-        [SerializeField] private Transform entityPresentationRoot;
 
         private readonly Dictionary<ulong, RemotePlayerView> remotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
@@ -258,6 +257,14 @@ namespace Mmorpg.Client.Gameplay
                 equipment.Changed -= OnEquipmentChanged;
             }
 
+            foreach (var remotePlayer in remotePlayers.Values)
+            {
+                if (remotePlayer != null)
+                {
+                    Destroy(remotePlayer.gameObject);
+                }
+            }
+
             remotePlayers.Clear();
             deferredAppearances.Clear();
             waitingBodies.Clear();
@@ -291,7 +298,10 @@ namespace Mmorpg.Client.Gameplay
             // every far spawn cost milliseconds, and the next owner snapshot unloaded them again.
             if (!remotePlayers.TryGetValue(spawn.EntityId, out var remotePlayer))
             {
-                remotePlayer = Instantiate(remotePlayerPrefab, entityPresentationRoot);
+                // Every remote player is a root of the World scene, so Unity's transform jobs, such
+                // as the cloth's, take the players' bones on their worker threads side by side.
+                remotePlayer = Instantiate(remotePlayerPrefab);
+                SceneManager.MoveGameObjectToScene(remotePlayer.gameObject, gameObject.scene);
                 remotePlayer.Initialize(
                     spawn.EntityId,
                     spawn.PersistentId,
@@ -627,12 +637,9 @@ namespace Mmorpg.Client.Gameplay
         {
             if (localPlayerPrefab == null
                 || playerSpawnPoint == null
-                || remotePlayerPrefab == null
-                || entityPresentationRoot == null)
+                || remotePlayerPrefab == null)
             {
-                Debug.LogError(
-                    "WorldSceneContext requires a local player prefab, spawn point, remote player prefab, and entity presentation root.",
-                    this);
+                Debug.LogError("WorldSceneContext requires a local player prefab, spawn point, and remote player prefab.", this);
                 return false;
             }
 
