@@ -42,10 +42,16 @@ namespace Mmorpg.Client.Tests.EditMode
 
         // A body still draws after its outfit changes the size of its combined mesh. Unity 6000.6 stopped
         // drawing an enabled skinned renderer whose mesh changed to one of another size, with the error
-        // "does not match the expected mesh data size and vertex stride", which fails the test.
+        // "does not match the expected mesh data size and vertex stride", which fails the test. It needs
+        // a graphics device, so the headless run with -nographics skips it.
         [Test]
         public void ABodyDrawsAfterEveryChangeOfItsOutfit()
         {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+            {
+                Assert.Ignore("Drawing needs a graphics device; run this test in the Editor.");
+            }
+
             foreach (var body in WardrobePreview.Bodies())
             {
                 using (var preview = new WardrobePreview(body))
