@@ -410,7 +410,7 @@ and its Player server stays disabled because the Pipeline Runtime setting
 
 ## Content Loading With Addressables
 
-The client uses Addressables 2.9.1 for all runtime content; there is no
+The client uses Addressables 2.11.2 for all runtime content; there is no
 `Resources` folder and no `Resources.Load` call. Content lives in folders below
 `Assets/Content`. Each folder is one Addressables folder entry whose address is
 its path below `Assets/Content`, so an asset's address is its path below that
