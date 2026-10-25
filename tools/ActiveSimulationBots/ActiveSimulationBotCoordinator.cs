@@ -67,18 +67,7 @@ public sealed class ActiveSimulationBotCoordinator(
                 }
 
                 ReducePopulationToTarget(now);
-                if (ActiveSimulationBotPopulationPolicy.CanStartConnection(
-                        CountDesiredOnlineBots(),
-                        targetPopulation,
-                        CountConnectionOccupancy(),
-                        options.MaximumActiveBots)
-                    && now >= nextSpawn)
-                {
-                    StartOneTicketRequest(now, cancellationToken);
-                    nextSpawn = AddDuration(
-                        now,
-                        TimeSpan.FromSeconds(1d / options.StartupBotsPerSecond));
-                }
+                nextSpawn = StartDueTicketRequests(now, nextSpawn, cancellationToken);
 
                 if (now >= nextStatus)
                 {
@@ -206,21 +195,29 @@ public sealed class ActiveSimulationBotCoordinator(
             var client = slot.Client!;
             if (client.State == SimulationBotClientState.Joined && !slot.JoinObserved)
             {
-                slot.JoinObserved = true;
-                slot.ConsecutiveFailures = 0;
-                slot.OnlineUntilTimestamp = AddDuration(
-                    nowTimestamp,
-                    RandomDuration(
-                        options.MinimumOnlineDuration,
-                        options.MaximumOnlineDuration));
-                successfulLogins++;
-                Console.WriteLine($"{client.Capture().CharacterName} joined the shard.");
+                ObserveJoin(slot, client.Capture(), nowTimestamp);
             }
 
-            if (client.State == SimulationBotClientState.Completed)
+            if (client.State is not (SimulationBotClientState.Completed
+                or SimulationBotClientState.Failed))
+            {
+                continue;
+            }
+
+            var snapshot = client.Capture();
+            // A bot can join and end its session in the same poll.
+            if (!slot.JoinObserved && snapshot.JoinLatencyMs is not null)
+            {
+                ObserveJoin(slot, snapshot, nowTimestamp);
+            }
+
+            if (snapshot.State == SimulationBotClientState.Completed)
             {
                 gracefulLogouts++;
-                Console.WriteLine($"{client.Capture().CharacterName} logged out cleanly.");
+                // Only a clean session resets the backoff, so a bot that fails right after
+                // every join backs off instead of reconnecting every few seconds.
+                slot.ConsecutiveFailures = 0;
+                Console.WriteLine($"{snapshot.CharacterName} logged out cleanly.");
                 FinishClient(
                     slot,
                     AddDuration(
@@ -229,9 +226,8 @@ public sealed class ActiveSimulationBotCoordinator(
                             options.MinimumOfflineDuration,
                             options.MaximumOfflineDuration)));
             }
-            else if (client.State == SimulationBotClientState.Failed)
+            else
             {
-                var snapshot = client.Capture();
                 botSessionFailures++;
                 Console.WriteLine(
                     $"{snapshot.CharacterName} failed: {snapshot.FailureCode}: {snapshot.FailureMessage}");
@@ -239,6 +235,21 @@ public sealed class ActiveSimulationBotCoordinator(
                 ScheduleRetry(slot, nowTimestamp);
             }
         }
+    }
+
+    private void ObserveJoin(
+        ActiveBotSlot slot,
+        SimulationBotClientSnapshot snapshot,
+        long nowTimestamp)
+    {
+        slot.JoinObserved = true;
+        slot.OnlineUntilTimestamp = AddDuration(
+            nowTimestamp,
+            RandomDuration(
+                options.MinimumOnlineDuration,
+                options.MaximumOnlineDuration));
+        successfulLogins++;
+        Console.WriteLine($"{snapshot.CharacterName} joined the shard.");
     }
 
     private void RequestExpiredOnlineSessions(long nowTimestamp)
@@ -286,7 +297,33 @@ public sealed class ActiveSimulationBotCoordinator(
         }
     }
 
-    private void StartOneTicketRequest(
+    // Starts every ticket request that is due at the startup rate, so rates above one per poll
+    // hold. While no request can start, no backlog builds up, so a ramp never bursts.
+    private long StartDueTicketRequests(
+        long nowTimestamp,
+        long nextSpawnTimestamp,
+        CancellationToken cancellationToken)
+    {
+        var spawnInterval = AddDuration(0, TimeSpan.FromSeconds(1d / options.StartupBotsPerSecond));
+        while (nowTimestamp >= nextSpawnTimestamp)
+        {
+            if (!ActiveSimulationBotPopulationPolicy.CanStartConnection(
+                    CountDesiredOnlineBots(),
+                    targetPopulation,
+                    CountConnectionOccupancy(),
+                    options.MaximumActiveBots)
+                || !StartOneTicketRequest(nowTimestamp, cancellationToken))
+            {
+                return nowTimestamp;
+            }
+
+            nextSpawnTimestamp += spawnInterval;
+        }
+
+        return nextSpawnTimestamp;
+    }
+
+    private bool StartOneTicketRequest(
         long nowTimestamp,
         CancellationToken cancellationToken)
     {
@@ -296,13 +333,14 @@ public sealed class ActiveSimulationBotCoordinator(
             && candidate.EligibleAtTimestamp <= nowTimestamp);
         if (slot is null)
         {
-            return;
+            return false;
         }
 
         slot.TicketRequest = authorityClient.IssueTicketAsync(
             slot.InstanceId,
             slot.Index,
             cancellationToken);
+        return true;
     }
 
     private void RequestLeave(ActiveBotSlot slot, long nowTimestamp)
@@ -338,15 +376,13 @@ public sealed class ActiveSimulationBotCoordinator(
     private void ScheduleRetry(ActiveBotSlot slot, long nowTimestamp)
     {
         slot.ConsecutiveFailures = Math.Min(slot.ConsecutiveFailures + 1, 10);
-        var exponentialSeconds = options.MinimumRetryDelay.TotalSeconds
-            * Math.Pow(2d, slot.ConsecutiveFailures - 1);
-        var cappedSeconds = Math.Min(
-            options.MaximumRetryDelay.TotalSeconds,
-            exponentialSeconds);
-        var jitteredSeconds = cappedSeconds * (0.75d + (random.NextDouble() * 0.5d));
         slot.EligibleAtTimestamp = AddDuration(
             nowTimestamp,
-            TimeSpan.FromSeconds(jitteredSeconds));
+            ActiveSimulationBotPopulationPolicy.GetRetryDelay(
+                slot.ConsecutiveFailures,
+                options.MinimumRetryDelay,
+                options.MaximumRetryDelay,
+                random.NextDouble()));
     }
 
     private int CountDesiredOnlineBots()

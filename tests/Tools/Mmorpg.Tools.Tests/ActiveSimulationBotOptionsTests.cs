@@ -43,6 +43,28 @@ public sealed class ActiveSimulationBotOptionsTests
                 maximum));
     }
 
+    [Theory]
+    [InlineData(1, 0.5, 2)]
+    [InlineData(2, 0.5, 4)]
+    [InlineData(4, 0.5, 16)]
+    [InlineData(5, 0.5, 30)]
+    [InlineData(10, 0.5, 30)]
+    [InlineData(1, 0, 1.5)]
+    [InlineData(5, 0.999999, 37.49997)]
+    public void RetryDelayDoublesUpToTheMaximumWithJitter(
+        int consecutiveFailures,
+        double jitterSample,
+        double expectedSeconds)
+    {
+        var delay = ActiveSimulationBotPopulationPolicy.GetRetryDelay(
+            consecutiveFailures,
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(30),
+            jitterSample);
+
+        Assert.Equal(expectedSeconds, delay.TotalSeconds, 0.0001);
+    }
+
     [Fact]
     public void ParsesValidPopulationAndBehaviorConfiguration()
     {

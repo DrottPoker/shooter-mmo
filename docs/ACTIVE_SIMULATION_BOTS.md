@@ -1,6 +1,6 @@
 # Active Simulation Bots
 
-Last updated: 2026-10-21
+Last updated: 2026-10-25
 
 ## Purpose
 
@@ -23,6 +23,31 @@ so a Unity player cannot attack them.
 It is not a capacity benchmark. Use
 [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only or
 full-stack ramp, soak, resource, and latency measurements.
+
+## Protocol Handling
+
+Every bot, here and in the stack stress generator, runs one
+`SimulationBotSession` from `tools/SimulationBotClient`: the protocol side of
+the connection, apart from the LiteNetLib transport in `SimulationBotClient`.
+The session runs on the timestamps its caller passes in, so tests drive it
+without a network.
+
+- Every message must arrive on the channel and with the delivery that its
+  descriptor in the protocol schema names, and must decode. The bot also sends
+  every message with the channel and delivery of its descriptor.
+- A snapshot can overtake the reliable join acceptance, so one that arrives
+  before it is dropped. Any other session message before the acceptance fails
+  the bot.
+- While a leave is pending, the bot accepts every message of a joined session,
+  because the worker keeps sending until it has released the session.
+- The bot acts only on owner snapshots and on the results of its own item and
+  corpse operations. It decodes and drops everything else, such as the look the
+  worker sends every player when it joins, and the looks of other players.
+- A server-to-client message type the session does not handle fails the bot
+  with `unexpected_message`. `SimulationBotSessionTests` in
+  `tests/Tools/Mmorpg.Tools.Tests` feeds the golden vector of every message type
+  through the session, so a new message type fails that test until the session
+  handles it, instead of failing every bot at runtime.
 
 ## Architecture And Safety Boundary
 
@@ -65,6 +90,13 @@ connection limit. A bot ticket and a player ticket issued at the same moment
 can both pass, because bot tickets are not database rows; the reserved player
 connections absorb that overlap.
 
+A bot asks for a new ticket only after it gave up its previous connection, so a
+new request supersedes the bot's own unconsumed ticket, as a player's new join
+supersedes the account's pending ticket. A ticket of a bot whose join timed out
+therefore neither blocks the bot's next attempt nor holds a connection until it
+expires. A bot whose session is still active gets
+`development_bot_already_active` instead.
+
 ## Configuration
 
 Authority controls live in
@@ -88,17 +120,17 @@ Population and behavior controls live in
 | `ShardId` | `local-shard-2` | Shard requested for every bot: the stress arena. Use `local-shard-1` for a population spread over Development World 2 |
 | `MinimumActiveBots` | `300` | Lower bound for randomly selected population targets |
 | `MaximumActiveBots` | `400` | Upper bound and number of stable bot slots |
-| `StartupBotsPerSecond` | `20` | Maximum ticket and connection ramp rate |
+| `StartupBotsPerSecond` | `20` | Maximum ticket and connection ramp rate; every request that is due starts in the same poll, so rates above one per poll hold |
 | `PopulationChangeIntervalSeconds` | `30` | Interval between random target changes |
 | `MinimumOnlineSeconds`, `MaximumOnlineSeconds` | `120`, `240` | Random joined lifetime before graceful logout |
 | `MinimumOfflineSeconds`, `MaximumOfflineSeconds` | `5`, `25` | Random rest before the same slot may log in again |
 | `MinimumBehaviorSeconds`, `MaximumBehaviorSeconds` | `2`, `6` | Random behavior duration; a walk heads for a destination about that many seconds of walking away |
 | `IdleChance` | `0.15` | Chance that a new behavior interval is idle |
 | `JoinAndLeaveTimeoutSeconds` | `10` | UDP handshake and graceful leave deadline |
-| `MinimumRetrySeconds`, `MaximumRetrySeconds` | `2`, `30` | Exponential reconnect range with jitter |
+| `MinimumRetrySeconds`, `MaximumRetrySeconds` | `2`, `30` | Exponential reconnect range with jitter; only a clean logout resets it, so a bot that fails right after every join backs off |
 | `ShutdownTimeoutSeconds` | `15` | Ctrl+C graceful leave deadline |
 | `StatusIntervalSeconds` | `5` | Console population and traffic report interval |
-| `Seed` | `1337` | Repeatable population and movement random source |
+| `Seed` | `1337` | Repeatable population and movement random source; the same seed gives every bot the same walks in every run |
 
 The tool validates all ranges before opening a connection. Real environment
 variables and command-line configuration keys override the checked-in JSON.
@@ -200,6 +232,14 @@ Expected result:
 - When SimulationWorker `MaxConnections` would be crossed, GameService returns
   `development_bot_worker_capacity_reached` and the affected slot retries with
   exponential backoff and jitter.
+- A ticket response the bot cannot use counts as a ticket rejection, with
+  `invalid_authority_response`, instead of stopping the tool. Like the Unity
+  client, a bot never connects to a worker on another protocol version, and the
+  slot reports `protocol_version_mismatch` instead.
+- A bot whose session failed or completed releases its UDP connection in the
+  same poll, so the worker frees its character at once. The transport drops the
+  connection after 10 seconds without any packet, the Unity client's default;
+  `JoinAndLeaveTimeoutSeconds` only bounds the join and the leave.
 
 Press Ctrl+C once. Expected result: joined bots request graceful leave, the tool
 waits up to `ShutdownTimeoutSeconds`, prints its final status, and exits.

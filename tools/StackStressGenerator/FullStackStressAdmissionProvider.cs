@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.Tools.StackStressGenerator;
 
@@ -439,6 +440,15 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             throw new FullStackApiException(
                 "invalid_join_response",
                 "GameService returned a join response that does not match the expected character, shard, World, or worker.",
+                0);
+        }
+
+        // Like the Unity client, a bot never connects to a worker on another protocol version.
+        if (join.Endpoint.ProtocolVersion != RealtimeProtocol.Version)
+        {
+            throw new FullStackApiException(
+                "protocol_version_mismatch",
+                $"SimulationWorker runs protocol version {join.Endpoint.ProtocolVersion}, but the bots require version {RealtimeProtocol.Version}.",
                 0);
         }
     }
