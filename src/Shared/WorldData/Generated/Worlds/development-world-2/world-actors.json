@@ -2,7 +2,7 @@
   "formatVersion": 4,
   "catalogId": "core",
   "worldId": "development-world-2",
-  "revision": "7dc743e068fb9e5d0299305a8358d30d9790fc72b267e563aad009a32c5cf324",
+  "revision": "7954bd692caab2bcdad07870b43b43382cc51586873d9cec44ca3bf36da42290",
   "factions": [
     {
       "id": "city",
@@ -53,6 +53,12 @@
       "displayName": "Iron Vein",
       "actorKind": "resource_node",
       "structuralFingerprint": "ad236d6468e47cce6eb819fb4915ce9ceeb4127c3ff0decec2fbc13a79650267"
+    },
+    {
+      "id": "resource.oak_tree",
+      "displayName": "Oak Tree",
+      "actorKind": "resource_node",
+      "structuralFingerprint": "8ba85619b28e567fb462457a511bac36779f5cadbbebb32c1174ac1404001c2c"
     }
   ],
   "activityProfiles": [
@@ -89,6 +95,16 @@
       "charges": 5,
       "respawnSeconds": 30,
       "structuralFingerprint": "7735e56d519d4dafd8039027e6b72405be46ab31f195972f5901b4ae05ef17ea"
+    },
+    {
+      "id": "resource.oak_tree",
+      "requiredToolKind": "woodcutting_axe",
+      "yieldDefinitionId": "material.oak_log",
+      "yieldQuantity": 1,
+      "cycleSeconds": 3,
+      "charges": 5,
+      "respawnSeconds": 30,
+      "structuralFingerprint": "7401f58bbc7781583437439942cf4987dcb719bddf3cb75cf060ab82baa3a6ac"
     }
   ],
   "combatProfiles": [
@@ -439,6 +455,47 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "structuralFingerprint": "2d5e3decaa7907d53d2a8f86e539e443979a84296609553d3afa00e2282c0763"
+    },
+    {
+      "id": "resource.oak_tree",
+      "displayName": "Oak Tree",
+      "examineText": "An old oak with a twisted trunk and a crown like a storm cloud. A woodcutting axe would bring it down.",
+      "kind": "resource_node",
+      "factionId": "world",
+      "disposition": "neutral",
+      "presentationArchetypeId": "resource.oak_tree",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "resource",
+        "woodcutting"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 2.8,
+        "centerZ": 0,
+        "sizeX": 4,
+        "sizeY": 5.6,
+        "sizeZ": 4
+      },
+      "capabilities": [
+        {
+          "id": "resource.chop",
+          "kind": "gathering",
+          "displayName": "Chop",
+          "menuOption": "Chop down",
+          "profileId": "resource.oak_tree",
+          "structuralFingerprint": "140af654bfea30fc9bff082414e2dc31f7cf9df0fc65872bed47607615001389"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": "",
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0,
+      "combatProfileId": "",
+      "brainProfileId": "",
+      "locomotionProfileId": "",
+      "lootProfileId": "",
+      "structuralFingerprint": "62379485903aa79aeef8620adbf283978f0e540456e98031cb4329a15bb97e3a"
     }
   ],
   "spawnSources": [
@@ -481,6 +538,86 @@
       "spacing": 0,
       "seed": 2201,
       "structuralFingerprint": "c2fd26bfa61307eac3e81e95f259e476bab066dd57df0e3d331bab48fcfe7d29"
+    },
+    {
+      "id": "development_world_2.grove_oak_east",
+      "kind": "point",
+      "actorId": "resource.oak_tree",
+      "instanceCount": 1,
+      "patrolPathId": "",
+      "originX": 48,
+      "originY": 0,
+      "originZ": -88,
+      "minimumX": 48,
+      "minimumZ": -88,
+      "maximumX": 48,
+      "maximumZ": -88,
+      "yawDegrees": 70,
+      "rows": 1,
+      "columns": 1,
+      "spacing": 0,
+      "seed": 0,
+      "structuralFingerprint": "a8f80e8389b363cc4974de1e84a3759a048c7936e07397c33faff55d1953f2a4"
+    },
+    {
+      "id": "development_world_2.grove_oak_north",
+      "kind": "point",
+      "actorId": "resource.oak_tree",
+      "instanceCount": 1,
+      "patrolPathId": "",
+      "originX": 38,
+      "originY": 0,
+      "originZ": -80,
+      "minimumX": 38,
+      "minimumZ": -80,
+      "maximumX": 38,
+      "maximumZ": -80,
+      "yawDegrees": 0,
+      "rows": 1,
+      "columns": 1,
+      "spacing": 0,
+      "seed": 0,
+      "structuralFingerprint": "85598a30fd98a318936c36811061e5428060102bb0947647416efcc50501eabf"
+    },
+    {
+      "id": "development_world_2.grove_oak_south",
+      "kind": "point",
+      "actorId": "resource.oak_tree",
+      "instanceCount": 1,
+      "patrolPathId": "",
+      "originX": 42,
+      "originY": 0,
+      "originZ": -100,
+      "minimumX": 42,
+      "minimumZ": -100,
+      "maximumX": 42,
+      "maximumZ": -100,
+      "yawDegrees": 215,
+      "rows": 1,
+      "columns": 1,
+      "spacing": 0,
+      "seed": 0,
+      "structuralFingerprint": "cd3a4daa28f46c5f5c090d2d173c2abc618b2dd21ff9ce74dac0c6563718fe80"
+    },
+    {
+      "id": "development_world_2.grove_oak_west",
+      "kind": "point",
+      "actorId": "resource.oak_tree",
+      "instanceCount": 1,
+      "patrolPathId": "",
+      "originX": 32,
+      "originY": 0,
+      "originZ": -92,
+      "minimumX": 32,
+      "minimumZ": -92,
+      "maximumX": 32,
+      "maximumZ": -92,
+      "yawDegrees": 140,
+      "rows": 1,
+      "columns": 1,
+      "spacing": 0,
+      "seed": 0,
+      "structuralFingerprint": "8fe90702dc1ce621110d7fbda115329d4787d6ac4030af464ca3bb05fb451276"
     },
     {
       "id": "development_world_2.mira",
@@ -689,6 +826,50 @@
       "yawDegrees": 45,
       "patrolPathId": "development_world_2.wolf_patrol",
       "structuralFingerprint": "d95843c872f7f0fdf7d648a9fd7441ce0136be9ace791a8bf31cc0420b6d9c8b"
+    },
+    {
+      "id": "development_world_2.grove_oak_east:0000",
+      "spawnDefinitionId": "development_world_2.grove_oak_east",
+      "actorId": "resource.oak_tree",
+      "x": 48,
+      "y": 0,
+      "z": -88,
+      "yawDegrees": 70,
+      "patrolPathId": "",
+      "structuralFingerprint": "e8ffa703836258ec6280e3264e0a9c06aac12a0f4fd19e44d40fba0520063d5b"
+    },
+    {
+      "id": "development_world_2.grove_oak_north:0000",
+      "spawnDefinitionId": "development_world_2.grove_oak_north",
+      "actorId": "resource.oak_tree",
+      "x": 38,
+      "y": 0,
+      "z": -80,
+      "yawDegrees": 0,
+      "patrolPathId": "",
+      "structuralFingerprint": "0074b6e5dd05c3868c306f9088ee6e5fb217df45a1a19507a624241f75054dc4"
+    },
+    {
+      "id": "development_world_2.grove_oak_south:0000",
+      "spawnDefinitionId": "development_world_2.grove_oak_south",
+      "actorId": "resource.oak_tree",
+      "x": 42,
+      "y": 0,
+      "z": -100,
+      "yawDegrees": 215,
+      "patrolPathId": "",
+      "structuralFingerprint": "d7ee29ebf6978c1ab6f647a4383115dd6423b63e4df41956bb51d7b6973875a5"
+    },
+    {
+      "id": "development_world_2.grove_oak_west:0000",
+      "spawnDefinitionId": "development_world_2.grove_oak_west",
+      "actorId": "resource.oak_tree",
+      "x": 32,
+      "y": 0,
+      "z": -92,
+      "yawDegrees": 140,
+      "patrolPathId": "",
+      "structuralFingerprint": "87bdc47e468b91d445b40057a8563c1290b70da508e2372c9adfabae42133ee3"
     },
     {
       "id": "development_world_2.mira:0000",

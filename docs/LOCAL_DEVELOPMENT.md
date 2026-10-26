@@ -1550,25 +1550,30 @@ only for the optional offline item grant used by this manual workflow.
 
 Mira the Quartermaster offers the `Trade` vendor capability with the vendor
 profile `vendor.city_general_store`, shown as `General Store`. It sells Bronze
-Arrow for `1`, Minor Healing Potion for `25`, Cooked Trout for `10`, and Starter
-Pickaxe for `50` Gold with unlimited stock. It buys every carried item with a
-value except quest items for 40 percent of the value, rounded down on the total,
-and has no buyback. An Iron Vein is a shared resource node: with a pickaxe in the
-Tool slot it yields one Iron Ore every 3 seconds, it holds 5 ore, and a depleted
-vein returns after 30 seconds. The content places them here:
+Arrow for `1`, Minor Healing Potion for `25`, Cooked Trout for `10`, Starter
+Pickaxe and Woodcutting Axe for `50` Gold each, and the clothes, armor, sword,
+and shield, with unlimited stock. It buys every carried item with a value except
+quest items for 40 percent of the value, rounded down on the total, and has no
+buyback. An Iron Vein is a shared resource node: with a pickaxe in the Tool slot
+it yields one Iron Ore every 3 seconds, it holds 5 ore, and a depleted vein
+returns after 30 seconds. An Oak Tree works the same with a Woodcutting Axe: one
+Oak Log every 3 seconds, 5 logs, then a stump for 30 seconds. The content places
+them here:
 
 - Development World 2, which `local-shard-1` uses by default: Mira at
-  `(0, 0, 6)` in the town, 18 m north of the spawn, and seven Iron Veins in the
+  `(0, 0, 6)` in the town, 18 m north of the spawn, seven Iron Veins in the
   quarry southeast of the town: four 6 metres apart around `(84, 0, -84)` and
-  single veins at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)`.
+  single veins at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)`, and
+  four Oak Trees in the oak grove south of the town, around `(40, 0, -90)`,
+  behind the `OAK GROVE` sign.
 - Development World 1, the stress arena: Mira at `(0, 0, 25)` north of the
   spawn, and nine Iron Veins 4 metres apart around `(24, 0, 0)` east of it.
 
-No manual Unity Editor setup steps are required. The prefab
-`Assets/Prefabs/WorldActors/Resource_IronVein.prefab`, a Prefab Variant of the
-exported Iron Vein model, its entry for
-`resource.iron_vein` in the world actor presentation registry, and the baked
-presentation catalog are committed.
+No manual Unity Editor setup steps are required. The prefabs
+`Assets/Prefabs/WorldActors/Resource_IronVein.prefab` and
+`Resource_OakTree.prefab`, Prefab Variants of the exported models, their entries
+for `resource.iron_vein` and `resource.oak_tree` in the world actor presentation
+registry, and the baked presentation catalog are committed.
 
 Start the local stack:
 
@@ -1604,7 +1609,7 @@ migration backfills an `opening_balance` ledger row for every nonzero balance.
 2. Left-click Mira and choose `Trade`. Expected result: the interaction reports
    `Trade is open while this interaction stays open.`, and the inventory opens in
    the complete view on the `Vendor` tab with `General Store` and
-   `You have 100 Gold`. It lists the four offers with their unit price, such as
+   `You have 100 Gold`. It lists the offers with their unit price, such as
    `50 Gold each` for the Starter Pickaxe. Each offer has a quantity field,
    default `1`, and a button that names the total while you type, such as
    `Buy for 50 Gold`.
@@ -1613,7 +1618,7 @@ migration backfills an `opening_balance` ledger row for every nonzero balance.
    and the balance shows `50 Gold`.
 4. Before equipping the pickaxe, left-click an Iron Vein. Expected result: the
    player walks into range and the interaction opens, but the panel reports
-   `Equip a gathering tool, such as a pickaxe, to gather here.` and nothing is
+   `Equip a gathering tool in the Tool slot to gather here.` and nothing is
    mined.
 5. Press `C`, drag the pickaxe onto the `Tool` equipment slot, and click `Mine`
    in the interaction panel. Expected result: mining starts. The panel shows
@@ -1638,7 +1643,21 @@ migration backfills an `opening_balance` ledger row for every nonzero balance.
    button. Expected result: the vendor panel reports `Sold.`, the stack shrinks
    by the sold quantity, and the balance rises by 4 Gold per ore, rounded down
    on the total.
-9. Currency stays with the character on death. A combat death needs a second
+9. Chop an Oak Tree. Buy a Woodcutting Axe from Mira for `50 Gold`, or leave
+   the shard and grant the `equipment` package, which holds both tools, as
+   described in
+   [Give A Character Development Items](#give-a-character-development-items).
+   With the pickaxe still in the `Tool` slot, walk south through the town's
+   south gate to the `OAK GROVE` sign and left-click an Oak Tree. Expected
+   result: the character walks to the trunk and starts gathering, and after the
+   first cycle it stops with `Woodcutting Axe required in the Tool slot.`.
+   Drag the Woodcutting Axe onto the `Tool` slot and choose `Chop down Oak Tree`
+   in the tree's right-click menu. Expected result: the panel shows `Chop...`
+   with a progress bar and `Gathered <n> Oak Log.`, one log every 3 seconds.
+   After the fifth log the tree turns into a stump with a pale cut face and wood
+   chips for every client, and about 30 seconds later the whole oak returns. At
+   Mira, `Sell 5 Oak Log for 20 Gold`.
+10. Currency stays with the character on death. A combat death needs a second
    client, so use the development death fixture: leave the shard, open
    `MMORPG > Tools > Inventory Item Grants`, select the character, note
    `Balance` under `Give Currency`, and click `Create Durable Corpse` as
@@ -2968,6 +2987,27 @@ Prefab Variant, and the registry entry are committed.
 3. Mine a vein until it depletes. Expected result: it switches to the depleted
    model and returns with ore about 30 seconds later.
 
+### Manual Test Of The Oak Tree Model
+
+No manual Unity Editor steps are required: the model, its materials, the
+Prefab Variant, and the registry entry are committed.
+
+1. In Unity, open `Assets/Prefabs/WorldActors/Resource_OakTree.prefab`.
+   Expected result: the Inspector names it a Prefab Variant of
+   `Resource_OakTree`, with the children `Available` and `Depleted`.
+   `Available` shows a twisted brown trunk on five roots under a broad crown of
+   faceted dark and light green clumps, with four large golden acorns hanging
+   below its rim; `Depleted` shows the stump cut at knee height with a pale cut
+   face, two splinters, the same roots, and wood chips.
+2. Start the local stack and join `local-shard-1` as described in
+   [Vendor And Gathering Verification](#vendor-and-gathering-verification), then
+   walk through the town's south gate to the `OAK GROVE` sign at `(28, 0, -74)`.
+   Expected result: four Oak Trees around `(40, 0, -90)`, each about 5.6 m high,
+   three times the character, turned differently, and a click anywhere on a
+   tree, crown included, opens it.
+3. Chop a tree until it falls. Expected result: it switches to the stump and
+   returns as a whole oak about 30 seconds later.
+
 ### Make An Attachment
 
 [Attachments](ART_PIPELINE.md#attachments) describes models held on a socket,
@@ -4098,7 +4138,7 @@ leaves a manifest whose checksums do not match its chunks. Unity ignores the
 
 Expected result: the Console reports `[WORLD COLLISION] Baked world
 'development-world-1'` with 30 boxes, 0 meshes, and 0 heightfields in 4 chunks,
-and `'development-world-2'` with 199 boxes, 1 mesh, and 1 heightfield in 144
+and `'development-world-2'` with 201 boxes, 1 mesh, and 1 heightfield in 144
 chunks, each with a SHA-256 revision. A rebuild without a layout change bakes
 the same revisions. The command updates for each World:
 

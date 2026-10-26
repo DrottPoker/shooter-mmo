@@ -31,7 +31,7 @@
     {
       "id": "equipment",
       "displayName": "Equipment Test Pack",
-      "description": "A Bag, a shortbow with arrows, a sword and a shield, armor, a tool, and two rings in Permanent Inventory, ready to equip.",
+      "description": "A Bag, a shortbow with arrows, a sword and a shield, armor, a pickaxe and a woodcutting axe, and two rings in Permanent Inventory, ready to equip.",
       "expectedLoadPercent": null,
       "grants": [
         { "definitionId": "bag.travelers_pack", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
@@ -41,6 +41,7 @@
         { "definitionId": "armor.heater_shield", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
         { "definitionId": "armor.leather_jerkin", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
         { "definitionId": "tool.starter_pickaxe", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
+        { "definitionId": "tool.woodcutting_axe", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
         { "definitionId": "jewelry.copper_ring", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
         { "definitionId": "jewelry.copper_ring", "quantity": 1, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null }
       ]

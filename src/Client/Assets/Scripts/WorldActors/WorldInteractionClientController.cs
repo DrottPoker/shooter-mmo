@@ -315,7 +315,7 @@ namespace Mmorpg.Client.WorldActors
                     {
                         State.SetLocalError(
                             "gathering_tool_required",
-                            "Equip a gathering tool, such as a pickaxe, to gather here.");
+                            "Equip a gathering tool in the Tool slot to gather here.");
                         return;
                     }
 

@@ -119,7 +119,14 @@ and yields one `material.iron_ore` every 3 seconds, with 5 charges and a 30
 second respawn. The actor `resource.iron_vein`, "Iron Vein", is a neutral,
 invulnerable resource node in the `world` faction with the presentation
 archetype `resource.iron_vein` and one capability `resource.mine` ("Mine")
-that names that profile. Its placements are listed in
+that names that profile. The resource profile `resource.oak_tree` needs the
+`woodcutting_axe` tool kind and yields one `material.oak_log` at the same pace,
+charges, and respawn. The actor `resource.oak_tree`, "Oak Tree", is a resource
+node like the vein, with the presentation archetype `resource.oak_tree`, the
+tags `resource` and `woodcutting`, and one capability `resource.chop` ("Chop",
+menu option "Chop down") that names that profile. The tree is tall, so its
+interaction bounds of 4 by 5.6 by 4 m, centered 2.8 m up, cover its crown.
+Their placements are listed in
 [Development Worlds](../docs/DEVELOPMENT_WORLDS.md#resource-node-placements).
 The Trade capability of `npc.city_services` names the vendor profile
 `vendor.city_general_store`.

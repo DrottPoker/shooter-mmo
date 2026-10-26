@@ -1,0 +1,25 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "tool",
+  "defaultPolicies": [ ],
+  "displayName": "Woodcutting Axe",
+  "equipmentSlots": [
+    "tool"
+  ],
+  "id": "tool.woodcutting_axe",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [
+    "woodcutting_axe"
+  ],
+  "unitWeight": 130,
+  "value": 50,
+  "weapon": null
+}

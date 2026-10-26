@@ -1,6 +1,6 @@
 # MMORPG MVP Spec
 
-Last updated: 2026-10-19
+Last updated: 2026-10-26
 
 ## Purpose
 
@@ -272,7 +272,9 @@ The first gathering loop is implemented with the decisions in
 - Equip a tool in the tool slot. The Starter Pickaxe provides the `pickaxe` tool
   kind that the Iron Vein requires.
 - Interact with a resource node. One Iron Vein type is placed in both
-  development Worlds; the Open Risk Rule Area does not exist yet.
+  development Worlds; the Open Risk Rule Area does not exist yet. A second
+  node type, the Oak Tree, is chopped with the Woodcutting Axe for Oak Logs in
+  the oak grove of Development World 2.
 - One click mines continuously: one guaranteed Iron Ore every 3 seconds until
   the vein depletes, carried storage is full, the weight cap is reached, the
   tool is unequipped, or the player moves or closes the interaction.

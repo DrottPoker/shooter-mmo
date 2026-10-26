@@ -144,6 +144,8 @@ namespace Mmorpg.Client.Editor
         {
             var meadow = builder.Group(builder.Environment, "Meadow");
             builder.Sign(meadow, "MeadowSign", new Vector3(6f, 0f, -66f), 0f, "MEADOW\nOpen ground for crowds");
+            // The four Oak Trees east of the meadow, around (40, 0, -90), are actors.
+            builder.Sign(meadow, "OakGroveSign", new Vector3(28f, 0f, -74f), 0f, "OAK GROVE\nFour Oak Trees");
             for (var index = 0; index < MeadowTrees.Length; index++)
             {
                 Tree(builder, meadow, "Tree" + (index + 1).ToString("00"), MeadowTrees[index], index);

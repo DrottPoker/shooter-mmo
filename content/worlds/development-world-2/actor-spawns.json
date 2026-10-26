@@ -56,6 +56,42 @@
             "z": -106.0,
             "yawDegrees": 0.0,
             "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.grove_oak_north",
+            "actorId": "resource.oak_tree",
+            "x": 38.0,
+            "y": 0.0,
+            "z": -80.0,
+            "yawDegrees": 0.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.grove_oak_east",
+            "actorId": "resource.oak_tree",
+            "x": 48.0,
+            "y": 0.0,
+            "z": -88.0,
+            "yawDegrees": 70.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.grove_oak_west",
+            "actorId": "resource.oak_tree",
+            "x": 32.0,
+            "y": 0.0,
+            "z": -92.0,
+            "yawDegrees": 140.0,
+            "patrolPathId": ""
+        },
+        {
+            "id": "development_world_2.grove_oak_south",
+            "actorId": "resource.oak_tree",
+            "x": 42.0,
+            "y": 0.0,
+            "z": -100.0,
+            "yawDegrees": 215.0,
+            "patrolPathId": ""
         }
     ],
     "spawnGroups": [

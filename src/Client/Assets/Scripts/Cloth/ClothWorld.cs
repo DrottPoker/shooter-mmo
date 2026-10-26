@@ -108,7 +108,8 @@ namespace Mmorpg.Client.Cloth
 
         public void Remove(int handle)
         {
-            if (handle < 0 || handle >= bodies.Count || bodies[handle] == null)
+            // A disposed world holds nothing, as when its scheduler went first at a scene teardown.
+            if (!slots.IsCreated || handle < 0 || handle >= bodies.Count || bodies[handle] == null)
             {
                 return;
             }

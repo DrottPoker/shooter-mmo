@@ -559,17 +559,18 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        [Test]
-        public void IronVeinPresentationIsAVariantOfTheExportedModel()
+        [TestCase("Resource_IronVein")]
+        [TestCase("Resource_OakTree")]
+        public void ResourceNodePresentationIsAVariantOfTheExportedModel(string name)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-                ClientAddressablesLayout.WorldActorPrefabFolder + "/Resource_IronVein.prefab");
+                ClientAddressablesLayout.WorldActorPrefabFolder + "/" + name + ".prefab");
 
             Assert.That(prefab, Is.Not.Null);
             Assert.That(PrefabUtility.GetPrefabAssetType(prefab), Is.EqualTo(PrefabAssetType.Variant));
             Assert.That(
                 AssetDatabase.GetAssetPath(PrefabUtility.GetCorrespondingObjectFromOriginalSource(prefab)),
-                Is.EqualTo(ArtModelImportRules.ModelFolder + "/WorldActors/Resource_IronVein.fbx"));
+                Is.EqualTo(ArtModelImportRules.ModelFolder + "/WorldActors/" + name + ".fbx"));
         }
 
         // URP Lit everywhere, except the body materials that paint layers paint over, which use

@@ -1,6 +1,6 @@
 # Project Overview
 
-Last updated: 2026-10-20
+Last updated: 2026-10-26
 
 ## What MMORPG Is
 
@@ -25,8 +25,9 @@ The current playable flow is intentionally small:
 5. Unity resolves the accepted World through its scene catalog, connects through
    LiteNetLib, presents the ticket, and enters that authored World scene.
 6. Unity predicts local movement while SimulationWorker remains authoritative.
-7. In the World, the player can buy a pickaxe from the NPC vendor with Gold,
-   mine Iron Ore from shared Iron Veins, and sell the ore back to the vendor.
+7. In the World, the player can buy a pickaxe or a Woodcutting Axe from the NPC
+   vendor with Gold, mine Iron Ore from shared Iron Veins or chop Oak Logs from
+   shared Oak Trees, and sell them back to the vendor.
 8. With the Training Shortbow and Bronze Arrows equipped, the player can fight
    the wolves and other players, loot their corpses, die, and respawn.
 9. Leaving the shard releases the exact simulation session before returning to
@@ -167,13 +168,15 @@ The repository currently supports:
   character on death.
 - One NPC vendor, Mira's General Store, that sells basic supplies and buys
   carried items at fixed prices through idempotent GameService transactions.
-- Shared Iron Vein resource nodes with live Shard charges, continuous mining
-  with a pickaxe in the `Tool` slot, depletion for every player, and respawn
-  through a central timer queue.
+- Shared Iron Vein and Oak Tree resource nodes with live Shard charges,
+  continuous mining with a pickaxe or chopping with a Woodcutting Axe in the
+  `Tool` slot, depletion for every player, and respawn through a central timer
+  queue.
 - An art pipeline for 3D models: Blender sources in Git LFS, a review sheet and
   live review in Blender through the Blender Lab MCP server, recorded approvals
   that gate the FBX export, fixed Unity import rules, and a CI check of the whole
-  chain. The Iron Vein is its first model, see [Art Pipeline](ART_PIPELINE.md).
+  chain. The Iron Vein was its first model and the Oak Tree followed, see
+  [Art Pipeline](ART_PIPELINE.md).
 - RuneScape-style click-to-move: the client plans a route around obstacles on
   a fine internal grid in the background, predicts it at once, and
   SimulationWorker follows the same waypoints with authoritative collision. An

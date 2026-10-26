@@ -1,6 +1,6 @@
 # Unity Client Architecture
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 
 ## Purpose
 
@@ -1653,7 +1653,7 @@ The client keeps permanent state below replaceable presentation:
   respawns, so it cannot be clicked.
 - A presentation registry maps `presentationArchetypeId` to authored prefabs.
   The asset is `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`
-  and maps all five authored archetypes to collider-free prefabs in
+  and maps all six authored archetypes to collider-free prefabs in
   `Assets/Prefabs/WorldActors` with URP materials in
   `Assets/Art/Materials/WorldActors`. The NPC and Mob prefabs are placeholders
   built from primitives. `resource.iron_vein` maps to `Resource_IronVein.prefab`,
@@ -1661,7 +1661,11 @@ The client keeps permanent state below replaceable presentation:
   `Assets/Art/Models/WorldActors/Resource_IronVein.fbx` from the art pipeline:
   faceted rocks with iron ore below `Available`, and the broken rocks with rubble
   below `Depleted`, with the URP Lit materials `M_Resource_IronVeinRock` and
-  `M_Resource_IronVeinOre`. Each entry is an Addressables
+  `M_Resource_IronVeinOre`. `resource.oak_tree` maps to
+  `Resource_OakTree.prefab`, a Prefab Variant of
+  `Assets/Art/Models/WorldActors/Resource_OakTree.fbx`: the whole oak below
+  `Available` and its stump below `Depleted`, with the five
+  `M_Resource_OakTree*` materials. Each entry is an Addressables
   `AssetReferenceGameObject`. The registry loads when a World scene opens, a
   prefab loads the first time an actor of its archetype appears, and the actor
   is presented once its prefab is ready. All handles are released when the

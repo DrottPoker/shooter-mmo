@@ -1,6 +1,6 @@
 # Game Features
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 
 ## Purpose
 
@@ -75,7 +75,8 @@ layouts.
   a bridge, a maze, and camera tests; the highlands terrain with a peak, cliffs,
   and a tunnel; a combat range with a PvP arena and a range lane; an interest
   road to an outpost beyond the interest radius; the wolf woods with the Feral
-  Alpha's lair; a quarry with seven Iron Veins; an open meadow; and a sandbox
+  Alpha's lair; a quarry with seven Iron Veins; an open meadow with an oak
+  grove of four Oak Trees; and a sandbox
   reserved for new features. Green stations get the character through, red
   ones must not.
 - DevelopmentWorld1, the stress arena, is a 64 by 64 meter walled floor that
@@ -543,9 +544,9 @@ All city NPCs, including guards, and all resource nodes are invulnerable in the
 first version. Faction and disposition own friendly or hostile behavior
 independently from actor kind. The checked-in actor catalog contains one
 composable service NPC, one guard NPC, two Mob definitions, and the Iron Vein
-resource node, each with an examine text and a menu option per capability.
-Development World 1 places 14 deterministic actor instances and
-Development World 2 17. The Character Bank and Recovery Storage buttons open
+and Oak Tree resource nodes, each with an examine text and a menu option per
+capability. Development World 1 places 14 deterministic actor instances and
+Development World 2 21. The Character Bank and Recovery Storage buttons open
 the inventory with that storage, and `Trade` opens it with the vendor; each stays
 usable while the interaction is open. The insurance and quest offer
 capabilities run their item lifecycle. Dialogue, crafting, trainer, and quest
@@ -570,7 +571,8 @@ Status: MVP implemented with temporary presentation
   `Vendor` tab with the General Store and the current balance. Trading works
   only while the interaction stays open; walking out of range closes it.
 - The General Store sells Bronze Arrow for `1`, Minor Healing Potion for `25`,
-  Cooked Trout for `10`, and Starter Pickaxe for `50` Gold, the clothes, the
+  Cooked Trout for `10`, Starter Pickaxe and Woodcutting Axe for `50` Gold
+  each, the clothes, the
   Iron Sword for `120`, and the Heater Shield for `80`, at 100 percent of each
   item's value, with unlimited stock. Each offer has a quantity field and a
   button that names the total, such as `Buy for 50 Gold`.
@@ -601,33 +603,47 @@ player trading, and temporary uGUI. Manual test steps are in
 
 Status: MVP implemented with temporary presentation
 
-- Iron Veins are resource nodes. Development World 2 has seven in the quarry
-  southeast of the town, and Development World 1 has nine east of the spawn.
+- Iron Veins and Oak Trees are resource nodes. Development World 2 has seven
+  Iron Veins in the quarry southeast of the town and four Oak Trees in the oak
+  grove south of the town, and Development World 1 has nine Iron Veins east of
+  the spawn.
 - An Iron Vein is the game's first authored 3D model: grey faceted rocks with
   chunky rust-orange iron ore that shows from every camera angle. A depleted
   vein keeps its rocks, now with broken flat tops and rubble around them, but
   without ore.
+- An Oak Tree is a fantasy oak about 5.6 m high: a twisted trunk on thick
+  roots, a broad crown of faceted green clumps, and large golden acorns hanging
+  below it. A felled tree is a stump with a pale cut face and wood chips.
 - Equip a gathering tool, such as the Starter Pickaxe, in the `Tool` slot and
   left-click a vein, or choose `Mine Iron Vein` in its right-click menu. The
   character walks into range, the interaction opens, and mining starts. Without
-  a gathering tool the panel asks the player to equip one.
+  a gathering tool the panel asks the player to equip one. Each node needs its
+  own tool kind: a pickaxe mines an Iron Vein, and a Woodcutting Axe chops an
+  Oak Tree with `Chop down Oak Tree`. With the wrong tool equipped, gathering
+  stops after the first cycle with the tool it needs, such as
+  `Woodcutting Axe required in the Tool slot.`.
 - One click mines continuously: one Iron Ore every 3 seconds, shown as `Mine...`
   with a progress bar and the gathered count. The ore enters carried storage by
-  the same rule as a purchase.
+  the same rule as a purchase. Chopping works the same, one Oak Log every 3
+  seconds, shown as `Chop...`.
 - Mining stops when the vein is depleted, the character moves, the interaction
   closes, carried storage is full, the ore would pass the hard cap, or the tool
   is no longer equipped. The panel names the reason, and `Mine` starts again.
 - Veins are shared by every player on the Shard. A vein holds 5 ore. When the
   last one is mined, it turns depleted for every player and everyone mining it
   stops. A depleted vein stays visible but cannot be targeted, and it returns
-  after 30 seconds.
+  after 30 seconds. An Oak Tree holds 5 logs, falls to its stump the same way,
+  and grows back after 30 seconds.
 - SimulationWorker owns the vein charges, cycle timing, depletion, and respawn
   as live Shard state, so a worker restart restores every vein to full.
   GameService checks the required tool in the `Tool` slot and grants each ore
   transactionally.
 
-Known limitations: one resource type, no Mining experience or level, no success
-chance per cycle, and a placeholder vein model. Manual test steps are in
+Known limitations: two resource types, no Mining or Woodcutting experience or
+level, no success chance per cycle, no gathering animation, the tool is not
+shown in the hand, resource nodes do not block movement, so a character can
+walk through a tree's trunk, and the client starts gathering with any tool and
+leaves the check of the tool kind to the server's first cycle. Manual test steps are in
 [Local Development](LOCAL_DEVELOPMENT.md#vendor-and-gathering-verification).
 
 ## Combat

@@ -1,0 +1,52 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/WorldActors/Resource_OakTree.fbx",
+    "rootObjects": [
+        "Available",
+        "Depleted"
+    ],
+    "triangleBudget": 1500,
+    "approvals": {
+        "model": {
+            "date": "2026-10-26",
+            "sourceSha256": "fdcbbfe808ea20e7ec119ff27293293ee1355137ef0ea94fbf8868ea4b12d964"
+        }
+    },
+    "export": {
+        "sourceSha256": "fdcbbfe808ea20e7ec119ff27293293ee1355137ef0ea94fbf8868ea4b12d964",
+        "targetSha256": "bedda880463b6dec5e4a852768f1a254ba92d3c8f8f63034ea6fb9864b1c406b",
+        "materials": [
+            {
+                "name": "M_Resource_OakTreeAcorn",
+                "baseColor": "#D49A2C",
+                "metallic": 0.0,
+                "smoothness": 0.55
+            },
+            {
+                "name": "M_Resource_OakTreeBark",
+                "baseColor": "#5E4130",
+                "metallic": 0.0,
+                "smoothness": 0.1
+            },
+            {
+                "name": "M_Resource_OakTreeHeartwood",
+                "baseColor": "#E2B97E",
+                "metallic": 0.0,
+                "smoothness": 0.15
+            },
+            {
+                "name": "M_Resource_OakTreeLeaves",
+                "baseColor": "#3B7434",
+                "metallic": 0.0,
+                "smoothness": 0.2
+            },
+            {
+                "name": "M_Resource_OakTreeLeavesLight",
+                "baseColor": "#7DB443",
+                "metallic": 0.0,
+                "smoothness": 0.2
+            }
+        ]
+    }
+}

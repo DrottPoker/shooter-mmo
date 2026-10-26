@@ -68,13 +68,16 @@ Catalog format version 5 contains these separate concepts:
 - **Item value** in a definition's `value` is its base price in whole currency
   units, from 0 to 1,000,000,000. Vendors sell and buy at a share of it, and `0`
   means vendors never trade the item.
-- **Tool kinds** in `toolKinds` are identities, such as `pickaxe`, that name
-  what an item serves as a tool for. The list is required and may be empty. A
-  resource profile in the actor catalog names the tool kind it requires.
+- **Tool kinds** in `toolKinds` are identities, such as `pickaxe` and
+  `woodcutting_axe`, that name what an item serves as a tool for. The list is
+  required and may be empty. A resource profile in the actor catalog names the
+  tool kind it requires.
 - **Definition tool kinds** in a definition's `toolKinds` list at most 8 tool
   kinds. Only a definition compatible with the `tool` equipment slot may have
   tool kinds, because gathering requires an item with the required tool kind
-  equipped in that slot. The Starter Pickaxe provides `pickaxe`.
+  equipped in that slot. The Starter Pickaxe provides `pickaxe`, and the
+  Woodcutting Axe (`tool.woodcutting_axe`, value 50) provides `woodcutting_axe`.
+  The Oak Log (`material.oak_log`, value 10) is what an Oak Tree yields.
 - **Vendor profiles** in `vendors/` describe what an NPC vendor sells and buys.
   They are described in [Vendor Profiles](#vendor-profiles).
 - **Secure Container tiers** have stable ids and integer slot capacities.
@@ -149,7 +152,7 @@ with `vendor_will_not_buy`, so the vendor never takes an item for nothing.
 The shipped `vendor.city_general_store`, "General Store", is the profile of the
 Trade capability of Mira the Quartermaster (`npc.city_services`). It offers
 Bronze Arrow (value 1), Minor Healing Potion (25), Cooked Trout (10), Starter
-Pickaxe (50), and every item that shows a garment except the Leather Jerkin: the
+Pickaxe (50), Woodcutting Axe (50), and every item that shows a garment except the Leather Jerkin: the
 Linen Shirt (12), Long-Sleeved Linen Shirt (16), Net Shirt (8), Wool Trousers
 (15), Leather Boots (30), Leather Gloves (18), the Wool Robe (40), Wool Hood (12),
 and Wool Cloak (35) with their blue and red ones (60, 18, and 50), the Nasal
