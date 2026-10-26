@@ -290,10 +290,12 @@ and the rules in [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESI
   transaction.
 - **Death and corpses.** One transaction partitions a death into Recovery
   deliveries and a durable five-minute player corpse. Corpses are looted, filled,
-  and rearranged concurrently, Bags swap atomically, and live or durable Mob
-  corpses grant loot with retry-safe ids.
+  and rearranged concurrently, Bags swap atomically or move whole into an empty
+  Bag slot, Loot all takes everything that fits in one transaction, and live or
+  durable Mob corpses grant loot with retry-safe ids.
 - **Unity.** A persistent catalog, inventory, and corpse state with revision
-  coherence and operation journaling sits under a temporary uGUI inventory.
+  coherence and operation journaling sits under a temporary uGUI inventory, where
+  a right-click equips, stores, takes, or offers an item for sale.
 - **Operations.** Statement, lock, and payload bounds, low-cardinality metrics,
   retention cleanup, and load scenarios cover the kernel.
 

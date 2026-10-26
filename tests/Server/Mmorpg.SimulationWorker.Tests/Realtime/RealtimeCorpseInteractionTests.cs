@@ -382,6 +382,61 @@ public sealed class RealtimeCorpseInteractionTests
     }
 
     [Fact]
+    public async Task LootAllAsksGameServiceWithOnlyTheCorpseRevisionAndCommitsCarryState()
+    {
+        await using var harness = RealtimeServerHarness.Create();
+        var corpseId = Guid.NewGuid();
+        harness.SeedDurableCorpse(corpseId, 1d, 0d, -1d);
+        harness.GameService.OnCorpseOpen = (_, openedCorpseId, _, _) => Task.FromResult(
+            ScriptedGameServiceHandler.Json(RealtimeCorpseTestData.Snapshot(openedCorpseId, 1)));
+        SimulationCorpseMutationRequest? received = null;
+        harness.GameService.OnCorpseMutation = (_, mutatedCorpseId, request, _) =>
+        {
+            received = request;
+            return Task.FromResult(ScriptedGameServiceHandler.Json(new CorpseMutationResponse(
+                new SimulationItemTransactionResponse(
+                    request.OperationId,
+                    "loot_all_corpse_items",
+                    true,
+                    null,
+                    [new SimulationItemCharacterRevision(request.CharacterId, 1, 1, 200)],
+                    [],
+                    [],
+                    [],
+                    null),
+                RealtimeCorpseTestData.Snapshot(mutatedCorpseId, 2),
+                CharacterStateTestData.Create(request.CharacterId, 1, 1))));
+        };
+        var character = harness.AddCharacter("Loot All Looter");
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+        client.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpseId));
+        await harness.PollUntilAsync(
+            () => client.CorpseResults.Count == 1 && HasCompleteSnapshot(client),
+            "the open and its snapshot");
+
+        var lootAll = RealtimeCorpseInteractionIntent.CreateLootAll(Guid.NewGuid(), corpseId, 1);
+        client.SendCorpseIntent(lootAll);
+        await harness.PollUntilAsync(
+            () => client.CorpseResults.Count == 2 && client.Has(RealtimeMessageType.CarryStateChanged),
+            "the Loot all result");
+
+        var result = client.CorpseResults[^1];
+        Assert.True(result.Succeeded);
+        Assert.Equal(RealtimeCorpseInteractionKind.LootAll, result.OperationKind);
+        Assert.True(result.RequiresInventoryRefresh);
+        Assert.Equal(1, result.CarryState.ItemStateRevision);
+        Assert.NotNull(received);
+        Assert.Equal("loot_all", received!.OperationKind);
+        Assert.Equal(lootAll.OperationId, received.OperationId);
+        Assert.Equal(1, received.ExpectedCorpseRevision);
+        Assert.Null(received.ItemInstanceId);
+        Assert.Null(received.DestinationContainerId);
+        Assert.Null(received.DestinationSlotIndex);
+        Assert.Null(received.EquipmentSlotId);
+    }
+
+    [Fact]
     public async Task LiveMobCorpseOpensFromTheLocalStore()
     {
         await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions

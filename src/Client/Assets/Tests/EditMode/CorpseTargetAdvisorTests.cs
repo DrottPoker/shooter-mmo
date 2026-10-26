@@ -27,6 +27,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLoot(
                     state,
+                    null,
                     corpseArrows,
                     general,
                     general.Slots[0],
@@ -39,6 +40,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLoot(
                     state,
+                    null,
                     corpseArrows,
                     general,
                     general.Slots[0],
@@ -51,6 +53,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLoot(
                     state,
+                    null,
                     corpseArrows,
                     general,
                     general.Slots[0],
@@ -62,6 +65,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLoot(
                     state,
+                    null,
                     corpseArrows,
                     general,
                     general.Slots[0],
@@ -263,6 +267,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLootIntoEquipment(
                     CreateState(null, null, emptyMainHand),
+                    null,
                     bow,
                     general,
                     general.Slots[0],
@@ -277,6 +282,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLootIntoEquipment(
                     CreateState(null, null, occupiedMainHand),
+                    null,
                     bow,
                     general,
                     general.Slots[0],
@@ -293,6 +299,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLootIntoEquipment(
                     CreateState(null, null, emptyMainHand, shieldOffHand),
+                    null,
                     bow,
                     general,
                     general.Slots[0],
@@ -310,6 +317,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLootIntoEquipment(
                     arrowState,
+                    null,
                     fittingArrows,
                     fittingSection,
                     fittingSection.Slots[0],
@@ -322,6 +330,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLootIntoEquipment(
                     arrowState,
+                    null,
                     tooManyArrows,
                     tooManySection,
                     tooManySection.Slots[0],
@@ -337,6 +346,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseTargetAdvisor.CanLootIntoEquipment(
                     CreateState(null, equippedBag, bagSlot),
+                    null,
                     emptyPack,
                     packSection,
                     packSection.Slots[0],

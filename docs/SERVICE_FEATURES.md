@@ -64,7 +64,9 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
 | `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
 | `POST /api/simulation-sessions/{id}/corpses/{corpseId}/open` | Worker service policy | Read one exact-session, unexpired, same-Shard corpse snapshot after worker proximity validation |
-| `POST /api/simulation-sessions/{id}/corpses/{corpseId}/item-operations` | Worker service policy | Commit bidirectional full or partial corpse transfers, whole-item loot into an equipment slot, and atomic ordinary, equipment, or Bag aggregate swaps through the durable kernel |
+| `POST /api/simulation-sessions/{id}/corpses/{corpseId}/item-operations` | Worker service policy | Commit bidirectional full or partial corpse transfers, whole-item loot into an equipment slot, a corpse Bag into an empty Bag slot, Loot all, and atomic ordinary, equipment, or Bag aggregate swaps through the durable kernel |
+| `POST /api/simulation-sessions/{id}/mob-loot-grants` | Worker service policy | Grant one live Mob loot entry into the slot or stack the client named, idempotent by its grant id |
+| `POST /api/simulation-sessions/{id}/mob-loot-grants/loot-all` | Worker service policy | Grant every live Mob loot entry that fits, whole, in one transaction, and name every grant that left the corpse |
 | `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
@@ -1070,9 +1072,20 @@ concurrent inspection, and authoritative looting:
   Bag-root revisions. Internal moves can split, merge, or swap across the three
   corpse sections without advancing character item-state or carry. The corpse
   Bag owns the corpse Bag section, so it never leaves its equipment slot through
-  an internal move or swap, even when empty; only an atomic Bag aggregate swap
-  replaces it. Corpse equipment destinations carry canonical equipment-slot ids
-  and validate definition compatibility. Unrelated corpse changes may commit concurrently,
+  an internal move or swap, even when empty. It leaves the corpse through an
+  atomic Bag aggregate swap, a loot into the looter's empty Bag slot with
+  everything in it, or, once empty, a loot into an empty carried slot; each gives
+  the corpse a new empty Bag section. Any other corpse Bag is empty and loots
+  like an ordinary item into an empty slot. Corpse equipment destinations carry canonical equipment-slot ids
+  and validate definition compatibility. Loot all (`loot_all_corpse_items`) locks
+  the looter, the corpse at the revision the client saw, and every corpse and
+  carried item, plans the steps with `CorpseLootAllPlanner` from the locked state,
+  and commits each step under the checks of the single loot it stands for. Live
+  Mob Loot all (`grant_mob_loot_all`) plans the worker's entries the same way with
+  whole items only, and every live grant, single or Loot all, records its grant id
+  in `live_mob_loot_grants`, so a grant committed once is never committed again;
+  a single loot of a recorded grant is rejected as `item_already_looted`, and the
+  worker then takes the entry out of the corpse. Unrelated corpse changes may commit concurrently,
   competing custody has one stable winner, and no PostgreSQL transaction remains
   open across a client network wait.
 - The worker broadcasts each committed targeted delta or replacement to every

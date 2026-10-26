@@ -51,7 +51,8 @@ internal sealed class CorpseAuthorityOperations(
                     or RealtimeCorpseInteractionKind.DepositPartialStack
                     or RealtimeCorpseInteractionKind.MoveItem
                     or RealtimeCorpseInteractionKind.MovePartialStack
-                    or RealtimeCorpseInteractionKind.SwapBag =>
+                    or RealtimeCorpseInteractionKind.SwapBag
+                    or RealtimeCorpseInteractionKind.LootAll =>
                     await CompleteCorpseMutationAsync(
                         interactionService,
                         session,

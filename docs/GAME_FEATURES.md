@@ -384,10 +384,48 @@ shows a tooltip with the item details. Local definition lookups disable obvious 
 equipment, tag, Secure Container, non-empty Bag, stack, destroy, and hard-cap
 targets, but the server remains final authority.
 
+A right-click moves an item to where it belongs, as a shortcut for a drag:
+
+- An equippable item in Permanent inventory, the equipped Bag, or the Secure
+  Container equips: it takes the first free compatible slot, such as Ring 1 and
+  then Ring 2, or else replaces the item in the first compatible slot, which
+  swaps into the slot the new item came from. Equipped items that block the slot
+  move to the inventory first, so a two-handed bow takes the shield off. Arrows
+  of the equipped kind top up the equipped stack.
+- An equipped item goes to the inventory.
+- While the Bank tab shows, every one of your own items goes to the Bank, and a
+  Bank item comes back to the inventory.
+- Any item of a Recovery delivery claims the whole delivery into Permanent
+  inventory.
+- A corpse item takes a free compatible equipment slot, or tops up equipped
+  arrows, but never replaces an equipped item; anything else goes to the
+  inventory. A corpse Bag takes an empty Bag slot together with its contents.
+- While a vendor's tab shows, a carried item goes into the `Sell` slot, where
+  you confirm the sale as after a drag.
+- The inventory fills as a purchase does: whole items top up a stack first, then
+  take a free slot, matching specialized Bag slots first, then Permanent
+  inventory, then general Bag slots, never the Secure Container.
+- A right-click that has nothing to do, such as on an ore with no Bank open,
+  says why in the status line.
+
+The corpse view's `Loot all` button takes everything that fits from the corpse
+in one server operation. The corpse equipment comes first, then the corpse
+inventory, then its Bag contents. An equippable item takes a free compatible
+equipment slot, and equipped arrows are topped up; the rest goes into the
+inventory as a right-click would place it, also as part of a stack when the
+whole stack does not fit. A corpse Bag with items takes an empty Bag slot with
+everything in it; when you already have a Bag, its contents come first and the
+emptied Bag follows. Whatever does not fit in a slot or under the 140 percent
+carry cap stays in the corpse. A live Mob corpse gives only whole items, and the
+client cannot tell a live from a durable Mob corpse, so the inventory shows whole
+items for every Mob corpse until the server answers. The client does not know
+the character level, so it shows equipment with a level requirement going into
+the inventory until the server answers.
+
 Every item move reacts at once: moving, swapping, merging, splitting, equipping
 and unequipping items and Bags, destroying, claiming a Recovery delivery,
-looting, depositing, and rearranging a corpse, swapping Bags with a corpse, and
-buying or selling at a vendor. The item lands where you drop it and the balance
+looting, Loot all, depositing, and rearranging a corpse, swapping Bags with a
+corpse, and buying or selling at a vendor. The item lands where you drop it and the balance
 changes before the server answers, and you can keep going while up to eight
 moves wait. The server still decides every move. When it rejects one, every
 waiting move is undone, the items jump back and flash red, and the status line
@@ -429,7 +467,9 @@ when both original slots accept the opposite item and the result stays within
 the hard cap. Every corpse equipment slot displays its equipment type and
 accepts only a compatible definition up to its equipment slot limit. Dropping either equipped
 Bag onto the other occupied Bag slot submits one atomic aggregate swap when both
-complete Bags satisfy the rules. Drag a whole corpse item onto a compatible
+complete Bags satisfy the rules. A corpse Bag dropped on your empty Bag slot
+equips it with everything in it, and an empty corpse Bag, such as a spare one
+from the corpse inventory, drops into an empty slot like any item. Drag a whole corpse item onto a compatible
 equipment slot to equip it straight from the corpse: an empty slot equips it,
 equipped arrows of the same type are topped up, and an occupied slot swaps your
 equipped item into the corpse slot the loot came from. A live Mob corpse, such

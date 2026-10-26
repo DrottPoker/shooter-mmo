@@ -355,6 +355,23 @@ internal sealed partial class CorpseService
                 cancellationToken);
         }
 
+        if (string.Equals(
+                operationKind,
+                CorpseInteractionOperationKinds.LootAll,
+                StringComparison.Ordinal)
+            && HasLootAllShape(request))
+        {
+            return TransactionService.ExecuteAsync(
+                new ItemTransactionRequest<LootAllCorpseItemsCommand>(
+                    request.OperationId,
+                    actor,
+                    new LootAllCorpseItemsCommand(
+                        request.CharacterId,
+                        corpseId,
+                        request.ExpectedCorpseRevision)),
+                cancellationToken);
+        }
+
         return null;
     }
 
@@ -713,6 +730,22 @@ internal sealed partial class CorpseService
             && request.PlayerBagContentsContainerId is not null
             && request.PlayerBagContentsContainerId != Guid.Empty
             && request.ExpectedPlayerBagContentsRevision >= 0;
+    }
+
+    // Loot all names only the corpse revision; GameService picks every destination.
+    private static bool HasLootAllShape(SimulationCorpseMutationRequest request)
+    {
+        return NormalizeGuid(request.ItemInstanceId) is null
+            && request.ExpectedItemRevision is null
+            && (request.Quantity is null or 0)
+            && NormalizeGuid(request.DestinationContainerId) is null
+            && request.ExpectedDestinationContainerRevision is null
+            && request.DestinationSlotIndex is null
+            && NormalizeGuid(request.TargetItemInstanceId) is null
+            && NormalizeGuid(request.CorpseBagContentsContainerId) is null
+            && NormalizeGuid(request.PlayerBagItemInstanceId) is null
+            && NormalizeGuid(request.PlayerBagContentsContainerId) is null
+            && string.IsNullOrWhiteSpace(request.EquipmentSlotId);
     }
 
     private static Guid? NormalizeGuid(Guid? value)

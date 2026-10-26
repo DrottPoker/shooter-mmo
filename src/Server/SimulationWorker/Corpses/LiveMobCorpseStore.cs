@@ -191,6 +191,40 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
         }
     }
 
+    // Takes every granted entry out of the corpse at once, as one revision. Returns null once
+    // the corpse is empty.
+    public CorpseViewSnapshotResponse? CompleteClaims(
+        Guid corpseId,
+        IReadOnlyCollection<Guid> grantIds)
+    {
+        lock (sync)
+        {
+            PurgeExpiredLocked();
+            if (!corpses.TryGetValue(corpseId, out var corpse))
+            {
+                return null;
+            }
+
+            var remaining = corpse.Loot
+                .Where(candidate => !grantIds.Contains(candidate.GrantId))
+                .OrderBy(candidate => candidate.SlotIndex)
+                .Select((candidate, index) => candidate with { SlotIndex = index })
+                .ToArray();
+            if (remaining.Length == corpse.Loot.Count)
+            {
+                return ToSnapshot(corpse);
+            }
+
+            var updated = corpse with
+            {
+                Revision = checked(corpse.Revision + 1),
+                Loot = remaining
+            };
+            corpses[corpseId] = updated;
+            return updated.IsEmpty ? null : ToSnapshot(updated);
+        }
+    }
+
     public CorpseViewSnapshotResponse? CreateSnapshot(Guid corpseId)
     {
         lock (sync)

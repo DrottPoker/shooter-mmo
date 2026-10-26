@@ -414,6 +414,11 @@ namespace Mmorpg.Client.Ui
                     spec.CanDrag);
             }
 
+            if (spec.OnRightClick != null)
+            {
+                slotObject.AddComponent<InventorySlotRightClick>().Configure(spec.OnRightClick);
+            }
+
             if (spec.DropValidator != null)
             {
                 slotObject.AddComponent<InventoryDropTarget>().Configure(
@@ -504,6 +509,7 @@ namespace Mmorpg.Client.Ui
             public bool Selected;
             public bool Interactable;
             public Action OnClick;
+            public Action OnRightClick;
             public InventoryDragPayload DragPayload;
             public bool CanDrag;
             public InventoryDropValidator DropValidator;

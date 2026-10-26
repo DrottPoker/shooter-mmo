@@ -10,6 +10,8 @@ public sealed class LiveMobCorpseInteractionService(
     GameServiceClient gameServiceClient,
     CharacterItemStateStore itemStateStore)
 {
+    private const string ItemAlreadyLootedCode = "item_already_looted";
+
     public Task<SimulationCorpseInteractionResult> OpenAsync(
         ActiveSimulationSession session,
         RealtimeCorpseInteractionIntent intent,
@@ -59,6 +61,11 @@ public sealed class LiveMobCorpseInteractionService(
                 intent,
                 "corpse_interaction_unavailable",
                 "Synthetic development sessions cannot interact with live Mob corpses.");
+        }
+
+        if (intent.OperationKind == RealtimeCorpseInteractionKind.LootAll)
+        {
+            return await LootAllAsync(session, intent, cancellationToken);
         }
 
         // Live loot never swaps: the worker holds the corpse in memory and cannot take an item back.
@@ -159,6 +166,13 @@ public sealed class LiveMobCorpseInteractionService(
             cancellationToken);
         if (!response.Succeeded)
         {
+            // A Loot all already granted the entry after an uncertain outcome, so it only has to
+            // leave the corpse.
+            if (response.Error!.Code == ItemAlreadyLootedCode)
+            {
+                corpseStore.CompleteClaim(corpse.CorpseId, lootEntry.LootEntryId, lootEntry.GrantId);
+            }
+
             return FromError(intent, response.Error!);
         }
 
@@ -171,12 +185,90 @@ public sealed class LiveMobCorpseInteractionService(
             new CorpseMutationResponse(response.Value!, snapshot));
     }
 
+    // GameService grants every entry that fits, whole, in one transaction and names the
+    // grants that left the corpse, which all leave it here at once.
+    private async Task<SimulationCorpseInteractionResult> LootAllAsync(
+        ActiveSimulationSession session,
+        RealtimeCorpseInteractionIntent intent,
+        CancellationToken cancellationToken)
+    {
+        if (!corpseStore.TryGetActive(intent.CorpseId, out var corpse) || corpse is null)
+        {
+            return SimulationCorpseInteractionResult.Rejected(
+                intent,
+                "corpse_not_found",
+                "The live Mob corpse is not active.",
+                requiresCorpseRefresh: true,
+                shouldCloseView: true);
+        }
+
+        if (!string.Equals(corpse.ShardId, session.ShardId, StringComparison.Ordinal))
+        {
+            return SimulationCorpseInteractionResult.Rejected(
+                intent,
+                "wrong_simulation_worker",
+                "The live Mob corpse belongs to another Shard.",
+                shouldCloseView: true);
+        }
+
+        if (intent.ExpectedCorpseRevision != corpse.Revision)
+        {
+            return SimulationCorpseInteractionResult.Rejected(
+                intent,
+                "item_state_conflict",
+                "The live Mob corpse state changed before Loot all.",
+                requiresCorpseRefresh: true,
+                requiresInventoryRefresh: true);
+        }
+
+        if (!itemStateStore.TryGet(
+                session.CharacterId,
+                session.SimulationSessionId,
+                out var currentCarryState))
+        {
+            return SimulationCorpseInteractionResult.Rejected(
+                intent,
+                "carry_state_missing",
+                "The authoritative carry state is no longer active.",
+                requiresInventoryRefresh: true);
+        }
+
+        var response = await gameServiceClient.GrantLiveMobLootAllAsync(
+            session.SimulationSessionId,
+            new SimulationMobLootAllRequest(
+                intent.OperationId,
+                session.AccountId,
+                session.CharacterId,
+                currentCarryState!.ItemStateRevision,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                corpse.CorpseId,
+                corpse.SourceActorDefinitionId,
+                corpse.Loot
+                    .OrderBy(entry => entry.SlotIndex)
+                    .Select(entry => new MobCorpseLootEntryRequest(entry.GrantId, entry.DefinitionId, entry.Quantity))
+                    .ToArray()),
+            cancellationToken);
+        if (!response.Succeeded)
+        {
+            return FromError(intent, response.Error!);
+        }
+
+        var snapshot = corpseStore.CompleteClaims(corpse.CorpseId, response.Value!.GrantedGrantIds.ToHashSet());
+        return SimulationCorpseInteractionResult.Committed(
+            intent,
+            new CorpseMutationResponse(response.Value.Transaction, snapshot));
+    }
+
     private static SimulationCorpseInteractionResult FromError(
         RealtimeCorpseInteractionIntent intent,
         SimulationWorkerErrorResponse error)
     {
         var requiresRefresh = GameServiceOutcome.IsUncertain(error.Code)
-            || error.Code is "item_state_conflict"
+            || error.Code is ItemAlreadyLootedCode
+                or "item_state_conflict"
             or "item_operation_conflict"
             or "item_slot_occupied"
             or "item_stack_limit_exceeded";

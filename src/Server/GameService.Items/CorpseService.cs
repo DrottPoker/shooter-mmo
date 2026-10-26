@@ -219,6 +219,77 @@ internal sealed partial class CorpseService(
                 : null);
     }
 
+    public async Task<ServiceResult<SimulationMobLootAllResponse>> GrantLiveMobLootAllAsync(
+        string authenticatedWorkerId,
+        Guid simulationSessionId,
+        SimulationMobLootAllRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(
+                authenticatedWorkerId,
+                request.WorkerId,
+                StringComparison.Ordinal))
+        {
+            return ServiceResult<SimulationMobLootAllResponse>.Forbidden(
+                ItemTransactionErrorCodes.WrongSimulationWorker,
+                "The authenticated simulation worker cannot submit another worker's Mob Loot all.");
+        }
+
+        if (!IsValidSimulationMobLootAllRequest(simulationSessionId, request))
+        {
+            return ServiceResult<SimulationMobLootAllResponse>.BadRequest(
+                ItemApiErrorCodes.SimulationOperationInvalid,
+                "The live Mob Loot all request is incomplete or invalid.");
+        }
+
+        var actor = ItemTransactionActor.ForSimulationWorker(
+            request.AccountId,
+            request.CharacterId,
+            simulationSessionId,
+            request.WorkerId.Trim(),
+            request.WorkerRuntimeId.Trim(),
+            request.ShardId.Trim(),
+            TokenGenerator.HashToken(request.SessionToken.Trim()),
+            ItemTransactionLiveAccess.None);
+        var result = await transactionService.ExecuteAsync(
+            new ItemTransactionRequest<GrantMobLootAllCommand>(
+                request.OperationId,
+                actor,
+                new GrantMobLootAllCommand(
+                    request.CharacterId,
+                    request.ExpectedCharacterRevision,
+                    request.SourceCorpseId,
+                    request.SourceActorDefinitionId.Trim(),
+                    request.Loot
+                        .Select(loot => new MobLootGrantEntry(loot.GrantId, loot.DefinitionId.Trim(), loot.Quantity))
+                        .ToArray())),
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            return MapTransactionResult<SimulationMobLootAllResponse>(result, null);
+        }
+
+        // The ledger answers for a replayed operation too, whose stored result names no grants.
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var granted = (await connection.QueryAsync<Guid>(new CommandDefinition(
+                """
+                select grant_id
+                from live_mob_loot_grants
+                where grant_id = any(@GrantIds)
+                order by grant_id;
+                """,
+                new { GrantIds = request.Loot.Select(loot => loot.GrantId).ToArray() },
+                cancellationToken: cancellationToken)))
+            .ToArray();
+        return MapTransactionResult(
+            result,
+            new SimulationMobLootAllResponse(
+                SimulationItemOperationResponse.From(
+                    result,
+                    await characterStates.ReadAsync(request.CharacterId, cancellationToken)),
+                granted));
+    }
+
     public async Task<ServiceResult<CorpseRestoreResponse>> ListForWorkerAsync(
         string workerId,
         string workerRuntimeId,
@@ -852,6 +923,34 @@ internal sealed partial class CorpseService(
             && request.LifetimeSeconds
                 is >= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MinimumLifetimeSeconds
                 and <= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MaximumLifetimeSeconds
+            && request.Loot is not null
+            && request.Loot.Count
+                is >= 1
+                and <= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MaximumLootEntries
+            && request.Loot.All(loot =>
+                loot.GrantId != Guid.Empty
+                && Identifiers.IsContentIdentifier(loot.DefinitionId)
+                && loot.Quantity > 0)
+            && request.Loot.Select(loot => loot.GrantId).Distinct().Count()
+                == request.Loot.Count;
+    }
+
+    private static bool IsValidSimulationMobLootAllRequest(
+        Guid simulationSessionId,
+        SimulationMobLootAllRequest request)
+    {
+        return simulationSessionId != Guid.Empty
+            && request.OperationId != Guid.Empty
+            && request.AccountId != Guid.Empty
+            && request.CharacterId != Guid.Empty
+            && request.ExpectedCharacterRevision >= 0
+            && Identifiers.IsServiceIdentifier(request.WorkerId)
+            && Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            && Identifiers.IsServiceIdentifier(request.ShardId)
+            && !string.IsNullOrWhiteSpace(request.SessionToken)
+            && request.SessionToken.Length <= 1024
+            && request.SourceCorpseId != Guid.Empty
+            && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
             && request.Loot is not null
             && request.Loot.Count
                 is >= 1

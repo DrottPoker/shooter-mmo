@@ -56,6 +56,28 @@ public sealed class LiveMobCorpseStoreTests
     }
 
     [Fact]
+    public void LootAllClaimsLeaveInOneRevisionAndTheLastClaimEmptiesTheCorpse()
+    {
+        var store = new LiveMobCorpseStore(TimeProvider.System);
+        var first = new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.ore", 2, 0);
+        var second = new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.potion", 1, 1);
+        var third = new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.arrow", 5, 2);
+        var corpse = CreateCorpse(DateTime.UtcNow, 120d) with { Loot = [first, second, third] };
+        store.CreateOrGet(corpse);
+
+        var snapshot = store.CompleteClaims(corpse.CorpseId, [first.GrantId, third.GrantId]);
+        var emptied = store.CompleteClaims(corpse.CorpseId, [second.GrantId]);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(2, snapshot.Revision);
+        var slot = Assert.Single(snapshot.Sections.SelectMany(section => section.Slots));
+        Assert.Equal(second.LootEntryId, slot.Item!.ItemInstanceId);
+        Assert.Equal(0, slot.SlotIndex);
+        Assert.Null(emptied);
+        Assert.True(store.IsEmptied(corpse.CorpseId));
+    }
+
+    [Fact]
     public void SnapshotHasEmptyEquipmentAndBagSectionsThatEncode()
     {
         var store = new LiveMobCorpseStore(TimeProvider.System);

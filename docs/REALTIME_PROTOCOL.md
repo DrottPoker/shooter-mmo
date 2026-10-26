@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 24 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 26 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -487,6 +487,24 @@ an empty slot, or swaps the equipped item into the corpse slot the loot left;
 a live Mob corpse never swaps: it fills an empty slot or tops up the named stack
 of the same item, and GameService rejects any other target. Payloads of every earlier case are
 unchanged.
+
+Since protocol version 26 a corpse Bag also loots into equipment: with no
+target it takes the empty Bag slot together with whatever it holds, and the
+corpse keeps a new, empty Bag section. An occupied Bag slot still needs
+`SwapBag`. An empty corpse Bag also loots into an empty container slot through
+`LootItem`.
+
+## Corpse Loot All
+
+Protocol version 26 added `CorpseInteractionKind.LootAll` (12). It carries only
+the operation, the corpse, and `ExpectedCorpseRevision`, which must equal the
+corpse's revision when the worker handles it, so a corpse that changed answers
+`item_state_conflict` with a refresh. GameService plans every destination, as
+[Game Features](GAME_FEATURES.md#player-inventory-foundation) describes, and
+takes everything that fits in one transaction; nothing fitting is the
+`inventory_full` rejection. The result, the committed change, and the corpse
+view follow as for any corpse mutation; a Loot all that changes more than one
+`OwnerItemStateChanged` can describe makes the client reload its inventory.
 
 ## World Menu Options
 

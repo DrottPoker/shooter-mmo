@@ -9,9 +9,12 @@ namespace Mmorpg.Client.Items
     // quantity moves the whole stack.
     public static class CorpseTargetAdvisor
     {
-        // A corpse item dropped on a carried container slot loots it.
+        // A corpse item dropped on a carried container slot loots it. An empty corpse Bag
+        // loots like any item into an empty slot; the view tells whether a Bag is empty, and
+        // without one a Bag in the corpse equipment counts as full.
         public static bool CanLoot(
             InventoryClientState state,
+            CorpseLootView view,
             CorpseLootItem corpseItem,
             CorpseLootSection sourceSection,
             CorpseLootSlot sourceSlot,
@@ -40,8 +43,17 @@ namespace Mmorpg.Client.Items
 
             if (corpseItem.HasBagContents)
             {
-                reason = "A corpse Bag aggregate must be dropped onto the occupied Bag equipment slot.";
-                return false;
+                if (BagMayHoldItems(view, corpseItem, sourceSection))
+                {
+                    reason = "A corpse Bag with contents goes onto the Bag equipment slot.";
+                    return false;
+                }
+
+                if (destinationSlot.Item != null)
+                {
+                    reason = "Drop a corpse Bag on an empty slot.";
+                    return false;
+                }
             }
 
             if (!TryResolveQuantity(corpseItem.Quantity, partialQuantity, out var quantity))
@@ -298,6 +310,7 @@ namespace Mmorpg.Client.Items
         // cannot take an item back, so GameService rejects a swap there; a top-up still works.
         public static bool CanLootIntoEquipment(
             InventoryClientState state,
+            CorpseLootView view,
             CorpseLootItem corpseItem,
             CorpseLootSection sourceSection,
             CorpseLootSlot sourceSlot,
@@ -315,14 +328,21 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (corpseItem.HasBagContents)
-            {
-                reason = "A corpse Bag swaps only with the equipped Bag on the Bag slot.";
-                return false;
-            }
-
             var item = corpseItem.ToInventoryItem();
             var occupant = equipmentSlot.Item;
+            // A corpse Bag takes an empty Bag slot with what it holds, and swaps with an equipped
+            // Bag only through the Bag aggregate swap.
+            if (corpseItem.HasBagContents)
+            {
+                if (occupant != null)
+                {
+                    reason = "A corpse Bag swaps only with the equipped Bag on the Bag slot.";
+                    return false;
+                }
+
+                return InventoryTargetAdvisor.CanEquipIntoSlot(state, item, equipmentSlot, out reason)
+                    && FitsWithBagContents(state, view, corpseItem, out reason);
+            }
             if (occupant != null && InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, item, occupant))
             {
                 return InventoryTargetAdvisor.CanMerge(
@@ -450,6 +470,59 @@ namespace Mmorpg.Client.Items
             }
 
             return true;
+        }
+
+        // Only the corpse's equipped Bag can hold items. Without a view a Bag in the corpse
+        // equipment may.
+        private static bool BagMayHoldItems(CorpseLootView view, CorpseLootItem bag, CorpseLootSection sourceSection)
+        {
+            return view == null
+                ? string.Equals(sourceSection.SectionKind, CorpseSectionKindIds.Equipment, StringComparison.Ordinal)
+                : view.BagHasContents(bag);
+        }
+
+        // An equipped Bag carries its contents, so their weight counts against the larger
+        // capacity it brings.
+        private static bool FitsWithBagContents(
+            InventoryClientState state,
+            CorpseLootView view,
+            CorpseLootItem bag,
+            out string reason)
+        {
+            reason = "The Bag definition is unavailable.";
+            if (!state.Catalog.TryGetDefinition(bag.DefinitionId, out var definition) || definition.Bag == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var weight = state.FullSnapshot.CarriedWeight;
+                foreach (var content in CorpseInventoryPrediction.BagContents(view, bag, definition).Slots
+                             .Where(slot => slot.Item != null))
+                {
+                    if (!state.Catalog.TryGetDefinition(content.Item.DefinitionId, out var contentDefinition))
+                    {
+                        return false;
+                    }
+
+                    weight = checked(weight + ItemWeightRules.CalculateStackWeight(
+                        contentDefinition.UnitWeight,
+                        content.Item.Quantity));
+                }
+
+                reason = "The Bag and its contents would exceed the 140 percent carry cap.";
+                return EncumbranceRules.IsAllowedVoluntaryTransition(
+                    state.FullSnapshot.CarriedWeight,
+                    state.FullSnapshot.CarryCapacity,
+                    weight,
+                    checked(state.FullSnapshot.CarryCapacity + definition.Bag.CarryCapacityBonus));
+            }
+            catch (OverflowException)
+            {
+                reason = "The Bag weight is invalid.";
+                return false;
+            }
         }
 
         private static bool IsCarriedLootDestination(

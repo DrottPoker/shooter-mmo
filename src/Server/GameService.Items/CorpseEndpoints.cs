@@ -98,6 +98,23 @@ internal static class CorpseEndpoints
             .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
+        app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/mob-loot-grants/loot-all", async (
+            Guid simulationSessionId,
+            SimulationMobLootAllRequest request,
+            ClaimsPrincipal principal,
+            CorpseService corpseService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await corpseService.GrantLiveMobLootAllAsync(
+                principal.GetSimulationWorkerId(),
+                simulationSessionId,
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        })
+            .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
+            .WithMetadata(new SensitiveResponseAttribute());
+
         app.MapPost(
             "/api/simulation-sessions/{simulationSessionId:guid}/corpses/{corpseId:guid}/open",
             async (

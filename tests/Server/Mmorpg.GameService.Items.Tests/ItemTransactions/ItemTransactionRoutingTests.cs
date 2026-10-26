@@ -59,9 +59,9 @@ public sealed class ItemTransactionRoutingTests
             })
             .ToArray();
 
-        Assert.Equal(33, overloads.Length);
-        Assert.Equal(33, requestTypes.Distinct().Count());
-        Assert.Equal(33, Routes.Count);
+        Assert.Equal(35, overloads.Length);
+        Assert.Equal(35, requestTypes.Distinct().Count());
+        Assert.Equal(35, Routes.Count);
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -188,6 +188,11 @@ public sealed class ItemTransactionRoutingTests
                 actor,
                 new GrantMobLootCommand(Id, 1, Id, Id, "mob", "fixture.ore", 1, Id, 1, 0),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.GrantMobLootAll] = (service, actor) => Run(
+                service,
+                actor,
+                new GrantMobLootAllCommand(Id, 1, Id, "mob", [new MobLootGrantEntry(Id, "fixture.ore", 1)]),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.ExpireCorpse] = (service, actor) => Run(
                 service,
                 actor,
@@ -237,6 +242,11 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new SwapCorpseBagCommand(Id, Id, Id, 1, Id, 1, Id, 1, Id, 1),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.LootAllCorpseItems] = (service, actor) => Run(
+                service,
+                actor,
+                new LootAllCorpseItemsCommand(Id, Id, 1),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.VendorPurchase] = (service, actor) => Run(
                 service,

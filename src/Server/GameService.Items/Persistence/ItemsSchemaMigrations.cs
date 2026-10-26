@@ -18,6 +18,7 @@ internal static class ItemsSchemaMigrations
         new(ItemCatalogAlignmentMigration.Id, ItemCatalogAlignmentMigration.Sql),
         new(ItemLevelRequirementMigration.Id, ItemLevelRequirementMigration.Sql),
         new(DeathEventKillerMigration.Id, DeathEventKillerMigration.Sql),
-        new(ItemEconomyMigration.Id, ItemEconomyMigration.Sql)
+        new(ItemEconomyMigration.Id, ItemEconomyMigration.Sql),
+        new(LiveMobLootGrantMigration.Id, LiveMobLootGrantMigration.Sql)
     ];
 }

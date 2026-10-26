@@ -295,6 +295,21 @@ internal sealed record GrantMobLootCommand(
     Guid? TargetItemInstanceId = null,
     long? ExpectedTargetItemRevision = null);
 
+internal sealed record MobLootGrantEntry(
+    Guid GrantId,
+    string DefinitionId,
+    int Quantity);
+
+// Grants every loot entry of a live Mob corpse that fits, whole, as CorpseLootAllPlanner plans
+// it. An entry that an earlier operation already granted is left alone and reported as
+// granted, so the worker can take it out of the corpse.
+internal sealed record GrantMobLootAllCommand(
+    Guid CharacterId,
+    long ExpectedCharacterRevision,
+    Guid SourceCorpseId,
+    string SourceActorDefinitionId,
+    IReadOnlyList<MobLootGrantEntry> Loot);
+
 internal sealed record ExpireCorpseCommand(Guid CorpseId);
 
 internal sealed record ExpireRecoveryDeliveryCommand(Guid RecoveryDeliveryId);
@@ -378,6 +393,13 @@ internal sealed record MoveCorpsePartialStackCommand(
     int DestinationSlotIndex,
     Guid? TargetItemInstanceId,
     long? ExpectedTargetItemRevision);
+
+// Loots everything that fits from the corpse at the revision the client saw, as
+// CorpseLootAllPlanner plans it.
+internal sealed record LootAllCorpseItemsCommand(
+    Guid CharacterId,
+    Guid CorpseId,
+    long ExpectedCorpseRevision);
 
 internal sealed record SwapCorpseBagCommand(
     Guid CharacterId,
@@ -496,6 +518,7 @@ internal static class ItemOperationKinds
     public const string ProcessPlayerDeath = "process_player_death";
     public const string CreatePersistentMobCorpse = "create_persistent_mob_corpse";
     public const string GrantMobLoot = "grant_mob_loot";
+    public const string GrantMobLootAll = "grant_mob_loot_all";
     public const string ExpireCorpse = "expire_corpse";
     public const string ExpireRecoveryDelivery = "expire_recovery_delivery";
     public const string LootCorpseItem = "loot_corpse_item";
@@ -506,6 +529,7 @@ internal static class ItemOperationKinds
     public const string MoveCorpseItem = "move_corpse_item";
     public const string MoveCorpsePartialStack = "move_corpse_partial_stack";
     public const string SwapCorpseBag = "swap_corpse_bag";
+    public const string LootAllCorpseItems = "loot_all_corpse_items";
     public const string VendorPurchase = "vendor_purchase";
     public const string VendorSale = "vendor_sale";
     public const string GatherResource = "gather_resource";

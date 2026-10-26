@@ -1,4 +1,3 @@
-using Dapper;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
@@ -55,19 +54,43 @@ internal sealed class MobLootGrantCommandHandler
             command.DefinitionId,
             cancellationToken);
         MobLootRules.ValidateMobLootDefinition(definition, command.Quantity);
+        await MobLootRules.RecordGrantAsync(
+            context,
+            command.GrantId,
+            command.CharacterId,
+            command.SourceCorpseId,
+            cancellationToken);
+        var grant = new MobLootGrantSource(
+            command.GrantId,
+            command.SourceCorpseId,
+            command.SourceActorDefinitionId,
+            command.CharacterId);
         var destination = toEquipment
             ? null
             : await LoadDestinationAsync(context, command, cancellationToken);
 
         if (command.TargetItemInstanceId is not null)
         {
-            await TopUpAsync(context, command, definition, destination, cancellationToken);
+            await TopUpAsync(context, command, grant, definition, destination, cancellationToken);
             return;
         }
 
         if (destination is null)
         {
-            await GrantIntoEquipmentAsync(context, command, definition, cancellationToken);
+            await context.Placement.EnsureEquipmentDestinationAsync(
+                command.CharacterId,
+                command.EquipmentSlotId!,
+                definition,
+                command.Quantity,
+                false,
+                cancellationToken);
+            await MobLootWrites.CreateEquippedAsync(
+                context,
+                grant,
+                definition,
+                command.Quantity,
+                command.EquipmentSlotId!,
+                cancellationToken);
             return;
         }
 
@@ -80,34 +103,14 @@ internal sealed class MobLootGrantCommandHandler
             null,
             false,
             cancellationToken);
-        var itemInstanceId = ScopedGuid.Create("mob-loot-item", command.GrantId);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
-            """
-            insert into item_instances (
-                id,
-                definition_id,
-                quantity,
-                container_id,
-                container_slot_index)
-            values (
-                @ItemInstanceId,
-                @DefinitionId,
-                @Quantity,
-                @ContainerId,
-                @SlotIndex);
-            """,
-            new
-            {
-                ItemInstanceId = itemInstanceId,
-                DefinitionId = definition.RuntimeDefinition.Id,
-                command.Quantity,
-                ContainerId = destination.ContainerId,
-                SlotIndex = slotIndex
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        await JournalGrantAsync(context, command, itemInstanceId, "live_mob_loot_granted", null, cancellationToken);
-        context.Journal.TouchContainer(destination.ContainerId);
+        await MobLootWrites.CreateInContainerAsync(
+            context,
+            grant,
+            definition,
+            command.Quantity,
+            destination.ContainerId,
+            slotIndex,
+            cancellationToken);
     }
 
     private static async Task<LockedContainer> LoadDestinationAsync(
@@ -129,54 +132,12 @@ internal sealed class MobLootGrantCommandHandler
         return destination;
     }
 
-    private static async Task GrantIntoEquipmentAsync(
-        ItemTransactionContext context,
-        GrantMobLootCommand command,
-        ResolvedItemDefinition definition,
-        CancellationToken cancellationToken)
-    {
-        var equipmentSlotId = command.EquipmentSlotId!;
-        await context.Placement.EnsureEquipmentDestinationAsync(
-            command.CharacterId,
-            equipmentSlotId,
-            definition,
-            command.Quantity,
-            false,
-            cancellationToken);
-        var itemInstanceId = ScopedGuid.Create("mob-loot-item", command.GrantId);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
-            """
-            insert into item_instances (
-                id,
-                definition_id,
-                quantity,
-                equipped_character_id,
-                equipment_slot_id)
-            values (
-                @ItemInstanceId,
-                @DefinitionId,
-                @Quantity,
-                @CharacterId,
-                @EquipmentSlotId);
-            """,
-            new
-            {
-                ItemInstanceId = itemInstanceId,
-                DefinitionId = definition.RuntimeDefinition.Id,
-                command.Quantity,
-                command.CharacterId,
-                EquipmentSlotId = equipmentSlotId
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        await JournalGrantAsync(context, command, itemInstanceId, "live_mob_loot_granted", null, cancellationToken);
-    }
-
     // Adds the loot to the named stack, which must still be in the named slot, have the loot's
     // definition, merge under the stack rules, and stay within its slot's limit.
     private static async Task TopUpAsync(
         ItemTransactionContext context,
         GrantMobLootCommand command,
+        MobLootGrantSource grant,
         ResolvedItemDefinition definition,
         LockedContainer? destination,
         CancellationToken cancellationToken)
@@ -260,61 +221,10 @@ internal sealed class MobLootGrantCommandHandler
                 target.ItemInstanceId);
         }
 
-        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
-            target.ItemInstanceId,
-            cancellationToken);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
-            """
-            update item_instances
-            set quantity = quantity + @Quantity,
-                revision = revision + 1,
-                updated_at = now()
-            where id = @ItemInstanceId;
-            """,
-            new { command.Quantity, target.ItemInstanceId },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        await JournalGrantAsync(
-            context,
-            command,
-            target.ItemInstanceId,
-            "live_mob_loot_merged",
-            beforeState,
-            cancellationToken);
+        await MobLootWrites.TopUpAsync(context, grant, target.ItemInstanceId, command.Quantity, cancellationToken);
         if (destination is not null)
         {
             context.Journal.TouchContainer(destination.ContainerId);
         }
-    }
-
-    private static async Task JournalGrantAsync(
-        ItemTransactionContext context,
-        GrantMobLootCommand command,
-        Guid itemInstanceId,
-        string auditKind,
-        string? beforeState,
-        CancellationToken cancellationToken)
-    {
-        var afterState = await context.Journal.CaptureItemStateJsonAsync(
-            itemInstanceId,
-            cancellationToken);
-        context.Journal.AddItemAudit(
-            auditKind,
-            itemInstanceId,
-            beforeState,
-            afterState);
-        context.Journal.AddMetadataAudit(
-            "live_mob_loot_grant_committed",
-            null,
-            new
-            {
-                command.GrantId,
-                command.SourceCorpseId,
-                command.SourceActorDefinitionId,
-                command.CharacterId,
-                ItemInstanceId = itemInstanceId
-            });
-        context.Journal.TouchCharacter(command.CharacterId);
-        context.Journal.IncludeResultItem(itemInstanceId);
     }
 }

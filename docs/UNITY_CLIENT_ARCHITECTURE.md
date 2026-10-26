@@ -749,7 +749,20 @@ Permanent Inventory and then the equipped Bag before taking the first free slot
 among specialized Bag slots, Permanent Inventory, and general Bag slots, and a
 sale as a smaller or removed stack; both change the balance at once.
 `WorldInteractionClientController` sends a queued trade once the interaction is
-idle.
+idle. Loot all shows at once too: `CorpseLootAllPrediction` feeds the shown
+inventory and corpse to the shared `CorpseLootAllPlanner` in WorldData, which
+GameService runs on the locked state, applies its steps to the inventory, and
+empties the corpse slots the plan takes. Every item that arrives shows under an
+id the operation made until the committed change names the server's ids.
+
+Right-click moves are ordinary queued operations. `InventoryQuickMoves` in
+`Mmorpg.Client.Items` picks the operation a right-click stands for, such as an
+equip with the unequips of the items that block its slot, a merge, a relocate to
+the Bank or back, a Recovery claim, or a corpse loot into equipment or carried
+storage. It checks each candidate with the prediction its operation would make,
+so it never offers a move the client knows the server refuses. The panel adds
+the windows it shows: an open Bank tab takes the player's items, and an open
+vendor tab puts a carried item into the `Sell` slot.
 
 `InventoryClientController` sends the first pending operation once the
 confirmed state is current, with the revisions the confirmed state expects, and
@@ -1030,12 +1043,16 @@ another corpse slot submits an authoritative internal move, split, merge, or
 complete swap. Equipment destinations show the catalog display name, and local
 feedback rejects obvious type mismatches. Dropping
 a corpse Bag onto the occupied player Bag slot submits one atomic aggregate
-swap. Dropping any other whole corpse item onto a player equipment slot submits
+swap, and onto an empty Bag slot a `LootToEquipment` that takes the Bag with its
+contents. An empty corpse Bag drops into an empty carried slot like any item.
+Dropping any other whole corpse item onto a player equipment slot submits
 `LootToEquipment` with the item now in that slot as its target:
 `CorpseTargetAdvisor.CanLootIntoEquipment` shows green for an empty compatible
 slot, a top-up of an equipped stack of the same definition, or a swap whose
-equipped item fits the corpse slot the loot leaves, and red for a Bag, a partial
-stack, or a blocked slot. `CorpseTargetAdvisor` in `Mmorpg.Client.Items` holds these corpse target
+equipped item fits the corpse slot the loot leaves, and red for a partial stack
+or a blocked slot. The `Loot all` button above the sections submits
+`LootAll`, and a right-click on a slot runs its `InventoryQuickMoves` move; only
+the left button drags. `CorpseTargetAdvisor` in `Mmorpg.Client.Items` holds these corpse target
 rules next to `InventoryTargetAdvisor`, and EditMode tests cover both. Green and
 red target feedback remains advisory, while GameService owns all final slot,
 equipment, policy, revision, weight, capacity, and hard-cap validation.

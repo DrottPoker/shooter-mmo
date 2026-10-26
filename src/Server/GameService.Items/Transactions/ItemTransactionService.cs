@@ -31,8 +31,10 @@ internal sealed class ItemTransactionService
     private readonly CorpseDepositCommandHandler corpseDeposit = new();
     private readonly CorpseInternalMoveCommandHandler corpseInternalMove = new();
     private readonly CorpseBagSwapCommandHandler corpseBagSwap = new();
+    private readonly CorpseLootAllCommandHandler corpseLootAll = new();
     private readonly MobCorpseCommandHandler mobCorpse;
     private readonly MobLootGrantCommandHandler mobLootGrant = new();
+    private readonly MobLootAllGrantCommandHandler mobLootAllGrant = new();
     private readonly RecoveryExpiryCommandHandler recoveryExpiry = new();
     private readonly VendorCommandHandler vendor;
     private readonly GatherResourceCommandHandler gatherResource = new();
@@ -392,6 +394,18 @@ internal sealed class ItemTransactionService
     }
 
     public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<LootAllCorpseItemsCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.LootAllCorpseItems,
+            request.Command.CharacterId,
+            corpseLootAll,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
         ItemTransactionRequest<CreatePersistentMobCorpseCommand> request,
         CancellationToken cancellationToken)
     {
@@ -412,6 +426,18 @@ internal sealed class ItemTransactionService
             ItemOperationKinds.GrantMobLoot,
             request.Command.CharacterId,
             mobLootGrant,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<GrantMobLootAllCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.GrantMobLootAll,
+            request.Command.CharacterId,
+            mobLootAllGrant,
             cancellationToken);
     }
 

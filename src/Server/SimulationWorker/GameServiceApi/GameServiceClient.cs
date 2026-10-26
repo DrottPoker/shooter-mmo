@@ -23,6 +23,9 @@ public sealed class GameServiceClient(HttpClient httpClient)
     // bounds only reject malformed responses.
     private const int MaximumOperationContainerRevisions = 8;
     private const int MaximumOperationItemRevisions = 32;
+    // A sanity bound for Loot all, which moves every corpse item and tops up as many carried
+    // stacks: a player corpse holds a whole inventory, equipment, and Bag.
+    private const int MaximumLootAllItemRevisions = 512;
     private const int MaximumOperationRecoveryDeliveries = 8;
 
     // A character has one item per equipment slot, and the catalog has far fewer slots.
@@ -167,6 +170,19 @@ public sealed class GameServiceClient(HttpClient httpClient)
             $"/api/simulation-sessions/{simulationSessionId}/mob-loot-grants",
             request,
             response => IsValidLiveMobLootGrant(response, request),
+            cancellationToken);
+    }
+
+    public Task<GameServiceResult<SimulationMobLootAllResponse>> GrantLiveMobLootAllAsync(
+        Guid simulationSessionId,
+        SimulationMobLootAllRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationMobLootAllRequest, SimulationMobLootAllResponse>(
+            "GameService.GrantLiveMobLootAll",
+            $"/api/simulation-sessions/{simulationSessionId}/mob-loot-grants/loot-all",
+            request,
+            response => IsValidLiveMobLootAll(response, request),
             cancellationToken);
     }
 
@@ -652,7 +668,9 @@ public sealed class GameServiceClient(HttpClient httpClient)
             || response.Transaction.ContainerRevisions is null
             || response.Transaction.ContainerRevisions.Count > MaximumOperationContainerRevisions
             || response.Transaction.ItemRevisions is null
-            || response.Transaction.ItemRevisions.Count > MaximumOperationItemRevisions
+            || response.Transaction.ItemRevisions.Count > (request.OperationKind == "loot_all"
+                ? MaximumLootAllItemRevisions
+                : MaximumOperationItemRevisions)
             || response.Transaction.RecoveryDeliveryIds is null
             || response.Transaction.RecoveryDeliveryIds.Count != 0
             || response.Transaction.SecureContainerEntitlementRevision is not null)
@@ -662,6 +680,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
 
         var expectedOperationKind = request.OperationKind switch
         {
+            "loot_all" => "loot_all_corpse_items",
             "loot_item" => "loot_corpse_item",
             "loot_partial_stack" => "loot_corpse_partial_stack",
             "loot_item_to_equipment" => "loot_corpse_item_to_equipment",
@@ -727,6 +746,42 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 response.CharacterState,
                 request.CharacterId,
                 response.CharacterRevisions[0].Revision);
+    }
+
+    // Every granted id names an entry of the request, and the transaction belongs to the
+    // character. Loot all may touch every slot of the inventory and the Bag.
+    private static bool IsValidLiveMobLootAll(
+        SimulationMobLootAllResponse response,
+        SimulationMobLootAllRequest request)
+    {
+        var transaction = response?.Transaction;
+        var requested = request.Loot.Select(loot => loot.GrantId).ToHashSet();
+        return transaction is not null
+            && transaction.OperationId == request.OperationId
+            && string.Equals(transaction.OperationKind, "grant_mob_loot_all", StringComparison.Ordinal)
+            && transaction.Succeeded
+            && transaction.Error is null
+            && transaction.CharacterRevisions is { Count: 1 }
+            && transaction.CharacterRevisions[0].CharacterId == request.CharacterId
+            && IsValidCarryState(
+                transaction.CharacterRevisions[0].Revision,
+                transaction.CharacterRevisions[0].CarriedWeight,
+                transaction.CharacterRevisions[0].CarryCapacity)
+            && transaction.ContainerRevisions is not null
+            && transaction.ContainerRevisions.Count <= MaximumOperationContainerRevisions
+            && transaction.ContainerRevisions.All(revision => revision.ContainerId != Guid.Empty && revision.Revision >= 0)
+            && transaction.ItemRevisions is not null
+            && transaction.ItemRevisions.Count <= MaximumLootAllItemRevisions
+            && transaction.ItemRevisions.All(revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
+            && transaction.RecoveryDeliveryIds is { Count: 0 }
+            && transaction.SecureContainerEntitlementRevision is null
+            && response!.GrantedGrantIds is not null
+            && response.GrantedGrantIds.Distinct().Count() == response.GrantedGrantIds.Count
+            && response.GrantedGrantIds.All(requested.Contains)
+            && IsValidCharacterState(
+                transaction.CharacterState,
+                request.CharacterId,
+                transaction.CharacterRevisions[0].Revision);
     }
 
     private static bool IsValidCorpseView(
