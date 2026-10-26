@@ -17,6 +17,9 @@ namespace Mmorpg.Client.Items
         // A committed view that never follows a result is refreshed after this long.
         private const float SettleTimeoutSeconds = 2f;
 
+        // The presentation of every Mob corpse, live or durable.
+        private const string MobCorpsePresentationKey = "corpse.mob";
+
         private readonly List<PendingCorpseOperation> pendingOperations = new List<PendingCorpseOperation>();
         private IRealtimeCorpseChannel simulationClient;
         private IInventoryOperationQueue inventoryController;
@@ -155,9 +158,10 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (item.HasBagContents)
+            // An empty corpse Bag loots like any item; one with contents takes the Bag slot.
+            if (view.BagHasContents(item))
             {
-                error = "A corpse Bag must be swapped through the occupied Bag equipment slot.";
+                error = "A corpse Bag with contents goes into an empty Bag slot or swaps with your Bag.";
                 return false;
             }
 
@@ -179,6 +183,12 @@ namespace Mmorpg.Client.Items
             var remaining = quantity < item.Quantity
                 ? item.WithQuantity(item.Quantity - quantity)
                 : displaced == null ? null : CorpseLootItem.FromInventoryItem(displaced);
+            var edits = new List<CorpseViewEdit> { CorpseViewEdit.SetSlot(section.ContainerId, slot.SlotIndex, remaining) };
+            if (CorpseInventoryPrediction.OwnsBagSection(view, item))
+            {
+                edits.Add(CorpseInventoryPrediction.EmptyBagSection());
+            }
+
             return Queue(
                 InventoryPredictedOperation.External(
                     (InventoryPredictionEdit edit, out string reason) =>
@@ -187,7 +197,46 @@ namespace Mmorpg.Client.Items
                         SendLoot(state, view.CorpseId, item.ItemInstanceId, quantity, containerId, slotIndex, out operationId, out sendError),
                     new[] { item.ItemInstanceId, displaced?.ItemInstanceId ?? Guid.Empty },
                     new[] { createdId }),
-                new[] { CorpseViewEdit.SetSlot(section.ContainerId, slot.SlotIndex, remaining) },
+                edits,
+                out error);
+        }
+
+        // Loots everything that fits, as GameService plans it in one transaction.
+        public bool TryLootAll(out string error)
+        {
+            var view = State.ShownView;
+            if (!CanQueue(out error))
+            {
+                return false;
+            }
+
+            var items = view.Sections.SelectMany(section => section.Slots).Where(slot => slot.Item != null).ToArray();
+            if (items.Length == 0)
+            {
+                error = "The corpse is empty.";
+                return false;
+            }
+
+            // A live Mob corpse keeps no part of a stack. A durable Mob corpse could, but the
+            // client cannot tell them apart, so a Mob corpse shows whole items.
+            var wholeItemsOnly = string.Equals(view.PresentationKey, MobCorpsePresentationKey, StringComparison.Ordinal);
+            var createdIds = items.ToDictionary(slot => slot.Item.ItemInstanceId, _ => Guid.NewGuid());
+            var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
+            if (!CorpseLootAllPrediction.TryApply(probe, view, wholeItemsOnly, createdIds, out error))
+            {
+                return false;
+            }
+
+            var plan = CorpseLootAllPrediction.Plan(inventoryController.State, view, wholeItemsOnly);
+            return Queue(
+                InventoryPredictedOperation.External(
+                    (InventoryPredictionEdit edit, out string reason) =>
+                        CorpseLootAllPrediction.TryApply(edit, view, wholeItemsOnly, createdIds, out reason),
+                    (InventoryClientState state, out Guid operationId, out string sendError) =>
+                        SendLootAll(view.CorpseId, out operationId, out sendError),
+                    plan.Steps.Select(step => step.TargetItemInstanceId),
+                    createdIds.Values),
+                CorpseLootAllPrediction.CorpseEdits(view, plan),
                 out error);
         }
 
@@ -211,35 +260,51 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
+            // A corpse Bag equips with what it holds: the corpse Bag section, for the corpse's
+            // equipped Bag, then becomes an empty one.
+            InventoryContainer bagContents = null;
+            var ownsBagSection = CorpseInventoryPrediction.OwnsBagSection(view, item);
             if (item.HasBagContents)
             {
-                error = "A corpse Bag must be swapped through the occupied Bag equipment slot.";
-                return false;
+                if (!inventoryController.State.Catalog.TryGetDefinition(item.DefinitionId, out var bagDefinition)
+                    || bagDefinition.Bag == null)
+                {
+                    error = "The corpse Bag definition is unavailable.";
+                    return false;
+                }
+
+                bagContents = CorpseInventoryPrediction.BagContents(view, item, bagDefinition);
             }
 
             var createdId = Guid.NewGuid();
             var slotId = equipmentSlot.SlotId;
             var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
-            if (!CorpseInventoryPrediction.TryLootToEquipment(probe, item, slotId, createdId, out var displaced, out error))
+            if (!CorpseInventoryPrediction.TryLootToEquipment(probe, item, slotId, createdId, bagContents, out var displaced, out error))
             {
                 return false;
+            }
+
+            var edits = new List<CorpseViewEdit>
+            {
+                CorpseViewEdit.SetSlot(
+                    section.ContainerId,
+                    slot.SlotIndex,
+                    displaced == null ? null : CorpseLootItem.FromInventoryItem(displaced))
+            };
+            if (ownsBagSection)
+            {
+                edits.Add(CorpseInventoryPrediction.EmptyBagSection());
             }
 
             return Queue(
                 InventoryPredictedOperation.External(
                     (InventoryPredictionEdit edit, out string reason) =>
-                        CorpseInventoryPrediction.TryLootToEquipment(edit, item, slotId, createdId, out _, out reason),
+                        CorpseInventoryPrediction.TryLootToEquipment(edit, item, slotId, createdId, bagContents, out _, out reason),
                     (InventoryClientState state, out Guid operationId, out string sendError) =>
                         SendLootToEquipment(state, view.CorpseId, item.ItemInstanceId, slotId, out operationId, out sendError),
                     new[] { item.ItemInstanceId, displaced?.ItemInstanceId ?? Guid.Empty },
                     new[] { createdId }),
-                new[]
-                {
-                    CorpseViewEdit.SetSlot(
-                        section.ContainerId,
-                        slot.SlotIndex,
-                        displaced == null ? null : CorpseLootItem.FromInventoryItem(displaced))
-                },
+                edits,
                 out error);
         }
 
@@ -646,6 +711,24 @@ namespace Mmorpg.Client.Items
                     equipmentSlotId,
                     equipped?.ItemInstanceId ?? Guid.Empty,
                     equipped?.Revision ?? 0),
+                out operationId,
+                out error);
+        }
+
+        private InventoryOperationSendResult SendLootAll(
+            Guid corpseId,
+            out Guid operationId,
+            out string error)
+        {
+            operationId = Guid.Empty;
+            if (!TryBeginSend(corpseId, out var result, out error))
+            {
+                return result;
+            }
+
+            var view = State.ActiveView;
+            return SendIntent(
+                RealtimeCorpseInteractionIntent.CreateLootAll(Guid.NewGuid(), view.CorpseId, view.Revision),
                 out operationId,
                 out error);
         }

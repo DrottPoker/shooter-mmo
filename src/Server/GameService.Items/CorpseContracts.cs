@@ -86,6 +86,26 @@ internal sealed record SimulationMobLootGrantRequest(
     Guid? TargetItemInstanceId = null,
     long? ExpectedTargetItemRevision = null);
 
+// Loot all on a live Mob corpse: every loot entry still in the corpse, in its slot order.
+internal sealed record SimulationMobLootAllRequest(
+    Guid OperationId,
+    Guid AccountId,
+    Guid CharacterId,
+    long ExpectedCharacterRevision,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    Guid SourceCorpseId,
+    string SourceActorDefinitionId,
+    IReadOnlyList<MobCorpseLootEntryRequest> Loot);
+
+// The committed transaction and the grants that left the corpse, including any that an earlier
+// operation had already granted.
+internal sealed record SimulationMobLootAllResponse(
+    SimulationItemOperationResponse Transaction,
+    IReadOnlyList<Guid> GrantedGrantIds);
+
 internal sealed record CorpseRestoreResponse(
     DateTime DatabaseTime,
     IReadOnlyList<DurableCorpseResponse> Corpses);
@@ -234,4 +254,5 @@ internal static class CorpseInteractionOperationKinds
     public const string MoveItem = "move_item";
     public const string MovePartialStack = "move_partial_stack";
     public const string SwapBag = "swap_bag";
+    public const string LootAll = "loot_all";
 }

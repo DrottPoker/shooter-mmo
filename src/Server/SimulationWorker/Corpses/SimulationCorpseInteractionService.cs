@@ -78,6 +78,7 @@ public sealed class SimulationCorpseInteractionService(GameServiceClient gameSer
             RealtimeCorpseInteractionKind.MoveItem => "move_item",
             RealtimeCorpseInteractionKind.MovePartialStack => "move_partial_stack",
             RealtimeCorpseInteractionKind.SwapBag => "swap_bag",
+            RealtimeCorpseInteractionKind.LootAll => "loot_all",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(intent),
                 "The corpse operation is not a durable mutation.")

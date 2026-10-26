@@ -21,7 +21,8 @@ namespace Mmorpg.GameProtocol
         DepositPartialStack = 8,
         MoveItem = 9,
         MovePartialStack = 10,
-        LootToEquipment = 11
+        LootToEquipment = 11,
+        LootAll = 12
     }
 
     /// <summary>
@@ -451,6 +452,33 @@ namespace Mmorpg.GameProtocol
             return new RealtimeCorpseInteractionIntent(
                 operationId,
                 RealtimeCorpseInteractionKind.Refresh,
+                corpseId,
+                expectedCorpseRevision,
+                Guid.Empty,
+                0,
+                0,
+                Guid.Empty,
+                0,
+                -1,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                0,
+                string.Empty);
+        }
+
+        public static RealtimeCorpseInteractionIntent CreateLootAll(
+            Guid operationId,
+            Guid corpseId,
+            long expectedCorpseRevision)
+        {
+            return new RealtimeCorpseInteractionIntent(
+                operationId,
+                RealtimeCorpseInteractionKind.LootAll,
                 corpseId,
                 expectedCorpseRevision,
                 Guid.Empty,
@@ -1161,6 +1189,7 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeCorpseInteractionKind.Close:
                 case RealtimeCorpseInteractionKind.Refresh:
+                case RealtimeCorpseInteractionKind.LootAll:
                 {
                     break;
                 }
@@ -1246,6 +1275,7 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeCorpseInteractionKind.Close:
                 case RealtimeCorpseInteractionKind.Refresh:
+                case RealtimeCorpseInteractionKind.LootAll:
                 {
                     break;
                 }
@@ -1348,6 +1378,7 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeCorpseInteractionKind.Close:
                 case RealtimeCorpseInteractionKind.Refresh:
+                case RealtimeCorpseInteractionKind.LootAll:
                 {
                     break;
                 }
@@ -1576,6 +1607,7 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeCorpseInteractionKind.Close:
                 case RealtimeCorpseInteractionKind.Refresh:
+                case RealtimeCorpseInteractionKind.LootAll:
                 {
                     if (value.ExpectedCorpseRevision < 0)
                     {
@@ -2461,7 +2493,7 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeCorpseInteractionKind value)
         {
-            return (byte)value >= 1 && (byte)value <= 11;
+            return (byte)value >= 1 && (byte)value <= 12;
         }
 
         private static bool IsDefined(RealtimeCorpseViewUpdateKind value)

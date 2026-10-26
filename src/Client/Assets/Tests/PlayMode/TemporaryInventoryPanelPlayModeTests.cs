@@ -128,6 +128,64 @@ namespace Mmorpg.Client.Tests.PlayMode
             }
         }
 
+        // A right-click on an equipped item runs its move: without a simulation session the
+        // controller refuses it, and the status line says so. The right button never drags.
+        [UnityTest]
+        public IEnumerator RightClickRunsTheSlotMoveAndTheRightButtonNeverDrags()
+        {
+            var previousBaseUrl = ClientSession.GameServiceBaseUrl;
+            ConfigureGameServiceUrl(UnreachableGameServiceUrl);
+            ClientSession.Clear();
+            var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
+            yield return worldLoad;
+            Assert.That(worldLoad.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
+            yield return null;
+
+            var controller = UnityEngine.Object.FindAnyObjectByType<InventoryClientController>();
+            var panel = UnityEngine.Object.FindAnyObjectByType<TemporaryInventoryPanel>();
+            var characterId = Guid.NewGuid();
+            ClientSession.Auth = new AuthResponse { accountId = Guid.NewGuid().ToString() };
+            ClientSession.SelectedCharacter = new CharacterResponse
+            {
+                id = characterId.ToString(),
+                name = "Right Click Probe"
+            };
+            try
+            {
+                yield return null;
+                var snapshot = CreateSnapshot(controller.State.Catalog, characterId, out var equippedSlotId, out _);
+                Assert.That(
+                    controller.State.ApplyFull(snapshot),
+                    Is.EqualTo(InventorySnapshotApplyResult.Applied));
+                panel.SetOpen(true, InventoryPanelMode.Complete);
+                yield return null;
+
+                var slot = View(panel.GetComponentsInChildren<InventorySlotView>(), "equipment:" + equippedSlotId);
+                var rightPress = new PointerEventData(EventSystem.current)
+                {
+                    button = PointerEventData.InputButton.Right,
+                    position = new Vector2(200f, 200f)
+                };
+                slot.GetComponent<InventoryDragSource>().OnBeginDrag(rightPress);
+                Assert.That(slot.GetComponentInParent<InventoryDragCoordinator>().IsDragging, Is.False);
+
+                slot.GetComponent<InventorySlotRightClick>().OnPointerClick(rightPress);
+                yield return null;
+
+                Assert.That(
+                    panel.GetComponentsInChildren<Text>().Any(text =>
+                        text.text.Contains("active simulation session")),
+                    Is.True,
+                    "The status line names why the right-click move was not sent.");
+            }
+            finally
+            {
+                panel.SetOpen(false);
+                ClientSession.Clear();
+                ConfigureGameServiceUrl(previousBaseUrl);
+            }
+        }
+
         [UnityTest]
         public IEnumerator EquippedArrowSlotFollowsTheLiveCountOfTheOwnerCombatState()
         {

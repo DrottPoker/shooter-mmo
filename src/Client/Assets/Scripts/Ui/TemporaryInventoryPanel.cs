@@ -619,7 +619,7 @@ namespace Mmorpg.Client.Ui
 
             CreateMessage(
                 equipmentContent,
-                "Drag an item onto a green slot to equip it. On an occupied slot the equipped item swaps into the slot the new item came from. Drag a corpse Bag onto the Bag slot to swap Bags together with their contents.",
+                "Right-click an item in your inventory to equip it, or an equipped item to take it off. Drag an item onto a green slot to equip it. On an occupied slot the equipped item swaps into the slot the new item came from. Drag a corpse Bag onto the Bag slot to take it with its contents, or to swap it with your Bag.",
                 TemporaryUiKit.TextMuted);
         }
 
@@ -793,6 +793,7 @@ namespace Mmorpg.Client.Ui
                 Selected = item != null && item.ItemInstanceId == selectedItemId,
                 Interactable = item != null,
                 OnClick = () => OnContainerSlotClicked(slot),
+                OnRightClick = item == null ? null : () => OnItemRightClicked(item),
                 DragPayload = item == null
                     ? null
                     : InventoryDragPayload.ForItem(item.ItemInstanceId),
@@ -855,6 +856,7 @@ namespace Mmorpg.Client.Ui
                 Selected = item != null && item.ItemInstanceId == selectedItemId,
                 Interactable = item != null,
                 OnClick = () => OnEquipmentSlotClicked(equipmentSlot),
+                OnRightClick = item == null ? null : () => OnItemRightClicked(item),
                 DragPayload = item == null
                     ? null
                     : InventoryDragPayload.ForItem(item.ItemInstanceId),
@@ -931,6 +933,7 @@ namespace Mmorpg.Client.Ui
                         Key = "recovery:" + delivery.DeliveryId + ":" + deliveryItem.ItemOrder,
                         Item = item,
                         Interactable = true,
+                        OnRightClick = () => RunQuickMove(InventoryQuickMoves.ForRecoveryDelivery(controller.State, delivery)),
                         DragPayload = InventoryDragPayload.ForRecoveryDelivery(delivery.DeliveryId),
                         CanDrag = CanMoveItem(state, null),
                         DropValidator = RejectRecoveryDestination,
@@ -944,7 +947,7 @@ namespace Mmorpg.Client.Ui
 
             CreateMessage(
                 parent,
-                "Drag any item of a delivery to Permanent Inventory or Bank. The whole delivery is claimed at once.",
+                "Drag any item of a delivery to Permanent Inventory or Bank, or right-click it to claim it into Permanent Inventory. The whole delivery is claimed at once.",
                 TemporaryUiKit.TextMuted);
         }
 
@@ -1004,6 +1007,14 @@ namespace Mmorpg.Client.Ui
             var actions = TemporaryUiKit.CreateRow(parent, 34f, 6f);
             TemporaryUiKit.CreateButton(
                 actions,
+                "Loot all",
+                ExecuteLootAll,
+                corpseState.CanShowOperations
+                    && CanMoveItem(inventoryState, null)
+                    && view.Sections.Any(section => section.Slots.Any(slot => slot.Item != null)),
+                TemporaryButtonTone.Active);
+            TemporaryUiKit.CreateButton(
+                actions,
                 "Close",
                 () => ExecuteCorpseClose(),
                 idle,
@@ -1052,7 +1063,7 @@ namespace Mmorpg.Client.Ui
 
             CreateMessage(
                 parent,
-                "Drag items between the corpse and your carried storage, or within the corpse. Typed slots accept only their shown type, stacks merge, other items swap, and an occupied Bag slot swaps the whole Bag. Drag a corpse item onto an equipment slot to equip it; an occupied slot swaps the equipped item into the corpse.",
+                "Loot all takes everything that fits: equipment into free slots, the rest into your inventory. Right-click an item to take it the same way. Drag items between the corpse and your carried storage, or within the corpse. Typed slots accept only their shown type, stacks merge, other items swap, and an occupied Bag slot swaps the whole Bag. Drag a corpse item onto an equipment slot to equip it; an occupied slot swaps the equipped item into the corpse.",
                 TemporaryUiKit.TextMuted);
         }
 
@@ -1078,6 +1089,7 @@ namespace Mmorpg.Client.Ui
                 CornerLabel = label,
                 EmptyLabel = label,
                 Interactable = item != null,
+                OnRightClick = item == null ? null : () => OnCorpseItemRightClicked(item),
                 DragPayload = item == null
                     ? null
                     : InventoryDragPayload.ForCorpseItem(view.CorpseId, item.ItemInstanceId),
@@ -1136,7 +1148,7 @@ namespace Mmorpg.Client.Ui
             {
                 TemporaryUiKit.CreateLabel(
                     characterFooter,
-                    "Click an item to select it. Drag an item onto a slot to move it.",
+                    "Click an item to select it, drag it to move it, or right-click it to equip, store, or take it.",
                     13,
                     FontStyle.Normal,
                     TemporaryUiKit.TextMuted,
@@ -1417,6 +1429,7 @@ namespace Mmorpg.Client.Ui
 
             return CorpseTargetAdvisor.CanLoot(
                 state,
+                view,
                 corpseItem,
                 sourceSection,
                 sourceSlot,
@@ -1545,8 +1558,9 @@ namespace Mmorpg.Client.Ui
                     return false;
                 }
 
-                // A corpse Bag swaps with the equipped Bag; any other corpse item equips whole.
-                if (corpseItem.HasBagContents)
+                // A corpse Bag swaps with the equipped Bag, or takes an empty Bag slot with its
+                // contents; any other corpse item equips whole.
+                if (corpseItem.HasBagContents && equipmentSlot.Item != null)
                 {
                     return CorpseTargetAdvisor.CanSwapCorpseBagIntoEquipment(
                         state,
@@ -1564,6 +1578,7 @@ namespace Mmorpg.Client.Ui
 
                 return CorpseTargetAdvisor.CanLootIntoEquipment(
                     state,
+                    view,
                     corpseItem,
                     sourceSection,
                     sourceSlot,
@@ -1722,7 +1737,7 @@ namespace Mmorpg.Client.Ui
                     out var corpseItem,
                     out _,
                     out _);
-                if (corpseItem.HasBagContents)
+                if (corpseItem.HasBagContents && equipmentSlot.Item != null)
                 {
                     ExecuteCorpse(
                         corpseController.TrySwapBag(corpseItem, out var bagError),

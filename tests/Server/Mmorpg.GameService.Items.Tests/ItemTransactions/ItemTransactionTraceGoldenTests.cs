@@ -1,3 +1,4 @@
+using Dapper;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
@@ -803,6 +804,50 @@ public sealed class ItemTransactionTraceGoldenTests
                     state.PermanentInventoryContainerId,
                     mobLootDestinationRevision,
                     0)),
+            CancellationToken.None)));
+
+        state = await world.LoadStateAsync(characterId);
+        var lootAllId = Guid.NewGuid();
+        AssertCommitted(await traced.AssertGoldenAsync("grant_mob_loot_all.success", lootAllId, service => service.ExecuteAsync(
+            new ItemTransactionRequest<GrantMobLootAllCommand>(
+                lootAllId,
+                SimulationActor(session),
+                new GrantMobLootAllCommand(
+                    characterId,
+                    state.Revision,
+                    Guid.NewGuid(),
+                    "mob.feral_wolf",
+                    [new MobLootGrantEntry(Guid.NewGuid(), Ore, 3), new MobLootGrantEntry(Guid.NewGuid(), Potion, 2)])),
+            CancellationToken.None)));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task CorpseLootAllMatchesItsGoldenTrace()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        await using var traced = TracedItemTransactions.Create(context);
+        var source = await world.RegisterAsync("golden_loot_all_corpse");
+        var looter = await world.RegisterAsync("golden_loot_all_looter");
+        var sourceInventoryId = (await world.LoadStateAsync(source.Character.Id)).PermanentInventoryContainerId;
+        var equippedRingId = await world.GrantAsync(source.Character.Id, Ring, 1, sourceInventoryId, 0);
+        await world.EquipAsync(source.Character.Id, equippedRingId, "ring_1");
+        await world.GrantAsync(source.Character.Id, Ore, 4, sourceInventoryId, 1);
+        var corpseId = await world.ProcessDeathAsync(source.Character.Id);
+        var looterId = looter.Character.Id;
+        var looterInventoryId = (await world.LoadStateAsync(looterId)).PermanentInventoryContainerId;
+        await world.GrantAsync(looterId, Ore, 2, looterInventoryId, 0);
+
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        var corpseRevision = await connection.QuerySingleAsync<long>(
+            "select revision from corpses where id = @CorpseId;",
+            new { CorpseId = corpseId });
+        var lootAllId = Guid.NewGuid();
+        AssertCommitted(await traced.AssertGoldenAsync("loot_all_corpse_items.success", lootAllId, service => service.ExecuteAsync(
+            new ItemTransactionRequest<LootAllCorpseItemsCommand>(
+                lootAllId,
+                ItemTransactionActor.ForSystem(),
+                new LootAllCorpseItemsCommand(looterId, corpseId, corpseRevision)),
             CancellationToken.None)));
     }
 

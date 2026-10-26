@@ -353,6 +353,7 @@ balance through `CharactersSql.CurrencyOf`.
 | `recovery_deliveries`, `recovery_delivery_items` | System deliveries with source, availability, expiry, and their items |
 | `item_operations`, `item_operation_changes`, `item_destructions` | Operation ids with canonical request hash and replayable result, the append-only audit, and destruction records |
 | `corpses`, `corpse_sections`, `corpse_snapshots`, `death_events` | Durable player and persistent Mob corpses, their three sections, non-interactive presentation snapshots, and idempotent death events |
+| `live_mob_loot_grants` | Every committed live Mob loot grant by its grant id, with the operation, character, and source corpse, so a grant commits once |
 
 CHECK constraints enforce the location union of `item_instances`, and partial
 unique indexes allow one item per container slot and per equipment slot. A
@@ -431,6 +432,7 @@ migration's SQL.
 | 23 | `202610181240_character_currency_ledger` | Characters |
 | 24 | `202610181250_item_economy` | Items |
 | 25 | `202610251200_character_appearance` | Characters |
+| 26 | `202610261800_live_mob_loot_grants` | Items |
 
 Migration #23 adds the balance range check on `characters.currency`, creates
 `character_currency_ledger`, and opens the ledger with one `opening_balance` row
@@ -441,7 +443,8 @@ character with its body model, its choices as JSONB, and whether its headwear is
 lowered, deleted with its character, and gives every existing character
 `Human_Male` with its default look. `CharacterAppearanceVerifier`, a database
 seeder, refuses to start when `content/characters/appearance.json` no longer
-offers what a stored look names.
+offers what a stored look names. Migration #26 creates `live_mob_loot_grants`,
+the ledger of committed live Mob loot grants by grant id.
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.

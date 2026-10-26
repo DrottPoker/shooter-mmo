@@ -240,6 +240,25 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void LootAllShowsTheLootAtOnceAndExpectsTheViewRevision()
+        {
+            OpenView();
+
+            Assert.That(controller.TryLootAll(out var error), Is.True, error);
+
+            var intent = channel.LastSent;
+            Assert.That(intent.OperationKind, Is.EqualTo(RealtimeCorpseInteractionKind.LootAll));
+            Assert.That(intent.CorpseId, Is.EqualTo(corpseId));
+            Assert.That(intent.ExpectedCorpseRevision, Is.EqualTo(ViewRevision));
+            Assert.That(controller.State.ShownView.TryFindItem(itemId, out _, out _, out _), Is.False);
+            var looted = inventory.State.FullSnapshot.PermanentInventory.Slots[0].Item;
+            Assert.That(looted, Is.Not.Null);
+            Assert.That(looted.DefinitionId, Is.EqualTo("fixture.potion"));
+            Assert.That(looted.Quantity, Is.EqualTo(5));
+            Assert.That(inventory.State.IsPredictedItem(looted.ItemInstanceId), Is.True);
+        }
+
+        [Test]
         public void AQueuedCorpseMoveWaitsForTheViewTheEarlierMoveCommitted()
         {
             OpenView();

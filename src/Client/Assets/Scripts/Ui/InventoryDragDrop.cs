@@ -269,9 +269,12 @@ namespace Mmorpg.Client.Ui
             canvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
         }
 
+        // Only the left button drags; a right press is a right-click move.
         public void OnBeginDrag(PointerEventData eventData)
         {
             ownsActiveDrag = canDrag
+                && eventData != null
+                && eventData.button == PointerEventData.InputButton.Left
                 && coordinator != null
                 && payload != null
                 && coordinator.TryBegin(payload, label, icon, eventData);
@@ -312,6 +315,26 @@ namespace Mmorpg.Client.Ui
             }
 
             ownsActiveDrag = false;
+        }
+    }
+
+    // Runs a slot's right-click move.
+    [DisallowMultipleComponent]
+    public sealed class InventorySlotRightClick : MonoBehaviour, IPointerClickHandler
+    {
+        private Action onRightClick;
+
+        public void Configure(Action rightClick)
+        {
+            onRightClick = rightClick;
+        }
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            if (eventData != null && eventData.button == PointerEventData.InputButton.Right)
+            {
+                onRightClick?.Invoke();
+            }
         }
     }
 

@@ -257,6 +257,48 @@ never swaps: its loot fills an empty slot or tops up a stack of the same item,
 in carried storage or in the equipment (decided 2026-10-19 and 2026-10-20,
 replacing the earlier rule that corpse loot enters carried storage only).
 
+Decided 2026-10-26: a corpse Bag with contents, which can only be the corpse's
+equipped Bag, also takes the looter's empty Bag slot whole, with every item in
+it, and the corpse keeps a new empty Bag section. An empty corpse Bag, such as a
+spare Bag in the corpse inventory or the equipped one after its contents left,
+loots like any item into an empty slot. Before this, a corpse Bag could only
+swap with an equipped Bag, so a looter without a Bag could not take one, and a
+spare Bag could not leave the corpse at all.
+
+### Loot All
+
+Decided 2026-10-26 and implemented: Loot all takes everything that fits from a
+corpse in one transaction, at the corpse revision the looter saw.
+
+- Corpse equipment comes first, then the corpse inventory, then the Bag
+  contents, each in slot order.
+- An equippable item takes a free compatible equipment slot under the equip
+  rules, including blocked slots and the level requirement, and never replaces an
+  equipped item. A stack of the equipped kind, such as arrows, tops up the
+  equipped stack.
+- The rest tops up carried stacks, Permanent Inventory before the equipped Bag,
+  and then takes free slots in the order a purchase fills them: matching
+  specialized Bag slots, Permanent Inventory, general Bag slots. The Secure
+  Container is never filled.
+- A stack that does not fit whole moves in part and leaves the rest in the
+  corpse; a live Mob corpse gives only whole items.
+- A corpse Bag with items takes an empty Bag slot whole, and its free slots then
+  take later loot. When the looter has a Bag, the corpse Bag's contents are
+  looted and the emptied Bag follows them.
+- Nothing passes the 140 percent hard cap; an item that is too heavy stays while
+  lighter ones still fit.
+- A Loot all that takes nothing is rejected as `inventory_full`.
+
+`CorpseLootAllPlanner` in WorldData plans the steps. GameService executes them
+under the rules of the single loot each step stands for, and the client shows the
+same plan before the server answers. A live Mob corpse grants its entries in one
+GameService transaction too, and the `live_mob_loot_grants` ledger records every
+committed live grant, so neither another Loot all nor a single loot can grant an
+entry twice after an uncertain outcome.
+
+Right-click moves use the same placement: a corpse item takes a free compatible
+equipment slot or else carried storage, and never replaces an equipped item.
+
 An equipped item does not occupy a permanent inventory slot. Equipment remains
 normal item ownership plus a mutually exclusive slot assignment. It is not a
 parallel non-item system.

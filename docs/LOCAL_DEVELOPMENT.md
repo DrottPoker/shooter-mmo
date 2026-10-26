@@ -1842,6 +1842,60 @@ worker store with the same database deadline, three-section custody, and loot.
 No manual Unity gameplay setup is required. To kill a wolf and loot its
 corpse in Unity, follow [Combat Verification](#combat-verification).
 
+## Right-Click Moves And Loot All Verification
+
+The rules are described in
+[Game Features](GAME_FEATURES.md#player-inventory-foundation). Run the focused
+tests first; the GameService tests need `MMORPG_TEST_POSTGRES` and the test
+containers as in [Unity Inventory Verification](#unity-inventory-verification):
+
+```powershell
+dotnet test tests/Shared/Mmorpg.Shared.Tests --configuration Release --filter "FullyQualifiedName~CorpseLootAllPlannerTests"
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~CorpseLootAllIntegrationTests"
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~LiveMobCorpse"
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter InventoryQuickMovesTests,CorpseClientControllerTests
+```
+
+Expected result: every test passes.
+
+To try it in Unity, start the stack and give two offline characters items with
+`MMORPG > Tools > Inventory Item Grants`, as in
+[Give A Character Development Items](#give-a-character-development-items): the
+`Equipment Test Pack` for the looter, and a durable corpse at `(0, 0, -10)` from
+a second character. Then join the looter in Development World 2:
+
+```powershell
+docker compose up -d --wait
+dotnet run --project src/Server/GameService
+dotnet run --project src/Server/SimulationWorker
+```
+
+1. Press `I` and right-click an equippable item in Permanent Inventory.
+   Expected result: it lands in its equipment slot at once; a ring takes Ring 1
+   and a second ring Ring 2. Right-click an equipped item. Expected result: it
+   goes back to the first free inventory slot.
+2. With a shield equipped, right-click a two-handed bow. Expected result: the
+   shield moves to the inventory and the bow takes the main hand.
+3. Choose the `Bank` tab and right-click an inventory item, then a Bank item.
+   Expected result: the first goes into the Bank, topping up a stack of the same
+   item, and the second comes back to the inventory.
+4. Right-click Mira, choose `Trade`, and right-click a carried item. Expected
+   result: it shows in the `Sell` slot with `Sell <n> <item> for <total>`, and
+   nothing is sold until you confirm.
+5. Walk to the corpse and open it. Right-click a corpse item. Expected result:
+   equipment takes a free equipment slot, never replacing an equipped item, and
+   anything else goes to the inventory.
+6. Click `Loot all`. Expected result: the corpse empties at once as far as there
+   is room: equipment fills free slots, arrows top up the equipped stack, a corpse
+   Bag takes an empty Bag slot with its contents, and the rest fills the
+   inventory. What does not fit stays in the corpse, and when nothing fits the
+   status line says `Nothing in the corpse fits in your equipment or inventory.`
+7. Kill a Feral Wolf as in [Combat Verification](#combat-verification), open its
+   corpse, and click `Loot all`. Expected result: the pelt goes to the
+   inventory and the empty corpse closes with `The corpse is empty.`
+
+Stop GameService and SimulationWorker when you are done.
+
 ## Combat Verification
 
 Protocol 18 adds target-based combat to SimulationWorker: attack targets,

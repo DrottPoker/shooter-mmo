@@ -59,6 +59,12 @@ internal sealed class CorpseLootCommandHandler
                 "An active item policy prevents this corpse item from changing ownership.");
         }
 
+        if (source.IsBag)
+        {
+            await EquipCorpseBagAsync(context, corpse, command, source, definition, occupantId, cancellationToken);
+            return;
+        }
+
         var occupant = occupantId is null
             ? null
             : await context.State.LoadOwnedItemAsync(
@@ -135,6 +141,60 @@ internal sealed class CorpseLootCommandHandler
         }
 
         await FinishEquipmentLootAsync(context, corpse, source, command.CharacterId, cancellationToken);
+    }
+
+    // A corpse Bag takes an empty Bag slot with whatever it holds. Only the corpse's equipped
+    // Bag can hold items, and it takes the corpse Bag section along, so the corpse gets a new
+    // empty one. An equipped Bag is exchanged only through the atomic Bag swap.
+    private static async Task EquipCorpseBagAsync(
+        ItemTransactionContext context,
+        LockedCorpseRow corpse,
+        LootCorpseItemToEquipmentCommand command,
+        LockedItem bag,
+        ResolvedItemDefinition definition,
+        Guid? occupantId,
+        CancellationToken cancellationToken)
+    {
+        if (occupantId is not null)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.BagStateChanged,
+                "A corpse Bag swaps with the equipped Bag only through the atomic Bag swap.");
+        }
+
+        var hasContents = await context.State.BagHasContentsAsync(bag, cancellationToken);
+        var ownsSection = await CorpseBagCustody.OwnsSectionAsync(context, command.CorpseId, bag, cancellationToken);
+        if (hasContents)
+        {
+            if (!ownsSection)
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.BagStateChanged,
+                    "Only the corpse's equipped Bag can hold items.");
+            }
+
+            await BagAggregateGuards.EnsureBagAggregateTransferAllowedAsync(context, bag, cancellationToken);
+        }
+
+        await context.Placement.EnsureEquipmentDestinationAsync(
+            command.CharacterId,
+            command.EquipmentSlotId,
+            definition,
+            bag.Quantity,
+            hasContents,
+            cancellationToken);
+        await CorpseCustodyWrites.EquipCorpseItemAsync(
+            context,
+            bag,
+            command.CharacterId,
+            command.EquipmentSlotId,
+            cancellationToken);
+        if (ownsSection)
+        {
+            await CorpseBagCustody.DetachSectionAsync(context, command.CorpseId, bag, cancellationToken);
+        }
+
+        await FinishEquipmentLootAsync(context, corpse, bag, command.CharacterId, cancellationToken);
     }
 
     // The swapped-out item enters corpse custody in the loot's source slot, under the rules a
@@ -220,13 +280,6 @@ internal sealed class CorpseLootCommandHandler
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemStateConflict,
                 "The corpse item changed before the loot operation committed.");
-        }
-
-        if (source.IsBag)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.BagStateChanged,
-                "Corpse Bags move only through an atomic Bag aggregate swap.");
         }
 
         return source;
@@ -336,11 +389,30 @@ internal sealed class CorpseLootCommandHandler
                 "The corpse item changed before the loot operation committed.");
         }
 
+        // An empty corpse Bag moves like any item, into an empty slot. One with contents takes
+        // an empty Bag slot instead, or swaps with the equipped Bag.
+        var ownsBagSection = false;
         if (source.IsBag)
         {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.BagStateChanged,
-                "Corpse Bags move only through an atomic Bag aggregate swap.");
+            if (await context.State.BagHasContentsAsync(source, cancellationToken))
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.BagNotEmpty,
+                    "A corpse Bag with contents moves only into an empty Bag slot or swaps with the equipped Bag.");
+            }
+
+            if (command.TargetItemInstanceId is not null)
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.ItemSlotOccupied,
+                    "A corpse Bag moves only into an empty slot.");
+            }
+
+            ownsBagSection = await CorpseBagCustody.OwnsSectionAsync(
+                context,
+                command.CorpseId,
+                source,
+                cancellationToken);
         }
 
         var definition = await context.State.LoadDefinitionAsync(
@@ -472,7 +544,7 @@ internal sealed class CorpseLootCommandHandler
                 movedQuantity,
                 command.DestinationSlotIndex,
                 false,
-                null,
+                source.IsBag ? source.ItemInstanceId : null,
                 false,
                 cancellationToken);
         }
@@ -516,6 +588,10 @@ internal sealed class CorpseLootCommandHandler
                 destination,
                 command.DestinationSlotIndex,
                 cancellationToken);
+            if (ownsBagSection)
+            {
+                await CorpseBagCustody.DetachSectionAsync(context, command.CorpseId, source, cancellationToken);
+            }
         }
 
         await CorpseCustody.AdvanceCorpseRevisionAsync(context, corpse, cancellationToken);

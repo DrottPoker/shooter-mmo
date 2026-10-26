@@ -73,6 +73,10 @@ namespace Mmorpg.SharedTests
                 "cb cc cd ce cf 07 00 00 00 00 00 00 00 01 00 00 " +
                 "00 01 40 41 42 43 44 45 46 47 48 49 4a 4b 4c 4d " +
                 "4e 4f 00 00 00 00 00 00 00 00",
+            ["Corpses/CorpseInteractionIntent/loot all"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "0c a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
+                "af 03 00 00 00 00 00 00 00",
             ["Corpses/CorpseInteractionIntent/loot item"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "04 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +

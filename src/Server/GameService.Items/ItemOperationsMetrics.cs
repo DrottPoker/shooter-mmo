@@ -312,6 +312,7 @@ internal sealed class ItemOperationsMetrics : IDisposable
         ItemOperationKinds.ProcessPlayerDeath,
         ItemOperationKinds.CreatePersistentMobCorpse,
         ItemOperationKinds.GrantMobLoot,
+        ItemOperationKinds.GrantMobLootAll,
         ItemOperationKinds.ExpireCorpse,
         ItemOperationKinds.ExpireRecoveryDelivery,
         ItemOperationKinds.LootCorpseItem,
@@ -322,6 +323,7 @@ internal sealed class ItemOperationsMetrics : IDisposable
         ItemOperationKinds.MoveCorpseItem,
         ItemOperationKinds.MoveCorpsePartialStack,
         ItemOperationKinds.SwapCorpseBag,
+        ItemOperationKinds.LootAllCorpseItems,
         ItemOperationKinds.VendorPurchase,
         ItemOperationKinds.VendorSale,
         ItemOperationKinds.GatherResource

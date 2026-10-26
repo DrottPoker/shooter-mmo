@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 25,
+    "version": 26,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -293,7 +293,8 @@
         { "name": "DepositPartialStack", "value": 8 },
         { "name": "MoveItem", "value": 9 },
         { "name": "MovePartialStack", "value": 10 },
-        { "name": "LootToEquipment", "value": 11 }
+        { "name": "LootToEquipment", "value": 11 },
+        { "name": "LootAll", "value": 12 }
       ]
     },
     {
@@ -1718,7 +1719,11 @@
             "fields": []
           },
           {
-            "kinds": [ { "kind": "Close", "factory": "CreateClose" }, { "kind": "Refresh", "factory": "CreateRefresh" } ],
+            "kinds": [
+              { "kind": "Close", "factory": "CreateClose" },
+              { "kind": "Refresh", "factory": "CreateRefresh" },
+              { "kind": "LootAll", "factory": "CreateLootAll" }
+            ],
             "common": [ { "field": "ExpectedCorpseRevision", "minimum": 0 } ],
             "fields": []
           },

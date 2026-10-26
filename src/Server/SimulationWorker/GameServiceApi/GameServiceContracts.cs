@@ -223,6 +223,26 @@ public sealed record SimulationMobLootGrantRequest(
     Guid? TargetItemInstanceId = null,
     long? ExpectedTargetItemRevision = null);
 
+// Loot all on a live Mob corpse: every loot entry still in the corpse, in its slot order.
+public sealed record SimulationMobLootAllRequest(
+    Guid OperationId,
+    Guid AccountId,
+    Guid CharacterId,
+    long ExpectedCharacterRevision,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    Guid SourceCorpseId,
+    string SourceActorDefinitionId,
+    IReadOnlyList<MobCorpseLootEntryRequest> Loot);
+
+// The committed transaction and the grants that left the corpse, including any that an earlier
+// operation had already granted.
+public sealed record SimulationMobLootAllResponse(
+    SimulationItemTransactionResponse Transaction,
+    IReadOnlyList<Guid> GrantedGrantIds);
+
 public sealed record SimulationItemTransactionResponse(
     Guid OperationId,
     string OperationKind,

@@ -345,17 +345,24 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
             return;
         }
 
-        var level = await Connection.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
-            $"select {CharactersSql.LevelOf("@CharacterId")};",
-            new { CharacterId = characterId },
-            Transaction,
-            cancellationToken: cancellationToken));
+        var level = await LoadCharacterLevelAsync(characterId, cancellationToken);
         if (level is null || level.Value < requiredLevel)
         {
             Reject(
                 ItemTransactionErrorCodes.EquipmentLevelRequirementNotMet,
                 $"The item requires character level {requiredLevel}.");
         }
+    }
+
+    public Task<int?> LoadCharacterLevelAsync(
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        return Connection.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+            $"select {CharactersSql.LevelOf("@CharacterId")};",
+            new { CharacterId = characterId },
+            Transaction,
+            cancellationToken: cancellationToken));
     }
 
     // Checks that an equipped stack can grow to the quantity, such as when arrows top up the

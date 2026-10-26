@@ -139,6 +139,7 @@ namespace Mmorpg.SharedTests
             Vector("open", () => RealtimeCorpseInteractionIntent.CreateOpen(G(1), G(10)));
             Vector("close", () => RealtimeCorpseInteractionIntent.CreateClose(G(1), G(10), 3));
             Vector("refresh", () => RealtimeCorpseInteractionIntent.CreateRefresh(G(1), G(10), 0));
+            Vector("loot all", () => RealtimeCorpseInteractionIntent.CreateLootAll(G(1), G(10), 3));
             Vector(
                 "loot item",
                 () => RealtimeCorpseInteractionIntent.CreateLootItem(G(1), G(10), 3, G(2), 6, G(3), 9, 4, Guid.Empty, 0));
@@ -295,6 +296,7 @@ namespace Mmorpg.SharedTests
             const byte lootItem = 4;
             const byte lootPartial = 5;
             const byte swapBag = 6;
+            const byte lootAll = 12;
 
             r.Accepts("Corpses/CorpseInteractionIntent/open baseline", CorpseIntentWire(open, corpseRevision: -1));
             r.AcceptsAs(
@@ -307,8 +309,14 @@ namespace Mmorpg.SharedTests
             r.Accepts("Corpses/CorpseInteractionIntent/close baseline", CorpseIntentWire(close));
             r.Rejects("Corpses/CorpseInteractionIntent/close revision -1", CorpseIntentWire(close, corpseRevision: -1));
             r.Accepts("Corpses/CorpseInteractionIntent/refresh revision 0", CorpseIntentWire(refresh, corpseRevision: 0));
+            r.Accepts("Corpses/CorpseInteractionIntent/loot all baseline", CorpseIntentWire(lootAll));
+            r.Rejects("Corpses/CorpseInteractionIntent/loot all revision -1", CorpseIntentWire(lootAll, corpseRevision: -1));
+            r.Rejects(
+                "Corpses/CorpseInteractionIntent/loot all with a transfer payload",
+                CorpseIntentWire(lootAll).Append(TransferPayloadWire()));
             r.Rejects("Corpses/CorpseInteractionIntent/kind 0", CorpseIntentWire(0));
             r.Rejects("Corpses/CorpseInteractionIntent/kind 11", CorpseIntentWire(11));
+            r.Rejects("Corpses/CorpseInteractionIntent/kind 13", CorpseIntentWire(13));
             r.Rejects("Corpses/CorpseInteractionIntent/empty operation id", CorpseIntentWire(close, operationId: Guid.Empty));
             r.Rejects("Corpses/CorpseInteractionIntent/empty corpse id", CorpseIntentWire(close, corpseId: Guid.Empty));
             r.Rejects("Corpses/CorpseInteractionIntent/open with empty corpse id", CorpseIntentWire(open, corpseId: Guid.Empty, corpseRevision: -1));
