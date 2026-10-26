@@ -50,7 +50,14 @@ public sealed class ContentPipelineTests
         Assert.NotEmpty(items);
         Assert.Equal(items.Select(file => file.Id).Order(StringComparer.Ordinal), items.Select(file => file.Id));
         Assert.Equal(
-            ["mob.feral_alpha", "mob.feral_wolf", "npc.city_guard", "npc.city_services", "resource.iron_vein"],
+            [
+                "mob.feral_alpha",
+                "mob.feral_wolf",
+                "npc.city_guard",
+                "npc.city_services",
+                "resource.iron_vein",
+                "resource.oak_tree"
+            ],
             actors.Select(file => file.Id));
     }
 
