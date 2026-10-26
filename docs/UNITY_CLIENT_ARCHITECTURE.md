@@ -63,7 +63,8 @@ inventory's live arrow count read its state. Each namespace
 equals its assembly name. Areas that read `ClientSession` reference Api as
 well, because the session caches Api contracts. The Editor-only
 `Mmorpg.Client.Editor` assembly references Core, Worlds, Gameplay, and Cloth plus the
-shared WorldData editor and the Addressables editor assemblies. It also holds
+shared WorldData editor, the WorldData actor editor, whose compiled World actors the
+collision bake adds resource nodes from, and the Addressables editor assemblies. It also holds
 `ArtModelImportRules`, the import rules for every model the art pipeline
 exports to `Assets/Art/Models`, and `ArtAppearanceCatalogs`, which writes the
 Gameplay appearance catalogs of the exported bodies, described in

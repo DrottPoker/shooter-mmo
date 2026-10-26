@@ -19,6 +19,14 @@
         "sizeY": 1.2,
         "sizeZ": 1.6
     },
+    "collisionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.5,
+        "centerZ": 0.0,
+        "sizeX": 1.2,
+        "sizeY": 1.0,
+        "sizeZ": 1.2
+    },
     "capabilities": [
         {
             "id": "resource.mine",

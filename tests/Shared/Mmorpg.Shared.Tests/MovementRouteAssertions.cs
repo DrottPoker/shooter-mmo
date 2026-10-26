@@ -6,7 +6,8 @@ using Mmorpg.WorldData.Content;
 namespace Mmorpg.Shared.Tests;
 
 // Follows planned routes with the shared movement simulation, and loads the collision of
-// checked-in Worlds the same way the bake compiles it.
+// checked-in Worlds as the server and the client do: the compiled chunks, which hold the
+// scene's shapes and the resource nodes that block movement.
 internal static class MovementRouteAssertions
 {
     public static PlayerMovementState AssertFollowsToTheEnd(
@@ -84,6 +85,26 @@ internal static class MovementRouteAssertions
     }
 
     public static ChunkedStaticCollisionWorld LoadCheckedInWorld(string worldId)
+    {
+        var directory = ContentLayout.GeneratedCollisionDirectory(RepositoryPaths.Generated, worldId);
+        var manifest = JsonSerializer.Deserialize<CollisionWorldManifest>(
+            File.ReadAllText(Path.Combine(directory, ContentLayout.CollisionManifestFileName)),
+            new JsonSerializerOptions { IncludeFields = true, PropertyNameCaseInsensitive = true })!;
+        return new ChunkedStaticCollisionWorld(
+            manifest.WorldId,
+            manifest.Revision,
+            manifest.ChunkSize,
+            manifest.Chunks.Select(entry =>
+            {
+                var bytes = File.ReadAllBytes(
+                    Path.Combine(directory, entry.ResourceName + CollisionDataFormat.ChunkFileExtension));
+                Assert.Equal(entry.Sha256, CollisionWorldCompiler.ComputeSha256Hex(bytes), ignoreCase: true);
+                return CollisionChunkCodec.Decode(bytes);
+            }));
+    }
+
+    // The scene's own collision as the Unity bake writes it, without the actors.
+    public static ChunkedStaticCollisionWorld LoadSceneCollision(string worldId)
     {
         var authoring = JsonSerializer.Deserialize<CollisionWorldAuthoringDocument>(
             File.ReadAllText(ContentLayout.CollisionSourcePath(RepositoryPaths.Content, worldId)),

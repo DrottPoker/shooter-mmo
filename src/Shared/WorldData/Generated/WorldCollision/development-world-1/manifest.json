@@ -1,7 +1,7 @@
 {
     "FormatVersion": 2,
     "WorldId": "development-world-1",
-    "Revision": "be8ec4c9bba84aabd3a70d106a50c69411bb8c7735ad78f21bcba7e5e6eac407",
+    "Revision": "d54d21eef0b8334917acade64818b1c8f8f858d2ee76b75844d1bcff2f1cef15",
     "ChunkSize": 32.0,
     "Chunks": [
         {
@@ -28,7 +28,7 @@
             "X": 0,
             "Z": 0,
             "ResourceName": "chunk_p0_p0",
-            "Sha256": "aed66d09af9238411693493e6ebcc0dfb2767cafdcff8184c043b8b1e71a0ba5",
+            "Sha256": "e3ab7f51d5f86a0144a49bf5dfe3326486ba3db962f60badb7c9ba7d443ae6e7",
             "MinimumX": 0.0,
             "MinimumZ": 0.0,
             "MaximumX": 32.0,
@@ -38,7 +38,7 @@
             "X": 0,
             "Z": -1,
             "ResourceName": "chunk_p0_n1",
-            "Sha256": "724ff7e80e3af991959bde5e2c22fc1b941eff0eb7d183a76bd9a5b3310b9336",
+            "Sha256": "92b3b632f1078065e8ea1ce402abca397d3bbb304d5e5f8b1920995b02408b50",
             "MinimumX": 0.0,
             "MinimumZ": -32.0,
             "MaximumX": 32.0,

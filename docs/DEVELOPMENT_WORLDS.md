@@ -33,7 +33,9 @@ hand. `world.json` is the only source of the spawn and the playable bounds: the
 builders read it to place `PlayerSpawn` and the boundary walls, and
 SimulationWorker reads it to spawn characters and clamp movement.
 `actor-spawns.json` is the only source of NPC, Mob, and resource node
-positions; the layouts only keep those positions clear.
+positions; the layouts only keep those positions clear. A resource node blocks
+movement with its collision box, which the collision compilers add to the
+World's collision from the compiled actors.
 
 ## Shared Look
 
@@ -215,8 +217,12 @@ resource nodes that a Woodcutting Axe chops down, at `(38, 0, -80)`,
 
 ### Resource Node Placements
 
-Resource nodes are actors, so `actor-spawns.json` places them and they never
-collide; the builders only keep their ground clear and sign their zones.
+Resource nodes are actors, so `actor-spawns.json` places them; the builders only
+keep their ground clear and sign their zones. Each one blocks movement with the
+collision box of its definition, aligned to the World axes, which
+`WorldCollisionCompiler` and the Unity bake add to the World's collision on the
+movement layer only: characters and Mobs walk around a vein or an oak's trunk,
+while sight and arrows pass it.
 
 | World | Resource node | Placement |
 | --- | --- | --- |
@@ -239,8 +245,11 @@ never change actor content.
    them, and cancelling stops the rebuild.
 3. Select `MMORPG > Tools > World Collision > Bake World Scenes`.
 4. Confirm the Console reports `development-world-1` with 30 boxes, 0 meshes,
-   and 0 heightfields in 4 chunks, and `development-world-2` with 201 boxes, 1
-   mesh, and 1 heightfield in 144 chunks.
+   and 0 heightfields in 4 chunks, and 9 resource node boxes, and
+   `development-world-2` with 201 boxes, 1 mesh, and 1 heightfield in 144
+   chunks, and 11 resource node boxes. The bake compiles the World actors from
+   their authoring and stops when they differ from the compiled ones, so save
+   actor changes in Actor Studio or Spawn Authoring first.
 
 To change a layout, edit the builder in
 `src/Client/Assets/Editor/DevelopmentWorlds` instead of the scene, then rebuild
@@ -260,7 +269,12 @@ baked collision of both Worlds with the shared route planner and movement
 simulation:
 
 - Every actor spawn, patrol point, and the World spawn lies inside the bounds
-  on ground, with a free 0.6 m radius column above the step height.
+  on ground, with a free 0.6 m radius column above the step height in the
+  scene's own collision.
+- The tests read the compiled collision chunks, as the server and the client
+  do. Every resource node has its box there, on the movement layer only, and a
+  character walking straight at the north oak of the grove stops at its trunk,
+  while a planned route walks around it.
 - The stress arena fits inside one interest radius, and the stress bot square
   from its spawn is free.
 - The stress arena hotspots are reachable from its spawn.
@@ -273,7 +287,8 @@ The Unity `AuthoredGameplayAssetTests` check that both scenes keep the World
 scene composition, that `PlayerSpawn` and the boundary walls match the
 manifest, that the labels are world-space text without raycasts, that every
 development World material is used, and that the checked-in bake holds exactly
-the scene's boxes, terrain cells, and mesh triangles.
+the scene's boxes, terrain cells, and mesh triangles, and one movement-only box
+per placed resource node.
 
 ## Terrain And Mesh Collision Authoring
 

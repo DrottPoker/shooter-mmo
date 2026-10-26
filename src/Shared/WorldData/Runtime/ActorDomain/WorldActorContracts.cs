@@ -4,7 +4,14 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 4;
+        public const int Version = 5;
+    }
+
+    // Collision bounds block character movement. Only resource nodes have them: they never move,
+    // and a depleted node keeps its footprint. NPCs and Mobs leave every value at zero.
+    public static class WorldActorCollisionRules
+    {
+        public const float MaximumSize = 16f;
     }
 
     // Player-facing text of an actor: the Examine description and the right-click menu option
@@ -295,6 +302,7 @@ namespace Mmorpg.WorldData.Actors
         public string DamagePolicy;
         public string[] Tags;
         public WorldActorBoundsAuthoringEntry InteractionBounds;
+        public WorldActorBoundsAuthoringEntry CollisionBounds;
         public WorldActorCapabilityAuthoringEntry[] Capabilities;
         public string ActivityProfileId;
         public string RespawnProfileId;
@@ -528,6 +536,7 @@ namespace Mmorpg.WorldData.Actors
         public string DamagePolicy;
         public string[] Tags;
         public WorldActorBoundsDefinition InteractionBounds;
+        public WorldActorBoundsDefinition CollisionBounds;
         public WorldActorCapabilityDefinition[] Capabilities;
         public string ActivityProfileId;
         public string RespawnProfileId;

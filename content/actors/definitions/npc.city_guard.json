@@ -19,6 +19,14 @@
         "sizeY": 2.0,
         "sizeZ": 0.8
     },
+    "collisionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.0,
+        "centerZ": 0.0,
+        "sizeX": 0.0,
+        "sizeY": 0.0,
+        "sizeZ": 0.0
+    },
     "capabilities": [
         {
             "id": "guard.dialogue",

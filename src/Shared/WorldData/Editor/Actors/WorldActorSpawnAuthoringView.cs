@@ -219,9 +219,19 @@ namespace Mmorpg.WorldData.Editor.Actors
 
             try
             {
-                service.SaveAndCompile(workspace, validation);
+                var collision = service.SaveAndCompile(workspace, validation);
                 AssetDatabase.Refresh();
                 session.MarkSaved();
+                if (!collision.Success)
+                {
+                    toolLayout.SetStatus(
+                        "World actor spawn authoring and canonical runtime files were written. "
+                        + "The World collision was not recompiled, so resource nodes may block the wrong places until "
+                        + WorldActorEditorService.CollisionCompilerToolName + " runs: " + collision.Output,
+                        HelpBoxMessageType.Warning);
+                    return true;
+                }
+
                 toolLayout.SetStatus(
                     "World actor spawn authoring and canonical runtime files were written. " + validation.Message,
                     HelpBoxMessageType.Info);

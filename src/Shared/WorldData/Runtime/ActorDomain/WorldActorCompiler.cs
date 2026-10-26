@@ -954,6 +954,7 @@ namespace Mmorpg.WorldData.Actors
 
                 ValidateTags(actor.Tags, path + ".tags", errors);
                 ValidateBounds(actor.InteractionBounds, path + ".interactionBounds", errors);
+                ValidateCollisionBounds(actor.Kind, actor.CollisionBounds, path + ".collisionBounds", errors);
                 ValidateCapabilities(actor.Capabilities, path + ".capabilities", errors);
                 if (actor.Capabilities != null)
                 {
@@ -1083,6 +1084,43 @@ namespace Mmorpg.WorldData.Actors
                 MaximumInteractionBoundsSize,
                 path + ".sizeZ",
                 errors);
+        }
+
+        // A resource node blocks movement with a box of positive size; every other actor kind
+        // leaves every value at zero.
+        private static void ValidateCollisionBounds(
+            string kind,
+            WorldActorBoundsAuthoringEntry bounds,
+            string path,
+            ICollection<string> errors)
+        {
+            if (bounds == null)
+            {
+                errors.Add(path + " is required.");
+                return;
+            }
+
+            if (!string.Equals(kind, WorldActorKindIds.ResourceNode, StringComparison.Ordinal))
+            {
+                if (bounds.CenterX != 0f
+                    || bounds.CenterY != 0f
+                    || bounds.CenterZ != 0f
+                    || bounds.SizeX != 0f
+                    || bounds.SizeY != 0f
+                    || bounds.SizeZ != 0f)
+                {
+                    errors.Add(path + " must be zero for an NPC or Mob; only resource nodes collide.");
+                }
+
+                return;
+            }
+
+            ValidateCoordinate(bounds.CenterX, path + ".centerX", errors);
+            ValidateCoordinate(bounds.CenterY, path + ".centerY", errors);
+            ValidateCoordinate(bounds.CenterZ, path + ".centerZ", errors);
+            ValidatePositiveFinite(bounds.SizeX, WorldActorCollisionRules.MaximumSize, path + ".sizeX", errors);
+            ValidatePositiveFinite(bounds.SizeY, WorldActorCollisionRules.MaximumSize, path + ".sizeY", errors);
+            ValidatePositiveFinite(bounds.SizeZ, WorldActorCollisionRules.MaximumSize, path + ".sizeZ", errors);
         }
 
         private static void ValidateCapabilities(
@@ -1612,15 +1650,8 @@ namespace Mmorpg.WorldData.Actors
                     return compiledCapability;
                 })
                 .ToArray();
-            var bounds = new WorldActorBoundsDefinition
-            {
-                CenterX = value.InteractionBounds.CenterX,
-                CenterY = value.InteractionBounds.CenterY,
-                CenterZ = value.InteractionBounds.CenterZ,
-                SizeX = value.InteractionBounds.SizeX,
-                SizeY = value.InteractionBounds.SizeY,
-                SizeZ = value.InteractionBounds.SizeZ
-            };
+            var bounds = CompileBounds(value.InteractionBounds);
+            var collisionBounds = CompileBounds(value.CollisionBounds);
             var compiled = new WorldActorDefinition
             {
                 Id = value.Id,
@@ -1633,6 +1664,7 @@ namespace Mmorpg.WorldData.Actors
                 DamagePolicy = value.DamagePolicy,
                 Tags = value.Tags.OrderBy(tag => tag, StringComparer.Ordinal).ToArray(),
                 InteractionBounds = bounds,
+                CollisionBounds = collisionBounds,
                 Capabilities = capabilities,
                 ActivityProfileId = value.ActivityProfileId ?? string.Empty,
                 RespawnProfileId = value.RespawnProfileId ?? string.Empty,
@@ -1649,11 +1681,25 @@ namespace Mmorpg.WorldData.Actors
             return compiled;
         }
 
+        private static WorldActorBoundsDefinition CompileBounds(WorldActorBoundsAuthoringEntry value)
+        {
+            return new WorldActorBoundsDefinition
+            {
+                CenterX = value.CenterX,
+                CenterY = value.CenterY,
+                CenterZ = value.CenterZ,
+                SizeX = value.SizeX,
+                SizeY = value.SizeY,
+                SizeZ = value.SizeZ
+            };
+        }
+
         private static string ActorFingerprint(
             WorldActorDefinition value,
             IEnumerable<string> capabilityFingerprints)
         {
             var bounds = value.InteractionBounds;
+            var collision = value.CollisionBounds;
             return Fingerprint(
                 value.Id,
                 value.DisplayName,
@@ -1670,6 +1716,12 @@ namespace Mmorpg.WorldData.Actors
                 Float(bounds.SizeX),
                 Float(bounds.SizeY),
                 Float(bounds.SizeZ),
+                Float(collision.CenterX),
+                Float(collision.CenterY),
+                Float(collision.CenterZ),
+                Float(collision.SizeX),
+                Float(collision.SizeY),
+                Float(collision.SizeZ),
                 value.ActivityProfileId,
                 value.RespawnProfileId,
                 value.CorpsePersistenceMode,

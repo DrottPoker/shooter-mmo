@@ -69,6 +69,52 @@ public sealed class ResourceNodeContentTests
         }
     }
 
+    // A placed node blocks movement with its collision bounds, offset from its position and
+    // aligned to the World axes whatever its yaw; NPCs and Mobs add no box.
+    [Fact]
+    public void EveryResourceNodeInstanceGetsOneAxisAlignedCollisionBox()
+    {
+        var runtime = WorldActorTestData.CompileWorld("development-world-2");
+
+        var boxes = WorldActorCollision.Boxes(runtime);
+
+        Assert.Equal(
+            runtime.SpawnInstances
+                .Where(instance => instance.ActorId.StartsWith("resource.", StringComparison.Ordinal))
+                .Select(instance => WorldActorCollision.SourcePathPrefix + instance.Id)
+                .Order(StringComparer.Ordinal),
+            boxes.Select(box => box.SourcePath));
+        var oak = boxes.Single(box => box.SourcePath == "Actors/development_world_2.grove_oak_east:0000");
+        Assert.Equal(48f, oak.CenterX);
+        Assert.Equal(1.2f, oak.CenterY);
+        Assert.Equal(-88f, oak.CenterZ);
+        Assert.Equal(0.5f, oak.HalfExtentX);
+        Assert.Equal(1.2f, oak.HalfExtentY);
+        Assert.Equal(0.5f, oak.HalfExtentZ);
+    }
+
+    [Fact]
+    public void ResourceNodeNeedsPositiveCollisionBounds()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        Vein(actors).CollisionBounds.SizeY = 0f;
+
+        AssertInvalid(actors, ".collisionBounds.sizeY must be finite, positive");
+    }
+
+    [Fact]
+    public void OnlyResourceNodesHaveCollisionBounds()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        var mira = actors.Actors.Single(value => value.Id == "npc.city_services");
+        mira.CollisionBounds.SizeX = 1f;
+
+        AssertInvalid(actors, "must be zero for an NPC or Mob; only resource nodes collide.");
+
+        mira.CollisionBounds = null;
+        AssertInvalid(actors, "collisionBounds is required.");
+    }
+
     [Fact]
     public void ResourceNodeNeedsExactlyOneGatheringCapability()
     {

@@ -618,7 +618,8 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // The checked-in bake must be current: it holds exactly the scene's boxes, terrain
-        // cells, and mesh triangles, in every chunk the ground covers.
+        // cells, and mesh triangles, in every chunk the ground covers, and one box per placed
+        // resource node, which blocks movement but not sight.
         [TestCase(DevelopmentWorld1ScenePath, "development-world-1")]
         [TestCase(DevelopmentWorld2ScenePath, "development-world-2")]
         public void BakedWorldCollisionMatchesItsScene(string scenePath, string worldId)
@@ -654,10 +655,19 @@ namespace Mmorpg.Client.Tests.EditMode
                         new SimulationVector3(ground.max.x, 64f, ground.max.z)),
                     CollisionLayers.CharacterMovement,
                     buffer);
+                var resourceNodes = WorldCollisionBaker.ResourceNodeBoxes(worldId);
+                Assert.That(resourceNodes, Is.Not.Empty);
                 Assert.That(
                     buffer.Shapes.OfType<CollisionBox>().Count(),
-                    Is.EqualTo(environment.GetComponentsInChildren<BoxCollider>(true).Length));
+                    Is.EqualTo(environment.GetComponentsInChildren<BoxCollider>(true).Length + resourceNodes.Length));
                 Assert.That(buffer.Shapes.OfType<CollisionTriangle>().Count(), Is.EqualTo(expectedTriangles));
+                foreach (var node in resourceNodes)
+                {
+                    var stableId = CollisionWorldCompiler.ResolveStableId(node.StableId, node.SourcePath);
+                    var baked = buffer.Shapes.OfType<CollisionBox>().SingleOrDefault(shape => shape.StableId == stableId);
+                    Assert.That(baked, Is.Not.Null, node.SourcePath);
+                    Assert.That(baked.LayerMask, Is.EqualTo(CollisionLayers.CharacterMovement), node.SourcePath);
+                }
             });
         }
         // Guards the terrain bake mapping: the baked surface must match the Unity Terrain at

@@ -237,9 +237,19 @@ namespace Mmorpg.WorldData.Editor.Actors
 
             try
             {
-                service.SaveAndCompile(workspace, validation);
+                var collision = service.SaveAndCompile(workspace, validation);
                 AssetDatabase.Refresh();
                 session.MarkSaved();
+                if (!collision.Success)
+                {
+                    toolLayout.SetStatus(
+                        "World actor authoring and canonical runtime files were written. "
+                        + "The World collision was not recompiled, so resource nodes may block the wrong places until "
+                        + WorldActorEditorService.CollisionCompilerToolName + " runs: " + collision.Output,
+                        HelpBoxMessageType.Warning);
+                    return true;
+                }
+
                 toolLayout.SetStatus(
                     "World actor authoring and canonical runtime files were written. " + validation.Message,
                     HelpBoxMessageType.Info);
@@ -688,6 +698,43 @@ namespace Mmorpg.WorldData.Editor.Actors
                 section.Add(BuildBoundsPreview());
             }
 
+            Func<WorldActorEditorDefinition, bool> isResourceNode = actor => actor.kind == WorldActorKindIds.ResourceNode;
+            var collisionCenter = form.Vector3(
+                "Collision Center",
+                "collisionBounds.center",
+                actor => actor.collisionBounds == null
+                    ? Vector3.zero
+                    : new Vector3(actor.collisionBounds.centerX, actor.collisionBounds.centerY, actor.collisionBounds.centerZ),
+                (actor, value) =>
+                {
+                    actor.collisionBounds = actor.collisionBounds ?? WorldActorEditorBounds.None();
+                    actor.collisionBounds.centerX = value.x;
+                    actor.collisionBounds.centerY = value.y;
+                    actor.collisionBounds.centerZ = value.z;
+                },
+                isResourceNode);
+            collisionCenter.tooltip = "The center of the box that blocks walking, from the actor position, aligned to the World axes whatever the yaw.";
+            section.Add(collisionCenter);
+            form.Covers("collisionBounds.center", "collisionBounds.centerX", "collisionBounds.centerY", "collisionBounds.centerZ");
+            var collisionSize = form.Vector3(
+                "Collision Size",
+                "collisionBounds.size",
+                actor => actor.collisionBounds == null
+                    ? Vector3.zero
+                    : new Vector3(actor.collisionBounds.sizeX, actor.collisionBounds.sizeY, actor.collisionBounds.sizeZ),
+                (actor, value) =>
+                {
+                    actor.collisionBounds = actor.collisionBounds ?? WorldActorEditorBounds.None();
+                    actor.collisionBounds.sizeX = value.x;
+                    actor.collisionBounds.sizeY = value.y;
+                    actor.collisionBounds.sizeZ = value.z;
+                },
+                isResourceNode);
+            collisionSize.tooltip = "Up to " + WorldActorCollisionRules.MaximumSize + " m on each axis. Only resource nodes block walking; NPCs and Mobs keep zero.";
+            section.Add(collisionSize);
+            form.Covers("collisionBounds.size", "collisionBounds.sizeX", "collisionBounds.sizeY", "collisionBounds.sizeZ");
+            section.Add(ContentToolStyles.CreateHint(
+                "A resource node's collision box blocks walking but not sight. Saving recompiles the World collision, so the server and every client walk around it."));
             return section;
         }
 
@@ -836,6 +883,9 @@ namespace Mmorpg.WorldData.Editor.Actors
                 actor.brainProfileId = string.Empty;
                 actor.locomotionProfileId = string.Empty;
                 actor.lootProfileId = string.Empty;
+                actor.collisionBounds = kind == WorldActorKindIds.ResourceNode
+                    ? DefaultResourceNodeCollision()
+                    : WorldActorEditorBounds.None();
                 actor.capabilities = kind == WorldActorKindIds.ResourceNode
                     ? new[] { CreateGatheringCapability(actor) }
                     : (actor.capabilities ?? Array.Empty<WorldActorEditorCapability>())
@@ -845,6 +895,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             else
             {
                 actor.damagePolicy = WorldActorDamagePolicyIds.Damageable;
+                actor.collisionBounds = WorldActorEditorBounds.None();
                 actor.capabilities = Array.Empty<WorldActorEditorCapability>();
                 actor.activityProfileId = string.IsNullOrEmpty(actor.activityProfileId)
                     ? workspace.Catalog.activityProfiles?.FirstOrDefault()?.id ?? string.Empty
@@ -990,6 +1041,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                     sizeY = 1.2f,
                     sizeZ = 1.6f
                 },
+                collisionBounds = DefaultResourceNodeCollision(),
                 tags = new[] { "resource" },
                 activityProfileId = string.Empty,
                 respawnProfileId = string.Empty,
@@ -1002,6 +1054,17 @@ namespace Mmorpg.WorldData.Editor.Actors
             };
             node.capabilities = new[] { CreateGatheringCapability(node) };
             return node;
+        }
+
+        private static WorldActorEditorBounds DefaultResourceNodeCollision()
+        {
+            return new WorldActorEditorBounds
+            {
+                centerY = 0.5f,
+                sizeX = 1.2f,
+                sizeY = 1f,
+                sizeZ = 1.2f
+            };
         }
 
         private WorldActorEditorCapability CreateGatheringCapability(WorldActorEditorDefinition actor)

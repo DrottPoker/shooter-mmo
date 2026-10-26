@@ -1,8 +1,8 @@
 {
-  "formatVersion": 4,
+  "formatVersion": 5,
   "catalogId": "core",
   "worldId": "development-world-2",
-  "revision": "7954bd692caab2bcdad07870b43b43382cc51586873d9cec44ca3bf36da42290",
+  "revision": "5a8c76be2710bcff9324a1888b46867764c2dba67cb3ebfae5ba68003372731a",
   "factions": [
     {
       "id": "city",
@@ -226,6 +226,14 @@
         "sizeY": 1.6,
         "sizeZ": 2.2
       },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 0,
+        "centerZ": 0,
+        "sizeX": 0,
+        "sizeY": 0,
+        "sizeZ": 0
+      },
       "capabilities": [],
       "activityProfileId": "mob.standard",
       "respawnProfileId": "mob.boss",
@@ -235,7 +243,7 @@
       "brainProfileId": "mob.aggressive_boss",
       "locomotionProfileId": "mob.large_quadruped",
       "lootProfileId": "mob.feral_alpha",
-      "structuralFingerprint": "4b7d319ad272f75b15ec3ea6753db39837afa67e2c97912fe71a5913bf4c627d"
+      "structuralFingerprint": "8c0155172d30fb41570db9760104e6c50dc2dc7297e604a9f8227e41dfdaca31"
     },
     {
       "id": "mob.feral_wolf",
@@ -258,6 +266,14 @@
         "sizeY": 1.1,
         "sizeZ": 1.8
       },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 0,
+        "centerZ": 0,
+        "sizeX": 0,
+        "sizeY": 0,
+        "sizeZ": 0
+      },
       "capabilities": [],
       "activityProfileId": "mob.standard",
       "respawnProfileId": "mob.normal",
@@ -267,7 +283,7 @@
       "brainProfileId": "mob.aggressive",
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
-      "structuralFingerprint": "a50ee8b7da3c2e060774134c28affed8a0cc064a5cbe0f4fbcc0abe01cb81dad"
+      "structuralFingerprint": "b849df225cd70e9822e5afbd813f49efd48872bf39a3f7da6bc4afcef05aa5c3"
     },
     {
       "id": "npc.city_guard",
@@ -289,6 +305,14 @@
         "sizeX": 0.8,
         "sizeY": 2,
         "sizeZ": 0.8
+      },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 0,
+        "centerZ": 0,
+        "sizeX": 0,
+        "sizeY": 0,
+        "sizeZ": 0
       },
       "capabilities": [
         {
@@ -316,7 +340,7 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "26f15f3df9069740934c1a0d95b4d8c332a9ebbe3038ea7be6838fc937f0f9f1"
+      "structuralFingerprint": "26c76920308524a1ae3bc7d1294d33cb42c5ad705c50b2eeb1f3d06903460210"
     },
     {
       "id": "npc.city_services",
@@ -338,6 +362,14 @@
         "sizeX": 0.8,
         "sizeY": 2,
         "sizeZ": 0.8
+      },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 0,
+        "centerZ": 0,
+        "sizeX": 0,
+        "sizeY": 0,
+        "sizeZ": 0
       },
       "capabilities": [
         {
@@ -413,7 +445,7 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "3aa0cead6ec5810e374da855260741e449a902d3f8e953c4dbfdd814f2533d30"
+      "structuralFingerprint": "071a860fb3258179dfd73a6dacc06ba6bf40fcfbbd03ed0c59b5fe311ed742bb"
     },
     {
       "id": "resource.iron_vein",
@@ -436,6 +468,14 @@
         "sizeY": 1.2,
         "sizeZ": 1.6
       },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 0.5,
+        "centerZ": 0,
+        "sizeX": 1.2,
+        "sizeY": 1,
+        "sizeZ": 1.2
+      },
       "capabilities": [
         {
           "id": "resource.mine",
@@ -454,7 +494,7 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "2d5e3decaa7907d53d2a8f86e539e443979a84296609553d3afa00e2282c0763"
+      "structuralFingerprint": "21a7b5f5b741ceefc5a37ff247c96524e1da901fca068a18bfbc651c6306dffa"
     },
     {
       "id": "resource.oak_tree",
@@ -477,6 +517,14 @@
         "sizeY": 5.6,
         "sizeZ": 4
       },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 1.2,
+        "centerZ": 0,
+        "sizeX": 1,
+        "sizeY": 2.4,
+        "sizeZ": 1
+      },
       "capabilities": [
         {
           "id": "resource.chop",
@@ -495,7 +543,7 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "62379485903aa79aeef8620adbf283978f0e540456e98031cb4329a15bb97e3a"
+      "structuralFingerprint": "f2b43b230bda0722e1ddd6acaea2c7162ef48bcd6dcca546194b5a69e7f103b0"
     }
   ],
   "spawnSources": [

@@ -19,6 +19,14 @@
         "sizeY": 5.6,
         "sizeZ": 4.0
     },
+    "collisionBounds": {
+        "centerX": 0.0,
+        "centerY": 1.2,
+        "centerZ": 0.0,
+        "sizeX": 1.0,
+        "sizeY": 2.4,
+        "sizeZ": 1.0
+    },
     "capabilities": [
         {
             "id": "resource.chop",

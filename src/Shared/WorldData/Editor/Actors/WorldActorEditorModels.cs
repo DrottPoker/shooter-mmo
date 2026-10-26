@@ -286,6 +286,9 @@ namespace Mmorpg.WorldData.Editor.Actors
         public string damagePolicy;
         public string[] tags;
         public WorldActorEditorBounds interactionBounds;
+
+        // The box that blocks character movement; only a resource node has one.
+        public WorldActorEditorBounds collisionBounds = WorldActorEditorBounds.None();
         public WorldActorEditorCapability[] capabilities;
         public string activityProfileId;
         public string respawnProfileId;
@@ -311,6 +314,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 Tags = tags ?? Array.Empty<string>(),
                 InteractionBounds = (interactionBounds ?? new WorldActorEditorBounds())
                     .ToDomain(),
+                CollisionBounds = (collisionBounds ?? WorldActorEditorBounds.None()).ToDomain(),
                 Capabilities = (capabilities ?? Array.Empty<WorldActorEditorCapability>())
                     .Select(value => value.ToDomain()).ToArray(),
                 ActivityProfileId = activityProfileId,
@@ -334,6 +338,15 @@ namespace Mmorpg.WorldData.Editor.Actors
         public float sizeX = 0.8f;
         public float sizeY = 2f;
         public float sizeZ = 0.8f;
+
+        // Every value zero: no box, as NPCs and Mobs have for collision.
+        public static WorldActorEditorBounds None()
+        {
+            return new WorldActorEditorBounds { sizeX = 0f, sizeY = 0f, sizeZ = 0f };
+        }
+
+        public bool IsNone =>
+            centerX == 0f && centerY == 0f && centerZ == 0f && sizeX == 0f && sizeY == 0f && sizeZ == 0f;
 
         public WorldActorBoundsAuthoringEntry ToDomain()
         {

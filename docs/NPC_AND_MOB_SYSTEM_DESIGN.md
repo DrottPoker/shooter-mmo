@@ -54,6 +54,10 @@ The implemented foundation includes:
   neutral `world` faction for resource nodes. The compiler validates vendor
   profile ids, resource profile tool kinds, and yields against the compiled item
   catalog.
+- Collision bounds in actor format 5: a resource node blocks character movement
+  with a box that the World collision compilers bake into the World's collision
+  chunks, as described in
+  [Collision Bounds](../content/README.md#collision-bounds).
 - Reliable interest-based actor presence, bounded actor state, and correlated
   interaction messages in the versioned realtime protocol.
 - A bounded worker-runtime actor store, fresh runtime and network identities,
@@ -118,6 +122,7 @@ durable row.
 | Network entity id | The current realtime identity used for interest management and protocol messages |
 | Presentation archetype id | A content reference resolved by Unity to a presentation-only prefab |
 | Interaction bounds | Server-owned bounds used to measure distance and select a line-of-sight target point |
+| Collision bounds | The box that blocks character movement at a resource node, baked into the World collision; zero for NPCs and Mobs |
 | Interaction session | One server-owned, player-to-target session opened after authoritative validation |
 | Faction | Content identity used by disposition, reputation, and future combat rules |
 | Disposition | The current relationship of an actor toward a player, independent from NPC or Mob kind |
@@ -657,7 +662,8 @@ Actor Studio supports:
 - Creation from NPC, Mob, or resource node templates.
 - Safe duplication with a new stable id.
 - Multi-selection: kind, faction, disposition, presentation, tags, Mob
-  lifecycle settings, and interaction bounds edit every selected actor at once.
+  lifecycle settings, and interaction and collision bounds edit every selected
+  actor at once. Collision bounds are editable for resource nodes only.
 - Every edit is one step in Unity's Undo, and unsaved edits survive script
   reloads.
 - Capability add, remove, and reorder.
