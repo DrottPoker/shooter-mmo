@@ -515,15 +515,20 @@ corpse view.
   cycle. A worker restart restores every node with full charges.
 - A `CapabilityAction` `StartGathering` passes the usual interaction checks, and
   the gathering handler rejects a depleted node with `resource_node_depleted`.
-  The realtime loop then registers one gathering activity per player and sends
-  `GatheringState` `Started` with the cycle time.
+  It then reads the `tool` slot from the equipment GameService last committed
+  for the session and rejects an item without the profile's tool kind, or an
+  empty slot, with `gathering_tool_required` and the kind's name, such as
+  `Woodcutting Axe required in the Tool slot.`, in the interaction result, so
+  gathering never starts; without loaded equipment it rejects with
+  `gathering_unavailable`. The realtime loop then registers one gathering
+  activity per player and sends `GatheringState` `Started` with the cycle time.
 - The gathering pass runs every tick after the lease revalidation. A due cycle
   reserves one charge and queues a `gather_resource` call to GameService behind
   the player's other authority work. GameService checks that an item of the
-  required tool kind is equipped in the `tool` slot, otherwise
-  `gathering_tool_required` with a message that names the kind, such as
-  `Woodcutting Axe required in the Tool slot.`, which the worker passes on in
-  `GatheringState` `Stopped`. It places the yield through carried acquisition.
+  required tool kind is equipped in the `tool` slot again, since the tool may
+  have been taken off since the start, otherwise `gathering_tool_required` with
+  the same message, which the worker passes on in `GatheringState` `Stopped`.
+  It places the yield through carried acquisition.
 - A committed yield consumes the charge, applies the committed carry state, and
   sends `GatheringState` `Yielded` with the item-state revision. The last charge
   makes the node inactive for every viewer, stops everyone gathering there with

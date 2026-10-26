@@ -714,6 +714,12 @@ namespace Mmorpg.WorldData.Actors
                     continue;
                 }
 
+                if (!HasValidCollisionBounds(value))
+                {
+                    errors.Add("runtime actor " + value.Id + " has invalid collision bounds.");
+                    continue;
+                }
+
                 if (value.Tags == null
                     || value.Capabilities == null
                     || value.Tags.Length > MaximumTagsPerActor
@@ -1144,6 +1150,39 @@ namespace Mmorpg.WorldData.Actors
                 errors.Add("runtime spawn instance " + instance.Id
                     + " does not match deterministic source placement.");
             }
+        }
+
+        // A resource node has a box of positive size; every other actor kind has none.
+        private static bool HasValidCollisionBounds(WorldActorDefinition value)
+        {
+            var bounds = value.CollisionBounds;
+            if (bounds == null)
+            {
+                return false;
+            }
+
+            if (!string.Equals(value.Kind, WorldActorKindIds.ResourceNode, StringComparison.Ordinal))
+            {
+                return bounds.CenterX == 0f
+                    && bounds.CenterY == 0f
+                    && bounds.CenterZ == 0f
+                    && bounds.SizeX == 0f
+                    && bounds.SizeY == 0f
+                    && bounds.SizeZ == 0f;
+            }
+
+            return IsSupportedCoordinate(bounds.CenterX)
+                && IsSupportedCoordinate(bounds.CenterY)
+                && IsSupportedCoordinate(bounds.CenterZ)
+                && IsFinite(bounds.SizeX)
+                && IsFinite(bounds.SizeY)
+                && IsFinite(bounds.SizeZ)
+                && bounds.SizeX > 0f
+                && bounds.SizeY > 0f
+                && bounds.SizeZ > 0f
+                && bounds.SizeX <= WorldActorCollisionRules.MaximumSize
+                && bounds.SizeY <= WorldActorCollisionRules.MaximumSize
+                && bounds.SizeZ <= WorldActorCollisionRules.MaximumSize;
         }
 
         private static void CheckRuntimeFingerprint(

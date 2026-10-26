@@ -234,17 +234,25 @@ namespace Mmorpg.WorldData.Editor.Actors
     {
         public const string CompilerToolName = "WorldActorCompiler";
 
+        // Resource nodes block movement through the World collision, so a save recompiles it.
+        public const string CollisionCompilerToolName = "WorldCollisionCompiler";
+
         private readonly WorldActorEditorPaths paths;
         private readonly IContentCompilerRunner compilerRunner;
+        private readonly IContentCompilerRunner collisionCompilerRunner;
 
         public WorldActorEditorService(
             WorldActorEditorPaths paths,
-            IContentCompilerRunner compilerRunner = null)
+            IContentCompilerRunner compilerRunner = null,
+            IContentCompilerRunner collisionCompilerRunner = null)
         {
             this.paths = paths ?? throw new ArgumentNullException(nameof(paths));
             this.compilerRunner = compilerRunner ?? new ContentCompilerProcessRunner(
                 paths.RepositoryRoot,
                 CompilerToolName);
+            this.collisionCompilerRunner = collisionCompilerRunner ?? new ContentCompilerProcessRunner(
+                paths.RepositoryRoot,
+                CollisionCompilerToolName);
         }
 
         public WorldActorEditorPaths Paths => paths;
@@ -430,7 +438,10 @@ namespace Mmorpg.WorldData.Editor.Actors
             }
         }
 
-        public void SaveAndCompile(
+        // Writes the validated files, then recompiles the World collision from the new actor
+        // runtime, since each resource node adds a box to it. A failed collision compile leaves
+        // the actor files written and the collision stale until WorldCollisionCompiler runs.
+        public ContentCompilerRunResult SaveAndCompile(
             WorldActorEditorWorkspace workspace,
             WorldActorEditorValidationResult validation)
         {
@@ -451,6 +462,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 validation.RemovedFiles);
             workspace.ApplyRuntime(
                 WorldActorEditorJson.DeserializeRuntime(validation.RuntimeJson));
+            return collisionCompilerRunner.Compile(paths.ContentRoot, paths.GeneratedRoot);
         }
 
         public ContentCompilerRunResult VerifyCanonical()

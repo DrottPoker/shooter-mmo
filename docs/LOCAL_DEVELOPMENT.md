@@ -1,6 +1,6 @@
 # Local Development
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 
 ## Requirements
 
@@ -1374,7 +1374,9 @@ presentation mapping:
    capability `Trade` shows `Profile` `vendor.city_general_store`.
    Select `Iron Vein`. Expected result: a `Resource Node` with one `Gathering`
    capability, `Mine`, whose `Menu Option` is `Mine` and whose `Profile` is
-   `resource.iron_vein`.
+   `resource.iron_vein`, and below the interaction bounds `Collision Center`
+   `(0, 0.5, 0)` and `Collision Size` `(1.2, 1, 1.2)`, the box that blocks
+   walking. For Mira both collision fields are zero and cannot be edited.
 2. Click `Duplicate`. Expected result: the copy `npc.city_services.copy` is
    added and selected. Use `Add Capability`, `Move Up`, `Move Down`, and
    `Remove` on it, then enter `-1` as the Y value of `Size` and clear its
@@ -1649,8 +1651,10 @@ migration backfills an `opening_balance` ledger row for every nonzero balance.
    [Give A Character Development Items](#give-a-character-development-items).
    With the pickaxe still in the `Tool` slot, walk south through the town's
    south gate to the `OAK GROVE` sign and left-click an Oak Tree. Expected
-   result: the character walks to the trunk and starts gathering, and after the
-   first cycle it stops with `Woodcutting Axe required in the Tool slot.`.
+   result: the character walks around to the trunk, the interaction opens, and
+   at once the panel reports `Woodcutting Axe required in the Tool slot.` and no
+   gathering starts. Click the ground on the far side of the tree. Expected
+   result: the character walks around the trunk, never through it.
    Drag the Woodcutting Axe onto the `Tool` slot and choose `Chop down Oak Tree`
    in the tree's right-click menu. Expected result: the panel shows `Chop...`
    with a progress bar and `Gathered <n> Oak Log.`, one log every 3 seconds.
@@ -1685,7 +1689,7 @@ dotnet test Mmorpg.slnx `
 ```
 
 Expected result: every selected test passes. The shared tests cover catalog
-format 5 and actor format 4 content, vendor and resource profiles, the rule that
+format 5 and actor format 5 content, vendor and resource profiles, the rule that
 buying and selling back never gains currency, and pricing rounding and
 overflow. The SimulationWorker tests cover vendor access, resource node charges,
 gathering cycles, movement and closed-interaction stops, rejected and uncertain
@@ -4138,8 +4142,11 @@ leaves a manifest whose checksums do not match its chunks. Unity ignores the
 
 Expected result: the Console reports `[WORLD COLLISION] Baked world
 'development-world-1'` with 30 boxes, 0 meshes, and 0 heightfields in 4 chunks,
-and `'development-world-2'` with 201 boxes, 1 mesh, and 1 heightfield in 144
-chunks, each with a SHA-256 revision. A rebuild without a layout change bakes
+and 9 resource node boxes, and `'development-world-2'` with 201 boxes, 1 mesh,
+and 1 heightfield in 144 chunks, and 11 resource node boxes, each with a SHA-256
+revision. The resource node boxes come from the World actors, which the bake
+compiles from their authoring; a bake stops when they differ from the compiled
+actors. A rebuild without a layout change bakes
 the same revisions. The command updates for each World:
 
 - `content/worlds/<WorldId>/collision.json`

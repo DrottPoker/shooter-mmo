@@ -2,6 +2,7 @@ using System.Text.Json;
 using Mmorpg.GameSimulation;
 using Mmorpg.Testing;
 using Mmorpg.Testing.Content;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Worlds;
 using static Mmorpg.Shared.Tests.MovementRouteAssertions;
@@ -10,8 +11,9 @@ namespace Mmorpg.Shared.Tests;
 
 // Content tests of the baked development Worlds: every test station behaves as its label
 // says when walked with the shared route planner and movement simulation, every actor
-// stands on clear ground, and the distances that the stress arena and the interest road
-// rely on hold against the SimulationWorker configuration. The station coordinates match
+// stands on ground the scene keeps clear, every resource node blocks movement, and the
+// distances that the stress arena and the interest road rely on hold against the
+// SimulationWorker configuration. The station coordinates match
 // the Unity builders in src/Client/Assets/Editor/DevelopmentWorlds.
 public sealed class DevelopmentWorldLayoutTests
 {
@@ -33,7 +35,8 @@ public sealed class DevelopmentWorldLayoutTests
     public void EveryActorAndPatrolPointStandsOnClearGroundInsideTheBounds(string worldId)
     {
         var manifest = LoadManifest(worldId);
-        var world = LoadCheckedInWorld(worldId);
+        // The scene alone, because a resource node's own box stands where it is placed.
+        var world = LoadSceneCollision(worldId);
         var runtime = WorldActorTestData.CompileWorld(worldId);
         var points = runtime.SpawnInstances
             .Select(instance => (Name: instance.Id, Position: new SimulationVector3(instance.X, instance.Y, instance.Z)))
@@ -68,6 +71,64 @@ public sealed class DevelopmentWorldLayoutTests
                 column);
             Assert.True(column.Shapes.Count == 0, $"{name} at ({position.X}, {position.Z}) overlaps {column.Shapes.Count} collision shapes.");
         }
+    }
+
+    // The compiled collision holds one box per resource node, on the movement layer only, so
+    // characters walk around a node while sight and arrows pass it.
+    [Theory]
+    [MemberData(nameof(CheckedInWorldIds))]
+    public void EveryResourceNodeBlocksMovementButNotSight(string worldId)
+    {
+        var world = LoadCheckedInWorld(worldId);
+        var boxes = WorldActorCollision.Boxes(WorldActorTestData.CompileWorld(worldId));
+
+        Assert.NotEmpty(boxes);
+        foreach (var box in boxes)
+        {
+            var center = new CollisionAabb(
+                new SimulationVector3(box.CenterX - 0.01f, box.CenterY - 0.01f, box.CenterZ - 0.01f),
+                new SimulationVector3(box.CenterX + 0.01f, box.CenterY + 0.01f, box.CenterZ + 0.01f));
+            var movement = new CollisionQueryBuffer();
+            world.QueryShapes(center, CollisionLayers.CharacterMovement, movement);
+            var shape = Assert.Single(movement.Shapes);
+            Assert.Equal(box.CenterX - box.HalfExtentX, shape.Bounds.Minimum.X, 0.001f);
+            Assert.Equal(box.CenterZ + box.HalfExtentZ, shape.Bounds.Maximum.Z, 0.001f);
+            Assert.Equal(box.CenterY + box.HalfExtentY, shape.Bounds.Maximum.Y, 0.001f);
+
+            var combat = new CollisionQueryBuffer();
+            world.QueryShapes(center, CollisionLayers.CombatQueries, combat);
+            Assert.True(combat.Shapes.Count == 0, box.SourcePath + " blocks sight.");
+        }
+    }
+
+    // The north oak of the grove stands at (38, -80): walking straight through it stops at
+    // its trunk, and a planned route walks around it.
+    [Fact]
+    public void ACharacterWalksAroundAnOakTreeNotThroughIt()
+    {
+        var settings = SettingsFor(TestWorld);
+        var start = new SimulationVector3(38f, 0f, -84f);
+        var destination = new SimulationVector3(38f, 0f, -76f);
+
+        var straight = new MovementPath(1, [destination]);
+        var state = PlayerMovementSimulation.CreateInitialState(
+            settings, DevelopmentWorld2.Value, start.X, start.Y, start.Z, 0f);
+        for (uint tick = 1; tick <= 300; tick++)
+        {
+            state = PlayerMovementSimulation.Step(
+                state,
+                new PlayerMovementInput(tick, tick, straight),
+                settings,
+                PlayerCarryState.Default,
+                DevelopmentWorld2.Value);
+        }
+
+        Assert.True(state.PositionZ < -80.5f, $"The character walked into the oak to z {state.PositionZ}.");
+
+        var (plan, _) = AssertReached(TestWorld, DevelopmentWorld2.Value, "past the north oak", start, destination);
+        Assert.True(
+            PathLength(start, plan) > 8.2f,
+            $"The route past the oak is only {PathLength(start, plan)} m, as if through its trunk.");
     }
 
     [Fact]

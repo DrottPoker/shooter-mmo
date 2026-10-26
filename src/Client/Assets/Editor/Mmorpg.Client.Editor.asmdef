@@ -5,6 +5,7 @@
     "Mmorpg.Client.Worlds",
     "Mmorpg.GameSimulation",
     "Mmorpg.WorldData.Editor",
+    "Mmorpg.WorldData.Actors.Editor",
     "Mmorpg.Client.Core",
     "Mmorpg.Client.Gameplay",
     "Mmorpg.Client.Cloth",

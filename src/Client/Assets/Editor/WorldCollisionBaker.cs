@@ -6,7 +6,9 @@ using System.Text;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameSimulation;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Editor;
+using Mmorpg.WorldData.Editor.Actors;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.SceneManagement;
@@ -196,9 +198,12 @@ namespace Mmorpg.Client.Editor
                 Meshes = meshes,
                 Heightfields = heightfields
             };
+            // The authoring file keeps the scene; the chunks also hold the resource nodes.
             var authoringJson = JsonUtility.ToJson(document, true) + Environment.NewLine;
             var persistedDocument = JsonUtility.FromJson<CollisionWorldAuthoringDocument>(
                 authoringJson);
+            var resourceNodes = ResourceNodeBoxes(persistedDocument.WorldId);
+            persistedDocument.Boxes = persistedDocument.Boxes.Concat(resourceNodes).ToArray();
             var result = CollisionWorldCompiler.Compile(persistedDocument);
             WriteBakeOutputs(authoringJson, result);
             AssetDatabase.Refresh();
@@ -207,8 +212,36 @@ namespace Mmorpg.Client.Editor
                 + "' at revision " + result.Manifest.Revision
                 + " with " + boxes.Length + " boxes, " + meshes.Length + " meshes, and "
                 + heightfields.Length + " heightfields in " + result.Chunks.Count
-                + " chunks.");
+                + " chunks, and " + resourceNodes.Length + " resource node boxes.");
             return result;
+        }
+
+        // The World's resource nodes block movement where they stand, as WorldCollisionCompiler
+        // adds them from the compiled World actors. The bake compiles the actors from their
+        // authoring and requires the compiled file's revision, so both read the same actors.
+        public static CollisionBoxAuthoringEntry[] ResourceNodeBoxes(string worldId)
+        {
+            var workspace = new WorldActorEditorService(WorldActorEditorPaths.CreateDefault(worldId)).Load();
+            var runtime = WorldActorCompiler.Compile(
+                workspace.Catalog.ToDomain(),
+                workspace.Spawns.ToDomain());
+            if (!string.Equals(runtime.Revision, workspace.CurrentRuntime.revision, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The World actors of '" + worldId + "' changed since they were compiled. "
+                    + "Save them in Actor Studio or Spawn Authoring, or run WorldActorCompiler, before baking.");
+            }
+
+            return WorldActorCollision.Boxes(runtime)
+                .Select(box => CollisionBoxAuthoringEntry.MovementObstacle(
+                    box.SourcePath,
+                    box.CenterX,
+                    box.CenterY,
+                    box.CenterZ,
+                    box.HalfExtentX,
+                    box.HalfExtentY,
+                    box.HalfExtentZ))
+                .ToArray();
         }
 
         private static WorldCollisionAuthoring FindAuthoringComponent()

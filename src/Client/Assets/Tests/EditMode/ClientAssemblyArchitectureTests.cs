@@ -160,6 +160,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.WorldData",
                     "Mmorpg.WorldData.Client",
                     "Mmorpg.WorldData.Editor",
+                    "Mmorpg.WorldData.Actors.Editor",
                     "Unity.Addressables.Editor",
                     "UnityEngine.UI"
                 }

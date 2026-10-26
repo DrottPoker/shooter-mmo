@@ -36,6 +36,32 @@ namespace Mmorpg.GameSimulation
         public float RotationZ;
         public float RotationW;
 
+        // An upright box aligned to the World axes that blocks character movement but neither
+        // sight nor combat queries, such as a placed resource node.
+        public static CollisionBoxAuthoringEntry MovementObstacle(
+            string sourcePath,
+            float centerX,
+            float centerY,
+            float centerZ,
+            float halfExtentX,
+            float halfExtentY,
+            float halfExtentZ)
+        {
+            return new CollisionBoxAuthoringEntry
+            {
+                StableId = string.Empty,
+                SourcePath = sourcePath,
+                LayerMask = CollisionLayers.CharacterMovement,
+                CenterX = centerX,
+                CenterY = centerY,
+                CenterZ = centerZ,
+                HalfExtentX = halfExtentX,
+                HalfExtentY = halfExtentY,
+                HalfExtentZ = halfExtentZ,
+                RotationW = 1f
+            };
+        }
+
         public CollisionBox ToCollisionBox()
         {
             var stableId = CollisionWorldCompiler.ResolveStableId(StableId, SourcePath);

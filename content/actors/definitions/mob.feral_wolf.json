@@ -19,6 +19,14 @@
         "sizeY": 1.1,
         "sizeZ": 1.8
     },
+    "collisionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.0,
+        "centerZ": 0.0,
+        "sizeX": 0.0,
+        "sizeY": 0.0,
+        "sizeZ": 0.0
+    },
     "capabilities": [],
     "activityProfileId": "mob.standard",
     "respawnProfileId": "mob.normal",

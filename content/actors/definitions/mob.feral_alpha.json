@@ -20,6 +20,14 @@
         "sizeY": 1.6,
         "sizeZ": 2.2
     },
+    "collisionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.0,
+        "centerZ": 0.0,
+        "sizeX": 0.0,
+        "sizeY": 0.0,
+        "sizeZ": 0.0
+    },
     "capabilities": [],
     "activityProfileId": "mob.standard",
     "respawnProfileId": "mob.boss",

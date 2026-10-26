@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Mmorpg.GameSimulation;
 using Mmorpg.Tools.ContentPipeline;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 
 if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
@@ -29,7 +30,7 @@ try
 
     foreach (var worldId in worldIds)
     {
-        var result = CompileWorld(options.ContentRoot, worldId, jsonOptions);
+        var result = CompileWorld(options.ContentRoot, options.GeneratedRoot, worldId, jsonOptions);
         var outputDirectory = ContentLayout.GeneratedCollisionDirectory(
             options.GeneratedRoot,
             worldId);
@@ -62,8 +63,11 @@ catch (Exception exception)
     return 1;
 }
 
+// The scene's collision and the World's resource nodes, which block movement where they stand.
+// The nodes come from the compiled World actors, so the actor compiler runs first.
 static CollisionWorldBakeResult CompileWorld(
     string contentRoot,
+    string generatedRoot,
     string worldId,
     JsonSerializerOptions jsonOptions)
 {
@@ -72,6 +76,24 @@ static CollisionWorldBakeResult CompileWorld(
         File.ReadAllText(authoringPath),
         jsonOptions) ?? throw new InvalidDataException(
             $"Collision authoring JSON is empty at '{authoringPath}'.");
+    var actors = StrictContentJson.DeserializeFile<WorldActorRuntimeDocument>(
+        ContentLayout.GeneratedWorldActorsPath(generatedRoot, worldId),
+        $"Compiled world actors for World '{worldId}'");
+    if (!string.Equals(actors.WorldId, worldId, StringComparison.Ordinal))
+    {
+        throw new InvalidDataException($"Compiled world actors for World '{worldId}' declare another World.");
+    }
+
+    authoring.Boxes = (authoring.Boxes ?? [])
+        .Concat(WorldActorCollision.Boxes(actors).Select(box => CollisionBoxAuthoringEntry.MovementObstacle(
+            box.SourcePath,
+            box.CenterX,
+            box.CenterY,
+            box.CenterZ,
+            box.HalfExtentX,
+            box.HalfExtentY,
+            box.HalfExtentZ)))
+        .ToArray();
     var result = CollisionWorldCompiler.Compile(authoring);
     if (!string.Equals(result.Manifest.WorldId, worldId, StringComparison.Ordinal))
     {

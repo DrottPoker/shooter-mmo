@@ -620,8 +620,11 @@ Status: MVP implemented with temporary presentation
   a gathering tool the panel asks the player to equip one. Each node needs its
   own tool kind: a pickaxe mines an Iron Vein, and a Woodcutting Axe chops an
   Oak Tree with `Chop down Oak Tree`. With the wrong tool equipped, gathering
-  stops after the first cycle with the tool it needs, such as
+  never starts, and the panel names the tool it needs, such as
   `Woodcutting Axe required in the Tool slot.`.
+- Resource nodes are solid: characters and Mobs walk around a vein or an oak's
+  trunk, and a click beyond one routes around it. A felled oak's stump and a
+  depleted vein's rubble stay solid. Sight and arrows pass them.
 - One click mines continuously: one Iron Ore every 3 seconds, shown as `Mine...`
   with a progress bar and the gathered count. The ore enters carried storage by
   the same rule as a purchase. Chopping works the same, one Oak Log every 3
@@ -640,10 +643,9 @@ Status: MVP implemented with temporary presentation
   transactionally.
 
 Known limitations: two resource types, no Mining or Woodcutting experience or
-level, no success chance per cycle, no gathering animation, the tool is not
-shown in the hand, resource nodes do not block movement, so a character can
-walk through a tree's trunk, and the client starts gathering with any tool and
-leaves the check of the tool kind to the server's first cycle. Manual test steps are in
+level, no success chance per cycle, no gathering animation, and the tool is not
+shown in the hand. A node's collision is an upright box aligned to the World
+axes, so a round trunk collides as a square. Manual test steps are in
 [Local Development](LOCAL_DEVELOPMENT.md#vendor-and-gathering-verification).
 
 ## Combat
