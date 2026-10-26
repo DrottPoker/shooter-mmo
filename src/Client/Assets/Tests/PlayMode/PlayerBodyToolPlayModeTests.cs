@@ -52,8 +52,9 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(animator.GetCurrentAnimatorStateInfo(0).shortNameHash, Is.EqualTo(MineState));
             Assert.That(locomotion.UseWeight, Is.EqualTo(1f));
 
-            // LateUpdate pinned the other hand on the haft this frame.
-            yield return new WaitForEndOfFrame();
+            // The last frame's LateUpdate pinned the other hand on the haft, and this frame's
+            // Animator has not run yet. Batchmode never evokes WaitForEndOfFrame.
+            yield return null;
             var mainSocket = Bone(HumanLocomotion.MainHandSocketBone);
             var offSocket = Bone(HumanLocomotion.OffHandSocketBone);
             OffHandToolGrip.Target(mainSocket, appearance.Tool.OffHandGrip, out var position, out var rotation);

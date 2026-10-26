@@ -232,7 +232,10 @@ ends with a summary:
   containers it started when it ends. A skipped test fails the check, as in CI.
 - The Unity suites run through `tools/Run-UnityEditorTests.ps1` when an Editor
   has this checkout's project open, and otherwise headless through
-  `tools/Run-UnityTests.ps1`.
+  `tools/Run-UnityTests.ps1`. CI runs them headless, where Unity never evokes
+  `WaitForEndOfFrame`, so whenever the Unity suites are selected, the check
+  `Unity batchmode rules` fails for a test that yields it, even with
+  `-SkipUnity`.
 
 Options:
 
