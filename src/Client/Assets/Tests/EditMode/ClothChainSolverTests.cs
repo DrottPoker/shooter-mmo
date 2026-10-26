@@ -7,6 +7,7 @@ using NUnit.Framework;
 using Unity.Collections;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -407,6 +408,22 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(solver.IsActive, Is.True);
             solver.Deactivate(ClothChainKind.Hood);
             Assert.That(solver.IsActive, Is.False);
+        }
+
+        // When Play Mode ends, the scheduler can dispose the shared world before a dressed body is
+        // disabled; the body then lets go of its world without touching the freed arrays.
+        [Test]
+        public void ABodyDisabledAfterItsWorldWasDisposedLetsGoQuietly()
+        {
+            var (animator, solver) = Dress(ClothChainKind.Cloak);
+            Run(animator, solver, 1);
+            Assert.That(solver.World, Is.Not.Null);
+            solver.World.Dispose();
+
+            body.SetActive(false);
+
+            LogAssert.NoUnexpectedReceived();
+            Assert.That(solver.World, Is.Null);
         }
 
         // How far the cloth at the deepest joint or tip of the chains of a kind lies in a leg beyond
