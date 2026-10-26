@@ -1,6 +1,6 @@
 # Art Pipeline
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 
 This document describes how 3D models travel from Blender to the Unity client:
 where the files live, the review stages an asset passes before it may reach the
@@ -1333,13 +1333,23 @@ The add-on runs any Python code it receives, without a sandbox, so it listens on
 localhost only. The pipeline never depends on it: approval and export always run
 Blender in the background from the scripts.
 
-## Art Direction For Models
+## Art Direction For Models And Textures
 
 The setting asks for stylized low to mid poly art with exaggerated proportions,
 strong silhouettes, and clear colors, so actors stay readable from a zoomed-out
 camera that turns freely ([Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md)).
-For models this means:
+For models and their textures this means:
 
+- Fantasy before realism. Every new model and texture is a creative design for
+  this world, not a 1:1 copy of something real: shapes, proportions, colors,
+  materials, and details lean toward fantasy, such as a sword with a sweeping
+  guard and a carved blade, ore that breaks out of the rock in large crystals,
+  or a cloak with a bold trim and embroidered patterns, while the object stays
+  easy to recognize for what it is. The
+  [human base characters](#human-base-characters) are the exception: their
+  bodies, faces, eyes, and skin stay realistic unless a task asks for something
+  else. What is made for them, such as clothes, armor, weapons, and tattoos,
+  follows the rule.
 - What identifies an actor, such as the ore of a vein, is visible from every
   side and large enough to read at the default camera distance.
 - Flat-shaded facets and flat material colors, with a few materials per asset.

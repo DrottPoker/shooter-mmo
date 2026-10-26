@@ -1,6 +1,6 @@
 # Combat And Setting Design
 
-Last updated: 2026-10-20
+Last updated: 2026-10-26
 
 Status: Agreed design direction. Click-to-move movement, the orbit camera, and
 the right-click world menu are implemented, as recorded in
@@ -87,6 +87,10 @@ RuneScape-like combat and movement instead, with a smooth modern presentation.
 - Magic and technology exist side by side without being treated as opposites.
 - Weapons are fantasy weapons. Real-world firearm models such as an M4A1 or an
   AK-47 do not exist in this world.
+- Models and textures lean toward fantasy instead of copying real objects 1:1.
+  The human base characters stay realistic unless a task asks for something
+  else. The rule is in
+  [Art Pipeline](ART_PIPELINE.md#art-direction-for-models-and-textures).
 - Only humans are playable for now.
 
 ### Proposed
