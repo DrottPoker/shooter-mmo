@@ -1,7 +1,7 @@
 {
     "formatVersion": 4,
-    "sourceCatalogRevision": "477a207d25605a4b53fe1e89edd609de3336706cc2b8eb1dab81e9c3a8ce3545",
-    "presentationRevision": "4464ac60d5ad98a484bcd00facdf710615212bf62f3a0362d354d135e099a61e",
+    "sourceCatalogRevision": "ba4671505831aee2c15cc873908520ee14aabc2f62ad2e02e5f102edf4911b1c",
+    "presentationRevision": "c5d7f09e2de168a4e2e4479013b654f5a4085537f745b15ab36e19e4a8bb5c54",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
@@ -309,6 +309,17 @@
             "attachment": ""
         },
         {
+            "definitionId": "material.oak_log",
+            "iconAddress": "",
+            "localizationKey": "items.material.oak_log.name",
+            "fallbackDisplayName": "Oak Log",
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": [],
+            "attachment": ""
+        },
+        {
             "definitionId": "material.wolf_pelt",
             "iconAddress": "",
             "localizationKey": "items.material.wolf_pelt.name",
@@ -346,6 +357,17 @@
             "iconAddress": "",
             "localizationKey": "items.tool.starter_pickaxe.name",
             "fallbackDisplayName": "Starter Pickaxe",
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": [],
+            "attachment": ""
+        },
+        {
+            "definitionId": "tool.woodcutting_axe",
+            "iconAddress": "",
+            "localizationKey": "items.tool.woodcutting_axe.name",
+            "fallbackDisplayName": "Woodcutting Axe",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],

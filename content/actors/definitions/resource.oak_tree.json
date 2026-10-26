@@ -1,0 +1,39 @@
+{
+    "id": "resource.oak_tree",
+    "displayName": "Oak Tree",
+    "examineText": "An old oak with a twisted trunk and a crown like a storm cloud. A woodcutting axe would bring it down.",
+    "kind": "resource_node",
+    "factionId": "world",
+    "disposition": "neutral",
+    "presentationArchetypeId": "resource.oak_tree",
+    "damagePolicy": "invulnerable",
+    "tags": [
+        "resource",
+        "woodcutting"
+    ],
+    "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 2.8,
+        "centerZ": 0.0,
+        "sizeX": 4.0,
+        "sizeY": 5.6,
+        "sizeZ": 4.0
+    },
+    "capabilities": [
+        {
+            "id": "resource.chop",
+            "kind": "gathering",
+            "displayName": "Chop",
+            "menuOption": "Chop down",
+            "profileId": "resource.oak_tree"
+        }
+    ],
+    "activityProfileId": "",
+    "respawnProfileId": "",
+    "corpsePersistenceMode": "",
+    "corpseLifetimeSeconds": 0.0,
+    "combatProfileId": "",
+    "brainProfileId": "",
+    "locomotionProfileId": "",
+    "lootProfileId": ""
+}

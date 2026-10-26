@@ -29,6 +29,35 @@ public sealed class ResourceNodeContentTests
     }
 
     [Fact]
+    public void OakTreeIsChoppedWithAWoodcuttingAxeForOakLogs()
+    {
+        var runtime = WorldActorTestData.Compile();
+        var tree = runtime.Actors.Single(value => value.Id == "resource.oak_tree");
+        var profile = runtime.ResourceProfiles.Single(value => value.Id == "resource.oak_tree");
+        var items = ItemCatalogTestData.Compile();
+
+        Assert.Equal(WorldActorKindIds.ResourceNode, tree.Kind);
+        Assert.Equal(WorldActorDamagePolicyIds.Invulnerable, tree.DamagePolicy);
+        var capability = Assert.Single(tree.Capabilities);
+        Assert.Equal(WorldActorCapabilityKindIds.Gathering, capability.Kind);
+        Assert.Equal("Chop down", capability.MenuOption);
+        Assert.Equal(profile.Id, capability.ProfileId);
+        Assert.Equal("woodcutting_axe", profile.RequiredToolKind);
+        Assert.Equal("material.oak_log", profile.YieldDefinitionId);
+        Assert.Equal(1, profile.YieldQuantity);
+        Assert.Equal(3f, profile.CycleSeconds);
+        Assert.Equal(5, profile.Charges);
+        Assert.Equal(30f, profile.RespawnSeconds);
+
+        // Only the woodcutting axe chops, so a pickaxe in the Tool slot does not.
+        Assert.Equal(
+            ["tool.woodcutting_axe"],
+            items.Definitions
+                .Where(definition => definition.ToolKinds.Contains("woodcutting_axe"))
+                .Select(definition => definition.Id));
+    }
+
+    [Fact]
     public void CheckedInContentPassesItemReferenceValidation()
     {
         var items = ItemCatalogTestData.Compile();
@@ -107,7 +136,7 @@ public sealed class ResourceNodeContentTests
     public void ResourceProfileValuesAreBounded()
     {
         var actors = WorldActorTestData.LoadActors();
-        var profile = actors.ResourceProfiles.Single();
+        var profile = actors.ResourceProfiles.Single(value => value.Id == "resource.iron_vein");
         profile.CycleSeconds = 0f;
         profile.Charges = 0;
         profile.RespawnSeconds = float.NaN;

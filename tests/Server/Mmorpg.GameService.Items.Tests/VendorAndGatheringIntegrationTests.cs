@@ -267,9 +267,10 @@ public sealed class VendorAndGatheringIntegrationTests
         var pickaxeId = await world.GrantAsync(characterId, Pickaxe, 1, state.PermanentInventoryContainerId, 0);
         var session = await world.JoinAsync(player);
 
-        AssertRejected(
-            await GatherAsync(context, session, 1),
-            ItemTransactionErrorCodes.GatheringToolRequired);
+        var withoutTool = await GatherAsync(context, session, 1);
+        AssertRejected(withoutTool, ItemTransactionErrorCodes.GatheringToolRequired);
+        // The player learns which tool kind the node needs, by its display name.
+        Assert.Equal("Pickaxe required in the Tool slot.", withoutTool.Error!.Message);
 
         await world.EquipAsync(characterId, pickaxeId, ItemEquipmentSlotIds.Tool);
         var first = await GatherAsync(context, session, 1);

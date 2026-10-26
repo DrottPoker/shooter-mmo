@@ -1,6 +1,6 @@
 # Service Features
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 
 ## Purpose
 
@@ -402,10 +402,10 @@ worker output, which the build copies from the WorldData runtime catalog.
 SimulationWorker loads `SimulationWorker:ActorDataPath` before binding UDP and
 rejects malformed runtime content, revision drift, wrong World identity,
 unsupported values, invalid references, or unsafe collection bounds. The
-checked-in development content contains five shared definitions, 14 spawn
-instances for `development-world-1`, and 17 spawn instances for
+checked-in development content contains six shared definitions, 14 spawn
+instances for `development-world-1`, and 21 spawn instances for
 `development-world-2`, among them nine Iron Vein resource nodes in the first and
-seven in the second. The compiler rounds every float step of a group or area
+seven Iron Veins and four Oak Trees in the second. The compiler rounds every float step of a group or area
 placement to float on its own, so the Unity Editor under Mono, which keeps
 intermediates in double, places exactly what the .NET tools place.
 
@@ -464,8 +464,8 @@ corpse view.
 - Item values and vendor profiles are item catalog content. The shipped vendor
   `vendor.city_general_store` ("General Store") is the profile of the `vendor`
   capability of Mira the Quartermaster (`npc.city_services`). It sells Bronze
-  Arrow, Minor Healing Potion, Cooked Trout, and Starter Pickaxe at 100 percent
-  of value and buys every category except quest items at 40 percent. Stock is
+  Arrow, Minor Healing Potion, Cooked Trout, Starter Pickaxe, Woodcutting Axe,
+  the clothes, armor, sword, and shield at 100 percent of value and buys every category except quest items at 40 percent. Stock is
   unlimited and there is no buyback.
 - Opening the vendor capability only confirms it, so the client can show the
   offers from its bundled catalog. A `CapabilityAction` `VendorPurchase` or
@@ -506,7 +506,9 @@ corpse view.
   `gathering` capability whose `profileId` names a resource profile in the
   actor catalog: required tool kind, yield definition and quantity, cycle time,
   charges, and respawn delay. The Iron Vein yields one Iron Ore every 3 seconds
-  with a pickaxe, has 5 charges, and returns 30 seconds after it depletes.
+  with a pickaxe, has 5 charges, and returns 30 seconds after it depletes. The
+  Oak Tree yields one Oak Log at the same pace with a Woodcutting Axe, the
+  `woodcutting_axe` tool kind.
 - Charges are live Shard state in `WorldActorStore`, shared by every gatherer.
   Each node keeps remaining and reserved charges and a generation that advances
   on every depletion, so a stale completion or respawn never touches a newer
@@ -519,7 +521,9 @@ corpse view.
   reserves one charge and queues a `gather_resource` call to GameService behind
   the player's other authority work. GameService checks that an item of the
   required tool kind is equipped in the `tool` slot, otherwise
-  `gathering_tool_required`, and places the yield through carried acquisition.
+  `gathering_tool_required` with a message that names the kind, such as
+  `Woodcutting Axe required in the Tool slot.`, which the worker passes on in
+  `GatheringState` `Stopped`. It places the yield through carried acquisition.
 - A committed yield consumes the charge, applies the committed carry state, and
   sends `GatheringState` `Yielded` with the item-state revision. The last charge
   makes the node inactive for every viewer, stops everyone gathering there with
@@ -769,9 +773,9 @@ concurrent inspection, and authoritative looting:
 - The compiler emits sorted deterministic runtime content under
   `src/Shared/WorldData/Generated/Items`, including one catalog revision and structural
   fingerprints for every item definition and Secure Container tier.
-- The checked-in catalog has 27 fantasy definitions, fourteen equipment
+- The checked-in catalog has 31 fantasy definitions, fourteen equipment
   slots including a stack-holding ammunition slot, the potion, food, material,
-  and ammunition tags, the `pickaxe` tool kind, one Bag layout with general and
+  and ammunition tags, the `pickaxe` and `woodcutting_axe` tool kinds, one Bag layout with general and
   specialized slots, the four-slot base Secure Container tier shown as Warded
   Pouch, one vendor profile, and the economy settings: the currency display name
   Gold and a starting balance of 100.

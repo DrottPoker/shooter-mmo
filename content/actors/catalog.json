@@ -43,6 +43,11 @@
             "id": "resource.iron_vein",
             "displayName": "Iron Vein",
             "actorKind": "resource_node"
+        },
+        {
+            "id": "resource.oak_tree",
+            "displayName": "Oak Tree",
+            "actorKind": "resource_node"
         }
     ],
     "activityProfiles": [
@@ -159,6 +164,15 @@
             "id": "resource.iron_vein",
             "requiredToolKind": "pickaxe",
             "yieldDefinitionId": "material.iron_ore",
+            "yieldQuantity": 1,
+            "cycleSeconds": 3.0,
+            "charges": 5,
+            "respawnSeconds": 30.0
+        },
+        {
+            "id": "resource.oak_tree",
+            "requiredToolKind": "woodcutting_axe",
+            "yieldDefinitionId": "material.oak_log",
             "yieldQuantity": 1,
             "cycleSeconds": 3.0,
             "charges": 5,

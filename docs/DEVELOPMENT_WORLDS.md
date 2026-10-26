@@ -1,6 +1,6 @@
 # Development Worlds
 
-Last updated: 2026-10-21
+Last updated: 2026-10-26
 
 ## Purpose
 
@@ -102,8 +102,8 @@ each direction, 30 to 110 m from the town, so every zone is a short walk away.
 | 172 m away       | guards, houses   | range lane       |
 +------------------+------------------+------------------+
 | Wolf woods       | Meadow           | Quarry           |
-| wolves and the   | open ground      | seven Iron Veins |
-| alpha lair       |                  |                  |
+| wolves and the   | open ground,     | seven Iron Veins |
+| alpha lair       | oak grove        |                  |
 +------------------+------------------+------------------+
 ```
 
@@ -206,9 +206,23 @@ walls on the south and east sides.
 
 ### Meadow And Sandbox
 
-The meadow south of the town is open ground with six trees, for crowds of bots
-and players. The sandbox is a 100 by 100 m teal pad centered at
+The meadow south of the town is open ground with six greybox trees, for crowds
+of bots and players. East of them, toward the quarry, the oak grove holds four Oak Trees, the
+resource nodes that a Woodcutting Axe chops down, at `(38, 0, -80)`,
+`(48, 0, -88)`, `(32, 0, -92)`, and `(42, 0, -100)`, with an `OAK GROVE` sign at
+`(28, 0, -74)`. The sandbox is a 100 by 100 m teal pad centered at
 `(-120, 0, 120)`, kept free for features that need space of their own.
+
+### Resource Node Placements
+
+Resource nodes are actors, so `actor-spawns.json` places them and they never
+collide; the builders only keep their ground clear and sign their zones.
+
+| World | Resource node | Placement |
+| --- | --- | --- |
+| `development-world-1` | Iron Vein | Nine in the gathering field, 3 by 3, 4 m apart, centered at `(24, 0, 0)` |
+| `development-world-2` | Iron Vein | Seven in the quarry: a 2 by 2 group 6 m apart around `(84, 0, -84)` and single veins at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)` |
+| `development-world-2` | Oak Tree | Four in the oak grove: `(38, 0, -80)`, `(48, 0, -88)`, `(32, 0, -92)`, and `(42, 0, -100)`, turned 0, 70, 140, and 215 degrees |
 
 ## Rebuild And Bake Workflow
 
@@ -225,7 +239,7 @@ never change actor content.
    them, and cancelling stops the rebuild.
 3. Select `MMORPG > Tools > World Collision > Bake World Scenes`.
 4. Confirm the Console reports `development-world-1` with 30 boxes, 0 meshes,
-   and 0 heightfields in 4 chunks, and `development-world-2` with 199 boxes, 1
+   and 0 heightfields in 4 chunks, and `development-world-2` with 201 boxes, 1
    mesh, and 1 heightfield in 144 chunks.
 
 To change a layout, edit the builder in

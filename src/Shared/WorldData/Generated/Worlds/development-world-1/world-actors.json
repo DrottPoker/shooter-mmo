@@ -2,7 +2,7 @@
   "formatVersion": 4,
   "catalogId": "core",
   "worldId": "development-world-1",
-  "revision": "3a58a56413acec81a7aa8eec22826dc0cca40f1f9625112f9a0c0d079d333d81",
+  "revision": "695a0e5649334cd12a51661e4ca4869ee9fcb2828265b1d6318f1b0fb8ffe282",
   "factions": [
     {
       "id": "city",
@@ -53,6 +53,12 @@
       "displayName": "Iron Vein",
       "actorKind": "resource_node",
       "structuralFingerprint": "ad236d6468e47cce6eb819fb4915ce9ceeb4127c3ff0decec2fbc13a79650267"
+    },
+    {
+      "id": "resource.oak_tree",
+      "displayName": "Oak Tree",
+      "actorKind": "resource_node",
+      "structuralFingerprint": "8ba85619b28e567fb462457a511bac36779f5cadbbebb32c1174ac1404001c2c"
     }
   ],
   "activityProfiles": [
@@ -89,6 +95,16 @@
       "charges": 5,
       "respawnSeconds": 30,
       "structuralFingerprint": "7735e56d519d4dafd8039027e6b72405be46ab31f195972f5901b4ae05ef17ea"
+    },
+    {
+      "id": "resource.oak_tree",
+      "requiredToolKind": "woodcutting_axe",
+      "yieldDefinitionId": "material.oak_log",
+      "yieldQuantity": 1,
+      "cycleSeconds": 3,
+      "charges": 5,
+      "respawnSeconds": 30,
+      "structuralFingerprint": "7401f58bbc7781583437439942cf4987dcb719bddf3cb75cf060ab82baa3a6ac"
     }
   ],
   "combatProfiles": [
@@ -439,6 +455,47 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "structuralFingerprint": "2d5e3decaa7907d53d2a8f86e539e443979a84296609553d3afa00e2282c0763"
+    },
+    {
+      "id": "resource.oak_tree",
+      "displayName": "Oak Tree",
+      "examineText": "An old oak with a twisted trunk and a crown like a storm cloud. A woodcutting axe would bring it down.",
+      "kind": "resource_node",
+      "factionId": "world",
+      "disposition": "neutral",
+      "presentationArchetypeId": "resource.oak_tree",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "resource",
+        "woodcutting"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 2.8,
+        "centerZ": 0,
+        "sizeX": 4,
+        "sizeY": 5.6,
+        "sizeZ": 4
+      },
+      "capabilities": [
+        {
+          "id": "resource.chop",
+          "kind": "gathering",
+          "displayName": "Chop",
+          "menuOption": "Chop down",
+          "profileId": "resource.oak_tree",
+          "structuralFingerprint": "140af654bfea30fc9bff082414e2dc31f7cf9df0fc65872bed47607615001389"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": "",
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0,
+      "combatProfileId": "",
+      "brainProfileId": "",
+      "locomotionProfileId": "",
+      "lootProfileId": "",
+      "structuralFingerprint": "62379485903aa79aeef8620adbf283978f0e540456e98031cb4329a15bb97e3a"
     }
   ],
   "spawnSources": [

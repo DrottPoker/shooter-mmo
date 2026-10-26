@@ -1,6 +1,6 @@
 # NPC And Mob System Design
 
-Last updated: 2026-10-20
+Last updated: 2026-10-26
 
 Status: Canonical design, foundation implemented
 
@@ -38,10 +38,11 @@ The implemented foundation includes:
   `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
 - One framework-neutral compiler and runtime validator used by the command-line
   tool, Unity Editor tools, SimulationWorker startup, and automated tests.
-- A shared five-definition actor catalog, the `development-world-1` stress
+- A shared six-definition actor catalog, the `development-world-1` stress
   arena with 14 deterministic instances, including nine Iron Veins and four
-  Feral Wolves, and the `development-world-2` test World with 17 deterministic
-  instances, including one Feral Alpha, five Feral Wolves, and seven Iron Veins.
+  Feral Wolves, and the `development-world-2` test World with 21 deterministic
+  instances, including one Feral Alpha, five Feral Wolves, seven Iron Veins, and
+  four Oak Trees.
 - Mob combat, brain, locomotion, and loot profiles in actor format 2, validated
   by the compiler and, for loot, against the compiled item catalog.
   SimulationWorker uses the combat and loot profiles for Mob health, death,
@@ -275,7 +276,8 @@ vendor capability profile ids against the compiled item catalog, so
 `tools/WorldActorCompiler` runs after the item catalog compiler. The shipped
 `resource.iron_vein` profile requires a `pickaxe`, yields one
 `material.iron_ore` every 3 seconds, has 5 charges, and respawns after 30
-seconds.
+seconds. The `resource.oak_tree` profile requires a `woodcutting_axe` and yields
+one `material.oak_log` at the same pace, charges, and respawn.
 
 ## NPC Capability Composition
 

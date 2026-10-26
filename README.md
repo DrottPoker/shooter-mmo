@@ -102,8 +102,9 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
   monotonic deltas, stable closure handling, a generic replaceable capsule,
   click-to-open interaction, and typed bidirectional drag-and-drop transfers.
 - A persistent Gold balance with a ledger, one NPC vendor that sells supplies
-  and buys carried items at fixed catalog prices, and shared Iron Vein resource
-  nodes mined with a pickaxe, with live Shard depletion and respawn.
+  and buys carried items at fixed catalog prices, and shared Iron Vein and Oak
+  Tree resource nodes mined with a pickaxe or chopped with a Woodcutting Axe,
+  with live Shard depletion and respawn.
 - Server-authoritative target-based combat with the Training Shortbow and
   batched arrow consumption, wolves that detect, chase, bite, and evade home,
   one death event per Mob or player death with its killer, Mob loot corpses,

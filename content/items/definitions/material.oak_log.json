@@ -1,0 +1,23 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "material",
+  "defaultPolicies": [ ],
+  "displayName": "Oak Log",
+  "equipmentSlots": [ ],
+  "id": "material.oak_log",
+  "locationEligibility": {
+    "secureContainer": true
+  },
+  "maximumStackSize": 100,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [
+    "material"
+  ],
+  "toolKinds": [ ],
+  "unitWeight": 50,
+  "value": 10,
+  "weapon": null
+}

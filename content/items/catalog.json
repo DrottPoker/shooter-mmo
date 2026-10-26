@@ -190,6 +190,10 @@
     {
       "displayName": "Pickaxe",
       "id": "pickaxe"
+    },
+    {
+      "displayName": "Woodcutting Axe",
+      "id": "woodcutting_axe"
     }
   ],
   "weaponFamilies": [

@@ -48,3 +48,10 @@ MonoBehaviour:
       m_SubObjectType: 
       m_SubObjectGUID: 
       m_EditorAssetChanged: 0
+  - presentationArchetypeId: resource.oak_tree
+    prefab:
+      m_AssetGUID: 3632598d10c4b2848ba40e08fd3a5dcf
+      m_SubObjectName: 
+      m_SubObjectType: 
+      m_SubObjectGUID: 
+      m_EditorAssetChanged: 0

@@ -1,7 +1,7 @@
 {
   "formatVersion": 5,
   "catalogId": "core",
-  "revision": "477a207d25605a4b53fe1e89edd609de3336706cc2b8eb1dab81e9c3a8ce3545",
+  "revision": "ba4671505831aee2c15cc873908520ee14aabc2f62ad2e02e5f102edf4911b1c",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 2000,
@@ -83,6 +83,10 @@
     {
       "id": "pickaxe",
       "displayName": "Pickaxe"
+    },
+    {
+      "id": "woodcutting_axe",
+      "displayName": "Woodcutting Axe"
     }
   ],
   "equipmentSlots": [
@@ -718,6 +722,27 @@
       "structuralFingerprint": "929a4e984b8982ab049ee54fe011d09a8e8d2f2f8f931242e5813f5f00de4df6"
     },
     {
+      "id": "material.oak_log",
+      "displayName": "Oak Log",
+      "category": "material",
+      "tags": [
+        "material"
+      ],
+      "toolKinds": [],
+      "unitWeight": 50,
+      "value": 10,
+      "maximumStackSize": 100,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "680ce657678cc628381d10039a6951b7779070fe781ab30b80284b0b8e086a7a"
+    },
+    {
       "id": "material.wolf_pelt",
       "displayName": "Wolf Pelt",
       "category": "material",
@@ -804,6 +829,29 @@
       "structuralFingerprint": "f5e00ea2809b4aeabf79ae97c1c0b09d9d360f6dca98579bb05a85392eadefef"
     },
     {
+      "id": "tool.woodcutting_axe",
+      "displayName": "Woodcutting Axe",
+      "category": "tool",
+      "tags": [],
+      "toolKinds": [
+        "woodcutting_axe"
+      ],
+      "unitWeight": 130,
+      "value": 50,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "tool"
+      ],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": true
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "63e4c4b7fcc297287a9ce7a3198f46c93c17aad865b0b3632fdf7f292b11fa3e"
+    },
+    {
       "id": "weapon.iron_sword",
       "displayName": "Iron Sword",
       "category": "weapon",
@@ -888,6 +936,9 @@
         },
         {
           "definitionId": "tool.starter_pickaxe"
+        },
+        {
+          "definitionId": "tool.woodcutting_axe"
         },
         {
           "definitionId": "clothing.linen_shirt"

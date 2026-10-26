@@ -32,10 +32,12 @@ public sealed class ItemCatalogTests
         "food.cooked_trout",
         "jewelry.copper_ring",
         "material.iron_ore",
+        "material.oak_log",
         "material.wolf_pelt",
         "potion.minor_healing",
         "quest_item.sealed_letter",
         "tool.starter_pickaxe",
+        "tool.woodcutting_axe",
         "weapon.iron_sword",
         "weapon.training_shortbow"
     ];
