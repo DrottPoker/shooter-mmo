@@ -195,7 +195,8 @@ public sealed class RealtimeCorpseProtocolTests
                             "Human_Female",
                             [new RealtimeAppearanceChoice("underwear", "legs", "Briefs")],
                             [new RealtimeVisibleEquipment("back", "clothing.wool_cloak")],
-                            false)))
+                            false,
+                            null)))
                 .ToArray());
 
         var packet = RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(expected);

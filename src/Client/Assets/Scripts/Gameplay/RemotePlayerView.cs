@@ -105,7 +105,7 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // The look of a character as others see it: its own look, its hair, and the garments of
-        // its visible items, with its headwear as it wears it.
+        // its visible items, with its headwear as it wears it, holding the tool it uses.
         public static BodyLook DressedLook(
             RealtimeCharacterAppearance appearance,
             BodyAppearanceCatalog catalog,
@@ -118,7 +118,8 @@ namespace Mmorpg.Client.Gameplay
                     catalog,
                     CharacterLooks.EquipmentOf(appearance),
                     presentation,
-                    appearance.HeadwearLowered);
+                    appearance.HeadwearLowered,
+                    appearance.ToolInUse);
         }
 
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)

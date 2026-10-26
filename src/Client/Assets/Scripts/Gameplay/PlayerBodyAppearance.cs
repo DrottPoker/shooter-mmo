@@ -14,7 +14,9 @@ namespace Mmorpg.Client.Gameplay
     // look without a tint draws with the body's own materials. A garment draws in the look's dye
     // colors or its natural ones. A garment with loose cloth lets the body's ClothChainSolver move
     // its chains. An attachment the look holds, such as a sword, is part of the combined renderer on
-    // its socket, and the fingers of a hand that holds one close around its grip.
+    // its socket, and the fingers of a hand that holds one close around its grip. A tool the look
+    // holds, such as a pickaxe, makes the body play the tool's clip, and a tool held with both hands
+    // closes the other hand too and pins it on the tool.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -43,6 +45,9 @@ namespace Mmorpg.Client.Gameplay
         private bool gripPending;
         private bool tinted;
         private Color tintColor = Color.white;
+        private BodyAppearanceCatalog.Attachment tool;
+        private ToolBones toolBones;
+        private CharacterLocomotionAnimator locomotion;
 
         public IReadOnlyList<Material> SkinMaterials
         {
@@ -76,6 +81,12 @@ namespace Mmorpg.Client.Gameplay
         public IReadOnlyList<BodyAppearanceCatalog.Attachment> Held
         {
             get { return held; }
+        }
+
+        // The tool among them, such as a pickaxe while the character gathers, or null.
+        public BodyAppearanceCatalog.Attachment Tool
+        {
+            get { return tool; }
         }
 
         // Draws the visible parts and the worn garments as one skinned renderer with the shared
@@ -136,13 +147,29 @@ namespace Mmorpg.Client.Gameplay
         {
             look = bodyLook ?? BodyLook.Default;
             materials = bodyMaterials;
-            if (WearLook() && combinedRenderer != null)
+            var changed = WearLook();
+            UseTool();
+            if (changed && combinedRenderer != null)
             {
                 Assemble();
                 return;
             }
 
             Refresh();
+        }
+
+        // The body plays the clip of the tool it holds, or stops playing one.
+        private void UseTool()
+        {
+            if (locomotion == null)
+            {
+                locomotion = GetComponent<CharacterLocomotionAnimator>();
+            }
+
+            if (locomotion != null)
+            {
+                locomotion.Use(tool != null ? tool.UseClip : null);
+            }
         }
 
         // The garments of the catalog that the look names, from the lowest layer up, and its
@@ -167,6 +194,8 @@ namespace Mmorpg.Client.Gameplay
                 held = PlayerBodyMeshes.Held(catalog.Attachments.Where(attachment =>
                     attachment != null && look.HasAttachment(attachment.Name)).ToList());
             }
+
+            tool = held.FirstOrDefault(attachment => attachment.IsTool);
 
             var key = string.Join("+", worn.Select(garment => garment.Name))
                 + "#" + string.Join("+", held.Select(attachment => attachment.Name));
@@ -216,11 +245,81 @@ namespace Mmorpg.Client.Gameplay
             {
                 Grip();
             }
+
+            // Most bodies hold no tool, so they pay nothing more per frame.
+            if (tool != null && tool.HoldsWithBothHands)
+            {
+                if (locomotion == null)
+                {
+                    locomotion = GetComponent<CharacterLocomotionAnimator>();
+                }
+
+                PinOffHand(locomotion != null ? locomotion.UseWeight : 0f);
+            }
         }
 
-        // The fingers of each hand whose socket holds an attachment close around its grip; the
-        // others play the clips as they are. An Animator that does not play yet takes the weights
-        // in the next LateUpdate.
+        // After the Animator posed the body, the other hand of a tool held with both hands holds
+        // the tool where its clip puts that hand, by the share of the pose that comes from the
+        // tool's clip.
+        public void PinOffHand(float weight)
+        {
+            if (tool == null || !tool.HoldsWithBothHands || combinedRenderer == null || weight <= 0f)
+            {
+                return;
+            }
+
+            if (toolBones == null && !ToolBones.TryFind(GetComponent<Animator>(), transform, tool.Bone, out toolBones))
+            {
+                return;
+            }
+
+            OffHandToolGrip.Pin(toolBones.Socket, tool.OffHandGrip, toolBones.Shoulder, toolBones.UpperArm,
+                toolBones.LowerArm, toolBones.Hand, toolBones.OffSocket, weight);
+        }
+
+        // The bones that hold a tool with both hands: the tool's socket and the other arm with its
+        // collar bone, if the body has one, and its socket.
+        private sealed class ToolBones
+        {
+            public Transform Socket;
+            public Transform Shoulder;
+            public Transform UpperArm;
+            public Transform LowerArm;
+            public Transform Hand;
+            public Transform OffSocket;
+
+            public static bool TryFind(Animator animator, Transform root, string socketBone, out ToolBones bones)
+            {
+                bones = null;
+                if (animator == null || !animator.isHuman
+                    || !string.Equals(socketBone, HumanLocomotion.MainHandSocketBone, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                var found = new ToolBones
+                {
+                    Socket = PlayerBodyMeshes.FindDescendant(root, HumanLocomotion.MainHandSocketBone),
+                    Shoulder = animator.GetBoneTransform(HumanBodyBones.LeftShoulder),
+                    UpperArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm),
+                    LowerArm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm),
+                    Hand = animator.GetBoneTransform(HumanBodyBones.LeftHand),
+                    OffSocket = PlayerBodyMeshes.FindDescendant(root, HumanLocomotion.OffHandSocketBone),
+                };
+                if (found.Socket == null || found.UpperArm == null || found.LowerArm == null
+                    || found.Hand == null || found.OffSocket == null)
+                {
+                    return false;
+                }
+
+                bones = found;
+                return true;
+            }
+        }
+
+        // The fingers of each hand whose socket holds an attachment close around its grip, and
+        // both hands around a tool held with both hands; the others play the clips as they are.
+        // An Animator that does not play yet takes the weights in the next LateUpdate.
         private void Grip()
         {
             var animator = GetComponent<Animator>();
@@ -241,8 +340,9 @@ namespace Mmorpg.Client.Gameplay
                 var index = animator.GetLayerIndex(layer);
                 if (index >= 0)
                 {
-                    var holds = combinedRenderer != null && held.Any(attachment =>
-                        string.Equals(HumanLocomotion.GripLayerFor(attachment.Bone), layer, StringComparison.Ordinal));
+                    var holds = combinedRenderer != null && (held.Any(attachment =>
+                        string.Equals(HumanLocomotion.GripLayerFor(attachment.Bone), layer, StringComparison.Ordinal))
+                        || (tool != null && tool.HoldsWithBothHands && layer == HumanLocomotion.OffHandGripLayer));
                     animator.SetLayerWeight(index, holds ? 1f : 0f);
                 }
             }

@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 24,
+    "version": 25,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -897,7 +897,7 @@
     {
       "name": "CharacterAppearance",
       "family": "Replication",
-      "description": "How a character looks to every client: its body model, the choices of its look, the items others see on it, and whether it lowered its headwear.",
+      "description": "How a character looks to every client: its body model, the choices of its look, the items others see on it, whether it lowered its headwear, and the tool it holds while it uses it.",
       "fields": [
         {
           "name": "BodyModel",
@@ -926,6 +926,14 @@
           "name": "HeadwearLowered",
           "type": "bool",
           "description": "Whether the character lowered its headwear, such as a hood pushed back."
+        },
+        {
+          "name": "ToolInUse",
+          "type": "string",
+          "maxLength": "MaximumDefinitionIdLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The item definition of the tool the character holds while it uses it, such as its pickaxe while it gathers, or empty."
         }
       ]
     },
@@ -2740,7 +2748,7 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "description": "A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, or in Development its body model or look.",
+      "description": "A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, the tool it uses, or in Development its body model or look.",
       "parameter": "change",
       "runtimeSizeCheck": true,
       "fields": [

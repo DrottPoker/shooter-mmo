@@ -118,6 +118,8 @@ any `clips` of its own are written by hand when an asset is created.
 | `target` | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx`, where `<Name>` is the folder name. |
 | `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. The one root object of an animation library is its armature, named after its skeleton, and that of an attachment is `Grip`. |
 | `socket` | Attachments only: the socket the model is held on, as a bone of a skeleton definition names it in its `socket`, such as `main_hand` for `Socket_MainHand`. A static asset has a socket exactly when its one root object is `Grip`. |
+| `useClip` | Tools only, attachments held while a body uses them: the clip of an animation library of the socket's skeleton that the body plays meanwhile, such as `Mine`; see [Tools](#tools). |
+| `offHandGrip` | Tools held with both hands only, on `main_hand`: where the other hand's socket holds the model, as `[x, y, z]` in meters in the socket's axes in Blender, such as `[0.0, -0.33, 0.0]`, at most 2 m from `Grip` in each axis. |
 | `triangleBudget` | The maximum number of exported triangles, after modifiers. An animation library exports no meshes and has none. A garment's budget holds for each body's version. |
 | `skeleton` | Skinned assets and animation libraries: the name of the skeleton definition in `art/Skeletons`, such as `Humanoid`. |
 | `rig` | Animation libraries only: the skinned asset whose rig the clips are keyed on, such as `art/Characters/Human_Male`. |
@@ -531,8 +533,8 @@ models, and both player prefabs.
 Clips live in animation libraries: art assets of kind `animations` below
 `art/Animations`, keyed on the rig of one character and played on every body of
 the skeleton. `art/Animations/Human_Actions` holds every clip of the human bodies,
-`Idle`, `Walk`, `Jog`, `Death`, and the hand pose `Grip`, and the bodies hold
-none:
+`Idle`, `Walk`, `Jog`, `Death`, the hand pose `Grip`, and the tools' strokes
+`Mine` and `Chop`, and the bodies hold none:
 
 - The `Export` collection holds the armature `Humanoid`, a copy of the rig of
   `Human_Male` named after its skeleton. Every clip is an action keyed on it, at
@@ -585,7 +587,11 @@ of every finger touches that handle without going into it, the distal joint bent
 by a share of the middle one, as a hand closes, and were approved on 2026-10-25.
 A clip added by hand is named in `clips` in `asset.json`; until the library is
 exported again, the record of its last export lists other clips, which the
-verification reports as a stale export.
+verification reports as a stale export. A clip may instead come from a script,
+as `Mine` and `Chop` did: the tool's grip frame follows a swing in a plane, both
+hands reach its haft with analytic two-bone IK, and every frame is keyed. The
+library's review sheet shows a tool held in the rows of the clip it is used
+with, as [Tools](#tools) describes.
 
 In Unity, `Human_Actions.fbx` brings its clips as Humanoid motion, and
 `HumanLocomotion.controller` plays them on every player body; see
@@ -1121,7 +1127,8 @@ overlap.
 
 Cloth in motion is reviewed in Unity with `MMORPG > Tools > Art Pipeline >
 Wardrobe`: pick a body, tick the garments it wears, and play `Idle`, `Walk`,
-`Jog`, or `Death`, or a stress motion such as a spin, a sharp turn, a stop, a
+`Jog`, `Death`, or a tool's `Mine` or `Chop`, with the other hand pinned on a
+ticked tool's haft as in the game, or a stress motion such as a spin, a sharp turn, a stop, a
 zig-zag, the zig-zag as the network shows a remote body, jittery frames, or a
 jump. The body is put together as the game puts it together, walks and jogs
 forward at the clips' speeds over a checkered ground that the camera follows, so
@@ -1321,6 +1328,28 @@ catalog lacks or that its slot does not hold, when a model has another root than
 `Grip` at its origin, or when a body in a jog pose draws an attachment's vertex
 more than 1 mm from where its model puts it on the socket.
 
+### Tools
+
+A tool is an attachment that a body holds only while it uses it, such as a
+pickaxe while its character gathers. Its `asset.json` names its `useClip`, a clip
+of an animation library of its socket's skeleton, and a tool held with both hands
+on `main_hand` names its `offHandGrip`, the point of the model where the other
+hand holds it in the socket's axes; that hand's socket is turned 180 degrees
+about the socket's Y axis there, so both thumbs point along the haft toward the
+head. The manifest refuses a `useClip` that no library of the skeleton has. The
+review sheet of the library shows every tool held on its socket by every body in
+the rows of its clip, and `Render-ArtPreview.ps1` finds the tools by their
+`useClip`.
+
+In Unity the appearance catalog lists the tool's `UseClip` and its `OffHandGrip`,
+converted to the model's axes as the import converts the model, Blender's
+`(x, y, z)` to Unity's `(x, z, y)`, and the controller has a looping base layer
+state of the clip's name. `ToolInUseTests` fails when a tool item can be
+equipped elsewhere than the Tool slot, when a tool's clip has no such state,
+when its other hand's grip lies off the model, or when a body's other hand does
+not end up on the grip through the swing; see
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
+
 ## Live Work With The Blender MCP Server
 
 The Blender Lab MCP server lets Claude Code inspect and change the Blender file
@@ -1474,7 +1503,9 @@ weights.
 
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
-| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. `Grip`, one frame, looping, keys only the fingers and thumbs: both hands closed around a handle of 29 mm on their sockets. Approved 2026-10-25. |
+| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. `Grip`, one frame, looping, keys only the fingers and thumbs: both hands closed around a handle of 29 mm on their sockets. Approved 2026-10-25. `Mine` and `Chop`, 45 frames, looping, both hands closed on a tool's haft, the right hand 33 cm above the left: `Mine` strikes a pickaxe down in front of the body at about knee height, lifts it over the right shoulder with the head behind the shoulder, and strikes again; `Chop` lifts an axe over the right shoulder and hews diagonally down to the left at waist height. Both keep every arm inside the humanoid muscle ranges and turn the torso, bend the knees, and look at the stroke. Approved 2026-10-26. |
+| `art/Attachments/MiningPickaxe` | `static` | `Grip` | The tool of the Starter Pickaxe, held on `main_hand` with both hands while mining, 960 triangles, 86 cm: an ash haft with a leather wrap in seven bands where the left hand holds it and a brass butt cap, and a curved iron head, 43 cm across, with a long point on the striking side and a flared chisel, both curving toward the hands, on a chamfered eye boss with a blue faceted ore crystal in a brass bezel on each cheek, over a brass collar inlaid in blue with the rune Fehu on its front and back. `useClip` `Mine`, `offHandGrip` 33 cm down the haft. Approved 2026-10-26. |
+| `art/Attachments/WoodcuttingAxe` | `static` | `Grip` | The tool of the Woodcutting Axe, held on `main_hand` with both hands while chopping, 1,090 triangles, 90 cm: an oak haft with a leather wrap in seven bands where the left hand holds it and a golden acorn as its butt knob, and a bearded iron head with a bright honed edge 21 cm long, its top horn sweeping up and its beard hanging toward the hands, with a lobed oak leaf inlaid in gold on each cheek. `useClip` `Chop`, `offHandGrip` 33 cm down the haft. Approved 2026-10-26. |
 | `art/Attachments/HeaterShield` | `static` | `Grip` | A small heater shield held on `off_hand`, 1,436 triangles: a board 56 cm wide and 70 cm from the straight top to the point, 12 mm thick and bowed 4 cm toward the arm at its sides, its face painted blue, its back plain wood, an iron edging bent over the edge, a leather-wrapped handle in the fist on two straps, a loose leather strap around the forearm 20 cm toward the elbow, and iron rivets through both faces where the straps hold. It lies 76 mm behind the handle along the forearm, turned 12 degrees toward the little finger, as the wrist of `Idle` turns the hand, so it hangs outward at the side with its point down. Approved 2026-10-25. |
 | `art/Attachments/IronSword` | `static` | `Grip` | A plain iron arming sword held on `main_hand`, 1,008 triangles, 94 cm: a disc pommel with a peened tang end, a leather grip of 10 cm swelling slightly in the middle, a straight cross guard of 19 cm, and a blade of 74 cm, 5 cm wide at the guard, with a fuller over 70 % of it, tapering to the point. Approved 2026-10-25. |
 | `art/GarmentTextures/DarkBrownHair` | `texture` | none | Dark brown hair on `ShoulderHair`, 1024 px, painted by a script in the template's UVs, which run around the head through the locks and down along the hair: lighter strands of random width along the hair, deep grooves between the locks, a soft sheen around the crown, darker roots, and slightly lighter tips. Roughness 0.55. Approved 2026-10-24. |

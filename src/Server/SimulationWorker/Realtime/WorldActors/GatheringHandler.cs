@@ -6,6 +6,7 @@ using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -13,7 +14,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // per peer; every due cycle reserves a node charge and asks GameService for the yield
 // behind the peer's other authority work. A committed yield consumes the charge, the last
 // charge depletes the node for everyone, and the central timer queue respawns it. Moving,
-// closing the interaction, or a rejected yield stops gathering. Loop-confined.
+// closing the interaction, or a rejected yield stops gathering. While a player gathers, it
+// uses the item of its Tool slot, which its look shows in its hands. Loop-confined.
 internal sealed class GatheringHandler(
     SimulationWorkerConfig config,
     RealtimeSimulationClock clock,
@@ -67,6 +69,7 @@ internal sealed class GatheringHandler(
         var activity = new GatheringActivity(
             context,
             session,
+            player,
             start.InteractionSessionId,
             start.Node,
             start.CapabilityId,
@@ -76,6 +79,7 @@ internal sealed class GatheringHandler(
             NextCycleTick = clock.ServerTick + CycleTicks(profile.CycleSeconds)
         };
         activities.Add(context.PeerId, activity);
+        player.UsedEquipmentSlot = ItemEquipmentSlotIds.Tool;
         metrics?.SetActiveGatherers(activities.Count);
         sender.SendControl(peer, RealtimeProtocol.EncodeGatheringState(RealtimeGatheringState.CreateStarted(
             activity.InteractionSessionId,
@@ -390,6 +394,7 @@ internal sealed class GatheringHandler(
             && ReferenceEquals(current, activity))
         {
             activities.Remove(activity.Context.PeerId);
+            activity.Player.UsedEquipmentSlot = string.Empty;
         }
 
         // A queued cycle that never started still holds its reservation; a started one
@@ -442,6 +447,7 @@ internal sealed class GatheringHandler(
     private sealed class GatheringActivity(
         RealtimePeerContext context,
         ActiveSimulationSession session,
+        PlayerSimulationEntity player,
         Guid interactionSessionId,
         WorldActorRuntimeState node,
         string capabilityId,
@@ -451,6 +457,8 @@ internal sealed class GatheringHandler(
         public RealtimePeerContext Context { get; } = context;
 
         public ActiveSimulationSession Session { get; } = session;
+
+        public PlayerSimulationEntity Player { get; } = player;
 
         public Guid InteractionSessionId { get; } = interactionSessionId;
 

@@ -34,6 +34,9 @@ namespace Mmorpg.Client.Editor
             Walk,
             Jog,
             Death,
+            // The tools' clips, played standing; the other hand holds a tool held with both hands.
+            Mine,
+            Chop,
         }
 
         private static readonly int SpeedId = Animator.StringToHash(HumanLocomotion.SpeedParameter);
@@ -238,6 +241,23 @@ namespace Mmorpg.Client.Editor
             }
 
             Animate(Speed, motion == Motion.Death);
+            var use = UseClipOf(motion);
+            animator.Play(use ?? HumanLocomotion.IdleState, 0, 0f);
+            animator.Update(0f);
+            PinOffHand();
+        }
+
+        // The clip of a tool's motion, or null for the other motions.
+        private static string UseClipOf(Motion motion)
+        {
+            return motion == Motion.Mine ? HumanLocomotion.MineClip : motion == Motion.Chop ? HumanLocomotion.ChopClip : null;
+        }
+
+        // After the Animator posed the body, the other hand holds a tool held with both hands while
+        // its clip plays, as the game pins it.
+        private void PinOffHand()
+        {
+            appearance.PinOffHand(UseClipOf(Playing) != null && Stress == null ? 1f : 0f);
         }
 
         // Plays a stress motion from its start, its clips from their start, so every run of a motion
@@ -286,6 +306,7 @@ namespace Mmorpg.Client.Editor
             if (!Frozen)
             {
                 animator.Update(deltaTime);
+                PinOffHand();
             }
             Simulate(deltaTime, cameraOffset);
         }

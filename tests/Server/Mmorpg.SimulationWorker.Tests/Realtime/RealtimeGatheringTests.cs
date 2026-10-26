@@ -86,6 +86,29 @@ public sealed class RealtimeGatheringTests
     }
 
     [Fact]
+    public void AGatheringPlayerUsesItsToolSlotUntilGatheringStops()
+    {
+        using var fixture = new RealtimeLoopFixture(enableWorldActors: true);
+        var gathering = fixture.CreateGatheringHandler();
+        var player = fixture.ConnectPlayer(1);
+        var vein = Vein(fixture);
+        Assert.Equal(string.Empty, player.Entity.UsedEquipmentSlot);
+
+        Begin(fixture, gathering, player, vein);
+        Assert.Equal("tool", player.Entity.UsedEquipmentSlot);
+
+        // Another start replaces the activity, and the player keeps using its tool.
+        gathering.Begin(player.Peer, player.Context, player.Session, new GatheringStart(Guid.NewGuid(), CapabilityId, vein));
+        Assert.Equal("tool", player.Entity.UsedEquipmentSlot);
+
+        // That start holds no interaction with the node, so the next tick stops it.
+        gathering.Process();
+        Assert.Equal(GatheringStopCodes.InteractionClosed, States(player).Last().Code);
+        Assert.Equal(0, gathering.ActiveCount);
+        Assert.Equal(string.Empty, player.Entity.UsedEquipmentSlot);
+    }
+
+    [Fact]
     public void ARejectedYieldStopsGatheringAndReleasesTheCharge()
     {
         using var fixture = new RealtimeLoopFixture(enableWorldActors: true);

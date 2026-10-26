@@ -1907,6 +1907,37 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         $problems.Add("an attachment has a socket and one root object, Grip, where it is held, and no other asset has either")
     }
 
+    # A tool, such as a pickaxe, is an attachment held only while a body uses it: it names the clip of
+    # an animation library of its socket's skeleton that the body plays meanwhile, and a tool held in
+    # both hands names where on it the other hand holds it, in the socket's axes.
+    $useClip = $null
+    if ($null -ne $json.PSObject.Properties['useClip']) {
+        $useClip = [string]$json.useClip
+        if ($null -eq $socket) {
+            $problems.Add("only an attachment has a useClip")
+        }
+        elseif ($useClip -cnotmatch '^[A-Za-z][A-Za-z0-9_]*$' -or
+            @(Get-ArtClipLibraries $socket.Skeleton | Where-Object { $_.Clips -ccontains $useClip }).Count -eq 0) {
+            $problems.Add("useClip must name a clip of an animation library of the $($socket.Skeleton) skeleton, such as Mine")
+        }
+    }
+
+    $offHandGrip = $null
+    if ($null -ne $json.PSObject.Properties['offHandGrip']) {
+        $values = @($json.offHandGrip)
+        $numbers = @($values | Where-Object { $_ -is [int] -or $_ -is [long] -or $_ -is [double] -or $_ -is [decimal] })
+        if ($null -eq $socket -or [string]$json.socket -cne "main_hand" -or $null -eq $useClip) {
+            $problems.Add("only a tool with a useClip held on main_hand has an offHandGrip")
+        }
+        elseif ($values.Count -ne 3 -or $numbers.Count -ne 3 -or
+            @($numbers | Where-Object { [Math]::Abs([double]$_) -gt 2.0 }).Count -gt 0) {
+            $problems.Add("offHandGrip must be three numbers in meters, at most 2 m from Grip each, such as [0.0, -0.33, 0.0]")
+        }
+        else {
+            $offHandGrip = [double[]]@($numbers | ForEach-Object { [double]$_ })
+        }
+    }
+
     # A skinned asset and an animation library name their shared skeleton and the animation clips
     # the game plays on it.
     $skeleton = $null
@@ -2135,6 +2166,8 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         RootObjects = [string[]]$roots
         TriangleBudget = $triangleBudget
         Socket = $socket
+        UseClip = $useClip
+        OffHandGrip = $offHandGrip
         Skeleton = $skeleton
         SkeletonPath = $skeletonPath
         Rig = $rig
@@ -2197,6 +2230,15 @@ function Write-ArtAssetManifest($Manifest) {
 
     if ($null -ne $Manifest.Socket) {
         $lines.Add("    `"socket`": `"$($Manifest.Socket.Name)`",")
+    }
+
+    if ($null -ne $Manifest.UseClip) {
+        $lines.Add("    `"useClip`": `"$($Manifest.UseClip)`",")
+    }
+
+    if ($null -ne $Manifest.OffHandGrip) {
+        $grip = (@($Manifest.OffHandGrip) | ForEach-Object { ([double]$_).ToString("0.0###", [System.Globalization.CultureInfo]::InvariantCulture) }) -join ", "
+        $lines.Add("    `"offHandGrip`": [$grip],")
     }
 
     if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {

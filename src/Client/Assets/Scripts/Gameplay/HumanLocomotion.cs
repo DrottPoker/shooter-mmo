@@ -44,15 +44,23 @@ namespace Mmorpg.Client.Gameplay
         public const string GripState = "Grip";
         public const string MainHandGripLayer = "MainHandGrip";
         public const string OffHandGripLayer = "OffHandGrip";
+        public const string MainHandSocketBone = "Socket_MainHand";
+        public const string OffHandSocketBone = "Socket_OffHand";
+
+        // While the body holds a tool and stands, it plays the tool's clip, such as Mine or Chop,
+        // in a looping base layer state of the clip's name, crossfading in and out over this time.
+        public const string MineClip = "Mine";
+        public const string ChopClip = "Chop";
+        public const float UseCrossfadeSeconds = 0.2f;
 
         // The grip layer of a socket bone, or null for a socket that is not in a hand.
         public static string GripLayerFor(string socketBone)
         {
             switch (socketBone)
             {
-                case "Socket_MainHand":
+                case MainHandSocketBone:
                     return MainHandGripLayer;
-                case "Socket_OffHand":
+                case OffHandSocketBone:
                     return OffHandGripLayer;
                 default:
                     return null;

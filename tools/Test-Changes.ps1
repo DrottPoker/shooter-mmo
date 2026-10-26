@@ -540,6 +540,7 @@ try {
     }
     if ($runUnity) {
         $unityScope = if ($SkipUnity) { " (skipped by -SkipUnity; CI runs them)" } else { "" }
+        Write-Host "  Unity tests that hold in batchmode, as CI runs them"
         Write-Host "  Unity EditMode and PlayMode tests$unityScope"
     }
     if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("blender-python") -or $tokens.Contains("observability"))) {
@@ -631,6 +632,18 @@ try {
         }
     }
 
+    if ($runUnity) {
+        # CI runs the suites headless, where Unity never evokes WaitForEndOfFrame, while the Editor
+        # does, so a test that yields it passes in the Editor and fails in CI.
+        $null = Invoke-Check "Unity batchmode rules" {
+            $offenders = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot "src/Client/Assets/Tests") -Recurse -Filter *.cs |
+                Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match 'new\s+(UnityEngine\.)?WaitForEndOfFrame\s*\(' })
+            foreach ($offender in $offenders) {
+                Write-Host "  $($offender.FullName) yields WaitForEndOfFrame, which batchmode never evokes; yield null instead."
+            }
+            $offenders.Count -eq 0
+        }
+    }
     if ($runUnity -and -not $SkipUnity) {
         $null = Invoke-Check "Unity tests" {
             $exitCode = Invoke-Script "Run-UnityEditorTests.ps1"

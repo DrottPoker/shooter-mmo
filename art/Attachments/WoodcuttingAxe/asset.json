@@ -1,0 +1,54 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/Attachments/WoodcuttingAxe.fbx",
+    "rootObjects": [
+        "Grip"
+    ],
+    "triangleBudget": 1500,
+    "socket": "main_hand",
+    "useClip": "Chop",
+    "offHandGrip": [0.0, -0.33, 0.0],
+    "approvals": {
+        "model": {
+            "date": "2026-10-26",
+            "sourceSha256": "433ed78bacec9f804e5d2e0a4194c78bc364bbeaf88e27eaa46851e969a8f5d0"
+        }
+    },
+    "export": {
+        "sourceSha256": "433ed78bacec9f804e5d2e0a4194c78bc364bbeaf88e27eaa46851e969a8f5d0",
+        "targetSha256": "7771d2d4faf951168e0c10b401fb3c4370d35f6c2acdf38fe13f6bafcb916234",
+        "materials": [
+            {
+                "name": "M_WoodcuttingAxe_Edge",
+                "baseColor": "#C5CBD2",
+                "metallic": 0.7,
+                "smoothness": 0.7
+            },
+            {
+                "name": "M_WoodcuttingAxe_Gold",
+                "baseColor": "#D49A2C",
+                "metallic": 0.6,
+                "smoothness": 0.55
+            },
+            {
+                "name": "M_WoodcuttingAxe_Iron",
+                "baseColor": "#5B6068",
+                "metallic": 0.5,
+                "smoothness": 0.5
+            },
+            {
+                "name": "M_WoodcuttingAxe_Leather",
+                "baseColor": "#4A3121",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            },
+            {
+                "name": "M_WoodcuttingAxe_Oak",
+                "baseColor": "#7B5433",
+                "metallic": 0.0,
+                "smoothness": 0.25
+            }
+        ]
+    }
+}

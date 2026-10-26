@@ -1,5 +1,6 @@
 using System;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.WorldActors
 {
@@ -34,6 +35,13 @@ namespace Mmorpg.Client.WorldActors
         public string StopCode { get; private set; } = string.Empty;
 
         public string StopMessage { get; private set; } = string.Empty;
+
+        // The equipment slot whose item the character uses while it gathers, the Tool slot, or
+        // empty when it does not gather; the body holds that tool meanwhile.
+        public string UsedEquipmentSlot
+        {
+            get { return Status == GatheringClientStatus.Gathering ? ItemEquipmentSlotIds.Tool : string.Empty; }
+        }
 
         // Applies one GatheringState. Started must belong to the open interaction; Yielded
         // and Stopped may arrive after the interaction closed, and a Yielded even after

@@ -31,7 +31,7 @@
                 "body": "Male",
                 "bodyFitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
                 "target": "src/Client/Assets/Art/Models/Garments/ShoulderHair_Male.fbx",
-                "sha256": "f7807780b5b9e851f0e2a13b171737e4e2bc44757e548dab150c87a6bcf2621d",
+                "sha256": "7c8691bec4c05592f256d55fa15bc8f81586f8b7fd4182ef5f29fc6952a9f490",
                 "data": "src/Client/Assets/Art/Models/Garments/ShoulderHair_Male.json",
                 "dataSha256": "5194cfc2ab9141b34bba52662b9832cfb3824599931de2831ab066a987bcefdc"
             },
@@ -39,13 +39,13 @@
                 "body": "Female",
                 "bodyFitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
                 "target": "src/Client/Assets/Art/Models/Garments/ShoulderHair_Female.fbx",
-                "sha256": "e04fbf433f96c63f7a10ea7df50f852a6560906fc0415cedc2d5db6994c9b393",
+                "sha256": "3fd88a2540572696c78f8fb7d89b364f97b541f068f6a25831e20cbce1e437af",
                 "data": "src/Client/Assets/Art/Models/Garments/ShoulderHair_Female.json",
                 "dataSha256": "ad17776e7baf2a79ed7ee56e2d3c606a9440e76442a0a578619e746087fdfc22"
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "3306548572c8cbc783096ec0bf7a59836e96da9ba62e8587e7cac282cd84a5ad" }
         ],
         "pairSources": [
             { "garment": "art/Garments/Boots", "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7" },

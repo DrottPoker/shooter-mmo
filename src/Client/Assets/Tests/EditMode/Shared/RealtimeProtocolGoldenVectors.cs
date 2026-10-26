@@ -173,7 +173,8 @@ namespace Mmorpg.SharedTests
                 "17 00 63 6c 6f 74 68 69 6e 67 2e 62 6c 75 65 5f " +
                 "77 6f 6f 6c 5f 68 6f 6f 64 04 00 62 61 63 6b 13 " +
                 "00 63 6c 6f 74 68 69 6e 67 2e 77 6f 6f 6c 5f 63 " +
-                "6c 6f 61 6b 01",
+                "6c 6f 61 6b 01 01 14 00 74 6f 6f 6c 2e 73 74 61 " +
+                "72 74 65 72 5f 70 69 63 6b 61 78 65",
             ["Corpses/CorpsePresenceSnapshotChunk/empty"] =
                 "01 00 00 00 00 00 01 00 00",
             ["Corpses/CorpsePresenceSnapshotChunk/one corpse"] =
@@ -381,7 +382,7 @@ namespace Mmorpg.SharedTests
                 "61 6e 67 65 73 20 61 20 6c 6f 6f 6b 2e",
             ["Replication/EntityAppearanceChanged/bare"] =
                 "07 00 00 00 00 00 00 00 0a 00 48 75 6d 61 6e 5f " +
-                "4d 61 6c 65 00 00 00",
+                "4d 61 6c 65 00 00 00 00",
             ["Replication/EntityAppearanceChanged/typical"] =
                 "07 00 00 00 00 00 00 00 0c 00 48 75 6d 61 6e 5f " +
                 "46 65 6d 61 6c 65 02 04 00 66 61 63 65 00 08 00 " +
@@ -390,7 +391,9 @@ namespace Mmorpg.SharedTests
                 "66 73 02 04 00 68 65 61 64 17 00 63 6c 6f 74 68 " +
                 "69 6e 67 2e 62 6c 75 65 5f 77 6f 6f 6c 5f 68 6f " +
                 "6f 64 04 00 62 61 63 6b 13 00 63 6c 6f 74 68 69 " +
-                "6e 67 2e 77 6f 6f 6c 5f 63 6c 6f 61 6b 01",
+                "6e 67 2e 77 6f 6f 6c 5f 63 6c 6f 61 6b 01 01 14 " +
+                "00 74 6f 6f 6c 2e 73 74 61 72 74 65 72 5f 70 69 " +
+                "63 6b 61 78 65",
             ["Replication/EntityDespawn/typical"] =
                 "07 00 00 00 00 00 00 00 0f 00 6f 75 74 5f 6f 66 " +
                 "5f 69 6e 74 65 72 65 73 74",
@@ -409,7 +412,8 @@ namespace Mmorpg.SharedTests
                 "17 00 63 6c 6f 74 68 69 6e 67 2e 62 6c 75 65 5f " +
                 "77 6f 6f 6c 5f 68 6f 6f 64 04 00 62 61 63 6b 13 " +
                 "00 63 6c 6f 74 68 69 6e 67 2e 77 6f 6f 6c 5f 63 " +
-                "6c 6f 61 6b 01",
+                "6c 6f 61 6b 01 01 14 00 74 6f 6f 6c 2e 73 74 61 " +
+                "72 74 65 72 5f 70 69 63 6b 61 78 65",
             ["Replication/EntitySpawn/typical"] =
                 "11 10 0f 0e 0d 0c 0b 0a 01 24 00 38 63 33 64 32 " +
                 "65 31 66 2d 30 62 34 61 2d 34 63 35 64 2d 39 65 " +
@@ -425,7 +429,8 @@ namespace Mmorpg.SharedTests
                 "63 6c 6f 74 68 69 6e 67 2e 62 6c 75 65 5f 77 6f " +
                 "6f 6c 5f 68 6f 6f 64 04 00 62 61 63 6b 13 00 63 " +
                 "6c 6f 74 68 69 6e 67 2e 77 6f 6f 6c 5f 63 6c 6f " +
-                "61 6b 01",
+                "61 6b 01 01 14 00 74 6f 6f 6c 2e 73 74 61 72 74 " +
+                "65 72 5f 70 69 63 6b 61 78 65",
             ["Replication/SimulationSnapshot/full chunk"] = "sha256:997:463fa3b27bbfcb34175c3d0642e78be59ea7530fc188e8827bf694e91a384b4d",
             ["Replication/SimulationSnapshot/single entity"] =
                 "04 03 02 01 08 07 06 05 00 00 01 00 01 2a 00 00 " +

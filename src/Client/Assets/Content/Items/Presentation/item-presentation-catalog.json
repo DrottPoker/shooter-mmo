@@ -1,7 +1,7 @@
 {
     "formatVersion": 4,
     "sourceCatalogRevision": "ba4671505831aee2c15cc873908520ee14aabc2f62ad2e02e5f102edf4911b1c",
-    "presentationRevision": "c5d7f09e2de168a4e2e4479013b654f5a4085537f745b15ab36e19e4a8bb5c54",
+    "presentationRevision": "d789fcf85465b1fa8bcd034e94133d8948ea074a1e4c667eb2854eea844ff3e3",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
@@ -361,7 +361,7 @@
             "garments": [],
             "loweredGarments": [],
             "dyes": [],
-            "attachment": ""
+            "attachment": "MiningPickaxe"
         },
         {
             "definitionId": "tool.woodcutting_axe",
@@ -372,7 +372,7 @@
             "garments": [],
             "loweredGarments": [],
             "dyes": [],
-            "attachment": ""
+            "attachment": "WoodcuttingAxe"
         },
         {
             "definitionId": "weapon.iron_sword",

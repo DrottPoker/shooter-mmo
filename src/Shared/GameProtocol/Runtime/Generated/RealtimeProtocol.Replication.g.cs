@@ -111,7 +111,7 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
-    /// How a character looks to every client: its body model, the choices of its look, the items others see on it, and whether it lowered its headwear.
+    /// How a character looks to every client: its body model, the choices of its look, the items others see on it, whether it lowered its headwear, and the tool it holds while it uses it.
     /// </summary>
     public sealed partial class RealtimeCharacterAppearance
     {
@@ -119,12 +119,14 @@ namespace Mmorpg.GameProtocol
             string bodyModel,
             RealtimeAppearanceChoice[] choices,
             RealtimeVisibleEquipment[] equipment,
-            bool headwearLowered)
+            bool headwearLowered,
+            string toolInUse)
         {
             BodyModel = bodyModel;
             Choices = choices ?? Array.Empty<RealtimeAppearanceChoice>();
             Equipment = equipment ?? Array.Empty<RealtimeVisibleEquipment>();
             HeadwearLowered = headwearLowered;
+            ToolInUse = toolInUse ?? string.Empty;
         }
 
         /// <summary>
@@ -146,6 +148,11 @@ namespace Mmorpg.GameProtocol
         /// Whether the character lowered its headwear, such as a hood pushed back.
         /// </summary>
         public bool HeadwearLowered { get; }
+
+        /// <summary>
+        /// The item definition of the tool the character holds while it uses it, such as its pickaxe while it gathers, or empty.
+        /// </summary>
+        public string ToolInUse { get; }
     }
 
     /// <summary>
@@ -284,7 +291,7 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
-    /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, or in Development its body model or look.
+    /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, the tool it uses, or in Development its body model or look.
     /// </summary>
     public sealed partial class RealtimeEntityAppearanceChanged
     {
@@ -761,7 +768,7 @@ namespace Mmorpg.GameProtocol
         }
 
         /// <summary>
-        /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, or in Development its body model or look.
+        /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, the tool it uses, or in Development its body model or look.
         /// </summary>
         public static byte[] EncodeEntityAppearanceChanged(RealtimeEntityAppearanceChanged change)
         {
@@ -1319,11 +1326,17 @@ namespace Mmorpg.GameProtocol
                 WriteVisibleEquipment(ref writer, item);
             }
             writer.WriteBoolean(value.HeadwearLowered);
+            var hasToolInUse = !string.IsNullOrWhiteSpace(value.ToolInUse);
+            writer.WriteBoolean(hasToolInUse);
+            if (hasToolInUse)
+            {
+                writer.WriteString(value.ToolInUse);
+            }
         }
 
         private static int SizeOfCharacterAppearance(RealtimeCharacterAppearance value)
         {
-            var size = 1;
+            var size = 2;
             size += StringSize(value.BodyModel);
             size += 1;
             foreach (var item in value.Choices)
@@ -1335,6 +1348,11 @@ namespace Mmorpg.GameProtocol
             foreach (var item in value.Equipment)
             {
                 size += SizeOfVisibleEquipment(item);
+            }
+
+            if (!string.IsNullOrWhiteSpace(value.ToolInUse))
+            {
+                size += StringSize(value.ToolInUse);
             }
 
             return size;
@@ -1397,7 +1415,21 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeCharacterAppearance(bodyModel, choices, equipment, headwearLowered);
+            if (!reader.TryReadBoolean(out var hasToolInUse, out error))
+            {
+                return false;
+            }
+
+            string toolInUse = string.Empty;
+            if (hasToolInUse)
+            {
+                if (!reader.TryReadString(MaximumDefinitionIdLength, out toolInUse, out error))
+                {
+                    return false;
+                }
+            }
+
+            value = new RealtimeCharacterAppearance(bodyModel, choices, equipment, headwearLowered, toolInUse);
             return true;
         }
 
@@ -1409,7 +1441,9 @@ namespace Mmorpg.GameProtocol
                 || value.Choices == null
                 || value.Choices.Length > MaximumAppearanceChoices
                 || value.Equipment == null
-                || value.Equipment.Length > MaximumVisibleEquipment)
+                || value.Equipment.Length > MaximumVisibleEquipment
+                || value.ToolInUse == null
+                || value.ToolInUse.Length > MaximumDefinitionIdLength)
             {
                 return false;
             }

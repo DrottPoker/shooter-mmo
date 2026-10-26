@@ -285,7 +285,12 @@ its equipment slot, such as `IronSword` for the Iron Sword in `main_hand`, or is
 empty. The Item Catalog window edits it as `Attachment`, and
 `ItemAttachmentTests` requires that every body's appearance catalog has it and
 that every equipment slot of the item is its socket; see
-[Attachments](../../docs/EQUIPMENT_VISUALS_DESIGN.md#attachments).
+[Attachments](../../docs/EQUIPMENT_VISUALS_DESIGN.md#attachments). A Tool slot
+item may name a tool attachment instead, such as `MiningPickaxe` for the Starter
+Pickaxe and `WoodcuttingAxe` for the Woodcutting Axe, which the body holds only
+while its character gathers; `ToolInUseTests` requires that only items of the
+Tool slot name tools; see
+[Tools In Use](../../docs/EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
 Icon files are
 client-owned assets below `Assets/Content/Items/Icons` and use one Sprite per
 file. The catalog has a separate

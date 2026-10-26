@@ -1524,11 +1524,15 @@ garment of the hair slot. `RealtimeSimulationClient` keeps the latest
   controlled player, forgets it when the session ends, sends the changes the
   World Debug panel and the inventory ask for, and shows a refused change in the
   game messages. `WorldSceneContext` shows the model and dresses the look in the
-  inventory's equipment, with its predicted moves, and the stored headwear.
+  inventory's equipment, with its predicted moves, and the stored headwear, and
+  holding the tool of the equipment slot `PlayerEquipment.UsedSlot` names, which
+  `ClientBootstrap` sets from `GatheringClientState.UsedEquipmentSlot`: the Tool
+  slot while the character gathers.
 - **Other players.** `RemotePlayerView.ApplyAppearance` shows the sent body
   model and dresses the look in the garments and attachments of the sent visible
-  equipment with the sent headwear, from the item presentation of
-  `PlayerEquipment`; a new presentation dresses every player again.
+  equipment with the sent headwear, holding the sent `ToolInUse`, from the item
+  presentation of `PlayerEquipment`; a new presentation dresses every player
+  again.
 - **Attachments.** `EquipmentGarments.Dress` puts an item's attachment, such as
   the Iron Sword, into the look when the item is in the slot of the attachment's
   socket. `PlayerBodyAppearance` takes the catalog's attachments that the look
@@ -1538,6 +1542,27 @@ garment of the hair slot. `RealtimeSimulationClient` keeps the latest
   clip `Grip` on that hand's fingers. An Animator that is enabled again takes the
   layer weights in the next `LateUpdate`. A corpse is baked with the attachments
   of the items still in its equipment.
+- **Tools in use.** A tool, such as the Mining Pickaxe, is an attachment with a
+  use clip, held only while its character uses it: `EquipmentGarments.Dress`
+  holds the tool attachment of the item it is told is in use in place of the
+  attachment on its socket, and, for a tool held with both hands, of the other
+  hand's too, so a sword and a shield are put away. `PlayerBodyAppearance` tells
+  `CharacterLocomotionAnimator` the tool's clip, which crossfades in 0.2 s into
+  the base layer state of that name, `Mine` or `Chop`, while the body stands and
+  lives, and back to `Idle`, or to `Locomotion` when the body moves, when it lets
+  go of the tool or starts to move; its `UseWeight` is the share of the pose that
+  comes from the tool's clip. A tool held with both hands closes the other hand
+  too, and `PlayerBodyAppearance.LateUpdate` pins that hand on the tool after the
+  Animator posed the body, by `UseWeight`: `OffHandToolGrip` puts the hand's
+  socket on the tool's `OffHandGrip`, turned half around the main socket's
+  forward axis, with analytic two-bone IK that keeps the elbow in the plane the
+  clip bends it in, and turns the collar bone forward by up to 15 degrees where
+  the haft lies beyond the arm's reach. The clips are keyed on the male body, so
+  retargeting moves the female's other hand by up to about 8 cm, which the pin
+  takes back. `ToolInUseTests` covers the dressing, the controller states, and
+  the pin on both bodies through both swings, and `PlayerBodyToolPlayModeTests`
+  the real body swinging, walking, and putting the tool away in Play Mode. The
+  Wardrobe plays `Mine` and `Chop` with the pin.
 - **A dying body keeps its clothes.** While a body shows its character dead,
   `WorldSceneContext` keeps every new look for it and shows the last one once the
   body lives again, since its items lie in its corpse already.
@@ -1913,7 +1938,9 @@ inventory. A session end clears the state.
 
 While gathering, the interaction panel shows the capability name with a
 trailing ellipsis, such as `Mine...`, the gathered count, and a progress bar for
-the current cycle. After a stop it shows the gathered count and the reason, and
+the current cycle, and the local body holds and swings the tool of its Tool slot,
+as [Player Bodies](#player-bodies) describes for tools in use; other clients
+learn it from the player's appearance. After a stop it shows the gathered count and the reason, and
 the capability button, such as `Mine`, starts again. The worker owns every
 cycle and every stop: moving, closing the interaction, a depleted node, or a
 rejected yield, such as a missing tool or a full inventory.

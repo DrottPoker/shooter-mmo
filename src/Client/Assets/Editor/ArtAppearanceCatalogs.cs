@@ -137,7 +137,10 @@ namespace Mmorpg.Client.Editor
                     actual.Name == expected.Name
                     && actual.Socket == expected.Socket
                     && actual.Bone == expected.Bone
-                    && actual.Model == expected.Model)
+                    && actual.Model == expected.Model
+                    && actual.UseClip == expected.UseClip
+                    && actual.HoldsWithBothHands == expected.HoldsWithBothHands
+                    && actual.OffHandGrip == expected.OffHandGrip)
                     .All(same => same);
         }
 
@@ -159,7 +162,8 @@ namespace Mmorpg.Client.Editor
         }
 
         // The attachments a body's sockets can hold, by name: every exported attachment whose socket
-        // is a bone of the body's skeleton, with its model.
+        // is a bone of the body's skeleton, with its model, and for a tool its use clip and where the
+        // other hand holds it.
         public static BodyAppearanceCatalog.Attachment[] AttachmentsFor(ArtAssetManifest body)
         {
             return ArtAssetManifests.Attachments()
@@ -174,7 +178,15 @@ namespace Mmorpg.Client.Editor
                             throw new InvalidOperationException(attachment.path + ": the model of the attachment is not imported.");
                         }
 
-                        return new BodyAppearanceCatalog.Attachment(attachment.Name, attachment.socket, socket.Bone, model);
+                        var grip = attachment.offHandGrip ?? Array.Empty<float>();
+                        return new BodyAppearanceCatalog.Attachment(
+                            attachment.Name,
+                            attachment.socket,
+                            socket.Bone,
+                            model,
+                            attachment.useClip,
+                            // In the socket's axes in Blender, which the import turns as it turns the model.
+                            grip.Length == 3 ? ArtTopologyMaps.ToUnity(grip[0], grip[1], grip[2]) : (Vector3?)null);
                     }))
                 .ToArray();
         }

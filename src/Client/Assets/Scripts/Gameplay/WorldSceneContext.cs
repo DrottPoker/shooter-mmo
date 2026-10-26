@@ -609,8 +609,8 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // The character's look, dressed in the garments of the items it wears as the inventory
-        // shows them, with its headwear as the server stores it. A dead body keeps its look until
-        // it lives again.
+        // shows them, with its headwear as the server stores it, and holding the tool it uses. A
+        // dead body keeps its look until it lives again.
         private void ApplyLocalBodyLook()
         {
             if (IsLocalBodyDead)
@@ -628,7 +628,8 @@ namespace Mmorpg.Client.Gameplay
                         appearance.Catalog,
                         equipment != null ? equipment.Items : null,
                         Presentation,
-                        bodyLook.HeadwearLowered),
+                        bodyLook.HeadwearLowered,
+                        equipment != null ? equipment.ToolInUse : null),
                     bodyMaterials);
             }
         }

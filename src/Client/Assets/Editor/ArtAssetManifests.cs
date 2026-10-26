@@ -198,8 +198,12 @@ namespace Mmorpg.Client.Editor
         // A garment texture: the template it belongs to, such as art/Garments/Shirt.
         public string garment = string.Empty;
         // An attachment, a static model held on a socket of a skeleton: the socket, such as
-        // main_hand, as its bone names it.
+        // main_hand, as its bone names it. A tool, held only while a body uses it, also names the
+        // clip the body plays meanwhile, such as Mine, and a tool held in both hands where on it
+        // the other hand holds it, in meters in the socket's axes.
         public string socket = string.Empty;
+        public string useClip = string.Empty;
+        public float[] offHandGrip = Array.Empty<float>();
         public ArtAssetExport export = new ArtAssetExport();
 
         // The asset's name, its folder, such as LeatherJerkin.

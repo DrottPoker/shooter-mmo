@@ -57,7 +57,7 @@ namespace Mmorpg.SharedTests
                 appearanceChanged,
                 () => RealtimeProtocol.EncodeEntityAppearanceChanged(new RealtimeEntityAppearanceChanged(
                     7,
-                    new RealtimeCharacterAppearance("Human_Male", null, null, false))));
+                    new RealtimeCharacterAppearance("Human_Male", null, null, false, null))));
             r.Vector(
                 "Replication/AppearanceIntent/lower headwear",
                 appearanceIntent,
@@ -108,6 +108,12 @@ namespace Mmorpg.SharedTests
             r.Rejects(
                 "Replication/EntityAppearanceChanged/blank choice kind",
                 Wire.Message(appearanceChanged).U64(7).Append(AppearanceWire(choices: new[] { (" ", "", "Clean") })));
+            r.Accepts(
+                "Replication/EntityAppearanceChanged/no tool in use",
+                Wire.Message(appearanceChanged).U64(7).Append(AppearanceWire(toolInUse: null)));
+            r.Rejects(
+                "Replication/EntityAppearanceChanged/129 character tool in use",
+                Wire.Message(appearanceChanged).U64(7).Append(AppearanceWire(toolInUse: Repeat("t", 129))));
             r.Accepts(
                 "Replication/AppearanceIntent/lower headwear",
                 Wire.Message(appearanceIntent).Guid(G(1)).U8(1));
@@ -184,7 +190,12 @@ namespace Mmorpg.SharedTests
                 "Replication/EntityAppearanceChanged/65 character body model",
                 () => RealtimeProtocol.EncodeEntityAppearanceChanged(new RealtimeEntityAppearanceChanged(
                     7,
-                    new RealtimeCharacterAppearance(Repeat("b", 65), null, null, false))));
+                    new RealtimeCharacterAppearance(Repeat("b", 65), null, null, false, null))));
+            r.RejectsEncode(
+                "Replication/EntityAppearanceChanged/129 character tool in use",
+                () => RealtimeProtocol.EncodeEntityAppearanceChanged(new RealtimeEntityAppearanceChanged(
+                    7,
+                    new RealtimeCharacterAppearance("Human_Male", null, null, false, Repeat("t", 129)))));
             r.RejectsEncode(
                 "Replication/AppearanceIntent/blank development body model",
                 () => RealtimeProtocol.EncodeAppearanceIntent(RealtimeAppearanceIntent.CreateSetDevelopmentLook(
@@ -268,14 +279,16 @@ namespace Mmorpg.SharedTests
                     new RealtimeVisibleEquipment("head", "clothing.blue_wool_hood"),
                     new RealtimeVisibleEquipment("back", "clothing.wool_cloak"),
                 },
-                headwearLowered: true);
+                headwearLowered: true,
+                toolInUse: "tool.starter_pickaxe");
         }
 
         private static Wire AppearanceWire(
             WireText bodyModel = null,
             (string Kind, string Slot, string Option)[] choices = null,
             (string Slot, string Definition)[] equipment = null,
-            bool headwearLowered = true)
+            bool headwearLowered = true,
+            string toolInUse = "tool.starter_pickaxe")
         {
             choices = choices ?? new[] { ("face", "", "Freckles"), ("underwear", "legs", "Briefs") };
             equipment = equipment ?? new[] { ("head", "clothing.blue_wool_hood"), ("back", "clothing.wool_cloak") };
@@ -297,7 +310,8 @@ namespace Mmorpg.SharedTests
                 wire.Text(item.Slot).Text(item.Definition);
             }
 
-            return wire.Bool(headwearLowered);
+            wire.Bool(headwearLowered).Bool(toolInUse != null);
+            return toolInUse != null ? wire.Text(toolInUse) : wire;
         }
 
         private static RealtimeEntitySnapshot EntitySnapshotModel(ulong entityId)

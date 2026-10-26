@@ -52,7 +52,7 @@ public sealed class SimulationBotSessionTests
 
         bot.Receive(RealtimeProtocol.EncodeEntityAppearanceChanged(new RealtimeEntityAppearanceChanged(
             JoinAcceptance().ControlledEntityId,
-            new RealtimeCharacterAppearance("Human_Male", [], [], false))));
+            new RealtimeCharacterAppearance("Human_Male", [], [], false, null))));
 
         AssertState(bot.Session, SimulationBotClientState.Joined);
     }

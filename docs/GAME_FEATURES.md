@@ -629,6 +629,14 @@ Status: MVP implemented with temporary presentation
   with a progress bar and the gathered count. The ore enters carried storage by
   the same rule as a purchase. Chopping works the same, one Oak Log every 3
   seconds, shown as `Chop...`.
+- While a character gathers, it holds the tool of its `Tool` slot in both hands
+  and swings it, two strokes per yield, and every player nearby sees it: the
+  Starter Pickaxe, a curved iron pick with a blue ore crystal and a brass band
+  with the rune Fehu, in an overhead `Mine` stroke, and the Woodcutting Axe, a
+  bearded axe with a golden oak leaf on its cheeks and a golden acorn at the
+  butt, in a diagonal `Chop`. A sword and a shield it holds are put away
+  meanwhile, and the tool goes back to the `Tool` slot when gathering stops. A
+  character that walks away stops swinging at once.
 - Mining stops when the vein is depleted, the character moves, the interaction
   closes, carried storage is full, the ore would pass the hard cap, or the tool
   is no longer equipped. The panel names the reason, and `Mine` starts again.
@@ -643,8 +651,12 @@ Status: MVP implemented with temporary presentation
   transactionally.
 
 Known limitations: two resource types, no Mining or Woodcutting experience or
-level, no success chance per cycle, no gathering animation, and the tool is not
-shown in the hand. A node's collision is an upright box aligned to the World
+level, and no success chance per cycle. The character swings in the direction it
+faces, which is toward the node after it walked there, but it does not turn to a
+node it already stands next to, and a stroke reaches about 0.7 m ahead whatever
+the node's size. In the highest frames of the strokes some garments, such as a
+shirt's sleeve on the female body or a raised hood, let the skin come through by
+up to about 2 cm. A node's collision is an upright box aligned to the World
 axes, so a round trunk collides as a square. Manual test steps are in
 [Local Development](LOCAL_DEVELOPMENT.md#vendor-and-gathering-verification).
 

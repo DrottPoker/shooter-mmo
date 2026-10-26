@@ -532,7 +532,9 @@ namespace Mmorpg.Client.Gameplay
 
         // A static model a socket of the body holds, such as a sword in the right hand: its model,
         // whose root object Grip lies on the socket bone, the socket, the equipment slot whose item
-        // it shows, and the bone.
+        // it shows, and the bone. A tool, such as a pickaxe, is held only while the body uses it:
+        // it names the clip the body plays meanwhile, and a tool held in both hands where on it the
+        // other hand holds it.
         [Serializable]
         public sealed class Attachment
         {
@@ -540,13 +542,20 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private string socket;
             [SerializeField] private string bone;
             [SerializeField] private GameObject model;
+            [SerializeField] private string useClip;
+            [SerializeField] private bool holdsWithBothHands;
+            [SerializeField] private Vector3 offHandGrip;
 
-            public Attachment(string name, string socket, string bone, GameObject model)
+            public Attachment(string name, string socket, string bone, GameObject model,
+                string useClip = null, Vector3? offHandGrip = null)
             {
                 this.name = name;
                 this.socket = socket ?? string.Empty;
                 this.bone = bone ?? string.Empty;
                 this.model = model;
+                this.useClip = useClip ?? string.Empty;
+                holdsWithBothHands = offHandGrip.HasValue;
+                this.offHandGrip = offHandGrip ?? Vector3.zero;
             }
 
             // Such as IronSword, from the attachment art/Attachments/IronSword.
@@ -570,6 +579,32 @@ namespace Mmorpg.Client.Gameplay
             public GameObject Model
             {
                 get { return model; }
+            }
+
+            // The clip the body plays while it uses the tool, such as Mine, or empty for an
+            // attachment that is no tool.
+            public string UseClip
+            {
+                get { return useClip ?? string.Empty; }
+            }
+
+            public bool IsTool
+            {
+                get { return UseClip.Length > 0; }
+            }
+
+            // Whether the other hand holds the tool too, at OffHandGrip.
+            public bool HoldsWithBothHands
+            {
+                get { return holdsWithBothHands; }
+            }
+
+            // Where on the model the other hand's socket holds it, in the model's and so the
+            // socket's space; that socket is turned half around the forward axis from this one, so
+            // both thumbs point along the haft.
+            public Vector3 OffHandGrip
+            {
+                get { return offHandGrip; }
             }
         }
 

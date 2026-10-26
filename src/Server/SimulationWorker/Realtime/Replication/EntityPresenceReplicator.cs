@@ -272,7 +272,7 @@ internal sealed class EntityPresenceReplicator(
             clock.ServerTick,
             RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State),
             Appearances?.SpawnAppearanceOf(entity)
-                ?? new RealtimeCharacterAppearance(AppearanceReplicationSettings.Default.DefaultBodyModel, [], [], false));
+                ?? new RealtimeCharacterAppearance(AppearanceReplicationSettings.Default.DefaultBodyModel, [], [], false, string.Empty));
     }
 
     public void RebuildInterestIndex(IReadOnlyList<PlayerSimulationEntity> players)

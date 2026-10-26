@@ -3,7 +3,7 @@ sides at the game camera pitch, plus a fifth view with a 1.8 m mannequin for sca
 the Export collection is rendered, on a dark green ground. The sheet of an attachment shows it alone
 and held on its socket by the bodies of an animation library. The sheet of an animation library
 shows every clip on the bodies of its Reference collection instead: two rows of frames per clip,
-from the front right and from the back left. The sheet of a garment shows it on every body, at rest
+from the front right and from the back left, with the tools used in a clip held in its rows. The sheet of a garment shows it on every body, at rest
 and in the test poses. The sheet of a paint layer shows it on every body as the game does, up close
 where it paints, and its canvas's image."""
 
@@ -827,9 +827,43 @@ def render_attachment_sheet(output: str, cell: int, socket: str, library_path: s
     return _save(sheet, output)
 
 
-def render_clip_sheet(output: str, cell: int) -> str:
+def _append_tool(path: str) -> bpy.types.Object:
+    """The root of an attachment's Export collection, appended into this file with every object
+    below it, and hidden."""
+    with bpy.data.libraries.load(path, link=False) as (source, target):
+        if "Export" not in source.collections:
+            raise ArtPipelineError(f'{path} has no "Export" collection.')
+        target.collections = ["Export"]
+    objects = list(target.collections[0].all_objects)
+    for obj in objects:
+        bpy.context.scene.collection.objects.link(obj)
+        obj.hide_render = True
+    roots = [o for o in objects if o.parent not in objects]
+    if len(roots) != 1:
+        raise ArtPipelineError(f"{path} must export one root object, Grip, to hold.")
+    return roots[0]
+
+
+def _tool_copies(root: bpy.types.Object) -> tuple[bpy.types.Object, list[bpy.types.Object]]:
+    """A copy of an attachment's hierarchy, as _held_copy makes it, without placing it."""
+    copies = {}
+    for obj in descendants(root):
+        copy = obj.copy()
+        bpy.context.scene.collection.objects.link(copy)
+        copies[obj] = copy
+    for obj, copy in copies.items():
+        if obj.parent in copies:
+            copy.parent = copies[obj.parent]
+            copy.matrix_parent_inverse = obj.matrix_parent_inverse.copy()
+    copies[root].parent = None
+    return copies[root], list(copies.values())
+
+
+def render_clip_sheet(output: str, cell: int, held: list[tuple[str, str, str]] | None = None) -> str:
     """Every clip of an animation library at evenly spaced frames, from its first to its last, on
-    the bodies of the Reference collection and their ground grid."""
+    the bodies of the Reference collection and their ground grid. A tool used with a clip, given as
+    its .blend file, the clip, and its socket bone, is held on that socket by every body in the
+    clip's rows, as the game holds it while the body uses it."""
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
     arm = next(o for o in export_objects() if o.type == "ARMATURE")
@@ -837,6 +871,16 @@ def render_clip_sheet(output: str, cell: int) -> str:
     shown = set(reference.all_objects) if reference is not None else set()
     for obj in scene.objects:
         obj.hide_render = obj not in shown
+    # By clip: every body's copy of each tool used with it, with its armature and socket bone.
+    tools: dict[str, list[tuple[bpy.types.Object, str, bpy.types.Object, list[bpy.types.Object]]]] = {}
+    armatures = [arm] + sorted((o for o in shown if o.type == "ARMATURE"), key=lambda o: o.name)
+    for path, clip, socket in held or []:
+        root = _append_tool(path)
+        for armature in armatures:
+            if socket not in armature.pose.bones:
+                raise ArtPipelineError(f"{armature.name} has no socket bone {socket} to hold {path}.")
+            copy, objects = _tool_copies(root)
+            tools.setdefault(clip, []).append((armature, socket, copy, objects))
     camera, sun = _studio(scene, cell)
     bodies = [o for o in shown if o.type == "MESH" and o.name != "Reference_Ground"]
     low, high = _bounds(bodies)
@@ -853,12 +897,21 @@ def render_clip_sheet(output: str, cell: int) -> str:
             if action.slots:
                 arm.animation_data.action_slot = action.slots[0]
             end = int(action.frame_range[1])
+            used = tools.get(action.name, [])
+            for copies in tools.values():
+                for _armature, _socket, _root, objects in copies:
+                    for obj in objects:
+                        obj.hide_render = not any(objects is entry[3] for entry in used)
             for view, yaw in enumerate(CLIP_YAWS):
                 row = index * len(CLIP_YAWS) + view
                 top = row * cell
                 _aim(camera, sun, center, radius, yaw)
                 for column in range(CLIP_FRAMES):
                     scene.frame_set(round(column * end / (CLIP_FRAMES - 1)))
+                    for armature, socket, root, _objects in used:
+                        root.matrix_world = armature.matrix_world @ armature.pose.bones[socket].matrix
+                    if used:
+                        bpy.context.view_layer.update()
                     pixels = _render(scene, os.path.join(scratch, f"{row}_{column}.png"))
                     # Image rows run bottom up, so the first clip is drawn at the top.
                     bottom = sheet.shape[0] - top - cell

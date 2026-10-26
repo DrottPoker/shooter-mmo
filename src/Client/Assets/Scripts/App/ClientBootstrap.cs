@@ -101,6 +101,8 @@ namespace Mmorpg.Client.App
                 worldActorController,
                 corpseController,
                 inventoryController);
+            worldInteractionController.Gathering.Changed += UpdateUsedEquipment;
+            UpdateUsedEquipment();
 
             // Mirrors the worker's combat state across scenes.
             combatController = GetOrAddComponent<CombatClientController>();
@@ -147,6 +149,11 @@ namespace Mmorpg.Client.App
                 inventoryController.State.Changed -= UpdatePlayerEquipment;
             }
 
+            if (worldInteractionController != null)
+            {
+                worldInteractionController.Gathering.Changed -= UpdateUsedEquipment;
+            }
+
             apiClient?.Dispose();
             apiClient = null;
             ClientAssets.Release(configHandle);
@@ -182,6 +189,12 @@ namespace Mmorpg.Client.App
                         .Select(slot => new EquippedItem(slot.SlotId, slot.Item.DefinitionId))
                         .ToArray(),
                 state.Catalog != null ? state.Catalog.Presentation : null);
+        }
+
+        // The local body holds the tool of the Tool slot while the character gathers.
+        private void UpdateUsedEquipment()
+        {
+            playerEquipment.Use(worldInteractionController.Gathering.UsedEquipmentSlot);
         }
 
         private T GetOrAddComponent<T>() where T : Component
