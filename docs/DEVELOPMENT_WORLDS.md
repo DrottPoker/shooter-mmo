@@ -234,7 +234,11 @@ while sight and arrows pass it.
 
 The checked-in editor builders reproduce each environment completely. They
 never touch `Gameplay` content other than the `PlayerSpawn` transform, and they
-never change actor content.
+never change actor content. A builder writes a palette material only when its
+color, texture, or smoothness changes, and then in the form the shader's
+Inspector keeps, since URP Lit derives the legacy `_Color` from `_BaseColor`
+with slightly different floats whenever it validates a material; a rebuild with
+the same palette leaves every material file as it is.
 
 1. Open `src/Client` in Unity and allow asset import to finish.
 2. Select `MMORPG > Tools > Development Worlds > Rebuild Development World 1
@@ -286,7 +290,9 @@ simulation:
 The Unity `AuthoredGameplayAssetTests` check that both scenes keep the World
 scene composition, that `PlayerSpawn` and the boundary walls match the
 manifest, that the labels are world-space text without raycasts, that every
-development World material is used, and that the checked-in bake holds exactly
+development World material is used, that every project material is in the form
+its shader's Inspector keeps, so selecting one never changes its file, and that
+the checked-in bake holds exactly
 the scene's boxes, terrain cells, and mesh triangles, and one movement-only box
 per placed resource node.
 
