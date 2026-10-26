@@ -252,6 +252,11 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private static RealtimeCharacterAppearance Appearance(bool headwearLowered, params RealtimeVisibleEquipment[] equipment)
         {
+            return Appearance(headwearLowered, null, equipment);
+        }
+
+        private static RealtimeCharacterAppearance Appearance(bool headwearLowered, string toolInUse, params RealtimeVisibleEquipment[] equipment)
+        {
             return new RealtimeCharacterAppearance(
                 "Human_Male",
                 new[]
@@ -260,7 +265,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     new RealtimeAppearanceChoice("hair", string.Empty, "DarkBrownHair"),
                 },
                 equipment,
-                headwearLowered);
+                headwearLowered,
+                toolInUse);
         }
 
         private static InventoryItem Item(string definitionId)

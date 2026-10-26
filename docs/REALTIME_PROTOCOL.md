@@ -535,6 +535,13 @@ definitions at most `MaximumAppearanceNameLength` (64).
   corpse's equipment section, and a Mob corpse has none. A corpse whose look would
   not fit one presence packet is sent without it and shows the default body.
 
+Protocol version 25 appended an optional `ToolInUse` to `CharacterAppearance`:
+the item definition, at most `MaximumDefinitionIdLength` (128) characters, of the
+tool the character holds while it uses it, which is the item of its Tool slot
+while it gathers, and empty otherwise and for every corpse. The worker sends a
+new look when the player starts or stops using its tool; see
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
+
 ## Versioning
 
 Client and worker run in lockstep: both must use the same version. Decoders

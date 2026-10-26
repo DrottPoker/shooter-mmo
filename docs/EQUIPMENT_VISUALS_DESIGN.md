@@ -1141,6 +1141,45 @@ were made on 2026-10-25 to test the hands' sockets, as Victor asked:
 
 Hold poses for raised weapons and sheathed weapons are later work.
 
+### Tools In Use
+
+A tool is shown only while its character uses it, as Victor decided on
+2026-10-26: the Mining Pickaxe and the Woodcutting Axe, the attachments of the
+Starter Pickaxe and the Woodcutting Axe in the Tool slot, are held while the
+character gathers and put away when it stops, and everyone sees it.
+
+- **A tool is an attachment with a use clip**: its `asset.json` names the clip
+  of its socket's animation library that the body plays meanwhile, `Mine` for
+  the pickaxe and `Chop` for the axe, and, for a tool held with both hands, the
+  point of the model where the other hand holds it, `offHandGrip`, 33 cm down the
+  haft from the right fist on the leather wrap near the butt. That hand's socket
+  is turned half around the haft from the right hand's, so both thumbs point
+  toward the head and both hands' knuckles toward the stroke.
+- **It takes both hands.** A tool in use stands in for every attachment in the
+  hands, so a sword and a shield are put away while their character gathers and
+  come back when it stops. Only an item of the Tool slot is a tool; the Unity
+  tests hold every tool item to it.
+- **The swing.** `Mine` lifts the pickaxe over the right shoulder and strikes it
+  down in front of the body, and `Chop` lifts the axe over the right shoulder and
+  hews diagonally down to the left, each 1.5 s, so two strokes fall in each 3 s
+  gathering cycle, without matching the yield. They were made with a scripted
+  rig that animates the tool and reaches both hands to its haft with two-bone IK,
+  choosing each elbow and the tool's roll on the haft that keep both arms inside
+  the humanoid muscle ranges, from searched key poses; both clips were approved
+  by Victor on 2026-10-26. A body plays the clip while it stands and lives, and
+  walking stops the swing at once, before the server's stop arrives.
+- **The other hand holds the haft on every body.** The clips are keyed on the
+  male body and retargeted to the female's other proportions, which moves her
+  other hand by up to about 8 cm. After the Animator posed a body, its other hand
+  is pinned on the tool's grip point with two-bone IK, and its collar bone turns
+  forward by up to 15 degrees where the haft passes beyond the arm's reach; see
+  [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
+- **Everyone sees it.** The worker marks a gathering player as using its Tool
+  slot, and the player's appearance carries the definition of the item there as
+  `ToolInUse` while it does, since protocol version 25. The Tool slot stays out
+  of the visible equipment, so others see a tool only in use. The local body
+  takes the tool from its own gathering state at once.
+
 ## Items
 
 Items show their garments, as Victor decided on 2026-10-25:
@@ -1213,8 +1252,8 @@ Every client sees a character as the server stores it, as Victor decided on
   of its visible equipment slots in content order, and its headwear, and
   `EntityAppearanceChanged` sends a new look to everyone who sees the player and
   to the player itself, which gets its own look after the join. A change of
-  equipment, a lowered or raised headwear, or in Development another body model
-  or look sends it.
+  equipment, a lowered or raised headwear, the tool it starts or stops using, or
+  in Development another body model or look sends it.
 - **The player lowers and raises the hood** with `AppearanceIntent`; GameService
   stores it, and the worker answers with `AppearanceIntentResult`. Only a
   GameService in the Development environment changes a body model or look in the

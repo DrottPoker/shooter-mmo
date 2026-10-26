@@ -120,9 +120,14 @@ namespace Mmorpg.Client.Tests.EditMode
 
             var machine = controller.layers[0].stateMachine;
             var states = machine.states.Select(child => child.state).ToDictionary(state => state.name);
+            // The tools' clips have states of their own, which the body enters while it uses a tool.
             Assert.That(
                 states.Keys,
-                Is.EquivalentTo(new[] { HumanLocomotion.IdleState, HumanLocomotion.LocomotionState, HumanLocomotion.DeathState }));
+                Is.EquivalentTo(new[]
+                {
+                    HumanLocomotion.IdleState, HumanLocomotion.LocomotionState, HumanLocomotion.DeathState,
+                    HumanLocomotion.MineClip, HumanLocomotion.ChopClip,
+                }));
             var idle = states[HumanLocomotion.IdleState];
             var locomotion = states[HumanLocomotion.LocomotionState];
             Assert.That(machine.defaultState, Is.SameAs(idle));

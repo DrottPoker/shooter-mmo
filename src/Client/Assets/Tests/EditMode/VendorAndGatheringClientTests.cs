@@ -133,6 +133,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var runtime = Guid.NewGuid();
             var changes = 0;
             state.Changed += () => changes++;
+            Assert.That(state.UsedEquipmentSlot, Is.Empty);
 
             Assert.That(
                 state.TryApply(RealtimeGatheringState.CreateStarted(interaction, 9, runtime, 3000), other, 1f, out _),
@@ -142,6 +143,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.True,
                 error);
             Assert.That(state.Status, Is.EqualTo(GatheringClientStatus.Gathering));
+            // The body holds the tool of the Tool slot while it gathers.
+            Assert.That(state.UsedEquipmentSlot, Is.EqualTo("tool"));
             Assert.That(state.CycleProgress(2.5f), Is.EqualTo(0.5f).Within(0.0001f));
             Assert.That(state.CycleProgress(9f), Is.EqualTo(1f));
 
@@ -173,6 +176,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.True,
                 error);
             Assert.That(state.Status, Is.EqualTo(GatheringClientStatus.Stopped));
+            Assert.That(state.UsedEquipmentSlot, Is.Empty);
             Assert.That(state.StopCode, Is.EqualTo("resource_node_depleted"));
             Assert.That(state.CycleProgress(5f), Is.EqualTo(0f));
             Assert.That(changes, Is.EqualTo(3));

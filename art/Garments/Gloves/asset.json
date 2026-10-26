@@ -41,7 +41,7 @@
                 "body": "Male",
                 "bodyFitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
                 "target": "src/Client/Assets/Art/Models/Garments/Gloves_Male.fbx",
-                "sha256": "a944c4ef5c33ea2543b12e076d60497a39348a479bace1bf87d8ff092f8a2eb9",
+                "sha256": "2730df5043ce66b978301288a21e3422aa5fb7c79fc1239de91212f06aa6256a",
                 "data": "src/Client/Assets/Art/Models/Garments/Gloves_Male.json",
                 "dataSha256": "af7c9ee629552ae74656d861a540fc34d3d0c70e3146099b0f0ab72cdeeacde3"
             },
@@ -49,13 +49,13 @@
                 "body": "Female",
                 "bodyFitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
                 "target": "src/Client/Assets/Art/Models/Garments/Gloves_Female.fbx",
-                "sha256": "47b0b40a4250b2c184b972ba789fb9fecd351a11121d4fab7cd9354a3f148056",
+                "sha256": "532661f76914a152ba4c122024fa6b89aedf73086fd3afe69082f3ca60a06033",
                 "data": "src/Client/Assets/Art/Models/Garments/Gloves_Female.json",
                 "dataSha256": "cf2870da94004408f4229bf938d9f66aaec0ba358469dbf43ae37c3e9854479f"
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "3306548572c8cbc783096ec0bf7a59836e96da9ba62e8587e7cac282cd84a5ad" }
         ],
         "pairSources": [
             { "garment": "art/Garments/Boots", "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7" },

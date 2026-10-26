@@ -24,6 +24,10 @@ public sealed class PlayerSimulationEntity(
         ? RealtimePlayerArchetypeIds.DevelopmentBot
         : RealtimePlayerArchetypeIds.Player;
 
+    // The equipment slot whose item the player uses now, such as tool while it gathers, or empty;
+    // its look shows that item in its hands.
+    public string UsedEquipmentSlot { get; set; } = string.Empty;
+
     public void RefreshSession(ActiveSimulationSession refreshedSession)
     {
         ArgumentNullException.ThrowIfNull(refreshedSession);

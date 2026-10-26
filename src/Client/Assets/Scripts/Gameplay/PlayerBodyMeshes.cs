@@ -259,7 +259,7 @@ namespace Mmorpg.Client.Gameplay
             return false;
         }
 
-        private static Transform FindDescendant(Transform parent, string name)
+        public static Transform FindDescendant(Transform parent, string name)
         {
             foreach (var child in parent.GetComponentsInChildren<Transform>(true))
             {

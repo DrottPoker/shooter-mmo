@@ -1,0 +1,54 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/Attachments/MiningPickaxe.fbx",
+    "rootObjects": [
+        "Grip"
+    ],
+    "triangleBudget": 1500,
+    "socket": "main_hand",
+    "useClip": "Mine",
+    "offHandGrip": [0.0, -0.33, 0.0],
+    "approvals": {
+        "model": {
+            "date": "2026-10-26",
+            "sourceSha256": "4a74abec8b58b5c768536c9e0e9bf898911382ae8bd242db07eb8a698816311b"
+        }
+    },
+    "export": {
+        "sourceSha256": "4a74abec8b58b5c768536c9e0e9bf898911382ae8bd242db07eb8a698816311b",
+        "targetSha256": "df027cb17185c1f3dcc377926bdb90ee6812a55b42ff167561245d3123bad496",
+        "materials": [
+            {
+                "name": "M_MiningPickaxe_Ash",
+                "baseColor": "#AD8453",
+                "metallic": 0.0,
+                "smoothness": 0.25
+            },
+            {
+                "name": "M_MiningPickaxe_Brass",
+                "baseColor": "#B98E3B",
+                "metallic": 0.6,
+                "smoothness": 0.55
+            },
+            {
+                "name": "M_MiningPickaxe_Crystal",
+                "baseColor": "#3DA8F2",
+                "metallic": 0.1,
+                "smoothness": 0.85
+            },
+            {
+                "name": "M_MiningPickaxe_Iron",
+                "baseColor": "#5B6068",
+                "metallic": 0.5,
+                "smoothness": 0.5
+            },
+            {
+                "name": "M_MiningPickaxe_Leather",
+                "baseColor": "#4A3121",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            }
+        ]
+    }
+}

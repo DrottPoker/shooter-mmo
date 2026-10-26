@@ -3053,6 +3053,51 @@ such as a weapon or a shield, and the axes of each hand's socket.
    result: `ItemAttachmentTests` passes, and `MMORPG > Tools > Art Pipeline >
    Wardrobe` lists `IronAxe (main_hand)` under `Attachments`.
 
+A tool, such as the Mining Pickaxe, is an attachment that a body holds only while
+it uses it; [Tools](ART_PIPELINE.md#tools) describes it. Add its clip to the
+animation library first, named in the library's `clips`, then name it in the
+tool's `asset.json` with `"useClip": "Mine"`, and for a tool held with both hands
+`"offHandGrip": [0.0, -0.33, 0.0]`, where the other hand holds the haft. Render
+the library's review sheet with `Render-ArtPreview.ps1 -Asset
+art/Animations/Human_Actions`; expected result: every body holds the tool in the
+rows of its clip. In Unity, add a looping base layer state of the clip's name to
+`Assets/Art/Animation/HumanLocomotion.controller` and give a Tool slot item the
+attachment; `ToolInUseTests` checks both.
+
+### Manual Test Of The Gathering Tools
+
+No manual Unity Editor steps are required: the tool models, their materials, the
+clips `Mine` and `Chop` with their controller states, the catalogs, and the item
+presentation are committed.
+
+1. In Unity, open `MMORPG > Tools > Art Pipeline > Wardrobe`, tick
+   `MiningPickaxe` under `Attachments`, and play `Mine` on both bodies. Expected
+   result: the body lifts the pickaxe over its right shoulder and strikes it
+   down in front of it every 1.5 s, both hands on the haft, the left one on the
+   leather wrap near the butt on both bodies. Tick `WoodcuttingAxe` instead and
+   play `Chop`: the axe is lifted over the right shoulder and hewn diagonally down
+   to the left.
+2. Start the local stack as in
+   [Vendor And Gathering Verification](#vendor-and-gathering-verification), and
+   with a new character offline grant the `equipment` package, as described in
+   [Give A Character Development Items](#give-a-character-development-items).
+   Enter Play Mode, join `local-shard-1`, press `C`, and equip `Iron Sword` in
+   Main Hand, `Heater Shield` in Off Hand, and `Starter Pickaxe` in Tool.
+   Expected result: the character holds the sword and the shield, and no
+   pickaxe.
+3. Walk to the quarry southeast of the town and left-click an Iron Vein.
+   Expected result: when mining starts, the sword and the shield disappear, the
+   character holds the pickaxe in both hands and swings it, two strokes per ore.
+4. Click the ground. Expected result: the character stops swinging and walks at
+   once; as soon as mining stops, the pickaxe disappears and the sword and the
+   shield are back.
+5. Equip `Woodcutting Axe` in Tool and chop an Oak Tree in the oak grove south
+   of the town. Expected result: the character swings the axe in `Chop` while
+   it chops, and holds nothing in the hands once it stops.
+6. With a second client joined and watching, mine a vein with the first.
+   Expected result: the second client sees the first character hold and swing
+   the pickaxe while it mines, and put it away when it stops.
+
 ### Manual Test Of The Sword And Shield
 
 No manual Unity Editor steps are required: the models, materials, catalogs, the

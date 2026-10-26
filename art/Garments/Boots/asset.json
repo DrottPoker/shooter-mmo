@@ -55,7 +55,7 @@
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "3306548572c8cbc783096ec0bf7a59836e96da9ba62e8587e7cac282cd84a5ad" }
         ],
         "pairSources": [
             { "garment": "art/Garments/Trousers", "sourceSha256": "f9d96d304d8b4bce5b463b9f6cc83cdaef7d848b47a315cd54c56db80729572e" }

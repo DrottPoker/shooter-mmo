@@ -7,7 +7,9 @@ namespace Mmorpg.Client.Gameplay
     // that moves a body animate the same way without knowing about each other. The speed is
     // smoothed over a short time, and a jump farther than a character can run, such as a
     // teleport or a correction, is not taken as movement. Combat tells the body whether its
-    // character is dead, and a dead body plays Death and stays lying.
+    // character is dead, and a dead body plays Death and stays lying. While the body holds a tool,
+    // such as a pickaxe while its character gathers, it plays the tool's clip, such as Mine,
+    // whenever it stands and lives.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Animator))]
     [DefaultExecutionOrder(PresentationExecutionOrder.Locomotion)]
@@ -23,6 +25,7 @@ namespace Mmorpg.Client.Gameplay
         private static readonly int DeadId = Animator.StringToHash(HumanLocomotion.DeadParameter);
         private static readonly int DeathStateId = Animator.StringToHash(HumanLocomotion.DeathState);
         private static readonly int IdleStateId = Animator.StringToHash(HumanLocomotion.IdleState);
+        private static readonly int LocomotionStateId = Animator.StringToHash(HumanLocomotion.LocomotionState);
 
         private Animator animator;
         private float walkCycleSeconds = 1f;
@@ -30,6 +33,47 @@ namespace Mmorpg.Client.Gameplay
         private Vector3 previousPosition;
         private bool hasPreviousPosition;
         private int fallFrame = -1;
+        // The state of the tool's clip the body should play, and the one it played last, which it
+        // leaves with a crossfade.
+        private int useStateId;
+        // Its full path in the base layer, which HasState takes.
+        private int usePathId;
+        private int shownUseStateId;
+
+        // The clip of the tool the body holds, such as Mine, or empty.
+        public string UseClip { get; private set; } = string.Empty;
+
+        // Plays the clip of a tool the body holds, in the base layer's state of the same name, or
+        // stops playing one for an empty clip.
+        public void Use(string clip)
+        {
+            UseClip = clip ?? string.Empty;
+            useStateId = UseClip.Length > 0 ? Animator.StringToHash(UseClip) : 0;
+            usePathId = 0;
+        }
+
+        // How much of the pose comes from the tool's clip, from 0 to 1, as the base layer crossfades
+        // into or out of its state.
+        public float UseWeight
+        {
+            get
+            {
+                if (shownUseStateId == 0 || !HasController || !animator.isInitialized)
+                {
+                    return 0f;
+                }
+
+                var current = animator.GetCurrentAnimatorStateInfo(0).shortNameHash == shownUseStateId;
+                if (!animator.IsInTransition(0))
+                {
+                    return current ? 1f : 0f;
+                }
+
+                var next = animator.GetNextAnimatorStateInfo(0).shortNameHash == shownUseStateId;
+                var progress = Mathf.Clamp01(animator.GetAnimatorTransitionInfo(0).normalizedTime);
+                return current && next ? 1f : next ? progress : current ? 1f - progress : 0f;
+            }
+        }
 
         // The smoothed ground speed in meters per second.
         public float Speed { get; private set; }
@@ -143,12 +187,68 @@ namespace Mmorpg.Client.Gameplay
             {
                 animator.Play(DeathStateId, 0, 1f);
             }
+
+            ApplyUse();
+        }
+
+        // A body that holds a tool plays its clip while it stands and lives, and crossfades back to
+        // Idle, or to walking when it moves, when it lets go of the tool or starts to move.
+        private void ApplyUse()
+        {
+            if (useStateId != 0 && usePathId == 0)
+            {
+                usePathId = Animator.StringToHash(animator.GetLayerName(0) + "." + UseClip);
+            }
+
+            var wanted = useStateId != 0 && !IsDead && Speed < HumanLocomotion.MovingSpeed
+                && animator.HasState(0, usePathId)
+                ? useStateId
+                : 0;
+            if (wanted != 0)
+            {
+                if (!InOrEntering(wanted))
+                {
+                    animator.CrossFadeInFixedTime(wanted, HumanLocomotion.UseCrossfadeSeconds, 0);
+                }
+
+                shownUseStateId = wanted;
+                return;
+            }
+
+            if (shownUseStateId == 0)
+            {
+                return;
+            }
+
+            if (!IsDead && InOrEntering(shownUseStateId))
+            {
+                animator.CrossFadeInFixedTime(
+                    Speed >= HumanLocomotion.MovingSpeed ? LocomotionStateId : IdleStateId,
+                    HumanLocomotion.UseCrossfadeSeconds,
+                    0);
+            }
+            else if (!InOrLeaving(shownUseStateId))
+            {
+                shownUseStateId = 0;
+            }
         }
 
         private bool InOrEnteringDeath()
         {
             return animator.GetCurrentAnimatorStateInfo(0).shortNameHash == DeathStateId
                 || (animator.IsInTransition(0) && animator.GetNextAnimatorStateInfo(0).shortNameHash == DeathStateId);
+        }
+
+        // In a state and not leaving it, or crossfading into it.
+        private bool InOrEntering(int stateId)
+        {
+            return (animator.GetCurrentAnimatorStateInfo(0).shortNameHash == stateId && !animator.IsInTransition(0))
+                || (animator.IsInTransition(0) && animator.GetNextAnimatorStateInfo(0).shortNameHash == stateId);
+        }
+
+        private bool InOrLeaving(int stateId)
+        {
+            return animator.GetCurrentAnimatorStateInfo(0).shortNameHash == stateId;
         }
     }
 }

@@ -186,7 +186,7 @@ namespace Mmorpg.GameProtocol
         OwnerItemStateChanged = 35,
 
         /// <summary>
-        /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, or in Development its body model or look.
+        /// A player in the recipient's interest, or the recipient's own character, changed how it looks: its visible equipment, its headwear, the tool it uses, or in Development its body model or look.
         /// </summary>
         EntityAppearanceChanged = 36,
 
@@ -347,7 +347,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 24;
+        public const ushort Version = 25;
 
         /// <summary>
         /// The LiteNetLib connection key.

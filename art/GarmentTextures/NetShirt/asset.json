@@ -17,7 +17,7 @@
             { "body": "Female", "data": "src/Client/Assets/Art/Models/Garments/NetShirt_Female.json", "dataSha256": "d3838abda56f48d416063a1894a9a87e0edb8f39a560cedbaf4bc53653f9ae61" }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "8f313f72c64153d9c6678b955e0f87eb69a24574e82969f168820dc8ab710a41" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "3306548572c8cbc783096ec0bf7a59836e96da9ba62e8587e7cac282cd84a5ad" }
         ],
         "materials": [
             {

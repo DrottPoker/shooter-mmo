@@ -112,7 +112,9 @@ public static class CorpseRealtimePacketBuilder
                 .Take(RealtimeProtocolLimits.MaximumVisibleEquipment)
                 .Select(item => new RealtimeVisibleEquipment(item!.EquipmentSlotId, item.DefinitionId))
                 .ToArray(),
-            look.HeadwearLowered);
+            look.HeadwearLowered,
+            // A corpse uses no tool.
+            string.Empty);
     }
 
     private static bool FitsPresencePacket(

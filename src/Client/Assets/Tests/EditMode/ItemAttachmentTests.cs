@@ -67,6 +67,12 @@ namespace Mmorpg.Client.Tests.EditMode
                     var attachment = catalog.AttachmentNamed(entry.attachment);
                     Assert.That(attachment, Is.Not.Null, where + " names the attachment " + entry.attachment + ", which the body's catalog lacks");
                     Assert.That(attachment.Model, Is.Not.Null, where);
+                    if (attachment.IsTool)
+                    {
+                        // A tool is held only while it is used; see ToolInUseTests.
+                        continue;
+                    }
+
                     // The item shows it in every slot it can be equipped in.
                     Assert.That(definition.EquipmentSlots, Is.All.EqualTo(attachment.Socket), where);
                 }

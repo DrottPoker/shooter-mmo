@@ -440,7 +440,27 @@ MonoBehaviour:
     socket: off_hand
     bone: Socket_OffHand
     model: {fileID: 919132149155446097, guid: 63ab9074b1bbab74cbbc1a12b4723d0b, type: 3}
+    useClip: 
+    holdsWithBothHands: 0
+    offHandGrip: {x: 0, y: 0, z: 0}
   - name: IronSword
     socket: main_hand
     bone: Socket_MainHand
     model: {fileID: 919132149155446097, guid: 58997bfd53b273646a9de9fa5eaf4391, type: 3}
+    useClip: 
+    holdsWithBothHands: 0
+    offHandGrip: {x: 0, y: 0, z: 0}
+  - name: MiningPickaxe
+    socket: main_hand
+    bone: Socket_MainHand
+    model: {fileID: 919132149155446097, guid: f5d4c34342fd59c449717fbc1c21a61d, type: 3}
+    useClip: Mine
+    holdsWithBothHands: 1
+    offHandGrip: {x: 0, y: 0, z: -0.33}
+  - name: WoodcuttingAxe
+    socket: main_hand
+    bone: Socket_MainHand
+    model: {fileID: 919132149155446097, guid: 6c7fb8fc8bc7a22409d884cb34c21a03, type: 3}
+    useClip: Chop
+    holdsWithBothHands: 1
+    offHandGrip: {x: 0, y: 0, z: -0.33}
