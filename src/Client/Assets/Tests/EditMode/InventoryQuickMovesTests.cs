@@ -131,6 +131,77 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(move.Container.ContainerType, Is.EqualTo("permanent_inventory"));
         }
 
+        // At the carry cap a corpse Bag cannot equip with its contents, so the contents equip
+        // one by one and the emptied Bag follows; it shows empty, not with them a second time.
+        [Test]
+        public void LootAllEquipsADeferredCorpseBagWithTheContentsThatLeftIt()
+        {
+            var bagContainerId = Guid.NewGuid();
+            var contents = new[] { "fixture.sword", "fixture.shield", "fixture.tunic", "fixture.pickaxe" }
+                .Select(definitionId => new CorpseLootItem(Guid.NewGuid(), definitionId, 1, 1, Guid.Empty, 0))
+                .ToArray();
+            var pack = new CorpseLootItem(Guid.NewGuid(), "fixture.pack", 1, 1, bagContainerId, 1);
+            var corpse = new CorpseLootView(
+                Guid.NewGuid(),
+                3,
+                DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds(),
+                "Fallen Hero",
+                "corpse.remains",
+                new[]
+                {
+                    new CorpseLootSection("general_inventory", Guid.NewGuid(), 1, 0, Array.Empty<CorpseLootSlot>()),
+                    new CorpseLootSection(
+                        "equipment",
+                        Guid.NewGuid(),
+                        1,
+                        1,
+                        new[] { new CorpseLootSlot(0, "general", Array.Empty<string>(), "bag", pack) }),
+                    new CorpseLootSection(
+                        "bag",
+                        bagContainerId,
+                        1,
+                        7,
+                        Enumerable.Range(0, 7).Select(index => new CorpseLootSlot(
+                            index,
+                            "general",
+                            index < contents.Length ? contents[index] : null)))
+                });
+            var state = CreateState(
+                Array.Empty<InventoryItem>(),
+                Slot("body", null),
+                Slot("main_hand", null),
+                Slot("off_hand", null),
+                Slot("tool", null),
+                Slot("bag", null));
+            var atCap = new CharacterInventorySnapshot(
+                state.FullSnapshot.CharacterId,
+                state.FullSnapshot.CatalogRevision,
+                state.FullSnapshot.ItemStateRevision,
+                state.FullSnapshot.PermanentInventory,
+                state.FullSnapshot.Equipment.ToArray(),
+                null,
+                state.FullSnapshot.Bank,
+                state.FullSnapshot.SecureContainer,
+                state.FullSnapshot.RecoveryStorage,
+                280,
+                200,
+                14_000,
+                2_000);
+            var view = new InventorySnapshotView(catalog, atCap);
+            var createdIds = contents.Append(pack).ToDictionary(item => item.ItemInstanceId, _ => Guid.NewGuid());
+            var edit = new InventoryPredictionEdit(view);
+
+            Assert.That(CorpseLootAllPrediction.TryApply(edit, corpse, false, createdIds, out var reason), Is.True, reason);
+
+            var predicted = edit.Build();
+            Assert.That(predicted.EquippedBag, Is.Not.Null);
+            Assert.That(predicted.EquippedBag.Contents.Slots.All(slot => slot.Item == null), Is.True);
+            Assert.That(
+                predicted.Equipment.Single(slot => slot.SlotId == "main_hand").Item.ItemInstanceId,
+                Is.EqualTo(createdIds[contents[0].ItemInstanceId]));
+            Assert.That(predicted.CarriedWeight, Is.EqualTo(280));
+        }
+
         private InventoryClientState CreateState(
             InventoryItem[] carried,
             params InventoryEquipmentSlot[] equipment)

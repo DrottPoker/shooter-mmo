@@ -471,6 +471,7 @@ namespace Mmorpg.Client.Items
 
             reason = "The corpse or your inventory changed.";
             var arrived = new Dictionary<Guid, Guid>();
+            var taken = new Dictionary<Guid, int>();
             foreach (var step in plan.Steps)
             {
                 var source = step.Item;
@@ -484,8 +485,11 @@ namespace Mmorpg.Client.Items
                 switch (step.Kind)
                 {
                     case LootAllStepKind.EquipBag:
+                        // A Bag whose contents earlier steps looted equips with what they left.
                         if (!corpse.TryFindItem(source.ItemInstanceId, out var bag, out _, out _)
-                            || !edit.Editor.TryEquipBag(created, CorpseInventoryPrediction.BagContents(corpse, bag, definition)))
+                            || !edit.Editor.TryEquipBag(
+                                created,
+                                WithoutTaken(CorpseInventoryPrediction.BagContents(corpse, bag, definition), taken)))
                         {
                             return false;
                         }
@@ -530,6 +534,9 @@ namespace Mmorpg.Client.Items
                     default:
                         return false;
                 }
+
+                taken[source.ItemInstanceId] = (taken.TryGetValue(source.ItemInstanceId, out var before) ? before : 0)
+                    + step.Quantity;
             }
 
             edit.Weight = plan.CarriedWeight;
@@ -588,6 +595,30 @@ namespace Mmorpg.Client.Items
                         .ThenBy(policy => policy.Status, StringComparer.Ordinal)
                         .Select(policy => policy.Kind + ":" + policy.Status));
             return policies + "\n" + definition.StructuralFingerprint;
+        }
+
+        // The contents less what earlier steps of the plan took out of them.
+        private static InventoryContainer WithoutTaken(InventoryContainer contents, IReadOnlyDictionary<Guid, int> taken)
+        {
+            return new InventoryContainer(
+                contents.ContainerId,
+                contents.ContainerType,
+                contents.Revision,
+                contents.SlotCapacity ?? contents.Slots.Count,
+                contents.Slots
+                    .Select(slot =>
+                    {
+                        var item = slot.Item;
+                        var left = item == null
+                            ? 0
+                            : item.Quantity - (taken.TryGetValue(item.ItemInstanceId, out var quantity) ? quantity : 0);
+                        return new InventorySlot(
+                            slot.SlotIndex,
+                            slot.SlotKind,
+                            slot.AcceptedTags.ToArray(),
+                            left > 0 ? InventoryPredictionEdit.WithQuantity(item, left) : null);
+                    })
+                    .ToArray());
         }
 
         private static LootAllStack ToStack(ClientItemCatalog catalog, InventoryItem item)
