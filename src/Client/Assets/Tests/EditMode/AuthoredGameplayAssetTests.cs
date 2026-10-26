@@ -573,6 +573,41 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(ArtModelImportRules.ModelFolder + "/WorldActors/" + name + ".fbx"));
         }
 
+        // Every material is saved in the form its shader's Inspector keeps, so selecting one
+        // never changes its file: URP Lit derives the legacy _Color from _BaseColor when it
+        // validates a material, with slightly different floats than a script writes.
+        [Test]
+        public void EveryProjectMaterialIsInTheFormItsInspectorKeeps()
+        {
+            var changed = new List<string>();
+            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets" }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (material == null || !path.EndsWith(".mat"))
+                {
+                    continue;
+                }
+
+                var copy = new Material(material);
+                try
+                {
+                    var saved = EditorJsonUtility.ToJson(copy);
+                    DevelopmentWorldPalette.ValidateAsTheInspectorDoes(copy);
+                    if (EditorJsonUtility.ToJson(copy) != saved)
+                    {
+                        changed.Add(path);
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(copy);
+                }
+            }
+
+            Assert.That(changed, Is.Empty);
+        }
+
         // URP Lit everywhere, except the body materials that paint layers paint over, which use
         // the skin shader, URP Lit with paint layers.
         [Test]

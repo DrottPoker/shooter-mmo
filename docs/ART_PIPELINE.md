@@ -446,7 +446,12 @@ drawn by its size less two triangles.
 `ArtAppearanceCatalogTests` fails when a catalog differs from what the command
 writes from `asset.json`.
 
-A project material is never changed by the import. When an export adds a
+A project material is never changed by the import, and every project material
+is saved in the form its shader's Inspector keeps: URP Lit validates a material
+whenever the Inspector shows it and then derives the legacy `_Color` from
+`_BaseColor`, so a script that writes `_Color` itself leaves a file that changes
+the first time someone selects it. `EveryProjectMaterialIsInTheFormItsInspectorKeeps`
+in `AuthoredGameplayAssetTests` fails on such a material. When an export adds a
 material, `MMORPG > Tools > Art Pipeline > Create Missing Materials` creates it
 as a URP Lit material from its export record, with its texture for a painted
 material, below `Assets/Art/Materials/<Category>`, and reimports the models that

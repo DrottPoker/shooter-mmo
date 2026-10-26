@@ -191,26 +191,70 @@ namespace Mmorpg.Client.Editor
                 };
                 AssetDatabase.CreateAsset(material, path);
             }
-            else if (material.shader != shader)
-            {
-                material.shader = shader;
-            }
 
-            SetColor(material, "_BaseColor", color);
-            SetColor(material, "_Color", color);
-            foreach (var textureProperty in new[] { "_BaseMap", "_MainTex" })
+            // The palette goes onto a copy in the form the shader's Inspector keeps, and the
+            // asset changes only when that form differs from an untouched copy, so a rebuild
+            // with the same palette leaves every material file as it is. Both copies carry
+            // every property of the current shader, so a material saved before a shader added
+            // properties, such as URP's screen space reflections, does not count as changed.
+            var untouched = new Material(material)
             {
-                if (material.HasProperty(textureProperty))
+                name = material.name
+            };
+            var target = new Material(material)
+            {
+                name = material.name
+            };
+            try
+            {
+                if (target.shader != shader)
                 {
-                    material.SetTexture(textureProperty, baseMap);
-                    material.SetTextureScale(textureProperty, new Vector2(tiling, tiling));
+                    target.shader = shader;
+                }
+
+                SetColor(target, "_BaseColor", color);
+                SetColor(target, "_Color", color);
+                foreach (var textureProperty in new[] { "_BaseMap", "_MainTex" })
+                {
+                    if (target.HasProperty(textureProperty))
+                    {
+                        target.SetTexture(textureProperty, baseMap);
+                        target.SetTextureScale(textureProperty, new Vector2(tiling, tiling));
+                    }
+                }
+
+                SetFloat(target, "_Smoothness", 0.12f);
+                SetFloat(target, "_Glossiness", 0.12f);
+                ValidateAsTheInspectorDoes(target);
+                if (EditorJsonUtility.ToJson(target) != EditorJsonUtility.ToJson(untouched))
+                {
+                    EditorUtility.CopySerialized(target, material);
+                    EditorUtility.SetDirty(material);
                 }
             }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(untouched);
+                UnityEngine.Object.DestroyImmediate(target);
+            }
 
-            SetFloat(material, "_Smoothness", 0.12f);
-            SetFloat(material, "_Glossiness", 0.12f);
-            EditorUtility.SetDirty(material);
             return material;
+        }
+
+        // The shader's Inspector validates a material whenever it shows it, and URP Lit then
+        // derives the legacy _Color from _BaseColor with slightly different floats. A material
+        // saved without that step changed its file the first time anyone selected it.
+        public static void ValidateAsTheInspectorDoes(Material material)
+        {
+            var editor = (MaterialEditor)UnityEditor.Editor.CreateEditor(material);
+            try
+            {
+                editor.customShaderGUI?.ValidateMaterial(material);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(editor);
+            }
         }
 
         private static void SetColor(Material material, string property, Color color)
