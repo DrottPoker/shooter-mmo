@@ -65,6 +65,16 @@ public sealed class WorldCollisionStreamingStore
         }
     }
 
+    // Loads the chunks around one more position now, such as a teleport destination, and unloads
+    // none; the next refresh keeps them while a player stands there.
+    public void EnsureLoaded(SimulationVector3 position)
+    {
+        foreach (var coordinate in planner.GetRequiredChunks([position]))
+        {
+            TryLoad(coordinate);
+        }
+    }
+
     public void LoadAll()
     {
         foreach (var coordinate in sources.Keys)

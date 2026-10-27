@@ -31,13 +31,14 @@ namespace Mmorpg.Client.App
         private WorldInteractionClientController worldInteractionController;
         private CombatClientController combatController;
         private Material runtimePrimitiveMaterial;
+        private Material debugLineMaterial;
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
         private readonly GameMessageLog gameMessages = new GameMessageLog();
 
-        // The World Debug panel's body tint, kept between sessions and off by default.
+        // The Debug menu's body tint, kept between sessions and off by default.
         private const string BodyTintPreference = "Mmorpg.Debug.TintPlayerBodies";
 
-        // Where the panel kept a look and body model before the server stored them; removed at start.
+        // Where the Debug menu kept a look and body model before the server stored them; removed at start.
         private static readonly string[] RetiredPreferences =
         {
             "Mmorpg.Debug.PlayerBodyLook",
@@ -45,6 +46,9 @@ namespace Mmorpg.Client.App
         };
 
         private PlayerBodyTintSetting bodyTint;
+
+        // What the Debug menu draws in the world, off whenever the client starts.
+        private readonly WorldDebugViewSettings debugView = new WorldDebugViewSettings();
 
         // The local player's look as the server stores it, kept in step by the look link.
         private readonly PlayerBodyLookSetting bodyLook = new PlayerBodyLookSetting();
@@ -71,12 +75,21 @@ namespace Mmorpg.Client.App
             var config = ClientConfig.Load(out configHandle);
             ClientSession.Configure(config);
             runtimePrimitiveMaterial = config.RuntimePrimitiveMaterial;
+            debugLineMaterial = config.DebugLineMaterial;
             if (runtimePrimitiveMaterial == null)
             {
                 ClientLog.Warning(
                     ClientLogCategory.Client,
                     "The client configuration has no runtime primitive material, so markers, arrows, and fallback models render with the error shader in a player build.");
             }
+
+            if (debugLineMaterial == null)
+            {
+                ClientLog.Warning(
+                    ClientLogCategory.Client,
+                    "The client configuration has no debug line material, so the Debug menu draws no collision or path.");
+            }
+
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
             bodyTint = new PlayerBodyTintSetting(PlayerPrefs.GetInt(BodyTintPreference, 0) == 1);
             bodyTint.Changed += SaveBodyTint;
@@ -356,12 +369,14 @@ namespace Mmorpg.Client.App
                 }
             }
 
-            AddSceneComponentIfMissing<WorldScenePanel>(
-                panel => panel.Initialize(simulationClient, pointerFocus, bodyTint, bodyLook));
+            AddSceneComponentIfMissing<TemporaryDebugMenu>(
+                menu => menu.Initialize(simulationClient, bodyTint, debugView, debugLineMaterial));
             AddSceneComponentIfMissing<MovementDestinationMarker>(
                 marker => marker.Initialize(runtimePrimitiveMaterial));
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(
                 menu => menu.Initialize(worldActorController, gameMessages));
+            AddSceneComponentIfMissing<TemporaryAdminMenu>(
+                menu => menu.Initialize(simulationClient, bodyLook, worldMenu, combatController));
             AddSceneComponentIfMissing<TemporaryInventoryPanel>(
                 panel => panel.Initialize(
                     inventoryController,

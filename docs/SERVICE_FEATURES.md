@@ -718,6 +718,36 @@ SimulationWorker. Nothing gets its own task, timer, or thread:
 - Unity predicts with the same source, reconciles only from owner snapshots,
   and interpolates remote state at its delivered cadence.
 
+## Development Admin Tools
+
+A SimulationWorker with `DevelopmentAdmin:Enabled` lets every player, but never
+a synthetic bot, use the tools of the Unity Admin menu (F3). The option fails
+startup outside the Development environment, is on in the worker's
+`appsettings.Development.json`, and the worker logs a warning when it is on.
+
+- After every join, a reconnect too, the worker sends the owner
+  `AdminStateChanged` with its walk speed percent and invulnerability. A client
+  that receives none knows the tools are off.
+- `AdminIntent` asks for one tool and `AdminIntentResult` answers it; a worker
+  without the option answers `admin_tools_disabled`.
+  - `SetMovementSpeed` walks the character at 100 to 1000 percent of the World's
+    walk speed: `AuthoritativePlayerMovement` steps with
+    `MovementSimulationSettings.WithWalkSpeedPercent`, the shared method the
+    client predicts with. 1000 percent, 50 m/s, stays far inside the motor's
+    substep budget, and the step budget still allows one step per input.
+  - `Teleport` moves a living character onto walkable ground at a point inside
+    the World bounds, standing still, and despawns and spawns it again for
+    everyone who sees it, as a respawn does. It loads the collision chunks
+    around the destination first. A dead character gets `admin_character_dead`,
+    a point outside the World `admin_teleport_outside_world`, and a point with no
+    walkable ground near it `admin_teleport_no_ground`.
+  - `RestoreHealth` fills a living character's health.
+  - `SetInvulnerable` makes hits leave the character's health as it is, as an
+    evading Mob's are.
+- The walk speed and invulnerability belong to the character's entity, so they
+  last until the session ends, and a reconnect of the same session keeps them.
+  Nothing is stored in PostgreSQL.
+
 ## Collision Data And Streaming
 
 - Each `content/worlds/<WorldId>/collision.json` contains neutral collision
@@ -1331,8 +1361,9 @@ overruns. Recording any of these measurements on the realtime loop does not
 allocate, with or without the OpenTelemetry exporter attached.
 
 These operational values remain server-side. They are not added to the realtime
-gameplay protocol and are not broadcast to Unity clients. The Unity F2 panel
-derives its values only from local rendering, prediction, and received traffic.
+gameplay protocol and are not broadcast to Unity clients. The Unity Debug menu
+(F2) derives its values only from local rendering, prediction, and received
+traffic.
 
 SimulationWorker filters routine successful `GameServiceClient` HTTP pipeline
 messages below `Warning`. Domain failures and HTTP warnings remain visible, but

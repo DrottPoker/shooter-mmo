@@ -34,7 +34,8 @@ internal static class RealtimeMessageRoutes
         RealtimeMessageHandler worldInteraction,
         RealtimeMessageHandler leave,
         RealtimeMessageHandler combat,
-        RealtimeMessageHandler appearance)
+        RealtimeMessageHandler appearance,
+        RealtimeMessageHandler admin)
     {
         return
         [
@@ -74,6 +75,12 @@ internal static class RealtimeMessageRoutes
                     "invalid_appearance_delivery",
                     "Appearance intents require the reliable ordered control channel."),
                 appearance),
+            Route(
+                RealtimeMessageType.AdminIntent,
+                new RealtimeRejection(
+                    "invalid_admin_delivery",
+                    "Admin intents require the reliable ordered control channel."),
+                admin),
             Route(RealtimeMessageType.LeaveRequest, UnexpectedMessage, leave) with
             {
                 RejectWhen = static context => context.LeaveStarted

@@ -257,15 +257,15 @@ required.
    `Local Stress Arena` (`local-shard-2`).
 5. Move around the arena while bots log in, move, and log out. Walk to the wolf
    pen opening to fight wolves inside the crowd.
-6. Press F2 and verify the client-observed frame, prediction, snapshot, and
-   payload metrics while the crowd moves.
+6. Press F2 to open the Debug menu and verify the client-observed frame,
+   prediction, snapshot, and payload metrics on its tabs while the crowd moves.
 7. Keep the Unity Console visible for protocol, collision revision, or
    disconnect errors.
 
 Expected result: the local player uses the normal authenticated flow, and every
 character shows the male human body, which walks and jogs with its speed.
 SimulationWorker spawns every bot with the presentation archetype
-`player.development_bot`. With `Tint bodies` on in the F2 panel, the local player
+`player.development_bot`. With `Tint bodies` on in the Debug menu (F2), the local player
 is tinted purple, remote `Active Bot N` instances blue, and a second Unity
 client's character orange. Bots appear only after reliable
 spawn messages, movement is
@@ -279,10 +279,10 @@ frames, the nearest first, so the frame rate does not drop while they appear.
 For the crowd as Victor plays it, run the population in Development World 2 with
 `--ActiveSimulationBots:ShardId local-shard-1` and join `Local Shard 1`. With
 400 bots, about 170 of them in interest and most of them dressed, the Editor
-showed about 80 FPS in F2 on 2026-10-25, where it showed 24 before; see
+showed about 80 FPS in the F2 panel on 2026-10-25, where it showed 24 before; see
 [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance).
 
-The F2 panel intentionally does not reveal the server-wide real-player count,
+The Debug menu intentionally does not reveal the server-wide real-player count,
 bot count, CPU, memory, or internal tick timing. Verify those values in the
 SimulationWorker terminal status and performance lines.
 

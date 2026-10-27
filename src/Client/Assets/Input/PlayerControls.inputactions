@@ -79,9 +79,18 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "ToggleWorldDebug",
+                    "name": "ToggleDebugMenu",
                     "type": "Button",
                     "id": "27298c65-31c5-4afe-a5ac-c966544535f8",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "ToggleAdminMenu",
+                    "type": "Button",
+                    "id": "16591b48-16fa-40dc-a345-ac468ecda590",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -255,7 +264,18 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "ToggleWorldDebug",
+                    "action": "ToggleDebugMenu",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "a42aabe7-e263-486a-9f71-eefbc6cfa02f",
+                    "path": "<Keyboard>/f3",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "ToggleAdminMenu",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

@@ -16,7 +16,8 @@ namespace Mmorpg.Client.Gameplay
         private const string CameraRotateActionName = "CameraRotate";
         private const string CameraZoomActionName = "CameraZoom";
         private const string CancelActionName = "Cancel";
-        private const string ToggleWorldDebugActionName = "ToggleWorldDebug";
+        private const string ToggleDebugMenuActionName = "ToggleDebugMenu";
+        private const string ToggleAdminMenuActionName = "ToggleAdminMenu";
         private const string ToggleInventoryActionName = "ToggleInventory";
         private const string ToggleCharacterInventoryActionName = "ToggleCharacterInventory";
         private const string ToggleEquipmentInventoryActionName = "ToggleEquipmentInventory";
@@ -30,7 +31,8 @@ namespace Mmorpg.Client.Gameplay
         private InputAction cameraRotateAction;
         private InputAction cameraZoomAction;
         private InputAction cancelAction;
-        private InputAction toggleWorldDebugAction;
+        private InputAction toggleDebugMenuAction;
+        private InputAction toggleAdminMenuAction;
         private InputAction toggleInventoryAction;
         private InputAction toggleCharacterInventoryAction;
         private InputAction toggleEquipmentInventoryAction;
@@ -80,9 +82,16 @@ namespace Mmorpg.Client.Gameplay
             get { return IsConfigured && cancelAction.WasPressedThisFrame(); }
         }
 
-        public bool ToggleWorldDebugPressedThisFrame
+        // F2: the Debug menu.
+        public bool ToggleDebugMenuPressedThisFrame
         {
-            get { return IsConfigured && toggleWorldDebugAction.WasPressedThisFrame(); }
+            get { return IsConfigured && toggleDebugMenuAction.WasPressedThisFrame(); }
+        }
+
+        // F3: the Admin menu.
+        public bool ToggleAdminMenuPressedThisFrame
+        {
+            get { return IsConfigured && toggleAdminMenuAction.WasPressedThisFrame(); }
         }
 
         public bool ToggleInventoryPressedThisFrame
@@ -120,7 +129,7 @@ namespace Mmorpg.Client.Gameplay
             Debug.LogError(
                 "LocalPlayerInput requires a PlayerInput actions asset containing "
                 + "Select, ContextMenu, PointerPosition, CameraOrbit, CameraOrbitDelta, CameraRotate, "
-                + "CameraZoom, Cancel, ToggleWorldDebug, ToggleInventory, "
+                + "CameraZoom, Cancel, ToggleDebugMenu, ToggleAdminMenu, ToggleInventory, "
                 + "ToggleCharacterInventory, and ToggleEquipmentInventory actions.",
                 this);
         }
@@ -157,7 +166,8 @@ namespace Mmorpg.Client.Gameplay
             cameraRotateAction = actions.FindAction(CameraRotateActionName, false);
             cameraZoomAction = actions.FindAction(CameraZoomActionName, false);
             cancelAction = actions.FindAction(CancelActionName, false);
-            toggleWorldDebugAction = actions.FindAction(ToggleWorldDebugActionName, false);
+            toggleDebugMenuAction = actions.FindAction(ToggleDebugMenuActionName, false);
+            toggleAdminMenuAction = actions.FindAction(ToggleAdminMenuActionName, false);
             toggleInventoryAction = actions.FindAction(ToggleInventoryActionName, false);
             toggleCharacterInventoryAction = actions.FindAction(
                 ToggleCharacterInventoryActionName,
@@ -174,7 +184,8 @@ namespace Mmorpg.Client.Gameplay
                 && cameraRotateAction != null
                 && cameraZoomAction != null
                 && cancelAction != null
-                && toggleWorldDebugAction != null
+                && toggleDebugMenuAction != null
+                && toggleAdminMenuAction != null
                 && toggleInventoryAction != null
                 && toggleCharacterInventoryAction != null
                 && toggleEquipmentInventoryAction != null;

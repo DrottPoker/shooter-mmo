@@ -9,6 +9,32 @@ namespace Mmorpg.SharedTests
         // Payload bytes after the seven-byte header, pinned from protocol version 19.
         private static readonly Dictionary<string, string> PayloadVectors = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["Admin/AdminIntent/restore health"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "03",
+            ["Admin/AdminIntent/set invulnerable"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "04 01",
+            ["Admin/AdminIntent/set movement speed"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "01 2c 01",
+            ["Admin/AdminIntent/teleport"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "02 00 00 48 41 00 00 80 be 00 00 96 43",
+            ["Admin/AdminIntentResult/accepted"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "02 01",
+            ["Admin/AdminIntentResult/rejected"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "01 00 14 00 61 64 6d 69 6e 5f 74 6f 6f 6c 73 5f " +
+                "64 69 73 61 62 6c 65 64 31 00 4f 6e 6c 79 20 61 " +
+                "20 44 65 76 65 6c 6f 70 6d 65 6e 74 20 77 6f 72 " +
+                "6b 65 72 20 61 6c 6c 6f 77 73 20 74 68 65 20 61 " +
+                "64 6d 69 6e 20 74 6f 6f 6c 73 2e",
+            ["Admin/AdminStateChanged/default"] =
+                "64 00 00",
+            ["Admin/AdminStateChanged/fast and invulnerable"] =
+                "e8 03 01",
             ["Combat/CombatEventBatch/full"] = "sha256:965:d57dbf86bcfa60cb62322a23e3cfa6fd1b0e9e60ac337a2ce37233bf924110ec",
             ["Combat/CombatEventBatch/release hit death"] =
                 "04 03 02 01 03 01 38 37 36 35 34 33 32 31 48 47 " +

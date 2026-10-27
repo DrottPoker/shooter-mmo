@@ -386,6 +386,12 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.AppearanceIntentResult:
                 Decode<RealtimeAppearanceIntentResult>(packet, "invalid_appearance_intent_result", RealtimeProtocol.TryDecodeAppearanceIntentResult, out _);
                 break;
+            case RealtimeMessageType.AdminIntentResult:
+                Decode<RealtimeAdminIntentResult>(packet, "invalid_admin_intent_result", RealtimeProtocol.TryDecodeAdminIntentResult, out _);
+                break;
+            case RealtimeMessageType.AdminStateChanged:
+                Decode<RealtimeAdminStateChanged>(packet, "invalid_admin_state", RealtimeProtocol.TryDecodeAdminStateChanged, out _);
+                break;
             case RealtimeMessageType.WorldInteractionOpened:
                 Decode<RealtimeWorldInteractionOpened>(packet, "invalid_world_interaction_opened", RealtimeProtocol.TryDecodeWorldInteractionOpened, out _);
                 break;

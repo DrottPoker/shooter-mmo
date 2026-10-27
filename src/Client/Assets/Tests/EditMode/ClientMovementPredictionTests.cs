@@ -199,6 +199,24 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(Settings.WalkSpeed * 0.9f).Within(0.0001f));
         }
 
+        // The worker walks a character at the admin speed from its next tick; the client predicts
+        // with the same settings from the next step.
+        [Test]
+        public void PredictionWalksAtTheAdminSpeedOnceItsSettingsChange()
+        {
+            var world = FixtureCollisionWorld.Create();
+            var initial = PlayerMovementSimulation.CreateInitialState(Settings, world, 0f, 0f, -1f, 0f);
+            var prediction = new ClientMovementPrediction(initial, Settings, PlayerCarryState.Default, world);
+
+            prediction.Predict(Input(1, Path(1, 0f, 5f)));
+            Assert.That(prediction.State.VelocityZ, Is.EqualTo(Settings.WalkSpeed).Within(0.0001f));
+            prediction.ApplySettings(Settings.WithWalkSpeedPercent(300));
+            prediction.Predict(Input(2, Path(1, 0f, 5f)));
+
+            Assert.That(prediction.State.VelocityZ, Is.EqualTo(Settings.WalkSpeed * 3f).Within(0.0001f));
+            Assert.Throws<System.ArgumentNullException>(() => prediction.ApplySettings(null));
+        }
+
         [Test]
         public void RemoteInterpolationSamplesBetweenServerTicksAndAcrossYawWrap()
         {

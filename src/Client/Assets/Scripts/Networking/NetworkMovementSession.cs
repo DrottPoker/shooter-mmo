@@ -20,6 +20,7 @@ namespace Mmorpg.Client.Networking
             CharacterId = characterId;
             ControlledEntityId = controlledEntityId;
             Settings = settings;
+            PredictionSettings = settings;
             SnapshotRateHz = snapshotRateHz;
             InitialState = initialState;
             CarryState = carryState;
@@ -32,6 +33,13 @@ namespace Mmorpg.Client.Networking
         public ulong ControlledEntityId { get; private set; }
 
         public MovementSimulationSettings Settings { get; private set; }
+
+        // The settings the local player predicts with: Settings at the walk speed a development
+        // admin chose, which the worker walks the character at too.
+        public MovementSimulationSettings PredictionSettings { get; private set; }
+
+        // The walk speed in percent of the World's.
+        public int WalkSpeedPercent { get; private set; } = 100;
 
         public int SnapshotRateHz { get; private set; }
 
@@ -73,6 +81,19 @@ namespace Mmorpg.Client.Networking
 
             CarryState = candidate;
             changed = true;
+            return true;
+        }
+
+        // Returns whether the speed changed.
+        public bool ApplyWalkSpeedPercent(int percent)
+        {
+            if (percent == WalkSpeedPercent)
+            {
+                return false;
+            }
+
+            PredictionSettings = Settings.WithWalkSpeedPercent(percent);
+            WalkSpeedPercent = percent;
             return true;
         }
 

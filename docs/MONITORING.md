@@ -310,4 +310,4 @@ configuration` job.
 - Alert notifications to a chat or paging service.
 - A staging or production deployment of the stack, with authentication,
   retention, and backups.
-- Unity client telemetry; client diagnostics stay in the F2 panel.
+- Unity client telemetry; client diagnostics stay in the Debug menu (F2).

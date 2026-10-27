@@ -124,9 +124,12 @@ See [Project Architecture](docs/PROJECT_ARCHITECTURE.md) for the complete model.
 - Long-running active simulation bots that share the real local shard with
   Unity players, use the complete UDP flow, churn through graceful logout and
   login, and keep synthetic identity and session data out of PostgreSQL.
-- Client-observed F2 diagnostics for frame timing, prediction, reconciliation,
-  snapshot health, payload rates, and visible entities without broadcasting
-  server process information to game clients.
+- A client-observed Debug menu (F2) for frame timing, prediction,
+  reconciliation, snapshot health, payload rates, visible entities, the
+  player's coordinates, and the collision around the player, without
+  broadcasting server process information to game clients.
+- A Development-only Admin menu (F3) for the look, the walk speed, teleports,
+  full health, and invulnerability, carried out by SimulationWorker.
 - Worker-side operational status logs and metrics that distinguish real players
   from synthetic bots and report CPU, memory, traffic, drops, and tick timing.
 - Bounded item-operation timeouts and payloads, low-cardinality item and corpse

@@ -230,6 +230,39 @@ public sealed class PlayerMovementSimulationTests
     }
 
     [Fact]
+    public void WalkSpeedPercentScalesOnlyTheWalkSpeed()
+    {
+        var fast = Settings.WithWalkSpeedPercent(300);
+        var path = Path(1, (0f, 10f));
+        var result = PlayerMovementSimulation.Step(
+            CreateInitialState(0f, 0f, 0f),
+            new PlayerMovementInput(1, 1, path),
+            fast,
+            Unencumbered,
+            CollisionWorld);
+
+        Assert.Same(Settings, Settings.WithWalkSpeedPercent(100));
+        Assert.Equal(15f, fast.WalkSpeed);
+        Assert.Equal(Settings.TickRateHz, fast.TickRateHz);
+        Assert.Equal(Settings.Gravity, fast.Gravity);
+        Assert.Equal(Settings.MaximumX, fast.MaximumX);
+        Assert.Same(Settings.CharacterCollision, fast.CharacterCollision);
+        Assert.Equal(15f, result.VelocityZ, 4);
+        Assert.Equal(15f / 30f, result.PositionZ, 4);
+        Assert.Throws<ArgumentOutOfRangeException>(() => Settings.WithWalkSpeedPercent(0));
+    }
+
+    [Fact]
+    public void TheFastestAdminWalkSpeedFitsTheCollisionSubstepBudget()
+    {
+        var fastest = Settings.WithWalkSpeedPercent(Mmorpg.GameProtocol.RealtimeProtocolLimits.MaximumAdminSpeedPercent);
+
+        Assert.Equal(50f, fastest.WalkSpeed);
+        var exception = Assert.Throws<ArgumentException>(() => Settings.WithWalkSpeedPercent(100_000));
+        Assert.Contains("collision substep budget", exception.Message);
+    }
+
+    [Fact]
     public void MovementPathRejectsInvalidShapes()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => Path(0, (1f, 1f)));

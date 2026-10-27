@@ -523,10 +523,13 @@ enforces, and all runtime content, including World scenes and generated
 collision, loads through Addressables. See
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md).
 
-The F2 panel is an observation surface for the local client. It derives frame,
-prediction, reconciliation, snapshot, and payload metrics from local state.
-Worker process and server-wide population data stay in SimulationWorker logs
-and metrics.
+The Debug menu (F2) is an observation surface for the local client. It derives
+frame, prediction, reconciliation, snapshot, and payload metrics and the
+player's coordinates from local state, and draws the baked collision around the
+player on request. Worker process and server-wide population data stay in
+SimulationWorker logs and metrics. The Admin menu (F3) holds development tools
+that SimulationWorker carries out only in the Development environment: the
+look, the walk speed, a teleport, full health, and invulnerability.
 
 ### Tests And Tools
 

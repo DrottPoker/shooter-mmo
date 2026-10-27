@@ -16,7 +16,7 @@ namespace Mmorpg.Client.Gameplay
 
     // When a player chooses each kind of look and how many a body shows. The appearance content
     // that the server checks every look against, content/characters/appearance.json, has the same
-    // rules, which CharacterLookTests holds; F2 and the Wardrobe show them.
+    // rules, which CharacterLookTests holds; the Admin menu (F3) and the Wardrobe show them.
     public static class AppearanceRules
     {
         public readonly struct Rule

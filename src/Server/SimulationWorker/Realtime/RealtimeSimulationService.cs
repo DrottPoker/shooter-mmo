@@ -61,7 +61,8 @@ public sealed class RealtimeSimulationService(
     MobCorpseLifecycleService? mobCorpses = null,
     CombatMetrics? combatMetrics = null,
     CharacterLookStore? lookStore = null,
-    CharacterAppearanceCatalog? appearanceCatalog = null)
+    CharacterAppearanceCatalog? appearanceCatalog = null,
+    DevelopmentAdminOptions? developmentAdmin = null)
     : BackgroundService
 {
     private readonly RealtimeServer server = RealtimeServerComposition.Create(
@@ -110,7 +111,8 @@ public sealed class RealtimeSimulationService(
                 appearanceCatalog is null
                     ? AppearanceReplicationSettings.Default
                     : new AppearanceReplicationSettings(appearanceCatalog.DefaultBodyModel, appearanceCatalog.VisibleEquipmentSlots),
-                gameServiceClient)),
+                gameServiceClient),
+            developmentAdmin),
         logger);
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)

@@ -50,6 +50,9 @@ internal sealed class RealtimeServerHarnessOptions
 
     public bool PlayerVersusPlayer { get; init; }
 
+    // Lets players use the development admin tools, as a Development worker does.
+    public bool EnableAdminTools { get; init; }
+
     public ICombatRandom? CombatRandom { get; init; }
 
     // Replaces the compiled actor runtime of the development World.
@@ -212,7 +215,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             mobCorpses: mobCorpses,
             combatMetrics: CombatMetrics,
             lookStore: Looks,
-            appearanceCatalog: AppearanceCatalog);
+            appearanceCatalog: AppearanceCatalog,
+            developmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null);
     }
 
     // The checked-in appearance content, as the worker loads it.

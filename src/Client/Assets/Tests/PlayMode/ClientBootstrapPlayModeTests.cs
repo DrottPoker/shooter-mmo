@@ -93,6 +93,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                 combatHud.GetComponentInChildren<Canvas>(true),
                 contextMenu.GetComponentInChildren<Canvas>(true),
                 messagePanel.GetComponentInChildren<Canvas>(true),
+                Object.FindAnyObjectByType<TemporaryDebugMenu>().GetComponentInChildren<Canvas>(true),
+                Object.FindAnyObjectByType<TemporaryAdminMenu>().GetComponentInChildren<Canvas>(true),
             };
             Assert.That(panelCanvases, Has.None.Null);
             Assert.That(
@@ -144,6 +146,58 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(characterPanel.anchorMax, Is.EqualTo(characterAnchorMax));
             inventoryPanel.SetOpen(false);
             Assert.That(inventoryPanel.IsOpen, Is.False);
+        }
+
+        // Both menus start closed. The Debug menu draws no collision until its toggle is on, and
+        // the Admin menu explains why its tools are off without a joined session.
+        [UnityTest]
+        public IEnumerator TheDebugAndAdminMenusStartClosedAndOpenWithTheirTabs()
+        {
+            ClientSession.Clear();
+            var loadOperation = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
+            yield return loadOperation;
+            Assert.That(loadOperation.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
+            yield return null;
+
+            var debugMenu = Object.FindAnyObjectByType<TemporaryDebugMenu>();
+            var adminMenu = Object.FindAnyObjectByType<TemporaryAdminMenu>();
+            Assert.That(debugMenu, Is.Not.Null);
+            Assert.That(adminMenu, Is.Not.Null);
+            Assert.That(debugMenu.IsOpen, Is.False);
+            Assert.That(adminMenu.IsOpen, Is.False);
+
+            debugMenu.SetOpen(true);
+            adminMenu.SetOpen(true);
+            yield return null;
+            Assert.That(debugMenu.IsOpen, Is.True);
+            Assert.That(debugMenu.Window.TabCount, Is.EqualTo(4));
+            Assert.That(debugMenu.Window.SelectedTab, Is.Zero);
+            Assert.That(debugMenu.Overlay.ShowCollision, Is.False);
+            Assert.That(debugMenu.Overlay.ShowPath, Is.False);
+            var collisionToggle = debugMenu.Window.Root
+                .GetComponentsInChildren<UnityEngine.UI.Toggle>(true)
+                .Single(toggle => toggle.GetComponentInChildren<UnityEngine.UI.Text>().text == "Collision around you");
+            Assert.That(collisionToggle.isOn, Is.False);
+            collisionToggle.isOn = true;
+            Assert.That(debugMenu.Overlay.ShowCollision, Is.True);
+            debugMenu.Window.SelectTab(2);
+            Assert.That(debugMenu.Window.SelectedTab, Is.EqualTo(2));
+
+            Assert.That(adminMenu.IsOpen, Is.True);
+            Assert.That(adminMenu.Window.TabCount, Is.EqualTo(3));
+            Assert.That(adminMenu.ToolsAvailable, Is.False);
+            Assert.That(adminMenu.Window.StatusText, Does.Contain("Join a World"));
+            Assert.That(
+                adminMenu.Window.Root.GetComponentsInChildren<CanvasGroup>(true).Select(group => group.interactable),
+                Has.All.False);
+
+            // The overlay draws only while the Debug menu is open.
+            debugMenu.SetOpen(false);
+            adminMenu.SetOpen(false);
+            Assert.That(debugMenu.Overlay.ShowCollision, Is.False);
+            Assert.That(debugMenu.IsOpen, Is.False);
+            Assert.That(adminMenu.IsOpen, Is.False);
+            collisionToggle.isOn = false;
         }
 
         [UnityTest]

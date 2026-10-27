@@ -112,10 +112,20 @@ namespace Mmorpg.Client.Networking
 
         public event Action<RealtimeAppearanceIntentResult> AppearanceIntentCompleted;
 
+        // The worker sent the development admin state of the controlled character; the movement
+        // session walks at its speed already.
+        public event Action AdminStateChanged;
+
+        public event Action<RealtimeAdminIntentResult> AdminIntentCompleted;
+
         public RealtimeConnectionState State { get; private set; }
 
         // The gameplay rules of the joined Shard, or null outside a joined session.
         public RealtimeShardRules ShardRules { get; private set; }
+
+        // The development admin state of the controlled character, or null while the worker
+        // allows no admin tools or outside a joined session.
+        public RealtimeAdminStateChanged AdminState { get; private set; }
 
         public string ConnectedHost { get; private set; } = string.Empty;
 
@@ -598,6 +608,35 @@ namespace Mmorpg.Client.Networking
             }
         }
 
+        public bool TrySendAdminIntent(RealtimeAdminIntent intent)
+        {
+            if (State != RealtimeConnectionState.Joined
+                || serverPeer == null
+                || intent == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var packet = RealtimeProtocol.EncodeAdminIntent(intent);
+                serverPeer.Send(
+                    packet,
+                    RealtimeProtocol.ControlChannel,
+                    DeliveryMethod.ReliableOrdered);
+                RecordSentPacket(packet.Length);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException || exception is InvalidOperationException)
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Client,
+                    "Admin intent could not be encoded: " + exception.Message);
+                return false;
+            }
+        }
+
         public bool TrySendAppearanceIntent(RealtimeAppearanceIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
@@ -667,6 +706,7 @@ namespace Mmorpg.Client.Networking
             pendingPlacement = null;
             MovementSession = null;
             ShardRules = null;
+            AdminState = null;
             ResetRealtimeDiagnostics();
             ClearSpawnedEntities("client_aborted");
             operationError = null;
@@ -713,6 +753,7 @@ namespace Mmorpg.Client.Networking
             State = RealtimeConnectionState.Disconnected;
             MovementSession = null;
             ShardRules = null;
+            AdminState = null;
             ResetRealtimeDiagnostics();
             ClearSpawnedEntities("connection_lost");
             stopTransportAfterPoll = true;
@@ -886,6 +927,12 @@ namespace Mmorpg.Client.Networking
                     case RealtimeMessageType.AppearanceIntentResult:
                         HandleAppearanceIntentResult(packet);
                         break;
+                    case RealtimeMessageType.AdminIntentResult:
+                        HandleAdminIntentResult(packet);
+                        break;
+                    case RealtimeMessageType.AdminStateChanged:
+                        HandleAdminStateChanged(packet);
+                        break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
                         break;
@@ -931,6 +978,8 @@ namespace Mmorpg.Client.Networking
                 case RealtimeMessageType.OwnerItemStateChanged:
                 case RealtimeMessageType.EntityAppearanceChanged:
                 case RealtimeMessageType.AppearanceIntentResult:
+                case RealtimeMessageType.AdminIntentResult:
+                case RealtimeMessageType.AdminStateChanged:
                     return true;
                 default:
                     return false;
@@ -999,6 +1048,7 @@ namespace Mmorpg.Client.Networking
             operationError = null;
             MovementSession = movementSession;
             ShardRules = session.ShardRules;
+            AdminState = null;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Joined;
             sessionJoined = true;
@@ -1716,6 +1766,46 @@ namespace Mmorpg.Client.Networking
             AppearanceIntentCompleted?.Invoke(result);
         }
 
+        private void HandleAdminIntentResult(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_admin_intent_result",
+                    "An admin intent result arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeAdminIntentResult(packet, out var result, out var error))
+            {
+                FailProtocol("invalid_admin_intent_result", error);
+                return;
+            }
+
+            AdminIntentCompleted?.Invoke(result);
+        }
+
+        private void HandleAdminStateChanged(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined || MovementSession == null)
+            {
+                FailProtocol(
+                    "unexpected_admin_state",
+                    "An admin state arrived without an active movement session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeAdminStateChanged(packet, out var state, out var error))
+            {
+                FailProtocol("invalid_admin_state", error);
+                return;
+            }
+
+            AdminState = state;
+            MovementSession.ApplyWalkSpeedPercent(state.SpeedPercent);
+            AdminStateChanged?.Invoke();
+        }
+
         private static bool HasSameWorldActorPresenceIdentity(
             RealtimeWorldActorSpawn first,
             RealtimeWorldActorSpawn second)
@@ -1795,6 +1885,7 @@ namespace Mmorpg.Client.Networking
             joinedSession = null;
             MovementSession = null;
             ShardRules = null;
+            AdminState = null;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
@@ -1841,6 +1932,7 @@ namespace Mmorpg.Client.Networking
             joinedSession = null;
             MovementSession = null;
             ShardRules = null;
+            AdminState = null;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
@@ -1878,6 +1970,7 @@ namespace Mmorpg.Client.Networking
             joinedSession = null;
             MovementSession = null;
             ShardRules = null;
+            AdminState = null;
             ResetRealtimeDiagnostics();
             State = RealtimeConnectionState.Disconnected;
             stopTransportAfterPoll = true;
@@ -1909,6 +2002,7 @@ namespace Mmorpg.Client.Networking
             joinedSession = null;
             MovementSession = null;
             ShardRules = null;
+            AdminState = null;
             ResetRealtimeDiagnostics();
             leaveAccepted = false;
             stopTransportAfterPoll = false;

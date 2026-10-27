@@ -213,7 +213,7 @@ namespace Mmorpg.Client.Gameplay
             networkSettings = session.Settings;
             movementPrediction = new ClientMovementPrediction(
                 session.InitialState,
-                networkSettings,
+                session.PredictionSettings,
                 session.CarryState,
                 session.CollisionWorld);
             navigator = new LocalPlayerNavigator(
@@ -224,6 +224,7 @@ namespace Mmorpg.Client.Gameplay
             hasAuthoritativeState = true;
             realtimeClient.OwnerSimulationSnapshotReceived += OnOwnerSimulationSnapshotReceived;
             realtimeClient.CarryStateChanged += OnCarryStateChanged;
+            realtimeClient.AdminStateChanged += OnAdminStateChanged;
             networkTickAccumulator = 0f;
             isInitialNetworkTickPending = true;
             nextInputSequence = 0;
@@ -240,6 +241,7 @@ namespace Mmorpg.Client.Gameplay
             {
                 realtimeClient.OwnerSimulationSnapshotReceived -= OnOwnerSimulationSnapshotReceived;
                 realtimeClient.CarryStateChanged -= OnCarryStateChanged;
+                realtimeClient.AdminStateChanged -= OnAdminStateChanged;
             }
 
             realtimeClient = null;
@@ -465,6 +467,15 @@ namespace Mmorpg.Client.Gameplay
             if (movementPrediction != null)
             {
                 movementPrediction.ApplyCarryState(carryState);
+            }
+        }
+
+        // A development admin changed the walk speed, which the worker walks at from its next tick.
+        private void OnAdminStateChanged()
+        {
+            if (movementPrediction != null && realtimeClient.MovementSession != null)
+            {
+                movementPrediction.ApplySettings(realtimeClient.MovementSession.PredictionSettings);
             }
         }
 

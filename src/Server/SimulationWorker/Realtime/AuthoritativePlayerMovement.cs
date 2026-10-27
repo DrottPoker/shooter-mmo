@@ -52,7 +52,7 @@ public sealed class AuthoritativePlayerMovement
     private const int BudgetUnitsPerTick = BudgetUnitsPerStep + 1;
     private const int MaximumBudgetUnits = MaximumStepBudget * BudgetUnitsPerStep;
 
-    private readonly MovementSimulationSettings settings;
+    private readonly MovementSimulationSettings baseSettings;
     private readonly ICollisionWorld collisionWorld;
     private readonly CollisionQueryBuffer collisionQueryBuffer = new();
     private readonly Queue<PlayerMovementInput> queuedInputs = new();
@@ -65,6 +65,7 @@ public sealed class AuthoritativePlayerMovement
     private bool holdingUntilNextInput;
     private int stepBudgetUnits = MaximumBudgetUnits;
     private int runAheadInputs;
+    private MovementSimulationSettings settings;
 
     public AuthoritativePlayerMovement(
         PlayerMovementState initialState,
@@ -72,7 +73,8 @@ public sealed class AuthoritativePlayerMovement
         PlayerCarryState initialCarryState,
         ICollisionWorld collisionWorld)
     {
-        this.settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        baseSettings = settings ?? throw new ArgumentNullException(nameof(settings));
+        this.settings = settings;
         this.collisionWorld = collisionWorld ?? throw new ArgumentNullException(nameof(collisionWorld));
         CarryState = initialCarryState ?? throw new ArgumentNullException(nameof(initialCarryState));
         State = initialState;
@@ -88,6 +90,9 @@ public sealed class AuthoritativePlayerMovement
     public PlayerMovementState ConfirmedState { get; private set; }
 
     public PlayerCarryState CarryState { get; private set; }
+
+    // The walk speed in percent of the World's, which a development admin changes.
+    public int WalkSpeedPercent { get; private set; } = 100;
 
     public uint LastReceivedInputSequence { get; private set; }
 
@@ -134,6 +139,14 @@ public sealed class AuthoritativePlayerMovement
             ? state.WithPathProgress(new MovementPathProgress(path.Id, path.Count, 0))
             : state.WithPathProgress(MovementPathProgress.None);
         ConfirmedState = State;
+    }
+
+    // Walks at percent of the World's walk speed from the next step on; the owner predicts with
+    // the same percent once the worker sends it.
+    public void SetWalkSpeedPercent(int percent)
+    {
+        settings = baseSettings.WithWalkSpeedPercent(percent);
+        WalkSpeedPercent = percent;
     }
 
     public bool ApplyCarryState(PlayerCarryState carryState)

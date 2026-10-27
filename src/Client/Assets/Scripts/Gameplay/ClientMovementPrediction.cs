@@ -24,8 +24,8 @@ namespace Mmorpg.Client.Gameplay
         private const int MaximumPendingInputs = 256;
         private readonly List<PlayerMovementInput> pendingInputs = new List<PlayerMovementInput>();
         private readonly CollisionQueryBuffer collisionQueryBuffer = new CollisionQueryBuffer();
-        private readonly MovementSimulationSettings settings;
         private readonly ICollisionWorld collisionWorld;
+        private MovementSimulationSettings settings;
         private PlayerCarryState carryState;
 
         public ClientMovementPrediction(
@@ -56,6 +56,12 @@ namespace Mmorpg.Client.Gameplay
         // The path id of the newest authoritative state. Until it matches the path of the
         // newest input, every batch carries that path.
         public uint ConfirmedPathId { get; private set; }
+
+        // Predicts with other settings from the next step on, such as a faster walk speed.
+        public void ApplySettings(MovementSimulationSettings candidate)
+        {
+            settings = candidate ?? throw new System.ArgumentNullException(nameof(candidate));
+        }
 
         public void ApplyCarryState(PlayerCarryState candidate)
         {

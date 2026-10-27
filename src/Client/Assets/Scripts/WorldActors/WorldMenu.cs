@@ -31,6 +31,7 @@ namespace Mmorpg.Client.WorldActors
         public const int Combat = 100;
         public const int WorldInteraction = 200;
         public const int WalkAndExamine = 300;
+        public const int Admin = 400;
     }
 
     // A feature that offers options for what the pointer points at, such as Attack or Trade.
@@ -151,6 +152,24 @@ namespace Mmorpg.Client.WorldActors
                 WorldMenuOptionGroup.Walk,
                 -1,
                 "Walk here",
+                string.Empty,
+                WorldMenuTargetStyle.None,
+                default(WorldPointerCandidate),
+                0,
+                null,
+                ray);
+        }
+
+        // An option for the ground under the pointer, such as Teleport here: after Walk here, or
+        // before every target's options when first, so a left click runs it.
+        public static WorldMenuOption ForGround(IWorldMenuProvider provider, int action, string verb, Ray ray, bool first)
+        {
+            return new WorldMenuOption(
+                provider,
+                action,
+                first ? WorldMenuOptionGroup.Target : WorldMenuOptionGroup.Walk,
+                -1,
+                verb,
                 string.Empty,
                 WorldMenuTargetStyle.None,
                 default(WorldPointerCandidate),

@@ -45,7 +45,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 "CameraRotate",
                 "CameraZoom",
                 "Cancel",
-                "ToggleWorldDebug",
+                "ToggleDebugMenu",
+                "ToggleAdminMenu",
                 "ToggleInventory",
                 "ToggleCharacterInventory",
                 "ToggleEquipmentInventory"
@@ -58,7 +59,7 @@ namespace Mmorpg.Client.Tests.EditMode
             // debug cursor toggle, and the crosshair interact key.
             foreach (var removedName in new[]
             {
-                "Move", "Sprint", "Jump", "Aim", "Look", "ToggleDebugCursor", "Interact"
+                "Move", "Sprint", "Jump", "Aim", "Look", "ToggleDebugCursor", "Interact", "ToggleWorldDebug"
             })
             {
                 Assert.That(actions.FindAction(removedName, false), Is.Null, removedName);
@@ -83,8 +84,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 Does.Contain("<Mouse>/scroll/y"));
             Assert.That(actions.FindAction("Cancel").bindings.Select(binding => binding.path),
                 Does.Contain("<Keyboard>/escape"));
-            Assert.That(actions.FindAction("ToggleWorldDebug").bindings.Select(binding => binding.path),
+            Assert.That(actions.FindAction("ToggleDebugMenu").bindings.Select(binding => binding.path),
                 Does.Contain("<Keyboard>/f2"));
+            Assert.That(actions.FindAction("ToggleAdminMenu").bindings.Select(binding => binding.path),
+                Does.Contain("<Keyboard>/f3"));
             Assert.That(actions.FindAction("ToggleInventory").bindings.Select(binding => binding.path),
                 Does.Contain("<Keyboard>/i"));
             Assert.That(actions.FindAction("ToggleCharacterInventory").bindings.Select(binding => binding.path),
@@ -609,13 +612,17 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // URP Lit everywhere, except the body materials that paint layers paint over, which use
-        // the skin shader, URP Lit with paint layers.
+        // the skin shader, URP Lit with paint layers, and the Debug menu's line material, which
+        // is URP Unlit so its lines keep their colors in any light.
         [Test]
         public void EveryProjectMaterialUsesTheUrpShaderOfItsKind()
         {
             // URP Lit, or its copies for painted skin and for garments.
             var painted = ArtAssetManifests.PaintedMaterialNames();
             var garments = ArtAssetManifests.GarmentMaterialNames();
+            var debugLines = AssetDatabase.GetAssetPath(
+                AssetDatabase.LoadAssetAtPath<ClientConfig>("Assets/Content/Config/ClientConfig.asset").DebugLineMaterial);
+            Assert.That(debugLines, Is.Not.Empty);
             var materialGuids = AssetDatabase.FindAssets("t:Material", new[] { "Assets" });
             Assert.That(materialGuids, Is.Not.Empty);
             foreach (var materialGuid in materialGuids)
@@ -624,6 +631,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 var material = AssetDatabase.LoadAssetAtPath<Material>(path);
                 Assert.That(material, Is.Not.Null, path);
                 Assert.That(material.shader, Is.Not.Null, path);
+                if (path == debugLines)
+                {
+                    Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Unlit"), path);
+                    continue;
+                }
+
                 Assert.That(
                     material.shader.name,
                     Is.EqualTo(garments.Contains(material.name)

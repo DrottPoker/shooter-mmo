@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 26,
+    "version": 27,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -254,6 +254,18 @@
       "value": 32,
       "visibility": "public",
       "description": "Combat events in one event batch; more events split into several batches."
+    },
+    {
+      "name": "MinimumAdminSpeedPercent",
+      "value": 100,
+      "visibility": "public",
+      "description": "The slowest walk speed a development admin chooses, in percent of the World's walk speed."
+    },
+    {
+      "name": "MaximumAdminSpeedPercent",
+      "value": 1000,
+      "visibility": "public",
+      "description": "The fastest walk speed a development admin chooses, in percent of the World's walk speed."
     }
   ],
   "enums": [
@@ -437,6 +449,17 @@
       "family": "Items",
       "description": "Why the worker changed an item quantity without a client intent.",
       "values": [ { "name": "AmmunitionConsumed", "value": 1 } ]
+    },
+    {
+      "name": "AdminIntentKind",
+      "family": "Admin",
+      "description": "What a development admin intent asks for.",
+      "values": [
+        { "name": "SetMovementSpeed", "value": 1 },
+        { "name": "Teleport", "value": 2 },
+        { "name": "RestoreHealth", "value": 3 },
+        { "name": "SetInvulnerable", "value": 4 }
+      ]
     },
     {
       "name": "ItemStateLocationKind",
@@ -2822,6 +2845,89 @@
         { "name": "Kind", "type": "AppearanceIntentKind", "description": "What the intent asked for." },
         { "name": "Succeeded", "type": "bool", "description": "Whether the worker stored the change." },
         { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the intent failed." }
+      ]
+    },
+    {
+      "name": "AdminIntent",
+      "id": 39,
+      "family": "Admin",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A development admin tool for the character: its walk speed, a teleport, full health, or invulnerability. Only a worker that allows the admin tools accepts it.",
+      "parameter": "intent",
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "Correlates the result." },
+        { "name": "Kind", "type": "AdminIntentKind", "description": "What the intent asks for." }
+      ],
+      "variants": {
+        "discriminator": "Kind",
+        "fields": [
+          {
+            "name": "SpeedPercent",
+            "type": "u16",
+            "absent": 0,
+            "description": "The walk speed in percent of the World's walk speed."
+          },
+          { "name": "DestinationX", "type": "f32", "description": "Where to teleport on the x axis." },
+          { "name": "DestinationY", "type": "f32", "description": "Where to teleport on the y axis, such as the ground under the pointer." },
+          { "name": "DestinationZ", "type": "f32", "description": "Where to teleport on the z axis." },
+          { "name": "Enabled", "type": "bool", "description": "Whether the character becomes invulnerable." }
+        ],
+        "cases": [
+          {
+            "kinds": [ { "kind": "SetMovementSpeed", "factory": "CreateSetMovementSpeed" } ],
+            "fields": [
+              { "field": "SpeedPercent", "minimum": "MinimumAdminSpeedPercent", "maximum": "MaximumAdminSpeedPercent" }
+            ]
+          },
+          {
+            "kinds": [ { "kind": "Teleport", "factory": "CreateTeleport" } ],
+            "fields": [ { "field": "DestinationX" }, { "field": "DestinationY" }, { "field": "DestinationZ" } ]
+          },
+          { "kinds": [ { "kind": "RestoreHealth", "factory": "CreateRestoreHealth" } ], "fields": [] },
+          {
+            "kinds": [ { "kind": "SetInvulnerable", "factory": "CreateSetInvulnerable" } ],
+            "fields": [ { "field": "Enabled" } ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "AdminIntentResult",
+      "id": 40,
+      "family": "Admin",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged.",
+      "parameter": "result",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "The intent this answers." },
+        { "name": "Kind", "type": "AdminIntentKind", "description": "What the intent asked for." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the worker carried out the intent." },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the intent failed." }
+      ]
+    },
+    {
+      "name": "AdminStateChanged",
+      "id": 41,
+      "family": "Admin",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The development admin state of the recipient's character. A worker that allows the admin tools sends it after every JoinAccepted and every change; its absence means the tools are off.",
+      "parameter": "state",
+      "fields": [
+        {
+          "name": "SpeedPercent",
+          "type": "u16",
+          "minimum": "MinimumAdminSpeedPercent",
+          "maximum": "MaximumAdminSpeedPercent",
+          "description": "The walk speed in percent of the World's walk speed, which the client predicts with."
+        },
+        { "name": "Invulnerable", "type": "bool", "description": "Whether hits leave the character's health as it is." }
       ]
     }
   ]

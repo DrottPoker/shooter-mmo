@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Mmorpg.Client.Gameplay
 {
     // Keeps the local player's look in step with SimulationWorker: it stores the look the worker
-    // sends for the controlled player, and sends the changes the World Debug panel and the
+    // sends for the controlled player, and sends the changes the Admin menu and the
     // inventory ask for. A refused change shows its reason in the game messages.
     public sealed class PlayerLookLink : IDisposable
     {

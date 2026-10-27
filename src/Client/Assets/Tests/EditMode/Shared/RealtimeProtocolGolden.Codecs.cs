@@ -129,7 +129,16 @@ namespace Mmorpg.SharedTests
                     RealtimeProtocol.EncodeAppearanceIntent),
                 [RealtimeMessageType.AppearanceIntentResult] = Typed<RealtimeAppearanceIntentResult>(
                     RealtimeProtocol.TryDecodeAppearanceIntentResult,
-                    RealtimeProtocol.EncodeAppearanceIntentResult)
+                    RealtimeProtocol.EncodeAppearanceIntentResult),
+                [RealtimeMessageType.AdminIntent] = Typed<RealtimeAdminIntent>(
+                    RealtimeProtocol.TryDecodeAdminIntent,
+                    RealtimeProtocol.EncodeAdminIntent),
+                [RealtimeMessageType.AdminIntentResult] = Typed<RealtimeAdminIntentResult>(
+                    RealtimeProtocol.TryDecodeAdminIntentResult,
+                    RealtimeProtocol.EncodeAdminIntentResult),
+                [RealtimeMessageType.AdminStateChanged] = Typed<RealtimeAdminStateChanged>(
+                    RealtimeProtocol.TryDecodeAdminStateChanged,
+                    RealtimeProtocol.EncodeAdminStateChanged)
             };
         }
 

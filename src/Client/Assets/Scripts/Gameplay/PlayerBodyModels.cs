@@ -7,7 +7,7 @@ namespace Mmorpg.Client.Gameplay
     // The body models a player can show, such as Human_Male and Human_Female: each a body prefab
     // with its own look catalog. The first is the default, which every player shows until body type
     // is chosen at character creation, saved with the character, and sent to other clients. Until
-    // then the local player picks a model in the World Debug panel (F2) and a development bot shows
+    // then the local player picks a model in the Admin menu (F3) and a development bot shows
     // one picked from its persistent id.
     public sealed class PlayerBodyModels : ScriptableObject
     {
