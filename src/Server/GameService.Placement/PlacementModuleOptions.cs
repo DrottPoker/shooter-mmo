@@ -18,7 +18,7 @@ public sealed record PlacementModuleOptions(
     public SimulationWorkerLeasePolicy WorkerLeasePolicy => new(WorkerHeartbeatTimeout);
 
     // Whether a worker may give a character another body model and look for development tools,
-    // such as the World Debug panel; only in the Development environment, since character
+    // such as the Admin menu; only in the Development environment, since character
     // creation chooses them otherwise.
     public bool DevelopmentLooks { get; init; }
 

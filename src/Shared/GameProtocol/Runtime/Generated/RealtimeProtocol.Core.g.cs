@@ -198,7 +198,22 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The outcome of an appearance intent; the new look follows as an EntityAppearanceChanged.
         /// </summary>
-        AppearanceIntentResult = 38
+        AppearanceIntentResult = 38,
+
+        /// <summary>
+        /// A development admin tool for the character: its walk speed, a teleport, full health, or invulnerability. Only a worker that allows the admin tools accepts it.
+        /// </summary>
+        AdminIntent = 39,
+
+        /// <summary>
+        /// The outcome of a development admin intent; a changed admin state follows as an AdminStateChanged.
+        /// </summary>
+        AdminIntentResult = 40,
+
+        /// <summary>
+        /// The development admin state of the recipient's character. A worker that allows the admin tools sends it after every JoinAccepted and every change; its absence means the tools are off.
+        /// </summary>
+        AdminStateChanged = 41
     }
 
     /// <summary>
@@ -339,6 +354,16 @@ namespace Mmorpg.GameProtocol
         /// Combat events in one event batch; more events split into several batches.
         /// </summary>
         public const int MaximumCombatEventsPerBatch = 32;
+
+        /// <summary>
+        /// The slowest walk speed a development admin chooses, in percent of the World's walk speed.
+        /// </summary>
+        public const int MinimumAdminSpeedPercent = 100;
+
+        /// <summary>
+        /// The fastest walk speed a development admin chooses, in percent of the World's walk speed.
+        /// </summary>
+        public const int MaximumAdminSpeedPercent = 1000;
     }
 
     // Framing, versioning, channels, and limits of the realtime protocol.
@@ -347,7 +372,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 26;
+        public const ushort Version = 27;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -413,6 +438,8 @@ namespace Mmorpg.GameProtocol
         private const int MaximumCorpsePresentationKeyLength = RealtimeProtocolLimits.MaximumCorpsePresentationKeyLength;
         private const int MaximumCorpseSectionSlotCapacity = RealtimeProtocolLimits.MaximumCorpseSectionSlotCapacity;
         private const int MaximumCombatEventsPerBatch = RealtimeProtocolLimits.MaximumCombatEventsPerBatch;
+        private const int MinimumAdminSpeedPercent = RealtimeProtocolLimits.MinimumAdminSpeedPercent;
+        private const int MaximumAdminSpeedPercent = RealtimeProtocolLimits.MaximumAdminSpeedPercent;
         private const int MaximumTimestampLength = 64;
         private const int MaximumErrorCodeLength = 64;
         private const int MaximumErrorMessageLength = 512;
@@ -475,7 +502,10 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.EntityAppearanceChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AdminIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AdminIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AdminStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>

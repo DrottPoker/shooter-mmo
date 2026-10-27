@@ -70,6 +70,10 @@ var developmentItemInteractionOptions =
     DevelopmentItemInteractionOptions.FromConfiguration(
         builder.Configuration,
         builder.Environment.IsDevelopment());
+var developmentAdminOptions =
+    DevelopmentAdminOptions.FromConfiguration(
+        builder.Configuration,
+        builder.Environment.IsDevelopment());
 var collisionStreamingStore = WorldCollisionLoader.LoadStreaming(config);
 collisionStreamingStore.Refresh([
     new SimulationVector3(
@@ -98,6 +102,7 @@ builder.Services.AddSingleton(new DevelopmentBotLooks(appearanceCatalog, itemCat
 builder.Services.AddSingleton<SimulationShardRules>();
 builder.Services.AddSingleton<CombatMetrics>();
 builder.Services.AddSingleton(developmentItemInteractionOptions);
+builder.Services.AddSingleton(developmentAdminOptions);
 builder.Services.AddSingleton(collisionStreamingStore);
 builder.Services.AddSingleton(staticCollisionWorld);
 builder.Services.AddSingleton(dynamicCollisionWorld);
@@ -186,6 +191,13 @@ if (developmentItemInteractionOptions.GlobalBankAndRecoveryAccess)
     logger.LogWarning(
         "Development global Bank and Recovery Storage access is enabled. "
         + "Production requires an open Bank or Recovery Storage NPC interaction.");
+}
+
+if (developmentAdminOptions.Enabled)
+{
+    logger.LogWarning(
+        "Development admin tools are enabled: every player may change its walk speed, teleport, "
+        + "restore its health, and become invulnerable.");
 }
 
 logger.LogInformation(

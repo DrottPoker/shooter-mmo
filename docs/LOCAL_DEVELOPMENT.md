@@ -799,8 +799,9 @@ For a manual default-state and reconnect check:
    `movement-simulation-v6`.
 4. Open `src/Client` in Unity `6000.6.7f1`, open LoginMenu,
    enter Play Mode, register or log in, select a character and shard, and join.
-5. Press F2 in the active World scene. A new empty character shows weight
-   `0 / 2000`, movement `100%`, and its committed item-state revision.
+5. Press F2 in the active World scene and open the Debug menu's `Movement` tab.
+   A new empty character shows weight `0 / 2000`, movement `100%`, and its
+   committed item-state revision.
 6. Leave to CharacterSelect and join the same character again. The carry tuple
    and revision are restored and movement remains available.
 7. Exit Play Mode and stop both backend processes and Compose services.
@@ -860,7 +861,8 @@ For a manual runtime smoke check:
 4. Open `src/Client` in Unity `6000.6.7f1`, open LoginMenu,
    enter Play Mode, log in, select a character and shard, and join the mapped
    development World scene.
-5. Press F2 and confirm movement and the admitted carry tuple remain available.
+5. Press F2 and confirm on the Debug menu's `Movement` tab that movement and the
+   admitted carry tuple remain available.
    This step verifies the in-world mutation boundary. The inventory panel is
    documented in [Unity Inventory Verification](#unity-inventory-verification).
 6. Leave and reconnect. Confirm the same committed carry revision is restored.
@@ -1145,7 +1147,9 @@ The checked-in `src/Server/SimulationWorker/Config/appsettings.Development.json`
 testing capability, not a GameService or protocol bypass. If the same setting is
 enabled outside the Development environment, SimulationWorker refuses startup.
 Production requires an open interaction with an NPC that offers Bank or Recovery
-Storage, and insurance always requires the insurance NPC capability.
+Storage, and insurance always requires the insurance NPC capability. The same
+file sets `DevelopmentAdmin:Enabled=true` for the Admin menu (F3); see
+[Debug And Admin Menu Verification](#debug-and-admin-menu-verification).
 
 To test the production access path, start SimulationWorker with the global
 access turned off:
@@ -1998,6 +2002,79 @@ With the Editor open, use the live Editor test commands in
 [Unity Editor Automation With Unity CLI](#unity-editor-automation-with-unity-cli)
 instead.
 
+## Debug And Admin Menu Verification
+
+Protocol 27 adds the development admin tools of the Admin menu (F3), and the
+Debug menu (F2) replaces the old World Debug panel; see
+[Debug Menu (F2)](GAME_FEATURES.md#debug-menu-f2) and
+[Admin Menu (F3)](GAME_FEATURES.md#admin-menu-f3). No manual Unity Editor steps
+are required: `ClientBootstrap` creates both menus at runtime, and the
+checked-in `PlayerControls` asset binds F2 and F3. The checked-in
+`src/Server/SimulationWorker/Config/appsettings.Development.json` sets
+`DevelopmentAdmin:Enabled=true`, and SimulationWorker refuses to start with it
+outside the Development environment.
+
+Automated checks: the worker's socket-level admin tests, the shared protocol
+goldens and walk-speed tests, and the Unity suites, which cover the collision
+lines, the prediction at the admin speed, the world menu's `Teleport here`, the
+F2 and F3 bindings, the debug line material, and both menus in a World scene:
+
+```powershell
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~RealtimeAdminTests"
+dotnet test tests/Shared/Mmorpg.Shared.Tests --configuration Release --filter "FullyQualifiedName~RealtimeProtocolGoldenTests|FullyQualifiedName~PlayerMovementSimulationTests"
+powershell -ExecutionPolicy Bypass -File tools/Run-UnityEditorTests.ps1
+```
+
+Manual test in the game:
+
+1. Start the local stack, GameService, and the default worker as
+   [Backend Services](#backend-services) describes. The worker logs the warning
+   `Development admin tools are enabled`.
+2. Open `LoginMenu` in Unity, enter Play Mode, log in, and join `Local Shard 1`.
+   Expected result: no menu is open.
+3. Press F2. Expected result: the Debug menu opens in the top-right corner on
+   its `Overview` tab, with your position, facing, and collision chunk; move the
+   pointer over the ground and `Ground at pointer` follows it. `Collision around
+   you` is off. Press `Copy player` and paste somewhere: the clipboard holds
+   `x, y, z`.
+4. Turn on `Collision around you`. Expected result: within 24 m of you, flat
+   ground boxes show their edges and the gate posts and hall walls show red box
+   edges. Walk to the highlands east of the spawn, around `(85, 2, 80)`.
+   Expected result: the terrain shows as a green triangle net, steep cliff
+   faces yellow, and the boxes of resource nodes orange; `Shapes shown` counts
+   them, and the frame rate stays high.
+5. Turn on `Path you follow` and click the ground far away. Expected result: a
+   cyan line runs from you through the rest of the route.
+6. Press F2 to close the menu. Expected result: the lines disappear. Press F2
+   again: they come back, since the settings stay on until the client restarts.
+7. Press F3. Expected result: the Admin menu opens below the player frame and
+   its footer says `The admin tools are on.`
+8. On the `Movement` tab press `3x`, then click the ground far away. Expected
+   result: the footer says `Walk speed 300%: done.`, `3x` is highlighted, you
+   walk three times as fast without stutter, and the Debug menu's `Movement`
+   tab shows `15.0 m/s (300% of the World's)` and no hard snaps. Press `1x`.
+9. Press `Pick a spot`, then left-click the ground a few meters away. Expected
+   result: you appear there at once, and the footer says `Teleport to ...:
+   done.` Right-click the ground. Expected result: the world menu offers
+   `Teleport here` after `Walk here`; choosing it teleports too. Press `Pick a
+   spot` and then Escape. Expected result: `Teleport cancelled.`
+10. On the `Combat` tab turn on `Invulnerable`, teleport to the Wolf Woods
+    around `(-105, 0, -105)`, and let a wolf bite you. Expected result: the bites show no damage and your health stays
+    full. Turn it off, take a bite, and press `Restore health`. Expected result:
+    the health is full again.
+11. On the `Look` tab press `>` on the `Hair` row. Expected result: the row
+    shows `DarkBrownHair` and your character gets the hair after a moment.
+12. Stop SimulationWorker and start it again with the tools off:
+
+    ```powershell
+    $env:DevelopmentAdmin__Enabled = "false"
+    dotnet run --project src/Server/SimulationWorker
+    ```
+
+    Join again and press F3. Expected result: the tabs are greyed out and the
+    footer says `The admin tools are off: only a SimulationWorker in the
+    Development environment allows them.`
+
 ## Item Operations Hardening Verification
 
 The operations hardening keeps the item, corpse, actor, capability,
@@ -2551,7 +2628,7 @@ Manual test of the assemblies and Addressables:
    register, create a character, and join `Local Shard 1`. Expected result:
    CharacterSelect shows `Loading DevelopmentWorld2.` briefly, the World scene
    opens with the local player and the authored NPC prefabs, the Console has no
-   warning or error, and `Leave Shard` in the F2 panel returns to
+   warning or error, and `Leave Shard` in the Debug menu (F2) returns to
    CharacterSelect.
 
 ## Unity Editor Automation With Unity CLI
@@ -3286,7 +3363,7 @@ A face or an eye color is another image of a body's face or eye material; see
    Expected result: the export writes `T_Face_Male_Bearded.png` below
    `src/Client/Assets/Art/Textures/Characters`, and when Unity gets focus the
    Console lists the catalog with `Face (Stubble, Clean, Bearded)`. In the game,
-   F2 offers the new face under `Your face`.
+   the `Face` row of the Admin menu's `Look` tab (F3) offers the new face.
 
 ### Make A Clip
 
@@ -3728,8 +3805,8 @@ controller, and prefabs are committed.
    `local-shard-2`. Expected result: the bots show the male or the female body,
    about half each, every bot keeps its body while it stays, and every body
    walks or jogs with its speed.
-8. Press F2 and turn on `Tint bodies: you purple, players orange, bots blue` in
-   the Presentation section. Expected result: your skin turns faintly purple and
+8. Press F2 and turn on `Tint bodies: you purple, players orange, bots blue` on
+   the Debug menu's `Overview` tab. Expected result: your skin turns faintly purple and
    the bots' faintly blue, a second client's character faintly orange; the eyes,
    teeth, and tongue keep their colors. Turn it off again. Expected result: every
    body shows its own skin. The setting is off in a new installation and is kept
@@ -3755,27 +3832,27 @@ controller, and prefabs are committed.
     not fall again. When the character respawns, its corpse stays at the place
     of death as the same body lying in the same pose and direction, where the
     grey capsule used to be, and a click on it opens the corpse as before.
-12. Press F2. In the Presentation section, press `>` next to `Your face:
-    Stubble (creation only)`, then next to `Your eye: Teal (creation only)`.
-    Expected result: the rows read `Your face: Clean` and `Your eye: Brown`, and
+12. Press F3 to open the Admin menu on its `Look` tab. Press `>` on the `Face`
+    row, which shows `Stubble` and `creation`, then on the `Eye` row, which shows
+    `Teal`. Expected result: the rows show `Clean` and `Brown`, and
     your body shows the clean-shaven face and brown eyes at once; zoom in with
-    the mouse wheel to see them. Press `>` next to `Your scar: none (creation
-    only)`. Expected result: `Your scar: Scar`, and a pale scar runs over the
+    the mouse wheel to see them. Press `>` on the `Scar` row, which shows
+    `none`. Expected result: it shows `Scar`, and a pale scar runs over the
     brow, the outer corner of the right eye, and down the cheek, on either face.
     Leave the shard and join again. Expected result: your body keeps the face,
     the scar, and the brown eyes. Press `>` once more on each row. Expected
     result: the stubble face, no scar, and teal eyes are back.
-13. Still in the F2 Presentation section, press `>` next to `Your tattoo: none
-    (creation, in game)`. Expected result: `Your tattoo: ForearmRunes`, and your
+13. Still on the Admin menu's `Look` tab, press `>` on the `Tattoo` row, which
+    shows `none` and `in game`. Expected result: it shows `ForearmRunes`, and your
     body shows six runes, f u þ a r k, in a column down the outside of the left
     forearm between two thin lines, in dark blue-black ink, and nothing on the
     right forearm; turn the camera around the body to see both. Press `>` again.
-    Expected result: `Your tattoo: Tattoo`, a round rune emblem on the upper
+    Expected result: `Tattoo`, a round rune emblem on the upper
     breastbone and an armband around each upper arm, and the runes are gone;
-    press `>` again and it is gone. Choose the female body in F2 and repeat.
-    Expected result: the same tattoos at the same places on her body. `Your underwear (legs): Briefs (creation, in game)` has no
-    `none`: underwear is always worn, and the woman also has `Your underwear
-    (body): Bra`. The choices are kept between sessions like the face and the
+    press `>` again and it is gone. Choose `Human_Female` on the `Body` row and repeat.
+    Expected result: the same tattoos at the same places on her body. The `Underwear (legs)` row, `Briefs`, has no
+    `none`: underwear is always worn, and the woman also has `Underwear
+    (body)`, `Bra`. The choices are kept between sessions like the face and the
     eyes.
 14. With ActiveSimulationBots on the shard, as in step 7, look at the bots up
     close. Expected result: the bots show both faces and both eye colors in every
@@ -3833,8 +3910,8 @@ controller, and prefabs are committed.
     shows through the jerkin at the shoulder seams. Drag `Linen Shirt` onto
     `Body`.
     Expected result: the linen shirt takes the jerkin's place, which moves into
-    the shirt's inventory slot, since a body wears one chest piece. In F2 choose
-    `Your tattoo: Tattoo` and drag `Net Shirt` onto `Body`. Expected result: the
+    the shirt's inventory slot, since a body wears one chest piece. In the Admin
+    menu (F3) choose `Tattoo` on the `Tattoo` row and drag `Net Shirt` onto `Body`. Expected result: the
     tattoo and the skin show through the net's meshes, and on the woman the bra
     too, since the net shirt does not hide underwear. Drag the items back into the
     inventory and the bare body is back. What the character wears comes from its
@@ -3852,10 +3929,10 @@ controller, and prefabs are committed.
     the hem, the hips are whole, the V shows the chest between the laces, and a
     look up into a sleeve shows the arm going on into it. Press `Death`. Expected
     result: the body falls and lies on its back in the jerkin.
-19. In a World scene, press F2. The Presentation section starts with `Your body:
-    Human_Male (creation only)`. Choose `Your tattoo: Tattoo` and wear the `Net
-    Shirt` from the inventory, then press `>` next to `Your body`. Expected result: the
-    row reads `Your body: Human_Female (creation only)`, your character is the
+19. In a World scene, press F3. The Admin menu's `Look` tab starts with the
+    `Body` row, `Human_Male` and `creation`. Choose `Tattoo` on the `Tattoo` row
+    and wear the `Net Shirt` from the inventory, then press `>` on the `Body` row.
+    Expected result: the row shows `Human_Female`, your character is the
     woman at once, on the same spot, with the net shirt, the tattoo, the bra, and
     the briefs, and the face and eye rows list her options, `Blush`, `Freckles`,
     `Teal`, and `Hazel`. Walk and jog. Expected result: she moves like the man,
@@ -3891,8 +3968,8 @@ controller, and prefabs are committed.
     at the cuff's edge.
 21. In a World scene, press `C` and wear `Wool Trousers`, `Leather Boots`,
     `Long-Sleeved Linen Shirt`, and `Leather Gloves` from the `Outfits Test
-    Pack` of step 17, on the man and, after `>` next to `Your body` in F2, on
-    the woman.
+    Pack` of step 17, on the man and, after `>` on the `Body` row of the Admin
+    menu (F3), on the woman.
     Expected result: your body wears the trousers tucked into brown leather
     boots that reach the middle of the calf, the long linen shirt, and brown
     leather gloves over its cuffs, with five fingers that follow your hands.
@@ -3994,8 +4071,8 @@ controller, and prefabs are committed.
     and the hood folded on the upper back; and a pointed iron helmet with four
     raised bands, a brow band above the ears, and a nasal down the nose.
 28. In a World scene, press `C` and wear `Long-Sleeved Linen Shirt` and `Wool
-    Cloak`, and in F2 choose `Your hair: DarkBrownHair`, on the man and, after
-    `>` next to `Your body`, on the woman. Expected result: straight dark brown
+    Cloak`, and in the Admin menu (F3) choose `DarkBrownHair` on the `Hair` row,
+    on the man and, after `>` on the `Body` row, on the woman. Expected result: straight dark brown
     hair with a middle parting and a short fringe covers the ears and falls to
     the shoulders, over the cloak. Wear `Wool Hood` on `Head`. Expected
     result: the grey-brown wool hood covers the head with the fringe and a little
@@ -4052,12 +4129,12 @@ item presentation are committed.
    darker. With `Wool Robe`, `Wool Hood`, and `Wool Cloak` the set is the undyed
    grey-brown robe and hood and the dark brown cloak, exactly as before.
 5. Wear `Nasal Helm` on `Head`. Expected result: the helmet takes the hood's
-   place, and the hood moves into the inventory. In F2 choose `Your hair:
-   DarkBrownHair` and then `none`. Expected result: the hair shows pressed flat
+   place, and the hood moves into the inventory. In the Admin menu (F3) choose
+   `DarkBrownHair` on the `Hair` row and then `none`. Expected result: the hair shows pressed flat
    under the helmet, and none means a bald head; the hair is part of the look and
    no item.
-6. Press `>` next to `Your body` in F2. Expected result: the woman wears the same
-   items in the same colors.
+6. Press `>` on the `Body` row of the Admin menu (F3). Expected result: the woman
+   wears the same items in the same colors.
 
 ### Manual Test Of The Look On The Server
 
@@ -4065,7 +4142,7 @@ The body model, the look, and the hood are stored with the character and every
 client shows them, as
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server)
 describes. No manual Unity Editor steps are required. Run GameService in the
-Development environment, as `dotnet run` does, so the World Debug panel may
+Development environment, as `dotnet run` does, so the Admin menu (F3) may
 change a look.
 
 1. Start the local stack, GameService, and the default worker as
@@ -4091,7 +4168,7 @@ change a look.
    shows the other player in its own body model, look, hair, robe, hood, and
    cloak; lowering or raising the hood, or changing an item in the first client,
    changes it in the second within a moment.
-6. In the first client press F2, step `Your face` and `Your body`. Expected
+6. In the first client press F3, step the `Face` and `Body` rows. Expected
    result: the look changes after a moment in both clients, and stays after
    leaving and joining again. Against a GameService outside Development the game
    messages show `Only a Development GameService changes a body model or a look;
@@ -4131,7 +4208,8 @@ orbit camera.
      arrow keys.
    - `CameraZoom`: Value, Axis. Bind `<Mouse>/scroll/y`.
    - `Cancel`: Button. Bind `<Keyboard>/escape`.
-   - `ToggleWorldDebug`: Button. Bind `<Keyboard>/f2`.
+   - `ToggleDebugMenu`: Button. Bind `<Keyboard>/f2`.
+   - `ToggleAdminMenu`: Button. Bind `<Keyboard>/f3`.
    - `ToggleInventory`, `ToggleCharacterInventory`, and
      `ToggleEquipmentInventory`: Button. Bind `<Keyboard>/i`, `<Keyboard>/b`,
      and `<Keyboard>/c`.
@@ -4496,15 +4574,15 @@ Expected result:
   from the authoritative state associated with the authored PlayerSpawn.
 - A left click on the ground walks there, the middle mouse button or the arrow
   keys orbit the camera, and the scroll wheel zooms. The cursor stays visible.
-- F2 hides or restores the scrollable bottom-left World Client Debug panel.
-- World Debug displays `Joined` and `127.0.0.1:27015/udp`.
-- World Debug displays shard `local-shard-1`, World `development-world-2`, worker
-  `local-simulation-worker-1`, and the current runtime id.
-- World Debug displays an increasing observed server tick, the configured 30 Hz
+- F2 opens and closes the Debug menu in the top-right corner.
+- Its `Network` tab displays `Joined` and `127.0.0.1:27015 / v27`.
+- Its `Network` tab displays shard `local-shard-1`, World `development-world-2`,
+  worker `local-simulation-worker-1`, and the current runtime id.
+- Its tabs display an increasing observed server tick, the configured 30 Hz
   simulation and 15 Hz snapshot rates, client FPS and frame timing, prediction
   backlog, reconciliation statistics, ping, snapshot age, observed packet and
   payload rates, estimated snapshot loss, and client-known entities.
-- World Debug does not display SimulationWorker CPU, memory, capacity, or total
+- The Debug menu does not display SimulationWorker CPU, memory, capacity, or total
   player and bot populations. Those values appear only in the SimulationWorker
   terminal and metrics surface.
 - Local movement responds immediately through prediction and remains corrected
@@ -4596,19 +4674,18 @@ No Inspector, scene, prefab, package, input-action, or build-setting change is
 required. The committed `PlayerControls` asset and `LocalPlayer` prefab already
 contain click-to-move and the orbit camera.
 
-1. Join `DevelopmentWorld2` through LoginMenu and CharacterSelect. Press F2 to
-   hide World Debug if it covers much of a small Game view, and keep the Game
-   view focused.
+1. Join `DevelopmentWorld2` through LoginMenu and CharacterSelect, and keep the
+   Game view focused.
 2. Left-click the ground a few meters in front of the player.
 3. From the plaza, click the ground east of the East Service Hall, so the
-   straight line crosses the hall. Press F2 to watch World Debug while the player
-   walks.
+   straight line crosses the hall. Press F2 and open the Debug menu's `Movement`
+   tab to watch it while the player walks.
 4. Click the roof or a wall face of a hall.
 5. Click a new spot while the player still walks.
 6. Drag with the middle mouse button, then hold each arrow key.
 7. Scroll the mouse wheel both ways.
 8. Walk so a hall stands between the player and the camera.
-9. With World Debug visible, click and scroll on the panel.
+9. With the Debug menu open, click and scroll on it.
 10. Hover Mira the Quartermaster on the plaza, then left-click her from more than
     three meters away.
 11. Press Escape.
@@ -4618,8 +4695,8 @@ Expected result:
 - Step 2: a small yellow disc marks the destination. The player starts walking
   on the next simulation tick without a visible server round trip, turns toward
   its direction of travel, stops on the disc, and the disc disappears.
-- Step 3: the player walks around the hall, never into it. World Debug shows
-  the path id, the current waypoint of the route, and the latest plan with its
+- Step 3: the player walks around the hall, never into it. The `Movement` tab
+  shows the path id, the current waypoint of the route, and the latest plan with its
   search nodes and milliseconds. Frames do not stall while it plans.
 - Step 4: the player walks to the closest reachable point beside the hall and
   stops there.
@@ -4631,7 +4708,7 @@ Expected result:
   centimeters from the character's head and shoulders at every tilt.
 - Step 8: the camera moves in front of the hall at once and eases back out
   afterwards.
-- Step 9: clicks and scrolling on the panel neither move the player nor zoom
+- Step 9: clicks and scrolling on the menu neither move the player nor zoom
   the camera.
 - Step 10: next to the pointer, `Talk-to Mira the Quartermaster / 9 more
   options` appears. The player walks to about 2.5 meters from Mira and stops,
@@ -4640,8 +4717,8 @@ Expected result:
 - The cursor stays visible and free throughout. WASD, Shift, Space, F1, and E
   do nothing. The right mouse button opens the world menu, described in
   [World Menu Verification](#world-menu-verification).
-- World Debug reports no hard snaps, and the latest position correction stays
-  near zero while the player walks.
+- The `Movement` tab reports no hard snaps, and the latest position correction
+  stays near zero while the player walks.
 - The SimulationWorker terminal shows no `unknown_movement_path` or
   `invalid_movement_input` protocol errors.
 
@@ -4650,8 +4727,9 @@ Server-authoritative movement test:
 1. Start PostgreSQL, Redis, GameService, and SimulationWorker with the commands above.
 2. Enter DevelopmentWorld1 through LoginMenu and CharacterSelect. Do not start
    directly from DevelopmentWorld1 for this test.
-3. Confirm World Debug shows server-authoritative client prediction and an
-   increasing observed server tick value.
+3. Confirm the Debug menu (F2) shows server-authoritative client prediction on
+   its `Movement` tab and an increasing observed server tick on its `Network`
+   tab.
 4. Click spots far apart, and click a new spot to change direction sharply while
    the player walks.
 5. Click the far side of CameraTestWall, LowCover, and HighCover, and click
@@ -4718,7 +4796,7 @@ Expected result:
 - The scene-authored map, spawn point, prefab references, and presentation root
   remain available.
 - No LocalPlayer, gameplay camera, or local input object is created.
-- World Debug reports that no active simulation session exists.
+- The Debug menu (F2) reports that no active simulation session exists.
 
 Use the full login and simulation join flow above to test movement across the
 ramp, steps, cover, and camera wall. Authenticated World-scene movement is

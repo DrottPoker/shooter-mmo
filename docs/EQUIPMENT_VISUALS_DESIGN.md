@@ -10,7 +10,7 @@ implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 5 are
 done: this document; the cloth chains with their solver; the garment
 kind with its fitting, weights, bands, masks, review, export, and Unity import;
 putting a character together with its garments, with the garment shader, the
-Wardrobe preview, and trying garments on in F2; the garment cage with its
+Wardrobe preview, and trying garments on in the Admin menu (F3); the garment cage with its
 standard lines, approved by Victor on 2026-10-23; and templates built from
 recipes on the cage with textures of their own, with the template `Jerkin` and
 its texture `LeatherJerkin`, approved by Victor on 2026-10-23, in place of the
@@ -147,12 +147,12 @@ paint is checked and touched up there; see
 
 Character creation, the look a server stores, and the NPC who changes a tattoo
 come later and follow these rules, which `AppearanceRules` in the client holds
-until then. F2 and the Wardrobe show them: one choice per kind, with no scar or
+until then. The Admin menu (F3) and the Wardrobe show them: one choice per kind, with no scar or
 tattoo among the choices, and the rule of each.
 
 Under the look lies the body model, `Human_Male` or `Human_Female`: exactly one,
 chosen in character creation and never changed (`AppearanceRules.BodyModel`).
-F2 chooses it until then. One look serves both bodies, as Victor decided on
+The Admin menu (F3) chooses it until then. One look serves both bodies, as Victor decided on
 2026-10-24: what the other body lacks, such as the face `Stubble` on the woman
 or the bra on the man, is not shown and comes back with the body that has it,
 while the garments, the tattoo, the scar, and the briefs carry over.
@@ -1257,7 +1257,7 @@ Every client sees a character as the server stores it, as Victor decided on
 - **The player lowers and raises the hood** with `AppearanceIntent`; GameService
   stores it, and the worker answers with `AppearanceIntentResult`. Only a
   GameService in the Development environment changes a body model or look in the
-  game, for the World Debug panel; character creation chooses them otherwise.
+  game, for the Admin menu (F3); character creation chooses them otherwise.
 - **Development bots** have no stored look and no items: the worker gives each a
   body model, a look, and an outfit of catalog items picked from its character id
   by a stable hash, so a crowd shows every body, face, and garment, and each bot

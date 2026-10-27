@@ -488,12 +488,51 @@ be partially overlapped by another click.
 
 ### World Scenes
 
-`WorldScenePanel` displays scrollable client-observed diagnostics in the bottom-left
-corner. F2 toggles its visibility through the Player Input Actions asset. Its
-Leave Shard action waits for an exact-session UDP leave acknowledgement before
-loading CharacterSelect. It displays connection state, active UDP endpoint,
-frame timing, Unity memory, client prediction backlog, reconciliation counts,
-ping, snapshot health, observed payload rates, and client-known entities.
+Two temporary uGUI menus sit on every World scene, built in code on
+`TemporaryMenuWindow`: a window with a header that names its key and has a
+close button, a row of tabs, one scrolling page per tab, and a footer with a
+status line. Pages are built once and keep the `Text`, `Toggle`, and `Button`
+components that change, so a refresh sets text and lays nothing out. Their
+canvases sort above the inventory and below the world context menu. Both start
+closed.
+
+`TemporaryDebugMenu` (F2, `ToggleDebugMenu`) shows client-observed diagnostics
+in four tabs, Overview, Performance, Network, and Movement, refreshed four times
+a second: the player's predicted position, facing, and collision chunk, the
+ground under the pointer, which `Copy player` and `Copy pointer` put on the
+clipboard, frame timing, Unity memory, connection identity, ping, snapshot
+health, observed payload rates, client-known entities, prediction backlog,
+reconciliation counts, the walk speed, and the route plan. Its Leave Shard
+action waits for an exact-session UDP leave acknowledgement before loading
+CharacterSelect, and it owns the World scene's session check, which sends a
+player build without a joined session back to CharacterSelect. Its `Show in
+the world` settings live in `WorldDebugViewSettings`, which `ClientBootstrap`
+owns, so they last across World scenes and are off whenever the client starts.
+
+`CollisionDebugOverlay` draws, while the Debug menu is open and its toggles are
+on, the baked collision around the local player and the rest of its route.
+`CollisionDebugLines` queries the movement session's `ChunkedStaticCollisionWorld`
+in a square 48 m wide and turns every shape into line segments by kind: triangle
+edges, lifted 3 cm along their normal, are walkable ground or too steep by the
+character's maximum slope, and the twelve edges of a box are an obstacle, a
+movement-only box such as a resource node, or a sight-only box by its layers.
+The overlay builds the lines again when the player moved 2 m or the loaded
+chunks changed, and draws one line mesh per kind every frame with
+`Graphics.RenderMesh` and the `ClientConfig` debug line material, an unlit URP
+material whose `_BaseColor` it sets per kind. About 4,500 terrain triangles of
+the Development World 2 highlands draw in the Editor at well over 100 FPS.
+
+`TemporaryAdminMenu` (F3, `ToggleAdminMenu`) holds the development admin tools
+in three tabs, Look, Movement, and Combat. They are available while
+`RealtimeSimulationClient.AdminState` is set, which a worker that allows the
+tools sends after every join; otherwise the tabs are greyed out and the footer
+says why. Look steps the stored body model and look through
+`PlayerBodyLookSetting`; Movement sends `SetMovementSpeed` for 1x to 10x and
+`Teleport`; Combat sends `RestoreHealth` and `SetInvulnerable`. The menu is a
+world menu provider: while it is open, the right-click menu offers `Teleport
+here` after `Walk here`, and after `Pick a spot` that option comes first, so a
+left click on the ground teleports and Escape cancels. The footer shows the
+worker's answer to each request.
 
 `RealtimeSimulationClient` counts application-level realtime packets and bytes,
 owner snapshot sequences, remote snapshot chunks, and estimated missing owner
@@ -551,14 +590,13 @@ active World scene.
 prefab. The referenced Input Actions asset defines the left select click, the
 right context menu click, pointer position, middle-button camera orbit and its
 mouse delta, arrow-key camera rotation, scroll zoom, cancel, inventory, and
-debug panel bindings. This keeps
+Debug and Admin menu bindings. This keeps
 device bindings out of gameplay and UI code and allows future rebinding and
 control-scheme work without changing those systems. The cursor is never locked.
 
 `ClientBootstrap` owns one `WorldPointerFocus` and passes it to the World scene,
-the local player, the camera, and the World Debug panel. It reports whether the
-pointer is over interface: uGUI panels through the EventSystem, and the
-immediate-mode debug panel through the rectangle it reports while drawing. A
+the local player, and the camera. It reports whether the pointer is over
+interface through the EventSystem, since every World scene panel is uGUI. A
 click or scroll over a panel therefore never reaches the world.
 
 `CharacterBody` is the reusable collision foundation for local players, remote
@@ -607,9 +645,19 @@ Authenticated prediction also consumes the exact carry tuple owned by
 100 percent capacity and linearly reduces it to `0.20` at the 140 percent hard
 cap. An involuntary death overflow above the hard cap is a valid carry tuple and
 stays at `0.20`. A reliable newer revision is applied before subsequent
-prediction and reconciliation replay. The temporary F2 panel exposes weight,
-capacity, item-state revision, and movement percentage for observation without
-becoming inventory state or authority.
+prediction and reconciliation replay. The Debug menu's Movement tab exposes
+weight, capacity, item-state revision, and movement percentage for observation
+without becoming inventory state or authority.
+
+A development admin walk speed reaches the client as `AdminStateChanged`.
+`NetworkMovementSession.ApplyWalkSpeedPercent` derives `PredictionSettings`,
+the joined settings with `MovementSimulationSettings.WithWalkSpeedPercent`, the
+same shared method the worker steps with, and `LocalPlayerController` hands
+them to `ClientMovementPrediction.ApplySettings` for the next step and every
+replay. The change is not tick-stamped, as a carry revision is not: the worker
+walks faster from its next tick, and reconciliation absorbs the few inputs
+between. At 3x in Development World 2 the prediction stayed exact, with no hard
+snap and no position correction.
 
 `RealtimeSimulationClient.TrySendItemOperation` accepts only a typed protocol intent while
 joined and sends it on the reliable ordered control path.
@@ -1389,10 +1437,10 @@ the `Graphics` category, which the Editor runs with
 `tools/Run-UnityEditorTests.ps1` and the headless run with `-nographics`, such
 as CI's, leaves out; see [Traits](../tests/README.md#traits).
 
-The World Debug panel (F2) has the setting
+The Debug menu (F2) has the setting
 `Tint bodies: you purple, players orange, bots blue`, off by default.
 `ClientBootstrap` owns the `PlayerBodyTintSetting`, keeps it in `PlayerPrefs`
-between sessions, and passes it to the panel and to `WorldSceneContext`, which
+between sessions, and passes it to the menu and to `WorldSceneContext`, which
 tints the local and every remote body when it changes and every body that
 spawns. A tint multiplies the skin materials of the body, which
 `PlayerBodyAppearance` lists, by a faint version of the color (35 percent of the
@@ -1415,9 +1463,9 @@ have, carry over.
 
 A look also names the paint layers its body wears, such as `Tattoo`, which the
 catalog lists for its body with their category, slot, material, image, its crop
-of the body's paint UVs, layer, smoothness, and metallic. The Presentation section of
-the World Debug panel has a row per category and slot of the local body's
-catalog, such as `Your tattoo: <Name>` and `Your underwear (legs): <Name>`, that
+of the body's paint UVs, layer, smoothness, and metallic. The Look tab of the
+Admin menu (F3) has a row per category and slot of the local body's
+catalog, such as `Tattoo` and `Underwear (legs)`, that
 steps through its choices with `<` and `>`, with `none` for a scar or a tattoo,
 shows when a player chooses it, and asks the server for the look. The body materials that paint layers paint draw with the skin
 shader `Mmorpg/Character Skin`, URP Lit with up to four paint layers; see
@@ -1485,8 +1533,8 @@ layers by `AppearanceRules`, as
 describes: `BodyAppearanceCatalog.ShownPaints` takes of each category and slot
 the first the look names, the first underwear of each slot when the look names
 none, and leaves out the underwear of a slot whose drawn garment has
-`HidesUnderwear`. F2 and the Wardrobe step through one choice per category and
-slot and show the rule of each.
+`HidesUnderwear`. The Admin menu and the Wardrobe step through one choice per
+category and slot and show the rule of each.
 Garment materials draw with the garment shader `Mmorpg/Garment`, URP Lit with
 three dye channels, cut at alpha 0.5 and drawn from both sides; see
 [Art Pipeline](ART_PIPELINE.md#unity-import-rules). The body prefab carries a
@@ -1513,8 +1561,8 @@ garment in its key, such as `Garment=WoolCloak@2B4364`, and the garment then
 draws with a copy of its texture's material in those colors, from
 `PlayerBodyMaterials`, shared by every body in the same colors; a garment in its
 natural colors, or without dye channels, draws with the material itself, so
-only the colors and not the mesh decide the copy. The Presentation section of
-the World Debug panel has `Your hair: <Name>` with `none` among the choices,
+only the colors and not the mesh decide the copy. The Look tab of the Admin menu
+has a `Hair` row with `none` among the choices,
 since hair is part of the look. Other players, bots, and corpses wear the
 garments of the items the server sends for them; see
 [Character Looks](#character-looks). `ItemGarmentTests`
@@ -1539,7 +1587,7 @@ garment of the hair slot. `RealtimeSimulationClient` keeps the latest
   body model, look, and headwear the server stores for the joined character, and
   `PlayerLookLink` keeps it in step: it stores the look the worker sends for the
   controlled player, forgets it when the session ends, sends the changes the
-  World Debug panel and the inventory ask for, and shows a refused change in the
+  Admin menu and the inventory ask for, and shows a refused change in the
   game messages. `WorldSceneContext` shows the model and dresses the look in the
   inventory's equipment, with its predicted moves, and the stored headwear, and
   holding the tool of the equipment slot `PlayerEquipment.UsedSlot` names, which
@@ -1583,7 +1631,7 @@ garment of the hair slot. `RealtimeSimulationClient` keeps the latest
 - **A dying body keeps its clothes.** While a body shows its character dead,
   `WorldSceneContext` keeps every new look for it and shows the last one once the
   body lives again, since its items lie in its corpse already.
-- **The World Debug panel (F2)**, in its Presentation section, shows the stored
+- **The Admin menu (F3)**, in its Look tab, shows the stored
   body model and look with a row per body model, slot, paint category and slot,
   and hair, and asks the worker for the stepped look; only a GameService in the
   Development environment stores it, and the new look shows when the worker sends
@@ -1644,16 +1692,18 @@ What made the difference:
   builds its combined mesh, about 10 ms once per combination.
 - **Remote players never load collision chunks**, like Mobs: a far spawn loaded
   up to 25 chunks, about 1.7 ms, which the next owner snapshot unloaded again.
-- **The F2 panel** cost 2.8 ms and 95 KB of garbage a frame; it builds its
-  metric text four times a second, draws the metric rows without layout groups,
-  and builds the look rows when the look changes, for 1.4 ms and 34 KB.
+- **The F2 panel**, then immediate-mode GUI, cost 2.8 ms and 95 KB of garbage a
+  frame; it built its metric text four times a second, drew the metric rows
+  without layout groups, and built the look rows when the look changed, for
+  1.4 ms and 34 KB. The Debug menu that replaced it on 2026-10-27 is uGUI, which
+  lays out nothing on a refresh and draws nothing while closed.
 - **Hot paths allocate nothing**: `Mathf.Max` with three arguments allocates an
   array, and a sort with a `Comparison` allocates a comparer.
 
 Where the 12 ms go now: the Editor's own loop about 3 ms, which a player build
 does not pay; rendering about 4 ms of main thread, every body drawing about ten
 submeshes in the camera and again in the shadow map, the shadows of the remote
-bodies about 1 ms; cloth 2 to 3 ms; the F2 panel 1.4 ms; and remote movement,
+bodies about 1 ms; cloth 2 to 3 ms; the F2 panel of then 1.4 ms; and remote movement,
 animation, and skinning about 2.5 ms. The GPU takes under 1 ms. The next levers
 are the levels of detail at half and a quarter of the triangles that
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#budgets) plans, a
@@ -1662,9 +1712,9 @@ often.
 
 To measure: start the bots on `local-shard-1` as in
 [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md#visual-unity-test), join, and
-read FPS and frame times in F2 or record the Unity Profiler with Deep Profile
-off; `ClothChainScheduler.LateUpdate`, `WorldSceneContext.Update`, and
-`WorldScenePanel.OnGUI` show the costs above.
+read FPS and frame times on the Debug menu's Performance tab (F2) or record the
+Unity Profiler with Deep Profile off; `ClothChainScheduler.LateUpdate` and
+`WorldSceneContext.Update` show the costs above.
 
 ## World Actor And Interaction Client
 

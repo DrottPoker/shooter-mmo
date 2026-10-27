@@ -50,7 +50,8 @@ internal sealed record RealtimeServerDependencies(
     IWorldActorCapabilityAvailabilityPolicy? CapabilityAvailability,
     SimulationGatheringService? GatheringService = null,
     CombatDependencies? Combat = null,
-    AppearanceDependencies? Appearance = null);
+    AppearanceDependencies? Appearance = null,
+    DevelopmentAdminOptions? DevelopmentAdmin = null);
 
 // What looks need beyond the realtime services: the looks of the active characters, the
 // appearance content's defaults, and GameService for changes. Without it no player has a look
@@ -391,9 +392,22 @@ internal static class RealtimeServerComposition
         {
             CloseWorldInteraction = worldInteractions.CloseForPeer
         };
+        var admin = new AdminIntentHandler(
+            config,
+            dependencies.DevelopmentAdmin ?? DevelopmentAdminOptions.Disabled,
+            peers,
+            sender,
+            presence,
+            combat,
+            dependencies.CollisionWorld,
+            dependencies.CollisionStreamingStore);
         presence.SpawnObserver = combatReplicator;
         teardown.RemovalObserver = combat;
-        sessions.PlayerJoined = combat.OnPlayerJoined;
+        sessions.PlayerJoined = (context, entity) =>
+        {
+            combat.OnPlayerJoined(context, entity);
+            admin.OnPlayerJoined(context, entity);
+        };
         var snapshots = new SnapshotReplicator(
             config,
             mobs,
@@ -474,7 +488,8 @@ internal static class RealtimeServerComposition
                 worldInteractions.HandleIntent,
                 sessions.HandleLeaveRequest,
                 combat.HandleIntent,
-                appearanceIntents.HandleIntent));
+                appearanceIntents.HandleIntent,
+                admin.HandleIntent));
         var completionProcessor = new RealtimeCompletionProcessor(
             completions,
             peers,

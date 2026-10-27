@@ -1,6 +1,6 @@
 # Realtime Protocol
 
-Last updated: 2026-10-25
+Last updated: 2026-10-27
 
 The realtime protocol is the binary contract between SimulationWorker and the
 Unity client over LiteNetLib. Its single source is the local Unity package
@@ -16,7 +16,7 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 26 |
+| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 27 |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
 A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
@@ -81,10 +81,12 @@ schema cannot say:
 | --- | --- |
 | `Session` | None |
 | `Movement` | `Movement/RealtimeProtocol.Movement.cs`: cross-field rules |
-| `Replication` | None |
+| `Replication` | `Replication/RealtimeProtocol.Replication.cs`: the player archetype ids |
 | `Items` | `Items/RealtimeProtocol.Items.cs`: cross-field rules |
 | `Corpses` | `Corpses/RealtimeProtocol.Corpses.cs`: cross-field rules and the shorter `RealtimeCorpseSlot` constructors |
 | `WorldActors` | `WorldActors/RealtimeProtocol.WorldActors.cs`: cross-field rules |
+| `Combat` | `Combat/RealtimeProtocol.Combat.cs`: cross-field rules |
+| `Admin` | None |
 
 `RealtimeError` is the generated `Error` struct of the `Session` family.
 
@@ -257,6 +259,9 @@ of every message type, generated from the schema:
 | 36 | `EntityAppearanceChanged` | Replication | Server to client | Control | Reliable ordered |
 | 37 | `AppearanceIntent` | Replication | Client to server | Control | Reliable ordered |
 | 38 | `AppearanceIntentResult` | Replication | Server to client | Control | Reliable ordered |
+| 39 | `AdminIntent` | Admin | Client to server | Control | Reliable ordered |
+| 40 | `AdminIntentResult` | Admin | Server to client | Control | Reliable ordered |
+| 41 | `AdminStateChanged` | Admin | Server to client | Control | Reliable ordered |
 
 The control channel is 0, the movement input channel is 1, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
@@ -559,6 +564,29 @@ tool the character holds while it uses it, which is the item of its Tool slot
 while it gathers, and empty otherwise and for every corpse. The worker sends a
 new look when the player starts or stops using its tool; see
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
+
+## Development Admin Tools
+
+Protocol version 27 added the Admin family for the development tools of the
+Unity Admin menu (F3), which only a SimulationWorker with `DevelopmentAdmin:Enabled`
+carries out; see
+[Development Admin Tools](SERVICE_FEATURES.md#development-admin-tools).
+
+- `AdminIntent` (39) carries an operation id and an `AdminIntentKind` with the
+  fields of its case: `SetMovementSpeed` (1) with `SpeedPercent`, a u16 from
+  `MinimumAdminSpeedPercent` (100) to `MaximumAdminSpeedPercent` (1000) of the
+  World's walk speed; `Teleport` (2) with a finite `DestinationX`, `DestinationY`,
+  and `DestinationZ`; `RestoreHealth` (3) with none; and `SetInvulnerable` (4)
+  with `Enabled`.
+- `AdminIntentResult` (40) echoes the operation id and kind, and carries an
+  `Error` when it failed, such as `admin_tools_disabled` from a worker without
+  the tools.
+- `AdminStateChanged` (41) sends the owner its `SpeedPercent`, in the same
+  range, and `Invulnerable`. A worker with the tools sends it after every
+  `JoinAccepted` and after every change of either, so a client that never
+  receives one knows the tools are off. The client predicts with the walk speed
+  it carries, through the shared `MovementSimulationSettings.WithWalkSpeedPercent`
+  that the worker steps with, so the simulation revision stays the same.
 
 ## Versioning
 

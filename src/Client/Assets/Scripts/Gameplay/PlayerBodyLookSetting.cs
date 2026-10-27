@@ -4,7 +4,7 @@ namespace Mmorpg.Client.Gameplay
 {
     // The body model, the look, and the headwear of the local player's character as the server
     // stores them; the composition root receives them from SimulationWorker. Character creation
-    // chooses them; in Development the World Debug panel asks for another body model or look, and
+    // chooses them; in Development the Admin menu asks for another body model or look, and
     // the inventory lowers and raises the headwear. One look serves every model: a slot option,
     // paint layer, or garment that the shown model's catalog lacks is not shown, and comes back
     // with a model that has it. The World scene offers the body models and the catalog of the

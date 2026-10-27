@@ -614,7 +614,7 @@ the others as they are.
 | --- | --- | --- | --- |
 | Texture variants | Other images of a painted material, packed in the character's `.blend` file and named in its manifest's `variants`, such as the faces `T_Face_Male_Stubble` and `T_Face_Male_Clean` and the eye colors `T_Eye_Male_Teal` and `T_Eye_Male_Brown`. They are reviewed and approved with the model. | The material shows the chosen image. | Implemented. |
 | Paint layers | Transparent paint over the skin in the bodies' paint UV map, of a category, `underwear`, `scar`, or `tattoo`, such as the briefs, a scar, or a tattoo, in a [paint layer](#paint-layers) asset of its own. Painted once on the layer's canvas and moved to every body by projection, also to a body of another topology, and one-sided where it is painted so. | The skin shader lays it over the skin when the body is drawn, by the rules of its category. | Implemented. |
-| Garments | Meshes skinned to the shared skeleton, such as clothes, armor, and hair: [garment templates](#garments) built on the [garment cage](#garment-cage) and fitted to every body of it, each worn with a [garment texture](#garment-textures) of its own asset. | Combined with the visible body parts into the body's one mesh; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md). | Implemented, with the Wardrobe preview and trying garments on in F2. |
+| Garments | Meshes skinned to the shared skeleton, such as clothes, armor, and hair: [garment templates](#garments) built on the [garment cage](#garment-cage) and fitted to every body of it, each worn with a [garment texture](#garment-textures) of its own asset. | Combined with the visible body parts into the body's one mesh; see [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md). | Implemented, with the Wardrobe preview and trying garments on in the Admin menu (F3). |
 | Attachments | Static models held on a socket, such as a sword or a shield, in an [attachment](#attachments) asset of its own. | Combined rigidly on its socket bone into the body's one mesh, with the hand closed around it. | Implemented, with the Wardrobe preview. |
 
 The faces and eyes of the human base characters are variants: images packed into
@@ -1279,7 +1279,7 @@ template that fits the body as a garment named after the texture: the
 template's model for the body and its slot, layer, and hides, the texture's
 material, which the template's model draws with instead of its own, and the
 texture's masks, or else the template's. A character wears a garment by the
-texture's name, such as `LeatherJerkin`, in F2 and in the Wardrobe, and one
+texture's name, such as `LeatherJerkin`, in the Admin menu (F3) and in the Wardrobe, and one
 garment per visual slot: trying one on takes off the other garment of its slot,
 such as another chest piece, and of two of a slot that a look names, the first
 in the catalog is worn.
@@ -1538,14 +1538,14 @@ weights.
 | `art/Paint/ForearmRunes` | `paint` | none | A one-sided `tattoo` over `M_Body`, layer 210, painted by a script on a canvas of the male and moved to the female: the runes of the fuþark, f u þ a r k, in a column down the outside of the left forearm between two thin lines, 30 mm apart, in the ink of `Tattoo`. Roughness 0.6. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, on a canvas of the male, moved to the female, lifted out of the former male face `Scarred`: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
 | `art/Paint/Tattoo` | `paint` | none | A `tattoo` over `M_Body`, layer 200, painted on a canvas of the male and moved to the female: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
-| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Blush` and `Freckles`. Model and rig approved 2026-10-24. The game shows it for the local player who chooses it in F2 and for about half of the development bots. |
+| `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Blush` and `Freckles`. Model and rig approved 2026-10-24. The game shows it for the local player who chooses it in the Admin menu (F3) and for about half of the development bots. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Stubble` and `Clean`. Model and rig approved 2026-10-24. The game shows it for every player until a body model is chosen, and for every corpse. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |
 | `art/WorldActors/Resource_OakTree` | `static` | `Available`, `Depleted` | A fantasy oak, 1,456 triangles in all: a thick trunk twisted about 70 degrees on five flaring roots, three boughs into a broad crown of eight faceted leaf clumps, dark green with light green where a face looks up, and four golden acorns of 41 cm on stalks below the crown's rim, so the tree reads from every side; the depleted state is the stump cut slanted at about 0.8 m with a pale heartwood face, two splinters on its high side, the same roots, and five wood chips. The tree is about 5.6 m high and 4 m wide, inside its 4 by 5.6 by 4 m interaction bounds. Five materials: bark, leaves, light leaves, acorn, and heartwood. Approved 2026-10-26. |
 
 ## Planned
 
-- The body type at character creation, chosen in F2 until then, and the look
+- The body type at character creation, chosen in the Admin menu (F3) until then, and the look
   chosen there, saved with the character and sent to every client.
 - Eyelid bones for blinking and forearm twist bones.
 - A model fix of the low armpits, where the triceps meet the torso, and of the

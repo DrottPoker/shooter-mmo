@@ -100,9 +100,9 @@ the local player as soon as it equips them, and others as the worker sends them.
 The inventory lowers and raises a worn Wool Hood, which every client shows. A
 dying body keeps its clothes until its character respawns, and a player corpse
 shows the dead character's body, look, and the garments still in it. In the
-Development environment the World Debug panel (F2) changes the stored body model
+Development environment the Admin menu (F3) changes the stored body model
 and look. With the
-World Debug setting `Tint bodies` on, off by default, the local player is tinted
+Debug menu setting `Tint bodies` on, off by default, the local player is tinted
 purple, other players orange, and synthetic development bots blue. SimulationWorker assigns each live
 player a network entity id. Reliable spawn and despawn messages decide when a
 remote player exists, while unreliable snapshots update only its movement.
@@ -283,26 +283,68 @@ Status: Local foundation implemented
   planned.
 - The collision filter ignores the local player hierarchy.
 
-## World Debug HUD
+## Debug Menu (F2)
 
 Status: Temporary UI presentation
 
-- The temporary World Client Debug panel is scrollable and anchored to the
-  bottom-left corner.
-- F2 hides or restores the World Debug panel. Its values refresh four times a
-  second, as often as the frame statistics change, so the open panel costs
-  little of the frame it measures.
-- The Presentation section has the setting `Tint bodies: you purple, players
-  orange, bots blue`, off by default and kept between sessions.
-- During an authenticated simulation session, World Debug shows only information
-  available to that client. It includes frame average, p95, and maximum time,
-  FPS, Unity memory, connection identity, ping, snapshot age and observed rate,
-  estimated missing snapshot sequences, payload rates, known entities, pending
-  predicted inputs, reconciliation statistics, the current route and waypoint,
-  and the latest route plan with its search size and time.
-- SimulationWorker CPU, memory, total population, bot population, capacity, and
-  internal tick timing remain server-side operational data and are not sent to
-  gameplay clients.
+- F2 opens and closes the Debug menu in the top-right corner, and its `X`
+  button closes it too. It is closed when a World scene loads. Its values
+  refresh four times a second, as often as the frame statistics change.
+- The menu has four tabs:
+  - **Overview**: the player's position, facing, and collision chunk, the
+    ground under the pointer, `Copy player` and `Copy pointer` buttons that put
+    `x, y, z` on the clipboard, a quick check of the frame, ping, latest
+    snapshot, and connection, and what the world shows for debugging.
+  - **Performance**: frame average, p95, and maximum time, FPS, resolution,
+    quality, VSync, and Unity memory.
+  - **Network**: connection identity, ping, snapshot age and observed rate,
+    estimated missing snapshot sequences, payload rates, and known entities.
+  - **Movement**: the prediction, the walk speed, carry weight, pending
+    predicted inputs, reconciliation statistics, the current route and
+    waypoint, and the latest route plan with its search size and time.
+- `Show in the world` on the Overview tab has three settings, all off when the
+  client starts:
+  - `Collision around you` draws the baked collision 24 m around the player
+    while the menu is open: green for walkable ground, yellow for surfaces too
+    steep to stand on, red for boxes that block movement and sight, orange for
+    boxes that block movement only, such as resource nodes, and purple for
+    boxes that block sight only. It is the collision the planner, the
+    prediction, and SimulationWorker use.
+  - `Path you follow` draws the rest of the current route in cyan.
+  - `Tint bodies: you purple, players orange, bots blue` is kept between
+    sessions.
+- The footer shows the status and `Leave Shard`.
+- During an authenticated simulation session, the Debug menu shows only
+  information available to that client. SimulationWorker CPU, memory, total
+  population, bot population, capacity, and internal tick timing remain
+  server-side operational data and are not sent to gameplay clients.
+
+## Admin Menu (F3)
+
+Status: Temporary UI presentation over an implemented Development-only
+authority
+
+- F3 opens and closes the Admin menu below the player frame. Its tools work
+  only against a SimulationWorker in the Development environment with
+  `DevelopmentAdmin:Enabled`, which is on in `appsettings.Development.json`.
+  Such a worker sends the character's admin state after every join; without it
+  the menu greys out its tabs and says that the tools are off.
+- **Look** steps through the stored body model, every appearance slot, every
+  paint category and slot, and the hair, and shows whether a player chooses
+  each at creation only or in the game too. A Development GameService stores
+  the change.
+- **Movement** sets the walk speed to 1x, 2x, 3x, 5x, or 10x. SimulationWorker
+  walks the character at that speed and the client predicts with the same
+  settings, so the faster walk needs no corrections. The speed lasts until the
+  character leaves the World, and a reconnect of the same session keeps it.
+- **Movement** also teleports: `Pick a spot`, then a left click on the ground,
+  or, while the menu is open, `Teleport here` in the right-click world menu.
+  SimulationWorker moves a living character onto walkable ground inside the
+  World and shows it there to everyone who sees it, as a respawn does.
+- **Combat** fills the character's health and switches `Invulnerable`, which
+  makes hits leave its health as it is until the character leaves the World.
+- The footer shows what the worker answered, such as `Teleport to 85.0, 1.9,
+  80.0: done.` or the reason a tool was refused.
 
 ## Carry Weight And Encumbrance
 
@@ -324,8 +366,8 @@ exceed that cap are rejected atomically.
 GameService owns the persistent tuple. SimulationWorker owns its movement
 effect, and Unity predicts with the same shared GameSimulation rules. Join and
 reconnect restore one fenced committed revision. Later revisions advance over
-the reliable control path. The F2 panel shows the current weight, capacity,
-revision, and movement percentage.
+the reliable control path. The Debug menu's Movement tab shows the current
+weight, capacity, revision, and movement percentage.
 
 Active characters now have one authoritative in-world mutation path for
 relocation, equip, unequip, stack split and merge, allowed destruction, Secure

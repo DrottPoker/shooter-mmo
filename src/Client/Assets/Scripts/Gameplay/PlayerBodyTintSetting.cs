@@ -4,7 +4,7 @@ namespace Mmorpg.Client.Gameplay
 {
     // Whether player bodies are tinted by who they are: purple for the local player, orange
     // for another person, and blue for a development bot. A debug setting, off by default;
-    // the World Debug panel switches it and the composition root keeps it between sessions.
+    // the Debug menu switches it and the composition root keeps it between sessions.
     public sealed class PlayerBodyTintSetting
     {
         private bool enabled;

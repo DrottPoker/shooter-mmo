@@ -30,6 +30,20 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(config.RuntimePrimitiveMaterial.shader.isSupported, Is.True);
         }
 
+        // The Debug menu draws its lines with this material, color by color, so it must be an
+        // unlit URP material with a base color.
+        [Test]
+        public void TheClientConfigurationCarriesAnUnlitUrpMaterialForDebugLines()
+        {
+            var config = AssetDatabase.LoadAssetAtPath<ClientConfig>(ClientConfigPath);
+
+            Assert.That(config, Is.Not.Null);
+            Assert.That(config.DebugLineMaterial, Is.Not.Null);
+            Assert.That(config.DebugLineMaterial.shader.name, Is.EqualTo("Universal Render Pipeline/Unlit"));
+            Assert.That(config.DebugLineMaterial.shader.isSupported, Is.True);
+            Assert.That(config.DebugLineMaterial.HasProperty("_BaseColor"), Is.True);
+        }
+
         [Test]
         public void RuntimeScriptsCreatePrimitivesOnlyThroughRuntimePrimitives()
         {

@@ -178,6 +178,35 @@ namespace Mmorpg.GameSimulation
 
         public CharacterCollisionSettings CharacterCollision { get; }
 
+        // The same settings with the walk speed at percent of this one, such as 300 for three
+        // times as fast. The worker and the client compute the same float from the same percent.
+        public MovementSimulationSettings WithWalkSpeedPercent(int percent)
+        {
+            if (percent <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(percent));
+            }
+
+            if (percent == 100)
+            {
+                return this;
+            }
+
+            return new MovementSimulationSettings(
+                TickRateHz,
+                (float)((float)(WalkSpeed * percent) / 100f),
+                RotationSpeedDegrees,
+                Gravity,
+                MaximumFallSpeed,
+                GroundedVerticalVelocity,
+                GroundHeight,
+                MinimumX,
+                MaximumX,
+                MinimumZ,
+                MaximumZ,
+                CharacterCollision);
+        }
+
         private static bool IsFinite(float value)
         {
             return !float.IsNaN(value) && !float.IsInfinity(value);

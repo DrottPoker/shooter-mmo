@@ -94,6 +94,9 @@ internal sealed class Combatant
 
     public ulong LineOfSightTargetEntityId { get; set; }
 
+    // A development admin made the player's hits leave its health as it is.
+    public bool AdminInvulnerable { get; set; }
+
     public static Combatant ForPlayer(PlayerSimulationEntity player, int maximumHealth)
     {
         ArgumentNullException.ThrowIfNull(player);

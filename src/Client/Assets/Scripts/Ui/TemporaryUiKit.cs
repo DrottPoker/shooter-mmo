@@ -148,6 +148,15 @@ namespace Mmorpg.Client.Ui
             return button;
         }
 
+        // Recolors a button built by CreateButton, such as the chosen one of a group.
+        public static void SetButtonTone(Button button, TemporaryButtonTone tone)
+        {
+            if (button != null && button.targetGraphic != null)
+            {
+                button.targetGraphic.color = ButtonFill(tone);
+            }
+        }
+
         public static InputField CreateIntegerField(
             Transform parent,
             string value,

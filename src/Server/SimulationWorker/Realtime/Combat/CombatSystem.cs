@@ -173,6 +173,42 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         return combatants.TryGet(entity.NetworkEntityId, out var combatant) && !combatant.IsAlive;
     }
 
+    // A development admin fills the health of a living player; false when it is dead or takes no
+    // part in combat.
+    public bool TryRestoreHealth(PlayerSimulationEntity entity)
+    {
+        if (!combatants.TryGet(entity.NetworkEntityId, out var combatant) || !combatant.IsAlive)
+        {
+            return false;
+        }
+
+        if (combatant.Health != combatant.MaximumHealth)
+        {
+            combatant.Health = combatant.MaximumHealth;
+            combatant.MarkStateChanged();
+        }
+
+        return true;
+    }
+
+    // A development admin makes hits leave a player's health as it is, or ends that; false when
+    // the player takes no part in combat. It lasts while the character's entity does.
+    public bool TrySetInvulnerable(PlayerSimulationEntity entity, bool invulnerable)
+    {
+        if (!combatants.TryGet(entity.NetworkEntityId, out var combatant))
+        {
+            return false;
+        }
+
+        combatant.AdminInvulnerable = invulnerable;
+        return true;
+    }
+
+    public bool IsAdminInvulnerable(PlayerSimulationEntity entity)
+    {
+        return combatants.TryGet(entity.NetworkEntityId, out var combatant) && combatant.AdminInvulnerable;
+    }
+
     public void HandleIntent(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;
@@ -787,7 +823,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
 
     private static bool IsInvulnerable(Combatant target)
     {
-        return target.LifeState == RealtimeCombatLifeState.Evading;
+        return target.LifeState == RealtimeCombatLifeState.Evading || target.AdminInvulnerable;
     }
 
     private CombatBounds BoundsOf(Combatant target)

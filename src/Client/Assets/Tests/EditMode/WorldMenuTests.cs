@@ -69,6 +69,33 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(menu.Options[4].IsPassive, Is.True);
         }
 
+        // The Admin menu's Teleport here follows Walk here, and while it picks a spot it comes
+        // first, so a left click teleports even onto a target.
+        [Test]
+        public void AGroundOptionFollowsWalkHereOrComesFirst()
+        {
+            var provider = new FakeProvider();
+            var near = new WorldPointerCandidate(new FakeTarget("Near"), 1f);
+            var menu = new WorldMenuBuilder();
+
+            foreach (var first in new[] { false, true })
+            {
+                menu.Begin(default(Ray), new[] { near });
+                menu.Add(WorldMenuOption.ForExamine(provider, 9, 0, near, "Near", WorldMenuTargetStyle.Npc, "Near text."));
+                menu.Add(WorldMenuOption.ForWalk(provider, 8, default(Ray)));
+                menu.Add(WorldMenuOption.ForTarget(provider, 2, 0, near, "Trade", "Near", WorldMenuTargetStyle.Npc));
+                menu.Add(WorldMenuOption.ForGround(provider, 7, TemporaryAdminMenu.TeleportVerb, default(Ray), first));
+                menu.Finish();
+
+                Assert.That(
+                    menu.Options.Select(option => option.Label),
+                    Is.EqualTo(first
+                        ? new[] { "Teleport here", "Trade Near", "Walk here", "Examine Near" }
+                        : new[] { "Trade Near", "Walk here", "Teleport here", "Examine Near" }));
+                Assert.That(menu.Options.Single(option => option.Action == 7).IsPassive, Is.False);
+            }
+        }
+
         // A stale option that did nothing must not end what other features do, such as an
         // attack, so only an option that acted is announced.
         [Test]

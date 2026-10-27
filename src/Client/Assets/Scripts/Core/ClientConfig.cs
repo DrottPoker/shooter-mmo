@@ -16,6 +16,10 @@ namespace Mmorpg.Client.Core
         // here puts it and its URP shader into the client content.
         [SerializeField] private Material runtimePrimitiveMaterial;
 
+        // The unlit material of the Debug menu's lines, such as the collision overlay, which sets
+        // its color per draw.
+        [SerializeField] private Material debugLineMaterial;
+
         public string GameServiceBaseUrl
         {
             get { return NormalizeUrl(gameServiceBaseUrl, "http://localhost:5000"); }
@@ -44,6 +48,11 @@ namespace Mmorpg.Client.Core
         public Material RuntimePrimitiveMaterial
         {
             get { return runtimePrimitiveMaterial; }
+        }
+
+        public Material DebugLineMaterial
+        {
+            get { return debugLineMaterial; }
         }
 
         // The handle keeps the configuration and the catalog it references loaded. The owner

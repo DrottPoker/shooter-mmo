@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 26;
+        public const ushort PinnedVersion = 27;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -293,6 +293,8 @@ namespace Mmorpg.SharedTests
             Expect(failures, "Limits.MaximumAppearanceNameLength", RealtimeProtocolLimits.MaximumAppearanceNameLength, 64);
             Expect(failures, "Limits.MaximumAppearanceChoices", RealtimeProtocolLimits.MaximumAppearanceChoices, 16);
             Expect(failures, "Limits.MaximumVisibleEquipment", RealtimeProtocolLimits.MaximumVisibleEquipment, 8);
+            Expect(failures, "Limits.MinimumAdminSpeedPercent", RealtimeProtocolLimits.MinimumAdminSpeedPercent, 100);
+            Expect(failures, "Limits.MaximumAdminSpeedPercent", RealtimeProtocolLimits.MaximumAdminSpeedPercent, 1000);
 
             ExpectEnum<RealtimeMessageType>(
                 failures,
@@ -304,7 +306,7 @@ namespace Mmorpg.SharedTests
                 + "WorldInteractionOpened=24 WorldInteractionResult=25 WorldInteractionClosed=26 OwnerSimulationSnapshot=27 "
                 + "GatheringState=28 CombatIntent=29 CombatIntentResult=30 CombatantState=31 CombatEventBatch=32 "
                 + "OwnerCombatState=33 OwnerItemQuantityChanged=34 OwnerItemStateChanged=35 EntityAppearanceChanged=36 "
-                + "AppearanceIntent=37 AppearanceIntentResult=38");
+                + "AppearanceIntent=37 AppearanceIntentResult=38 AdminIntent=39 AdminIntentResult=40 AdminStateChanged=41");
             ExpectEnum<RealtimeEntityKind>(failures, "Player=1");
             ExpectEnum<RealtimeItemOperationKind>(
                 failures,
@@ -330,6 +332,7 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeGatheringStateKind>(failures, "Started=1 Yielded=2 Stopped=3");
             ExpectEnum<RealtimeCombatIntentKind>(failures, "AttackTarget=1 ClearTarget=2");
             ExpectEnum<RealtimeAppearanceIntentKind>(failures, "LowerHeadwear=1 RaiseHeadwear=2 SetDevelopmentLook=3");
+            ExpectEnum<RealtimeAdminIntentKind>(failures, "SetMovementSpeed=1 Teleport=2 RestoreHealth=3 SetInvulnerable=4");
             ExpectEnum<RealtimeCombatLifeState>(failures, "Alive=1 Dead=2 Evading=3");
             ExpectEnum<RealtimeCombatAttackStatus>(
                 failures,
@@ -340,12 +343,13 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 1a 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 1b 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);
             ExpectTypeReader(failures, "type 0", Wire.Header(0).ToArray(), false, default);
-            ExpectTypeReader(failures, "type 39", Wire.Header(39).ToArray(), false, default);
+            ExpectTypeReader(failures, "type 42", Wire.Header(42).ToArray(), false, default);
+            ExpectTypeReader(failures, "type 41", Wire.Header(41).ToArray(), true, RealtimeMessageType.AdminStateChanged);
             ExpectTypeReader(failures, "type 36", Wire.Header(36).ToArray(), true, RealtimeMessageType.EntityAppearanceChanged);
             ExpectTypeReader(failures, "type 255", Wire.Header(255).ToArray(), false, default);
             ExpectTypeReader(failures, "type 27", Wire.Header(27).ToArray(), true, RealtimeMessageType.OwnerSimulationSnapshot);
@@ -416,6 +420,7 @@ namespace Mmorpg.SharedTests
             RegisterWorldActors(registry);
             RegisterCorpses(registry);
             RegisterCombat(registry);
+            RegisterAdmin(registry);
             return registry;
         }
 
