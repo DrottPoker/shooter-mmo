@@ -197,9 +197,10 @@ The repository currently supports:
   Shard, target-revision, range, bounds, line-of-sight, capability, rate, and
   one-active-session validation.
 - Server-authoritative target-based combat: a left click on a wolf or another
-  player walks into weapon range and auto-attacks with the Training Shortbow.
-  SimulationWorker owns range, line of sight, attack timing, damage, arrows in
-  flight, the equipment-change lockout, health, regeneration, and respawn, and
+  player walks into weapon range and auto-attacks with the Training Shortbow, the
+  Iron Sword, or the Oak Staff, whose magic bolts cost mana. SimulationWorker
+  owns range, line of sight, attack timing, damage, arrows and bolts in flight,
+  the equipment-change lockout, health, mana, regeneration, and respawn, and
   spends arrows in batches through GameService.
 - One death event per death, Mob or player, with its killer. A player death runs
   the existing death partition into Recovery Storage and a durable corpse, and a
@@ -311,7 +312,7 @@ Still to come on this foundation:
 - Zone ownership, cross-zone handoff, and layer orchestration.
 - Replicated dynamic collision transforms and general rigid-body simulation.
 - Combat beyond the first slice: abilities, further weapons, the combat
-  triangle, magic and mana, threat, and Mob abilities beyond one attack.
+  triangle, spells and mana potions, threat, and Mob abilities beyond one attack.
 - Final combat and corpse presentation. Unity shows both with temporary UI.
 - Crafting, professions, gathering progression, and the broader economy beyond
   the first NPC vendor.

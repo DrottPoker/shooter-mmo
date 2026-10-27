@@ -57,7 +57,7 @@ public sealed class MobPathPlanningQueueTests
             .Select(_ =>
             {
                 var agent = new MobAgent(
-                    Combatant.ForMob(actor, 50, new CombatAttackProfile("test", "melee", "normal", 1, 1, 30, 1.5f, 0f, null)),
+                    Combatant.ForMob(actor, 50, new CombatAttackProfile("test", "melee", "normal", 1, 1, 30, 1.5f, 0f, null, 0)),
                     locomotion,
                     brain,
                     [],

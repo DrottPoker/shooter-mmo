@@ -172,11 +172,13 @@ hand and restart the worker.
 
 | Field | Shipped value | Allowed |
 | --- | --- | --- |
-| `formatVersion` | 1 | 1 |
+| `formatVersion` | 2 | 2 |
 | `player.maximumHealth` | 100 | 1 to 1,000,000 |
+| `player.maximumMana` | 100, the mana that magic attacks spend; 0 leaves characters without magic | 0 to 1,000,000 |
 | `player.respawnDelaySeconds` | 5 | 0 to 300 |
-| `player.combatTimeoutSeconds` | 10, the time after the last attack or hit until a combatant leaves combat and starts to regenerate | 0 to 600 |
-| `player.regenerationPercentPerSecond` | 2 | 0 to 100 |
+| `player.combatTimeoutSeconds` | 5, the time after the last attack or hit until a combatant leaves combat and starts to regenerate | 0 to 600 |
+| `player.healthRegenerationPerSecond` | 1, the health a character out of combat regains every second | 0 to `maximumHealth` |
+| `player.manaRegenerationPerSecond` | 1, the mana a character out of combat regains every second | 0 to `maximumMana` |
 | `player.equipmentLockoutSeconds` | 1 | 0 to 30 |
 | `ammunition.batchIntervalSeconds` | 5, the time after the first uncommitted shot until the worker commits the spent arrows | 0.5 to 60 |
 | `ruleSets` | `mvp-open-risk` with `playerVersusPlayer` `true` | 1 to 64 rule sets with unique, lowercase, sorted ids |

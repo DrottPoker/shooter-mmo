@@ -22,6 +22,7 @@
   "weapon": {
     "attackIntervalSeconds": 2.4,
     "damageType": "normal",
+    "manaCost": 0,
     "maximumDamage": 19,
     "minimumDamage": 11,
     "range": 2.5,

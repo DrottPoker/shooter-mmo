@@ -22,9 +22,11 @@ public sealed class CombatRulesTests
         var output = CombatRulesLoader.Load(Path.Combine(AppContext.BaseDirectory, SimulationWorkerConfig.DefaultCombatRulesPath));
 
         Assert.Equal(100, content.PlayerMaximumHealth);
+        Assert.Equal(100, content.PlayerMaximumMana);
         Assert.Equal(5f, content.RespawnDelaySeconds);
-        Assert.Equal(10f, content.CombatTimeoutSeconds);
-        Assert.Equal(2, content.RegenerationPercentPerSecond);
+        Assert.Equal(5f, content.CombatTimeoutSeconds);
+        Assert.Equal(1, content.HealthRegenerationPerSecond);
+        Assert.Equal(1, content.ManaRegenerationPerSecond);
         Assert.Equal(1f, content.EquipmentLockoutSeconds);
         Assert.Equal(5f, content.AmmunitionBatchIntervalSeconds);
         Assert.True(content.TryGetRuleSet("mvp-open-risk", out var openRisk));
@@ -57,21 +59,38 @@ public sealed class CombatRulesTests
     }
 
     [Theory]
-    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":0,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":-1,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":101,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":0.1},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"b","playerVersusPlayer":true},{"id":"a","playerVersusPlayer":false}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true},{"id":"a","playerVersusPlayer":false}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"Open Risk","playerVersusPlayer":true}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}],"extra":1}""")]
-    [InlineData("""{"formatVersion":1,"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
-    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":10,"regenerationPercentPerSecond":2,"equipmentLockoutSeconds":1,},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":1,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":3,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":0,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":-1,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":-1,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":101,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":101,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":-1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1,"regenerationPercentPerSecond":2},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":0.1},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"b","playerVersusPlayer":true},{"id":"a","playerVersusPlayer":false}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true},{"id":"a","playerVersusPlayer":false}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"Open Risk","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}],"extra":1}""")]
+    [InlineData("""{"formatVersion":2,"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
+    [InlineData("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":100,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":1,"manaRegenerationPerSecond":1,"equipmentLockoutSeconds":1,},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""")]
     public void InvalidRulesAreRejected(string json)
     {
         Assert.Throws<InvalidDataException>(() => CombatRulesLoader.Parse(json));
+    }
+
+    // A world without magic leaves the mana at 0, and nothing regenerates when the rates are 0.
+    [Fact]
+    public void ManaAndRegenerationMayBeZero()
+    {
+        var rules = CombatRulesLoader.Parse("""{"formatVersion":2,"player":{"maximumHealth":100,"maximumMana":0,"respawnDelaySeconds":5,"combatTimeoutSeconds":5,"healthRegenerationPerSecond":0,"manaRegenerationPerSecond":0,"equipmentLockoutSeconds":1},"ammunition":{"batchIntervalSeconds":5},"ruleSets":[{"id":"a","playerVersusPlayer":true}]}""");
+
+        Assert.Equal(0, rules.PlayerMaximumMana);
+        Assert.Equal(0, rules.HealthRegenerationPerSecond);
+        Assert.Equal(0, rules.ManaRegenerationPerSecond);
     }
 
     [Fact]

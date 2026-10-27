@@ -9,7 +9,9 @@ namespace Mmorpg.Client.Gameplay
     // teleport or a correction, is not taken as movement. Combat tells the body whether its
     // character is dead, and a dead body plays Death and stays lying. While the body holds a tool,
     // such as a pickaxe while its character gathers, it plays the tool's clip, such as Mine,
-    // whenever it stands and lives.
+    // whenever it stands and lives. While it holds a weapon with a hold clip, such as a staff, the
+    // main hand's arm keeps that pose, and when the weapon's attack releases the upper body plays
+    // the weapon's attack clip once, such as Cast.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Animator))]
     [DefaultExecutionOrder(PresentationExecutionOrder.Locomotion)]
@@ -39,9 +41,60 @@ namespace Mmorpg.Client.Gameplay
         // Its full path in the base layer, which HasState takes.
         private int usePathId;
         private int shownUseStateId;
+        private int holdLayer = -1;
+        private int actionLayer = -1;
+        private int holdStateId;
+        // Whether the hold layer has a state of the hold clip's name, once the Animator could say.
+        private bool? holdStateExists;
+        private bool holdShown;
+        private float actionStartedAt = -1f;
+        private float actionLength;
 
         // The clip of the tool the body holds, such as Mine, or empty.
         public string UseClip { get; private set; } = string.Empty;
+
+        // The pose the main hand's arm holds its weapon in, such as HoldStaff, or empty.
+        public string HoldClip { get; private set; } = string.Empty;
+
+        // How much of the upper body's pose comes from an attack clip that plays, from 0 to 1.
+        public float ActionWeight { get; private set; }
+
+        // Holds the main hand's arm in a weapon's pose, such as HoldStaff, or lets it move with the
+        // other clips again for an empty clip.
+        public void Hold(string clip)
+        {
+            clip = clip ?? string.Empty;
+            if (string.Equals(clip, HoldClip, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            HoldClip = clip;
+            holdStateId = clip.Length > 0 ? Animator.StringToHash(clip) : 0;
+            holdStateExists = null;
+        }
+
+        // Plays a weapon's attack clip once over the upper body from its start, such as Cast; false
+        // when the body lies dead or its controller has no state of that name on the action layer.
+        public bool PlayAttack(string clip)
+        {
+            if (string.IsNullOrEmpty(clip) || IsDead || !HasController || actionLayer < 0
+                || !animator.HasState(actionLayer, Animator.StringToHash(HumanLocomotion.ActionLayer + "." + clip)))
+            {
+                return false;
+            }
+
+            var length = ClipLength(clip);
+            if (length <= 0f)
+            {
+                return false;
+            }
+
+            animator.Play(Animator.StringToHash(clip), actionLayer, 0f);
+            actionStartedAt = Time.time;
+            actionLength = length;
+            return true;
+        }
 
         // Plays the clip of a tool the body holds, in the base layer's state of the same name, or
         // stops playing one for an empty clip.
@@ -123,6 +176,8 @@ namespace Mmorpg.Client.Gameplay
             var controller = animator.runtimeAnimatorController;
             if (controller != null)
             {
+                holdLayer = animator.GetLayerIndex(HumanLocomotion.MainHandHoldLayer);
+                actionLayer = animator.GetLayerIndex(HumanLocomotion.ActionLayer);
                 foreach (var clip in controller.animationClips)
                 {
                     if (clip.name == HumanLocomotion.WalkClip)
@@ -168,6 +223,19 @@ namespace Mmorpg.Client.Gameplay
             return Mathf.Lerp(current, measured, 1f - Mathf.Exp(-deltaTime / SmoothingSeconds));
         }
 
+        private float ClipLength(string clip)
+        {
+            foreach (var candidate in animator.runtimeAnimatorController.animationClips)
+            {
+                if (candidate.name == clip)
+                {
+                    return candidate.length;
+                }
+            }
+
+            return 0f;
+        }
+
         private void Apply()
         {
             if (!HasController)
@@ -189,6 +257,74 @@ namespace Mmorpg.Client.Gameplay
             }
 
             ApplyUse();
+            ApplyHold();
+            ApplyAction();
+        }
+
+        // The main hand's arm holds the weapon's pose while the body lives and uses no tool. Bodies
+        // that hold no such weapon set the layer only when they let go of one.
+        private void ApplyHold()
+        {
+            if (holdLayer < 0)
+            {
+                return;
+            }
+
+            if (holdStateId != 0 && holdStateExists == null && animator.isInitialized)
+            {
+                holdStateExists = animator.HasState(
+                    holdLayer,
+                    Animator.StringToHash(HumanLocomotion.MainHandHoldLayer + "." + HoldClip));
+            }
+
+            var holds = holdStateId != 0 && holdStateExists == true && !IsDead && UseClip.Length == 0;
+            if (!holds)
+            {
+                if (holdShown)
+                {
+                    animator.SetLayerWeight(holdLayer, 0f);
+                    holdShown = false;
+                }
+
+                return;
+            }
+
+            // A rebound Animator starts its layers over, so the state and weight are set every frame.
+            if (animator.GetCurrentAnimatorStateInfo(holdLayer).shortNameHash != holdStateId)
+            {
+                animator.Play(holdStateId, holdLayer, 0f);
+            }
+
+            animator.SetLayerWeight(holdLayer, 1f);
+            holdShown = true;
+        }
+
+        // An attack clip fades in, plays once, and fades out; a body that dies or starts to move
+        // ends it at once with a short fade.
+        private void ApplyAction()
+        {
+            if (actionLayer < 0 || actionStartedAt < 0f)
+            {
+                return;
+            }
+
+            var elapsed = Time.time - actionStartedAt;
+            if (IsDead)
+            {
+                actionLength = 0f;
+            }
+            else if (Speed >= HumanLocomotion.MovingSpeed && elapsed < actionLength - HumanLocomotion.ActionFadeOutSeconds)
+            {
+                actionLength = elapsed + HumanLocomotion.ActionFadeOutSeconds;
+            }
+
+            ActionWeight = HumanLocomotion.ActionWeight(elapsed, actionLength);
+            animator.SetLayerWeight(actionLayer, ActionWeight);
+            if (ActionWeight <= 0f && elapsed > 0f)
+            {
+                actionStartedAt = -1f;
+                animator.Play(Animator.StringToHash(HumanLocomotion.EmptyState), actionLayer, 0f);
+            }
         }
 
         // A body that holds a tool plays its clip while it stands and lives, and crossfades back to

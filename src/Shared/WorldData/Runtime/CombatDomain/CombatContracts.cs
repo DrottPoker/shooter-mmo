@@ -46,6 +46,7 @@ namespace Mmorpg.WorldData.Combat
     {
         public const int MaximumDamage = 100_000;
         public const int MaximumHealth = 1_000_000;
+        public const int MaximumMana = 1_000_000;
         public const float MinimumAttackIntervalSeconds = 0.5f;
         public const float MaximumAttackIntervalSeconds = 60f;
         public const float MaximumAttackRangeMetres = 64f;

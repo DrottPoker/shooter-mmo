@@ -1,16 +1,21 @@
 using System.Collections.Generic;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
 
 namespace Mmorpg.Client.Combat
 {
-    // When a released attack shows a projectile and how long it still flies.
+    // When a released attack shows a projectile, how long it still flies, and when it leaves.
     public static class CombatProjectileRules
     {
         // Shorter flights are not worth drawing, such as an arrow that already landed.
         public const float MinimumFlightSeconds = 0.05f;
+
+        // A magic bolt leaves the staff when its attack clip thrusts the staff forward, but never
+        // later than halfway through its flight.
+        public const float MagicLaunchDelaySeconds = 0.15f;
 
         // A projectile lands after the tick of its release; a Mob bite resolves at once.
         public static bool IsProjectile(RealtimeCombatEvent combatEvent, uint batchServerTick)
@@ -37,10 +42,20 @@ namespace Mmorpg.Client.Combat
                 ? unchecked((int)(impactTick - batchServerTick)) / (float)tickRateHz
                 : 0f;
         }
+
+        // How long after the release the projectile appears; it still lands at its impact tick.
+        public static float LaunchDelaySeconds(RealtimeCombatAttackStyle style, float flightSeconds)
+        {
+            return style == RealtimeCombatAttackStyle.Magic
+                ? Mathf.Clamp(flightSeconds * 0.5f, 0f, MagicLaunchDelaySeconds)
+                : 0f;
+        }
     }
 
-    // Replaceable presentation: a simple arrow flies from the attacker to the target of
-    // every released ranged attack and lands at the event's impact tick. It decides
+    // Replaceable presentation of released attacks. The attacker's body plays its weapon's attack
+    // clip, such as Cast for a staff, and a projectile flies from the attacker to the target and
+    // lands at the event's impact tick: a simple arrow for a ranged attack, and a glowing bolt
+    // from the weapon's launch point, such as a staff's crystal, for a magic one. It decides
     // nothing; damage comes from Hit events and health from the combat states.
     [DisallowMultipleComponent]
     public sealed class CombatProjectilePresentation : MonoBehaviour
@@ -50,13 +65,21 @@ namespace Mmorpg.Client.Combat
         private static readonly Vector3 ArrowScale = new Vector3(0.05f, 0.05f, 0.7f);
         private static readonly Color ArrowColor = new Color(0.93f, 0.89f, 0.78f, 1f);
 
+        // A bolt is a bright core with two fading sparks trailing it, in an arcane blue-white.
+        private static readonly float[] BoltSparkScales = { 0.16f, 0.1f, 0.06f };
+        private const float BoltSparkSpacing = 0.12f;
+        private static readonly Color BoltColor = new Color(0.78f, 0.94f, 1f, 1f);
+        private static readonly Color BoltEmission = new Color(0.45f, 0.8f, 1f, 1f) * 2.5f;
+
         private readonly List<Flight> flights = new List<Flight>();
         private readonly Stack<GameObject> idleArrows = new Stack<GameObject>();
+        private readonly Stack<GameObject> idleBolts = new Stack<GameObject>();
         private CombatClientController combatController;
         private RealtimeSimulationClient realtimeClient;
         private CombatantViewLocator views;
         private Material primitiveMaterial;
         private Material arrowMaterial;
+        private Material boltMaterial;
         private bool subscribed;
 
         public int ActiveFlightCount
@@ -102,18 +125,28 @@ namespace Mmorpg.Client.Combat
 
         private void OnDestroy()
         {
-            while (idleArrows.Count > 0)
-            {
-                var arrow = idleArrows.Pop();
-                if (arrow != null)
-                {
-                    Destroy(arrow);
-                }
-            }
-
+            DestroyIdle(idleArrows);
+            DestroyIdle(idleBolts);
             if (arrowMaterial != null)
             {
                 Destroy(arrowMaterial);
+            }
+
+            if (boltMaterial != null)
+            {
+                Destroy(boltMaterial);
+            }
+        }
+
+        private static void DestroyIdle(Stack<GameObject> idle)
+        {
+            while (idle.Count > 0)
+            {
+                var projectile = idle.Pop();
+                if (projectile != null)
+                {
+                    Destroy(projectile);
+                }
             }
         }
 
@@ -130,9 +163,21 @@ namespace Mmorpg.Client.Combat
             for (var index = 0; index < batch.Events.Length; index++)
             {
                 var combatEvent = batch.Events[index];
+                if (combatEvent == null
+                    || combatEvent.Kind != RealtimeCombatEventKind.AttackReleased
+                    || !views.TryGetView(combatEvent.SourceEntityId, out var source))
+                {
+                    continue;
+                }
+
+                var body = source.Root.GetComponentInChildren<PlayerBodyAppearance>();
+                if (body != null)
+                {
+                    body.PlayAttack();
+                }
+
                 if (!CombatProjectileRules.IsProjectile(combatEvent, batch.ServerTick)
                     || flights.Count >= MaximumFlights
-                    || !views.TryGetView(combatEvent.SourceEntityId, out var source)
                     || !views.TryGetView(combatEvent.TargetEntityId, out var target))
                 {
                     continue;
@@ -148,14 +193,19 @@ namespace Mmorpg.Client.Combat
                     continue;
                 }
 
-                var start = source.Position + (Vector3.up * (source.Height * LaunchHeightFraction));
+                var magic = combatEvent.AttackStyle == RealtimeCombatAttackStyle.Magic;
+                var delay = CombatProjectileRules.LaunchDelaySeconds(combatEvent.AttackStyle, seconds);
+                var projectile = magic ? AcquireBolt() : AcquireArrow();
+                projectile.SetActive(false);
                 flights.Add(new Flight(
-                    AcquireArrow(),
+                    projectile,
+                    magic,
+                    body,
+                    combatEvent.SourceEntityId,
                     combatEvent.TargetEntityId,
-                    start,
                     target.Center,
-                    Time.unscaledTime,
-                    seconds));
+                    Time.unscaledTime + delay,
+                    seconds - delay));
                 UpdateFlight(flights.Count - 1);
             }
         }
@@ -168,30 +218,63 @@ namespace Mmorpg.Client.Combat
             }
         }
 
-        // The arrow follows its target, so it lands where the target is presented.
+        // A projectile leaves from where its attacker holds its weapon at the moment it appears and
+        // follows its target, so it lands where the target is presented.
         private void UpdateFlight(int index)
         {
             var flight = flights[index];
+            if (flight.Projectile == null)
+            {
+                Release(index);
+                return;
+            }
+
+            var now = Time.unscaledTime;
+            if (now < flight.StartedAt)
+            {
+                return;
+            }
+
             if (views != null && views.TryGetView(flight.TargetEntityId, out var target))
             {
                 flight.End = target.Center;
             }
 
-            var progress = Mathf.Clamp01((Time.unscaledTime - flight.StartedAt) / flight.Duration);
-            if (progress >= 1f || flight.Arrow == null)
+            if (!flight.Launched)
+            {
+                flight.Start = LaunchPoint(flight);
+                flight.Launched = true;
+                flight.Projectile.SetActive(true);
+            }
+
+            var progress = Mathf.Clamp01((now - flight.StartedAt) / flight.Duration);
+            if (progress >= 1f)
             {
                 Release(index);
                 return;
             }
 
             var direction = flight.End - flight.Start;
-            flight.Arrow.transform.position = Vector3.Lerp(flight.Start, flight.End, progress);
+            flight.Projectile.transform.position = Vector3.Lerp(flight.Start, flight.End, progress);
             if (direction.sqrMagnitude > 0.0001f)
             {
-                flight.Arrow.transform.rotation = Quaternion.LookRotation(direction);
+                flight.Projectile.transform.rotation = Quaternion.LookRotation(direction);
             }
 
             flights[index] = flight;
+        }
+
+        // The weapon's launch point, such as a staff's crystal, or a point at chest height.
+        private Vector3 LaunchPoint(Flight flight)
+        {
+            if (flight.Body != null && flight.Body.TryGetLaunchPoint(out var point))
+            {
+                return point;
+            }
+
+            return views != null && views.TryGetView(flight.SourceEntityId, out var source)
+                ? source.Position + (Vector3.up * (source.Height * LaunchHeightFraction))
+                : flight.End;
         }
 
         private GameObject AcquireArrow()
@@ -202,28 +285,24 @@ namespace Mmorpg.Client.Combat
                 arrow = idleArrows.Pop();
             }
 
-            if (arrow == null)
+            return arrow != null ? arrow : CreateArrow();
+        }
+
+        private GameObject AcquireBolt()
+        {
+            GameObject bolt = null;
+            while (bolt == null && idleBolts.Count > 0)
             {
-                arrow = CreateArrow();
+                bolt = idleBolts.Pop();
             }
 
-            arrow.SetActive(true);
-            return arrow;
+            return bolt != null ? bolt : CreateBolt();
         }
 
         private GameObject CreateArrow()
         {
-            var arrow = RuntimePrimitives.Create(PrimitiveType.Cube, primitiveMaterial);
-            arrow.name = "CombatArrow";
-            arrow.transform.SetParent(transform, false);
+            var arrow = CreatePiece("CombatArrow", PrimitiveType.Cube, transform);
             arrow.transform.localScale = ArrowScale;
-            // The arrow must never block clicks or the camera, so its collider goes at once.
-            var arrowCollider = arrow.GetComponent<Collider>();
-            if (arrowCollider != null)
-            {
-                DestroyImmediate(arrowCollider);
-            }
-
             var arrowRenderer = arrow.GetComponent<Renderer>();
             if (arrowMaterial == null)
             {
@@ -233,51 +312,113 @@ namespace Mmorpg.Client.Combat
             }
 
             arrowRenderer.sharedMaterial = arrowMaterial;
-            arrowRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            arrowRenderer.receiveShadows = false;
             return arrow;
+        }
+
+        // A root with the core in front and the sparks behind it along its forward axis.
+        private GameObject CreateBolt()
+        {
+            var bolt = new GameObject("CombatBolt");
+            bolt.transform.SetParent(transform, false);
+            for (var spark = 0; spark < BoltSparkScales.Length; spark++)
+            {
+                var piece = CreatePiece("Spark", PrimitiveType.Sphere, bolt.transform);
+                piece.transform.localPosition = Vector3.back * (BoltSparkSpacing * spark);
+                piece.transform.localScale = Vector3.one * BoltSparkScales[spark];
+                var pieceRenderer = piece.GetComponent<Renderer>();
+                if (boltMaterial == null)
+                {
+                    boltMaterial = new Material(pieceRenderer.sharedMaterial);
+                    boltMaterial.SetColor("_BaseColor", BoltColor);
+                    boltMaterial.SetColor("_Color", BoltColor);
+                    boltMaterial.EnableKeyword("_EMISSION");
+                    boltMaterial.SetColor("_EmissionColor", BoltEmission);
+                    boltMaterial.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                }
+
+                pieceRenderer.sharedMaterial = boltMaterial;
+            }
+
+            return bolt;
+        }
+
+        // A primitive without a collider and without shadows, so it never blocks clicks, the
+        // camera, or the light.
+        private GameObject CreatePiece(string pieceName, PrimitiveType type, Transform parent)
+        {
+            var piece = RuntimePrimitives.Create(type, primitiveMaterial);
+            piece.name = pieceName;
+            piece.transform.SetParent(parent, false);
+            var pieceCollider = piece.GetComponent<Collider>();
+            if (pieceCollider != null)
+            {
+                DestroyImmediate(pieceCollider);
+            }
+
+            var pieceRenderer = piece.GetComponent<Renderer>();
+            pieceRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            pieceRenderer.receiveShadows = false;
+            return piece;
         }
 
         private void Release(int index)
         {
-            var arrow = flights[index].Arrow;
+            var flight = flights[index];
             flights.RemoveAt(index);
-            if (arrow != null)
+            if (flight.Projectile == null)
             {
-                arrow.SetActive(false);
-                idleArrows.Push(arrow);
+                return;
             }
+
+            flight.Projectile.SetActive(false);
+            (flight.Magic ? idleBolts : idleArrows).Push(flight.Projectile);
         }
 
         private struct Flight
         {
             public Flight(
-                GameObject arrow,
+                GameObject projectile,
+                bool magic,
+                PlayerBodyAppearance body,
+                ulong sourceEntityId,
                 ulong targetEntityId,
-                Vector3 start,
                 Vector3 end,
                 float startedAt,
                 float duration)
             {
-                Arrow = arrow;
+                Projectile = projectile;
+                Magic = magic;
+                Body = body;
+                SourceEntityId = sourceEntityId;
                 TargetEntityId = targetEntityId;
-                Start = start;
+                Start = end;
                 End = end;
                 StartedAt = startedAt;
                 Duration = Mathf.Max(CombatProjectileRules.MinimumFlightSeconds, duration);
+                Launched = false;
             }
 
-            public GameObject Arrow { get; }
+            public GameObject Projectile { get; }
+
+            public bool Magic { get; }
+
+            // The attacker's body, whose weapon names where the projectile leaves, or null.
+            public PlayerBodyAppearance Body { get; }
+
+            public ulong SourceEntityId { get; }
 
             public ulong TargetEntityId { get; }
 
-            public Vector3 Start { get; }
+            public Vector3 Start { get; set; }
 
             public Vector3 End { get; set; }
 
             public float StartedAt { get; }
 
             public float Duration { get; }
+
+            // Whether it appeared and took its start from the attacker.
+            public bool Launched { get; set; }
         }
     }
 }

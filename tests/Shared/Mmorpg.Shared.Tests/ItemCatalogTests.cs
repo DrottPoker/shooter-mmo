@@ -39,6 +39,7 @@ public sealed class ItemCatalogTests
         "tool.starter_pickaxe",
         "tool.woodcutting_axe",
         "weapon.iron_sword",
+        "weapon.oak_staff",
         "weapon.training_shortbow"
     ];
 
@@ -60,7 +61,7 @@ public sealed class ItemCatalogTests
         Assert.Equal(1000, catalog.EquipmentSlots.Single(slot => slot.Id == "ammunition").MaximumQuantity);
         Assert.Equal(4, catalog.SecureContainerTiers.Single().SlotCapacity);
         Assert.Equal(200, catalog.Progression.MaximumCharacterLevel);
-        Assert.Equal(2, catalog.WeaponFamilies.Length);
+        Assert.Equal(3, catalog.WeaponFamilies.Length);
         var bow = catalog.WeaponFamilies.Single(family => family.Id == "bow");
         Assert.Equal(
             ("bow", CombatStyleIds.Ranged, "arrow", 30f),
@@ -80,6 +81,19 @@ public sealed class ItemCatalogTests
             ("sword", DamageTypeIds.Normal, 11, 19),
             (ironSword.WeaponFamily, ironSword.DamageType, ironSword.MinimumDamage, ironSword.MaximumDamage));
         Assert.Equal((2.4f, 2.5f), (ironSword.AttackIntervalSeconds, ironSword.Range));
+        // A magic family fires a bolt without ammunition, and only its weapons cost mana.
+        var staffFamily = catalog.WeaponFamilies.Single(family => family.Id == "staff");
+        Assert.Equal(
+            (CombatStyleIds.Magic, string.Empty, 20f),
+            (staffFamily.CombatStyle, staffFamily.AmmunitionFamily, staffFamily.ProjectileSpeed));
+        var oakStaff = Definition(catalog, "weapon.oak_staff");
+        Assert.Equal(
+            ("staff", DamageTypeIds.Normal, 10, 18, 5),
+            (oakStaff.Weapon.WeaponFamily, oakStaff.Weapon.DamageType, oakStaff.Weapon.MinimumDamage,
+                oakStaff.Weapon.MaximumDamage, oakStaff.Weapon.ManaCost));
+        Assert.Equal((2.4f, 10f), (oakStaff.Weapon.AttackIntervalSeconds, oakStaff.Weapon.Range));
+        Assert.Equal(new[] { "off_hand" }, oakStaff.BlockedEquipmentSlots);
+        Assert.Equal((0, 0), (shortbow.ManaCost, ironSword.ManaCost));
         var arrow = Definition(catalog, "ammunition.bronze_arrow").Ammunition;
         Assert.Equal(("arrow", 5), (arrow.AmmunitionFamily, arrow.DamageBonusPercent));
         Assert.All(catalog.Definitions, definition =>
@@ -234,6 +248,10 @@ public sealed class ItemCatalogTests
     [InlineData("unknown-style", "combatStyle must be melee, ranged, or magic")]
     [InlineData("duplicate-weapon-family", "weaponFamilies contains duplicate id 'bow'")]
     [InlineData("missing-weapon-families", "weaponFamilies is required")]
+    [InlineData("magic-without-mana-cost", ".weapon.manaCost must be between 1")]
+    [InlineData("magic-mana-cost-too-high", ".weapon.manaCost must be between 1")]
+    [InlineData("ranged-with-mana-cost", ".weapon.manaCost must be 0 unless the weapon family is magic")]
+    [InlineData("missing-mana-cost", ".weapon.manaCost must be 0 unless the weapon family is magic")]
     public void InvalidCombatDataFailsValidation(string mutation, string expectedError)
     {
         var authoring = ItemCatalogTestData.LoadAuthoring();
@@ -241,8 +259,21 @@ public sealed class ItemCatalogTests
         var arrow = AuthoringDefinition(authoring, "ammunition.bronze_arrow");
         var ore = AuthoringDefinition(authoring, "material.iron_ore");
         var bow = authoring.WeaponFamilies.Single(family => family.Id == "bow");
+        var staff = AuthoringDefinition(authoring, "weapon.oak_staff");
         switch (mutation)
         {
+            case "magic-without-mana-cost":
+                staff.Weapon.ManaCost = 0;
+                break;
+            case "magic-mana-cost-too-high":
+                staff.Weapon.ManaCost = CombatContentRules.MaximumMana + 1;
+                break;
+            case "ranged-with-mana-cost":
+                shortbow.Weapon.ManaCost = 5;
+                break;
+            case "missing-mana-cost":
+                shortbow.Weapon.ManaCost = -1;
+                break;
             case "missing-weapon":
                 shortbow.Weapon = null;
                 break;

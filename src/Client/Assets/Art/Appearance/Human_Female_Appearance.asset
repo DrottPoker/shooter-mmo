@@ -358,6 +358,10 @@ MonoBehaviour:
     useClip: 
     holdsWithBothHands: 0
     offHandGrip: {x: 0, y: 0, z: 0}
+    holdClip: 
+    attackClip: 
+    hasLaunchPoint: 0
+    launchPoint: {x: 0, y: 0, z: 0}
   - name: IronSword
     socket: main_hand
     bone: Socket_MainHand
@@ -365,6 +369,10 @@ MonoBehaviour:
     useClip: 
     holdsWithBothHands: 0
     offHandGrip: {x: 0, y: 0, z: 0}
+    holdClip: 
+    attackClip: 
+    hasLaunchPoint: 0
+    launchPoint: {x: 0, y: 0, z: 0}
   - name: MiningPickaxe
     socket: main_hand
     bone: Socket_MainHand
@@ -372,6 +380,21 @@ MonoBehaviour:
     useClip: Mine
     holdsWithBothHands: 1
     offHandGrip: {x: 0, y: 0, z: -0.33}
+    holdClip: 
+    attackClip: 
+    hasLaunchPoint: 0
+    launchPoint: {x: 0, y: 0, z: 0}
+  - name: OakStaff
+    socket: main_hand
+    bone: Socket_MainHand
+    model: {fileID: 919132149155446097, guid: e35dca5aa38e6cb4da5d5c8ad6b97f94, type: 3}
+    useClip: 
+    holdsWithBothHands: 0
+    offHandGrip: {x: 0, y: 0, z: 0}
+    holdClip: HoldStaff
+    attackClip: Cast
+    hasLaunchPoint: 1
+    launchPoint: {x: 0, y: 0, z: 0.7}
   - name: WoodcuttingAxe
     socket: main_hand
     bone: Socket_MainHand
@@ -379,3 +402,7 @@ MonoBehaviour:
     useClip: Chop
     holdsWithBothHands: 1
     offHandGrip: {x: 0, y: 0, z: -0.33}
+    holdClip: 
+    attackClip: 
+    hasLaunchPoint: 0
+    launchPoint: {x: 0, y: 0, z: 0}

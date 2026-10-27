@@ -16,12 +16,14 @@ internal enum CombatantKind
 // revision.
 internal sealed class Combatant
 {
-    private Combatant(ulong entityId, CombatantKind kind, int maximumHealth)
+    private Combatant(ulong entityId, CombatantKind kind, int maximumHealth, int maximumMana)
     {
         EntityId = entityId;
         Kind = kind;
         MaximumHealth = maximumHealth;
         Health = maximumHealth;
+        MaximumMana = maximumMana;
+        Mana = maximumMana;
     }
 
     public ulong EntityId { get; }
@@ -31,6 +33,11 @@ internal sealed class Combatant
     public int Health { get; set; }
 
     public int MaximumHealth { get; }
+
+    // The mana a player's magic attacks spend. Only the owner sees it; a Mob has none.
+    public int Mana { get; set; }
+
+    public int MaximumMana { get; }
 
     public RealtimeCombatLifeState LifeState { get; set; } = RealtimeCombatLifeState.Alive;
 
@@ -97,10 +104,10 @@ internal sealed class Combatant
     // A development admin made the player's hits leave its health as it is.
     public bool AdminInvulnerable { get; set; }
 
-    public static Combatant ForPlayer(PlayerSimulationEntity player, int maximumHealth)
+    public static Combatant ForPlayer(PlayerSimulationEntity player, int maximumHealth, int maximumMana)
     {
         ArgumentNullException.ThrowIfNull(player);
-        return new Combatant(player.NetworkEntityId, CombatantKind.Player, maximumHealth)
+        return new Combatant(player.NetworkEntityId, CombatantKind.Player, maximumHealth, maximumMana)
         {
             Player = player
         };
@@ -110,7 +117,7 @@ internal sealed class Combatant
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(attack);
-        return new Combatant(actor.NetworkEntityId, CombatantKind.Mob, maximumHealth)
+        return new Combatant(actor.NetworkEntityId, CombatantKind.Mob, maximumHealth, 0)
         {
             Actor = actor,
             MobAttack = attack

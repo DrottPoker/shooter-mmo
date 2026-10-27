@@ -37,6 +37,9 @@ namespace Mmorpg.Client.Editor
             // The tools' clips, played standing; the other hand holds a tool held with both hands.
             Mine,
             Chop,
+            // The attack clip of the weapon in the main hand, such as Cast, played standing over its
+            // hold pose and started again whenever it ends.
+            Cast,
         }
 
         private static readonly int SpeedId = Animator.StringToHash(HumanLocomotion.SpeedParameter);
@@ -212,6 +215,7 @@ namespace Mmorpg.Client.Editor
             }
 
             appearance.ApplyLook(look, materials);
+            HoldWeapon(Playing);
             foreach (var pair in tuned)
             {
                 solver.Tune(pair.Key, pair.Value);
@@ -243,8 +247,43 @@ namespace Mmorpg.Client.Editor
             Animate(Speed, motion == Motion.Death);
             var use = UseClipOf(motion);
             animator.Play(use ?? HumanLocomotion.IdleState, 0, 0f);
+            HoldWeapon(motion);
             animator.Update(0f);
             PinOffHand();
+        }
+
+        // A weapon with a hold clip, such as the Oak Staff, keeps the main hand's arm in that pose
+        // while the body lives and uses no tool, and Cast plays its attack clip over the pose, as
+        // the game layers them.
+        private void HoldWeapon(Motion motion)
+        {
+            var weapon = appearance.Weapon;
+            var holds = weapon != null && weapon.HoldClip.Length > 0 && motion != Motion.Death && UseClipOf(motion) == null;
+            var holdLayer = animator.GetLayerIndex(HumanLocomotion.MainHandHoldLayer);
+            if (holdLayer >= 0)
+            {
+                animator.Play(holds ? weapon.HoldClip : HumanLocomotion.EmptyState, holdLayer, 0f);
+                animator.SetLayerWeight(holdLayer, holds ? 1f : 0f);
+            }
+
+            var casts = holds && motion == Motion.Cast && weapon.AttackClip.Length > 0;
+            var actionLayer = animator.GetLayerIndex(HumanLocomotion.ActionLayer);
+            if (actionLayer >= 0)
+            {
+                animator.Play(casts ? weapon.AttackClip : HumanLocomotion.EmptyState, actionLayer, 0f);
+                animator.SetLayerWeight(actionLayer, casts ? 1f : 0f);
+            }
+        }
+
+        // An attack clip plays once, so the Wardrobe starts it again when it ended.
+        private void RepeatCast()
+        {
+            var actionLayer = animator.GetLayerIndex(HumanLocomotion.ActionLayer);
+            if (Playing == Motion.Cast && actionLayer >= 0 && animator.GetLayerWeight(actionLayer) > 0f
+                && animator.GetCurrentAnimatorStateInfo(actionLayer).normalizedTime >= 1f)
+            {
+                HoldWeapon(Motion.Cast);
+            }
         }
 
         // The clip of a tool's motion, or null for the other motions.
@@ -305,6 +344,7 @@ namespace Mmorpg.Client.Editor
             ground.position = new Vector3(0f, 0f, Mathf.Floor(position.z / TileSize) * TileSize);
             if (!Frozen)
             {
+                RepeatCast();
                 animator.Update(deltaTime);
                 PinOffHand();
             }

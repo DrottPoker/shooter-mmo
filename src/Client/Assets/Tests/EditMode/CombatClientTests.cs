@@ -288,7 +288,8 @@ namespace Mmorpg.Client.Tests.EditMode
                         130,
                         0,
                         RealtimeCombatDamageType.Normal,
-                        0),
+                        0,
+                        RealtimeCombatAttackStyle.Ranged),
                     new RealtimeCombatEvent(
                         RealtimeCombatEventKind.Hit,
                         5,
@@ -296,7 +297,8 @@ namespace Mmorpg.Client.Tests.EditMode
                         0,
                         12,
                         RealtimeCombatDamageType.Normal,
-                        0),
+                        0,
+                        RealtimeCombatAttackStyle.Melee),
                     new RealtimeCombatEvent(
                         RealtimeCombatEventKind.Died,
                         5,
@@ -304,7 +306,8 @@ namespace Mmorpg.Client.Tests.EditMode
                         0,
                         0,
                         RealtimeCombatDamageType.Normal,
-                        0)
+                        0,
+                        RealtimeCombatAttackStyle.Melee)
                 });
 
             state.ApplyEvents(batch);
@@ -407,6 +410,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 revision,
                 serverTick,
                 dead ? 0 : health,
+                100,
+                100,
                 100,
                 lifeState,
                 lifeSequence,

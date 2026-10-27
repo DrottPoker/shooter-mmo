@@ -145,6 +145,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(labels.Values.Distinct().Count(), Is.EqualTo(labels.Count));
             Assert.That(labels[RealtimeCombatAttackStatus.OutOfRange], Is.EqualTo("Out of range"));
             Assert.That(labels[RealtimeCombatAttackStatus.WeaponMissing], Is.EqualTo("No weapon equipped"));
+            Assert.That(labels[RealtimeCombatAttackStatus.NotEnoughMana], Is.EqualTo("Not enough mana"));
             Assert.That(
                 CombatHudPresentation.AttackStatusLabel((RealtimeCombatAttackStatus)200),
                 Is.EqualTo(CombatHudPresentation.UnknownStatusLabel));
@@ -165,6 +166,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(CombatHudPresentation.HealthText(87, 100), Is.EqualTo("87 / 100"));
             Assert.That(CombatHudPresentation.ArrowCountText(true, 482), Is.EqualTo("Arrows 482"));
             Assert.That(CombatHudPresentation.ArrowCountText(false, 0), Is.EqualTo("No arrows equipped"));
+            Assert.That(CombatHudPresentation.ManaText(95, 100), Is.EqualTo("Mana 95 / 100"));
+            Assert.That(CombatHudPresentation.ManaText(0, 0), Is.EqualTo("No mana"));
             Assert.That(
                 CombatHudPresentation.DamageColor(RealtimeCombatDamageType.Normal),
                 Is.EqualTo(Color.white));
@@ -178,7 +181,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(CombatProjectileRules.IsProjectile(Released(5), uint.MaxValue - 2), Is.True);
             Assert.That(
                 CombatProjectileRules.IsProjectile(
-                    new RealtimeCombatEvent(RealtimeCombatEventKind.Hit, 5, 7, 0, 12, RealtimeCombatDamageType.Normal, 38),
+                    new RealtimeCombatEvent(RealtimeCombatEventKind.Hit, 5, 7, 0, 12, RealtimeCombatDamageType.Normal, 38, RealtimeCombatAttackStyle.Melee),
                     100),
                 Is.False);
             Assert.That(CombatProjectileRules.IsProjectile(null, 100), Is.False);
@@ -194,6 +197,16 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CombatProjectileRules.RemainingFlightSeconds(default(CombatServerClock), 109, 100, 0),
                 Is.Zero);
+
+            // A magic bolt leaves with the thrust of the cast, at most halfway through its flight;
+            // an arrow leaves at once.
+            Assert.That(
+                CombatProjectileRules.LaunchDelaySeconds(RealtimeCombatAttackStyle.Magic, 0.5f),
+                Is.EqualTo(CombatProjectileRules.MagicLaunchDelaySeconds));
+            Assert.That(
+                CombatProjectileRules.LaunchDelaySeconds(RealtimeCombatAttackStyle.Magic, 0.1f),
+                Is.EqualTo(0.05f).Within(0.0001f));
+            Assert.That(CombatProjectileRules.LaunchDelaySeconds(RealtimeCombatAttackStyle.Ranged, 0.5f), Is.Zero);
         }
 
         private static RealtimeCombatEvent Released(uint impactTick)
@@ -205,13 +218,16 @@ namespace Mmorpg.Client.Tests.EditMode
                 impactTick,
                 0,
                 RealtimeCombatDamageType.Normal,
-                0);
+                0,
+                RealtimeCombatAttackStyle.Ranged);
         }
 
         private static RealtimeOwnerCombatState Owner(Guid ammunition, int quantity)
         {
             return new RealtimeOwnerCombatState(
                 1,
+                100,
+                100,
                 100,
                 100,
                 100,

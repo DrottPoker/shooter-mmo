@@ -218,7 +218,10 @@ asset that breaks one of these rules:
   as `M_Resource_IronVeinRock`.
 - Every material is one Principled BSDF, connected straight to the Surface of
   its one Material Output, with a flat Base Color, Metallic, and Roughness,
-  without textures or other nodes feeding them. Textures for static
+  without textures or other nodes feeding them. A glowing material, such as the
+  crystal of the Oak Staff, also has a flat Emission Color and Emission Strength;
+  the export records their product as `emission`, and Unity turns on the
+  material's emission in that color. Textures for static
   assets come with the planned palette texture. A `skinned` asset may feed the
   Base Color straight from one Image Texture whose image is packed into the
   `.blend` file, such as a painted body, read through the mesh's active UV map,
@@ -533,8 +536,9 @@ models, and both player prefabs.
 Clips live in animation libraries: art assets of kind `animations` below
 `art/Animations`, keyed on the rig of one character and played on every body of
 the skeleton. `art/Animations/Human_Actions` holds every clip of the human bodies,
-`Idle`, `Walk`, `Jog`, `Death`, the hand pose `Grip`, and the tools' strokes
-`Mine` and `Chop`, and the bodies hold none:
+`Idle`, `Walk`, `Jog`, `Death`, the hand pose `Grip`, the tools' strokes
+`Mine` and `Chop`, and the staff's hold pose `HoldStaff` and attack `Cast`, and
+the bodies hold none:
 
 - The `Export` collection holds the armature `Humanoid`, a copy of the rig of
   `Human_Male` named after its skeleton. Every clip is an action keyed on it, at
@@ -1327,6 +1331,23 @@ bind pose, and the animator layer of that hand plays `Grip`; see
 catalog lacks or that its slot does not hold, when a model has another root than
 `Grip` at its origin, or when a body in a jog pose draws an attachment's vertex
 more than 1 mm from where its model puts it on the socket.
+
+### Weapons With Clips
+
+A weapon held on `main_hand` that is no tool may name a `holdClip`, the pose its
+arm holds it in, and an `attackClip`, the clip its body plays once whenever its
+attack releases, both clips of an animation library of its socket's skeleton,
+and with an attack clip a `launchPoint`, the point of the model where its
+projectile leaves, in meters in the socket's axes. The Oak Staff names
+`"holdClip": "HoldStaff"`, `"attackClip": "Cast"`, and
+`"launchPoint": [0.0, 0.7, 0.0]`, its crystal. The review sheet of the weapon
+shows the bodies with the arm in the hold clip, and the sheet of the library shows
+the weapon held in the rows of both clips. In Unity the appearance catalog lists
+the clips and the launch point, converted to the model's axes like an
+`offHandGrip`, and the controller has a state of each clip's name on the layers
+`MainHandHold` and `Action`; `WeaponClipTests` checks the layers, their masks,
+the states, the launch point, and that both bodies hold the staff upright and
+thrust it forward.
 
 ### Tools
 

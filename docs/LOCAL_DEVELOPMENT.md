@@ -1904,7 +1904,8 @@ Stop GameService and SimulationWorker when you are done.
 
 Protocol 18 adds target-based combat to SimulationWorker: attack targets,
 attack timing, arrows and their batches, damage, player and Mob death, Mob loot
-and respawn, player respawn, regeneration, and the Shard rule. Unity attacks
+and respawn, player respawn, regeneration, and the Shard rule. Protocol 28 adds
+mana, magic attacks, and the style of a released attack. Unity attacks
 with a left click and shows the combat with temporary presentation, and Mobs
 detect, chase, bite, and evade home as
 [Mob Brains](SERVICE_FEATURES.md#mob-brains) describes. The worker's
@@ -1924,7 +1925,9 @@ character commits its death once and respawns at the spawn, shots commit before
 a leave, after a disconnect, and behind a batch that finished while the worker
 stopped, an equipment change holds attacks for the lockout, only the lethal
 arrow of a volley hits and takes the kill, a wolf without a corpse despawns
-after its death reached the viewer, and a synthetic bot is no target. The Mob
+after its death reached the viewer, a synthetic bot is no target, a caster
+spends 5 mana per bolt until it waits with `NotEnoughMana`, and health and mana
+regenerate only out of combat, after which the caster casts again. The Mob
 tests show a wolf that detects, chases, and bites a player and comes to rest
 next to it, a wolf that kills a player as the recorded killer, a wolf that
 evades home past its leash and heals fully, a defensive wolf that fights only
@@ -1941,8 +1944,8 @@ Play the combat loop on the local stack:
 3. Enter Play Mode, log in, and join `local-shard-1`. Expected result: the
    Console shows `[CLIENT] Server-authoritative movement is active at 30 ticks
    per second with ... snapshots per second. Player versus player is allowed on
-   this Shard.`, and the top-left combat frame shows `Health 100 / 100`, `No
-   arrows equipped`, and `No target`.
+   this Shard.`, and the top-left combat frame shows `Health 100 / 100`, `Mana
+   100 / 100` with a full blue bar, `No arrows equipped`, and `No target`.
 4. Press `C`, equip the Training Shortbow in Main Hand and the Bronze Arrows in
    Ammunition. Expected result: the frame shows `Arrows 500`.
 5. Walk to the wolf woods of Development World 2, southwest of the town with the
@@ -2060,8 +2063,8 @@ Manual test in the game:
    spot` and then Escape. Expected result: `Teleport cancelled.`
 10. On the `Combat` tab turn on `Invulnerable`, teleport to the Wolf Woods
     around `(-105, 0, -105)`, and let a wolf bite you. Expected result: the bites show no damage and your health stays
-    full. Turn it off, take a bite, and press `Restore health`. Expected result:
-    the health is full again.
+    full. Turn it off, take a bite, and press `Restore health and mana`.
+    Expected result: the health is full again.
 11. On the `Look` tab press `>` on the `Hair` row. Expected result: the row
     shows `DarkBrownHair` and your character gets the hair after a moment.
 12. Stop SimulationWorker and start it again with the tools off:
@@ -3187,6 +3190,17 @@ such as a weapon or a shield, and the axes of each hand's socket.
    result: `ItemAttachmentTests` passes, and `MMORPG > Tools > Art Pipeline >
    Wardrobe` lists `IronAxe (main_hand)` under `Attachments`.
 
+A weapon may name the pose its arm holds it in and the clip its body plays when
+it attacks, as [Weapons With Clips](ART_PIPELINE.md#weapons-with-clips)
+describes: add both clips to the animation library first, then name them in the
+weapon's `asset.json`, such as `"holdClip": "HoldStaff"` and
+`"attackClip": "Cast"`, with `"launchPoint": [0.0, 0.7, 0.0]` where a projectile
+leaves it. Expected result: the weapon's review sheet shows the bodies holding it
+in the hold clip, and the library's review sheet shows it in the rows of both
+clips. In Unity, add a state of each clip's name to the layers `MainHandHold` and
+`Action` of `Assets/Art/Animation/HumanLocomotion.controller`; `WeaponClipTests`
+checks them.
+
 A tool, such as the Mining Pickaxe, is an attachment that a body holds only while
 it uses it; [Tools](ART_PIPELINE.md#tools) describes it. Add its clip to the
 animation library first, named in the library's `clips`, then name it in the
@@ -3257,6 +3271,50 @@ controller's grip layers, and the items are committed.
 5. With development bots running, look at a crowd. Expected result: some bots
    hold a sword, a shield, both, or a shortbow, but never a shield together with
    a shortbow.
+
+### Manual Test Of The Oak Staff
+
+No manual Unity Editor steps are required: the model, its materials, the clips
+`HoldStaff` and `Cast`, the controller's `MainHandHold` and `Action` layers with
+their masks, the catalogs, and the item are committed. Protocol 28 needs a
+restarted SimulationWorker and a Unity client built from the same commit.
+
+1. In Unity, open `MMORPG > Tools > Art Pipeline > Wardrobe`, tick `OakStaff`
+   under `Attachments`, and play `Idle`, `Walk`, `Jog`, and `Cast` on both
+   bodies. Expected result: a knotted oak staff about 1.7 m long with a
+   silver-shod foot, a leather grip between two silver bands, a twig with two oak
+   leaves, and four roots that hold a glowing blue crystal; the right hand holds
+   it upright beside the hip with the elbow bent, also while walking and
+   jogging, and `Cast` thrusts it forward while the left hand points ahead,
+   again and again.
+2. Start the local stack as described in [Backend Services](#backend-services),
+   and with a new character offline grant the `equipment` package, as described
+   in [Give A Character Development Items](#give-a-character-development-items).
+   Enter Play Mode, join `local-shard-1`, press `C`, and equip `Oak Staff` in
+   Main Hand. Expected result: the character holds the staff upright beside its
+   right hip with the elbow bent, the crystal near its head, and keeps it so
+   while it walks and jogs; a shield in the off hand goes to the inventory,
+   because the staff takes both hands.
+3. Walk to the wolf woods and left-click a Feral Wolf from more than 10 m away.
+   Expected result: the character walks to about 9 m and stops, and every 2.4
+   seconds it thrusts the staff toward the wolf while its left hand points at
+   it, a glowing blue-white bolt leaves the crystal and flies to the wolf, white
+   damage numbers of 10 to 18 rise, and `Mana` in the top-left frame drops by 5
+   per bolt.
+4. Keep attacking wolves until the mana runs out. Expected result: at 0 to 4
+   mana the status reads `Not enough mana`, the target stays selected, and no
+   bolt flies. When the fight ends, about 5 seconds after the last attack or
+   hit, `In combat` disappears and health and mana rise by 1 per second; at 5
+   mana the character casts again by itself.
+5. Press F3 and, on the `Combat` tab, press `Restore health and mana`. Expected
+   result: health and mana fill up at once, and the tab shows `100 / 100, mana
+   100 / 100`.
+6. Choose `Trade` at Mira the Quartermaster. Expected result: the General Store
+   sells `Oak Staff` for 120 gold.
+7. With a second client on another character, watch the first cast. Expected
+   result: the second client sees the staff held upright, the cast, and the
+   bolt the same way. With development bots running, some bots hold a staff
+   upright, never together with a shield.
 
 ### Edit The Human Base Characters
 

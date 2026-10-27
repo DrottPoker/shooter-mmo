@@ -53,6 +53,8 @@ namespace Mmorpg.Client.Ui
         private GameObject ownerFrame;
         private Bar ownerHealth;
         private Text ownerHealthText;
+        private Bar ownerMana;
+        private Text ownerManaText;
         private Text ownerArrowText;
         private Text ownerStatusText;
         private Text messageText;
@@ -163,6 +165,10 @@ namespace Mmorpg.Client.Ui
             ownerHealthText.text = "Health " + CombatHudPresentation.HealthText(
                 owner.Health,
                 owner.MaximumHealth);
+            ownerMana.Set(
+                CombatHudPresentation.HealthFraction(owner.Mana, owner.MaximumMana),
+                CombatHudPresentation.ManaColor);
+            ownerManaText.text = CombatHudPresentation.ManaText(owner.Mana, owner.MaximumMana);
             ownerArrowText.text = CombatHudPresentation.ArrowCountText(
                 lines.HasAmmunition,
                 owner.AmmunitionQuantity);
@@ -471,12 +477,14 @@ namespace Mmorpg.Client.Ui
 
         private void BuildOwnerFrame(Transform parent)
         {
-            var frame = CreateFrame(parent, OwnerFrameName, new Vector2(0f, 1f), new Vector2(16f, -16f), new Vector2(330f, 104f));
+            var frame = CreateFrame(parent, OwnerFrameName, new Vector2(0f, 1f), new Vector2(16f, -16f), new Vector2(330f, 144f));
             ownerFrame = frame.gameObject;
             ownerHealthText = CreateLine(frame, 10f, 18, FontStyle.Bold, TemporaryUiKit.TextPrimary);
             ownerHealth = CreateBar(frame, new Vector2(14f, -36f), new Vector2(302f, 12f));
-            ownerArrowText = CreateLine(frame, 54f, 15, FontStyle.Normal, TemporaryUiKit.TextSecondary);
-            ownerStatusText = CreateLine(frame, 76f, 15, FontStyle.Normal, TemporaryUiKit.TextSecondary);
+            ownerManaText = CreateLine(frame, 52f, 15, FontStyle.Bold, TemporaryUiKit.TextPrimary);
+            ownerMana = CreateBar(frame, new Vector2(14f, -76f), new Vector2(302f, 10f));
+            ownerArrowText = CreateLine(frame, 94f, 15, FontStyle.Normal, TemporaryUiKit.TextSecondary);
+            ownerStatusText = CreateLine(frame, 116f, 15, FontStyle.Normal, TemporaryUiKit.TextSecondary);
 
             messageText = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("CombatMessage", parent),
@@ -489,7 +497,7 @@ namespace Mmorpg.Client.Ui
             messageRect.anchorMin = new Vector2(0f, 1f);
             messageRect.anchorMax = new Vector2(0f, 1f);
             messageRect.pivot = new Vector2(0f, 1f);
-            messageRect.anchoredPosition = new Vector2(18f, -126f);
+            messageRect.anchoredPosition = new Vector2(18f, -166f);
             messageRect.sizeDelta = new Vector2(600f, 24f);
             AddShadow(messageText.gameObject);
             messageText.gameObject.SetActive(false);
@@ -679,6 +687,8 @@ namespace Mmorpg.Client.Ui
             {
                 Health = owner.Health;
                 MaximumHealth = owner.MaximumHealth;
+                Mana = owner.Mana;
+                MaximumMana = owner.MaximumMana;
                 HasAmmunition = owner.AmmunitionItemInstanceId != Guid.Empty;
                 AmmunitionQuantity = owner.AmmunitionQuantity;
                 Status = owner.AttackStatus;
@@ -688,6 +698,10 @@ namespace Mmorpg.Client.Ui
             public int Health { get; }
 
             public int MaximumHealth { get; }
+
+            public int Mana { get; }
+
+            public int MaximumMana { get; }
 
             public bool HasAmmunition { get; }
 
@@ -701,6 +715,8 @@ namespace Mmorpg.Client.Ui
             {
                 return Health == other.Health
                     && MaximumHealth == other.MaximumHealth
+                    && Mana == other.Mana
+                    && MaximumMana == other.MaximumMana
                     && HasAmmunition == other.HasAmmunition
                     && AmmunitionQuantity == other.AmmunitionQuantity
                     && Status == other.Status

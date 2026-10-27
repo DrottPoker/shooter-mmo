@@ -10,11 +10,12 @@ using Mmorpg.WorldData.Items;
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 // Target-based combat over real UDP against the scripted GameService: attacks, arrow
-// batches, Mob and player deaths, and respawns.
+// batches, magic and mana, regeneration, Mob and player deaths, and respawns.
 public sealed class RealtimeCombatTests
 {
     private const string Bow = "test.bow";
     private const string Arrow = "test.arrow";
+    private const string Staff = "test.staff";
 
     [Fact]
     public async Task AnArcherKillsAWolfThatLeavesACorpseAndRespawns()
@@ -746,6 +747,93 @@ public sealed class RealtimeCombatTests
         Assert.Equal(0, OwnerStates(archerClient)[^1].AmmunitionQuantity);
     }
 
+    // Every bolt spends its mana when it leaves the staff; a caster without enough keeps its target
+    // and waits, while the owner sees its mana fall.
+    [Fact]
+    public async Task ACasterSpendsManaOnEveryBoltUntilItRunsShort()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = TestCatalog(minimumDamage: 1, maximumDamage: 1, manaCost: 5),
+            CombatRules = TestRules(maximumMana: 12),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var caster = harness.AddCharacter("Thrifty Caster") with { Equipment = CasterEquipment() };
+        harness.GameService.AddCharacter(caster);
+        var target = harness.AddCharacter("Caster Target");
+        await harness.StartAsync();
+        var casterClient = await harness.JoinAsync(caster);
+        var targetClient = await harness.JoinAsync(target);
+        var targetEntityId = targetClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => States(casterClient).Any(value => value.EntityId == targetEntityId),
+            "the target to appear");
+        Assert.Equal((12, 12), (OwnerStates(casterClient)[^1].Mana, OwnerStates(casterClient)[^1].MaximumMana));
+
+        casterClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId));
+
+        await harness.PollUntilAsync(
+            () => OwnerStates(casterClient).Any(value => value.AttackStatus == RealtimeCombatAttackStatus.NotEnoughMana),
+            "the caster to run short of mana");
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(700));
+        var released = Events(casterClient).Where(value => value.Kind == RealtimeCombatEventKind.AttackReleased).ToArray();
+        Assert.Equal(2, released.Length);
+        Assert.All(released, value => Assert.Equal(RealtimeCombatAttackStyle.Magic, value.AttackStyle));
+        Assert.All(released, value => Assert.True(value.ImpactTick > 0));
+        var owner = OwnerStates(casterClient)[^1];
+        Assert.Equal((2, 12), (owner.Mana, owner.MaximumMana));
+        Assert.Equal(targetEntityId, owner.TargetEntityId);
+        Assert.Equal(RealtimeCombatAttackStatus.NotEnoughMana, owner.AttackStatus);
+        // Only the owner learns its mana; the target sees its own full bar.
+        Assert.Equal((12, 12), (OwnerStates(targetClient)[^1].Mana, OwnerStates(targetClient)[^1].MaximumMana));
+    }
+
+    // Out of combat a caster regains mana and casts again by itself, and its target regains
+    // health; neither regenerates while it fights.
+    [Fact]
+    public async Task ManaAndHealthRegenerateOnlyOutOfCombat()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = TestCatalog(minimumDamage: 3, maximumDamage: 3, manaCost: 5),
+            CombatRules = TestRules(maximumMana: 5, combatTimeoutSeconds: 0.5f, healthRegenerationPerSecond: 1, manaRegenerationPerSecond: 5),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var caster = harness.AddCharacter("Patient Caster") with { Equipment = CasterEquipment() };
+        harness.GameService.AddCharacter(caster);
+        var target = harness.AddCharacter("Resting Target");
+        await harness.StartAsync();
+        var casterClient = await harness.JoinAsync(caster);
+        var targetClient = await harness.JoinAsync(target);
+        var targetEntityId = targetClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => States(casterClient).Any(value => value.EntityId == targetEntityId),
+            "the target to appear");
+
+        casterClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId));
+
+        await harness.PollUntilAsync(
+            () => Events(casterClient).Count(value => value.Kind == RealtimeCombatEventKind.AttackReleased) >= 2,
+            "a second bolt after the mana came back");
+        casterClient.SendCombatIntent(RealtimeCombatIntent.CreateClearTarget(Guid.NewGuid()));
+        var states = OwnerStates(casterClient);
+        var empty = states.ToList().FindIndex(value => value.Mana == 0);
+        Assert.True(empty >= 0);
+        // Between the two bolts the caster waited with no mana until it left combat.
+        var refilled = states.Skip(empty).First(value => value.Mana == 5);
+        Assert.False(refilled.InCombat);
+        Assert.DoesNotContain(states.Skip(empty).TakeWhile(value => value.InCombat), value => value.Mana > 0);
+
+        await harness.PollUntilAsync(
+            () => States(targetClient).Where(value => value.EntityId == targetEntityId).Select(value => value.Health)
+                .SkipWhile(health => health == 100).Any(health => health > 94),
+            "the target to regain health after the last bolt");
+        var lowest = States(targetClient).Where(value => value.EntityId == targetEntityId).Min(value => value.Health);
+        Assert.True(lowest <= 97);
+    }
+
     internal static async Task<RealtimeWorldActorSpawn> WaitForWolfAsync(
         RealtimeServerHarness harness,
         RealtimeRecordingClient client)
@@ -783,6 +871,7 @@ public sealed class RealtimeCombatTests
 
     private static readonly Guid BowItemId = Guid.Parse("b0b0b0b0-0000-4000-8000-000000000001");
     private static readonly Guid ArrowItemId = Guid.Parse("a0a0a0a0-0000-4000-8000-000000000002");
+    private static readonly Guid StaffItemId = Guid.Parse("5a5a5a5a-0000-4000-8000-000000000003");
 
     internal static IReadOnlyList<SimulationEquippedItem> ArcherEquipment(int arrows)
     {
@@ -793,11 +882,17 @@ public sealed class RealtimeCombatTests
         ];
     }
 
-    // The fastest bow content allows: a shot every 0.5 s.
+    internal static IReadOnlyList<SimulationEquippedItem> CasterEquipment()
+    {
+        return [new SimulationEquippedItem("main_hand", StaffItemId, Staff, 1, 1)];
+    }
+
+    // The fastest bow and staff content allows: an attack every 0.5 s.
     internal static ItemCatalogRuntimeDocument TestCatalog(
         int minimumDamage = 10,
         int maximumDamage = 18,
-        float range = 10f)
+        float range = 10f,
+        int manaCost = 5)
     {
         return new ItemCatalogRuntimeDocument
         {
@@ -809,6 +904,13 @@ public sealed class RealtimeCombatTests
                     CombatStyle = CombatStyleIds.Ranged,
                     AmmunitionFamily = "arrow",
                     ProjectileSpeed = 30f
+                },
+                new ItemWeaponFamilyEntry
+                {
+                    Id = "staff",
+                    CombatStyle = CombatStyleIds.Magic,
+                    AmmunitionFamily = string.Empty,
+                    ProjectileSpeed = 20f
                 }
             ],
             Definitions =
@@ -824,7 +926,23 @@ public sealed class RealtimeCombatTests
                         MinimumDamage = minimumDamage,
                         MaximumDamage = maximumDamage,
                         AttackIntervalSeconds = 0.5f,
-                        Range = range
+                        Range = range,
+                        ManaCost = 0
+                    }
+                },
+                new ItemDefinition
+                {
+                    Id = Staff,
+                    Category = ItemCategoryIds.Weapon,
+                    Weapon = new ItemWeaponEntry
+                    {
+                        WeaponFamily = "staff",
+                        DamageType = DamageTypeIds.Normal,
+                        MinimumDamage = minimumDamage,
+                        MaximumDamage = maximumDamage,
+                        AttackIntervalSeconds = 0.5f,
+                        Range = range,
+                        ManaCost = manaCost
                     }
                 },
                 new ItemDefinition
@@ -837,7 +955,13 @@ public sealed class RealtimeCombatTests
         };
     }
 
-    internal static CombatRules TestRules(float respawnSeconds = 0.5f, float batchIntervalSeconds = 5f)
+    internal static CombatRules TestRules(
+        float respawnSeconds = 0.5f,
+        float batchIntervalSeconds = 5f,
+        int maximumMana = 100,
+        float combatTimeoutSeconds = 10f,
+        int healthRegenerationPerSecond = 0,
+        int manaRegenerationPerSecond = 0)
     {
         return CombatRules.FromDocument(new CombatRulesDocument
         {
@@ -845,9 +969,11 @@ public sealed class RealtimeCombatTests
             player = new PlayerCombatRulesDocument
             {
                 maximumHealth = 100,
+                maximumMana = maximumMana,
                 respawnDelaySeconds = respawnSeconds,
-                combatTimeoutSeconds = 10f,
-                regenerationPercentPerSecond = 0,
+                combatTimeoutSeconds = combatTimeoutSeconds,
+                healthRegenerationPerSecond = healthRegenerationPerSecond,
+                manaRegenerationPerSecond = manaRegenerationPerSecond,
                 equipmentLockoutSeconds = 0.5f
             },
             ammunition = new AmmunitionRulesDocument { batchIntervalSeconds = batchIntervalSeconds },

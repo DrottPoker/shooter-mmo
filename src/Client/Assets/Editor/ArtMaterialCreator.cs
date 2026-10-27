@@ -137,6 +137,19 @@ namespace Mmorpg.Client.Editor
 
             material.SetFloat("_Metallic", record.metallic);
             material.SetFloat("_Smoothness", record.smoothness);
+            if (!string.IsNullOrEmpty(record.emission))
+            {
+                if (!ColorUtility.TryParseHtmlString(record.emission, out var emission))
+                {
+                    throw new System.InvalidOperationException(
+                        manifest.path + ": " + record.name + " has no valid emission.");
+                }
+
+                material.EnableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", emission);
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            }
+
             if (manifest.IsGarment || manifest.IsTexture)
             {
                 SetGarmentSurface(material);

@@ -1,10 +1,12 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "player": {
     "maximumHealth": 100,
+    "maximumMana": 100,
     "respawnDelaySeconds": 5,
-    "combatTimeoutSeconds": 10,
-    "regenerationPercentPerSecond": 2,
+    "combatTimeoutSeconds": 5,
+    "healthRegenerationPerSecond": 1,
+    "manaRegenerationPerSecond": 1,
     "equipmentLockoutSeconds": 1
   },
   "ammunition": {

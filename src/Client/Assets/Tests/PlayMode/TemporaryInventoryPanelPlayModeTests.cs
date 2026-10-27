@@ -299,6 +299,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                 100,
                 100,
                 100,
+                100,
+                100,
                 RealtimeCombatLifeState.Alive,
                 0,
                 0,

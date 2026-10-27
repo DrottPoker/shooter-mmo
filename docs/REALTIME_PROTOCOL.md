@@ -432,6 +432,18 @@ owner item delta, and the Shard rules:
 - `JoinAccepted` ends with `ShardRules`, so the client knows whether a click on
   another character attacks.
 
+Protocol version 28 added magic and mana:
+
+- `OwnerCombatState` carries the owner's `Mana` and `MaximumMana` after its
+  maximum health, and the mana never exceeds its maximum. Only the owner learns
+  its mana.
+- `CombatAttackStatus.NotEnoughMana` (11) holds a magic attack while the
+  character's mana is below the weapon's cost.
+- `CombatEvent` ends with `AttackStyle`, a `CombatAttackStyle` of `Melee` (1),
+  `Ranged` (2), or `Magic` (3): for `AttackReleased` the combat style of the
+  attack, which selects how a client draws it, such as an arrow or a magic bolt,
+  and `Melee` for every other kind.
+
 Since the Mob brains, a moving Mob travels in `SimulationSnapshot` like a remote
 player: an `EntitySnapshot` with the Mob's world actor entity id, input sequence
 0, and its `PlayerState`, while its pose changes. The first tick it stands still

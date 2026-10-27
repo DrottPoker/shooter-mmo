@@ -69,6 +69,9 @@
       "definitionId": "weapon.iron_sword"
     },
     {
+      "definitionId": "weapon.oak_staff"
+    },
+    {
       "definitionId": "armor.heater_shield"
     }
   ],

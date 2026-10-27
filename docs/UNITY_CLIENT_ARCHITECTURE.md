@@ -1628,6 +1628,22 @@ garment of the hair slot. `RealtimeSimulationClient` keeps the latest
   the pin on both bodies through both swings, and `PlayerBodyToolPlayModeTests`
   the real body swinging, walking, and putting the tool away in Play Mode. The
   Wardrobe plays `Mine` and `Chop` with the pin.
+- **Weapons with clips.** A weapon in the main hand that is no tool, such as the
+  Oak Staff, may name a hold clip, an attack clip, and a launch point.
+  `PlayerBodyAppearance` tells `CharacterLocomotionAnimator` the hold clip,
+  `HoldStaff`, which plays in the state of its name on the layer `MainHandHold`,
+  masked to the right arm, at full weight while the body lives and uses no tool;
+  bodies without such a weapon never touch the layer. `PlayerBodyAppearance.PlayAttack`
+  plays the weapon's attack clip, `Cast`, once on the layer `Action`, masked to
+  the spine, head, and both arms without the fingers, fading in over 0.06 s and
+  out over 0.15 s, ended early when the body dies or moves; `ActionWeight` is its
+  share of the pose. `TryGetLaunchPoint` gives where the weapon's projectile
+  leaves it now, the launch point on the main hand's socket bone.
+  `WeaponClipTests` covers the layers, their masks, the states, and both bodies
+  holding the staff upright and thrusting it forward, and
+  `PlayerBodyWeaponPlayModeTests` the real body holding the staff and casting
+  once in Play Mode. The Wardrobe holds a weapon in its pose the same way and
+  plays its attack clip with the motion `Cast`.
 - **A dying body keeps its clothes.** While a body shows its character dead,
   `WorldSceneContext` keeps every new look for it and shows the last one once the
   body lives again, since its items lie in its corpse already.
@@ -2141,10 +2157,11 @@ asset changes are needed.
 order 20, below the interaction panel at 40 and the inventory at 100. Nothing on
 it takes a raycast, so it never blocks a world click. It shows:
 
-- An owner frame at the top left with health and a bar, the live arrow count
-  from `OwnerCombatState`, and the attack status as a short label from
-  `CombatHudPresentation.AttackStatusLabel`, such as `Out of range`,
-  `No line of sight`, or `No weapon equipped`, plus `In combat`. The worker's
+- An owner frame at the top left with health and a bar, mana and a blue bar,
+  the live arrow count from `OwnerCombatState`, and the attack status as a short
+  label from `CombatHudPresentation.AttackStatusLabel`, such as `Out of range`,
+  `No line of sight`, `No weapon equipped`, or `Not enough mana`, plus
+  `In combat`. The worker's
   error for a rejected request shows below it for four seconds.
 - A target frame at the top centre for the target of
   `CombatTargetingController` with its name, health, and whether it is in
@@ -2164,11 +2181,17 @@ it takes a raycast, so it never blocks a world click. It shows:
 on the body of every player who dies in view, as described in
 [Player Bodies](#player-bodies).
 
-`CombatProjectilePresentation` in `Mmorpg.Client.Combat` draws a simple arrow,
-a collider-free stretched cube, from the attacker to the target of every
-`AttackReleased` event whose impact tick lies after its batch tick, so a Mob
-bite shows none. It follows the target and lands at the impact tick by
-`CombatServerClock`; an arrow that already landed is not drawn.
+`CombatProjectilePresentation` in `Mmorpg.Client.Combat` presents every
+`AttackReleased` event. The attacker's body plays its weapon's attack clip, so
+everyone who sees a caster sees `Cast`. For an event whose impact tick lies
+after its batch tick, so not for a Mob bite, a projectile flies from the
+attacker to the target: for a `Ranged` attack a simple arrow, a collider-free
+stretched cube, and for a `Magic` attack a glowing blue-white bolt of three
+emissive spheres that leaves from the weapon's launch point, such as the staff's
+crystal, 0.15 s after the release, when the thrust of `Cast` carries it forward,
+and at most halfway through its flight. It follows the target and lands at the
+impact tick by `CombatServerClock`; a projectile that already landed is not
+drawn.
 
 The equipped ammunition slot of `TemporaryInventoryPanel` shows the live arrow
 count from `OwnerCombatState` when its `AmmunitionItemInstanceId` names the

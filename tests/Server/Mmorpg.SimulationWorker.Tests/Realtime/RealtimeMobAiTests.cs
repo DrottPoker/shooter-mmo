@@ -230,9 +230,11 @@ public sealed class RealtimeMobAiTests
             player = new PlayerCombatRulesDocument
             {
                 maximumHealth = maximumHealth,
+                maximumMana = 100,
                 respawnDelaySeconds = 30f,
                 combatTimeoutSeconds = 10f,
-                regenerationPercentPerSecond = 0,
+                healthRegenerationPerSecond = 0,
+                manaRegenerationPerSecond = 0,
                 equipmentLockoutSeconds = 0.5f
             },
             ammunition = new AmmunitionRulesDocument { batchIntervalSeconds = 5f },

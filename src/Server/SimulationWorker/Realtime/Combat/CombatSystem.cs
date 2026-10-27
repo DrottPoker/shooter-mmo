@@ -15,10 +15,11 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // Owns target-based combat on the realtime loop. A character picks a target once and
 // attacks on its weapon's cooldown whenever it stands still in range with line of sight,
-// a weapon, and matching arrows. Arrows fly and hit at their impact tick; damage that
-// reaches 0 kills, a dead character respawns after the respawn delay at the World spawn,
-// and a character out of combat regenerates. A Mob attacks the target its brain chose
-// once the brain stands ready in range, takes damage, dies, leaves loot, and respawns.
+// a weapon, matching arrows, and for magic enough mana. Arrows and bolts fly and hit at
+// their impact tick; damage that reaches 0 kills, a dead character respawns after the
+// respawn delay at the World spawn, and a character out of combat regenerates health and
+// mana. A Mob attacks the target its brain chose once the brain stands ready in range,
+// takes damage, dies, leaves loot, and respawns.
 // Every change reaches clients at the end of the tick. Loop-confined.
 internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunitionSource
 {
@@ -142,7 +143,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         var combatSession = authority.Attach(context, entity.Session);
         if (!combatants.TryGet(entity.NetworkEntityId, out var combatant))
         {
-            combatant = Combatant.ForPlayer(entity, rules.PlayerMaximumHealth);
+            combatant = Combatant.ForPlayer(entity, rules.PlayerMaximumHealth, rules.PlayerMaximumMana);
             combatants.Add(combatant);
             metrics?.SetActiveCombatants(combatants.Count);
         }
@@ -173,9 +174,9 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         return combatants.TryGet(entity.NetworkEntityId, out var combatant) && !combatant.IsAlive;
     }
 
-    // A development admin fills the health of a living player; false when it is dead or takes no
-    // part in combat.
-    public bool TryRestoreHealth(PlayerSimulationEntity entity)
+    // A development admin fills the health and mana of a living player; false when it is dead or
+    // takes no part in combat.
+    public bool TryRestoreHealthAndMana(PlayerSimulationEntity entity)
     {
         if (!combatants.TryGet(entity.NetworkEntityId, out var combatant) || !combatant.IsAlive)
         {
@@ -186,6 +187,12 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         {
             combatant.Health = combatant.MaximumHealth;
             combatant.MarkStateChanged();
+        }
+
+        if (combatant.Mana != combatant.MaximumMana)
+        {
+            combatant.Mana = combatant.MaximumMana;
+            combatant.MarkOwnerStateChanged();
         }
 
         return true;
@@ -408,6 +415,13 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             attacker.MarkOwnerStateChanged();
         }
 
+        if (attack.CostsMana)
+        {
+            // DetermineStatus waits while the mana is short, so the cost is always there.
+            attacker.Mana -= attack.ManaCost;
+            attacker.MarkOwnerStateChanged();
+        }
+
         attacker.NextAttackTick = serverTick + attack.IntervalTicks;
         attacker.MarkOwnerStateChanged();
         EnterCombat(attacker, serverTick);
@@ -499,9 +513,15 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             attacker.NextLineOfSightCheckTick = serverTick + (uint)Math.Max(1, config.MovementSimulation.TickRateHz / 5);
         }
 
-        return attacker.LastLineOfSight
-            ? RealtimeCombatAttackStatus.Attacking
-            : RealtimeCombatAttackStatus.LineOfSightBlocked;
+        if (!attacker.LastLineOfSight)
+        {
+            return RealtimeCombatAttackStatus.LineOfSightBlocked;
+        }
+
+        // A caster in position waits for its mana; it regenerates only out of combat.
+        return attacker.Mana < loadout.Attack.ManaCost
+            ? RealtimeCombatAttackStatus.NotEnoughMana
+            : RealtimeCombatAttackStatus.Attacking;
     }
 
     private void Release(
@@ -522,13 +542,13 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         var flightTicks = CombatTicks.FlightTicks(distance, attack.ProjectileSpeed, config.MovementSimulation.TickRateHz);
         if (flightTicks == 0)
         {
-            replicator.AttackReleased(attacker.EntityId, target.EntityId, serverTick);
+            replicator.AttackReleased(attacker.EntityId, target.EntityId, serverTick, attack.CombatStyle);
             ApplyHit(attacker.EntityId, target, damage, serverTick);
             return;
         }
 
         var impactTick = serverTick + flightTicks;
-        replicator.AttackReleased(attacker.EntityId, target.EntityId, impactTick);
+        replicator.AttackReleased(attacker.EntityId, target.EntityId, impactTick, attack.CombatStyle);
         projectiles.Enqueue(
             new Projectile(attacker.EntityId, target.EntityId, damage),
             (impactTick, projectileSequence++));
@@ -634,7 +654,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
     }
 
     // A dead character respawns at the World spawn once its death committed and the
-    // respawn delay passed; a living one out of combat regenerates every second.
+    // respawn delay passed; a living one out of combat regains health and mana every second.
     private void RegenerateOrRespawn(Combatant combatant, uint serverTick)
     {
         var player = combatant.Player!;
@@ -650,18 +670,28 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             return;
         }
 
+        var healthMissing = combatant.Health < combatant.MaximumHealth && rules.HealthRegenerationPerSecond > 0;
+        var manaMissing = combatant.Mana < combatant.MaximumMana && rules.ManaRegenerationPerSecond > 0;
         if (combatant.InCombat
-            || combatant.Health >= combatant.MaximumHealth
-            || rules.RegenerationPercentPerSecond <= 0
+            || (!healthMissing && !manaMissing)
             || !CombatTicks.IsReached(serverTick, combatant.NextRegenerationTick))
         {
             return;
         }
 
-        var amount = Math.Max(1, combatant.MaximumHealth * rules.RegenerationPercentPerSecond / 100);
-        combatant.Health = Math.Min(combatant.MaximumHealth, combatant.Health + amount);
         combatant.NextRegenerationTick = serverTick + (uint)config.MovementSimulation.TickRateHz;
-        combatant.MarkStateChanged();
+        if (healthMissing)
+        {
+            combatant.Health = Math.Min(combatant.MaximumHealth, combatant.Health + rules.HealthRegenerationPerSecond);
+            combatant.MarkStateChanged();
+        }
+
+        if (manaMissing)
+        {
+            // Mana is owner-only state, so it never reaches other viewers.
+            combatant.Mana = Math.Min(combatant.MaximumMana, combatant.Mana + rules.ManaRegenerationPerSecond);
+            combatant.MarkOwnerStateChanged();
+        }
     }
 
     private void Respawn(Combatant combatant, PlayerCombatSession combatSession)
@@ -676,6 +706,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             config.MovementSpawn.Z,
             config.MovementSpawn.YawDegrees));
         combatant.Health = combatant.MaximumHealth;
+        combatant.Mana = combatant.MaximumMana;
         combatant.LifeState = RealtimeCombatLifeState.Alive;
         combatant.AttackStatus = RealtimeCombatAttackStatus.Idle;
         combatant.RespawnTick = 0;
@@ -804,7 +835,8 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
                 Math.Max(1u, CombatTicks.FromSeconds(profile.AttackIntervalSeconds, config.MovementSimulation.TickRateHz)),
                 profile.AttackRange,
                 0f,
-                null));
+                null,
+                0));
         combatants.Add(mob);
         mobs.Register(mob);
     }

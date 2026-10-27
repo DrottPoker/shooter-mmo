@@ -1,7 +1,7 @@
 {
-  "formatVersion": 5,
+  "formatVersion": 6,
   "catalogId": "core",
-  "revision": "5952f7d692a1949ac73cbefd2cd35428c52db0fe298884de867c92e3f83f9ea8",
+  "revision": "0d46695796d989d16a7c0361a990906b4df79faebceb40460287c717ab610497",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 200,
@@ -197,7 +197,8 @@
         "minimumDamage": 10,
         "maximumDamage": 18,
         "attackIntervalSeconds": 2.4,
-        "range": 10
+        "range": 10,
+        "manaCost": 0
       },
       "structuralFingerprint": "beccc98b883fc9dede55f3f265dfe54397dcba68257d063088fda8fb900b7a1d"
     },
@@ -444,7 +445,8 @@
         "minimumDamage": 6,
         "maximumDamage": 12,
         "attackIntervalSeconds": 1.8,
-        "range": 1.5
+        "range": 1.5,
+        "manaCost": 0
       },
       "structuralFingerprint": "6560a1a692f26aa54ccb92eba469b28e30ffae3efe983fbe92e53dec60ce2d36"
     },

@@ -13,7 +13,8 @@ public enum CombatLoadoutStatus
 }
 
 // One attack a combatant can release: its damage roll, interval, range, and, for a
-// projectile, its speed. A Ranged attack also names the ammunition family it fires.
+// projectile, its speed. A Ranged attack also names the ammunition family it fires, and a
+// Magic attack the mana it costs.
 public sealed record CombatAttackProfile(
     string SourceId,
     string CombatStyle,
@@ -23,9 +24,12 @@ public sealed record CombatAttackProfile(
     uint IntervalTicks,
     float Range,
     float ProjectileSpeed,
-    string? AmmunitionFamily)
+    string? AmmunitionFamily,
+    int ManaCost)
 {
     public bool ConsumesAmmunition => AmmunitionFamily is not null;
+
+    public bool CostsMana => ManaCost > 0;
 }
 
 // The equipped ammunition stack as GameService last committed it.
@@ -80,6 +84,7 @@ public sealed class CombatItemCatalog
         }
 
         var ranged = string.Equals(family.CombatStyle, CombatStyleIds.Ranged, StringComparison.Ordinal);
+        var magic = string.Equals(family.CombatStyle, CombatStyleIds.Magic, StringComparison.Ordinal);
         var attack = new CombatAttackProfile(
             weapon.Id,
             family.CombatStyle,
@@ -89,7 +94,8 @@ public sealed class CombatItemCatalog
             Math.Max(1u, CombatTicks.FromSeconds(weapon.Weapon.AttackIntervalSeconds, tickRateHz)),
             weapon.Weapon.Range,
             Math.Max(0f, family.ProjectileSpeed),
-            ranged && !string.IsNullOrEmpty(family.AmmunitionFamily) ? family.AmmunitionFamily : null);
+            ranged && !string.IsNullOrEmpty(family.AmmunitionFamily) ? family.AmmunitionFamily : null,
+            magic ? Math.Max(0, weapon.Weapon.ManaCost) : 0);
         if (!attack.ConsumesAmmunition)
         {
             return new PlayerCombatLoadout(CombatLoadoutStatus.Ready, attack, ammunition);

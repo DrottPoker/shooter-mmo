@@ -1139,7 +1139,43 @@ were made on 2026-10-25 to test the hands' sockets, as Victor asked:
   arm in guard. A round shield with a centre grip would lie flat under a hanging
   hand until such a clip exists.
 
-Hold poses for raised weapons and sheathed weapons are later work.
+Sheathed weapons are later work. The first hold pose came with the Oak Staff,
+see [Weapon Poses And Attack Clips](#weapon-poses-and-attack-clips).
+
+### Weapon Poses And Attack Clips
+
+A weapon may name how its arm holds it and what its body does when it attacks,
+as Victor decided on 2026-10-27 for the Oak Staff, the first magic weapon:
+
+- **A hold pose**: a staff held along the fist's axis from a hanging arm would
+  point straight ahead at hip height, so the staff names the hold clip
+  `HoldStaff` in its `asset.json`. The clip bends the right elbow so the forearm
+  points forward with the thumb up, and the staff stands upright beside the right
+  hip, its crystal leaning in toward the head and its foot out to the side, at
+  least 31 mm from the thighs in every frame of `Walk` and `Jog` on both bodies.
+  `HumanLocomotion.controller` plays it on the layer `MainHandHold`, masked to the
+  right arm, at full weight over the locomotion clips while the main hand holds
+  the weapon and the body lives and uses no tool, so the arm keeps the pose while
+  the legs walk and jog.
+- **An attack clip**: the staff names `Cast`, which the body plays once over its
+  upper body whenever its attack releases: a short wind-up, a thrust that tips
+  the crystal about 30 degrees toward the target while the open left hand points
+  at it, and the way back to the hold pose, 0.9 s in all. The layer `Action`,
+  masked to the spine, head, and both arms without the fingers, plays it over the
+  hold pose, fading in over 0.06 s and out over 0.15 s, and a body that starts
+  to move ends it early. The fingers stay closed by `MainHandGrip`.
+- **A launch point**: the staff names `launchPoint`, the crystal 70 cm along the
+  shaft in the socket's axes, where its bolt leaves. The bolt appears 0.15 s
+  after the release, when the thrust carries the crystal forward, and still
+  lands at the server's impact tick.
+- **Made with the scripted rig of the tools**: both clips were keyed on the male
+  body with two-bone IK from searched grip frames that keep the wrists and
+  forearms near their neutral range, and approved by Victor with the staff on
+  2026-10-27.
+- **Everyone sees it.** Every client plays the attack clip of the body that
+  released an attack, from the `AttackReleased` event that names the attacker,
+  so a cast needs no protocol of its own. A sword or a bow names no attack clip
+  yet.
 
 ### Tools In Use
 

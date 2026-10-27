@@ -78,6 +78,14 @@ namespace Mmorpg.SharedTests
                         .ToArray())));
             r.Vector("Combat/OwnerCombatState/attacking", owner, () => RealtimeProtocol.EncodeOwnerCombatState(OwnerCombatStateModel()));
             r.Vector(
+                "Combat/OwnerCombatState/not enough mana",
+                owner,
+                () => RealtimeProtocol.EncodeOwnerCombatState(OwnerCombatStateModel(
+                    mana: 3,
+                    attackStatus: RealtimeCombatAttackStatus.NotEnoughMana,
+                    ammunitionItemInstanceId: Guid.Empty,
+                    ammunitionQuantity: 0)));
+            r.Vector(
                 "Combat/OwnerCombatState/dead",
                 owner,
                 () => RealtimeProtocol.EncodeOwnerCombatState(OwnerCombatStateModel(
@@ -174,6 +182,12 @@ namespace Mmorpg.SharedTests
             r.Rejects("Combat/CombatEventBatch/damage type 6", CombatEventBatchWire(HitWire(damageType: 6)));
             r.Accepts("Combat/CombatEventBatch/shadow hit", CombatEventBatchWire(HitWire(damageType: 5)));
             r.Rejects("Combat/CombatEventBatch/hit with an impact tick", CombatEventBatchWire(HitWire(impactTick: 1)));
+            r.Accepts("Combat/CombatEventBatch/arrow release", CombatEventBatchWire(AttackReleasedWire(attackStyle: 2)));
+            r.Accepts("Combat/CombatEventBatch/melee release", CombatEventBatchWire(AttackReleasedWire(attackStyle: 1)));
+            r.Rejects("Combat/CombatEventBatch/attack style 0", CombatEventBatchWire(AttackReleasedWire(attackStyle: 0)));
+            r.Rejects("Combat/CombatEventBatch/attack style 4", CombatEventBatchWire(AttackReleasedWire(attackStyle: 4)));
+            r.Rejects("Combat/CombatEventBatch/hit with a magic style", CombatEventBatchWire(HitWire(attackStyle: 3)));
+            r.Rejects("Combat/CombatEventBatch/death with a ranged style", CombatEventBatchWire(DiedWire(attackStyle: 2)));
             r.Rejects("Combat/CombatEventBatch/release without attacker", CombatEventBatchWire(AttackReleasedWire(source: 0)));
             r.Rejects(
                 "Combat/CombatEventBatch/release at itself",
@@ -202,7 +216,8 @@ namespace Mmorpg.SharedTests
                             100,
                             1,
                             RealtimeCombatDamageType.Normal,
-                            0)
+                            0,
+                            RealtimeCombatAttackStyle.Magic)
                     })));
         }
 
@@ -218,12 +233,18 @@ namespace Mmorpg.SharedTests
             r.Accepts(
                 "Combat/OwnerCombatState/no ammunition",
                 OwnerCombatStateWire(attackStatus: 8, ammunitionItemInstanceId: Guid.Empty, ammunitionQuantity: 0));
+            r.Accepts("Combat/OwnerCombatState/not enough mana", OwnerCombatStateWire(mana: 4, attackStatus: 11));
+            r.Accepts("Combat/OwnerCombatState/full mana", OwnerCombatStateWire(mana: 100));
+            r.Accepts("Combat/OwnerCombatState/without mana", OwnerCombatStateWire(mana: 0, maximumMana: 0));
             r.Rejects("Combat/OwnerCombatState/state revision 0", OwnerCombatStateWire(stateRevision: 0));
             r.Rejects("Combat/OwnerCombatState/health above maximum", OwnerCombatStateWire(health: 101));
             r.Rejects("Combat/OwnerCombatState/life state 0", OwnerCombatStateWire(lifeState: 0));
             r.Rejects("Combat/OwnerCombatState/evading", OwnerCombatStateWire(lifeState: 3));
             r.Rejects("Combat/OwnerCombatState/attack status 0", OwnerCombatStateWire(attackStatus: 0));
-            r.Rejects("Combat/OwnerCombatState/attack status 11", OwnerCombatStateWire(attackStatus: 11));
+            r.Rejects("Combat/OwnerCombatState/attack status 12", OwnerCombatStateWire(attackStatus: 12));
+            r.Rejects("Combat/OwnerCombatState/mana above maximum", OwnerCombatStateWire(mana: 101));
+            r.Rejects("Combat/OwnerCombatState/negative mana", OwnerCombatStateWire(mana: -1));
+            r.Rejects("Combat/OwnerCombatState/negative maximum mana", OwnerCombatStateWire(mana: 0, maximumMana: -1));
             r.Rejects(
                 "Combat/OwnerCombatState/dead with health",
                 OwnerCombatStateWire(lifeState: 2, respawnTick: 300, targetEntityId: 0, attackStatus: 10));
@@ -245,6 +266,9 @@ namespace Mmorpg.SharedTests
                     lifeState: RealtimeCombatLifeState.Dead,
                     targetEntityId: 0,
                     attackStatus: RealtimeCombatAttackStatus.Dead)));
+            r.RejectsEncode(
+                "Combat/OwnerCombatState/mana above maximum",
+                () => RealtimeProtocol.EncodeOwnerCombatState(OwnerCombatStateModel(mana: 101)));
         }
 
         private static RealtimeCombatIntentResult CombatIntentResultModel(
@@ -286,7 +310,8 @@ namespace Mmorpg.SharedTests
                 0x01020310,
                 0,
                 RealtimeCombatDamageType.Normal,
-                0);
+                0,
+                RealtimeCombatAttackStyle.Magic);
         }
 
         private static RealtimeCombatEvent HitModel()
@@ -298,7 +323,8 @@ namespace Mmorpg.SharedTests
                 0,
                 17,
                 RealtimeCombatDamageType.Fire,
-                33);
+                33,
+                RealtimeCombatAttackStyle.Melee);
         }
 
         private static RealtimeCombatEvent DiedModel()
@@ -310,11 +336,13 @@ namespace Mmorpg.SharedTests
                 0,
                 0,
                 RealtimeCombatDamageType.Normal,
-                0);
+                0,
+                RealtimeCombatAttackStyle.Melee);
         }
 
         private static RealtimeOwnerCombatState OwnerCombatStateModel(
             int health = 64,
+            int mana = 40,
             RealtimeCombatLifeState lifeState = RealtimeCombatLifeState.Alive,
             uint lifeSequence = 2,
             uint respawnTick = 0,
@@ -328,6 +356,8 @@ namespace Mmorpg.SharedTests
                 serverTick: 0x01020304,
                 health: health,
                 maximumHealth: 100,
+                mana: mana,
+                maximumMana: 100,
                 lifeState: lifeState,
                 lifeSequence: lifeSequence,
                 respawnTick: respawnTick,
@@ -402,7 +432,8 @@ namespace Mmorpg.SharedTests
             uint impactTick = 0,
             int damage = 0,
             byte damageType = 1,
-            int healthAfter = 0)
+            int healthAfter = 0,
+            byte attackStyle = 1)
         {
             return Wire.Fragment()
                 .U8(kind)
@@ -411,12 +442,13 @@ namespace Mmorpg.SharedTests
                 .U32(impactTick)
                 .I32(damage)
                 .U8(damageType)
-                .I32(healthAfter);
+                .I32(healthAfter)
+                .U8(attackStyle);
         }
 
-        private static Wire AttackReleasedWire(ulong source = CombatAttackerEntityId, int damage = 0)
+        private static Wire AttackReleasedWire(ulong source = CombatAttackerEntityId, int damage = 0, byte attackStyle = 3)
         {
-            return CombatEventWire(1, source: source, impactTick: 0x01020310, damage: damage);
+            return CombatEventWire(1, source: source, impactTick: 0x01020310, damage: damage, attackStyle: attackStyle);
         }
 
         private static Wire HitWire(
@@ -425,19 +457,22 @@ namespace Mmorpg.SharedTests
             uint impactTick = 0,
             int damage = 17,
             byte damageType = 2,
-            int healthAfter = 33)
+            int healthAfter = 33,
+            byte attackStyle = 1)
         {
-            return CombatEventWire(2, source, target, impactTick, damage, damageType, healthAfter);
+            return CombatEventWire(2, source, target, impactTick, damage, damageType, healthAfter, attackStyle);
         }
 
-        private static Wire DiedWire(ulong source = CombatAttackerEntityId, int damage = 0, uint impactTick = 0)
+        private static Wire DiedWire(ulong source = CombatAttackerEntityId, int damage = 0, uint impactTick = 0, byte attackStyle = 1)
         {
-            return CombatEventWire(3, source: source, impactTick: impactTick, damage: damage);
+            return CombatEventWire(3, source: source, impactTick: impactTick, damage: damage, attackStyle: attackStyle);
         }
 
         private static Wire OwnerCombatStateWire(
             long stateRevision = 11,
             int health = 64,
+            int mana = 40,
+            int maximumMana = 100,
             byte lifeState = 1,
             uint respawnTick = 0,
             ulong targetEntityId = CombatTargetEntityId,
@@ -450,6 +485,8 @@ namespace Mmorpg.SharedTests
                 .U32(0x01020304)
                 .I32(health)
                 .I32(100)
+                .I32(mana)
+                .I32(maximumMana)
                 .U8(lifeState)
                 .U32(2)
                 .U32(respawnTick)

@@ -680,6 +680,9 @@ namespace Mmorpg.WorldData.Editor.Items
                 var range = form.Float("Range", "weapon.range", entry => entry.weapon?.range ?? 0f, (entry, value) => EditWeapon(entry, weapon => weapon.range = value));
                 range.tooltip = "Metres from the attacker to the closest point of the target.";
                 section.Add(range);
+                var manaCost = form.Integer("Mana Cost", "weapon.manaCost", entry => entry.weapon?.manaCost ?? 0, (entry, value) => EditWeapon(entry, weapon => weapon.manaCost = value));
+                manaCost.tooltip = "The mana every attack costs; above 0 for a magic weapon and 0 otherwise.";
+                section.Add(manaCost);
             }
 
             section.Add(form.Toggle(
@@ -707,7 +710,8 @@ namespace Mmorpg.WorldData.Editor.Items
                 minimumDamage = 1,
                 maximumDamage = 1,
                 attackIntervalSeconds = 2.4f,
-                range = 1.5f
+                range = 1.5f,
+                manaCost = 0
             };
         }
 

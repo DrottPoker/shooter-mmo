@@ -1,7 +1,7 @@
 {
     "formatVersion": 4,
-    "sourceCatalogRevision": "ba4671505831aee2c15cc873908520ee14aabc2f62ad2e02e5f102edf4911b1c",
-    "presentationRevision": "d789fcf85465b1fa8bcd034e94133d8948ea074a1e4c667eb2854eea844ff3e3",
+    "sourceCatalogRevision": "16222231c56c20040c127b19090dcac13fd1f8c4ae2b117b1fda82f71276e5d8",
+    "presentationRevision": "a12fc433024f36930224db7fc157ed1637013064427cd17d743a6fa91dc4e8ce",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
@@ -384,6 +384,17 @@
             "loweredGarments": [],
             "dyes": [],
             "attachment": "IronSword"
+        },
+        {
+            "definitionId": "weapon.oak_staff",
+            "iconAddress": "",
+            "localizationKey": "items.weapon.oak_staff.name",
+            "fallbackDisplayName": "Oak Staff",
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": [],
+            "attachment": "OakStaff"
         },
         {
             "definitionId": "weapon.training_shortbow",

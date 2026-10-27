@@ -16,9 +16,11 @@ public sealed class CombatRules
     private CombatRules(CombatRulesDocument document)
     {
         PlayerMaximumHealth = document.player.maximumHealth;
+        PlayerMaximumMana = document.player.maximumMana;
         RespawnDelaySeconds = document.player.respawnDelaySeconds;
         CombatTimeoutSeconds = document.player.combatTimeoutSeconds;
-        RegenerationPercentPerSecond = document.player.regenerationPercentPerSecond;
+        HealthRegenerationPerSecond = document.player.healthRegenerationPerSecond;
+        ManaRegenerationPerSecond = document.player.manaRegenerationPerSecond;
         EquipmentLockoutSeconds = document.player.equipmentLockoutSeconds;
         AmmunitionBatchIntervalSeconds = document.ammunition.batchIntervalSeconds;
         ruleSets = document.ruleSets.ToDictionary(
@@ -29,11 +31,15 @@ public sealed class CombatRules
 
     public int PlayerMaximumHealth { get; }
 
+    public int PlayerMaximumMana { get; }
+
     public float RespawnDelaySeconds { get; }
 
     public float CombatTimeoutSeconds { get; }
 
-    public int RegenerationPercentPerSecond { get; }
+    public int HealthRegenerationPerSecond { get; }
+
+    public int ManaRegenerationPerSecond { get; }
 
     public float EquipmentLockoutSeconds { get; }
 
@@ -53,9 +59,11 @@ public sealed class CombatRules
         player = new PlayerCombatRulesDocument
         {
             maximumHealth = 100,
+            maximumMana = 100,
             respawnDelaySeconds = 5f,
-            combatTimeoutSeconds = 10f,
-            regenerationPercentPerSecond = 2,
+            combatTimeoutSeconds = 5f,
+            healthRegenerationPerSecond = 1,
+            manaRegenerationPerSecond = 1,
             equipmentLockoutSeconds = 1f
         },
         ammunition = new AmmunitionRulesDocument { batchIntervalSeconds = 5f },

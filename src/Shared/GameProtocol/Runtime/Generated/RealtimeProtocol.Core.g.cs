@@ -171,7 +171,7 @@ namespace Mmorpg.GameProtocol
         CombatEventBatch = 32,
 
         /// <summary>
-        /// The owner's combat state: life, target, attack status and timing, and equipped ammunition.
+        /// The owner's combat state: life, mana, target, attack status and timing, and equipped ammunition.
         /// </summary>
         OwnerCombatState = 33,
 
@@ -372,7 +372,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 27;
+        public const ushort Version = 28;
 
         /// <summary>
         /// The LiteNetLib connection key.

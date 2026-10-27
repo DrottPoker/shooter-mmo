@@ -16,7 +16,9 @@ namespace Mmorpg.Client.Gameplay
     // its chains. An attachment the look holds, such as a sword, is part of the combined renderer on
     // its socket, and the fingers of a hand that holds one close around its grip. A tool the look
     // holds, such as a pickaxe, makes the body play the tool's clip, and a tool held with both hands
-    // closes the other hand too and pins it on the tool.
+    // closes the other hand too and pins it on the tool. A weapon with a hold clip, such as a staff,
+    // keeps its arm in that pose, plays its attack clip when its attack releases, and names where
+    // its projectile leaves it.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -46,6 +48,8 @@ namespace Mmorpg.Client.Gameplay
         private bool tinted;
         private Color tintColor = Color.white;
         private BodyAppearanceCatalog.Attachment tool;
+        private BodyAppearanceCatalog.Attachment weapon;
+        private Transform weaponSocket;
         private ToolBones toolBones;
         private CharacterLocomotionAnimator locomotion;
 
@@ -87,6 +91,57 @@ namespace Mmorpg.Client.Gameplay
         public BodyAppearanceCatalog.Attachment Tool
         {
             get { return tool; }
+        }
+
+        // The weapon in the main hand that is no tool, such as a staff, or null.
+        public BodyAppearanceCatalog.Attachment Weapon
+        {
+            get { return weapon; }
+        }
+
+        // The body plays the attack clip of the weapon in its main hand once, such as Cast; false
+        // when it holds no weapon with one.
+        public bool PlayAttack()
+        {
+            var body = Locomotion;
+            return weapon != null && weapon.AttackClip.Length > 0 && body != null && body.PlayAttack(weapon.AttackClip);
+        }
+
+        // Where the projectile of the weapon in the main hand leaves it right now, such as the
+        // crystal of a staff; false when the body holds no weapon that names a launch point.
+        public bool TryGetLaunchPoint(out Vector3 position)
+        {
+            position = default(Vector3);
+            if (weapon == null || !weapon.HasLaunchPoint || combinedRenderer == null)
+            {
+                return false;
+            }
+
+            if (weaponSocket == null)
+            {
+                weaponSocket = PlayerBodyMeshes.FindDescendant(transform, weapon.Bone);
+            }
+
+            if (weaponSocket == null)
+            {
+                return false;
+            }
+
+            position = weaponSocket.TransformPoint(weapon.LaunchPoint);
+            return true;
+        }
+
+        private CharacterLocomotionAnimator Locomotion
+        {
+            get
+            {
+                if (locomotion == null)
+                {
+                    locomotion = GetComponent<CharacterLocomotionAnimator>();
+                }
+
+                return locomotion;
+            }
         }
 
         // Draws the visible parts and the worn garments as one skinned renderer with the shared
@@ -158,17 +213,15 @@ namespace Mmorpg.Client.Gameplay
             Refresh();
         }
 
-        // The body plays the clip of the tool it holds, or stops playing one.
+        // The body plays the clip of the tool it holds, or stops playing one, and holds its weapon
+        // in the weapon's pose.
         private void UseTool()
         {
-            if (locomotion == null)
+            var body = Locomotion;
+            if (body != null)
             {
-                locomotion = GetComponent<CharacterLocomotionAnimator>();
-            }
-
-            if (locomotion != null)
-            {
-                locomotion.Use(tool != null ? tool.UseClip : null);
+                body.Use(tool != null ? tool.UseClip : null);
+                body.Hold(weapon != null ? weapon.HoldClip : null);
             }
         }
 
@@ -196,6 +249,13 @@ namespace Mmorpg.Client.Gameplay
             }
 
             tool = held.FirstOrDefault(attachment => attachment.IsTool);
+            var mainHandWeapon = held.FirstOrDefault(attachment => !attachment.IsTool
+                && string.Equals(attachment.Bone, HumanLocomotion.MainHandSocketBone, StringComparison.Ordinal));
+            if (mainHandWeapon != weapon)
+            {
+                weapon = mainHandWeapon;
+                weaponSocket = null;
+            }
 
             var key = string.Join("+", worn.Select(garment => garment.Name))
                 + "#" + string.Join("+", held.Select(attachment => attachment.Name));
@@ -249,12 +309,8 @@ namespace Mmorpg.Client.Gameplay
             // Most bodies hold no tool, so they pay nothing more per frame.
             if (tool != null && tool.HoldsWithBothHands)
             {
-                if (locomotion == null)
-                {
-                    locomotion = GetComponent<CharacterLocomotionAnimator>();
-                }
-
-                PinOffHand(locomotion != null ? locomotion.UseWeight : 0f);
+                var body = Locomotion;
+                PinOffHand(body != null ? body.UseWeight : 0f);
             }
         }
 

@@ -1,0 +1,33 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [
+    "off_hand"
+  ],
+  "category": "weapon",
+  "defaultPolicies": [ ],
+  "displayName": "Oak Staff",
+  "equipmentSlots": [
+    "main_hand"
+  ],
+  "id": "weapon.oak_staff",
+  "locationEligibility": {
+    "secureContainer": false
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 90,
+  "value": 120,
+  "weapon": {
+    "attackIntervalSeconds": 2.4,
+    "damageType": "normal",
+    "manaCost": 5,
+    "maximumDamage": 18,
+    "minimumDamage": 10,
+    "range": 10,
+    "weaponFamily": "staff"
+  }
+}

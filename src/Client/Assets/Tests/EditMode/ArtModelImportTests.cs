@@ -471,6 +471,18 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(actual.b, Is.EqualTo(approved.b).Within(1.5f / 255f), where);
                     Assert.That(material.GetFloat("_Metallic"), Is.EqualTo(record.metallic).Within(0.01f), where);
                     Assert.That(material.GetFloat("_Smoothness"), Is.EqualTo(record.smoothness).Within(0.01f), where);
+                    // A glowing material emits its approved color, and every other material nothing.
+                    var glows = !string.IsNullOrEmpty(record.emission);
+                    Assert.That(material.IsKeywordEnabled("_EMISSION"), Is.EqualTo(glows), where);
+                    if (glows)
+                    {
+                        Assert.That(ColorUtility.TryParseHtmlString(record.emission, out var emission), Is.True, where);
+                        var emitted = material.GetColor("_EmissionColor");
+                        Assert.That(emitted.r, Is.EqualTo(emission.r).Within(1.5f / 255f), where);
+                        Assert.That(emitted.g, Is.EqualTo(emission.g).Within(1.5f / 255f), where);
+                        Assert.That(emitted.b, Is.EqualTo(emission.b).Within(1.5f / 255f), where);
+                    }
+
                     // A garment is cut at its texture's alpha and drawn from both sides.
                     var garment = manifest.IsGarment || manifest.IsTexture;
                     var alphaClip = material.HasProperty("_AlphaClip") ? material.GetFloat("_AlphaClip") : 0f;

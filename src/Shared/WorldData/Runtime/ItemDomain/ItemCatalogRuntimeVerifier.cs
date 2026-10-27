@@ -242,7 +242,8 @@ namespace Mmorpg.WorldData.Items
                         MinimumDamage = definition.Weapon.MinimumDamage,
                         MaximumDamage = definition.Weapon.MaximumDamage,
                         AttackIntervalSeconds = definition.Weapon.AttackIntervalSeconds,
-                        Range = definition.Weapon.Range
+                        Range = definition.Weapon.Range,
+                        ManaCost = definition.Weapon.ManaCost
                     },
                 Ammunition = !hasAmmunition
                     ? null

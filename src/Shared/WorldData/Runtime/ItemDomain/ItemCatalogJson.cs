@@ -61,6 +61,7 @@ namespace Mmorpg.WorldData.Items
         public int maximumDamage;
         public float attackIntervalSeconds;
         public float range;
+        public int manaCost;
     }
 
     [Serializable]
@@ -196,7 +197,8 @@ namespace Mmorpg.WorldData.Items
                         MinimumDamage = weapon.minimumDamage,
                         MaximumDamage = weapon.maximumDamage,
                         AttackIntervalSeconds = weapon.attackIntervalSeconds,
-                        Range = weapon.range
+                        Range = weapon.range,
+                        ManaCost = weapon.manaCost
                     },
                 Ammunition = ammunition == null
                     ? null

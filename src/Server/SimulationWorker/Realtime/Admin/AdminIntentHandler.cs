@@ -95,7 +95,7 @@ internal sealed class AdminIntentHandler(
             case RealtimeAdminIntentKind.Teleport:
                 return Teleport(entity, intent.DestinationX, intent.DestinationY, intent.DestinationZ);
             case RealtimeAdminIntentKind.RestoreHealth:
-                return combat.TryRestoreHealth(entity) ? null : CharacterDead;
+                return combat.TryRestoreHealthAndMana(entity) ? null : CharacterDead;
             case RealtimeAdminIntentKind.SetInvulnerable:
                 return combat.TrySetInvulnerable(entity, intent.Enabled) ? null : CombatUnavailable;
             default:

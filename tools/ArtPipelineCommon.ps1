@@ -146,7 +146,7 @@ function ConvertTo-ArtMaterialRecords($Records) {
     # is missing, malformed, or a duplicate, so no invalid entry can drop out unnoticed. A
     # painted material names its texture in baseMap and has a white baseColor. A dyeable garment
     # texture's material names its dye mask in dyeMap and the natural color of each of its one to
-    # three channels in dyeColors.
+    # three channels in dyeColors. A glowing material names its emission color.
     $result = New-Object System.Collections.Generic.List[object]
     $names = New-Object System.Collections.Generic.HashSet[string]
     foreach ($record in @($Records)) {
@@ -179,6 +179,14 @@ function ConvertTo-ArtMaterialRecords($Records) {
             return $null
         }
 
+        $emission = $null
+        if ($null -ne $record.PSObject.Properties['emission']) {
+            $emission = [string]$record.emission
+            if ($emission -cnotmatch '^#[0-9A-F]{6}$' -or $emission -ceq '#000000') {
+                return $null
+            }
+        }
+
         $numbers = @()
         foreach ($field in @("metallic", "smoothness")) {
             $value = $record.$field
@@ -204,6 +212,10 @@ function ConvertTo-ArtMaterialRecords($Records) {
 
         $material.metallic = $numbers[0]
         $material.smoothness = $numbers[1]
+        if ($null -ne $emission) {
+            $material.emission = $emission
+        }
+
         $result.Add($material)
     }
 
@@ -391,11 +403,12 @@ function Get-ArtSocket([string]$Socket) {
     return $null
 }
 
-function Get-ArtHeldLibrary([string]$Skeleton) {
+function Get-ArtHeldLibrary([string]$Skeleton, [string]$HoldClip) {
     # The animation library of a skeleton whose bodies hold an attachment in its review: the first
-    # with the clip Idle, with its armature, or $null without one.
+    # with the clip Idle, and the attachment's hold clip when it names one, with its armature, or
+    # $null without one.
     foreach ($library in @(Get-ArtClipLibraries $Skeleton | Sort-Object Asset)) {
-        if ($library.Clips -ccontains "Idle") {
+        if ($library.Clips -ccontains "Idle" -and ([string]::IsNullOrEmpty($HoldClip) -or $library.Clips -ccontains $HoldClip)) {
             $json = Get-Content -Raw -LiteralPath (Join-Path $script:ArtRepositoryRoot "$($library.Asset)/asset.json") | ConvertFrom-Json
             return [pscustomobject]@{ SourcePath = $library.SourcePath; Root = [string]@($json.rootObjects)[0] }
         }
@@ -597,7 +610,14 @@ function Add-ArtMaterialLines($Lines, $Materials, [string]$Comma) {
         }
 
         $Lines.Add("                `"metallic`": $(Format-ArtNumber $material.metallic),")
-        $Lines.Add("                `"smoothness`": $(Format-ArtNumber $material.smoothness)")
+        if ($material.Contains("emission")) {
+            $Lines.Add("                `"smoothness`": $(Format-ArtNumber $material.smoothness),")
+            $Lines.Add("                `"emission`": `"$($material.emission)`"")
+        }
+        else {
+            $Lines.Add("                `"smoothness`": $(Format-ArtNumber $material.smoothness)")
+        }
+
         $Lines.Add("            }$separator")
     }
     $Lines.Add("        ]$Comma")
@@ -1938,6 +1958,46 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         }
     }
 
+    # A weapon held on main_hand may name the pose its arm holds it in, such as HoldStaff, and the
+    # clip its body plays once whenever its attack releases, such as Cast, both clips of an
+    # animation library of its socket's skeleton. A weapon with an attack clip may name where on it
+    # the projectile of its attack leaves, in the socket's axes.
+    $weaponClips = @{}
+    foreach ($field in @("holdClip", "attackClip")) {
+        $weaponClips[$field] = $null
+        if ($null -eq $json.PSObject.Properties[$field]) {
+            continue
+        }
+
+        $clip = [string]$json.$field
+        if ($null -eq $socket -or [string]$json.socket -cne "main_hand" -or $null -ne $useClip) {
+            $problems.Add("only an attachment held on main_hand that is not a tool has a $field")
+        }
+        elseif ($clip -cnotmatch '^[A-Za-z][A-Za-z0-9_]*$' -or
+            @(Get-ArtClipLibraries $socket.Skeleton | Where-Object { $_.Clips -ccontains $clip }).Count -eq 0) {
+            $problems.Add("$field must name a clip of an animation library of the $($socket.Skeleton) skeleton, such as HoldStaff")
+        }
+        else {
+            $weaponClips[$field] = $clip
+        }
+    }
+
+    $launchPoint = $null
+    if ($null -ne $json.PSObject.Properties['launchPoint']) {
+        $values = @($json.launchPoint)
+        $numbers = @($values | Where-Object { $_ -is [int] -or $_ -is [long] -or $_ -is [double] -or $_ -is [decimal] })
+        if ($null -eq $json.PSObject.Properties['attackClip']) {
+            $problems.Add("only an attachment with an attackClip has a launchPoint")
+        }
+        elseif ($values.Count -ne 3 -or $numbers.Count -ne 3 -or
+            @($numbers | Where-Object { [Math]::Abs([double]$_) -gt 2.0 }).Count -gt 0) {
+            $problems.Add("launchPoint must be three numbers in meters, at most 2 m from Grip each, such as [0.0, 0.67, 0.0]")
+        }
+        else {
+            $launchPoint = [double[]]@($numbers | ForEach-Object { [double]$_ })
+        }
+    }
+
     # A skinned asset and an animation library name their shared skeleton and the animation clips
     # the game plays on it.
     $skeleton = $null
@@ -2168,6 +2228,9 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         Socket = $socket
         UseClip = $useClip
         OffHandGrip = $offHandGrip
+        HoldClip = $weaponClips["holdClip"]
+        AttackClip = $weaponClips["attackClip"]
+        LaunchPoint = $launchPoint
         Skeleton = $skeleton
         SkeletonPath = $skeletonPath
         Rig = $rig
@@ -2239,6 +2302,19 @@ function Write-ArtAssetManifest($Manifest) {
     if ($null -ne $Manifest.OffHandGrip) {
         $grip = (@($Manifest.OffHandGrip) | ForEach-Object { ([double]$_).ToString("0.0###", [System.Globalization.CultureInfo]::InvariantCulture) }) -join ", "
         $lines.Add("    `"offHandGrip`": [$grip],")
+    }
+
+    if ($null -ne $Manifest.HoldClip) {
+        $lines.Add("    `"holdClip`": `"$($Manifest.HoldClip)`",")
+    }
+
+    if ($null -ne $Manifest.AttackClip) {
+        $lines.Add("    `"attackClip`": `"$($Manifest.AttackClip)`",")
+    }
+
+    if ($null -ne $Manifest.LaunchPoint) {
+        $point = (@($Manifest.LaunchPoint) | ForEach-Object { ([double]$_).ToString("0.0###", [System.Globalization.CultureInfo]::InvariantCulture) }) -join ", "
+        $lines.Add("    `"launchPoint`": [$point],")
     }
 
     if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {
