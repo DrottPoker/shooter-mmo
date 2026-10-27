@@ -1,0 +1,56 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/Attachments/OakStaff.fbx",
+    "rootObjects": [
+        "Grip"
+    ],
+    "triangleBudget": 1500,
+    "socket": "main_hand",
+    "holdClip": "HoldStaff",
+    "attackClip": "Cast",
+    "launchPoint": [0.0, 0.7, 0.0],
+    "approvals": {
+        "model": {
+            "date": "2026-10-27",
+            "sourceSha256": "3fbb9ff9b4fc777e2f7bd8119dab7292c72921e50dd4848b0d2db6c96863b713"
+        }
+    },
+    "export": {
+        "sourceSha256": "3fbb9ff9b4fc777e2f7bd8119dab7292c72921e50dd4848b0d2db6c96863b713",
+        "targetSha256": "f4d2e696213ff74ea821758c8671ec3ea038a62661ea7bdf2f64737bef0c6998",
+        "materials": [
+            {
+                "name": "M_OakStaff_Crystal",
+                "baseColor": "#4FC3FF",
+                "metallic": 0.0,
+                "smoothness": 0.88,
+                "emission": "#2A9CFF"
+            },
+            {
+                "name": "M_OakStaff_Leaf",
+                "baseColor": "#6FA03A",
+                "metallic": 0.0,
+                "smoothness": 0.4
+            },
+            {
+                "name": "M_OakStaff_Leather",
+                "baseColor": "#4A3121",
+                "metallic": 0.0,
+                "smoothness": 0.3
+            },
+            {
+                "name": "M_OakStaff_Oak",
+                "baseColor": "#6E4A2C",
+                "metallic": 0.0,
+                "smoothness": 0.22
+            },
+            {
+                "name": "M_OakStaff_Silver",
+                "baseColor": "#C9D1D9",
+                "metallic": 0.75,
+                "smoothness": 0.7
+            }
+        ]
+    }
+}

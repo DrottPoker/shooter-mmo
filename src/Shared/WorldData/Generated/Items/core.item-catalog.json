@@ -1,7 +1,7 @@
 {
-  "formatVersion": 5,
+  "formatVersion": 6,
   "catalogId": "core",
-  "revision": "ba4671505831aee2c15cc873908520ee14aabc2f62ad2e02e5f102edf4911b1c",
+  "revision": "16222231c56c20040c127b19090dcac13fd1f8c4ae2b117b1fda82f71276e5d8",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 2000,
@@ -168,6 +168,13 @@
       "combatStyle": "ranged",
       "ammunitionFamily": "arrow",
       "projectileSpeed": 30
+    },
+    {
+      "id": "staff",
+      "displayName": "Staff",
+      "combatStyle": "magic",
+      "ammunitionFamily": "",
+      "projectileSpeed": 20
     },
     {
       "id": "sword",
@@ -876,9 +883,42 @@
         "minimumDamage": 11,
         "maximumDamage": 19,
         "attackIntervalSeconds": 2.4,
-        "range": 2.5
+        "range": 2.5,
+        "manaCost": 0
       },
       "structuralFingerprint": "52509c503e8ac36450e02072864ef28566b6223804280c0a5a0b0f70b8c34bcf"
+    },
+    {
+      "id": "weapon.oak_staff",
+      "displayName": "Oak Staff",
+      "category": "weapon",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 90,
+      "value": 120,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "main_hand"
+      ],
+      "blockedEquipmentSlots": [
+        "off_hand"
+      ],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": false
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "weapon": {
+        "weaponFamily": "staff",
+        "damageType": "normal",
+        "minimumDamage": 10,
+        "maximumDamage": 18,
+        "attackIntervalSeconds": 2.4,
+        "range": 10,
+        "manaCost": 5
+      },
+      "structuralFingerprint": "a2588a67b019564050760ce8e11ebaab82bd1e2bfaec7ddcb64a9869206743ae"
     },
     {
       "id": "weapon.training_shortbow",
@@ -907,7 +947,8 @@
         "minimumDamage": 10,
         "maximumDamage": 18,
         "attackIntervalSeconds": 2.4,
-        "range": 10
+        "range": 10,
+        "manaCost": 0
       },
       "structuralFingerprint": "f062a6af3f7a41e821539b89a50408d07abd5a6577548fe54e7167c749542732"
     }
@@ -990,6 +1031,9 @@
         },
         {
           "definitionId": "weapon.iron_sword"
+        },
+        {
+          "definitionId": "weapon.oak_staff"
         },
         {
           "definitionId": "armor.heater_shield"

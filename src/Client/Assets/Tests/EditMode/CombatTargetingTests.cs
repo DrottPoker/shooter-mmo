@@ -606,6 +606,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 100,
                 dead ? 0 : 100,
                 100,
+                100,
+                100,
                 lifeState,
                 1,
                 dead ? 250u : 0u,

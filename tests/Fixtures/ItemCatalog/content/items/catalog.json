@@ -101,7 +101,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 5,
+  "formatVersion": 6,
   "progression": {
     "maximumCharacterLevel": 200
   },

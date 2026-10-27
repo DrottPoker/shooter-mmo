@@ -39,7 +39,18 @@ namespace Mmorpg.GameProtocol
         WeaponMissing = 7,
         AmmunitionMissing = 8,
         AmmunitionIncompatible = 9,
-        Dead = 10
+        Dead = 10,
+        NotEnoughMana = 11
+    }
+
+    /// <summary>
+    /// The combat style of a released attack, which selects how it is presented, such as an arrow or a magic bolt.
+    /// </summary>
+    public enum RealtimeCombatAttackStyle : byte
+    {
+        Melee = 1,
+        Ranged = 2,
+        Magic = 3
     }
 
     /// <summary>
@@ -76,7 +87,8 @@ namespace Mmorpg.GameProtocol
             uint impactTick,
             int damage,
             RealtimeCombatDamageType damageType,
-            int healthAfter)
+            int healthAfter,
+            RealtimeCombatAttackStyle attackStyle)
         {
             Kind = kind;
             SourceEntityId = sourceEntityId;
@@ -85,6 +97,7 @@ namespace Mmorpg.GameProtocol
             Damage = damage;
             DamageType = damageType;
             HealthAfter = healthAfter;
+            AttackStyle = attackStyle;
         }
 
         /// <summary>
@@ -121,6 +134,11 @@ namespace Mmorpg.GameProtocol
         /// For a hit, the target's health afterwards.
         /// </summary>
         public int HealthAfter { get; }
+
+        /// <summary>
+        /// For a released attack, the combat style of the attack; Melee otherwise.
+        /// </summary>
+        public RealtimeCombatAttackStyle AttackStyle { get; }
     }
 
     /// <summary>
@@ -302,7 +320,7 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
-    /// The owner's combat state: life, target, attack status and timing, and equipped ammunition.
+    /// The owner's combat state: life, mana, target, attack status and timing, and equipped ammunition.
     /// </summary>
     public sealed partial class RealtimeOwnerCombatState
     {
@@ -311,6 +329,8 @@ namespace Mmorpg.GameProtocol
             uint serverTick,
             int health,
             int maximumHealth,
+            int mana,
+            int maximumMana,
             RealtimeCombatLifeState lifeState,
             uint lifeSequence,
             uint respawnTick,
@@ -326,6 +346,8 @@ namespace Mmorpg.GameProtocol
             ServerTick = serverTick;
             Health = health;
             MaximumHealth = maximumHealth;
+            Mana = mana;
+            MaximumMana = maximumMana;
             LifeState = lifeState;
             LifeSequence = lifeSequence;
             RespawnTick = respawnTick;
@@ -357,6 +379,16 @@ namespace Mmorpg.GameProtocol
         /// The maximum health.
         /// </summary>
         public int MaximumHealth { get; }
+
+        /// <summary>
+        /// The current mana that magic attacks spend.
+        /// </summary>
+        public int Mana { get; }
+
+        /// <summary>
+        /// The maximum mana.
+        /// </summary>
+        public int MaximumMana { get; }
 
         /// <summary>
         /// Whether the character lives.
@@ -832,7 +864,7 @@ namespace Mmorpg.GameProtocol
         private static int SizeOfCombatEventBatch(RealtimeCombatEventBatch value)
         {
             var size = 4;
-            size += 1 + (value.Events.Length * 30);
+            size += 1 + (value.Events.Length * 31);
             return size;
         }
 
@@ -892,7 +924,7 @@ namespace Mmorpg.GameProtocol
         }
 
         /// <summary>
-        /// The owner's combat state: life, target, attack status and timing, and equipped ammunition.
+        /// The owner's combat state: life, mana, target, attack status and timing, and equipped ammunition.
         /// </summary>
         public static byte[] EncodeOwnerCombatState(RealtimeOwnerCombatState state)
         {
@@ -901,7 +933,7 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Owner combat state is invalid.", nameof(state));
             }
 
-            var writer = StartPacket(RealtimeMessageType.OwnerCombatState, 67);
+            var writer = StartPacket(RealtimeMessageType.OwnerCombatState, 75);
             WriteOwnerCombatState(ref writer, state);
             return writer.Finish();
         }
@@ -932,6 +964,8 @@ namespace Mmorpg.GameProtocol
             writer.WriteUInt32(value.ServerTick);
             writer.WriteInt32(value.Health);
             writer.WriteInt32(value.MaximumHealth);
+            writer.WriteInt32(value.Mana);
+            writer.WriteInt32(value.MaximumMana);
             writer.WriteByte((byte)value.LifeState);
             writer.WriteUInt32(value.LifeSequence);
             writer.WriteUInt32(value.RespawnTick);
@@ -963,6 +997,16 @@ namespace Mmorpg.GameProtocol
             }
 
             if (!reader.TryReadInt32(out var maximumHealth, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt32(out var mana, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt32(out var maximumMana, out error))
             {
                 return false;
             }
@@ -1021,7 +1065,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeOwnerCombatState(stateRevision, serverTick, health, maximumHealth, lifeState, lifeSequence, respawnTick, inCombat, targetEntityId, attackStatus, nextAttackTick, lockoutEndTick, ammunitionItemInstanceId, ammunitionQuantity);
+            value = new RealtimeOwnerCombatState(stateRevision, serverTick, health, maximumHealth, mana, maximumMana, lifeState, lifeSequence, respawnTick, inCombat, targetEntityId, attackStatus, nextAttackTick, lockoutEndTick, ammunitionItemInstanceId, ammunitionQuantity);
             return true;
         }
 
@@ -1031,6 +1075,8 @@ namespace Mmorpg.GameProtocol
                 || value.StateRevision < 1
                 || value.Health < 0
                 || value.MaximumHealth < 1
+                || value.Mana < 0
+                || value.MaximumMana < 0
                 || !IsDefined(value.LifeState)
                 || !IsDefined(value.AttackStatus)
                 || value.AmmunitionQuantity < 0)
@@ -1050,6 +1096,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteInt32(value.Damage);
             writer.WriteByte((byte)value.DamageType);
             writer.WriteInt32(value.HealthAfter);
+            writer.WriteByte((byte)value.AttackStyle);
         }
 
         private static bool TryReadCombatEvent(ref PacketReader reader, out RealtimeCombatEvent value, out string error)
@@ -1094,7 +1141,14 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeCombatEvent(kind, sourceEntityId, targetEntityId, impactTick, damage, damageType, healthAfter);
+            if (!reader.TryReadByte(out var attackStyleByte, out error))
+            {
+                return false;
+            }
+
+            var attackStyle = (RealtimeCombatAttackStyle)attackStyleByte;
+
+            value = new RealtimeCombatEvent(kind, sourceEntityId, targetEntityId, impactTick, damage, damageType, healthAfter, attackStyle);
             return true;
         }
 
@@ -1105,7 +1159,8 @@ namespace Mmorpg.GameProtocol
                 || value.TargetEntityId < 1
                 || value.Damage < 0
                 || !IsDefined(value.DamageType)
-                || value.HealthAfter < 0)
+                || value.HealthAfter < 0
+                || !IsDefined(value.AttackStyle))
             {
                 return false;
             }
@@ -1123,6 +1178,11 @@ namespace Mmorpg.GameProtocol
             return (byte)value >= 1 && (byte)value <= 5;
         }
 
+        private static bool IsDefined(RealtimeCombatAttackStyle value)
+        {
+            return (byte)value >= 1 && (byte)value <= 3;
+        }
+
         private static bool IsDefined(RealtimeCombatIntentKind value)
         {
             return (byte)value >= 1 && (byte)value <= 2;
@@ -1135,7 +1195,7 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeCombatAttackStatus value)
         {
-            return (byte)value >= 1 && (byte)value <= 10;
+            return (byte)value >= 1 && (byte)value <= 11;
         }
     }
 }

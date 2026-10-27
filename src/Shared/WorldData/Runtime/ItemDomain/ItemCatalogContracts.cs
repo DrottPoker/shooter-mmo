@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Items
 {
     public static class ItemCatalogFormat
     {
-        public const int Version = 5;
+        public const int Version = 6;
 
         // Hashed into every structural fingerprint instead of the format version, so a new
         // format that adds non-structural fields leaves persisted definitions compatible. It
@@ -148,7 +148,8 @@ namespace Mmorpg.WorldData.Items
         public float ProjectileSpeed = -1f;
     }
 
-    // Weapon combat data: base damage roll, damage type, attack interval, and range.
+    // Weapon combat data: base damage roll, damage type, attack interval, range, and the mana
+    // every attack of a Magic weapon costs.
     [Serializable]
     public sealed class ItemWeaponEntry
     {
@@ -158,6 +159,7 @@ namespace Mmorpg.WorldData.Items
         public int MaximumDamage = -1;
         public float AttackIntervalSeconds;
         public float Range;
+        public int ManaCost = -1;
     }
 
     // Ammunition combat data: its family and its bonus in percent of the weapon roll.

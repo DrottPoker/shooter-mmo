@@ -534,7 +534,8 @@ namespace Mmorpg.Client.Gameplay
         // whose root object Grip lies on the socket bone, the socket, the equipment slot whose item
         // it shows, and the bone. A tool, such as a pickaxe, is held only while the body uses it:
         // it names the clip the body plays meanwhile, and a tool held in both hands where on it the
-        // other hand holds it.
+        // other hand holds it. A weapon, such as a staff, may name the pose its arm holds it in,
+        // the clip the body plays once when its attack releases, and where its projectile leaves it.
         [Serializable]
         public sealed class Attachment
         {
@@ -545,9 +546,14 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private string useClip;
             [SerializeField] private bool holdsWithBothHands;
             [SerializeField] private Vector3 offHandGrip;
+            [SerializeField] private string holdClip;
+            [SerializeField] private string attackClip;
+            [SerializeField] private bool hasLaunchPoint;
+            [SerializeField] private Vector3 launchPoint;
 
             public Attachment(string name, string socket, string bone, GameObject model,
-                string useClip = null, Vector3? offHandGrip = null)
+                string useClip = null, Vector3? offHandGrip = null,
+                string holdClip = null, string attackClip = null, Vector3? launchPoint = null)
             {
                 this.name = name;
                 this.socket = socket ?? string.Empty;
@@ -556,6 +562,10 @@ namespace Mmorpg.Client.Gameplay
                 this.useClip = useClip ?? string.Empty;
                 holdsWithBothHands = offHandGrip.HasValue;
                 this.offHandGrip = offHandGrip ?? Vector3.zero;
+                this.holdClip = holdClip ?? string.Empty;
+                this.attackClip = attackClip ?? string.Empty;
+                hasLaunchPoint = launchPoint.HasValue;
+                this.launchPoint = launchPoint ?? Vector3.zero;
             }
 
             // Such as IronSword, from the attachment art/Attachments/IronSword.
@@ -605,6 +615,32 @@ namespace Mmorpg.Client.Gameplay
             public Vector3 OffHandGrip
             {
                 get { return offHandGrip; }
+            }
+
+            // The pose the arm holds the weapon in, such as HoldStaff, or empty for the hand pose
+            // alone.
+            public string HoldClip
+            {
+                get { return holdClip ?? string.Empty; }
+            }
+
+            // The clip the body plays once whenever its attack releases, such as Cast, or empty.
+            public string AttackClip
+            {
+                get { return attackClip ?? string.Empty; }
+            }
+
+            // Whether the weapon names where the projectile of its attack leaves it, at LaunchPoint.
+            public bool HasLaunchPoint
+            {
+                get { return hasLaunchPoint; }
+            }
+
+            // Where on the model the projectile leaves, in the model's and so the socket's space,
+            // such as the crystal of a staff.
+            public Vector3 LaunchPoint
+            {
+                get { return launchPoint; }
             }
         }
 

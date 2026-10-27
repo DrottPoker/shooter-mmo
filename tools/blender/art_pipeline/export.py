@@ -39,11 +39,22 @@ def _base_image(material: bpy.types.Material) -> bpy.types.Image | None:
     return images[0] if images else None
 
 
+def _emission(bsdf: bpy.types.Node) -> str | None:
+    """The sRGB emission of a glowing material, its Emission Color times its Emission Strength with
+    each channel at most 1, or None for a material that does not glow."""
+    strength = float(bsdf.inputs["Emission Strength"].default_value)
+    color = [min(1.0, c * strength) for c in bsdf.inputs["Emission Color"].default_value[:3]]
+    if strength <= 0.0 or max(color) <= 0.0:
+        return None
+    red, green, blue = (round(_linear_to_srgb(c) * 255) for c in color)
+    return f"#{red:02X}{green:02X}{blue:02X}"
+
+
 def material_records(objects: list[bpy.types.Object] | None = None) -> list[dict[str, object]]:
     """The approved look of every exported material, as Unity URP Lit values: the sRGB
-    Base Color, Metallic, and Smoothness (1 - Roughness), and for a painted material the name of
-    the image that gives its Base Color, in which case the Base Color is white. Unity tests compare
-    the project materials with this record."""
+    Base Color, Metallic, and Smoothness (1 - Roughness), the sRGB emission of a glowing material,
+    and for a painted material the name of the image that gives its Base Color, in which case the
+    Base Color is white. Unity tests compare the project materials with this record."""
     records = []
     for material in _exported_materials(objects):
         bsdf = next((n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
@@ -61,6 +72,9 @@ def material_records(objects: list[bpy.types.Object] | None = None) -> list[dict
             record["baseMap"] = image.name
         record["metallic"] = round(float(bsdf.inputs["Metallic"].default_value), 2)
         record["smoothness"] = round(1.0 - float(bsdf.inputs["Roughness"].default_value), 2)
+        emission = _emission(bsdf)
+        if emission is not None:
+            record["emission"] = emission
         records.append(record)
     return records
 

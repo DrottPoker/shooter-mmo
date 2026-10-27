@@ -697,7 +697,8 @@ CLIP_FRAMES = 8
 CLIP_YAWS = (35.0, 215.0)
 
 
-# An attachment is shown held in the first frame of this clip, with the hand pose of the other.
+# An attachment is shown held in the first frame of this clip, with the arm pose of its hold clip,
+# when it names one, and the hand pose of the other over it.
 HELD_CLIP = "Idle"
 GRIP_CLIP = "Grip"
 # The close-up of the hand that holds an attachment, and the room around a whole body.
@@ -707,16 +708,17 @@ BODY_RADIUS = 1.1
 HELD_ARM_PARTS = ("_Hands", "_Forearms", "_UpperArms")
 
 
-def _append_held(path: str, root: str) -> tuple[list[bpy.types.Object], list[bpy.types.Object]]:
-    """Every object of an animation library and its clips HELD_CLIP and GRIP_CLIP, appended into this
-    file; returns the armatures, the library's own first, and every appended object."""
+def _append_held(path: str, root: str, hold_clip: str | None = None) -> tuple[list[bpy.types.Object], list[bpy.types.Object]]:
+    """Every object of an animation library and its clips HELD_CLIP, the hold clip, and GRIP_CLIP,
+    appended into this file; returns the armatures, the library's own first, and every appended object."""
     with bpy.data.libraries.load(path, link=False) as (source, target):
         if root not in source.objects:
             raise ArtPipelineError(f'{path} has no object "{root}".')
-        if HELD_CLIP not in source.actions:
-            raise ArtPipelineError(f'{path} has no clip "{HELD_CLIP}" to show an attachment held in.')
+        for clip in (HELD_CLIP, hold_clip):
+            if clip and clip not in source.actions:
+                raise ArtPipelineError(f'{path} has no clip "{clip}" to show an attachment held in.')
         target.objects = list(source.objects)
-        target.actions = [name for name in (HELD_CLIP, GRIP_CLIP) if name in source.actions]
+        target.actions = [name for name in (HELD_CLIP, hold_clip, GRIP_CLIP) if name and name in source.actions]
     loaded = [o for o in target.objects if o is not None]
     for obj in loaded:
         bpy.context.scene.collection.objects.link(obj)
@@ -724,16 +726,31 @@ def _append_held(path: str, root: str) -> tuple[list[bpy.types.Object], list[bpy
     return arms, loaded
 
 
-def _hold_pose(arm: bpy.types.Object) -> None:
-    """The armature in the first frame of HELD_CLIP with the hand pose of GRIP_CLIP over it, as the
-    game layers them, without an action, so the pose stays."""
+def _arm_of(arm: bpy.types.Object, socket: str) -> set[str]:
+    """The bones of the arm whose hand holds a socket: from the shoulder, the first bone up the
+    chain whose parent branches, down to the fingertips."""
+    bone = arm.pose.bones[socket].parent
+    while bone.parent is not None and len(bone.parent.children) == 1:
+        bone = bone.parent
+    return {bone.name} | {child.name for child in bone.children_recursive}
+
+
+def _hold_pose(arm: bpy.types.Object, socket: str, hold_clip: str | None = None) -> None:
+    """The armature in the first frame of HELD_CLIP with the arm pose of the hold clip and the hand
+    pose of GRIP_CLIP over it, as the game layers them, without an action, so the pose stays. The
+    hold clip gives only the arm of the socket's hand, as the game's mask does."""
     pose = {}
-    for name in (HELD_CLIP, GRIP_CLIP):
+    arm_bones = _arm_of(arm, socket) if hold_clip else set()
+    for name in (HELD_CLIP, hold_clip, GRIP_CLIP):
+        if not name:
+            continue
         action = bpy.data.actions.get(name)
         if action is None or not action.slots:
             continue
         channelbag = anim_utils.action_get_channelbag_for_slot(action, action.slots[0])
         for fc in channelbag.fcurves if channelbag is not None else []:
+            if name == hold_clip and fc.data_path.split('"')[1] not in arm_bones:
+                continue
             pose[(fc.data_path, fc.array_index)] = fc.evaluate(0.0)
     poses.rest(arm)
     for (path, index), value in pose.items():
@@ -759,19 +776,21 @@ def _held_copy(root: bpy.types.Object, arm: bpy.types.Object, socket: str) -> li
     return list(copies.values())
 
 
-def render_attachment_sheet(output: str, cell: int, socket: str, library_path: str, library_root: str) -> str:
+def render_attachment_sheet(output: str, cell: int, socket: str, library_path: str, library_root: str,
+                            hold_clip: str | None = None) -> str:
     """An attachment alone from four sides and up close where it is held, and held on its socket by
-    every body of an animation library, in the first frame of Idle with the hand pose Grip when the
-    library has it: a row per body with the whole body, the attachment seen from outside the arm,
-    and the hand up close from the front, from inside with only the arms shown, and from behind."""
+    every body of an animation library, in the first frame of Idle with the arm pose of its hold clip
+    when it names one and the hand pose Grip when the library has it: a row per body with the whole
+    body, the attachment seen from outside the arm, and the hand up close from the front, from inside
+    with only the arms shown, and from behind."""
     os.makedirs(os.path.dirname(output), exist_ok=True)
     scene = bpy.context.scene
     exported = export_objects()
     root = root_objects()[0]
     camera, sun = _studio(scene, cell)
-    arms, loaded = _append_held(library_path, library_root)
+    arms, loaded = _append_held(library_path, library_root, hold_clip)
     # The other bodies copy the pose of the library's armature.
-    _hold_pose(arms[0])
+    _hold_pose(arms[0], socket, hold_clip)
     held = [_held_copy(root, arm, socket) for arm in arms]
     arm_parts = [o for o in loaded if o.type == "MESH" and o.name.endswith(HELD_ARM_PARTS)]
 

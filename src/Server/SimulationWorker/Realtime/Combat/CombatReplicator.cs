@@ -1,5 +1,6 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.WorldData.Combat;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -28,7 +29,7 @@ internal sealed class CombatReplicator(
 
     public int PendingEventCount => events.Count;
 
-    public void AttackReleased(ulong attackerEntityId, ulong targetEntityId, uint impactTick)
+    public void AttackReleased(ulong attackerEntityId, ulong targetEntityId, uint impactTick, string combatStyle)
     {
         events.Add(new RealtimeCombatEvent(
             RealtimeCombatEventKind.AttackReleased,
@@ -37,7 +38,8 @@ internal sealed class CombatReplicator(
             impactTick,
             0,
             RealtimeCombatDamageType.Normal,
-            0));
+            0,
+            ToAttackStyle(combatStyle)));
     }
 
     public void Hit(ulong attackerEntityId, ulong targetEntityId, int damage, string damageType, int healthAfter)
@@ -49,7 +51,8 @@ internal sealed class CombatReplicator(
             0,
             damage,
             ToDamageType(damageType),
-            healthAfter));
+            healthAfter,
+            RealtimeCombatAttackStyle.Melee));
     }
 
     public void Died(ulong killerEntityId, ulong targetEntityId)
@@ -61,7 +64,8 @@ internal sealed class CombatReplicator(
             0,
             0,
             RealtimeCombatDamageType.Normal,
-            0));
+            0,
+            RealtimeCombatAttackStyle.Melee));
     }
 
     // Sends everything that changed in this tick.
@@ -141,6 +145,8 @@ internal sealed class CombatReplicator(
             serverTick,
             dead ? 0 : player.Health,
             player.MaximumHealth,
+            player.Mana,
+            player.MaximumMana,
             dead ? RealtimeCombatLifeState.Dead : RealtimeCombatLifeState.Alive,
             player.LifeSequence,
             dead ? player.RespawnTick : 0,
@@ -207,6 +213,16 @@ internal sealed class CombatReplicator(
             "nature" => RealtimeCombatDamageType.Nature,
             "shadow" => RealtimeCombatDamageType.Shadow,
             _ => RealtimeCombatDamageType.Normal
+        };
+    }
+
+    private static RealtimeCombatAttackStyle ToAttackStyle(string combatStyle)
+    {
+        return combatStyle switch
+        {
+            CombatStyleIds.Ranged => RealtimeCombatAttackStyle.Ranged,
+            CombatStyleIds.Magic => RealtimeCombatAttackStyle.Magic,
+            _ => RealtimeCombatAttackStyle.Melee
         };
     }
 }

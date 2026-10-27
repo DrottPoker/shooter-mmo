@@ -245,7 +245,8 @@ part of this model:
   attack timing, and hits, and the client never predicts combat.
 - Health and regeneration. A character has 100 health and regenerates 2 percent
   of it per second after 10 s out of combat. A dead character respawns at the
-  World spawn after 5 s.
+  World spawn after 5 s. On 2026-10-27 regeneration became 1 health and 1 mana
+  per second after 5 s out of combat, see [Magic And Mana](#magic-and-mana).
 - Every equipment change blocks attacks for 1 s.
 - Every death, Mob or player, produces one authoritative death event with its
   killer. A player death runs the death partition in
@@ -521,6 +522,14 @@ Weapon families and their feel:
 - Mana potions restore mana.
 - The cost of magic is time and risk: a caster has to stop and drink, and deals
   no damage while doing so.
+- A character has 100 mana. The first staff, the Oak Staff, costs 5 mana per
+  attack. Health and mana both regenerate 1 per second, only out of combat, and
+  a character leaves combat 5 s after its last attack or hit (2026-10-27).
+- The first staff deals Normal damage; elemental staffs are special weapons.
+
+The Oak Staff, its mana, regeneration, the cast animation, and the magic bolt
+are implemented, as [Game Features](GAME_FEATURES.md#combat) describes. Mana
+potions and drinking are not implemented yet.
 
 ### Proposed
 
@@ -757,7 +766,7 @@ Expected additions:
   rejects other abilities while the character moves and cancels channeled and
   cast-time abilities when movement starts.
 - Mana, per-ability cooldowns, the global cooldown, and consumable cooldown
-  state.
+  state. Mana and magic auto attacks are implemented; the rest remains.
 - Status effects for movement impairments such as slows and roots, with
   diminishing returns per target and removal by a cleanse effect.
 - A server-owned attack lockout timestamp that every equipment change

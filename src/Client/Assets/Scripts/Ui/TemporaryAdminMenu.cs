@@ -13,7 +13,7 @@ using UnityEngine.UI;
 namespace Mmorpg.Client.Ui
 {
     // The Admin menu (F3): development tools for playing and testing. Look steps the stored body
-    // model and look; Movement sets the walk speed and teleports; Combat fills health and makes
+    // model and look; Movement sets the walk speed and teleports; Combat fills health and mana and makes
     // the character invulnerable. Only a worker in the Development environment allows them, which
     // it says by sending the admin state after the join; without it the menu explains that the
     // tools are off. While the menu is open, the world menu offers Teleport here on the ground,
@@ -280,13 +280,13 @@ namespace Mmorpg.Client.Ui
 
         private void BuildCombatTab(RectTransform page)
         {
-            TemporaryMenuWindow.AddSection(page, "Health");
+            TemporaryMenuWindow.AddSection(page, "Health and mana");
             healthValue = TemporaryMenuWindow.AddValue(page, "Now");
             var row = TemporaryMenuWindow.AddButtonRow(page);
             TemporaryUiKit.CreateButton(
                 row,
-                "Restore health",
-                () => Send(RealtimeAdminIntent.CreateRestoreHealth(Guid.NewGuid()), "Restore health"),
+                "Restore health and mana",
+                () => Send(RealtimeAdminIntent.CreateRestoreHealth(Guid.NewGuid()), "Restore health and mana"),
                 true,
                 TemporaryButtonTone.Normal);
             invulnerableToggle = TemporaryMenuWindow.AddToggle(
@@ -430,6 +430,7 @@ namespace Mmorpg.Client.Ui
             healthValue.text = owner == null
                 ? "-"
                 : owner.Health + " / " + owner.MaximumHealth
+                    + ", mana " + owner.Mana + " / " + owner.MaximumMana
                     + (owner.LifeState == RealtimeCombatLifeState.Dead ? " (dead)" : string.Empty);
         }
 

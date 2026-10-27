@@ -134,7 +134,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 5,
+  "formatVersion": 6,
   "progression": {
     "maximumCharacterLevel": 200
   },
@@ -203,6 +203,13 @@
       "displayName": "Bow",
       "id": "bow",
       "projectileSpeed": 30
+    },
+    {
+      "ammunitionFamily": "",
+      "combatStyle": "magic",
+      "displayName": "Staff",
+      "id": "staff",
+      "projectileSpeed": 20
     },
     {
       "ammunitionFamily": "",

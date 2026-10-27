@@ -5,14 +5,14 @@ namespace Mmorpg.WorldData.Combat
 {
     public static class CombatRulesFormat
     {
-        public const int Version = 1;
+        public const int Version = 2;
         public const string FileName = "combat-rules.json";
         public const string DirectoryName = "combat";
 
         public const int MaximumPlayerHealth = CombatContentRules.MaximumHealth;
+        public const int MaximumPlayerMana = CombatContentRules.MaximumMana;
         public const float MaximumRespawnDelaySeconds = 300f;
         public const float MaximumCombatTimeoutSeconds = 600f;
-        public const int MaximumRegenerationPercentPerSecond = 100;
         public const float MaximumEquipmentLockoutSeconds = 30f;
         public const float MinimumAmmunitionBatchIntervalSeconds = 0.5f;
         public const float MaximumAmmunitionBatchIntervalSeconds = 60f;
@@ -20,8 +20,8 @@ namespace Mmorpg.WorldData.Combat
         public const int MaximumRuleSetIdLength = 128;
     }
 
-    // The worker-side combat rules that are not item or actor data: the character's health
-    // and death timing, regeneration, the equipment lockout, ammunition batching, and what
+    // The worker-side combat rules that are not item or actor data: the character's health,
+    // mana, and death timing, regeneration, the equipment lockout, ammunition batching, and what
     // each Shard rule set allows. The worker reads this file next to world.json.
     [Serializable]
     public sealed class CombatRulesDocument
@@ -37,14 +37,18 @@ namespace Mmorpg.WorldData.Combat
     {
         public int maximumHealth;
 
+        // The mana a character casts magic with; 0 leaves it without magic.
+        public int maximumMana;
+
         // A dead character respawns at the World spawn this long after it died.
         public float respawnDelaySeconds;
 
         // A combatant stays in combat this long after its last attack or hit.
         public float combatTimeoutSeconds;
 
-        // Out of combat a character regains this percent of its maximum health per second.
-        public int regenerationPercentPerSecond;
+        // Out of combat a character regains this much health and mana every second.
+        public int healthRegenerationPerSecond;
+        public int manaRegenerationPerSecond;
 
         // Attacks wait this long after the item in an equipment slot changed.
         public float equipmentLockoutSeconds;
@@ -94,15 +98,11 @@ namespace Mmorpg.WorldData.Combat
                     "Player.MaximumHealth must be between 1 and " + CombatRulesFormat.MaximumPlayerHealth + ".");
             }
 
+            ValidateAmount(player.maximumMana, CombatRulesFormat.MaximumPlayerMana, "Player.MaximumMana");
             ValidateSeconds(player.respawnDelaySeconds, 0f, CombatRulesFormat.MaximumRespawnDelaySeconds, "Player.RespawnDelaySeconds");
             ValidateSeconds(player.combatTimeoutSeconds, 0f, CombatRulesFormat.MaximumCombatTimeoutSeconds, "Player.CombatTimeoutSeconds");
-            if (player.regenerationPercentPerSecond < 0
-                || player.regenerationPercentPerSecond > CombatRulesFormat.MaximumRegenerationPercentPerSecond)
-            {
-                throw new CombatRulesValidationException(
-                    "Player.RegenerationPercentPerSecond must be between 0 and "
-                    + CombatRulesFormat.MaximumRegenerationPercentPerSecond + ".");
-            }
+            ValidateAmount(player.healthRegenerationPerSecond, player.maximumHealth, "Player.HealthRegenerationPerSecond");
+            ValidateAmount(player.manaRegenerationPerSecond, player.maximumMana, "Player.ManaRegenerationPerSecond");
 
             ValidateSeconds(
                 player.equipmentLockoutSeconds,
@@ -148,6 +148,14 @@ namespace Mmorpg.WorldData.Combat
                 }
 
                 previous = ruleSet.id;
+            }
+        }
+
+        private static void ValidateAmount(int value, int maximum, string name)
+        {
+            if (value < 0 || value > maximum)
+            {
+                throw new CombatRulesValidationException(name + " must be between 0 and " + maximum + ".");
             }
         }
 

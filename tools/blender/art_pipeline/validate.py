@@ -26,14 +26,18 @@ TOLERANCE = 1e-4
 GRIP_ROOT = "Grip"
 
 
+# A material may glow with a flat emission, such as a magic crystal.
+EMISSION_INPUTS = ("Emission Color", "Emission Strength")
+
+
 def principled_inputs(material: bpy.types.Material) -> dict[str, bpy.types.NodeSocket] | None:
-    """The flat Base Color, Metallic, and Roughness of the material's only Principled BSDF."""
+    """The flat Base Color, Metallic, Roughness, and emission of the material's only Principled BSDF."""
     if material.node_tree is None:
         return None
     nodes = [n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED"]
     if len(nodes) != 1:
         return None
-    inputs = {name: nodes[0].inputs[name] for name in ("Base Color", "Metallic", "Roughness")}
+    inputs = {name: nodes[0].inputs[name] for name in ("Base Color", "Metallic", "Roughness") + EMISSION_INPUTS}
     return None if any(socket.is_linked for socket in inputs.values()) else inputs
 
 
@@ -68,6 +72,8 @@ def textured_principled_problem(material: bpy.types.Material) -> str | None:
     bsdf = bsdfs[0]
     if bsdf.inputs["Metallic"].is_linked or bsdf.inputs["Roughness"].is_linked:
         return "must have a flat Metallic and Roughness"
+    if any(bsdf.inputs[name].is_linked for name in EMISSION_INPUTS):
+        return "must have a flat emission"
     base = bsdf.inputs["Base Color"]
     if images:
         image_node = images[0]
@@ -193,7 +199,7 @@ def _mesh_errors(obj: bpy.types.Object, kind: str) -> list[str]:
                 errors.append(f'Mesh "{obj.name}" uses the texture of "{slot.material.name}" but has no UV map.')
         elif principled_inputs(slot.material) is None:
             errors.append(f'Material "{slot.material.name}" must be one Principled BSDF with a flat Base Color, '
-                          "Metallic, and Roughness, without textures or other nodes feeding them.")
+                          "Metallic, Roughness, and emission, without textures or other nodes feeding them.")
         elif (problem := surface_problem(slot.material)) is not None:
             errors.append(f'Material "{slot.material.name}" {problem}.')
         if index not in used:

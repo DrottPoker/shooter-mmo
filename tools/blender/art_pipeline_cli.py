@@ -83,6 +83,7 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--layer", type=int, help="The layer a paint layer is drawn at.")
     command.add_argument("--socket-bone", help="The socket bone an attachment is held on, such as Socket_MainHand.")
     command.add_argument("--held-library", help="<file.blend>=<armature> of the animation library whose bodies hold it.")
+    command.add_argument("--hold-clip", help="The clip of the library whose arm pose an attachment is held in, such as HoldStaff.")
     command.add_argument("--held-attachment", action="append", default=[],
                          help="<file.blend>=<Clip>:<socket bone> of a tool the bodies of an animation library hold in a clip.")
     command.add_argument("--other-paint", action="append", default=[],
@@ -373,7 +374,7 @@ def main() -> int:
         if args.socket_bone:
             held_path, held_root = args.held_library.rsplit("=", 1)
             path = preview.render_attachment_sheet(os.path.abspath(args.output), args.cell_size, args.socket_bone,
-                                                   os.path.abspath(held_path), held_root)
+                                                   os.path.abspath(held_path), held_root, args.hold_clip)
             print(f"ART_PREVIEW {path}")
             return 0
         if args.kind == "animations":

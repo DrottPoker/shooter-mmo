@@ -129,6 +129,39 @@ public sealed class RealtimeAdminTests
     }
 
     [Fact]
+    public async Task RestoringHealthFillsTheManaToo()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableAdminTools = true,
+            ItemCatalog = TestCatalog(minimumDamage: 1, maximumDamage: 1, manaCost: 5),
+            CombatRules = TestRules(),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var caster = harness.AddCharacter("Admin Caster") with { Equipment = CasterEquipment() };
+        harness.GameService.AddCharacter(caster);
+        var target = harness.AddCharacter("Mana Target");
+        await harness.StartAsync();
+        var casterClient = await harness.JoinAsync(caster);
+        var targetClient = await harness.JoinAsync(target);
+        var targetEntityId = targetClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => RealtimeCombatTests.States(casterClient).Any(value => value.EntityId == targetEntityId),
+            "the target to appear");
+
+        casterClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId));
+        await harness.PollUntilAsync(
+            () => RealtimeCombatTests.OwnerStates(casterClient)[^1].Mana <= 90,
+            "two bolts");
+        casterClient.SendCombatIntent(RealtimeCombatIntent.CreateClearTarget(Guid.NewGuid()));
+
+        casterClient.Send(RealtimeProtocol.EncodeAdminIntent(RealtimeAdminIntent.CreateRestoreHealth(Guid.NewGuid())));
+        await harness.PollUntilAsync(() => RealtimeCombatTests.OwnerStates(casterClient)[^1].Mana == 100, "full mana");
+        Assert.True(Assert.Single(Results(casterClient)).Succeeded);
+    }
+
+    [Fact]
     public async Task AWorkerWithoutTheToolsSendsNoStateAndRefusesThem()
     {
         await using var harness = RealtimeServerHarness.Create();

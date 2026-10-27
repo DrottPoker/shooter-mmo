@@ -200,10 +200,15 @@ namespace Mmorpg.Client.Editor
         // An attachment, a static model held on a socket of a skeleton: the socket, such as
         // main_hand, as its bone names it. A tool, held only while a body uses it, also names the
         // clip the body plays meanwhile, such as Mine, and a tool held in both hands where on it
-        // the other hand holds it, in meters in the socket's axes.
+        // the other hand holds it, in meters in the socket's axes. A weapon may name the pose its
+        // arm holds it in, the clip the body plays once when its attack releases, and where on it
+        // the projectile of its attack leaves, in meters in the socket's axes.
         public string socket = string.Empty;
         public string useClip = string.Empty;
         public float[] offHandGrip = Array.Empty<float>();
+        public string holdClip = string.Empty;
+        public string attackClip = string.Empty;
+        public float[] launchPoint = Array.Empty<float>();
         public ArtAssetExport export = new ArtAssetExport();
 
         // The asset's name, its folder, such as LeatherJerkin.
@@ -348,6 +353,8 @@ namespace Mmorpg.Client.Editor
         public string[] dyeColors = Array.Empty<string>();
         public float metallic = -1f;
         public float smoothness = -1f;
+        // A glowing material's sRGB emission color, or empty.
+        public string emission = string.Empty;
     }
 
     // A garment's model for one body: the body's label, such as Male, the model, and its data.

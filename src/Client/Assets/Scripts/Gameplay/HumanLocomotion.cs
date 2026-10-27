@@ -53,6 +53,35 @@ namespace Mmorpg.Client.Gameplay
         public const string ChopClip = "Chop";
         public const float UseCrossfadeSeconds = 0.2f;
 
+        // While the main hand holds a weapon that names a hold clip, such as a staff, that arm holds
+        // the clip's pose: the clip plays in the state of its name on a layer of the main hand's
+        // arm only, at full weight, over the locomotion clips. The layer rests in its empty state.
+        public const string MainHandHoldLayer = "MainHandHold";
+        public const string HoldStaffClip = "HoldStaff";
+        public const string EmptyState = "Empty";
+
+        // Whenever a weapon's attack releases, the body plays the weapon's attack clip once, such as
+        // Cast, in the state of its name on a layer of the upper body and both arms without the
+        // fingers, over every other clip, fading in and out over these times. The clip starts and
+        // ends in the hold pose, so the fades only soften a cut. It ends early when the body moves.
+        public const string ActionLayer = "Action";
+        public const string CastClip = "Cast";
+        public const float ActionFadeInSeconds = 0.06f;
+        public const float ActionFadeOutSeconds = 0.15f;
+
+        // The weight of an attack clip that started this many seconds ago and lasts this long.
+        public static float ActionWeight(float elapsed, float length)
+        {
+            if (elapsed < 0f || elapsed >= length)
+            {
+                return 0f;
+            }
+
+            var fadeIn = Mathf.Clamp01(elapsed / ActionFadeInSeconds);
+            var fadeOut = Mathf.Clamp01((length - elapsed) / ActionFadeOutSeconds);
+            return Mathf.Min(fadeIn, fadeOut);
+        }
+
         // The grip layer of a socket bone, or null for a socket that is not in a hand.
         public static string GripLayerFor(string socketBone)
         {

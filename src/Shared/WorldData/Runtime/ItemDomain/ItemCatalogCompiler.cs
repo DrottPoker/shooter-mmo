@@ -194,7 +194,11 @@ namespace Mmorpg.WorldData.Items
                 tagIds,
                 toolKindIds,
                 equipmentSlots,
-                new CombatReferences(weaponFamilyIds, ammunitionFamilyIds, maximumCharacterLevel),
+                new CombatReferences(
+                    weaponFamilyIds,
+                    MagicWeaponFamilyIds(authoring.WeaponFamilies),
+                    ammunitionFamilyIds,
+                    maximumCharacterLevel),
                 errors);
             ValidateVendors(authoring.Vendors, authoring.Definitions, categoryIds, errors);
             var tierIds = ValidateSecureContainerTiers(
@@ -754,6 +758,20 @@ namespace Mmorpg.WorldData.Items
                     path + ".weapon.range must be above 0 and at most "
                     + CombatContentRules.MaximumAttackRangeMetres.ToString(CultureInfo.InvariantCulture)
                     + ".");
+            }
+
+            // Magic attacks cost mana and no other attack does.
+            var magic = combat.MagicWeaponFamilyIds.Contains(weapon.WeaponFamily ?? string.Empty);
+            if (magic && (weapon.ManaCost < 1 || weapon.ManaCost > CombatContentRules.MaximumMana))
+            {
+                errors.Add(
+                    path + ".weapon.manaCost must be between 1 and "
+                    + CombatContentRules.MaximumMana.ToString(CultureInfo.InvariantCulture)
+                    + " for a magic weapon.");
+            }
+            else if (!magic && weapon.ManaCost != 0)
+            {
+                errors.Add(path + ".weapon.manaCost must be 0 unless the weapon family is magic.");
             }
         }
 
@@ -1461,7 +1479,8 @@ namespace Mmorpg.WorldData.Items
                         MinimumDamage = authoring.Weapon.MinimumDamage,
                         MaximumDamage = authoring.Weapon.MaximumDamage,
                         AttackIntervalSeconds = authoring.Weapon.AttackIntervalSeconds,
-                        Range = authoring.Weapon.Range
+                        Range = authoring.Weapon.Range,
+                        ManaCost = authoring.Weapon.ManaCost
                     },
                 Ammunition = authoring.Ammunition == null
                     ? null
@@ -1666,6 +1685,7 @@ namespace Mmorpg.WorldData.Items
                 writer.Write(definition.Weapon.MaximumDamage);
                 writer.Write(definition.Weapon.AttackIntervalSeconds);
                 writer.Write(definition.Weapon.Range);
+                writer.Write(definition.Weapon.ManaCost);
             }
 
             writer.Write(definition.Ammunition != null);
@@ -1723,19 +1743,35 @@ namespace Mmorpg.WorldData.Items
             return builder.ToString();
         }
 
+        // The weapon families whose attacks are Magic and cost mana.
+        private static HashSet<string> MagicWeaponFamilyIds(ItemWeaponFamilyEntry[] families)
+        {
+            return new HashSet<string>(
+                (families ?? Array.Empty<ItemWeaponFamilyEntry>())
+                    .Where(family => family != null
+                        && family.Id != null
+                        && string.Equals(family.CombatStyle, CombatStyleIds.Magic, StringComparison.Ordinal))
+                    .Select(family => family.Id),
+                StringComparer.Ordinal);
+        }
+
         private readonly struct CombatReferences
         {
             public CombatReferences(
                 ISet<string> weaponFamilyIds,
+                ISet<string> magicWeaponFamilyIds,
                 ISet<string> ammunitionFamilyIds,
                 int maximumCharacterLevel)
             {
                 WeaponFamilyIds = weaponFamilyIds;
+                MagicWeaponFamilyIds = magicWeaponFamilyIds;
                 AmmunitionFamilyIds = ammunitionFamilyIds;
                 MaximumCharacterLevel = maximumCharacterLevel;
             }
 
             public ISet<string> WeaponFamilyIds { get; }
+
+            public ISet<string> MagicWeaponFamilyIds { get; }
 
             public ISet<string> AmmunitionFamilyIds { get; }
 

@@ -8,16 +8,16 @@
     "skeleton": "Humanoid",
     "rig": "art/Characters/Human_Male",
     "previews": ["art/Characters/Human_Female"],
-    "clips": ["Death", "Idle", "Walk", "Jog", "Grip", "Mine", "Chop"],
+    "clips": ["Death", "Idle", "Walk", "Jog", "Grip", "Mine", "Chop", "HoldStaff", "Cast"],
     "approvals": {
         "animation": {
-            "date": "2026-10-26",
-            "sourceSha256": "3306548572c8cbc783096ec0bf7a59836e96da9ba62e8587e7cac282cd84a5ad"
+            "date": "2026-10-27",
+            "sourceSha256": "f2d25bfd5d777c3a6a48646bbb7dbdad8bb6095ef0741d4bc96bd2f7afc8d207"
         }
     },
     "export": {
-        "sourceSha256": "3306548572c8cbc783096ec0bf7a59836e96da9ba62e8587e7cac282cd84a5ad",
-        "targetSha256": "540217d9ab34d86a21feb9a34d33c3f784780fac705c1f0ccebf3566f0c0e7c7",
+        "sourceSha256": "f2d25bfd5d777c3a6a48646bbb7dbdad8bb6095ef0741d4bc96bd2f7afc8d207",
+        "targetSha256": "b7ae9660c54a7103593a5444fbf9a96f78346670d85171e1f27306994636a91f",
         "rigSourceSha256": "ae840748200642709b56c3829fe08d4dc9e97cc50b4b5612441bfab0ca0b9203",
         "clips": [
             { "name": "Death", "frames": 60, "loop": false },
@@ -26,7 +26,9 @@
             { "name": "Jog", "frames": 19, "loop": true },
             { "name": "Grip", "frames": 1, "loop": true },
             { "name": "Mine", "frames": 45, "loop": true },
-            { "name": "Chop", "frames": 45, "loop": true }
+            { "name": "Chop", "frames": 45, "loop": true },
+            { "name": "HoldStaff", "frames": 1, "loop": true },
+            { "name": "Cast", "frames": 27, "loop": false }
         ]
     }
 }

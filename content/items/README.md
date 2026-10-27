@@ -17,7 +17,7 @@ content rules are in [../README.md](../README.md).
 
 ## Authoring Contract
 
-Catalog format version 5 contains these separate concepts:
+Catalog format version 6 contains these separate concepts:
 
 - **Character settings** in `character` set the base carry capacity and the
   slot counts of the permanent inventory and the bank that every new character
@@ -49,16 +49,20 @@ Catalog format version 5 contains these separate concepts:
   `ranged`, or `magic`), the ammunition family a `ranged` family fires, and the
   `projectileSpeed` of its attacks in metres per second. A `ranged` family needs
   an ammunition family and a positive speed. A `melee` family has neither and
-  hits at once.
+  hits at once. A `magic` family has no ammunition family, and its attacks cost
+  mana instead; the `staff` family's bolts fly at 20 m/s.
 - **Ammunition families** in `ammunitionFamilies` group ammunition. Any
   ammunition of a weapon family's ammunition family works with every weapon of
   that family.
 - **Weapon data** in a definition's `weapon` block names its weapon family and
   damage type (`normal`, `fire`, `cold`, `nature`, or `shadow`), the integer base
   damage roll from `minimumDamage` to `maximumDamage`, the
-  `attackIntervalSeconds` between attacks, and the attack `range` in metres.
-  Every `weapon` definition has exactly this block, and no other definition has
-  it.
+  `attackIntervalSeconds` between attacks, the attack `range` in metres, and the
+  `manaCost` of every attack, from 1 to 1,000,000 for a weapon of a `magic`
+  family and 0 for every other weapon. Every `weapon` definition has exactly
+  this block, and no other definition has it. The Oak Staff
+  (`weapon.oak_staff`, value 120) is the first magic weapon: 10 to 18 every 2.4
+  seconds at 10 m for 5 mana, held with both hands.
 - **Ammunition data** in a definition's `ammunition` block names its ammunition
   family and its `damageBonusPercent` of the weapon roll. Every `ammunition`
   definition has exactly this block, and no other definition has it.
@@ -190,6 +194,7 @@ is their display order.
   meaning of a structural field changes. Format 5 added values, tool kinds,
   vendor profiles, and the economy settings with `StructuralFingerprintVersion`
   still at 3, so it needed no item migration and no development database reset.
+  Format 6 added the weapon `manaCost` the same way.
 
 GameService mirrors the catalog into PostgreSQL at startup and refuses to start
 when the change would invalidate live state:

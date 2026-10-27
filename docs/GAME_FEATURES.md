@@ -341,8 +341,9 @@ authority
   or, while the menu is open, `Teleport here` in the right-click world menu.
   SimulationWorker moves a living character onto walkable ground inside the
   World and shows it there to everyone who sees it, as a respawn does.
-- **Combat** fills the character's health and switches `Invulnerable`, which
-  makes hits leave its health as it is until the character leaves the World.
+- **Combat** shows the character's health and mana, fills both with
+  `Restore health and mana`, and switches `Invulnerable`, which makes hits leave
+  its health as it is until the character leaves the World.
 - The footer shows what the worker answered, such as `Teleport to 85.0, 1.9,
   80.0: done.` or the reason a tool was refused.
 
@@ -763,17 +764,27 @@ Combat is target based and server authoritative:
   hand and has no armor values yet. Both show in the hands of their wearer, as
   [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#attachments) describes;
   the Training Shortbow takes both hands.
-- The top-left frame shows health, arrows, and the attack status, such as `Out
-  of range` or `No ammunition`. The target frame shows the target's health,
-  damaged combatants get health bars, hits show white damage numbers, and
-  arrows fly to their target.
+- The Oak Staff, the first magic weapon, takes both hands and casts a bolt of
+  Normal damage for 10 to 18 every 2.4 seconds at up to 10 m. Every bolt costs 5
+  mana when it leaves the staff, and a character has 100 mana. Without enough
+  mana the attack status shows `Not enough mana`, the target stays selected, and
+  the character casts again by itself once its mana is back. The General Store
+  sells the staff for 120 gold. A character holds it upright beside its right
+  hip, also while it walks, and every cast thrusts it toward the target while
+  the other hand points at it; everyone who sees the character sees the cast. A
+  glowing blue-white bolt leaves the staff's crystal and flies at 20 m/s.
+- The top-left frame shows health, mana, arrows, and the attack status, such as
+  `Out of range`, `No ammunition`, or `Not enough mana`. The target frame shows
+  the target's health, damaged combatants get health bars, hits show white
+  damage numbers, and arrows and bolts fly to their target.
 - A character at 0 health dies: `You died` counts down 5 seconds above every
   open window, the character respawns at the World spawn with full health, and
   its items follow the
   [Durable Player Death Foundation](#durable-player-death-foundation). The
   inventory shows the moved items at once, without a new login.
-- Out of combat for 10 seconds, a character regains 2 percent of its health
-  every second.
+- A character is in combat until 5 seconds after its last attack or hit. Out
+  of combat it regains 1 health and 1 mana every second. A respawn and a login
+  start with full health and mana.
 - Wolves are aggressive: a wolf notices a living character within 8 m that it
   can see, runs to it at 4.5 m/s, and bites for 4 to 9 every 1.8 seconds. A
   wolf hit by a character always fights back. A wolf that is lured more than 30
@@ -797,8 +808,9 @@ These categories are defined by the project direction but are not implemented.
 They remain in the MVP specification until working behavior is available:
 
 - Dynamic collision transform replication.
-- A threat table, Mob abilities and groups, more melee weapons, magic weapons,
-  armor values, attack animations, and final combat visuals.
+- A threat table, Mob abilities and groups, more melee and magic weapons,
+  mana potions, armor values, attack animations for swords and bows, and final
+  combat visuals.
 - Final inventory art, interaction polish, accessibility, item policy details,
   and loot presentation.
 - Final corpse art and loot presentation, and insurance or quest UI polish.

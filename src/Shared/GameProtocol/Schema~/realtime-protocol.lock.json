@@ -14,6 +14,7 @@
     { "version": 24, "fingerprint": "104200ede423abc21c8c0faf74754df41d9cb4825f394a470263c0fc67b08992" },
     { "version": 25, "fingerprint": "69ef7905be3103c961341c1e168f6f1e51c95a56865cdfb47e103a2e6d94c4d2" },
     { "version": 26, "fingerprint": "a3b0866cd017be96128893a169279eaed4c0d4daa9754d522afab9a7d3858323" },
-    { "version": 27, "fingerprint": "fb60c78f5921a7eee2eddd60ee13d9811107286b47309cd2c86b24985445fc1e" }
+    { "version": 27, "fingerprint": "fb60c78f5921a7eee2eddd60ee13d9811107286b47309cd2c86b24985445fc1e" },
+    { "version": 28, "fingerprint": "160789f3aadfd89faada69688046176477e0b6ea5ba56f3382078c986c40268b" }
   ]
 }

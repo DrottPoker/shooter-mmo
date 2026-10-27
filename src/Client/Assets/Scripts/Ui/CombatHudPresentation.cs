@@ -10,6 +10,7 @@ namespace Mmorpg.Client.Ui
     {
         public const string UnknownStatusLabel = "Unknown";
         public static readonly Color NormalDamageColor = Color.white;
+        public static readonly Color ManaColor = new Color(0.27f, 0.55f, 1f, 1f);
 
         // A short label for every attack status the worker reports.
         public static string AttackStatusLabel(RealtimeCombatAttackStatus status)
@@ -34,6 +35,8 @@ namespace Mmorpg.Client.Ui
                     return "No ammunition";
                 case RealtimeCombatAttackStatus.AmmunitionIncompatible:
                     return "Wrong ammunition";
+                case RealtimeCombatAttackStatus.NotEnoughMana:
+                    return "Not enough mana";
                 case RealtimeCombatAttackStatus.Dead:
                     return "Dead";
                 default:
@@ -50,6 +53,12 @@ namespace Mmorpg.Client.Ui
         public static float HealthFraction(int health, int maximumHealth)
         {
             return maximumHealth <= 0 ? 0f : Mathf.Clamp01(health / (float)maximumHealth);
+        }
+
+        // Mana uses the health format; a character without mana shows none.
+        public static string ManaText(int mana, int maximumMana)
+        {
+            return maximumMana > 0 ? "Mana " + HealthText(mana, maximumMana) : "No mana";
         }
 
         // Green while healthy, amber below half, red below a quarter.

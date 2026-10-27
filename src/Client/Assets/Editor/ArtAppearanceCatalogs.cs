@@ -140,7 +140,11 @@ namespace Mmorpg.Client.Editor
                     && actual.Model == expected.Model
                     && actual.UseClip == expected.UseClip
                     && actual.HoldsWithBothHands == expected.HoldsWithBothHands
-                    && actual.OffHandGrip == expected.OffHandGrip)
+                    && actual.OffHandGrip == expected.OffHandGrip
+                    && actual.HoldClip == expected.HoldClip
+                    && actual.AttackClip == expected.AttackClip
+                    && actual.HasLaunchPoint == expected.HasLaunchPoint
+                    && actual.LaunchPoint == expected.LaunchPoint)
                     .All(same => same);
         }
 
@@ -162,8 +166,8 @@ namespace Mmorpg.Client.Editor
         }
 
         // The attachments a body's sockets can hold, by name: every exported attachment whose socket
-        // is a bone of the body's skeleton, with its model, and for a tool its use clip and where the
-        // other hand holds it.
+        // is a bone of the body's skeleton, with its model, for a tool its use clip and where the
+        // other hand holds it, and for a weapon its hold and attack clips and its launch point.
         public static BodyAppearanceCatalog.Attachment[] AttachmentsFor(ArtAssetManifest body)
         {
             return ArtAssetManifests.Attachments()
@@ -179,6 +183,7 @@ namespace Mmorpg.Client.Editor
                         }
 
                         var grip = attachment.offHandGrip ?? Array.Empty<float>();
+                        var launch = attachment.launchPoint ?? Array.Empty<float>();
                         return new BodyAppearanceCatalog.Attachment(
                             attachment.Name,
                             attachment.socket,
@@ -186,7 +191,10 @@ namespace Mmorpg.Client.Editor
                             model,
                             attachment.useClip,
                             // In the socket's axes in Blender, which the import turns as it turns the model.
-                            grip.Length == 3 ? ArtTopologyMaps.ToUnity(grip[0], grip[1], grip[2]) : (Vector3?)null);
+                            grip.Length == 3 ? ArtTopologyMaps.ToUnity(grip[0], grip[1], grip[2]) : (Vector3?)null,
+                            attachment.holdClip,
+                            attachment.attackClip,
+                            launch.Length == 3 ? ArtTopologyMaps.ToUnity(launch[0], launch[1], launch[2]) : (Vector3?)null);
                     }))
                 .ToArray();
         }

@@ -156,6 +156,37 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A staff stands in its hold pose as in the game, Cast plays over it and starts again when it
+        // ends, and a tool's clip puts the pose away.
+        [Test]
+        public void TheWardrobeHoldsTheStaffInItsPoseAndCastsWithIt()
+        {
+            using (var preview = new WardrobePreview(WardrobePreview.Bodies()[0]))
+            {
+                preview.Wear(Array.Empty<string>(), null, new[] { "OakStaff" });
+                var animator = preview.Body.GetComponent<Animator>();
+                var hold = animator.GetLayerIndex(HumanLocomotion.MainHandHoldLayer);
+                var action = animator.GetLayerIndex(HumanLocomotion.ActionLayer);
+                Assert.That(animator.GetLayerWeight(hold), Is.EqualTo(1f));
+                Assert.That(animator.GetLayerWeight(action), Is.Zero);
+
+                preview.Play(WardrobePreview.Motion.Cast);
+                Assert.That(animator.GetLayerWeight(action), Is.EqualTo(1f));
+                for (var step = 0; step < 12; step++)
+                {
+                    preview.Step(0.1f, Vector3.forward * 3f);
+                }
+
+                var state = animator.GetCurrentAnimatorStateInfo(action);
+                Assert.That(state.IsName(HumanLocomotion.ActionLayer + "." + HumanLocomotion.CastClip), Is.True);
+                Assert.That(state.normalizedTime, Is.LessThan(1f), "Cast started again");
+
+                preview.Play(WardrobePreview.Motion.Mine);
+                Assert.That(animator.GetLayerWeight(hold), Is.Zero);
+                Assert.That(animator.GetLayerWeight(action), Is.Zero);
+            }
+        }
+
         // The CI runs Unity without graphics, so the tests cannot render; the window draws the preview.
         [Test]
         public void ClosingTheWardrobeLeavesNothingBehind()

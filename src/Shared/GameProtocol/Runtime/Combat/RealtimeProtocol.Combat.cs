@@ -16,12 +16,14 @@ namespace Mmorpg.GameProtocol
                         && value.DamageType == RealtimeCombatDamageType.Normal
                         && value.HealthAfter == 0;
                 case RealtimeCombatEventKind.Hit:
-                    return value.ImpactTick == 0;
+                    return value.ImpactTick == 0
+                        && value.AttackStyle == RealtimeCombatAttackStyle.Melee;
                 case RealtimeCombatEventKind.Died:
                     return value.ImpactTick == 0
                         && value.Damage == 0
                         && value.DamageType == RealtimeCombatDamageType.Normal
-                        && value.HealthAfter == 0;
+                        && value.HealthAfter == 0
+                        && value.AttackStyle == RealtimeCombatAttackStyle.Melee;
                 default:
                     return false;
             }
@@ -40,6 +42,7 @@ namespace Mmorpg.GameProtocol
         private static bool SatisfiesRules(RealtimeOwnerCombatState value)
         {
             if (value.Health > value.MaximumHealth
+                || value.Mana > value.MaximumMana
                 || value.LifeState == RealtimeCombatLifeState.Evading)
             {
                 return false;

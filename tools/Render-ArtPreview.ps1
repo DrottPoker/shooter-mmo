@@ -1,7 +1,7 @@
 # Renders the review sheet of an art asset: one row per exported root object, seen from four
 # sides at the game camera pitch, plus a view with a 1.8 m mannequin for scale. The sheet of an
 # animation library shows every clip as frames on its preview bodies instead, with each tool held
-# in the clip it is used with, the sheet of a
+# in the clip it is used with and each weapon in its hold and attack clips, the sheet of a
 # garment template shows it on every body at rest and in the test poses, the sheet of a garment
 # texture shows it on its template, the sheet of the garment cage shows it on every body with
 # its distance from the skin and its standard lines, and the sheet of a paint layer shows it on
@@ -33,25 +33,34 @@ if ($manifest.Kind -eq "garment") {
 }
 elseif ($null -ne $manifest.Socket) {
     # The sheet of an attachment also shows it held on its socket by the bodies of the animation
-    # library of its skeleton, in the first frame of Idle with the hand pose Grip when the library has it.
-    $library = Get-ArtHeldLibrary $manifest.Socket.Skeleton
+    # library of its skeleton, in the first frame of Idle with the hand pose Grip when the library has
+    # it, and with the arm in the attachment's hold clip when it names one.
+    $library = Get-ArtHeldLibrary $manifest.Socket.Skeleton $manifest.HoldClip
     if ($null -eq $library) {
-        throw "No animation library of the $($manifest.Socket.Skeleton) skeleton has the clip Idle to show $($manifest.Name) held."
+        throw "No animation library of the $($manifest.Socket.Skeleton) skeleton has the clips Idle and $($manifest.HoldClip) to show $($manifest.Name) held."
     }
 
     $arguments += @("--socket-bone", $manifest.Socket.Bone, "--held-library", "$($library.SourcePath)=$($library.Root)")
+    if ($null -ne $manifest.HoldClip) {
+        $arguments += @("--hold-clip", $manifest.HoldClip)
+    }
 }
 elseif ($manifest.Kind -eq "animations") {
-    # The sheet of an animation library shows each tool held in the rows of the clip it is used with.
+    # The sheet of an animation library shows each tool held in the rows of the clip it is used with,
+    # and each weapon in the rows of its hold and attack clips.
     foreach ($directory in @(Get-ArtAssetDirectories)) {
         $json = Get-Content -Raw -LiteralPath (Join-Path $directory "asset.json") | ConvertFrom-Json
-        if ($null -eq $json.PSObject.Properties['useClip'] -or $manifest.Clips -cnotcontains [string]$json.useClip) {
+        $named = @("useClip", "holdClip", "attackClip" | Where-Object {
+                $null -ne $json.PSObject.Properties[$_] -and $manifest.Clips -ccontains [string]$json.$_ })
+        if ($named.Count -eq 0) {
             continue
         }
 
-        $tool = Read-ArtAssetManifest $directory
-        if ($tool.Socket.Skeleton -ceq $manifest.Skeleton) {
-            $arguments += @("--held-attachment", "$($tool.SourcePath)=$($tool.UseClip):$($tool.Socket.Bone)")
+        $held = Read-ArtAssetManifest $directory
+        if ($held.Socket.Skeleton -ceq $manifest.Skeleton) {
+            foreach ($clip in @($held.UseClip, $held.HoldClip, $held.AttackClip | Where-Object { $null -ne $_ })) {
+                $arguments += @("--held-attachment", "$($held.SourcePath)=${clip}:$($held.Socket.Bone)")
+            }
         }
     }
 }

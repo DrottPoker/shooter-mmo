@@ -551,10 +551,10 @@ before binding UDP. The default is `WorldData/Combat/combat-rules.json` in the
 worker output, which the build copies from `content/combat/combat-rules.json`.
 The loader rejects unknown and duplicate properties, another format version,
 values out of range, and rule set ids that are not sorted, lowercase, and
-unique. The rules hold the player maximum health of 100, the respawn delay of 5
-seconds, the combat timeout of 10 seconds, regeneration of 2 percent of the
-maximum health per second, the equipment lockout of 1 second, the arrow batch
-interval of 5 seconds, and the Shard rule sets. Weapon values come from the item
+unique. The rules hold the player maximum health of 100 and maximum mana of
+100, the respawn delay of 5 seconds, the combat timeout of 5 seconds,
+regeneration of 1 health and 1 mana per second, the equipment lockout of 1
+second, the arrow batch interval of 5 seconds, and the Shard rule sets. Weapon values come from the item
 catalog and Mob values from the actor catalog.
 
 - The Shard rule set `mvp-open-risk` allows attacks on other characters.
@@ -566,15 +566,21 @@ catalog and Mob values from the actor catalog.
 - On every tick, a character with a target attacks on its weapon's cooldown when
   it stands still, the target's bounds are within the weapon range, the line of
   sight from eye height reaches the target's center, a weapon is equipped in
-  `main_hand`, and the equipped arrows belong to the weapon's ammunition family.
-  Otherwise the owner sees the attack status that holds the attack. Line of sight
+  `main_hand`, the equipped arrows belong to the weapon's ammunition family, and
+  for a magic weapon the character has the weapon's mana cost. Otherwise the
+  owner sees the attack status that holds the attack; `NotEnoughMana` keeps the
+  target and the attack resumes once the mana is back. Line of sight
   costs a raycast, so it is checked when an attack is due and five times per
   second otherwise.
 - An attack rolls damage between the weapon's minimum and maximum and adds the
   arrow's bonus percent, rounded half up. The Training Shortbow deals 10 to 18
   every 2.4 seconds at up to 10 m, and a Bronze Arrow adds 5 percent. The arrow
   flies at the weapon family's projectile speed of 30 m/s and hits at its impact
-  tick when the target is still alive. It is spent either way.
+  tick when the target is still alive. It is spent either way. The Oak Staff of
+  the magic family `staff` deals 10 to 18 every 2.4 seconds at up to 10 m and
+  costs 5 mana per attack, spent when the bolt leaves; its bolt flies at 20 m/s.
+  Every `AttackReleased` event names the attack's combat style, so clients draw
+  an arrow or a bolt.
 - A different item in any equipment slot holds attacks for the lockout, and an
   item or corpse operation that may change equipment holds them while it runs.
   A changed arrow count keeps the same item and does not count.
@@ -601,9 +607,11 @@ catalog and Mob values from the actor catalog.
   killer. After the respawn delay, and once the death committed, the character
   respawns at the World spawn with full health, and every viewer receives its
   respawn.
-- A combatant is in combat until 10 seconds after its last attack or hit. A
-  living character out of combat regains 2 percent of its maximum health, at
-  least 1 point, every second.
+- A combatant is in combat until 5 seconds after its last attack or hit. A
+  living character out of combat regains 1 health and 1 mana every second, up to
+  its maximum. Mana is owner state: only `OwnerCombatState` carries it. A joining
+  character and a respawn start with full health and mana, and the development
+  admin tool `RestoreHealth` fills both.
 - Every damageable Mob with a combat profile is a combatant, and a Mob with a
   brain and a locomotion profile also thinks and walks, as
   [Mob Brains](#mob-brains) describes. A dead Mob rolls its loot profile, where each

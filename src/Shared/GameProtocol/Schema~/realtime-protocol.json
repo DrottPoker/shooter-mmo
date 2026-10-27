@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 27,
+    "version": 28,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -423,8 +423,15 @@
         { "name": "WeaponMissing", "value": 7 },
         { "name": "AmmunitionMissing", "value": 8 },
         { "name": "AmmunitionIncompatible", "value": 9 },
-        { "name": "Dead", "value": 10 }
+        { "name": "Dead", "value": 10 },
+        { "name": "NotEnoughMana", "value": 11 }
       ]
+    },
+    {
+      "name": "CombatAttackStyle",
+      "family": "Combat",
+      "description": "The combat style of a released attack, which selects how it is presented, such as an arrow or a magic bolt.",
+      "values": [ { "name": "Melee", "value": 1 }, { "name": "Ranged", "value": 2 }, { "name": "Magic", "value": 3 } ]
     },
     {
       "name": "CombatEventKind",
@@ -1090,7 +1097,12 @@
         },
         { "name": "Damage", "type": "i32", "minimum": 0, "description": "For a hit, the damage dealt." },
         { "name": "DamageType", "type": "CombatDamageType", "description": "For a hit, the damage type; Normal otherwise." },
-        { "name": "HealthAfter", "type": "i32", "minimum": 0, "description": "For a hit, the target's health afterwards." }
+        { "name": "HealthAfter", "type": "i32", "minimum": 0, "description": "For a hit, the target's health afterwards." },
+        {
+          "name": "AttackStyle",
+          "type": "CombatAttackStyle",
+          "description": "For a released attack, the combat style of the attack; Melee otherwise."
+        }
       ]
     }
   ],
@@ -2658,7 +2670,7 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "description": "The owner's combat state: life, target, attack status and timing, and equipped ammunition.",
+      "description": "The owner's combat state: life, mana, target, attack status and timing, and equipped ammunition.",
       "parameter": "state",
       "rules": true,
       "fields": [
@@ -2666,6 +2678,8 @@
         { "name": "ServerTick", "type": "u32", "description": "The server tick at which the state holds." },
         { "name": "Health", "type": "i32", "minimum": 0, "description": "The current health." },
         { "name": "MaximumHealth", "type": "i32", "minimum": 1, "description": "The maximum health." },
+        { "name": "Mana", "type": "i32", "minimum": 0, "description": "The current mana that magic attacks spend." },
+        { "name": "MaximumMana", "type": "i32", "minimum": 0, "description": "The maximum mana." },
         { "name": "LifeState", "type": "CombatLifeState", "description": "Whether the character lives." },
         {
           "name": "LifeSequence",
