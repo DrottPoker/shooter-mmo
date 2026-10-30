@@ -1399,16 +1399,19 @@ hold until the reviewer changes them here.
 - **A reference mesh and a designed cage.** Unless the reviewer says otherwise,
   every model is built the way the [human base characters](#human-base-characters)
   were:
-  1. A reference mesh with the right form, such as the realistic bodies of
-     Blender Studio's Human Base Meshes, from a source the reviewer approves. A
-     download needs the reviewer's approval first.
+  1. The reference the reviewer gives: pictures of how the model should look,
+     such as a concept in a front and a side view, or a reference mesh, such as
+     the realistic bodies of Blender Studio's Human Base Meshes. Only when the
+     reviewer gives no reference is a reference mesh looked for, from a source
+     the reviewer approves; a download needs the reviewer's approval first.
   2. A coarse cage of quads designed for the model, its topology decided once:
      rings of a fixed number of sides around the trunk, the neck, and each limb,
      joined at the coarse level, with parts such as the hands, the paws, and the
      head fitted on their own.
-  3. The cage subdivided once and cast onto the reference from points inside it,
-     such as the joints, one half built and mirrored to the other, and then
-     relaxed along the surface.
+  3. The cage fitted to the reference, subdivided once first where the budget
+     allows: matched to the outlines of the reference pictures view by view, or
+     cast onto a reference mesh from points inside it, such as the joints; one
+     half built and mirrored to the other; and then relaxed along the surface.
 
   Only player characters and NPCs get eyeballs of their own, with eyelids; a
   Mob's eyes are part of its mesh and its colors.
