@@ -1412,6 +1412,8 @@ hold until the reviewer changes them here.
      allows: matched to the outlines of the reference pictures view by view, or
      cast onto a reference mesh from points inside it, such as the joints; one
      half built and mirrored to the other; and then relaxed along the surface.
+  4. When the whole model is built: unwrapped along its part borders and
+     hand-painted on its UVs.
 
   Only player characters and NPCs get eyeballs of their own, with eyelids; a
   Mob's eyes are part of its mesh and its colors.
@@ -1448,6 +1450,13 @@ hold until the reviewer changes them here.
   the tail, and hands and paws open like gloves, in a back and a palm half with
   strips for the digits. Each part unwraps into clean islands without stretching,
   folds, or slivers; never with an automatic projection such as Smart UV Project.
+- **Hand-painted on the UVs, last.** Color a model with a texture hand-painted
+  on its UVs, never face by face: no color per face or per material, so the
+  color borders follow the design and not the polygons. Hand-painted means
+  painted stroke by stroke, by a person in Texture Paint mode or by a script
+  that places every stroke on purpose, never filled from rules over the faces.
+  Paint only when the whole model is built, so the painting is done once, over
+  the final UVs.
 - **Even density.** Spread the polygons evenly over the whole model, with only as
   many more as a detail needs where it matters, such as the face, the paws, or
   the joints.
@@ -1478,10 +1487,13 @@ For models and their textures this means:
   follows the rule.
 - What identifies an actor, such as the ore of a vein, is visible from every
   side and large enough to read at the default camera distance.
-- Flat-shaded facets with hard edges and flat material colors, with a few
-  materials per asset, also on Mobs and other creatures. Playable characters are
-  the exception: smooth shading with the form painted into their textures, as on
-  the human base characters.
+- Flat-shaded facets with hard edges, also on Mobs and other creatures, with
+  their colors hand-painted into a texture on their UVs (see Hand-painted on the
+  UVs, last, in [Modeling Rules](#modeling-rules)). Playable characters are the
+  exception: smooth shading with the form painted into their textures, as on
+  the human base characters. Props approved before 2026-10-30 keep their flat
+  material colors, and new props get their textures when the pipeline supports
+  textures on `static` assets; until then only `skinned` assets can have them.
 - The model fills the actor's `interactionBounds` from the content catalog, so
   the click area matches what the player sees.
 - Triangle budgets, about what a model uses: about 2,000 for a prop, such as a
