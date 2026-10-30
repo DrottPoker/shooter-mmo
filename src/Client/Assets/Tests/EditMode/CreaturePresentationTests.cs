@@ -278,6 +278,19 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A corpse that arrives before the presentation registry has loaded waits for its model
+        // instead of staying a capsule.
+        [Test]
+        public void AMobModelCountsAsLoadingUntilThePresentationRegistryLoads()
+        {
+            instance = new GameObject("WorldActorPresentations");
+            var presentations = instance.AddComponent<WorldActorPresentationController>();
+
+            Assert.That(presentations.TryGetArchetypePrefab("mob.feral_wolf", out var prefab, out var loading), Is.False);
+            Assert.That(prefab, Is.Null);
+            Assert.That(loading, Is.True);
+        }
+
         private static AnimatorController Controller()
         {
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(CreaturePresentationBuilder.WolfController);

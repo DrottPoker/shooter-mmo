@@ -78,8 +78,17 @@ namespace Mmorpg.Client.WorldActors
         // The loaded prefab of an archetype for another presentation of it, such as a Mob's corpse:
         // true with the prefab once it is loaded; false while it loads, with loading true, or when
         // the archetype has none. A load it starts presents the actors waiting for it when done.
+        // Until the registry itself has loaded every archetype counts as loading, so a corpse that
+        // arrives first still gets its model.
         public bool TryGetArchetypePrefab(string presentationArchetypeId, out GameObject prefab, out bool loading)
         {
+            if (!registryResolved)
+            {
+                prefab = null;
+                loading = true;
+                return false;
+            }
+
             var state = ResolvePrefab(presentationArchetypeId, out prefab);
             loading = state == PrefabState.Loading;
             return state == PrefabState.Ready && prefab != null;

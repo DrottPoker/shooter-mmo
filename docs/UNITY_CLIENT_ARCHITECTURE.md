@@ -1087,8 +1087,8 @@ its `YawDegrees`, with a box collider around the lying model that each prefab
 bakes once. The worker sends the corpse before the dying Mob leaves, so while a
 Mob of that archetype still falls dead within 1.5 m the model stays hidden; once
 the Mob's view is gone, the corpse plays on the rest of its fall, so the fall
-never jumps or shows twice. A corpse whose prefab is still loading is a capsule
-until it loads. Every other corpse, such as one with presentation key
+never jumps or shows twice. A corpse whose presentation registry or prefab is
+still loading is a capsule until both have loaded. Every other corpse, such as one with presentation key
 `corpse.mob`, is a generic capsule with a shared renderer property block on the
 runtime primitive material, which never creates per-frame materials.
 Loot in a corpse's world menu, also its left-click option, walks the player
