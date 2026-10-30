@@ -1479,7 +1479,7 @@ For models and their textures this means:
 - The model fills the actor's `interactionBounds` from the content catalog, so
   the click area matches what the player sees.
 - Triangle budgets, the most a model may have: 2,000 for a prop, such as a
-  resource node or an attachment; 5,000 for a Mob or another creature; 10,000
+  resource node or an attachment; 6,000 for a Mob or another creature; 10,000
   for a playable character with its eyeballs, teeth, and tongue. The budget is a
   ceiling, not a target, and each asset sets its own `triangleBudget` within it.
 
