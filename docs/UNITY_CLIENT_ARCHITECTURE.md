@@ -734,7 +734,11 @@ stays behind is retried for the same revision 1 second after it ended, and every
 further failure doubles the delay up to 30 seconds, so a failing GameService is
 never asked every frame; a newer revision or a new session starts over at once.
 The check runs a frame after the carry state arrives, so an arrow batch that was
-already patched in place needs no refresh.
+already patched in place needs no refresh. When the account or the selected
+character changes, the controller abandons a refresh that still waits for its
+response, and the refresh queued after it: the routine ends at its next response
+without touching the new character's state, so a slow or failing response of the
+previous character never shows as an error of the next one.
 
 Every committed transaction of the owner that the worker can describe whole
 reaches the client as `OwnerItemStateChanged`: the client operation that caused
