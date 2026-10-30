@@ -12,6 +12,10 @@
         "model": {
             "date": "2026-10-30",
             "sourceSha256": "54aba03788faa3990928326ce0b6332a1bd70f927a30a64c03f37acb3e61c1b9"
+        },
+        "rig": {
+            "date": "2026-10-30",
+            "sourceSha256": "7cb12de5f8cf071f8386089ecb98788c601e218b674ef6c92018bcfb4d88e724"
         }
     },
     "export": null
