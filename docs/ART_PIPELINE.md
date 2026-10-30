@@ -1456,7 +1456,8 @@ hold until the reviewer changes them here.
   painted stroke by stroke, by a person in Texture Paint mode or by a script
   that places every stroke on purpose, never filled from rules over the faces.
   Paint only when the whole model is built, so the painting is done once, over
-  the final UVs.
+  the final UVs: the model is still built one part at a time, each part
+  accepted before the next, and painted when the last part is accepted.
 - **Even density.** Spread the polygons evenly over the whole model, with only as
   many more as a detail needs where it matters, such as the face, the paws, or
   the joints.
