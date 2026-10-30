@@ -1396,6 +1396,22 @@ Blender, Claude Code through the Blender MCP server, or a script. They come from
 the reviewer's feedback on the human base characters and the first wolf, and they
 hold until the reviewer changes them here.
 
+- **A reference mesh and a designed cage.** Unless the reviewer says otherwise,
+  every model is built the way the [human base characters](#human-base-characters)
+  were:
+  1. A reference mesh with the right form, such as the realistic bodies of
+     Blender Studio's Human Base Meshes, from a source the reviewer approves. A
+     download needs the reviewer's approval first.
+  2. A coarse cage of quads designed for the model, its topology decided once:
+     rings of a fixed number of sides around the trunk, the neck, and each limb,
+     joined at the coarse level, with parts such as the hands, the paws, and the
+     head fitted on their own.
+  3. The cage subdivided once and cast onto the reference from points inside it,
+     such as the joints, one half built and mirrored to the other, and then
+     relaxed along the surface.
+
+  Only player characters and NPCs get eyeballs of their own, with eyelids; a
+  Mob's eyes are part of its mesh and its colors.
 - **Agree on the method first.** How a model is built is agreed with the
   reviewer before the work starts. Changing the method needs the reviewer's
   approval. When a method gives a poor result, fix the result within the method
