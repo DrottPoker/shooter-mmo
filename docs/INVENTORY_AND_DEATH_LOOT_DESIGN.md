@@ -800,8 +800,10 @@ section even though the real Bag has moved to Recovery Storage.
   player corpse. It presents a restored corpse with the player corpse key
   `corpse.remains`, which the client shows as the body lying in the last pose of
   Death, at the recorded location and facing while preserving the same durable
-  corpse id and custody. A Mob corpse uses `corpse.mob` and keeps the generic
-  capsule.
+  corpse id and custody. A Mob corpse uses `corpse.` followed by its Mob's
+  presentation archetype, such as `corpse.mob.feral_wolf`, and the client shows
+  that Mob's own model lying in the last pose of its Death clip, turned as the
+  Mob died. A Mob without a model of its own keeps the generic capsule.
 - A player corpse shows the dead character's body model, look, and headwear,
   wearing the items still in its equipment section that others see, so looting a
   garment takes it off the lying body; see

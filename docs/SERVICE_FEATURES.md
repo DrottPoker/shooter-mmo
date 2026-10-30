@@ -651,8 +651,9 @@ SimulationWorker. Nothing gets its own task, timer, or thread:
   every player.
 - An active Mob thinks at the activity profile's active rate, 10 per second,
   staggered by entity id, and a moving Mob steps every tick with the player motor
-  and collision at its locomotion profile's speed and capsule. Mobs do not
-  collide with players or with each other.
+  and collision at its locomotion profile's capsule: at its patrol speed while
+  it patrols, 1.4 m/s for the wolves, and at its walk speed while it chases or
+  walks home, 4.5 m/s. Mobs do not collide with players or with each other.
 - The brain is a state machine: `Idle` stands at the spawn, `Patrol` walks the
   spawn's patrol path with its waits, `Chase` walks toward the target, `Attack`
   stands still and bites on the combat profile's cooldown, `Evade` walks home,

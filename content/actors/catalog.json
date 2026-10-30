@@ -113,12 +113,14 @@
         {
             "id": "mob.large_quadruped",
             "walkSpeed": 4.5,
+            "patrolSpeed": 1.4,
             "collisionRadius": 0.6,
             "collisionHeight": 1.6
         },
         {
             "id": "mob.quadruped",
             "walkSpeed": 4.5,
+            "patrolSpeed": 1.4,
             "collisionRadius": 0.4,
             "collisionHeight": 1.1
         }

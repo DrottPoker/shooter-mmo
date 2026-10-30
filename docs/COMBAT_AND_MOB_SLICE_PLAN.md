@@ -148,7 +148,7 @@ GameService stores only the level requirement, which its equip rule needs.
   damage roll, interval, and range.
 - `brainProfiles`: aggression (`aggressive` or `defensive`), detection range,
   leash range, and give-up time.
-- `locomotionProfiles`: walk speed and collision capsule.
+- `locomotionProfiles`: walk speed, patrol speed, and collision capsule.
 - `lootProfiles`: ordered entries of item definition id, quantity range, and
   chance in basis points. `tools/WorldActorCompiler` checks every entry against
   the compiled item catalog.
@@ -415,7 +415,8 @@ the activity tiers. Today's tier check compares every Mob with every player,
 which does not scale to the planned 2,000 Mobs.
 
 Movement: each locomotion profile builds a `MovementSimulationSettings` with its
-walk speed and capsule, and the Mob follows its waypoints with the same
+walk speed and capsule, and one with its patrol speed and the same capsule for
+the `Patrol` state, and the Mob follows its waypoints with the same
 `PlayerMovementSimulation.Step` and collision as players. Routes come from the
 shared `MovementPathPlanner` through a planning queue on the loop with a fixed
 budget of plans per tick and a node cap sized to the leash range. A Mob replans

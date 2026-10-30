@@ -6,8 +6,12 @@ internal static class CorpseTransformRules
     // The client lays a player corpse down as the body of the character.
     public const string PlayerCorpsePresentationKey = "corpse.remains";
 
-    // A Mob corpse keeps the generic remains until Mobs have models.
-    public const string MobCorpsePresentationKey = "corpse.mob";
+    // A Mob corpse shows its Mob's own model, or the generic remains of a Mob without one; see
+    // WorldActorCorpseRules.MobCorpsePresentationKeyFor.
+    public static bool IsMobCorpsePresentationKey(string? presentationKey)
+    {
+        return Mmorpg.WorldData.Actors.WorldActorCorpseRules.IsMobCorpsePresentationKey(presentationKey);
+    }
 
     // A player corpse keeps its full lifetime even when empty. The ck_corpses_expiry CHECK in
     // PlayerCorpsePersistenceMigration enforces the same lifetime in the database.

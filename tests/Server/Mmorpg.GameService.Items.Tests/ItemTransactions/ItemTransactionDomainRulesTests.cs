@@ -1,6 +1,7 @@
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
@@ -84,7 +85,16 @@ public sealed class ItemTransactionDomainRulesTests
     public void CorpseTransformRulesBoundPositionsAndNormalizeRotations()
     {
         Assert.Equal("corpse.remains", CorpseTransformRules.PlayerCorpsePresentationKey);
-        Assert.Equal("corpse.mob", CorpseTransformRules.MobCorpsePresentationKey);
+        // A Mob corpse is the generic remains or a Mob's own, named after its presentation archetype.
+        Assert.True(CorpseTransformRules.IsMobCorpsePresentationKey("corpse.mob"));
+        Assert.True(CorpseTransformRules.IsMobCorpsePresentationKey("corpse.mob.feral_wolf"));
+        Assert.False(CorpseTransformRules.IsMobCorpsePresentationKey("corpse.remains"));
+        Assert.False(CorpseTransformRules.IsMobCorpsePresentationKey("corpse.mob."));
+        Assert.False(CorpseTransformRules.IsMobCorpsePresentationKey("corpse.mobile"));
+        Assert.False(CorpseTransformRules.IsMobCorpsePresentationKey("corpse.mob.Feral Wolf"));
+        Assert.False(CorpseTransformRules.IsMobCorpsePresentationKey(null));
+        Assert.Equal("corpse.mob.feral_wolf", WorldActorCorpseRules.MobCorpsePresentationKeyFor("mob.feral_wolf"));
+        Assert.Equal("corpse.mob", WorldActorCorpseRules.MobCorpsePresentationKeyFor("npc.city_guard"));
         Assert.True(CorpseTransformRules.IsFinitePosition(1_000_000d));
         Assert.False(CorpseTransformRules.IsFinitePosition(1_000_000.5d));
         Assert.False(CorpseTransformRules.IsFinitePosition(double.NaN));

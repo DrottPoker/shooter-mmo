@@ -324,13 +324,20 @@ Since protocol version 23, every `CorpsePresence` carries `YawDegrees`, the
 facing of whoever left the corpse around the vertical axis. The worker takes it
 from the rotation it stores with a player corpse, a turn around Y that the death
 request builds from the character's yaw, so the client lays the body of a player
-corpse down as it fell. A durable Mob corpse carries the facing its Mob had and a
-live Mob corpse sends 0; neither matters until Mob corpses get models.
+corpse down as it fell. A live and a durable Mob corpse both carry the facing its
+Mob had when it died, so the client lays the Mob's model down as it fell.
 
 The presentation key tells the client what to show. A player corpse sends
-`corpse.remains`, which the client shows as the body, and a Mob corpse sends
-`corpse.mob`, which keeps the generic capsule. GameService accepts only these
-keys for player deaths and for durable Mob corpses.
+`corpse.remains`, which the client shows as the body. A Mob corpse sends
+`corpse.` followed by its Mob's presentation archetype, such as
+`corpse.mob.feral_wolf` for `mob.feral_wolf`, which the client shows as the
+model of that archetype's prefab lying dead; `WorldActorCorpseRules` builds the
+key, and a Mob whose archetype does not start with `mob.` sends `corpse.mob`. A
+key whose archetype has no model, and `corpse.mob`, keep the generic capsule.
+GameService accepts `corpse.remains` for player deaths and only `corpse.mob` and
+the keys below it for durable Mob corpses, and every Mob corpse key takes whole
+items only. The keys are content, not protocol, so a new Mob model needs no new
+protocol version.
 
 ## Corpse View Closures
 

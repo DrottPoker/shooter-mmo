@@ -193,6 +193,7 @@ namespace Mmorpg.WorldData.Editor.Actors
     {
         public string id;
         public float walkSpeed;
+        public float patrolSpeed;
         public float collisionRadius;
         public float collisionHeight;
 
@@ -202,6 +203,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             {
                 Id = id,
                 WalkSpeed = walkSpeed,
+                PatrolSpeed = patrolSpeed,
                 CollisionRadius = collisionRadius,
                 CollisionHeight = collisionHeight
             };

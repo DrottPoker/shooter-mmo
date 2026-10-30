@@ -77,6 +77,53 @@ namespace Mmorpg.WorldData.Actors
         public const float MinimumLifetimeSeconds = 1f;
         public const float MaximumLifetimeSeconds = 86400f;
         public const int MaximumLootEntries = 24;
+
+        // A Mob corpse's presentation key: corpse.mob, the remains of any Mob, followed by the rest
+        // of the Mob's presentation archetype, so the client lays down the Mob's own model, such as
+        // corpse.mob.feral_wolf for mob.feral_wolf. Every such key takes whole items only.
+        public const string MobCorpsePresentationKey = "corpse.mob";
+
+        public static string MobCorpsePresentationKeyFor(string presentationArchetypeId)
+        {
+            return presentationArchetypeId != null
+                && presentationArchetypeId.Length > MobArchetypePrefix.Length
+                && presentationArchetypeId.StartsWith(MobArchetypePrefix, StringComparison.Ordinal)
+                ? "corpse." + presentationArchetypeId
+                : MobCorpsePresentationKey;
+        }
+
+        public static bool IsMobCorpsePresentationKey(string presentationKey)
+        {
+            if (string.Equals(presentationKey, MobCorpsePresentationKey, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (presentationKey == null
+                || presentationKey.Length <= MobCorpsePresentationKey.Length + 1
+                || presentationKey.Length > 128
+                || !presentationKey.StartsWith(MobCorpsePresentationKey + ".", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            foreach (var character in presentationKey)
+            {
+                var allowed = (character >= 'a' && character <= 'z')
+                    || (character >= '0' && character <= '9')
+                    || character == '.'
+                    || character == '_'
+                    || character == '-';
+                if (!allowed)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private const string MobArchetypePrefix = "mob.";
     }
 
     public static class WorldActorCapabilityKindIds
@@ -262,12 +309,14 @@ namespace Mmorpg.WorldData.Actors
         public float GiveUpSeconds;
     }
 
-    // How a Mob moves: its walk speed and its collision capsule.
+    // How a Mob moves: its walk speed, which it chases and walks home at, its slower patrol speed
+    // on its routine, and its collision capsule.
     [Serializable]
     public sealed class WorldActorLocomotionProfileAuthoringEntry
     {
         public string Id;
         public float WalkSpeed;
+        public float PatrolSpeed;
         public float CollisionRadius;
         public float CollisionHeight;
     }
@@ -501,6 +550,7 @@ namespace Mmorpg.WorldData.Actors
     {
         public string Id;
         public float WalkSpeed;
+        public float PatrolSpeed;
         public float CollisionRadius;
         public float CollisionHeight;
         public string StructuralFingerprint;

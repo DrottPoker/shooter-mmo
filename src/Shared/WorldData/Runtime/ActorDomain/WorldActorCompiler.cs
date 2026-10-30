@@ -703,6 +703,7 @@ namespace Mmorpg.WorldData.Actors
                 AddProblem(
                     LocomotionProfileProblem(
                         value.WalkSpeed,
+                        value.PatrolSpeed,
                         value.CollisionRadius,
                         value.CollisionHeight),
                     path,
@@ -850,6 +851,7 @@ namespace Mmorpg.WorldData.Actors
 
         private static string LocomotionProfileProblem(
             float walkSpeed,
+            float patrolSpeed,
             float collisionRadius,
             float collisionHeight)
         {
@@ -859,6 +861,11 @@ namespace Mmorpg.WorldData.Actors
             {
                 return "walkSpeed must be above 0 and at most "
                     + Float(WorldActorCombatRules.MaximumWalkSpeed) + ".";
+            }
+
+            if (!IsFinite(patrolSpeed) || patrolSpeed <= 0f || patrolSpeed > walkSpeed)
+            {
+                return "patrolSpeed must be above 0 and at most the walkSpeed.";
             }
 
             if (!IsFinite(collisionRadius)
@@ -1558,6 +1565,7 @@ namespace Mmorpg.WorldData.Actors
             {
                 Id = value.Id,
                 WalkSpeed = value.WalkSpeed,
+                PatrolSpeed = value.PatrolSpeed,
                 CollisionRadius = value.CollisionRadius,
                 CollisionHeight = value.CollisionHeight
             };
@@ -1616,6 +1624,7 @@ namespace Mmorpg.WorldData.Actors
             return Fingerprint(
                 value.Id,
                 Float(value.WalkSpeed),
+                Float(value.PatrolSpeed),
                 Float(value.CollisionRadius),
                 Float(value.CollisionHeight));
         }

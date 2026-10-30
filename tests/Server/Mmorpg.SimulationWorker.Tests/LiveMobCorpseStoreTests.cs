@@ -153,6 +153,7 @@ public sealed class LiveMobCorpseStoreTests
             1d,
             0d,
             2d,
+            0f,
             MobCorpseLifecycleService.DefaultPresentationKey,
             Guid.NewGuid(),
             Guid.NewGuid(),

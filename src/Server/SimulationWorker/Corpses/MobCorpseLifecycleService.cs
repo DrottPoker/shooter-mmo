@@ -46,8 +46,10 @@ public sealed class MobCorpseLifecycleService(
     SimulationWorkerIdentity identity,
     TimeProvider timeProvider)
 {
-    // Player corpses use corpse.remains, which the client lays down as a body.
-    public const string DefaultPresentationKey = "corpse.mob";
+    // The remains of a Mob without its own corpse model. A Mob's corpse uses its own key, such as
+    // corpse.mob.feral_wolf, and keeps the yaw it died at, so the client lays the Mob down as it
+    // fell. Player corpses use corpse.remains, which the client lays down as a body.
+    public const string DefaultPresentationKey = WorldActorCorpseRules.MobCorpsePresentationKey;
 
     public async Task<MobCorpseCreationResult> CreateAsync(
         CreateMobCorpseRequest request,
@@ -99,7 +101,8 @@ public sealed class MobCorpseLifecycleService(
                 actor.PositionX,
                 actor.PositionY,
                 actor.PositionZ,
-                DefaultPresentationKey,
+                actor.YawDegrees,
+                WorldActorCorpseRules.MobCorpsePresentationKeyFor(definition.PresentationArchetypeId),
                 ScopedGuid.Create("mob-corpse-general", corpseId),
                 ScopedGuid.Create("mob-corpse-equipment", corpseId),
                 ScopedGuid.Create("mob-corpse-bag", corpseId),
@@ -144,7 +147,7 @@ public sealed class MobCorpseLifecycleService(
                 Math.Sin(halfYawRadians),
                 0d,
                 Math.Cos(halfYawRadians),
-                DefaultPresentationKey,
+                WorldActorCorpseRules.MobCorpsePresentationKeyFor(definition.PresentationArchetypeId),
                 definition.CorpseLifetimeSeconds,
                 loot.Select(value => new MobCorpseLootEntryRequest(
                     value.GrantId,
