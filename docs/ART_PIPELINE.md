@@ -1434,9 +1434,12 @@ hold until the reviewer changes them here.
   and triangles that follow the form, with edge loops around the joints so they
   bend cleanly. Never sculpt, never generate the form from volumes, metaballs, or
   distance fields, and never remesh or decimate a model automatically.
-- **Few, clean polygons.** Use as few polygons as the form needs, as clean and
-  regular as possible, and keep it simple: the simplest geometry that reads well
-  from the game camera.
+- **Clean polygons on the form.** Use about the model's triangle budget from
+  [Art Direction](#art-direction-for-models-and-textures), never far below it,
+  and spend it on the form: more rings and loops where they round the silhouette
+  and show the planes of the reference, never ones that only add triangles to a
+  flat area. Keep every polygon as clean and regular as possible, so the model
+  reads well from the game camera.
 - **Easy to split, clean UVs.** Design the cage so the model splits easily into
   its parts, such as the head, the neck, the trunk, each leg, the paws, the tail,
   and the ears: an edge loop runs along every border between two parts, and every
@@ -1481,10 +1484,15 @@ For models and their textures this means:
   the human base characters.
 - The model fills the actor's `interactionBounds` from the content catalog, so
   the click area matches what the player sees.
-- Triangle budgets, the most a model may have: 2,000 for a prop, such as a
-  resource node or an attachment; 6,000 for a Mob or another creature; 14,000
-  for a playable character with its eyeballs, teeth, and tongue. The budget is a
-  ceiling, not a target, and each asset sets its own `triangleBudget` within it.
+- Triangle budgets, about what a model uses: about 2,000 for a prop, such as a
+  resource node or an attachment; about 6,000 for a Mob or another creature;
+  about 14,000 for a playable character with its eyeballs, teeth, and tongue.
+  The budget is a target, not a ceiling to stay far below: a new model ends
+  within about 10 % of it, above or below, and spends the triangles on the form,
+  the silhouette, and the details of the reference. Each asset's
+  `triangleBudget`, the most its export may have, allows the upper end, such as
+  6,600 for a Mob. Models approved before 2026-10-30 keep their triangles until
+  the reviewer asks for more.
 
 ## Human Base Characters
 
@@ -1556,8 +1564,9 @@ Blender process per step:
    hold, and the weights are mirror symmetric.
 3. `check-mesh`, `check-seams`, and `check-parts`: no open or over-shared edges,
    tiny faces, slivers, or loose pieces on the source bodies, exact mirror
-   symmetry, identical topology of both bodies and of every part, at most 14,000
-   triangles per character, matching cuts and normals between the parts, no texel
+   symmetry, identical topology of both bodies and of every part, at most 15,400
+   triangles per character, the upper end of its budget of about 14,000,
+   matching cuts and normals between the parts, no texel
    of `UVMap_Paint` that both sides of a body share, and a report of the color
    difference across the UV seams.
 4. `compare`: the content of each updated character against the committed file

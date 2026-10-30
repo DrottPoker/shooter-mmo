@@ -32,7 +32,7 @@ from . import files
 
 CHARACTERS = ("Male", "Female")
 BODIES = tuple(f"{label}_Body" for label in CHARACTERS)
-MAX_TRIS = 14000  # the playable character budget in docs/ART_PIPELINE.md
+MAX_TRIS = 15400  # the upper end of the playable character budget of about 14,000 in docs/ART_PIPELINE.md
 TINY_AREA = 1e-6        # m^2 (1 mm^2)
 TINY_AREA_HIDDEN = 2.5e-7  # m^2, eye sockets and mouth cavity (small by design, never seen)
 HIDDEN_PARTS = (7, 8)   # part attribute: socket, mouth
