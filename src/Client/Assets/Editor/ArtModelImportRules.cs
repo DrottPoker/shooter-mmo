@@ -80,9 +80,34 @@ namespace Mmorpg.Client.Editor
 
         public static void ApplySkinnedModelSettings(ModelImporter importer, ArtAssetManifest manifest, ArtSkeleton skeleton)
         {
-            ApplyHumanoidSettings(importer, manifest, skeleton);
-            // The game combines the visible body parts into one mesh, which reads the parts.
+            if (skeleton.IsHumanoid)
+            {
+                ApplyHumanoidSettings(importer, manifest, skeleton);
+            }
+            else
+            {
+                ApplyGenericSettings(importer, manifest);
+            }
+
+            // The game combines the visible body parts into one mesh and bakes a corpse's last pose,
+            // which read the mesh.
             importer.isReadable = true;
+        }
+
+        // A creature of a skeleton outside the Humanoid avatar, such as the Quadruped wolf: a Generic
+        // avatar of its own bones and its own clips, without root motion, since the game moves the
+        // creature and its clips move only their root bone in place.
+        private static void ApplyGenericSettings(ModelImporter importer, ArtAssetManifest manifest)
+        {
+            ApplySharedModelSettings(importer);
+            importer.animationType = ModelImporterAnimationType.Generic;
+            importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            importer.motionNodeName = string.Empty;
+            importer.optimizeGameObjects = false;
+            var clips = ClipsFor(manifest);
+            importer.importAnimation = clips.Length > 0;
+            importer.animationCompression = ModelImporterAnimationCompression.Off;
+            importer.clipAnimations = clips;
         }
 
         // A garment's model: its mesh skinned to the armature of its body, which the game replaces

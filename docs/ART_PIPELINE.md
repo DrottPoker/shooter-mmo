@@ -409,7 +409,10 @@ A skinned model also gets:
 
 - A Unity Humanoid avatar created from the model, with every bone of its
   skeleton definition that names a human bone mapped explicitly, and Unity's
-  default muscle limits, twist, and stretch.
+  default muscle limits, twist, and stretch, when its skeleton maps human bones,
+  such as `Humanoid`. A creature's own skeleton without human bones, such as
+  `Quadruped`, gets a Generic avatar created from the model instead, without a
+  root motion node, so its clips turn its bones and the game moves the creature.
 - `Optimize Game Objects` off, so every bone and socket stays a transform that
   equipment can attach to, and readable meshes, because the game combines the
   visible body parts into one mesh.
@@ -499,7 +502,8 @@ a record names a material the model does not use, or a Unity material's
 `_BaseColor`, `_Metallic`, `_Smoothness`, or `_BaseMap` texture differs from the
 approved Blender material recorded at export, so the game shows the colors and
 the painted textures the reviewer approved. For a skinned model and an animation
-library it fails when the avatar is not a valid Humanoid, a human bone maps to another bone than the
+library it fails when the avatar is not a valid Humanoid, or a valid Generic
+avatar for a creature's own skeleton, a human bone maps to another bone than the
 skeleton definition says, a bone or socket is missing or has another parent, or
 a clip is missing, has another length, or loops differently than recorded. For
 an animation library it also fails when its avatar is not made on the pose of
@@ -540,6 +544,27 @@ prefab puts in the body of its model when it spawns; see
 body model is a new Prefab Variant with the same components and an entry in
 that list. `PlayerBodyAssetTests` checks both variants, the controller, the
 models, and both player prefabs.
+
+A Mob with a creature model of its own is built by
+`MMORPG > Tools > Art Pipeline > Build Creature Presentations`, which
+`CreaturePresentationBuilder` also runs in batch mode with
+`-executeMethod Mmorpg.Client.Editor.CreaturePresentationBuilder.Build`. It
+builds the creature's Animator controller from the clips of its model, such as
+`Assets/Art/Animation/WolfLocomotion.controller`, and rebuilds each world actor
+prefab of the creature in place, so it keeps its GUID and Addressables entry.
+The prefab is not a Prefab Variant of the model, because its root keeps the
+actor's own scale while the model may be larger: the model is a nested prefab
+instance in the child `Model`, with the controller on its Animator, no root
+motion, and transforms culled off screen, and a `CreatureAnimator` on the root
+drives it; see
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#creature-animation).
+`Mob_FeralWolf.prefab` shows the wolf at its size in `M_Wolf`, and
+`Mob_FeralAlpha.prefab` at 1.3 times in `M_Mob_FeralAlpha` below
+`Assets/Art/Materials/WorldActors`, `M_Wolf`'s texture with a darker
+`_BaseColor`, the one material override a creature prefab may have. Run the
+command again after an export changes a creature's clips. `CreaturePresentationTests`
+checks the controller, both prefabs, the darker coat, and that the clips' speeds
+are the wolves' patrol and chase speeds.
 
 ## Animation Libraries
 
@@ -1661,7 +1686,7 @@ weights.
 | `art/Paint/ForearmRunes` | `paint` | none | A one-sided `tattoo` over `M_Body`, layer 210, painted by a script on a canvas of the male and moved to the female: the runes of the fuþark, f u þ a r k, in a column down the outside of the left forearm between two thin lines, 30 mm apart, in the ink of `Tattoo`. Roughness 0.6. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, on a canvas of the male, moved to the female, lifted out of the former male face `Scarred`: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
 | `art/Paint/Tattoo` | `paint` | none | A `tattoo` over `M_Body`, layer 200, painted on a canvas of the male and moved to the female: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
-| `art/Creatures/Wolf` | `skinned` | `Wolf` | The wolf of the Gray Wolf and the Feral Alpha Mobs, after the reviewer's concept picture, which the file holds as its front and side reference images: a grey low poly wolf with a charcoal saddle, mane, and tail top, a cream mask, chest, belly, and legs, blue eyes, a large mane, a long bushy tail, and dark paws with four toes each, 6,044 triangles, 1.78 m from the nose to the tail's tip and 1.13 m to the tips of the ears. Built by the [modeling rules](#modeling-rules) part by part, each a cage of quads subdivided once and fitted to the concept, the parts meeting at shared cage points without a seam: the head with modeled eyes, a dark lid around a domed eyeball, and an opening mouth, the legs with their paws, the trunk with the neck and the mane, and the tail. Hand-painted after the concept on one shared UV layout, 1024 px, `M_Wolf` with `T_Wolf`, the eyeballs at six times the texel density for the iris, the pupil, and the highlight. Its clips are its own: `Idle`, `Walk`, `Run`, `Attack`, and `Death`. Rigged on the `Quadruped` skeleton as one mesh, `Wolf_Mesh`, its jaw, ears, and tail turning on their own bones. Model and rig approved 2026-10-30; in review: the clips are next. |
+| `art/Creatures/Wolf` | `skinned` | `Wolf` | The wolf of the Feral Wolf and the Feral Alpha Mobs, after the reviewer's concept picture, which the file holds as its front and side reference images: a grey low poly wolf with a charcoal saddle, mane, and tail top, a cream mask, chest, belly, and legs, blue eyes, a large mane, a long bushy tail, and dark paws with four toes each, 6,044 triangles, 1.78 m from the nose to the tail's tip and 1.13 m to the tips of the ears. Built by the [modeling rules](#modeling-rules) part by part, each a cage of quads subdivided once and fitted to the concept, the parts meeting at shared cage points without a seam: the head with modeled eyes, a dark lid around a domed eyeball, and an opening mouth, the legs with their paws, the trunk with the neck and the mane, and the tail. Hand-painted after the concept on one shared UV layout, 1024 px, `M_Wolf` with `T_Wolf`, the eyeballs at six times the texel density for the iris, the pupil, and the highlight. Rigged on the `Quadruped` skeleton as one mesh, `Wolf_Mesh`, its jaw, ears, and tail turning on their own bones. Its clips are its own, keyed by hand with the legs placed by their paws: `Idle` (120 frames, breathing, looking about, an ear flick, and a tail sway), `Walk` (16 frames, a lateral walk at 1.4 m/s, the Mobs' patrol speed), `Run` (12 frames, a rotary gallop at 4.5 m/s, their chase speed, with the spine flexing), `Attack` (30 frames, a lunge with the bite at frame 8), and `Death` (60 frames, a fall onto its side that lies on the ground). Model, rig, and clips approved 2026-10-30, exported, and shown in the game by `Mob_FeralWolf.prefab` and, 1.3 times larger and darker, `Mob_FeralAlpha.prefab`. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Blush` and `Freckles`. Model and rig approved 2026-10-24. The game shows it for the local player who chooses it in the Admin menu (F3) and for about half of the development bots. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Stubble` and `Clean`. Model and rig approved 2026-10-24. The game shows it for every player until a body model is chosen, and for every corpse. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |

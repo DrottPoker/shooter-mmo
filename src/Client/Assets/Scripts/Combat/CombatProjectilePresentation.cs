@@ -176,6 +176,13 @@ namespace Mmorpg.Client.Combat
                     body.PlayAttack();
                 }
 
+                // A creature with clips of its own, such as a wolf, bites.
+                var creature = source.Root.GetComponentInChildren<CreatureAnimator>();
+                if (creature != null)
+                {
+                    creature.PlayAttack();
+                }
+
                 if (!CombatProjectileRules.IsProjectile(combatEvent, batch.ServerTick)
                     || flights.Count >= MaximumFlights
                     || !views.TryGetView(combatEvent.TargetEntityId, out var target))

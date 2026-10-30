@@ -1,3 +1,5 @@
+using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using UnityEngine;
 
@@ -8,7 +10,9 @@ namespace Mmorpg.Client.Combat
     // when its character dies in view, lies dead at once when it comes into view already
     // dead, and stands again when the character respawns. Each frame tells every body its
     // state, so a body that spawns, or whose state arrives later, catches up by itself. A
-    // player without combat state, such as a development bot, never dies.
+    // player without combat state, such as a development bot, never dies. A Mob's creature
+    // with clips of its own, such as a wolf, falls when the Mob dies, until its corpse
+    // replaces it.
     public sealed class CombatDeathPresentation : MonoBehaviour
     {
         private CombatClientController combatController;
@@ -44,6 +48,17 @@ namespace Mmorpg.Client.Combat
                     && state.TryGetCombatant(remote.NetworkEntityId, out var combatant))
                 {
                     body.ShowLifeState(combatant.LifeState == RealtimeCombatLifeState.Dead);
+                }
+            }
+
+            foreach (var actor in views.WorldActors)
+            {
+                var creature = actor is MobView ? actor.GetComponent<CreatureAnimator>() : null;
+                if (creature != null
+                    && creature.isActiveAndEnabled
+                    && state.TryGetCombatant(actor.TargetEntityId, out var mob))
+                {
+                    creature.ShowLifeState(mob.LifeState == RealtimeCombatLifeState.Dead);
                 }
             }
         }

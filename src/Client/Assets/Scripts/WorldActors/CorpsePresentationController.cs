@@ -4,14 +4,18 @@ using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Actors;
 using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
 {
     // One presentation per nearby corpse. A player corpse shows the dead character's body lying
     // in the last pose of Death, turned as its character faced, in its look and the garments still
-    // in the corpse, and stays hidden while the dead body of its character still lies there; every
-    // other corpse is a generic capsule for now.
+    // in the corpse, and stays hidden while the dead body of its character still lies there. A Mob
+    // corpse of a Mob with its own model, such as corpse.mob.feral_wolf, shows that model lying in
+    // the last pose of Death, turned as the Mob died. While the Mob it replaces still falls there
+    // it stays hidden, and then plays on the rest of that fall; until the model's prefab loads it
+    // is a capsule. Every other corpse is a generic capsule.
     [DisallowMultipleComponent]
     public sealed class CorpsePresentationController : MonoBehaviour
     {
@@ -20,7 +24,15 @@ namespace Mmorpg.Client.WorldActors
         private readonly Dictionary<Guid, Renderer> playerBodies = new Dictionary<Guid, Renderer>();
         // The lying body each player corpse shows, by the key of its model and look.
         private readonly Dictionary<Guid, string> playerBodyKeys = new Dictionary<Guid, string>();
+        // The corpses that show their Mob's model, and those that wait for its prefab to load.
+        private readonly HashSet<Guid> mobModels = new HashSet<Guid>();
+        private readonly HashSet<Guid> awaitingModels = new HashSet<Guid>();
+        // The Mob model corpses hidden while the Mob they replace still falls there.
+        private readonly HashSet<Guid> awaitingFalls = new HashSet<Guid>();
+        // The box around each Mob model lying in the last pose of Death, by its prefab.
+        private readonly Dictionary<GameObject, Bounds> lyingBounds = new Dictionary<GameObject, Bounds>();
         private MaterialPropertyBlock colorProperties;
+        private WorldActorPresentationController actorPresentations;
         private CorpseClientController controller;
         private Material primitiveMaterial;
         private WorldSceneContext sceneContext;
@@ -29,21 +41,26 @@ namespace Mmorpg.Client.WorldActors
         private GameObject corpsePrefab;
 
         // Called by the composition root before the component is activated. Without a World
-        // scene context every corpse is a capsule.
+        // scene context every player corpse is a capsule, and without the actor presentations,
+        // which load the Mob models, every Mob corpse is one.
         public void Initialize(
             CorpseClientController corpses,
             Material runtimePrimitiveMaterial,
-            WorldSceneContext worldSceneContext = null)
+            WorldSceneContext worldSceneContext = null,
+            WorldActorPresentationController worldActorPresentations = null)
         {
             controller = corpses;
             primitiveMaterial = runtimePrimitiveMaterial;
             sceneContext = worldSceneContext;
+            actorPresentations = worldActorPresentations;
         }
 
         // A player corpse hides under the dead body that left it and shows once the character
         // respawned and the body is gone.
         private void Update()
         {
+            ShowLoadedModels();
+            TakeOverFalls();
             if (sceneContext == null)
             {
                 return;
@@ -114,11 +131,12 @@ namespace Mmorpg.Client.WorldActors
                     ShowLyingBody(corpse, presentation);
                 }
 
+                var isModel = mobModels.Contains(corpse.CorpseId);
                 presentation.transform.position = new Vector3(
                     corpse.PositionX,
-                    corpse.PositionY + (isBody ? 0f : 0.2f),
+                    corpse.PositionY + (isBody || isModel ? 0f : 0.2f),
                     corpse.PositionZ);
-                if (isBody)
+                if (isBody || isModel)
                 {
                     presentation.transform.rotation = Quaternion.Euler(0f, corpse.YawDegrees, 0f);
                 }
@@ -132,7 +150,7 @@ namespace Mmorpg.Client.WorldActors
                 }
 
                 target.Apply(corpse);
-                var renderer = isBody ? null : presentation.GetComponentInChildren<Renderer>();
+                var renderer = isBody || isModel ? null : presentation.GetComponentInChildren<Renderer>();
                 if (renderer != null)
                 {
                     var color = corpse.IsEmpty
@@ -189,6 +207,10 @@ namespace Mmorpg.Client.WorldActors
                 playerBodies[corpse.CorpseId] = bodyRenderer;
                 playerBodyKeys[corpse.CorpseId] = key;
             }
+            else if (TryCreateMobModel(corpse, out presentation))
+            {
+                mobModels.Add(corpse.CorpseId);
+            }
             else if (corpsePrefab != null)
             {
                 presentation = Instantiate(corpsePrefab, transform);
@@ -216,10 +238,174 @@ namespace Mmorpg.Client.WorldActors
             return presentation;
         }
 
+        // The archetype of the Mob a corpse shows the model of, such as mob.feral_wolf for
+        // corpse.mob.feral_wolf, or null for a player's corpse or the generic Mob remains.
+        public static string MobArchetypeOf(string presentationKey)
+        {
+            const string Prefix = "corpse.";
+            return WorldActorCorpseRules.IsMobCorpsePresentationKey(presentationKey)
+                && !string.Equals(presentationKey, WorldActorCorpseRules.MobCorpsePresentationKey, StringComparison.Ordinal)
+                ? presentationKey.Substring(Prefix.Length)
+                : null;
+        }
+
+        // A Mob corpse shown as a capsule while its model loaded shows the model once it is ready.
+        private void ShowLoadedModels()
+        {
+            if (awaitingModels.Count == 0 || actorPresentations == null || controller == null)
+            {
+                return;
+            }
+
+            var ready = false;
+            foreach (var corpseId in awaitingModels.ToArray())
+            {
+                var corpse = controller.State.NearbyCorpses.FirstOrDefault(entry => entry.CorpseId == corpseId);
+                if (corpse != null
+                    && !actorPresentations.TryGetArchetypePrefab(MobArchetypeOf(corpse.PresentationKey), out _, out var loading)
+                    && loading)
+                {
+                    continue;
+                }
+
+                awaitingModels.Remove(corpseId);
+                DestroyPresentation(corpseId);
+                ready = true;
+            }
+
+            if (ready)
+            {
+                Rebuild();
+            }
+        }
+
+        // The Mob's own model lying dead, from the prefab of its archetype: the rest of the fall of
+        // the Mob it replaces when that Mob just left there falling, otherwise the last pose of
+        // Death; with a box around the lying model for clicks. False while the prefab loads, which
+        // marks the corpse to show the model later, or when the Mob has no model.
+        private bool TryCreateMobModel(CorpsePresenceEntry corpse, out GameObject presentation)
+        {
+            presentation = null;
+            var archetype = MobArchetypeOf(corpse.PresentationKey);
+            if (archetype == null || actorPresentations == null)
+            {
+                return false;
+            }
+
+            if (!actorPresentations.TryGetArchetypePrefab(archetype, out var prefab, out var loading))
+            {
+                if (loading)
+                {
+                    awaitingModels.Add(corpse.CorpseId);
+                }
+
+                return false;
+            }
+
+            presentation = Instantiate(prefab, transform);
+            var position = new Vector3(corpse.PositionX, corpse.PositionY, corpse.PositionZ);
+            presentation.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, corpse.YawDegrees, 0f));
+            var creature = presentation.GetComponent<CreatureAnimator>();
+            if (creature != null)
+            {
+                creature.LieDead(-1f);
+                if (!lyingBounds.TryGetValue(prefab, out var bounds))
+                {
+                    bounds = LyingBounds(presentation);
+                    lyingBounds.Add(prefab, bounds);
+                }
+
+                var box = presentation.AddComponent<BoxCollider>();
+                box.center = bounds.center;
+                box.size = bounds.size + new Vector3(0.1f, 0.1f, 0.1f);
+                if (actorPresentations.TryTakeFall(archetype, position, out var secondsIntoDeath))
+                {
+                    creature.LieDead(secondsIntoDeath);
+                }
+                else if (actorPresentations.IsFallingNear(archetype, position))
+                {
+                    awaitingFalls.Add(corpse.CorpseId);
+                    ShowModel(presentation, false);
+                }
+            }
+
+            return true;
+        }
+
+        // A Mob model corpse shows once the Mob it replaces has left, on the rest of its fall.
+        private void TakeOverFalls()
+        {
+            if (awaitingFalls.Count == 0 || actorPresentations == null || controller == null)
+            {
+                return;
+            }
+
+            foreach (var corpseId in awaitingFalls.ToArray())
+            {
+                var corpse = controller.State.NearbyCorpses.FirstOrDefault(entry => entry.CorpseId == corpseId);
+                var archetype = corpse != null ? MobArchetypeOf(corpse.PresentationKey) : null;
+                if (archetype == null || !presentations.TryGetValue(corpseId, out var presentation) || presentation == null)
+                {
+                    awaitingFalls.Remove(corpseId);
+                    continue;
+                }
+
+                var position = new Vector3(corpse.PositionX, corpse.PositionY, corpse.PositionZ);
+                if (actorPresentations.IsFallingNear(archetype, position))
+                {
+                    continue;
+                }
+
+                awaitingFalls.Remove(corpseId);
+                var creature = presentation.GetComponent<CreatureAnimator>();
+                if (creature != null && actorPresentations.TryTakeFall(archetype, position, out var secondsIntoDeath))
+                {
+                    creature.LieDead(secondsIntoDeath);
+                }
+
+                ShowModel(presentation, true);
+            }
+        }
+
+        private static void ShowModel(GameObject presentation, bool visible)
+        {
+            foreach (var renderer in presentation.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.enabled = visible;
+            }
+        }
+
+        // The box around a model in its current pose, in the model's own space.
+        private static Bounds LyingBounds(GameObject model)
+        {
+            var skin = model.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (skin == null)
+            {
+                return new Bounds(Vector3.up * 0.3f, new Vector3(1f, 0.6f, 1.6f));
+            }
+
+            var baked = new Mesh();
+            // Baked in the renderer's own space, scale included, so its transform adds the scale
+            // of the model, such as the Feral Alpha's.
+            skin.BakeMesh(baked, true);
+            var toModel = model.transform.worldToLocalMatrix * skin.transform.localToWorldMatrix;
+            var vertices = baked.vertices;
+            var bounds = new Bounds(toModel.MultiplyPoint3x4(vertices[0]), Vector3.zero);
+            for (var index = 1; index < vertices.Length; index++)
+            {
+                bounds.Encapsulate(toModel.MultiplyPoint3x4(vertices[index]));
+            }
+
+            Destroy(baked);
+            return bounds;
+        }
+
         private void DestroyPresentation(Guid corpseId)
         {
             playerBodies.Remove(corpseId);
             playerBodyKeys.Remove(corpseId);
+            mobModels.Remove(corpseId);
+            awaitingFalls.Remove(corpseId);
             if (!presentations.Remove(corpseId, out var presentation)
                 || presentation == null)
             {

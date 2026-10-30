@@ -22,5 +22,31 @@
             "sourceSha256": "c305227d2f4dd0162f945e9006331c0aeb2e45faeb47b200e541ca8e02ec9a1a"
         }
     },
-    "export": null
+    "export": {
+        "sourceSha256": "c305227d2f4dd0162f945e9006331c0aeb2e45faeb47b200e541ca8e02ec9a1a",
+        "targetSha256": "9efc9e96f09021be37df39abe8865776684538bb32d399f2ceb2d8623f0ef32d",
+        "materials": [
+            {
+                "name": "M_Wolf",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_Wolf",
+                "metallic": 0.0,
+                "smoothness": 0.1
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_Wolf",
+                "target": "src/Client/Assets/Art/Textures/Creatures/T_Wolf.png",
+                "sha256": "0a22062132322050a8c98cd2bb8e4e274055c333ab7bf76cfcb26e0a6015182e"
+            }
+        ],
+        "clips": [
+            { "name": "Idle", "frames": 120, "loop": true },
+            { "name": "Walk", "frames": 16, "loop": true },
+            { "name": "Run", "frames": 12, "loop": true },
+            { "name": "Attack", "frames": 30, "loop": false },
+            { "name": "Death", "frames": 60, "loop": false }
+        ]
+    }
 }

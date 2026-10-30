@@ -1792,10 +1792,12 @@ that carries them. Every EditMode test passes, including `WorldMenuTests`.
 
 ## Mob Corpse Verification
 
-Mob corpses reuse the corpse presence, view, drag, inventory refresh, and
-generic capsule presentation under their own presentation key `corpse.mob`, so the
-client never lays a Mob corpse down as a player body. It adds no scene object,
-prefab, inspector reference, or protocol version. Mob definitions own the persistence choice and
+Mob corpses reuse the corpse presence, view, drag, and inventory refresh under
+their own presentation keys, `corpse.` followed by the Mob's presentation
+archetype, such as `corpse.mob.feral_wolf`, so the client never lays a Mob corpse
+down as a player body. A Mob with its own model, such as the wolves, lies as that
+model in the last pose of its Death clip, turned as it died; any other Mob corpse
+is the generic capsule. Mob definitions own the persistence choice and
 lifetime:
 
 - `mob.feral_wolf`: `live`, `120` seconds.

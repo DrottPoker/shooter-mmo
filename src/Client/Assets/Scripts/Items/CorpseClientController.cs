@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
 
@@ -16,9 +17,6 @@ namespace Mmorpg.Client.Items
     {
         // A committed view that never follows a result is refreshed after this long.
         private const float SettleTimeoutSeconds = 2f;
-
-        // The presentation of every Mob corpse, live or durable.
-        private const string MobCorpsePresentationKey = "corpse.mob";
 
         private readonly List<PendingCorpseOperation> pendingOperations = new List<PendingCorpseOperation>();
         private IRealtimeCorpseChannel simulationClient;
@@ -219,7 +217,7 @@ namespace Mmorpg.Client.Items
 
             // A live Mob corpse keeps no part of a stack. A durable Mob corpse could, but the
             // client cannot tell them apart, so a Mob corpse shows whole items.
-            var wholeItemsOnly = string.Equals(view.PresentationKey, MobCorpsePresentationKey, StringComparison.Ordinal);
+            var wholeItemsOnly = WorldActorCorpseRules.IsMobCorpsePresentationKey(view.PresentationKey);
             var createdIds = items.ToDictionary(slot => slot.Item.ItemInstanceId, _ => Guid.NewGuid());
             var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
             if (!CorpseLootAllPrediction.TryApply(probe, view, wholeItemsOnly, createdIds, out error))

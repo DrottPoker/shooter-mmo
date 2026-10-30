@@ -1079,10 +1079,18 @@ skin. A corpse whose look changes, such as when someone loots its cloak, swaps t
 the body of its new look, and a baked body that no corpse in view shows any more
 is destroyed. While a body that shows its character dead lies within 1.5 m, the
 corpse stays hidden, so the dying body and its remains never show twice; it
-appears when the character respawns at the World spawn. Every
-other corpse, such as a Mob corpse with presentation key `corpse.mob`, is a
-generic capsule with a shared renderer property block on the runtime primitive
-material, which never creates per-frame materials.
+appears when the character respawns at the World spawn. A Mob corpse whose
+presentation key names a Mob archetype, such as `corpse.mob.feral_wolf`, shows
+an instance of that archetype's prefab, loaded through the actor presentations,
+lying in the last pose of its `Death` clip at the presence's position, turned by
+its `YawDegrees`, with a box collider around the lying model that each prefab
+bakes once. The worker sends the corpse before the dying Mob leaves, so while a
+Mob of that archetype still falls dead within 1.5 m the model stays hidden; once
+the Mob's view is gone, the corpse plays on the rest of its fall, so the fall
+never jumps or shows twice. A corpse whose prefab is still loading is a capsule
+until it loads. Every other corpse, such as one with presentation key
+`corpse.mob`, is a generic capsule with a shared renderer property block on the
+runtime primitive material, which never creates per-frame materials.
 Loot in a corpse's world menu, also its left-click option, walks the player
 into range and opens it through the shared [World Menu](#world-menu).
 No authored scene or prefab object is required for the temporary presentation.
@@ -1768,8 +1776,17 @@ The client keeps permanent state below replaceable presentation:
   The asset is `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`
   and maps all six authored archetypes to collider-free prefabs in
   `Assets/Prefabs/WorldActors` with URP materials in
-  `Assets/Art/Materials/WorldActors`. The NPC and Mob prefabs are placeholders
-  built from primitives. `resource.iron_vein` maps to `Resource_IronVein.prefab`,
+  `Assets/Art/Materials/WorldActors`. The NPC prefabs are placeholders built
+  from primitives. `mob.feral_wolf` and `mob.feral_alpha` map to
+  `Mob_FeralWolf.prefab` and `Mob_FeralAlpha.prefab`, which
+  `CreaturePresentationBuilder` builds from the art pipeline's wolf
+  `Assets/Art/Models/Creatures/Wolf.fbx`: the root keeps the actor's scale, so
+  its interaction bounds stay in meters, and its `Model` child is the wolf with
+  an Animator on `Assets/Art/Animation/WolfLocomotion.controller`, at scale 1 in
+  `M_Wolf` for the Feral Wolf and at 1.3 in the darker `M_Mob_FeralAlpha`, the
+  wolf's painted texture with a tint, for the Feral Alpha. A `CreatureAnimator`
+  on the root drives the Animator, as described in
+  [Creature Animation](#creature-animation). `resource.iron_vein` maps to `Resource_IronVein.prefab`,
   a Prefab Variant of the Blender model
   `Assets/Art/Models/WorldActors/Resource_IronVein.fbx` from the art pipeline:
   faceted rocks with iron ore below `Available`, and the broken rocks with rubble
@@ -2002,6 +2019,41 @@ chunks; outside the resident chunks it shows the replicated height unchanged.
 Combat presentation reads the presented `MobView` transform through
 `CombatantViewLocator` every frame, so health bars, damage numbers, the target
 frame, arrows, and the approach follow a moving Mob.
+
+### Creature Animation
+
+A Mob whose prefab has a `CreatureAnimator` in `Mmorpg.Client.Gameplay`, such as
+the Feral Wolf and the Feral Alpha, plays clips of its own. The component
+measures the smoothed ground speed of its root from frame to frame, ignoring a
+move faster than 20 m/s as a placement, and drives the Animator of the prefab's
+`Model` child on `Assets/Art/Animation/WolfLocomotion.controller`, which
+`CreaturePresentationBuilder` builds with the names in `CreatureLocomotion`:
+
+- **Idle** below 0.1 m/s.
+- **Locomotion**, a 1D blend tree on `Speed` with `Walk` at 1.4 m/s and `Run` at
+  4.5 m/s: the speeds the wolf's clips were made for at its own size, which are
+  the patrol and chase speeds of its locomotion profile. `CreatureLocomotion.Evaluate`
+  sets the blend parameter and the playback rate `LocomotionRate` so the blended
+  stride covers the ground the Mob moves, and the paws stay planted. A larger
+  model, such as the Feral Alpha at 1.3 times the size, takes longer strides and
+  plays its clips slower at the same speed. The walk never plays slower than 0.3
+  times, so a Mob that slows to a stop does not move in slow motion.
+- **Attack** on the `Attack` trigger, which `CombatProjectilePresentation` sets
+  when the Mob's `AttackReleased` event arrives. It plays over whatever the Mob
+  does and returns to it at its end. A dead creature does not attack.
+- **Death** while `Dead` is set. `CombatDeathPresentation` tells every presented
+  Mob with a `CreatureAnimator` its combatant life state each frame, so it falls
+  when it dies and holds the last pose; Death returns to Idle if `Dead` clears.
+
+The worker despawns a dead Mob once its corpse exists. When the view of a
+falling Mob is destroyed, `WorldActorPresentationController` remembers its
+archetype, position, time, and how far into Death it was for 3 s, and the
+Mob's corpse within 1.5 m plays on that fall, as described under
+[Corpse Client State And Presentation](#corpse-client-state-and-presentation).
+The Animator culls its transforms off screen, and `CreatureAnimator.LieDead`
+writes the corpse's pose at once anyway.
+`CreaturePresentationTests` covers the controller, the prefabs, the rates, and
+the lying pose.
 
 ### Gathering
 
