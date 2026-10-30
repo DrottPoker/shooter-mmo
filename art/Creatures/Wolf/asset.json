@@ -1,0 +1,18 @@
+{
+    "schemaVersion": 1,
+    "kind": "skinned",
+    "target": "src/Client/Assets/Art/Models/Creatures/Wolf.fbx",
+    "rootObjects": [
+        "Wolf"
+    ],
+    "triangleBudget": 6600,
+    "skeleton": "Quadruped",
+    "clips": ["Idle", "Walk", "Run", "Attack", "Death"],
+    "approvals": {
+        "model": {
+            "date": "2026-10-30",
+            "sourceSha256": "54aba03788faa3990928326ce0b6332a1bd70f927a30a64c03f37acb3e61c1b9"
+        }
+    },
+    "export": null
+}
