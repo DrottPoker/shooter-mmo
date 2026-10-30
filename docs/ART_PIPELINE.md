@@ -1434,6 +1434,14 @@ hold until the reviewer changes them here.
 - **Few, clean polygons.** Use as few polygons as the form needs, as clean and
   regular as possible, and keep it simple: the simplest geometry that reads well
   from the game camera.
+- **Easy to split, clean UVs.** Design the cage so the model splits easily into
+  its parts, such as the head, the neck, the trunk, each leg, the paws, the tail,
+  and the ears: an edge loop runs along every border between two parts, and every
+  face belongs to one part. The UV seams follow those loops and lines the camera
+  rarely sees, such as the middle of the belly, the inside of the legs, and under
+  the tail, and hands and paws open like gloves, in a back and a palm half with
+  strips for the digits. Each part unwraps into clean islands without stretching,
+  folds, or slivers; never with an automatic projection such as Smart UV Project.
 - **Even density.** Spread the polygons evenly over the whole model, with only as
   many more as a detail needs where it matters, such as the face, the paws, or
   the joints.
