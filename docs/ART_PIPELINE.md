@@ -1,6 +1,6 @@
 # Art Pipeline
 
-Last updated: 2026-10-26
+Last updated: 2026-10-30
 
 This document describes how 3D models travel from Blender to the Unity client:
 where the files live, the review stages an asset passes before it may reach the
@@ -38,7 +38,8 @@ starting points that a person then edits, such as the gait model's clips in an
 
 ## What To Do
 
-Every kind of art has one short recipe in
+Every model is built by the [modeling rules](#modeling-rules), and every kind of
+art has one short recipe in
 [Local Development](LOCAL_DEVELOPMENT.md#art-pipeline-with-blender). After an
 export, Unity creates the project materials an export lacks and updates the
 appearance catalogs by itself when it gets focus, so no menu command stands
@@ -1388,6 +1389,46 @@ The add-on runs any Python code it receives, without a sandbox, so it listens on
 localhost only. The pipeline never depends on it: approval and export always run
 Blender in the background from the scripts.
 
+## Modeling Rules
+
+Every model follows these rules, whoever or whatever builds it, a person in
+Blender, Claude Code through the Blender MCP server, or a script. They come from
+the reviewer's feedback on the human base characters and the first wolf, and they
+hold until the reviewer changes them here.
+
+- **Agree on the method first.** How a model is built is agreed with the
+  reviewer before the work starts. Changing the method needs the reviewer's
+  approval. When a method gives a poor result, fix the result within the method
+  or ask; never switch to another method on your own.
+- **One part at a time.** Build and finish one part of the model, such as the
+  head, the legs with the paws, or the trunk, and show it to the reviewer before
+  starting the next. Never change several parts in one round, and leave a part
+  the reviewer accepted as it is while working on the next.
+- **Follow the reference closely.** When the reviewer gives a reference, such as
+  a concept picture or a reference mesh, put it into the `.blend` file at the
+  model's scale: pictures as reference images in the views they show, such as the
+  front and the side, and meshes in the `Reference` collection. Match the model
+  to it view by view, first the silhouette, then the planes, then the colors,
+  and compare the two side by side in the same views before showing a part.
+- **Polygon modeling only.** Build the model polygon by polygon, by hand in
+  Blender or with a script that places every vertex and face on purpose: quads
+  and triangles that follow the form, with edge loops around the joints so they
+  bend cleanly. Never sculpt, never generate the form from volumes, metaballs, or
+  distance fields, and never remesh or decimate a model automatically.
+- **Few, clean polygons.** Use as few polygons as the form needs, as clean and
+  regular as possible, and keep it simple: the simplest geometry that reads well
+  from the game camera.
+- **Even density.** Spread the polygons evenly over the whole model, with only as
+  many more as a detail needs where it matters, such as the face, the paws, or
+  the joints.
+- **Exact mirror symmetry.** Model one half and mirror it, so both sides are
+  identical. A model is only asymmetric where its design asks for it.
+- **Look before showing.** Look at every render critically, up close and from
+  every side, before sending it for review: wrong shapes, gaps, faces poking
+  through, stray colors, and anything that differs from the reference.
+- **Fix, do not restart.** When the reviewer points out flaws in a part that is
+  otherwise accepted, fix exactly those, without rebuilding the part.
+
 ## Art Direction For Models And Textures
 
 The setting asks for stylized low to mid poly art with exaggerated proportions,
@@ -1407,13 +1448,16 @@ For models and their textures this means:
   follows the rule.
 - What identifies an actor, such as the ore of a vein, is visible from every
   side and large enough to read at the default camera distance.
-- Flat-shaded facets and flat material colors, with a few materials per asset.
-  Characters are the exception: smooth shading with the form painted into their
-  textures, as on the human base characters.
+- Flat-shaded facets with hard edges and flat material colors, with a few
+  materials per asset, also on Mobs and other creatures. Playable characters are
+  the exception: smooth shading with the form painted into their textures, as on
+  the human base characters.
 - The model fills the actor's `interactionBounds` from the content catalog, so
   the click area matches what the player sees.
-- A world prop stays within about 1,500 triangles. A playable character stays
-  within 10,000 triangles with its eyeballs, teeth, and tongue.
+- Triangle budgets, the most a model may have: 2,000 for a prop, such as a
+  resource node or an attachment; 5,000 for a Mob or another creature; 10,000
+  for a playable character with its eyeballs, teeth, and tongue. The budget is a
+  ceiling, not a target, and each asset sets its own `triangleBudget` within it.
 
 ## Human Base Characters
 
