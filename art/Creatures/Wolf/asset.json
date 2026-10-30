@@ -16,6 +16,10 @@
         "rig": {
             "date": "2026-10-30",
             "sourceSha256": "7cb12de5f8cf071f8386089ecb98788c601e218b674ef6c92018bcfb4d88e724"
+        },
+        "animation": {
+            "date": "2026-10-30",
+            "sourceSha256": "c305227d2f4dd0162f945e9006331c0aeb2e45faeb47b200e541ca8e02ec9a1a"
         }
     },
     "export": null
