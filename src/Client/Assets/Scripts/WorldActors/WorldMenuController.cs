@@ -284,7 +284,11 @@ namespace Mmorpg.Client.WorldActors
 
             var now = Time.unscaledTime;
             if (localPlayer.TryFindGroundPoint(hover.Ray, out var point)
-                && walkSteering.ShouldSteerTo(point, localPlayer.NavigationIntentId, now))
+                && walkSteering.ShouldSteerTo(
+                    point,
+                    localPlayer.NavigationIntentId,
+                    localPlayer.AppliedNavigationIntentId,
+                    now))
             {
                 walkSteering.Follow(localPlayer.MoveTo(point), point, now);
             }
