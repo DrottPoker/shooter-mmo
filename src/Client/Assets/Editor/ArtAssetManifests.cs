@@ -65,7 +65,8 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
         }
 
-        // The exported attachments, static models held on a socket, such as a sword or a shield.
+        // The exported attachments, models held on a socket, such as a sword, a shield, or a bow,
+        // whose skinned limbs and string bend as it draws.
         public static ArtAssetManifest[] Attachments()
         {
             return ManifestPaths()
@@ -197,18 +198,23 @@ namespace Mmorpg.Client.Editor
         public bool covers = true;
         // A garment texture: the template it belongs to, such as art/Garments/Shirt.
         public string garment = string.Empty;
-        // An attachment, a static model held on a socket of a skeleton: the socket, such as
-        // main_hand, as its bone names it. A tool, held only while a body uses it, also names the
-        // clip the body plays meanwhile, such as Mine, and a tool held in both hands where on it
-        // the other hand holds it, in meters in the socket's axes. A weapon may name the pose its
-        // arm holds it in, the clip the body plays once when its attack releases, and where on it
-        // the projectile of its attack leaves, in meters in the socket's axes.
+        // An attachment, a model held on a socket of a skeleton: the socket, such as main_hand, as
+        // its bone names it. A tool, held only while a body uses it, also names the clip the body
+        // plays meanwhile, such as Mine, and a tool held in both hands where on it the other hand
+        // holds it, in meters in the socket's axes. A weapon may name the pose its arm holds it in,
+        // the clip the body plays once when its attack starts with the seconds into it when the
+        // attack releases, where the other hand holds it if the attack takes it in both hands, and
+        // where on it the projectile of its attack leaves, in meters in the socket's axes. A skinned
+        // weapon that shoots, such as a bow, names how far behind its launch point its string's nock
+        // comes at the end of its clip Draw, in meters.
         public string socket = string.Empty;
         public string useClip = string.Empty;
         public float[] offHandGrip = Array.Empty<float>();
         public string holdClip = string.Empty;
         public string attackClip = string.Empty;
+        public float attackRelease;
         public float[] launchPoint = Array.Empty<float>();
+        public float drawLength;
         public ArtAssetExport export = new ArtAssetExport();
 
         // The asset's name, its folder, such as LeatherJerkin.

@@ -29,13 +29,36 @@ internal sealed class CombatReplicator(
 
     public int PendingEventCount => events.Count;
 
+    // An attack started; every client plays its attacker's attack clip so it strikes or looses
+    // at the release tick.
+    public void AttackStarted(ulong attackerEntityId, ulong targetEntityId, uint releaseTick, string combatStyle)
+    {
+        AddAttackEvent(RealtimeCombatEventKind.AttackStarted, attackerEntityId, targetEntityId, releaseTick, combatStyle);
+    }
+
     public void AttackReleased(ulong attackerEntityId, ulong targetEntityId, uint impactTick, string combatStyle)
     {
+        AddAttackEvent(RealtimeCombatEventKind.AttackReleased, attackerEntityId, targetEntityId, impactTick, combatStyle);
+    }
+
+    // An attack ended in its windup and never released.
+    public void AttackCancelled(ulong attackerEntityId, ulong targetEntityId, string combatStyle)
+    {
+        AddAttackEvent(RealtimeCombatEventKind.AttackCancelled, attackerEntityId, targetEntityId, 0, combatStyle);
+    }
+
+    private void AddAttackEvent(
+        RealtimeCombatEventKind kind,
+        ulong attackerEntityId,
+        ulong targetEntityId,
+        uint tick,
+        string combatStyle)
+    {
         events.Add(new RealtimeCombatEvent(
-            RealtimeCombatEventKind.AttackReleased,
+            kind,
             attackerEntityId,
             targetEntityId,
-            impactTick,
+            tick,
             0,
             RealtimeCombatDamageType.Normal,
             0,

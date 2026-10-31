@@ -9,6 +9,7 @@
     "socket": "main_hand",
     "holdClip": "HoldStaff",
     "attackClip": "Cast",
+    "attackRelease": 0.15,
     "launchPoint": [0.0, 0.7, 0.0],
     "approvals": {
         "model": {

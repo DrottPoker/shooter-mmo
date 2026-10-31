@@ -1109,11 +1109,13 @@ the hair.
 
 ## Attachments
 
-Weapons, shields, quivers, and backpacks are static models on the skeleton's
-sockets. A static model's root object `Grip` marks where it is held, and the
-socket's position and turn on each body type place it. They follow the hands and
-the back without weights. The first two, the Iron Sword and the Heater Shield,
-were made on 2026-10-25 to test the hands' sockets, as Victor asked:
+Weapons, shields, quivers, and backpacks are models on the skeleton's sockets.
+A model's root object `Grip` marks where it is held, and the socket's position
+and turn on each body type place it. A static model follows the hands and the
+back without weights; a model with moving parts of its own, such as a bow's
+limbs and string, is skinned to a skeleton of its own below `Grip`. The first
+two, the Iron Sword and the Heater Shield, were made on 2026-10-25 to test the
+hands' sockets, as Victor asked:
 
 - **The model is the socket's**: an attachment is an art asset of its own with
   its socket in `asset.json`, modeled in the socket's axes around `Grip`; see
@@ -1124,7 +1126,11 @@ were made on 2026-10-25 to test the hands' sockets, as Victor asked:
 - **One renderer**: the body combines an attachment into its one mesh like a
   garment, every vertex weighted fully to the socket bone, so a crowd of armed
   bodies costs no renderer more, and a corpse is baked with what it still holds.
-  The body's bounds leave room for the hand to swing with it.
+  A skinned attachment, such as the Training Shortbow, keeps its own bones: the
+  body holds a copy of the model's bones below the socket, as they stand below
+  the model's root, binds the combined mesh to them, and lets go of them when it
+  puts the attachment away. A body holds one model of a skeleton. The body's
+  bounds leave room for the hand to swing with it.
 - **The hand closes**: the clip `Grip` closes the fingers around a handle of
   29 mm on the socket. `HumanLocomotion.controller` plays it on the layers
   `MainHandGrip` and `OffHandGrip`, each masked to one hand's fingers, and the body
@@ -1132,7 +1138,9 @@ were made on 2026-10-25 to test the hands' sockets, as Victor asked:
   clip, also `Death`.
 - **One per socket**: an item shows its attachment only in the equipment slot
   of its socket, `main_hand` on `Socket_MainHand` and `off_hand` on
-  `Socket_OffHand`, so a body holds one attachment per socket.
+  `Socket_OffHand`, so a body holds one attachment per socket. A weapon in the
+  main hand that the left hand holds, such as a bow, shows on `Socket_OffHand`;
+  its item blocks the off hand, so no other item claims that socket.
 - **A shield lies along the forearm**: the Heater Shield hangs from a handle in
   the fist and a strap around the forearm, so it hangs outward at the side with
   its point down in the gaits and will face forward when a later clip raises the
@@ -1157,25 +1165,92 @@ as Victor decided on 2026-10-27 for the Oak Staff, the first magic weapon:
   right arm, at full weight over the locomotion clips while the main hand holds
   the weapon and the body lives and uses no tool, so the arm keeps the pose while
   the legs walk and jog.
-- **An attack clip**: the staff names `Cast`, which the body plays once over its
-  upper body whenever its attack releases: a short wind-up, a thrust that tips
-  the crystal about 30 degrees toward the target while the open left hand points
-  at it, and the way back to the hold pose, 0.9 s in all. The layer `Action`,
-  masked to the spine, head, and both arms without the fingers, plays it over the
-  hold pose, fading in over 0.06 s and out over 0.15 s, and a body that starts
-  to move ends it early. The fingers stay closed by `MainHandGrip`.
+- **An attack clip**: the staff names `Cast`, which the body plays once whenever
+  its attack starts: a short wind-up, a thrust that tips the crystal about 30
+  degrees toward the target while the open left hand points at it, and the way
+  back to the hold pose, 0.9 s in all. The layer `Action` plays it over the hold
+  pose, fading in over 0.06 s and out over 0.15 s. The fingers stay closed by
+  `MainHandGrip`.
 - **A launch point**: the staff names `launchPoint`, the crystal 70 cm along the
-  shaft in the socket's axes, where its bolt leaves. The bolt appears 0.15 s
-  after the release, when the thrust carries the crystal forward, and still
-  lands at the server's impact tick.
+  shaft in the socket's axes, where its bolt leaves when the attack releases, as
+  the thrust carries the crystal forward, and lands at the server's impact tick.
 - **Made with the scripted rig of the tools**: both clips were keyed on the male
   body with two-bone IK from searched grip frames that keep the wrists and
   forearms near their neutral range, and approved by Victor with the staff on
   2026-10-27.
-- **Everyone sees it.** Every client plays the attack clip of the body that
-  released an attack, from the `AttackReleased` event that names the attacker,
-  so a cast needs no protocol of its own. A sword or a bow names no attack clip
-  yet.
+
+On 2026-10-31 Victor asked for a bow with its attack, a two-handed greataxe with
+its swing, an attack for one-handed weapons, and a cut for the sword. He approved
+concept sheets, the models, and each clip, and asked that the archer and the
+one-handed attacks move the whole body, the feet too:
+
+- **Timed to the release**: the server releases an attack when its weapon
+  family's windup ends, so a blow lands, an arrow leaves, and an attack can be
+  cancelled before it does; see
+  [Combat Service Features](SERVICE_FEATURES.md). Each weapon with an attack clip
+  names `attackRelease`, the seconds into the clip when its blow lands or its
+  arrow or bolt leaves, equal to its family's windup: 0.35 s for the sword,
+  0.6 s for the axe, 0.8 s for the bow, and 0.15 s for the staff. Every client
+  starts the attacker's clip from the `AttackStarted` event, so the clip comes to
+  its release as the batch of the release arrives: from its start, later for a
+  longer windup, or further in when the event comes late, but never past the
+  release. `AttackCancelled` ends the clip with its fade, and a body that starts
+  to move during the clip ends it too; a body that still moves as the clip
+  begins, such as one that just came into reach, keeps it.
+- **Facing the target**: the character's facing is part of its movement, which
+  turns only while it walks, so a body that stands and attacks turns itself to
+  face its target, at 720 degrees per second, while its attack clip plays and for
+  1.5 s after it, so attacks in a row do not turn it back and forth; it faces its
+  character's way again once it moves. The archer aims at its mark this way, on
+  every client, from the target that `AttackStarted` names.
+- **The whole body**: the layer `Action` is masked to the root, the spine, head,
+  both legs, and both arms without the fingers, so the clip's steps, the turn and
+  shift of its hips, and its arms play together. Without the root in the mask,
+  Unity takes the hips from the lower layers, and the archer's turned stance
+  would aim 40 degrees off the target.
+- **The Iron Sword** names `SwordSlash`: a cock, a step in with the left foot
+  into the cut, a follow-through, and the way back, 1.0 s, striking 0.35 s in.
+  It has no hold clip; the arm hangs with the sword as before.
+- **One-handed weapons** without a clip of their own, a melee weapon in one main
+  hand, strike with `OneHandStrike`: a cock, a step into the blow, and the way
+  back, 1.07 s, striking 0.4 s in.
+- **The Iron Greataxe** names `HoldGreataxe`, the haft resting on the right
+  shoulder with the edge up, and `GreataxeSwing`, a cock, a two-handed swing,
+  and a follow-through, 1.33 s, striking 0.6 s in. Its `offHandGrip` names where
+  the other hand holds the haft. Clips are keyed on the male body and
+  retargeted, so while the swing plays, the other hand takes the haft wherever
+  the clip brings it within 6 cm of that point, and lets it be beyond 18 cm,
+  with the fingers of that hand closing as it takes it, by `OffHandToolGrip`
+  like a pickaxe's.
+- **The Training Shortbow** is held in the left hand: its item is a main-hand
+  weapon that blocks the off hand, and its attachment's socket is `off_hand`. It
+  names `HoldBow`, the left arm holding it down and forward, which the layer
+  `OffHandHold`, masked to the left arm, plays like `MainHandHold`, and
+  `BowShot`, 1.6 s: the archer's stance, with the hips turning 40 degrees, the
+  left foot pivoting, and the right foot stepping back, the right hand on the
+  string at 0.27 s, full draw to the jaw by 0.63 s, the loose at 0.8 s, and a
+  follow-through.
+- **The bow draws**: the bow is skinned to the `Bow` skeleton, a riser, two bones
+  for each limb, a bone for each straight half of the string, and the nock. Its
+  clip `Draw` bends the limbs from brace to full draw, and its `drawLength`, 0.62
+  m, says how far behind the arrow pass the nock comes at full draw. `BowRig`
+  drives the bones after the Animator: the drawing hand takes the string where it
+  rests, the nock follows the hand's socket, the limbs bend by how far the string
+  comes back, and each half of the string turns from its tip to the nock and
+  stretches to reach it. The fingers of the drawing hand close on the string with
+  `MainHandGrip` while they hold it. On the loose the string springs back to
+  brace. Clips are keyed on the male body, so the drawing arm reaches for the
+  resting string and then draws it along the arrow's line, from the bow straight
+  back, by the same arm solver; a body with shorter arms draws less far.
+- **The arrow is its own**: the Bronze Arrow, `art/Projectiles/BronzeArrow`, is
+  the arrow of every weapon that shoots arrows, not part of the bow.
+  `ClientConfig` names its model. While the drawing hand holds the string an
+  arrow lies on it, its nock at the string and its point through the arrow pass,
+  and when the attack releases that arrow flies on from there to the target,
+  where it lands at the server's impact tick. The archer may move while it flies.
+- **Everyone sees it.** Every client plays the attack of the body that started
+  it, from the `AttackStarted`, `AttackReleased`, and `AttackCancelled` events
+  that name the attacker.
 
 ### Tools In Use
 

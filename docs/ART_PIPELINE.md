@@ -73,7 +73,8 @@ models held on a socket of the skeleton.
 | `art/Paint/<Name>/<Name>.blend` | A [paint layer](#paint-layers): transparent paint over the skin of bodies, painted on the layer's own canvas, a copy of a body, and moved to every body by projection. |
 | `art/Garments/<Name>/<Name>.blend` | A [garment template](#garments): the form of clothes or armor, built from a recipe on the garment cage and fitted to every body of the cage, one version per body. |
 | `art/GarmentTextures/<Name>/<Name>.blend` | A [garment texture](#garment-textures): the look of one template, its image in the template's UVs. |
-| `art/Attachments/<Name>/<Name>.blend` | An [attachment](#attachments): a static model below its root `Grip`, held on a socket, such as a sword or a shield. |
+| `art/Attachments/<Name>/<Name>.blend` | An [attachment](#attachments): a static model below its root `Grip`, held on a socket, such as a sword or a shield, or a [skinned one](#skinned-attachments) whose armature is `Grip`, such as a bow. |
+| `art/Projectiles/<Name>/<Name>.blend` | A [projectile](#projectiles): a static model that flies, such as an arrow, its point at the origin. |
 | `art/Cages/<Skeleton>/<Skeleton>.blend` | The [garment cage](#garment-cage) of a skeleton: the net of fixed topology that garments are made on, fitted to every body of the skeleton, with its standard lines. |
 | `art/Skeletons/<Name>.json` | A shared [skeleton definition](#skeletons): the bones every skinned asset of that skeleton has, their parents, their Unity Humanoid bones, and whether they deform the skin. |
 | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx` | Exported model. It is never edited by hand; CI rejects a model without an asset or with a changed file. A body with an editable mesh exports its topology `<Name>.json` next to it, a garment template one model per body, `Models/Garments/<Name>_<Label>.fbx`, with its data `<Name>_<Label>.json` next to it, and a garment texture with transparent parts its own data per body, `Models/Garments/<Name>_<Label>.json`. |
@@ -118,9 +119,10 @@ any `clips` of its own are written by hand when an asset is created.
 | `kind` | `static` for models without a skeleton, `skinned` for characters and creatures that get a rig, `animations` for an [animation library](#animation-libraries), `paint` for a [paint layer](#paint-layers), `garment` for a [garment template](#garments), `texture` for a [garment texture](#garment-textures), `cage` for the [garment cage](#garment-cage). A paint layer has no `target`, `rootObjects`, or `triangleBudget`, a garment template no `target`, `rootObjects`, or `bodies`: its models and roots follow from its cage's bodies, a texture none of them, and a cage no `target`, `rootObjects`, `triangleBudget`, or `export`. |
 | `target` | `src/Client/Assets/Art/Models/<Category>/<Name>.fbx`, where `<Name>` is the folder name. |
 | `rootObjects` | The exact names of the top-level objects in the `Export` collection. They become the direct children of the Unity model, so they carry the contract with the game code, such as `Available` and `Depleted` for a resource node. The one root object of an animation library is its armature, named after its skeleton, and that of an attachment is `Grip`. |
-| `socket` | Attachments only: the socket the model is held on, as a bone of a skeleton definition names it in its `socket`, such as `main_hand` for `Socket_MainHand`. A static asset has a socket exactly when its one root object is `Grip`. |
+| `socket` | Attachments only: the socket the model is held on, as a bone of a skeleton definition names it in its `socket`, such as `main_hand` for `Socket_MainHand`. A static asset has a socket exactly when its one root object is `Grip`; a skinned attachment, such as a bow, has a socket and its armature `Grip`. |
+| `drawLength` | Skinned weapons with a `launchPoint` only, such as a bow: how far behind the launch point the nock of its string comes at the end of its clip `Draw`, in meters, above 0 and at most 2, such as `0.62`. |
 | `useClip` | Tools only, attachments held while a body uses them: the clip of an animation library of the socket's skeleton that the body plays meanwhile, such as `Mine`; see [Tools](#tools). |
-| `offHandGrip` | Tools held with both hands only, on `main_hand`: where the other hand's socket holds the model, as `[x, y, z]` in meters in the socket's axes in Blender, such as `[0.0, -0.33, 0.0]`, at most 2 m from `Grip` in each axis. |
+| `offHandGrip` | Tools held with both hands, and weapons with an `attackClip` that takes them in both hands, only on `main_hand`: where the other hand's socket holds the model, as `[x, y, z]` in meters in the socket's axes in Blender, such as `[0.0, -0.33, 0.0]`, at most 2 m from `Grip` in each axis. |
 | `triangleBudget` | The maximum number of exported triangles, after modifiers. An animation library exports no meshes and has none. A garment's budget holds for each body's version. |
 | `skeleton` | Skinned assets and animation libraries: the name of the skeleton definition in `art/Skeletons`, such as `Humanoid`. |
 | `rig` | Animation libraries only: the skinned asset whose rig the clips are keyed on, such as `art/Characters/Human_Male`. |
@@ -222,11 +224,10 @@ asset that breaks one of these rules:
   without textures or other nodes feeding them. A glowing material, such as the
   crystal of the Oak Staff, also has a flat Emission Color and Emission Strength;
   the export records their product as `emission`, and Unity turns on the
-  material's emission in that color. Textures for static
-  assets come with the planned palette texture. A `skinned` asset may feed the
-  Base Color straight from one Image Texture whose image is packed into the
-  `.blend` file, such as a painted body, read through the mesh's active UV map,
-  which every mesh with that material must have.
+  material's emission in that color. A `static` or `skinned` asset may instead
+  feed the Base Color straight from one Image Texture whose image is packed into
+  the `.blend` file, such as a painted body or a hand-painted prop, read through
+  the mesh's active UV map, which every mesh with that material must have.
 - The exported triangles stay within `triangleBudget`.
 - Every variant image is packed into the file as a PNG of the same size as the
   image of its material, so it fits the material's UV layout.
@@ -347,6 +348,17 @@ each hind leg from `Hips` through `Thigh`, `Shin`, and `HindFoot` to
 
 The character faces +Y and its right is +X, so the `_R` bones sit at +X. Limbs
 bend about their bone X axis, arms rise about Z, and every bone twists about Y.
+
+`Bow` is the skeleton of a bow, a skinned attachment whose armature is its root
+object `Grip`: 8 deforming bones outside any Unity avatar, so it imports with a
+Generic rig. `Bow_Riser` is the root, with `Bow_LimbUpper` and its
+`Bow_TipUpper`, which carries `Bow_StringUpper`, and the same three bones below,
+`Bow_LimbLower`, `Bow_TipLower`, and `Bow_StringLower`, and `Bow_Nock`. Each
+straight half of the string hangs on its string bone from where it leaves the
+recurve toward the nocking point, which lies on `Bow_Nock`; its clip `Draw`
+turns only the four limb bones, from brace to full draw. The game aims each
+string bone at the nock and stretches it along its length, and moves the nock
+with the drawing hand; see [Skinned Attachments](#skinned-attachments).
 
 ## Export Settings
 
@@ -551,7 +563,10 @@ A Mob with a creature model of its own is built by
 `-executeMethod Mmorpg.Client.Editor.CreaturePresentationBuilder.Build`. It
 builds the creature's Animator controller from the clips of its model, such as
 `Assets/Art/Animation/WolfLocomotion.controller`, and rebuilds each world actor
-prefab of the creature in place, so it keeps its GUID and Addressables entry.
+prefab of the creature in place, so it keeps its GUID and Addressables entry. It
+writes the controller and a prefab only when they differ from what it builds, so
+a build without a change rewrites nothing, which `CreaturePresentationTests`
+checks.
 The prefab is not a Prefab Variant of the model, because its root keeps the
 actor's own scale while the model may be larger: the model is a nested prefab
 instance in the child `Model`, with the controller on its Animator, no root
@@ -1325,11 +1340,13 @@ in the catalog is worn.
 
 ## Attachments
 
-An attachment is a static model that a socket of a skeleton holds, such as a
-sword in the right hand or a shield in the left: an asset of kind `static` below
+An attachment is a model that a socket of a skeleton holds, such as a sword in
+the right hand or a shield in the left: an asset of kind `static` below
 `art/Attachments` with a `socket` in `asset.json` and one root object, the empty
 `Grip`, at the origin. Its meshes lie below `Grip` in the socket's own axes, so
-the model stands on the socket bone as it stands on the origin. The socket bones
+the model stands on the socket bone as it stands on the origin. An attachment
+with moving parts of its own, such as a bow, is `skinned` instead; see
+[Skinned Attachments](#skinned-attachments). The socket bones
 of `Humanoid` place every attachment on every body; an attachment never moves
 them, and a place that suits only one item is that item's own geometry.
 
@@ -1369,20 +1386,66 @@ more than 1 mm from where its model puts it on the socket.
 
 ### Weapons With Clips
 
-A weapon held on `main_hand` that is no tool may name a `holdClip`, the pose its
-arm holds it in, and an `attackClip`, the clip its body plays once whenever its
-attack releases, both clips of an animation library of its socket's skeleton,
-and with an attack clip a `launchPoint`, the point of the model where its
-projectile leaves, in meters in the socket's axes. The Oak Staff names
-`"holdClip": "HoldStaff"`, `"attackClip": "Cast"`, and
-`"launchPoint": [0.0, 0.7, 0.0]`, its crystal. The review sheet of the weapon
+A weapon held on `main_hand` or, like a bow in the left hand, on `off_hand`, that
+is no tool may name a `holdClip`, the pose its arm holds it in, and an
+`attackClip`, the clip its body plays once whenever its attack starts, both clips
+of an animation library of its socket's skeleton. With an attack clip it names
+its `attackRelease`, the seconds into the clip when its blow lands or its arrow
+or bolt leaves, from above 0 to 10, which the server's windup of its weapon
+family matches and the client times the clip to, and may name a `launchPoint`,
+the point of the model where its projectile leaves, in meters in the socket's
+axes, and on `main_hand` an `offHandGrip` when its attack takes it in both
+hands. The Oak Staff names `"holdClip": "HoldStaff"`, `"attackClip": "Cast"`,
+`"attackRelease": 0.15`, and `"launchPoint": [0.0, 0.7, 0.0]`, its crystal; the
+Iron Sword `SwordSlash` at 0.35 s, the Iron Greataxe `HoldGreataxe` and
+`GreataxeSwing` at 0.6 s with `"offHandGrip": [0.0, -0.28, 0.0]`, and the
+Training Shortbow on `off_hand` `HoldBow` and `BowShot` at 0.8 s with its
+launch point at the arrow pass, `[0.0, 0.07, 0.0]`, and `"drawLength": 0.62`.
+`WeaponClipTests` fails when an attack clip does not release where its weapon
+family's windup ends in the item catalog. The review sheet of the weapon
 shows the bodies with the arm in the hold clip, and the sheet of the library shows
 the weapon held in the rows of both clips. In Unity the appearance catalog lists
 the clips and the launch point, converted to the model's axes like an
-`offHandGrip`, and the controller has a state of each clip's name on the layers
-`MainHandHold` and `Action`; `WeaponClipTests` checks the layers, their masks,
-the states, the launch point, and that both bodies hold the staff upright and
-thrust it forward.
+`offHandGrip`, and the controller has a state of each clip's name on the layer
+of its hand, `MainHandHold` or `OffHandHold`, and on `Action`; `WeaponClipTests`
+checks the layers, their masks, the states, the launch point, that both bodies
+hold the staff upright and thrust it forward, that both draw the bow, and that
+the other hand takes the greataxe's haft.
+
+### Skinned Attachments
+
+An attachment whose parts move, such as the limbs and the string of a bow, is a
+`skinned` asset below `art/Attachments` with a `socket`, a `skeleton` of its own,
+such as `Bow`, whose armature is its one root object `Grip` at the origin in the
+socket's axes, and its `clips`. It goes through the stages of every skinned
+asset, model, rig, and animation, each approved by the reviewer. The Training
+Shortbow, held in the left hand on `off_hand`, is the first: an ash recurve
+with a dark laminated back, a dark oak riser with a brass oak leaf, a
+cross-laced leather grip, a sight window with a shelf on the left, horn tips with
+a carved spiral, and a linen string with a red serving, 1.23 m from tip to tip,
+1,860 triangles, hand-painted on one UV layout, its `Draw` clip 15 frames from
+brace to full draw, approved 2026-10-31.
+
+In Unity the model imports with a Generic rig and readable meshes, and the
+appearance catalog lists it with its skeleton, its clips, and for a bow its
+`drawLength`. `PlayerBodyMeshes` combines its mesh into the body's one mesh
+skinned to its own bones, and `PlayerBodyAppearance` holds a copy of the model's
+bones below the socket, as they stand below the model's root, so the combined
+renderer binds to them. `BowRig` moves a bow's bones while the body draws; see
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#weapon-poses-and-attack-clips).
+`ItemAttachmentTests` fails when a skinned model's mesh is not readable or the
+body does not hold its bones below the socket.
+
+### Projectiles
+
+A projectile is a static model that flies, such as an arrow: an asset of kind
+`static` below `art/Projectiles` with one root object at the origin, its point,
+flying toward +Y, which is the model's forward in Unity. The Bronze Arrow,
+`art/Projectiles/BronzeArrow`, is a flat bronze broadhead on a six-sided shaft
+with three fletching vanes, the red cock vane up along +Z, and its nock 76 cm
+behind the point, 202 triangles, approved 2026-10-31. It is the arrow of every weapon that shoots
+arrows, not part of a bow: `ClientConfig` names its model, and the combat
+presentation lays it on an archer's string and flies it to the target.
 
 ### Tools
 
@@ -1527,12 +1590,13 @@ For models and their textures this means:
   UVs, last, in [Modeling Rules](#modeling-rules)). Playable characters are the
   exception: smooth shading with the form painted into their textures, as on
   the human base characters. Props approved before 2026-10-30 keep their flat
-  material colors, and new props get their textures when the pipeline supports
-  textures on `static` assets; until then only `skinned` assets can have them.
+  material colors until the reviewer asks for textures; every new prop has its
+  hand-painted texture.
 - The model fills the actor's `interactionBounds` from the content catalog, so
   the click area matches what the player sees.
 - Triangle budgets, about what a model uses: about 2,000 for a prop, such as a
-  resource node or an attachment; about 6,000 for a Mob or another creature;
+  resource node or an attachment; about 200 for a projectile, such as an arrow,
+  because many fly at once; about 6,000 for a Mob or another creature;
   about 14,000 for a playable character with its eyeballs, teeth, and tongue.
   The budget is a target, not a ceiling to stay far below: a new model ends
   within about 10 % of it, above or below, and spends the triangles on the form,
@@ -1651,10 +1715,13 @@ weights.
 
 | Asset | Kind | Roots | Notes |
 | --- | --- | --- | --- |
-| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. `Grip`, one frame, looping, keys only the fingers and thumbs: both hands closed around a handle of 29 mm on their sockets. Approved 2026-10-25. `Mine` and `Chop`, 45 frames, looping, both hands closed on a tool's haft, the right hand 33 cm above the left: `Mine` strikes a pickaxe down in front of the body at about knee height, lifts it over the right shoulder with the head behind the shoulder, and strikes again; `Chop` lifts an axe over the right shoulder and hews diagonally down to the left at waist height. Both keep every arm inside the humanoid muscle ranges and turn the torso, bend the knees, and look at the stroke. Approved 2026-10-26. |
+| `art/Animations/Human_Actions` | `animations` | `Humanoid` | Every clip of the human bodies, keyed on the rig of `Human_Male` and shown on both bodies. `Idle`, 4 s, `Walk`, 28 frames at 1.4 m/s, and `Jog`, 19 frames at 5.0 m/s, looping, from the gait model. `Death`, 2 s, made by hand, not looping: a hit snaps the head back, the right knee buckles first, the body tips over to its right side and backward, lands on its back with the legs swinging up, the head hits a moment later, the legs fall with the left knee outward, and the body lies still on its back with the arms out and the head turned aside. Approved 2026-10-22. `Grip`, one frame, looping, keys only the fingers and thumbs: both hands closed around a handle of 29 mm on their sockets. Approved 2026-10-25. `Mine` and `Chop`, 45 frames, looping, both hands closed on a tool's haft, the right hand 33 cm above the left: `Mine` strikes a pickaxe down in front of the body at about knee height, lifts it over the right shoulder with the head behind the shoulder, and strikes again; `Chop` lifts an axe over the right shoulder and hews diagonally down to the left at waist height. Both keep every arm inside the humanoid muscle ranges and turn the torso, bend the knees, and look at the stroke. Approved 2026-10-26. `HoldStaff`, one frame, and `Cast`, 27 frames, the Oak Staff's hold and attack, approved 2026-10-27. On 2026-10-31 the weapons' clips, keyed with the scripted arm and leg rig inside the muscle ranges: `HoldGreataxe`, one frame, the Iron Greataxe's haft on the right shoulder with the edge up, and `GreataxeSwing`, 40 frames, a two-handed swing turning the torso, striking at frame 18; `HoldBow`, one frame, the left arm holding the Training Shortbow down and forward, and `BowShot`, 48 frames, the archer's stance with the hips turned 40 degrees and the right foot back, the string taken at frame 8, full draw to the jaw at frame 19, and the loose at frame 24; `SwordSlash`, 30 frames, a step into a cut striking at frame 10.5; and `OneHandStrike`, 32 frames, a step into a blow striking at frame 12; the bow's and the one-handed attacks move the feet and turn and shift the hips. Approved 2026-10-31. |
 | `art/Attachments/MiningPickaxe` | `static` | `Grip` | The tool of the Starter Pickaxe, held on `main_hand` with both hands while mining, 960 triangles, 86 cm: an ash haft with a leather wrap in seven bands where the left hand holds it and a brass butt cap, and a curved iron head, 43 cm across, with a long point on the striking side and a flared chisel, both curving toward the hands, on a chamfered eye boss with a blue faceted ore crystal in a brass bezel on each cheek, over a brass collar inlaid in blue with the rune Fehu on its front and back. `useClip` `Mine`, `offHandGrip` 33 cm down the haft. Approved 2026-10-26. |
 | `art/Attachments/WoodcuttingAxe` | `static` | `Grip` | The tool of the Woodcutting Axe, held on `main_hand` with both hands while chopping, 1,090 triangles, 90 cm: an oak haft with a leather wrap in seven bands where the left hand holds it and a golden acorn as its butt knob, and a bearded iron head with a bright honed edge 21 cm long, its top horn sweeping up and its beard hanging toward the hands, with a lobed oak leaf inlaid in gold on each cheek. `useClip` `Chop`, `offHandGrip` 33 cm down the haft. Approved 2026-10-26. |
 | `art/Attachments/HeaterShield` | `static` | `Grip` | A small heater shield held on `off_hand`, 1,436 triangles: a board 56 cm wide and 70 cm from the straight top to the point, 12 mm thick and bowed 4 cm toward the arm at its sides, its face painted blue, its back plain wood, an iron edging bent over the edge, a leather-wrapped handle in the fist on two straps, a loose leather strap around the forearm 20 cm toward the elbow, and iron rivets through both faces where the straps hold. It lies 76 mm behind the handle along the forearm, turned 12 degrees toward the little finger, as the wrist of `Idle` turns the hand, so it hangs outward at the side with its point down. Approved 2026-10-25. |
+| `art/Attachments/IronGreataxe` | `static` | `Grip` | A two-handed iron greataxe held on `main_hand`, 2,162 triangles, 1.33 m with its top spike: a crescent blade with a polished edge of 41 cm, an arc window slot, and a brass Tiwaz rune, a curved back spike, an eye with collars and riveted langets, a red cloth band with tails, an iron knob, and leather wraps where the right hand holds it, 38 cm from the butt, and the left, 28 cm further down, its `offHandGrip`, which its swing brings that hand to. `holdClip` `HoldGreataxe`, `attackClip` `GreataxeSwing` releasing at 0.6 s. Approved 2026-10-31. |
+| `art/Attachments/TrainingShortbow` | `skinned` | `Grip` | The bow of the Training Shortbow, held on `off_hand` in the left hand; see [Skinned Attachments](#skinned-attachments). On the `Bow` skeleton with its clip `Draw`, `holdClip` `HoldBow`, `attackClip` `BowShot` releasing at 0.8 s, its `launchPoint` at the arrow pass 7 cm above the grip, and `drawLength` 0.62 m. Model, rig, and clip approved 2026-10-31. |
+| `art/Projectiles/BronzeArrow` | `static` | `Arrow` | The arrow of every weapon that shoots arrows; see [Projectiles](#projectiles). Approved 2026-10-31. |
 | `art/Attachments/IronSword` | `static` | `Grip` | A plain iron arming sword held on `main_hand`, 1,008 triangles, 94 cm: a disc pommel with a peened tang end, a leather grip of 10 cm swelling slightly in the middle, a straight cross guard of 19 cm, and a blade of 74 cm, 5 cm wide at the guard, with a fuller over 70 % of it, tapering to the point. Approved 2026-10-25. |
 | `art/GarmentTextures/DarkBrownHair` | `texture` | none | Dark brown hair on `ShoulderHair`, 1024 px, painted by a script in the template's UVs, which run around the head through the locks and down along the hair: lighter strands of random width along the hair, deep grooves between the locks, a soft sheen around the crown, darker roots, and slightly lighter tips. Roughness 0.55. Approved 2026-10-24. |
 | `art/GarmentTextures/IronNasalHelm` | `texture` | none | Matte wrought iron on `NasalHelm`, 1024 px, painted by a script from each texel's point and from the part of the helmet its face is, which the template marks in the face attribute `paint_part`: hammered plates darkened by patina with a few rust specks toward the rim and into the corners beside the bands, the bands a little lighter and worn bright along their edges, domed rivets down every band, round the brow band, at the cap, and two on the nasal, the iron's dark underside at the rim, and the brown leather lining below it. Roughness 0.55, metallic 0.45. Approved 2026-10-24. |

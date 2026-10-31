@@ -248,6 +248,15 @@ part of this model:
   World spawn after 5 s. On 2026-10-27 regeneration became 1 health and 1 mana
   per second after 5 s out of combat, see [Magic And Mana](#magic-and-mana).
 - Every equipment change blocks attacks for 1 s.
+- Every player attack has a windup by weapon family (2026-10-31): it starts at
+  once and releases when the windup ends, 0.35 s for a sword, 0.6 s for an axe,
+  0.8 s for a bow, and 0.15 s for a staff, so a body's attack animation can wind
+  up before the blow lands or the arrow leaves. The weapon's interval runs from
+  the start, so the damage per second stays the same, and an arrow or mana is
+  spent only at the release. Anything that stops an attack before it releases,
+  such as a step or a new target, cancels it at no cost, and the next attack may
+  start at once; a target that walks on stays in reach during the windup within
+  a quarter more than the weapon's range. A Mob's bite still releases at once.
 - Every death, Mob or player, produces one authoritative death event with its
   killer. A player death runs the death partition in
   [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md). PvP

@@ -1,0 +1,40 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/Attachments/IronGreataxe.fbx",
+    "rootObjects": [
+        "Grip"
+    ],
+    "triangleBudget": 2200,
+    "socket": "main_hand",
+    "offHandGrip": [0.0, -0.28, 0.0],
+    "holdClip": "HoldGreataxe",
+    "attackClip": "GreataxeSwing",
+    "attackRelease": 0.6,
+    "approvals": {
+        "model": {
+            "date": "2026-10-31",
+            "sourceSha256": "d1bbad339587de2ff2711f33e034acbb4e1b5ad709a0c46046922381177fd7ce"
+        }
+    },
+    "export": {
+        "sourceSha256": "d1bbad339587de2ff2711f33e034acbb4e1b5ad709a0c46046922381177fd7ce",
+        "targetSha256": "43060214ce07ea9f86e9d0fd5f209c9cf979b77903e60b6e4f96411766a33c74",
+        "materials": [
+            {
+                "name": "M_IronGreataxe",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_IronGreataxe",
+                "metallic": 0.0,
+                "smoothness": 0.45
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_IronGreataxe",
+                "target": "src/Client/Assets/Art/Textures/Attachments/T_IronGreataxe.png",
+                "sha256": "f0e035e5a0fefc7b0e0b65e080fe45fadbf2808d192fd89ad902e6eb1309f4a5"
+            }
+        ]
+    }
+}

@@ -45,8 +45,11 @@ internal sealed class Combatant
 
     public ulong TargetEntityId { get; set; }
 
-    // The first tick at which the next attack may release.
+    // The first tick at which the next attack may start.
     public uint NextAttackTick { get; set; }
+
+    // The player's attack that started and has not released yet, while its windup lasts.
+    public PendingAttack? Pending { get; set; }
 
     // The combatant counts as in combat until this tick.
     public uint InCombatUntilTick { get; set; }
@@ -160,6 +163,9 @@ internal sealed class Combatant
             IsAlive ? TargetEntityId : 0);
     }
 }
+
+// An attack in its windup: whom it is for, when it started, when it releases, and its style.
+internal readonly record struct PendingAttack(ulong TargetEntityId, uint StartTick, uint ReleaseTick, string CombatStyle);
 
 // Every combatant by network entity id. Loop-confined.
 internal sealed class CombatantRegistry

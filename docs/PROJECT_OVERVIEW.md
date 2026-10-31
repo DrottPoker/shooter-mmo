@@ -198,7 +198,9 @@ The repository currently supports:
   one-active-session validation.
 - Server-authoritative target-based combat: a left click on a wolf or another
   player walks into weapon range and auto-attacks with the Training Shortbow, the
-  Iron Sword, or the Oak Staff, whose magic bolts cost mana. SimulationWorker
+  Iron Sword, the Iron Greataxe, or the Oak Staff, whose magic bolts cost mana.
+  Every attack releases after its weapon family's windup, and every weapon shows
+  its own attack on the body. SimulationWorker
   owns range, line of sight, attack timing, damage, arrows and bolts in flight,
   the equipment-change lockout, health, mana, regeneration, and respawn, and
   spends arrows in batches through GameService.

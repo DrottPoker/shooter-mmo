@@ -1,0 +1,35 @@
+{
+    "schemaVersion": 1,
+    "kind": "static",
+    "target": "src/Client/Assets/Art/Models/Projectiles/BronzeArrow.fbx",
+    "rootObjects": [
+        "Arrow"
+    ],
+    "triangleBudget": 220,
+    "approvals": {
+        "model": {
+            "date": "2026-10-31",
+            "sourceSha256": "ae3b3dda2acb7f7701c4c7277f1f21cbb8e70ee38012f0122119da43d77dd91f"
+        }
+    },
+    "export": {
+        "sourceSha256": "ae3b3dda2acb7f7701c4c7277f1f21cbb8e70ee38012f0122119da43d77dd91f",
+        "targetSha256": "8d0034ba201d3f523d86623b2aaf42f982e4af6b695cef2ee6e54661b97f6f17",
+        "materials": [
+            {
+                "name": "M_BronzeArrow",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_BronzeArrow",
+                "metallic": 0.0,
+                "smoothness": 0.4
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_BronzeArrow",
+                "target": "src/Client/Assets/Art/Textures/Projectiles/T_BronzeArrow.png",
+                "sha256": "f4ceedc575659fbfa54d05619aed9608637c2ac7b5f21f2044cd1e786e52cfb7"
+            }
+        ]
+    }
+}

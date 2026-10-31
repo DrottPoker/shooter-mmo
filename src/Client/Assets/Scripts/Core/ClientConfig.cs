@@ -20,6 +20,10 @@ namespace Mmorpg.Client.Core
         // its color per draw.
         [SerializeField] private Material debugLineMaterial;
 
+        // The arrow that flies for every weapon that shoots arrows and lies on an archer's string,
+        // the model of art/Projectiles/BronzeArrow, with its point at its root.
+        [SerializeField] private GameObject arrowModel;
+
         public string GameServiceBaseUrl
         {
             get { return NormalizeUrl(gameServiceBaseUrl, "http://localhost:5000"); }
@@ -53,6 +57,11 @@ namespace Mmorpg.Client.Core
         public Material DebugLineMaterial
         {
             get { return debugLineMaterial; }
+        }
+
+        public GameObject ArrowModel
+        {
+            get { return arrowModel; }
         }
 
         // The handle keeps the configuration and the catalog it references loaded. The owner

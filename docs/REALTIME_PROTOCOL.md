@@ -418,10 +418,12 @@ owner item delta, and the Shard rules:
   never shows a combatant without health. A dead combatant has 0 health and no
   target, and nobody targets itself.
 - `CombatEventBatch` carries the events of one server tick that involve a
-  combatant the recipient sees or controls, in simulation order: `AttackReleased`
-  with the impact tick, `Hit` with the damage, damage type, and health afterwards,
-  and `Died` with the killer, or 0 when none is known. Unused fields are 0. More
-  than `MaximumCombatEventsPerBatch` (32) events split into several batches.
+  combatant the recipient sees or controls, in simulation order:
+  `AttackStarted` with the tick at which the attack releases, `AttackReleased`
+  with the impact tick, `AttackCancelled` when an attack ended in its windup,
+  `Hit` with the damage, damage type, and health afterwards, and `Died` with the
+  killer, or 0 when none is known. Unused fields are 0. More than
+  `MaximumCombatEventsPerBatch` (32) events split into several batches.
 - `OwnerCombatState` goes to the owner only: its health, life state, a
   `LifeSequence` that grows with every death and respawn, the respawn tick while
   dead, the target, the attack status, the next attack tick, the end of the
@@ -450,6 +452,23 @@ Protocol version 28 added magic and mana:
   `Ranged` (2), or `Magic` (3): for `AttackReleased` the combat style of the
   attack, which selects how a client draws it, such as an arrow or a magic bolt,
   and `Melee` for every other kind.
+
+Protocol version 29 added the windup of an attack:
+
+- A player's attack starts on its weapon's cooldown and releases its blow,
+  arrow, or bolt when the windup of its weapon family ends, so the body's attack
+  clip strikes or looses when the server lets the attack land.
+- `CombatEventKind.AttackStarted` (4) names the attacker, the target, the
+  attack style, and in `Tick` the server tick at which the attack releases.
+  Every client that sees the attacker plays its attack clip from it, timed so
+  the clip strikes or looses at that tick.
+- `CombatEventKind.AttackCancelled` (5) names the attacker, the target, and the
+  attack style of an attack that ended in its windup, such as by a step, a lost
+  target, or missing arrows, with `Tick` 0. Nothing of it was spent, and the
+  next attack may start at once.
+- `CombatEvent.ImpactTick` became `Tick`: the release tick of a started attack,
+  the impact tick of a released one, and 0 for every other kind. A Mob's bite
+  still releases at once, with `AttackReleased` alone.
 
 Since the Mob brains, a moving Mob travels in `SimulationSnapshot` like a remote
 player: an `EntitySnapshot` with the Mob's world actor entity id, input sequence

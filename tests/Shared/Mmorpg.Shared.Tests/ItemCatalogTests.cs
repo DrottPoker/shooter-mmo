@@ -38,6 +38,7 @@ public sealed class ItemCatalogTests
         "quest_item.sealed_letter",
         "tool.starter_pickaxe",
         "tool.woodcutting_axe",
+        "weapon.iron_greataxe",
         "weapon.iron_sword",
         "weapon.oak_staff",
         "weapon.training_shortbow"
@@ -61,16 +62,27 @@ public sealed class ItemCatalogTests
         Assert.Equal(1000, catalog.EquipmentSlots.Single(slot => slot.Id == "ammunition").MaximumQuantity);
         Assert.Equal(4, catalog.SecureContainerTiers.Single().SlotCapacity);
         Assert.Equal(200, catalog.Progression.MaximumCharacterLevel);
-        Assert.Equal(3, catalog.WeaponFamilies.Length);
+        Assert.Equal(4, catalog.WeaponFamilies.Length);
         var bow = catalog.WeaponFamilies.Single(family => family.Id == "bow");
         Assert.Equal(
-            ("bow", CombatStyleIds.Ranged, "arrow", 30f),
-            (bow.Id, bow.CombatStyle, bow.AmmunitionFamily, bow.ProjectileSpeed));
-        // A melee family fires nothing and hits at once.
+            ("bow", CombatStyleIds.Ranged, "arrow", 30f, 0.8f),
+            (bow.Id, bow.CombatStyle, bow.AmmunitionFamily, bow.ProjectileSpeed, bow.WindupSeconds));
+        // A melee family fires nothing and hits at once when its windup ends.
         var sword = catalog.WeaponFamilies.Single(family => family.Id == "sword");
         Assert.Equal(
-            (CombatStyleIds.Melee, string.Empty, 0f),
-            (sword.CombatStyle, sword.AmmunitionFamily, sword.ProjectileSpeed));
+            (CombatStyleIds.Melee, string.Empty, 0f, 0.35f),
+            (sword.CombatStyle, sword.AmmunitionFamily, sword.ProjectileSpeed, sword.WindupSeconds));
+        var axe = catalog.WeaponFamilies.Single(family => family.Id == "axe");
+        Assert.Equal(
+            (CombatStyleIds.Melee, string.Empty, 0f, 0.6f),
+            (axe.CombatStyle, axe.AmmunitionFamily, axe.ProjectileSpeed, axe.WindupSeconds));
+        var greataxe = Definition(catalog, "weapon.iron_greataxe");
+        Assert.Equal(
+            ("axe", DamageTypeIds.Normal, 16, 27, 3.0f, 2.5f),
+            (greataxe.Weapon.WeaponFamily, greataxe.Weapon.DamageType, greataxe.Weapon.MinimumDamage,
+                greataxe.Weapon.MaximumDamage, greataxe.Weapon.AttackIntervalSeconds, greataxe.Weapon.Range));
+        Assert.Equal((180, 180L), (greataxe.UnitWeight, greataxe.Value));
+        Assert.Equal(new[] { "off_hand" }, greataxe.BlockedEquipmentSlots);
         var shortbow = Definition(catalog, "weapon.training_shortbow").Weapon;
         Assert.Equal(
             ("bow", DamageTypeIds.Normal, 10, 18),
@@ -84,8 +96,8 @@ public sealed class ItemCatalogTests
         // A magic family fires a bolt without ammunition, and only its weapons cost mana.
         var staffFamily = catalog.WeaponFamilies.Single(family => family.Id == "staff");
         Assert.Equal(
-            (CombatStyleIds.Magic, string.Empty, 20f),
-            (staffFamily.CombatStyle, staffFamily.AmmunitionFamily, staffFamily.ProjectileSpeed));
+            (CombatStyleIds.Magic, string.Empty, 20f, 0.15f),
+            (staffFamily.CombatStyle, staffFamily.AmmunitionFamily, staffFamily.ProjectileSpeed, staffFamily.WindupSeconds));
         var oakStaff = Definition(catalog, "weapon.oak_staff");
         Assert.Equal(
             ("staff", DamageTypeIds.Normal, 10, 18, 5),
@@ -241,7 +253,7 @@ public sealed class ItemCatalogTests
     [InlineData("level-zero", ".requiredCharacterLevel must be between 1")]
     [InlineData("level-above-cap", ".requiredCharacterLevel must be between 1")]
     [InlineData("missing-progression", "progression is required")]
-    [InlineData("ranged-without-ammunition", "weaponFamilies[0].ammunitionFamily references unknown ammunition family")]
+    [InlineData("ranged-without-ammunition", "weaponFamilies[bow].ammunitionFamily references unknown ammunition family")]
     [InlineData("ranged-without-speed", "projectileSpeed must be positive for a ranged family")]
     [InlineData("melee-with-ammunition", "ammunitionFamily must be empty unless the style is ranged")]
     [InlineData("melee-with-speed", "projectileSpeed must be 0 for a melee family")]
@@ -252,6 +264,10 @@ public sealed class ItemCatalogTests
     [InlineData("magic-mana-cost-too-high", ".weapon.manaCost must be between 1")]
     [InlineData("ranged-with-mana-cost", ".weapon.manaCost must be 0 unless the weapon family is magic")]
     [InlineData("missing-mana-cost", ".weapon.manaCost must be 0 unless the weapon family is magic")]
+    [InlineData("missing-windup", "weaponFamilies[bow].windupSeconds must be between 0 and 5")]
+    [InlineData("negative-windup", "weaponFamilies[bow].windupSeconds must be between 0 and 5")]
+    [InlineData("windup-too-long", "weaponFamilies[bow].windupSeconds must be between 0 and 5")]
+    [InlineData("interval-within-windup", ".weapon.attackIntervalSeconds must be longer than the windup of its weapon family, 0.8 s")]
     public void InvalidCombatDataFailsValidation(string mutation, string expectedError)
     {
         var authoring = ItemCatalogTestData.LoadAuthoring();
@@ -260,8 +276,25 @@ public sealed class ItemCatalogTests
         var ore = AuthoringDefinition(authoring, "material.iron_ore");
         var bow = authoring.WeaponFamilies.Single(family => family.Id == "bow");
         var staff = AuthoringDefinition(authoring, "weapon.oak_staff");
+        // The bow's place among the families depends on the content, not on the rule.
+        expectedError = expectedError.Replace(
+            "[bow]",
+            "[" + Array.IndexOf(authoring.WeaponFamilies, bow) + "]",
+            StringComparison.Ordinal);
         switch (mutation)
         {
+            case "missing-windup":
+                bow.WindupSeconds = -1f;
+                break;
+            case "negative-windup":
+                bow.WindupSeconds = -0.1f;
+                break;
+            case "windup-too-long":
+                bow.WindupSeconds = CombatContentRules.MaximumWindupSeconds + 0.1f;
+                break;
+            case "interval-within-windup":
+                shortbow.Weapon.AttackIntervalSeconds = 0.8f;
+                break;
             case "magic-without-mana-cost":
                 staff.Weapon.ManaCost = 0;
                 break;

@@ -14,8 +14,8 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // Items show the attachments the item presentation names, such as a sword, held on the sockets
-    // of their equipment slots with the hand closed around the grip, as docs/EQUIPMENT_VISUALS_DESIGN.md
-    // describes under Attachments.
+    // of their equipment slots with the hand closed around the grip, or a bow in the main hand in the
+    // left hand, as docs/EQUIPMENT_VISUALS_DESIGN.md describes under Attachments.
     public sealed class ItemAttachmentTests
     {
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
@@ -73,8 +73,17 @@ namespace Mmorpg.Client.Tests.EditMode
                         continue;
                     }
 
-                    // The item shows it in every slot it can be equipped in.
-                    Assert.That(definition.EquipmentSlots, Is.All.EqualTo(attachment.Socket), where);
+                    // The item shows it in every slot it can be equipped in, and a main-hand item held
+                    // in the left hand, such as a bow, keeps the off hand free of any other item.
+                    foreach (var slot in definition.EquipmentSlots)
+                    {
+                        Assert.That(EquipmentGarments.HeldFrom(attachment, slot), Is.True, where + " in " + slot);
+                    }
+
+                    if (!definition.EquipmentSlots.Contains(attachment.Socket))
+                    {
+                        Assert.That(definition.BlockedEquipmentSlots, Does.Contain(attachment.Socket), where);
+                    }
                 }
             }
         }
@@ -86,14 +95,23 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.Attachments, Is.Not.Empty);
             foreach (var attachment in catalog.Attachments)
             {
-                var grip = attachment.Model.transform.Find("Grip");
+                var grip = attachment.Model.transform.Find(PlayerBodyMeshes.AttachmentRoot);
                 Assert.That(grip, Is.Not.Null, attachment.Name);
-                Assert.That(attachment.Model.transform.childCount, Is.EqualTo(1), attachment.Name);
+                // Beside Grip, a skinned model has only its meshes, which Unity puts at the root.
+                foreach (Transform child in attachment.Model.transform)
+                {
+                    Assert.That(child == grip || (attachment.IsSkinned && child.GetComponent<SkinnedMeshRenderer>() != null && child.childCount == 0),
+                        Is.True, attachment.Name + " has the root object " + child.name);
+                }
+
                 // The model's own frame is the socket's, as the review sheet holds it in Blender.
                 Assert.That(grip.localPosition.magnitude, Is.LessThan(1e-5f), attachment.Name);
                 Assert.That(Quaternion.Angle(grip.localRotation, Quaternion.identity), Is.LessThan(0.01f), attachment.Name);
                 Assert.That(attachment.Model.GetComponentsInChildren<MeshFilter>().All(filter => filter.sharedMesh.isReadable), Is.True,
                     attachment.Name + " must import readable, since the body combines it");
+                Assert.That(attachment.Model.GetComponentsInChildren<SkinnedMeshRenderer>().All(skinned => skinned.sharedMesh.isReadable), Is.True,
+                    attachment.Name + " must import readable, since the body combines it");
+                Assert.That(attachment.Model.GetComponentsInChildren<SkinnedMeshRenderer>().Any(), Is.EqualTo(attachment.IsSkinned), attachment.Name);
             }
         }
 
@@ -117,9 +135,66 @@ namespace Mmorpg.Client.Tests.EditMode
             var misplaced = EquipmentGarments.Dress(own, catalog, new[]
             {
                 new EquippedItem("off_hand", "weapon.iron_sword"),
-                new EquippedItem("main_hand", "weapon.training_shortbow"),
+                new EquippedItem("body", "ammunition.bronze_arrow"),
             }, bundled.Presentation, false);
             Assert.That(misplaced.Attachments, Is.Empty);
+
+            // A bow in the main hand is held in the left hand.
+            var archer = EquipmentGarments.Dress(own, catalog, new[]
+            {
+                new EquippedItem("main_hand", "weapon.training_shortbow"),
+            }, bundled.Presentation, false);
+            Assert.That(archer.Attachments, Is.EqualTo(new[] { "TrainingShortbow" }));
+            Assert.That(catalog.AttachmentNamed("TrainingShortbow").Bone, Is.EqualTo(HumanLocomotion.OffHandSocketBone));
+        }
+
+        // A body holds a bow's own bones below the off hand's socket, where its combined renderer binds
+        // them, with that hand closed around the grip, and lets go of them when it puts the bow away.
+        [Test]
+        public void ABodyHoldsTheBonesOfABowBelowItsSocketAndLetsGoOfThem()
+        {
+            var scene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                using (var meshes = new PlayerBodyMeshes())
+                using (var materials = new PlayerBodyMaterials())
+                {
+                    var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath);
+                    var body = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+                    var appearance = body.GetComponent<PlayerBodyAppearance>();
+                    appearance.CombineParts(meshes);
+                    var unarmed = appearance.CombinedRenderer.sharedMesh;
+                    appearance.ApplyLook(BodyLook.Default.WithAttachment("TrainingShortbow", true), materials);
+
+                    var renderer = appearance.CombinedRenderer;
+                    var socket = PlayerBodyMeshes.FindDescendant(body.transform, HumanLocomotion.OffHandSocketBone);
+                    var bowBones = renderer.bones.Where(bone => bone.name.StartsWith("Bow_", StringComparison.Ordinal)).ToArray();
+                    Assert.That(bowBones.Select(bone => bone.name), Is.EquivalentTo(BowRig.LimbBones.Concat(BowRig.StringBones)
+                        .Concat(new[] { "Bow_Riser", BowRig.NockBone })));
+                    Assert.That(bowBones.All(bone => bone.IsChildOf(socket)), Is.True, "the bow's bones lie below its socket");
+                    var riser = bowBones.Single(bone => bone.name == "Bow_Riser");
+                    var modelRiser = PlayerBodyMeshes.FindDescendant(catalogBow().Model.transform, "Bow_Riser");
+                    Assert.That((socket.InverseTransformPoint(riser.position) - catalogBow().Model.transform.InverseTransformPoint(modelRiser.position)).magnitude,
+                        Is.LessThan(1e-4f), "the riser stands on the socket as on the model's root");
+                    var animator = body.GetComponent<Animator>();
+                    Assert.That(animator.GetLayerWeight(animator.GetLayerIndex(HumanLocomotion.OffHandGripLayer)), Is.EqualTo(1f));
+                    Assert.That(animator.GetLayerWeight(animator.GetLayerIndex(HumanLocomotion.MainHandGripLayer)), Is.EqualTo(0f));
+
+                    appearance.ApplyLook(BodyLook.Default, materials);
+                    Assert.That(renderer.sharedMesh, Is.SameAs(unarmed));
+                    Assert.That(body.GetComponentsInChildren<Transform>(true).Any(bone => bone.name.StartsWith("Bow_", StringComparison.Ordinal)), Is.False);
+                    Assert.That(appearance.Bow, Is.Null);
+                }
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(scene);
+            }
+
+            BodyAppearanceCatalog.Attachment catalogBow()
+            {
+                return AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(BodyCatalogPaths[0]).AttachmentNamed("TrainingShortbow");
+            }
         }
 
         [Test]

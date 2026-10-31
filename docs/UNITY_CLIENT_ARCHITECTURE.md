@@ -1640,22 +1640,53 @@ garment of the hair slot. `RealtimeSimulationClient` keeps the latest
   the pin on both bodies through both swings, and `PlayerBodyToolPlayModeTests`
   the real body swinging, walking, and putting the tool away in Play Mode. The
   Wardrobe plays `Mine` and `Chop` with the pin.
-- **Weapons with clips.** A weapon in the main hand that is no tool, such as the
-  Oak Staff, may name a hold clip, an attack clip, and a launch point.
-  `PlayerBodyAppearance` tells `CharacterLocomotionAnimator` the hold clip,
-  `HoldStaff`, which plays in the state of its name on the layer `MainHandHold`,
-  masked to the right arm, at full weight while the body lives and uses no tool;
-  bodies without such a weapon never touch the layer. `PlayerBodyAppearance.PlayAttack`
-  plays the weapon's attack clip, `Cast`, once on the layer `Action`, masked to
-  the spine, head, and both arms without the fingers, fading in over 0.06 s and
-  out over 0.15 s, ended early when the body dies or moves; `ActionWeight` is its
-  share of the pose. `TryGetLaunchPoint` gives where the weapon's projectile
-  leaves it now, the launch point on the main hand's socket bone.
-  `WeaponClipTests` covers the layers, their masks, the states, and both bodies
-  holding the staff upright and thrusting it forward, and
-  `PlayerBodyWeaponPlayModeTests` the real body holding the staff and casting
-  once in Play Mode. The Wardrobe holds a weapon in its pose the same way and
-  plays its attack clip with the motion `Cast`.
+- **Weapons with clips.** The weapon of a body is the main hand's attachment
+  that is no tool, such as the Oak Staff, or else one in the off hand with an
+  attack clip, such as the Training Shortbow; it may name a hold clip, an attack
+  clip with the seconds into it when it releases, and a launch point.
+  `PlayerBodyAppearance` tells `CharacterLocomotionAnimator` the hold clip of
+  each hand, which plays in the state of its name on the layer `MainHandHold` or
+  `OffHandHold`, masked to that arm, at full weight while the body lives and uses
+  no tool; bodies without such a weapon never touch the layers.
+  `PlayerBodyAppearance.PlayAttack` plays the weapon's attack clip, or
+  `OneHandStrike` for a melee weapon in one main hand without a clip of its own,
+  once on the layer `Action`, masked to the root, the spine, head, legs, and arms
+  without the fingers, so the clip's steps and the turn of its hips play too. It
+  starts the clip as if `HumanLocomotion.AttackClipTime` seconds of it had
+  passed, so the clip comes to its release when the attack releases: a negative
+  time waits that long, and a late start never passes the release. The clip
+  fades in over 0.06 s from where it starts to show and out over 0.15 s;
+  `StopAttack` ends it with the fade or drops one that waits, and a body that
+  dies ends it at once, or starts to move during it ends it with the fade.
+  `ActionWeight` is its share of the pose, and `IsPlayingAttack` says whether
+  it plays and how far in. With the attack's target, `Face` turns the body below
+  its character toward the target while it stands and the clip plays and for
+  `FacingHoldSeconds` after, at `FacingDegreesPerSecond`, and back once it
+  moves. `TryGetLaunchPoint` gives where the weapon's
+  projectile leaves it now, the launch point on its socket bone. While the attack
+  clip of a weapon whose attack takes both hands plays, such as `GreataxeSwing`,
+  `PinOffHand` holds the other hand on its `offHandGrip` wherever the clip brings
+  that hand within `OffHandToolGrip.NearMeters`, fading out by `FarMeters`, and
+  closes that hand by the same weight. A skinned attachment, such as the bow,
+  keeps its own bones, which the body copies below the socket from the model,
+  binds the combined mesh to, and destroys when it lets go of it. For the bow,
+  `BowRig` drives them in `LateUpdate` while `BowShot` plays before its release:
+  the drawing arm reaches for the resting string and draws it along the arrow's
+  line with the arm solver of `OffHandToolGrip.Place`, the nock follows the
+  main hand's socket, the limbs bend from the end pose of the bow's clip `Draw`
+  by how far the string comes back toward its `drawLength`, each half of the
+  string aims at the nock and stretches, and the main hand closes on the string;
+  `Loose` lets the string spring back to brace. `TryGetNockedArrow` gives where an
+  arrow lies on the string. `WeaponClipTests` covers the layers, their masks,
+  the states, the release of every attack clip against its weapon family's
+  windup, both bodies holding the staff upright and thrusting it forward, both
+  bodies drawing the bow to the face and loosing, and the other hand taking the
+  greataxe's haft; `ItemAttachmentTests` covers the bow's bones below the socket;
+  and `PlayerBodyWeaponPlayModeTests` the real body holding the staff, casting
+  once, waiting for a long windup, ending a cancelled cast, and facing its target
+  and turning back in Play Mode. The
+  Wardrobe holds a weapon in its pose the same way and plays its attack clip with
+  the motion `Cast`.
 - **A dying body keeps its clothes.** While a body shows its character dead,
   `WorldSceneContext` keeps every new look for it and shows the last one once the
   body lives again, since its items lie in its corpse already.
@@ -2237,17 +2268,25 @@ it takes a raycast, so it never blocks a world click. It shows:
 on the body of every player who dies in view, as described in
 [Player Bodies](#player-bodies).
 
-`CombatProjectilePresentation` in `Mmorpg.Client.Combat` presents every
-`AttackReleased` event. The attacker's body plays its weapon's attack clip, so
-everyone who sees a caster sees `Cast`. For an event whose impact tick lies
-after its batch tick, so not for a Mob bite, a projectile flies from the
-attacker to the target: for a `Ranged` attack a simple arrow, a collider-free
-stretched cube, and for a `Magic` attack a glowing blue-white bolt of three
-emissive spheres that leaves from the weapon's launch point, such as the staff's
-crystal, 0.15 s after the release, when the thrust of `Cast` carries it forward,
-and at most halfway through its flight. It follows the target and lands at the
-impact tick by `CombatServerClock`; a projectile that already landed is not
-drawn.
+`CombatProjectilePresentation` in `Mmorpg.Client.Combat` presents every attack
+event. For `AttackStarted` the attacker's body plays its weapon's attack clip,
+timed by `CombatProjectileRules.SecondsUntilRelease`, the seconds from the
+event's batch tick to its release tick, so the clip comes to its release as the
+batch of the release arrives; everyone who sees a caster sees `Cast`. An archer's
+`Ranged` attack gets a shot: while the drawing hand holds the string, an arrow
+lies on it, and once the bow looses it waits there for its release, briefly.
+`AttackCancelled` ends the clip and takes the arrow away. For `AttackReleased`
+the body looses, a creature with clips of its own bites, and for an event whose
+impact tick lies after its batch tick, so not for a Mob bite, a projectile flies
+from the attacker to the target: for a `Ranged` attack the arrow, from the string
+where it lies or else from the weapon's launch point, the model `ClientConfig`
+names, the Bronze Arrow, for every weapon that shoots arrows, and for a `Magic`
+attack a glowing blue-white bolt of three emissive spheres that leaves from the
+weapon's launch point, such as the staff's crystal, when the thrust of `Cast`
+carries it forward. It follows the target and lands at the impact tick by
+`CombatServerClock`; a projectile that already landed is not drawn. The component
+runs its `LateUpdate` after the bodies posed and drew their strings,
+`PresentationExecutionOrder.Projectiles`.
 
 The equipped ammunition slot of `TemporaryInventoryPanel` shows the live arrow
 count from `OwnerCombatState` when its `AmmunitionItemInstanceId` names the

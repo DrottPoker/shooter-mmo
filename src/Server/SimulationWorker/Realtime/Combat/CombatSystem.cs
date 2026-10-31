@@ -15,14 +15,21 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // Owns target-based combat on the realtime loop. A character picks a target once and
 // attacks on its weapon's cooldown whenever it stands still in range with line of sight,
-// a weapon, matching arrows, and for magic enough mana. Arrows and bolts fly and hit at
-// their impact tick; damage that reaches 0 kills, a dead character respawns after the
-// respawn delay at the World spawn, and a character out of combat regenerates health and
-// mana. A Mob attacks the target its brain chose once the brain stands ready in range,
+// a weapon, matching arrows, and for magic enough mana. An attack starts on the cooldown
+// and releases its blow, arrow, or bolt when its weapon family's windup ends; whatever would
+// keep a new attack from starting, such as a step, cancels it in its windup. Arrows and
+// bolts fly and hit at their impact tick; damage that reaches 0 kills, a dead character
+// respawns after the respawn delay at the World spawn, and a character out of combat
+// regenerates health and mana. A Mob attacks the target its brain chose once the brain stands ready in range,
 // takes damage, dies, leaves loot, and respawns.
 // Every change reaches clients at the end of the tick. Loop-confined.
 internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunitionSource
 {
+    // An attack in its windup keeps its target while the target stays within a quarter more than
+    // the weapon's range, so a target that walks on a little, such as a patrolling wolf, does not
+    // cancel it; a new attack needs the range itself.
+    internal const float WindupRangeLeeway = 0.25f;
+
     private readonly SimulationWorkerConfig config;
     private readonly CombatRules rules;
     private readonly RealtimeSimulationClock clock;
@@ -360,6 +367,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             return;
         }
 
+        CancelPendingAttack(attacker);
         attacker.TargetEntityId = targetEntityId;
         attacker.AttackStatus = targetEntityId == 0
             ? RealtimeCombatAttackStatus.Idle
@@ -381,6 +389,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         TrackEquipmentChange(attacker, itemState, serverTick);
         if (attacker.TargetEntityId == 0)
         {
+            CancelPendingAttack(attacker);
             return;
         }
 
@@ -393,20 +402,65 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         }
 
         var loadout = itemCatalog.Resolve(itemState);
-        var status = DetermineStatus(attacker, combatSession, loadout, target, serverTick, out var distance);
+        var status = DetermineStatus(attacker, combatSession, loadout, target, serverTick, attacker.Pending is not null, out var distance);
         SetAttackStatus(attacker, status);
+        if (attacker.Pending is { } pending)
+        {
+            // An attack in its windup releases when the windup ends. Whatever would keep a new
+            // attack from starting, such as a step, ends it first, except a target that walked on
+            // within the windup's range leeway.
+            if (status != RealtimeCombatAttackStatus.Attacking || pending.TargetEntityId != target.EntityId)
+            {
+                CancelPendingAttack(attacker);
+            }
+            else if (CombatTicks.IsReached(serverTick, pending.ReleaseTick))
+            {
+                attacker.Pending = null;
+                ReleasePlayerAttack(attacker, combatSession, loadout, target, distance, serverTick);
+            }
+
+            return;
+        }
+
         if (status != RealtimeCombatAttackStatus.Attacking
             || !CombatTicks.IsReached(serverTick, attacker.NextAttackTick))
         {
             return;
         }
 
+        // The attack starts now, and its interval with it, so a windup leaves the damage per
+        // second as it was. The attack clip plays from here; the blow, arrow, or bolt waits.
+        var attack = loadout.Attack!;
+        attacker.NextAttackTick = serverTick + attack.IntervalTicks;
+        attacker.MarkOwnerStateChanged();
+        EnterCombat(attacker, serverTick);
+        var releaseTick = serverTick + attack.WindupTicks;
+        replicator.AttackStarted(attacker.EntityId, target.EntityId, releaseTick, attack.CombatStyle);
+        if (attack.WindupTicks == 0)
+        {
+            ReleasePlayerAttack(attacker, combatSession, loadout, target, distance, serverTick);
+            return;
+        }
+
+        attacker.Pending = new PendingAttack(target.EntityId, serverTick, releaseTick, attack.CombatStyle);
+    }
+
+    // The arrow and the mana are spent when the attack releases, not when it starts.
+    private void ReleasePlayerAttack(
+        Combatant attacker,
+        PlayerCombatSession combatSession,
+        PlayerCombatLoadout loadout,
+        Combatant target,
+        float distance,
+        uint serverTick)
+    {
         var attack = loadout.Attack!;
         var ammunitionBonus = 0;
         if (attack.ConsumesAmmunition)
         {
             if (!authority.TrySpendArrow(combatSession, loadout.Ammunition))
             {
+                replicator.AttackCancelled(attacker.EntityId, target.EntityId, attack.CombatStyle);
                 SetAttackStatus(attacker, RealtimeCombatAttackStatus.AmmunitionMissing);
                 return;
             }
@@ -422,10 +476,22 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             attacker.MarkOwnerStateChanged();
         }
 
-        attacker.NextAttackTick = serverTick + attack.IntervalTicks;
-        attacker.MarkOwnerStateChanged();
-        EnterCombat(attacker, serverTick);
         Release(attacker, target, attack, ammunitionBonus, distance, serverTick);
+    }
+
+    // An attack that ends in its windup never happened: nothing is spent, and the next one may
+    // start as soon as the attacker stands ready again.
+    private void CancelPendingAttack(Combatant attacker)
+    {
+        if (attacker.Pending is not { } pending)
+        {
+            return;
+        }
+
+        attacker.Pending = null;
+        attacker.NextAttackTick = pending.StartTick;
+        attacker.MarkOwnerStateChanged();
+        replicator.AttackCancelled(attacker.EntityId, pending.TargetEntityId, pending.CombatStyle);
     }
 
     // A Mob bites its brain's target once the brain stands ready, the target is within its
@@ -465,6 +531,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         PlayerCombatLoadout loadout,
         Combatant target,
         uint serverTick,
+        bool inWindup,
         out float distance)
     {
         distance = 0f;
@@ -494,14 +561,16 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         var origin = movement.State.Position;
         var bounds = BoundsOf(target);
         distance = bounds.DistanceFrom(origin);
-        if (distance > loadout.Attack!.Range)
+        if (distance > loadout.Attack!.Range * (inWindup ? 1f + WindupRangeLeeway : 1f))
         {
             return RealtimeCombatAttackStatus.OutOfRange;
         }
 
-        // Line of sight costs a raycast, so it is checked when an attack is due and a few
-        // times per second otherwise.
-        var attackDue = CombatTicks.IsReached(serverTick, attacker.NextAttackTick);
+        // Line of sight costs a raycast, so it is checked when an attack is due to start or to
+        // release and a few times per second otherwise; a release never looses through cover the
+        // target reached since the last check.
+        var attackDue = CombatTicks.IsReached(serverTick, attacker.NextAttackTick)
+            || (attacker.Pending is { } pending && CombatTicks.IsReached(serverTick, pending.ReleaseTick));
         if (attackDue
             || attacker.LineOfSightTargetEntityId != target.EntityId
             || CombatTicks.IsReached(serverTick, attacker.NextLineOfSightCheckTick))
@@ -643,6 +712,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
 
     private void MarkDead(Combatant dead, uint serverTick)
     {
+        CancelPendingAttack(dead);
         dead.Health = 0;
         dead.LifeState = RealtimeCombatLifeState.Dead;
         dead.TargetEntityId = 0;

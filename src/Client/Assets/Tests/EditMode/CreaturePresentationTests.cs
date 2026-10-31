@@ -28,6 +28,29 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A build that changes nothing rewrites nothing: the controller, the prefabs, and the
+        // Feral Alpha's material stay exactly as they are on disk.
+        [Test]
+        public void BuildingTheCreaturesAgainRewritesNothing()
+        {
+            var paths = new[]
+            {
+                CreaturePresentationBuilder.WolfController,
+                CreaturePresentationBuilder.FeralWolfPrefab,
+                CreaturePresentationBuilder.FeralAlphaPrefab,
+                CreaturePresentationBuilder.FeralAlphaMaterial,
+            };
+            var before = paths.Select(path => System.IO.File.ReadAllText(path) + System.IO.File.ReadAllText(path + ".meta")).ToArray();
+
+            CreaturePresentationBuilder.Build();
+
+            for (var index = 0; index < paths.Length; index++)
+            {
+                var after = System.IO.File.ReadAllText(paths[index]) + System.IO.File.ReadAllText(paths[index] + ".meta");
+                Assert.That(after, Is.EqualTo(before[index]), paths[index] + " was rewritten");
+            }
+        }
+
         [Test]
         public void TheWolfControllerBlendsWalkAndRunBySpeedAndStandsInIdle()
         {

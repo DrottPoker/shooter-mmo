@@ -354,9 +354,9 @@ dotnet run --project tools/ProtocolGenerator --configuration Release
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 ```
 
-Expected result: both commands report realtime protocol version 24 with 38
-messages and 18 generated files, and the second prints
-`Realtime protocol version 24 verified: 38 messages, 18 generated files.`
+Expected result: both commands report realtime protocol version 29 with 41
+messages and 20 generated files, and the second prints
+`Realtime protocol version 29 verified: 41 messages, 20 generated files.`
 The first command rewrites only changed files and removes files that the schema
 no longer produces. The second fails and names the file when a generated file
 is stale, missing, or not produced by the schema. Commit the schema,
@@ -1907,7 +1907,9 @@ Stop GameService and SimulationWorker when you are done.
 Protocol 18 adds target-based combat to SimulationWorker: attack targets,
 attack timing, arrows and their batches, damage, player and Mob death, Mob loot
 and respawn, player respawn, regeneration, and the Shard rule. Protocol 28 adds
-mana, magic attacks, and the style of a released attack. Unity attacks
+mana, magic attacks, and the style of a released attack, and protocol 29 the
+windup of an attack: it starts at once and releases when its weapon family's
+windup ends, and a step in the windup cancels it. Unity attacks
 with a left click and shows the combat with temporary presentation, and Mobs
 detect, chase, bite, and evade home as
 [Mob Brains](SERVICE_FEATURES.md#mob-brains) describes. The worker's
@@ -1928,8 +1930,11 @@ a leave, after a disconnect, and behind a batch that finished while the worker
 stopped, an equipment change holds attacks for the lockout, only the lethal
 arrow of a volley hits and takes the kill, a wolf without a corpse despawns
 after its death reached the viewer, a synthetic bot is no target, a caster
-spends 5 mana per bolt until it waits with `NotEnoughMana`, and health and mana
-regenerate only out of combat, after which the caster casts again. The Mob
+spends 5 mana per bolt until it waits with `NotEnoughMana`, health and mana
+regenerate only out of combat, after which the caster casts again, an arrow
+leaves and is spent exactly when the bow's windup ends, a step in the windup
+cancels the attack without spending an arrow, and a target that walks on in the
+windup is hit within a quarter more than the range and cancels it beyond. The Mob
 tests show a wolf that detects, chases, and bites a player and comes to rest
 next to it, a wolf that kills a player as the recorded killer, a wolf that
 evades home past its leash and heals fully, a defensive wolf that fights only
@@ -1993,8 +1998,31 @@ Play the combat loop on the local stack:
     panel shows the Mob and combat phases, and the `Arrows and deaths` panel
     shows the committed arrow batches.
 
+Watch the weapons' attacks on the same stack:
+
+1. With the Training Shortbow and the Bronze Arrows equipped, attack a wolf from
+   about 9 m and watch the character. Expected result: the character holds the
+   bow in the left hand, turns into an archer's stance with the right foot back,
+   takes the string with the right hand, and draws it to the jaw while the bow
+   bends and an arrow lies on the string; at the loose, 0.8 s after the attack
+   starts, the string springs back and that arrow flies on to the wolf, where
+   the damage number rises. Click the ground right after the shot. Expected
+   result: the character walks away while the arrow still flies and hits.
+2. Attack a wolf and click the ground during the draw, before the loose.
+   Expected result: the attack ends with a short fade, the arrow on the string
+   disappears, no arrow flies, and the arrow count stays the same.
+3. Equip the Iron Greataxe from the `equipment` package in Main Hand and attack
+   a wolf. Expected result: the axe rests on the right shoulder, and every
+   attack is a two-handed swing whose blow lands as the damage number rises; the
+   left hand takes the haft during the swing and lets go after it.
+4. Equip the Iron Sword and attack a wolf. Expected result: every attack is a cut
+   with a step in, landing as the damage number rises.
+5. Watch these attacks from a second client. Expected result: it shows the same
+   clips, the drawn string, and the arrows.
+
 No manual Unity Editor steps are required. The combat client adds no scene,
-prefab, Inspector reference, input action, or asset; `ClientBootstrap` creates
+prefab, input action, or asset of its own; `ClientConfig` names the arrow model,
+`art/Projectiles/BronzeArrow`, which is committed, and `ClientBootstrap` creates
 the combat controllers, the targeting, the arrows, and the temporary combat HUD
 at runtime. The EditMode and PlayMode suites cover the click rules, the
 approach, the HUD values, the live arrow count, and the bootstrap:

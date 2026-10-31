@@ -656,7 +656,8 @@ Status: MVP implemented with temporary presentation
 - The General Store sells Bronze Arrow for `1`, Minor Healing Potion for `25`,
   Cooked Trout for `10`, Starter Pickaxe and Woodcutting Axe for `50` Gold
   each, the clothes, the
-  Iron Sword for `120`, and the Heater Shield for `80`, at 100 percent of each
+  Iron Sword for `120`, the Iron Greataxe for `180`, and the Heater Shield for
+  `80`, at 100 percent of each
   item's value, with unlimited stock. Each offer has a quantity field and a
   button that names the total, such as `Buy for 50 Gold`.
 - A purchase goes into carried storage. It first tops up existing stacks, then
@@ -755,15 +756,31 @@ Combat is target based and server authoritative:
   for the Training Shortbow, and attacks on the weapon's cooldown, every 2.4
   seconds for the shortbow, while it stands still. Moving between shots is
   allowed.
+- An attack starts at once and releases when its weapon family's windup ends:
+  the sword's blow lands after 0.35 s, the axe's after 0.6 s, the bow's arrow
+  leaves after 0.8 s, and the staff's bolt after 0.15 s. A step, a new target, or
+  anything else that would stop an attack before then cancels it: nothing is
+  spent, and the next attack may start at once. A target that walks on during
+  the windup is still hit while it stays within a quarter more than the weapon's
+  range. An arrow or a bolt in flight still hits when the character moves on.
 - Any other world option except `Examine`, or `Escape`, ends the attack.
 - A bow needs arrows of its family in the Ammunition slot. Every shot spends one
   arrow, even when it flies at a target that died, and the inventory shows the
   live arrow count. An equipment change holds attacks for 1 second.
-- The Iron Sword, the first melee weapon, hits at once at 2.5 m for 11 to 19
-  every 2.4 seconds and needs no ammunition. The Heater Shield goes in the off
-  hand and has no armor values yet. Both show in the hands of their wearer, as
-  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#attachments) describes;
-  the Training Shortbow takes both hands.
+- The Iron Sword, the first melee weapon, hits at 2.5 m for 11 to 19 every 2.4
+  seconds and needs no ammunition; every attack is a cut with a step in. The
+  Heater Shield goes in the off hand and has no armor values yet. Both show in
+  the hands of their wearer, as
+  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#attachments) describes.
+- The Iron Greataxe, an axe for both hands, hits at 2.5 m for 16 to 27 every 3
+  seconds; the General Store sells it for 180 gold. Its wearer rests it on the
+  right shoulder, and every attack is a two-handed swing.
+- The Training Shortbow takes both hands: the left holds the bow and the right
+  draws. Every attack turns the archer into a stance with the right foot back,
+  draws the string to the jaw with an arrow on it while the bow bends, and looses
+  that arrow at the release; everyone who sees the archer sees the shot. A melee
+  weapon in one hand without an attack of its own strikes with a step into a
+  blow.
 - The Oak Staff, the first magic weapon, takes both hands and casts a bolt of
   Normal damage for 10 to 18 every 2.4 seconds at up to 10 m. Every bolt costs 5
   mana when it leaves the staff, and a character has 100 mana. Without enough

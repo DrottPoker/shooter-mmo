@@ -50,6 +50,7 @@ namespace Mmorpg.WorldData.Items
         public string combatStyle;
         public string ammunitionFamily;
         public float projectileSpeed;
+        public float windupSeconds = -1f;
     }
 
     [Serializable]
@@ -319,7 +320,8 @@ namespace Mmorpg.WorldData.Items
                         DisplayName = family.displayName,
                         CombatStyle = family.combatStyle,
                         AmmunitionFamily = family.ammunitionFamily ?? string.Empty,
-                        ProjectileSpeed = family.projectileSpeed
+                        ProjectileSpeed = family.projectileSpeed,
+                        WindupSeconds = family.windupSeconds
                     })
                     .ToArray(),
                 AmmunitionFamilies = ConvertIdentities(ammunitionFamilies),

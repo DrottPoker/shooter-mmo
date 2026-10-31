@@ -10,6 +10,10 @@ namespace Mmorpg.Client.Gameplay
         // character moved and before the Animator evaluates.
         public const int Locomotion = 50;
 
+        // Projectiles and the arrows on archers' strings follow the weapons in LateUpdate, after the
+        // bodies posed their hands and drew their strings there.
+        public const int Projectiles = 60;
+
         public const int Camera = 100;
 
         // Cloth chains move in LateUpdate, after the Animator posed the bodies and the camera moved,

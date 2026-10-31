@@ -31,7 +31,7 @@
                 "body": "Male",
                 "bodyFitSha256": "29175725a4f4d8cf5744589cba740d2d9dad0dc7ad030cdd44ec699ae8d6e694",
                 "target": "src/Client/Assets/Art/Models/Garments/HoodUp_Male.fbx",
-                "sha256": "dacd17f6fda4cfce61ae0c85047777942dcbe5ddabda68beed1967dd4444af33",
+                "sha256": "c5157bbda60988f64fae5516ddfe28c48c8190cecd86569b5a337e8648ac989a",
                 "data": "src/Client/Assets/Art/Models/Garments/HoodUp_Male.json",
                 "dataSha256": "bce1b457a20898c79bcb7ba871e564ec79f3ae88e1d05b40fc5156ab77bdceba"
             },
@@ -39,13 +39,13 @@
                 "body": "Female",
                 "bodyFitSha256": "6844227c10b9c8fafdfeb9417b88d085e93c36af6e13ee531ef0aac7298f628d",
                 "target": "src/Client/Assets/Art/Models/Garments/HoodUp_Female.fbx",
-                "sha256": "995b4319af45fa0f9d8c1bef1b7a2d7a068dc8b211f26f00275ad6406b2d80f6",
+                "sha256": "49a513ac9dfbfbe1f23665d3a42d66eb2b1b1dbac1fab1581bc354d3b029664a",
                 "data": "src/Client/Assets/Art/Models/Garments/HoodUp_Female.json",
                 "dataSha256": "e948db930038e24e0b85106b3fa7da6353f779e502c5cc76b895c2d9a188c6e6"
             }
         ],
         "clipSources": [
-            { "library": "art/Animations/Human_Actions", "sourceSha256": "f2d25bfd5d777c3a6a48646bbb7dbdad8bb6095ef0741d4bc96bd2f7afc8d207" }
+            { "library": "art/Animations/Human_Actions", "sourceSha256": "f184d6e2e9d924cd1475b1d713d066a0f58a424c90ed470fcd68fe234d45d8b2" }
         ],
         "pairSources": [
             { "garment": "art/Garments/Boots", "sourceSha256": "3fe93d1c1f044d5a1c16a3b158ee33963a4b0ff8f2410d949d35f07ee2cb6aa7" },

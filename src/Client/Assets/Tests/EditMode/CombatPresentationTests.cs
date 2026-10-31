@@ -198,15 +198,17 @@ namespace Mmorpg.Client.Tests.EditMode
                 CombatProjectileRules.RemainingFlightSeconds(default(CombatServerClock), 109, 100, 0),
                 Is.Zero);
 
-            // A magic bolt leaves with the thrust of the cast, at most halfway through its flight;
-            // an arrow leaves at once.
-            Assert.That(
-                CombatProjectileRules.LaunchDelaySeconds(RealtimeCombatAttackStyle.Magic, 0.5f),
-                Is.EqualTo(CombatProjectileRules.MagicLaunchDelaySeconds));
-            Assert.That(
-                CombatProjectileRules.LaunchDelaySeconds(RealtimeCombatAttackStyle.Magic, 0.1f),
-                Is.EqualTo(0.05f).Within(0.0001f));
-            Assert.That(CombatProjectileRules.LaunchDelaySeconds(RealtimeCombatAttackStyle.Ranged, 0.5f), Is.Zero);
+        }
+
+        // A started attack releases at its release tick, counted from its own batch, so its clip
+        // strikes or looses as the batch of the release arrives.
+        [Test]
+        public void AStartedAttackReleasesAfterItsWindupFromItsBatch()
+        {
+            Assert.That(CombatProjectileRules.SecondsUntilRelease(124, 100, 30), Is.EqualTo(0.8f).Within(0.0001f));
+            Assert.That(CombatProjectileRules.SecondsUntilRelease(100, 100, 30), Is.Zero);
+            Assert.That(CombatProjectileRules.SecondsUntilRelease(9, uint.MaxValue - 20, 30), Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(CombatProjectileRules.SecondsUntilRelease(124, 100, 0), Is.Zero);
         }
 
         private static RealtimeCombatEvent Released(uint impactTick)

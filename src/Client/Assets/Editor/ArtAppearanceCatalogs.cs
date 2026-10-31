@@ -143,8 +143,12 @@ namespace Mmorpg.Client.Editor
                     && actual.OffHandGrip == expected.OffHandGrip
                     && actual.HoldClip == expected.HoldClip
                     && actual.AttackClip == expected.AttackClip
+                    && actual.AttackRelease == expected.AttackRelease
                     && actual.HasLaunchPoint == expected.HasLaunchPoint
-                    && actual.LaunchPoint == expected.LaunchPoint)
+                    && actual.LaunchPoint == expected.LaunchPoint
+                    && actual.Skeleton == expected.Skeleton
+                    && actual.Clips.SequenceEqual(expected.Clips)
+                    && actual.DrawLength == expected.DrawLength)
                     .All(same => same);
         }
 
@@ -167,7 +171,9 @@ namespace Mmorpg.Client.Editor
 
         // The attachments a body's sockets can hold, by name: every exported attachment whose socket
         // is a bone of the body's skeleton, with its model, for a tool its use clip and where the
-        // other hand holds it, and for a weapon its hold and attack clips and its launch point.
+        // other hand holds it, for a weapon its hold and attack clips, the moment its attack
+        // releases, where the other hand holds it, and its launch point, and for a skinned model,
+        // such as a bow, its skeleton, its clips, and its draw length.
         public static BodyAppearanceCatalog.Attachment[] AttachmentsFor(ArtAssetManifest body)
         {
             return ArtAssetManifests.Attachments()
@@ -194,8 +200,22 @@ namespace Mmorpg.Client.Editor
                             grip.Length == 3 ? ArtTopologyMaps.ToUnity(grip[0], grip[1], grip[2]) : (Vector3?)null,
                             attachment.holdClip,
                             attachment.attackClip,
-                            launch.Length == 3 ? ArtTopologyMaps.ToUnity(launch[0], launch[1], launch[2]) : (Vector3?)null);
+                            launch.Length == 3 ? ArtTopologyMaps.ToUnity(launch[0], launch[1], launch[2]) : (Vector3?)null,
+                            attachment.attackRelease,
+                            attachment.IsSkinned ? attachment.skeleton : null,
+                            attachment.IsSkinned ? ClipsOf(attachment) : null,
+                            attachment.drawLength);
                     }))
+                .ToArray();
+        }
+
+        // The clips a skinned attachment exports, imported from its model, in the manifest's order.
+        private static AnimationClip[] ClipsOf(ArtAssetManifest attachment)
+        {
+            var imported = AssetDatabase.LoadAllAssetsAtPath(attachment.UnityTargetPath).OfType<AnimationClip>().ToArray();
+            return (attachment.clips ?? Array.Empty<string>())
+                .Select(name => imported.FirstOrDefault(clip => clip.name == name)
+                    ?? throw new InvalidOperationException(attachment.path + ": the model has no imported clip " + name + "."))
                 .ToArray();
         }
 

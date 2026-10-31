@@ -130,7 +130,8 @@ namespace Mmorpg.WorldData.Items
                             DisplayName = family.DisplayName,
                             CombatStyle = family.CombatStyle,
                             AmmunitionFamily = family.AmmunitionFamily,
-                            ProjectileSpeed = family.ProjectileSpeed
+                            ProjectileSpeed = family.ProjectileSpeed,
+                            WindupSeconds = family.WindupSeconds
                         })
                     .ToArray(),
                 AmmunitionFamilies = runtime.AmmunitionFamilies?.Select(CloneIdentity).ToArray(),

@@ -72,6 +72,9 @@
       "definitionId": "weapon.oak_staff"
     },
     {
+      "definitionId": "weapon.iron_greataxe"
+    },
+    {
       "definitionId": "armor.heater_shield"
     }
   ],

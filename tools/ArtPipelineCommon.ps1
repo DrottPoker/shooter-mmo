@@ -1908,12 +1908,13 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
 
     # An attachment, such as a weapon or a shield, is a static asset held on a socket of a skeleton,
     # named as the socket's bone names it, such as main_hand, with one root object Grip where it is
-    # held. A root Grip makes an attachment.
+    # held. A root Grip makes an attachment. An attachment with moving parts of its own, such as a
+    # bow's limbs and string, is a skinned asset whose rig makes Grip its armature.
     $socket = $null
     if ($null -ne $json.PSObject.Properties['socket']) {
         $socket = Get-ArtSocket ([string]$json.socket)
-        if ($kind -ne "static") {
-            $problems.Add("only a static asset has a socket")
+        if (@("static", "skinned") -cnotcontains $kind) {
+            $problems.Add("only a static or skinned asset has a socket")
         }
         elseif ($null -eq $socket) {
             $problems.Add("socket must name a socket of a skeleton in art/Skeletons, such as main_hand")
@@ -1929,7 +1930,8 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
 
     # A tool, such as a pickaxe, is an attachment held only while a body uses it: it names the clip of
     # an animation library of its socket's skeleton that the body plays meanwhile, and a tool held in
-    # both hands names where on it the other hand holds it, in the socket's axes.
+    # both hands names where on it the other hand holds it, in the socket's axes. So does a weapon that
+    # its attack takes in both hands, such as a greataxe.
     $useClip = $null
     if ($null -ne $json.PSObject.Properties['useClip']) {
         $useClip = [string]$json.useClip
@@ -1946,8 +1948,9 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
     if ($null -ne $json.PSObject.Properties['offHandGrip']) {
         $values = @($json.offHandGrip)
         $numbers = @($values | Where-Object { $_ -is [int] -or $_ -is [long] -or $_ -is [double] -or $_ -is [decimal] })
-        if ($null -eq $socket -or [string]$json.socket -cne "main_hand" -or $null -eq $useClip) {
-            $problems.Add("only a tool with a useClip held on main_hand has an offHandGrip")
+        if ($null -eq $socket -or [string]$json.socket -cne "main_hand" -or
+            ($null -eq $useClip -and $null -eq $json.PSObject.Properties['attackClip'])) {
+            $problems.Add("only a tool with a useClip or a weapon with an attackClip, held on main_hand, has an offHandGrip")
         }
         elseif ($values.Count -ne 3 -or $numbers.Count -ne 3 -or
             @($numbers | Where-Object { [Math]::Abs([double]$_) -gt 2.0 }).Count -gt 0) {
@@ -1958,10 +1961,11 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         }
     }
 
-    # A weapon held on main_hand may name the pose its arm holds it in, such as HoldStaff, and the
-    # clip its body plays once whenever its attack releases, such as Cast, both clips of an
-    # animation library of its socket's skeleton. A weapon with an attack clip may name where on it
-    # the projectile of its attack leaves, in the socket's axes.
+    # A weapon held in a hand, on main_hand or, like a bow in the left hand, on off_hand, may name the
+    # pose its arm holds it in, such as HoldStaff, and the clip its body plays once whenever its
+    # attack starts, such as Cast, both clips of an animation library of its socket's skeleton. A
+    # weapon with an attack clip may name where on it the projectile of its attack leaves, in the
+    # socket's axes.
     $weaponClips = @{}
     foreach ($field in @("holdClip", "attackClip")) {
         $weaponClips[$field] = $null
@@ -1970,8 +1974,8 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         }
 
         $clip = [string]$json.$field
-        if ($null -eq $socket -or [string]$json.socket -cne "main_hand" -or $null -ne $useClip) {
-            $problems.Add("only an attachment held on main_hand that is not a tool has a $field")
+        if ($null -eq $socket -or @("main_hand", "off_hand") -cnotcontains [string]$json.socket -or $null -ne $useClip) {
+            $problems.Add("only an attachment held on main_hand or off_hand that is not a tool has a $field")
         }
         elseif ($clip -cnotmatch '^[A-Za-z][A-Za-z0-9_]*$' -or
             @(Get-ArtClipLibraries $socket.Skeleton | Where-Object { $_.Clips -ccontains $clip }).Count -eq 0) {
@@ -1996,6 +2000,51 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         else {
             $launchPoint = [double[]]@($numbers | ForEach-Object { [double]$_ })
         }
+    }
+
+    # A weapon with an attack clip names the moment in the clip, in seconds, when its blow lands or
+    # its arrow or bolt leaves, so a client plays the clip to strike or loose when the server's
+    # windup of the weapon family releases the attack.
+    $attackRelease = $null
+    if ($null -ne $json.PSObject.Properties['attackRelease']) {
+        $value = $json.attackRelease
+        if ($null -eq $json.PSObject.Properties['attackClip']) {
+            $problems.Add("only an attachment with an attackClip has an attackRelease")
+        }
+        elseif (-not ($value -is [int] -or $value -is [long] -or $value -is [double] -or $value -is [decimal]) -or
+            [double]$value -le 0.0 -or [double]$value -gt 10.0) {
+            $problems.Add("attackRelease must be the seconds into the attack clip when it strikes or looses, above 0 and at most 10, such as 0.35")
+        }
+        else {
+            $attackRelease = [double]$value
+        }
+    }
+    elseif ($null -ne $weaponClips["attackClip"]) {
+        $problems.Add("an attachment with an attackClip names its attackRelease, the seconds into the clip when it strikes or looses")
+    }
+
+    # A skinned weapon that shoots, such as a bow, names how far behind its launch point the nock of
+    # its string comes at the end of its clip Draw, which bends it from brace to full draw, so a client
+    # bends it by how far the drawing hand pulls the string.
+    $drawLength = $null
+    if ($null -ne $json.PSObject.Properties['drawLength']) {
+        $value = $json.drawLength
+        if ($kind -cne "skinned" -or $null -eq $launchPoint) {
+            $problems.Add("only a skinned attachment with a launchPoint has a drawLength")
+        }
+        elseif (-not ($value -is [int] -or $value -is [long] -or $value -is [double] -or $value -is [decimal]) -or
+            [double]$value -le 0.0 -or [double]$value -gt 2.0) {
+            $problems.Add("drawLength must be the meters behind the launchPoint that the nock comes at full draw, above 0 and at most 2, such as 0.62")
+        }
+        elseif (@($json.clips) -cnotcontains "Draw") {
+            $problems.Add("a skinned attachment with a drawLength has a clip Draw that bends it from brace to full draw")
+        }
+        else {
+            $drawLength = [double]$value
+        }
+    }
+    elseif ($kind -ceq "skinned" -and $null -ne $launchPoint) {
+        $problems.Add("a skinned attachment with a launchPoint names its drawLength, the meters behind it that the nock comes at full draw")
     }
 
     # A skinned asset and an animation library name their shared skeleton and the animation clips
@@ -2230,7 +2279,9 @@ function Read-ArtAssetManifest([string]$AssetDirectory, [switch]$AllowMissingSou
         OffHandGrip = $offHandGrip
         HoldClip = $weaponClips["holdClip"]
         AttackClip = $weaponClips["attackClip"]
+        AttackRelease = $attackRelease
         LaunchPoint = $launchPoint
+        DrawLength = $drawLength
         Skeleton = $skeleton
         SkeletonPath = $skeletonPath
         Rig = $rig
@@ -2312,9 +2363,19 @@ function Write-ArtAssetManifest($Manifest) {
         $lines.Add("    `"attackClip`": `"$($Manifest.AttackClip)`",")
     }
 
+    if ($null -ne $Manifest.AttackRelease) {
+        $release = ([double]$Manifest.AttackRelease).ToString("0.0###", [System.Globalization.CultureInfo]::InvariantCulture)
+        $lines.Add("    `"attackRelease`": $release,")
+    }
+
     if ($null -ne $Manifest.LaunchPoint) {
         $point = (@($Manifest.LaunchPoint) | ForEach-Object { ([double]$_).ToString("0.0###", [System.Globalization.CultureInfo]::InvariantCulture) }) -join ", "
         $lines.Add("    `"launchPoint`": [$point],")
+    }
+
+    if ($null -ne $Manifest.DrawLength) {
+        $length = ([double]$Manifest.DrawLength).ToString("0.0###", [System.Globalization.CultureInfo]::InvariantCulture)
+        $lines.Add("    `"drawLength`": $length,")
     }
 
     if ($script:ArtAnimatedKinds -contains $Manifest.Kind) {

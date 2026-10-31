@@ -37,8 +37,8 @@ namespace Mmorpg.Client.Editor
             // The tools' clips, played standing; the other hand holds a tool held with both hands.
             Mine,
             Chop,
-            // The attack clip of the weapon in the main hand, such as Cast, played standing over its
-            // hold pose and started again whenever it ends.
+            // The attack clip of the weapon, such as Cast, played standing over its hold pose and
+            // started again whenever it ends; a bow draws its string and a greataxe takes both hands.
             Cast,
         }
 
@@ -60,6 +60,7 @@ namespace Mmorpg.Client.Editor
         private readonly Dictionary<ClothChainKind, ClothProfile> tuned = new Dictionary<ClothChainKind, ClothProfile>();
         private uint networkTick;
         private Scene scene;
+        private BowRig.DrawingArm drawingArm;
 
         public WardrobePreview(ArtAssetManifest body)
             : this(
@@ -252,26 +253,37 @@ namespace Mmorpg.Client.Editor
             PinOffHand();
         }
 
-        // A weapon with a hold clip, such as the Oak Staff, keeps the main hand's arm in that pose
-        // while the body lives and uses no tool, and Cast plays its attack clip over the pose, as
-        // the game layers them.
+        // A weapon with a hold clip, such as the Oak Staff, keeps its hand's arm in that pose while
+        // the body lives and uses no tool, such as the bow's left arm, and Cast plays its attack
+        // clip over the pose, as the game layers them.
         private void HoldWeapon(Motion motion)
         {
             var weapon = appearance.Weapon;
-            var holds = weapon != null && weapon.HoldClip.Length > 0 && motion != Motion.Death && UseClipOf(motion) == null;
-            var holdLayer = animator.GetLayerIndex(HumanLocomotion.MainHandHoldLayer);
-            if (holdLayer >= 0)
+            var stands = weapon != null && motion != Motion.Death && UseClipOf(motion) == null;
+            var holds = stands && weapon.HoldClip.Length > 0;
+            var offHand = weapon != null && weapon.Bone == HumanLocomotion.OffHandSocketBone;
+            foreach (var (layerName, hand) in new[] { (HumanLocomotion.MainHandHoldLayer, false), (HumanLocomotion.OffHandHoldLayer, true) })
             {
-                animator.Play(holds ? weapon.HoldClip : HumanLocomotion.EmptyState, holdLayer, 0f);
-                animator.SetLayerWeight(holdLayer, holds ? 1f : 0f);
+                var holdLayer = animator.GetLayerIndex(layerName);
+                if (holdLayer >= 0)
+                {
+                    var here = holds && offHand == hand;
+                    animator.Play(here ? weapon.HoldClip : HumanLocomotion.EmptyState, holdLayer, 0f);
+                    animator.SetLayerWeight(holdLayer, here ? 1f : 0f);
+                }
             }
 
-            var casts = holds && motion == Motion.Cast && weapon.AttackClip.Length > 0;
+            var casts = stands && motion == Motion.Cast && weapon.AttackClip.Length > 0;
             var actionLayer = animator.GetLayerIndex(HumanLocomotion.ActionLayer);
             if (actionLayer >= 0)
             {
                 animator.Play(casts ? weapon.AttackClip : HumanLocomotion.EmptyState, actionLayer, 0f);
                 animator.SetLayerWeight(actionLayer, casts ? 1f : 0f);
+            }
+
+            if (appearance.Bow != null)
+            {
+                appearance.Bow.StartShot();
             }
         }
 
@@ -293,10 +305,33 @@ namespace Mmorpg.Client.Editor
         }
 
         // After the Animator posed the body, the other hand holds a tool held with both hands while
-        // its clip plays, as the game pins it.
-        private void PinOffHand()
+        // its clip plays, and a weapon whose attack takes both hands where its attack clip brings
+        // that hand, and the drawing hand draws a bow's string until the loose, as the game does.
+        private void PinOffHand(float deltaTime = 0f)
         {
-            appearance.PinOffHand(UseClipOf(Playing) != null && Stress == null ? 1f : 0f);
+            var uses = UseClipOf(Playing) != null;
+            var casts = Playing == Motion.Cast && appearance.Weapon != null && appearance.Weapon.AttackClip.Length > 0;
+            appearance.PinOffHand((uses || casts) && Stress == null ? 1f : 0f);
+            var bow = appearance.Bow;
+            var actionLayer = animator.GetLayerIndex(HumanLocomotion.ActionLayer);
+            if (bow == null || actionLayer < 0)
+            {
+                return;
+            }
+
+            var state = animator.GetCurrentAnimatorStateInfo(actionLayer);
+            var drawing = casts && Stress == null && animator.GetLayerWeight(actionLayer) > 0f;
+            if (drawing && state.normalizedTime * state.length >= appearance.Weapon.AttackRelease)
+            {
+                bow.Loose();
+            }
+
+            if (drawingArm == null)
+            {
+                drawingArm = BowRig.DrawingArm.Find(animator, Body.transform);
+            }
+
+            bow.Update(drawing, drawingArm, deltaTime);
         }
 
         // Plays a stress motion from its start, its clips from their start, so every run of a motion
@@ -346,7 +381,7 @@ namespace Mmorpg.Client.Editor
             {
                 RepeatCast();
                 animator.Update(deltaTime);
-                PinOffHand();
+                PinOffHand(deltaTime);
             }
             Simulate(deltaTime, cameraOffset);
         }

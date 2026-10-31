@@ -14,11 +14,14 @@ namespace Mmorpg.Client.Gameplay
     // look without a tint draws with the body's own materials. A garment draws in the look's dye
     // colors or its natural ones. A garment with loose cloth lets the body's ClothChainSolver move
     // its chains. An attachment the look holds, such as a sword, is part of the combined renderer on
-    // its socket, and the fingers of a hand that holds one close around its grip. A tool the look
-    // holds, such as a pickaxe, makes the body play the tool's clip, and a tool held with both hands
-    // closes the other hand too and pins it on the tool. A weapon with a hold clip, such as a staff,
-    // keeps its arm in that pose, plays its attack clip when its attack releases, and names where
-    // its projectile leaves it.
+    // its socket, and the fingers of a hand that holds one close around its grip; the body holds the
+    // bones of a skinned one, such as a bow, below its socket. A tool the look holds, such as a
+    // pickaxe, makes the body play the tool's clip, and a tool held with both hands closes the other
+    // hand too and pins it on the tool. A weapon with a hold clip, such as a staff, keeps its arm in
+    // that pose, plays its attack clip when its attack starts, timed to strike when the attack
+    // releases, and names where its projectile leaves it. The other hand takes a weapon whose attack
+    // takes both hands, such as a greataxe, wherever the attack clip brings it to the haft, and the
+    // drawing hand of a body that holds a bow draws its string.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -50,8 +53,14 @@ namespace Mmorpg.Client.Gameplay
         private BodyAppearanceCatalog.Attachment tool;
         private BodyAppearanceCatalog.Attachment weapon;
         private Transform weaponSocket;
-        private ToolBones toolBones;
+        private ToolBones handBones;
         private CharacterLocomotionAnimator locomotion;
+        // The bones of the skinned attachments the body holds, by attachment, below their sockets.
+        private readonly Dictionary<string, Transform> heldBones = new Dictionary<string, Transform>(StringComparer.Ordinal);
+        private BowRig bow;
+        private BowRig.DrawingArm drawingArm;
+        private bool stringHeld;
+        private Animator bodyAnimator;
 
         public IReadOnlyList<Material> SkinMaterials
         {
@@ -93,22 +102,107 @@ namespace Mmorpg.Client.Gameplay
             get { return tool; }
         }
 
-        // The weapon in the main hand that is no tool, such as a staff, or null.
+        // The weapon the body attacks with, which is no tool: the main hand's, such as a staff, or
+        // else one in the off hand with an attack clip, such as a bow; or null.
         public BodyAppearanceCatalog.Attachment Weapon
         {
             get { return weapon; }
         }
 
-        // The body plays the attack clip of the weapon in its main hand once, such as Cast; false
-        // when it holds no weapon with one.
-        public bool PlayAttack()
+        // The rig of the bow the body holds, or null.
+        public BowRig Bow
         {
-            var body = Locomotion;
-            return weapon != null && weapon.AttackClip.Length > 0 && body != null && body.PlayAttack(weapon.AttackClip);
+            get { return bow; }
         }
 
-        // Where the projectile of the weapon in the main hand leaves it right now, such as the
-        // crystal of a staff; false when the body holds no weapon that names a launch point.
+        // The body plays its weapon's attack clip once, such as Cast, timed so that the clip strikes
+        // or looses when the attack releases, in secondsUntilRelease, and faces the target while it
+        // stands; a melee weapon in one main hand without a clip of its own plays OneHandStrike.
+        // False when the body holds no such weapon or cannot play the clip.
+        public bool PlayAttack(bool melee, float secondsUntilRelease, Transform target = null)
+        {
+            var body = Locomotion;
+            if (weapon == null || body == null)
+            {
+                return false;
+            }
+
+            string clip;
+            float release;
+            if (weapon.AttackClip.Length > 0)
+            {
+                clip = weapon.AttackClip;
+                release = weapon.AttackRelease;
+            }
+            else if (melee && !weapon.HoldsWithBothHands
+                && string.Equals(weapon.Bone, HumanLocomotion.MainHandSocketBone, StringComparison.Ordinal))
+            {
+                clip = HumanLocomotion.OneHandStrikeClip;
+                release = HumanLocomotion.OneHandStrikeReleaseSeconds;
+            }
+            else
+            {
+                return false;
+            }
+
+            if (!body.PlayAttack(clip, HumanLocomotion.AttackClipTime(release, secondsUntilRelease)))
+            {
+                return false;
+            }
+
+            if (target != null)
+            {
+                body.Face(target);
+            }
+
+            if (bow != null)
+            {
+                bow.StartShot();
+            }
+
+            return true;
+        }
+
+        // The body ends the attack clip it plays, or waits to play, as when the attack was cancelled
+        // before it released.
+        public void StopAttack()
+        {
+            var body = Locomotion;
+            if (body != null)
+            {
+                body.StopAttack();
+            }
+        }
+
+        // The drawing hand lets go of the string of the bow the body holds, as its arrow leaves.
+        public void Loose()
+        {
+            if (bow != null)
+            {
+                bow.Loose();
+            }
+        }
+
+        // Where an arrow lies on the string of the bow the body draws: the nock, the way the arrow
+        // points, and the way its cock vane points, away from the bow toward the body's left; false
+        // while no hand holds the string.
+        public bool TryGetNockedArrow(out Vector3 nock, out Vector3 forward, out Vector3 up)
+        {
+            up = Vector3.up;
+            if (bow == null || !bow.TryGetNock(out nock, out forward))
+            {
+                nock = default(Vector3);
+                forward = Vector3.forward;
+                return false;
+            }
+
+            var left = Vector3.ProjectOnPlane(-transform.right, forward);
+            up = left.sqrMagnitude > 0.0001f ? left.normalized : Vector3.up;
+            return true;
+        }
+
+        // Where the projectile of the weapon leaves it right now, such as the crystal of a staff;
+        // false when the body holds no weapon that names a launch point.
         public bool TryGetLaunchPoint(out Vector3 position)
         {
             position = default(Vector3);
@@ -213,16 +307,24 @@ namespace Mmorpg.Client.Gameplay
             Refresh();
         }
 
-        // The body plays the clip of the tool it holds, or stops playing one, and holds its weapon
-        // in the weapon's pose.
+        // The body plays the clip of the tool it holds, or stops playing one, and each hand's arm
+        // holds the attachment in it in its pose, such as a bow in the off hand's.
         private void UseTool()
         {
             var body = Locomotion;
             if (body != null)
             {
                 body.Use(tool != null ? tool.UseClip : null);
-                body.Hold(weapon != null ? weapon.HoldClip : null);
+                body.Hold(HoldClipOn(HumanLocomotion.MainHandSocketBone), HumanLocomotion.MainHandSocketBone);
+                body.Hold(HoldClipOn(HumanLocomotion.OffHandSocketBone), HumanLocomotion.OffHandSocketBone);
             }
+        }
+
+        private string HoldClipOn(string socketBone)
+        {
+            var holding = held.FirstOrDefault(attachment => !attachment.IsTool
+                && string.Equals(attachment.Bone, socketBone, StringComparison.Ordinal));
+            return holding != null ? holding.HoldClip : null;
         }
 
         // The garments of the catalog that the look names, from the lowest layer up, and its
@@ -249,12 +351,16 @@ namespace Mmorpg.Client.Gameplay
             }
 
             tool = held.FirstOrDefault(attachment => attachment.IsTool);
-            var mainHandWeapon = held.FirstOrDefault(attachment => !attachment.IsTool
-                && string.Equals(attachment.Bone, HumanLocomotion.MainHandSocketBone, StringComparison.Ordinal));
-            if (mainHandWeapon != weapon)
+            var heldWeapon = held.FirstOrDefault(attachment => !attachment.IsTool
+                    && string.Equals(attachment.Bone, HumanLocomotion.MainHandSocketBone, StringComparison.Ordinal))
+                ?? held.FirstOrDefault(attachment => !attachment.IsTool && attachment.AttackClip.Length > 0
+                    && string.Equals(attachment.Bone, HumanLocomotion.OffHandSocketBone, StringComparison.Ordinal));
+            if (heldWeapon != weapon)
             {
-                weapon = mainHandWeapon;
+                weapon = heldWeapon;
                 weaponSocket = null;
+                bow = null;
+                stringHeld = false;
             }
 
             var key = string.Join("+", worn.Select(garment => garment.Name))
@@ -269,6 +375,7 @@ namespace Mmorpg.Client.Gameplay
         private void Assemble()
         {
             var combined = meshes.For(parts, transform, catalog, worn, held);
+            HoldSkinnedBones();
             var transforms = new Dictionary<string, Transform>();
             foreach (var child in GetComponentsInChildren<Transform>(true))
             {
@@ -288,9 +395,57 @@ namespace Mmorpg.Client.Gameplay
             combinedRenderer.enabled = enabled;
             combinedRenderer.sharedMaterials = combined.Materials.ToArray();
             ownMaterials[combinedRenderer] = combined.Materials.ToArray();
+            if (bow == null && weapon != null && weapon.IsSkinned && heldBones.TryGetValue(weapon.Name, out var bones))
+            {
+                bow = BowRig.TryCreate(bones, bones.parent, weapon);
+            }
+
             MoveCloth();
             Grip();
             Refresh();
+        }
+
+        // The body holds the bones of every skinned attachment it holds, such as a bow's, below the
+        // attachment's socket, and lets go of the bones of those it holds no more.
+        private void HoldSkinnedBones()
+        {
+            foreach (var name in heldBones.Keys.ToArray())
+            {
+                if (held.Any(attachment => attachment.IsSkinned && attachment.Name == name))
+                {
+                    continue;
+                }
+
+                var bones = heldBones[name];
+                heldBones.Remove(name);
+                if (bones != null)
+                {
+                    // Out of the body at once, so no other bones bind to them before they are gone.
+                    bones.SetParent(null, false);
+                    if (Application.isPlaying)
+                    {
+                        Destroy(bones.gameObject);
+                    }
+                    else
+                    {
+                        DestroyImmediate(bones.gameObject);
+                    }
+                }
+            }
+
+            foreach (var attachment in held)
+            {
+                if (!attachment.IsSkinned || heldBones.ContainsKey(attachment.Name))
+                {
+                    continue;
+                }
+
+                var socket = PlayerBodyMeshes.FindDescendant(transform, attachment.Bone);
+                if (socket != null)
+                {
+                    heldBones[attachment.Name] = PlayerBodyMeshes.HoldBones(attachment, socket);
+                }
+            }
         }
 
         // An Animator that is enabled again starts from its controller's layer weights.
@@ -306,34 +461,96 @@ namespace Mmorpg.Client.Gameplay
                 Grip();
             }
 
-            // Most bodies hold no tool, so they pay nothing more per frame.
+            // Most bodies hold no tool or weapon in both hands and no bow, so they pay nothing more
+            // per frame.
+            var body = Locomotion;
             if (tool != null && tool.HoldsWithBothHands)
             {
-                var body = Locomotion;
                 PinOffHand(body != null ? body.UseWeight : 0f);
             }
+            else if (weapon != null && weapon.HoldsWithBothHands)
+            {
+                var attacking = body != null && string.Equals(body.ActionClip, weapon.AttackClip, StringComparison.Ordinal);
+                SetGripWeight(HumanLocomotion.OffHandGripLayer, PinOffHand(attacking ? body.ActionWeight : 0f));
+            }
+
+            if (bow != null)
+            {
+                DrawBow(body);
+            }
         }
 
-        // After the Animator posed the body, the other hand of a tool held with both hands holds
-        // the tool where its clip puts that hand, by the share of the pose that comes from the
-        // tool's clip.
-        public void PinOffHand(float weight)
+        // After the Animator posed the body, the other hand holds what both hands hold: a tool where
+        // its clip puts that hand, by the share of the pose that comes from the tool's clip, or a
+        // weapon whose attack takes both hands, such as a greataxe, wherever its attack clip brings
+        // that hand near the haft, by the share of the pose that comes from the attack clip. Returns
+        // how firmly the hand holds it, from 0 to 1.
+        public float PinOffHand(float weight)
         {
-            if (tool == null || !tool.HoldsWithBothHands || combinedRenderer == null || weight <= 0f)
+            var both = tool != null && tool.HoldsWithBothHands ? tool
+                : weapon != null && weapon.HoldsWithBothHands ? weapon
+                : null;
+            if (both == null || combinedRenderer == null || weight <= 0f)
             {
-                return;
+                return 0f;
             }
 
-            if (toolBones == null && !ToolBones.TryFind(GetComponent<Animator>(), transform, tool.Bone, out toolBones))
+            if (handBones == null && !ToolBones.TryFind(GetComponent<Animator>(), transform, both.Bone, out handBones))
             {
-                return;
+                return 0f;
             }
 
-            OffHandToolGrip.Pin(toolBones.Socket, tool.OffHandGrip, toolBones.Shoulder, toolBones.UpperArm,
-                toolBones.LowerArm, toolBones.Hand, toolBones.OffSocket, weight);
+            if (both == weapon)
+            {
+                weight *= OffHandToolGrip.NearWeight(handBones.Socket, both.OffHandGrip, handBones.OffSocket);
+            }
+
+            OffHandToolGrip.Pin(handBones.Socket, both.OffHandGrip, handBones.Shoulder, handBones.UpperArm,
+                handBones.LowerArm, handBones.Hand, handBones.OffSocket, weight);
+            return weight;
         }
 
-        // The bones that hold a tool with both hands: the tool's socket and the other arm with its
+        // The string of the bow follows the drawing hand while the body draws, until the bow looses
+        // as its release arrives or its attack clip comes to the release, and the fingers of that
+        // hand close on the string while they hold it.
+        private void DrawBow(CharacterLocomotionAnimator body)
+        {
+            if (drawingArm == null)
+            {
+                drawingArm = BowRig.DrawingArm.Find(GetComponent<Animator>(), transform);
+            }
+
+            var time = 0f;
+            var drawing = body != null && body.IsPlayingAttack(weapon.AttackClip, out time);
+            if (drawing && time >= weapon.AttackRelease)
+            {
+                bow.Loose();
+            }
+
+            bow.Update(drawing, drawingArm, Time.deltaTime);
+
+            if (bow.IsHeld != stringHeld)
+            {
+                stringHeld = bow.IsHeld;
+                Grip();
+            }
+        }
+
+        private void SetGripWeight(string layer, float weight)
+        {
+            if (bodyAnimator == null)
+            {
+                bodyAnimator = GetComponent<Animator>();
+            }
+
+            var index = bodyAnimator != null && bodyAnimator.isInitialized ? bodyAnimator.GetLayerIndex(layer) : -1;
+            if (index >= 0)
+            {
+                bodyAnimator.SetLayerWeight(index, weight);
+            }
+        }
+
+        // The bones that hold a tool or weapon with both hands: its socket and the other arm with its
         // collar bone, if the body has one, and its socket.
         private sealed class ToolBones
         {
@@ -373,9 +590,11 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // The fingers of each hand whose socket holds an attachment close around its grip, and
-        // both hands around a tool held with both hands; the others play the clips as they are.
-        // An Animator that does not play yet takes the weights in the next LateUpdate.
+        // The fingers of each hand whose socket holds an attachment close around its grip, both
+        // hands around a tool held with both hands, and the drawing hand around a bow's string while
+        // it holds it; the others play the clips as they are, and the other hand of a weapon whose
+        // attack takes both hands closes as it takes the haft. An Animator that does not play yet
+        // takes the weights in the next LateUpdate.
         private void Grip()
         {
             var animator = GetComponent<Animator>();
@@ -398,7 +617,8 @@ namespace Mmorpg.Client.Gameplay
                 {
                     var holds = combinedRenderer != null && (held.Any(attachment =>
                         string.Equals(HumanLocomotion.GripLayerFor(attachment.Bone), layer, StringComparison.Ordinal))
-                        || (tool != null && tool.HoldsWithBothHands && layer == HumanLocomotion.OffHandGripLayer));
+                        || (tool != null && tool.HoldsWithBothHands && layer == HumanLocomotion.OffHandGripLayer)
+                        || (stringHeld && layer == HumanLocomotion.MainHandGripLayer));
                     animator.SetLayerWeight(index, holds ? 1f : 0f);
                 }
             }

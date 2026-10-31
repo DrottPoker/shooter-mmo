@@ -8,16 +8,16 @@
     "skeleton": "Humanoid",
     "rig": "art/Characters/Human_Male",
     "previews": ["art/Characters/Human_Female"],
-    "clips": ["Death", "Idle", "Walk", "Jog", "Grip", "Mine", "Chop", "HoldStaff", "Cast"],
+    "clips": ["Death", "Idle", "Walk", "Jog", "Grip", "Mine", "Chop", "HoldStaff", "Cast", "HoldGreataxe", "GreataxeSwing", "HoldBow", "BowShot", "SwordSlash", "OneHandStrike"],
     "approvals": {
         "animation": {
-            "date": "2026-10-27",
-            "sourceSha256": "f2d25bfd5d777c3a6a48646bbb7dbdad8bb6095ef0741d4bc96bd2f7afc8d207"
+            "date": "2026-10-31",
+            "sourceSha256": "f184d6e2e9d924cd1475b1d713d066a0f58a424c90ed470fcd68fe234d45d8b2"
         }
     },
     "export": {
-        "sourceSha256": "f2d25bfd5d777c3a6a48646bbb7dbdad8bb6095ef0741d4bc96bd2f7afc8d207",
-        "targetSha256": "b7ae9660c54a7103593a5444fbf9a96f78346670d85171e1f27306994636a91f",
+        "sourceSha256": "f184d6e2e9d924cd1475b1d713d066a0f58a424c90ed470fcd68fe234d45d8b2",
+        "targetSha256": "35274ffe2ab31fdef7c6beeadbdd4a7953e4f5d87a8a606cd5a5542d16cba382",
         "rigSourceSha256": "ae840748200642709b56c3829fe08d4dc9e97cc50b4b5612441bfab0ca0b9203",
         "clips": [
             { "name": "Death", "frames": 60, "loop": false },
@@ -28,7 +28,13 @@
             { "name": "Mine", "frames": 45, "loop": true },
             { "name": "Chop", "frames": 45, "loop": true },
             { "name": "HoldStaff", "frames": 1, "loop": true },
-            { "name": "Cast", "frames": 27, "loop": false }
+            { "name": "Cast", "frames": 27, "loop": false },
+            { "name": "HoldGreataxe", "frames": 1, "loop": true },
+            { "name": "GreataxeSwing", "frames": 40, "loop": false },
+            { "name": "HoldBow", "frames": 1, "loop": true },
+            { "name": "BowShot", "frames": 48, "loop": false },
+            { "name": "SwordSlash", "frames": 30, "loop": false },
+            { "name": "OneHandStrike", "frames": 32, "loop": false }
         ]
     }
 }

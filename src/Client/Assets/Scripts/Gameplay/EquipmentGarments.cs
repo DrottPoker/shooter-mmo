@@ -40,8 +40,11 @@ namespace Mmorpg.Client.Gameplay
     // docs/EQUIPMENT_VISUALS_DESIGN.md.
     public static class EquipmentGarments
     {
+        public const string MainHandSlot = "main_hand";
+        public const string OffHandSlot = "off_hand";
+
         // The sockets of the hands, which a tool held with both hands empties.
-        public static readonly string[] HandSockets = { "main_hand", "off_hand" };
+        public static readonly string[] HandSockets = { MainHandSlot, OffHandSlot };
 
         // The look a character chose, with its hair, dressed in the garments of its items in place
         // of every other garment it names. A lowered item, such as a hood pushed back, shows its
@@ -49,10 +52,11 @@ namespace Mmorpg.Client.Gameplay
         // of the item in the equipment slot of that name wins, such as a helmet in head over a robe's
         // hood, and otherwise the item earlier in the equipment. A garment the body's catalog lacks
         // is not worn. An item's attachment is held only on the socket of the equipment slot the item
-        // is in, such as a sword in main_hand on Socket_MainHand, and only when the catalog has it.
-        // A tool, such as a pickaxe, is held only while the character uses it: toolInUse names its
-        // item, and its attachment takes the place of the one on its socket, and of both hands' for
-        // a tool held with both hands.
+        // is in, such as a sword in main_hand on Socket_MainHand, or, for a weapon in the main hand
+        // that the left hand holds, such as a bow, on the off hand's socket, and only when the
+        // catalog has it. A tool, such as a pickaxe, is held only while the character uses it:
+        // toolInUse names its item, and its attachment takes the place of the one on its socket, and
+        // of both hands' for a tool held with both hands.
         public static BodyLook Dress(
             BodyLook own,
             BodyAppearanceCatalog catalog,
@@ -105,7 +109,7 @@ namespace Mmorpg.Client.Gameplay
                 var attachment = catalog.AttachmentNamed(entry.attachment);
                 if (attachment != null
                     && !attachment.IsTool
-                    && string.Equals(attachment.Socket, item.SlotId, StringComparison.Ordinal)
+                    && HeldFrom(attachment, item.SlotId)
                     && !TakenBy(tool, attachment))
                 {
                     dressed = dressed.WithAttachment(attachment.Name, true);
@@ -158,6 +162,15 @@ namespace Mmorpg.Client.Gameplay
 
             var attachment = catalog.AttachmentNamed(entry.attachment);
             return attachment != null && attachment.IsTool ? attachment : null;
+        }
+
+        // Whether an item in an equipment slot holds its attachment: on the socket of its slot, or a
+        // main-hand item on the off hand's, such as a bow in the left hand.
+        public static bool HeldFrom(BodyAppearanceCatalog.Attachment attachment, string slotId)
+        {
+            return string.Equals(attachment.Socket, slotId, StringComparison.Ordinal)
+                || (string.Equals(slotId, MainHandSlot, StringComparison.Ordinal)
+                    && string.Equals(attachment.Socket, OffHandSlot, StringComparison.Ordinal));
         }
 
         // Whether a tool in use leaves no room for an attachment: it holds the attachment's socket,

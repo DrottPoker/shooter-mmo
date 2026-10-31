@@ -530,12 +530,16 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // A static model a socket of the body holds, such as a sword in the right hand: its model,
-        // whose root object Grip lies on the socket bone, the socket, the equipment slot whose item
-        // it shows, and the bone. A tool, such as a pickaxe, is held only while the body uses it:
-        // it names the clip the body plays meanwhile, and a tool held in both hands where on it the
+        // A model a socket of the body holds, such as a sword in the right hand: its model, whose
+        // root object Grip lies on the socket bone, the socket, the equipment slot whose item it
+        // shows, and the bone. A tool, such as a pickaxe, is held only while the body uses it: it
+        // names the clip the body plays meanwhile, and a tool held in both hands where on it the
         // other hand holds it. A weapon, such as a staff, may name the pose its arm holds it in,
-        // the clip the body plays once when its attack releases, and where its projectile leaves it.
+        // the clip the body plays once when its attack starts with the moment in it when the attack
+        // releases, where the other hand holds it if the attack takes it in both hands, and where
+        // its projectile leaves it. A skinned model, such as a bow, has bones of its own skeleton
+        // below Grip and clips that move them, and a bow names how far behind its launch point its
+        // string's nock comes at full draw.
         [Serializable]
         public sealed class Attachment
         {
@@ -548,12 +552,18 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private Vector3 offHandGrip;
             [SerializeField] private string holdClip;
             [SerializeField] private string attackClip;
+            [SerializeField] private float attackRelease;
             [SerializeField] private bool hasLaunchPoint;
             [SerializeField] private Vector3 launchPoint;
+            [SerializeField] private string skeleton;
+            [SerializeField] private AnimationClip[] clips;
+            [SerializeField] private float drawLength;
 
             public Attachment(string name, string socket, string bone, GameObject model,
                 string useClip = null, Vector3? offHandGrip = null,
-                string holdClip = null, string attackClip = null, Vector3? launchPoint = null)
+                string holdClip = null, string attackClip = null, Vector3? launchPoint = null,
+                float attackRelease = 0f, string skeleton = null, AnimationClip[] clips = null,
+                float drawLength = 0f)
             {
                 this.name = name;
                 this.socket = socket ?? string.Empty;
@@ -564,8 +574,12 @@ namespace Mmorpg.Client.Gameplay
                 this.offHandGrip = offHandGrip ?? Vector3.zero;
                 this.holdClip = holdClip ?? string.Empty;
                 this.attackClip = attackClip ?? string.Empty;
+                this.attackRelease = attackRelease;
                 hasLaunchPoint = launchPoint.HasValue;
                 this.launchPoint = launchPoint ?? Vector3.zero;
+                this.skeleton = skeleton ?? string.Empty;
+                this.clips = clips ?? Array.Empty<AnimationClip>();
+                this.drawLength = drawLength;
             }
 
             // Such as IronSword, from the attachment art/Attachments/IronSword.
@@ -624,10 +638,17 @@ namespace Mmorpg.Client.Gameplay
                 get { return holdClip ?? string.Empty; }
             }
 
-            // The clip the body plays once whenever its attack releases, such as Cast, or empty.
+            // The clip the body plays once whenever its attack starts, such as Cast, or empty.
             public string AttackClip
             {
                 get { return attackClip ?? string.Empty; }
+            }
+
+            // The seconds into the attack clip when its blow lands or its arrow or bolt leaves,
+            // which the server's release of the attack is timed to.
+            public float AttackRelease
+            {
+                get { return attackRelease; }
             }
 
             // Whether the weapon names where the projectile of its attack leaves it, at LaunchPoint.
@@ -641,6 +662,45 @@ namespace Mmorpg.Client.Gameplay
             public Vector3 LaunchPoint
             {
                 get { return launchPoint; }
+            }
+
+            // The skeleton of a skinned model, such as Bow, or empty for a rigid one.
+            public string Skeleton
+            {
+                get { return skeleton ?? string.Empty; }
+            }
+
+            // Whether the model is skinned to bones of its own, which the body holds below the
+            // socket as they stand below the model's root.
+            public bool IsSkinned
+            {
+                get { return Skeleton.Length > 0; }
+            }
+
+            // The clips of a skinned model, by name, such as a bow's Draw.
+            public IReadOnlyList<AnimationClip> Clips
+            {
+                get { return clips ?? Array.Empty<AnimationClip>(); }
+            }
+
+            // How far behind the launch point a bow's string comes at the end of its clip Draw, in
+            // meters, or 0.
+            public float DrawLength
+            {
+                get { return drawLength; }
+            }
+
+            public AnimationClip ClipNamed(string clipName)
+            {
+                foreach (var clip in Clips)
+                {
+                    if (clip != null && string.Equals(clip.name, clipName, StringComparison.Ordinal))
+                    {
+                        return clip;
+                    }
+                }
+
+                return null;
             }
         }
 

@@ -1,7 +1,7 @@
 {
-  "formatVersion": 6,
+  "formatVersion": 7,
   "catalogId": "core",
-  "revision": "0d46695796d989d16a7c0361a990906b4df79faebceb40460287c717ab610497",
+  "revision": "0d0beb3ad249285f19c4b975a654ca4e4ae3800545ad58bd2a7cf949e970dc17",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 200,
@@ -126,14 +126,16 @@
       "displayName": "Blade",
       "combatStyle": "melee",
       "ammunitionFamily": "",
-      "projectileSpeed": 0
+      "projectileSpeed": 0,
+      "windupSeconds": 0.35
     },
     {
       "id": "bow",
       "displayName": "Bow",
       "combatStyle": "ranged",
       "ammunitionFamily": "arrow",
-      "projectileSpeed": 30
+      "projectileSpeed": 30,
+      "windupSeconds": 0.8
     }
   ],
   "ammunitionFamilies": [

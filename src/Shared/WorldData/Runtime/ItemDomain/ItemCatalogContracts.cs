@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Items
 {
     public static class ItemCatalogFormat
     {
-        public const int Version = 6;
+        public const int Version = 7;
 
         // Hashed into every structural fingerprint instead of the format version, so a new
         // format that adds non-structural fields leaves persisted definitions compatible. It
@@ -137,7 +137,9 @@ namespace Mmorpg.WorldData.Items
     }
 
     // A weapon family names its combat style and, for Ranged, the ammunition family it
-    // fires. Projectiles fly at the projectile speed; 0 hits at once and suits Melee.
+    // fires. Projectiles fly at the projectile speed; 0 hits at once and suits Melee. An
+    // attack releases its blow, arrow, or bolt the windup after it starts, when the body's
+    // attack clip strikes or looses; 0 releases at once.
     [Serializable]
     public sealed class ItemWeaponFamilyEntry
     {
@@ -146,6 +148,7 @@ namespace Mmorpg.WorldData.Items
         public string CombatStyle;
         public string AmmunitionFamily;
         public float ProjectileSpeed = -1f;
+        public float WindupSeconds = -1f;
     }
 
     // Weapon combat data: base damage roll, damage type, attack interval, range, and the mana

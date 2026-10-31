@@ -51,6 +51,7 @@ namespace Mmorpg.WorldData.Combat
         public const float MaximumAttackIntervalSeconds = 60f;
         public const float MaximumAttackRangeMetres = 64f;
         public const float MaximumProjectileSpeedMetresPerSecond = 200f;
+        public const float MaximumWindupSeconds = 5f;
         public const int MaximumAmmunitionDamageBonusPercent = 1000;
         public const int MaximumCharacterLevel = 10_000;
 

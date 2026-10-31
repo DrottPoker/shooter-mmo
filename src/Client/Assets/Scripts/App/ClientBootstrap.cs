@@ -32,6 +32,7 @@ namespace Mmorpg.Client.App
         private CombatClientController combatController;
         private Material runtimePrimitiveMaterial;
         private Material debugLineMaterial;
+        private GameObject arrowModel;
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
         private readonly GameMessageLog gameMessages = new GameMessageLog();
 
@@ -88,6 +89,14 @@ namespace Mmorpg.Client.App
                 ClientLog.Warning(
                     ClientLogCategory.Client,
                     "The client configuration has no debug line material, so the Debug menu draws no collision or path.");
+            }
+
+            arrowModel = config.ArrowModel;
+            if (arrowModel == null)
+            {
+                ClientLog.Warning(
+                    ClientLogCategory.Client,
+                    "The client configuration has no arrow model, so arrows fly as plain bars.");
             }
 
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
@@ -426,7 +435,8 @@ namespace Mmorpg.Client.App
                     combatController,
                     simulationClient,
                     combatantViews,
-                    runtimePrimitiveMaterial));
+                    runtimePrimitiveMaterial,
+                    arrowModel));
             AddSceneComponentIfMissing<CombatDeathPresentation>(
                 presentation => presentation.Initialize(combatController, combatantViews));
             AddSceneComponentIfMissing<TemporaryCombatHud>(

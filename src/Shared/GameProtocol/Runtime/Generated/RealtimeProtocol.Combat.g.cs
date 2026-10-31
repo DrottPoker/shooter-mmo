@@ -44,7 +44,7 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
-    /// The combat style of a released attack, which selects how it is presented, such as an arrow or a magic bolt.
+    /// The combat style of a started or released attack, which selects how it is presented, such as an arrow or a magic bolt.
     /// </summary>
     public enum RealtimeCombatAttackStyle : byte
     {
@@ -60,7 +60,9 @@ namespace Mmorpg.GameProtocol
     {
         AttackReleased = 1,
         Hit = 2,
-        Died = 3
+        Died = 3,
+        AttackStarted = 4,
+        AttackCancelled = 5
     }
 
     /// <summary>
@@ -84,7 +86,7 @@ namespace Mmorpg.GameProtocol
             RealtimeCombatEventKind kind,
             ulong sourceEntityId,
             ulong targetEntityId,
-            uint impactTick,
+            uint tick,
             int damage,
             RealtimeCombatDamageType damageType,
             int healthAfter,
@@ -93,7 +95,7 @@ namespace Mmorpg.GameProtocol
             Kind = kind;
             SourceEntityId = sourceEntityId;
             TargetEntityId = targetEntityId;
-            ImpactTick = impactTick;
+            Tick = tick;
             Damage = damage;
             DamageType = damageType;
             HealthAfter = healthAfter;
@@ -116,9 +118,9 @@ namespace Mmorpg.GameProtocol
         public ulong TargetEntityId { get; }
 
         /// <summary>
-        /// For a released attack, the server tick at which it hits.
+        /// For a started attack, the server tick at which it releases; for a released attack, the server tick at which it hits.
         /// </summary>
-        public uint ImpactTick { get; }
+        public uint Tick { get; }
 
         /// <summary>
         /// For a hit, the damage dealt.
@@ -136,7 +138,7 @@ namespace Mmorpg.GameProtocol
         public int HealthAfter { get; }
 
         /// <summary>
-        /// For a released attack, the combat style of the attack; Melee otherwise.
+        /// For a started, released, or cancelled attack, the combat style of the attack; Melee otherwise.
         /// </summary>
         public RealtimeCombatAttackStyle AttackStyle { get; }
     }
@@ -1092,7 +1094,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteByte((byte)value.Kind);
             writer.WriteUInt64(value.SourceEntityId);
             writer.WriteUInt64(value.TargetEntityId);
-            writer.WriteUInt32(value.ImpactTick);
+            writer.WriteUInt32(value.Tick);
             writer.WriteInt32(value.Damage);
             writer.WriteByte((byte)value.DamageType);
             writer.WriteInt32(value.HealthAfter);
@@ -1119,7 +1121,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if (!reader.TryReadUInt32(out var impactTick, out error))
+            if (!reader.TryReadUInt32(out var tick, out error))
             {
                 return false;
             }
@@ -1148,7 +1150,7 @@ namespace Mmorpg.GameProtocol
 
             var attackStyle = (RealtimeCombatAttackStyle)attackStyleByte;
 
-            value = new RealtimeCombatEvent(kind, sourceEntityId, targetEntityId, impactTick, damage, damageType, healthAfter, attackStyle);
+            value = new RealtimeCombatEvent(kind, sourceEntityId, targetEntityId, tick, damage, damageType, healthAfter, attackStyle);
             return true;
         }
 
@@ -1170,7 +1172,7 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeCombatEventKind value)
         {
-            return (byte)value >= 1 && (byte)value <= 3;
+            return (byte)value >= 1 && (byte)value <= 5;
         }
 
         private static bool IsDefined(RealtimeCombatDamageType value)

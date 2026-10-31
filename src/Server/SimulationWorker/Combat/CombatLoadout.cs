@@ -14,7 +14,8 @@ public enum CombatLoadoutStatus
 
 // One attack a combatant can release: its damage roll, interval, range, and, for a
 // projectile, its speed. A Ranged attack also names the ammunition family it fires, and a
-// Magic attack the mana it costs.
+// Magic attack the mana it costs. An attack releases WindupTicks after it starts, when the
+// body's attack clip strikes or looses; 0 releases at once.
 public sealed record CombatAttackProfile(
     string SourceId,
     string CombatStyle,
@@ -25,7 +26,8 @@ public sealed record CombatAttackProfile(
     float Range,
     float ProjectileSpeed,
     string? AmmunitionFamily,
-    int ManaCost)
+    int ManaCost,
+    uint WindupTicks = 0)
 {
     public bool ConsumesAmmunition => AmmunitionFamily is not null;
 
@@ -95,7 +97,8 @@ public sealed class CombatItemCatalog
             weapon.Weapon.Range,
             Math.Max(0f, family.ProjectileSpeed),
             ranged && !string.IsNullOrEmpty(family.AmmunitionFamily) ? family.AmmunitionFamily : null,
-            magic ? Math.Max(0, weapon.Weapon.ManaCost) : 0);
+            magic ? Math.Max(0, weapon.Weapon.ManaCost) : 0,
+            family.WindupSeconds > 0f ? CombatTicks.FromSeconds(family.WindupSeconds, tickRateHz) : 0u);
         if (!attack.ConsumesAmmunition)
         {
             return new PlayerCombatLoadout(CombatLoadoutStatus.Ready, attack, ammunition);

@@ -14,9 +14,10 @@ namespace Mmorpg.Client.Gameplay
     // garment of a slot that a worn garment of a higher layer hides, and leaves out the hair
     // under headwear that hides it or draws it in its form under headwear that presses it flat;
     // see docs/EQUIPMENT_VISUALS_DESIGN.md. Attachments, such as a sword, are rigid meshes weighted
-    // fully to their socket bone, so a body holding them is still one renderer. Every body with the
-    // same visible parts of the same model, the same garments, and the same attachments shares one
-    // mesh. The owner destroys the meshes.
+    // fully to their socket bone, and a skinned attachment, such as a bow, keeps its own bones, which
+    // the body holds below the socket, so a body holding them is still one renderer. Every body with
+    // the same visible parts of the same model, the same garments, and the same attachments shares
+    // one mesh. The owner destroys the meshes.
     public sealed class PlayerBodyMeshes : IDisposable
     {
         private static readonly IReadOnlyList<BodyAppearanceCatalog.Garment> NoGarments =
@@ -28,6 +29,9 @@ namespace Mmorpg.Client.Gameplay
         // How far a hand swings from where it is in the bind pose, in meters, which the bounds of a
         // body leave room for around what it holds.
         public const float AttachmentReach = 0.35f;
+
+        // The root object of an attachment's model, where it is held, and a skinned one's armature.
+        public const string AttachmentRoot = "Grip";
 
         private readonly Dictionary<string, Combined> meshes = new Dictionary<string, Combined>();
 
@@ -153,7 +157,8 @@ namespace Mmorpg.Client.Gameplay
         // in one list by name, and the triangles of each material in one submesh, in the order the
         // materials first appear; vertices no triangle uses are left out. Each attachment's meshes
         // lie on its socket bone as the socket stands on its parent bone in the bind pose, with its
-        // root object Grip on the socket.
+        // root object Grip on the socket; a skinned attachment's meshes lie on its own bones, which
+        // stand below the socket as they stand below the model's root.
         public static Combined Build(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
             IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
         {
@@ -222,11 +227,53 @@ namespace Mmorpg.Client.Gameplay
                 }
 
                 // A socket is never animated, so it stands on its parent as it does in the model.
-                builder.AddRigid(attachment.Model, attachment.Bone,
-                    parentToRoot * Matrix4x4.TRS(socket.localPosition, socket.localRotation, socket.localScale));
+                var socketToRoot = parentToRoot * Matrix4x4.TRS(socket.localPosition, socket.localRotation, socket.localScale);
+                if (attachment.IsSkinned)
+                {
+                    builder.AddSkinned(attachment.Model, socketToRoot);
+                }
+                else
+                {
+                    builder.AddRigid(attachment.Model, attachment.Bone, socketToRoot);
+                }
             }
 
             return builder.Finish(parts[0].sharedMesh.name + " combined");
+        }
+
+        // The bones of a skinned attachment's model, such as a bow's limbs and string, for a body to
+        // hold: a copy of its armature, the root object Grip with every transform below it, by name
+        // and as they stand, below a new transform of the attachment's name on the socket, which
+        // stands where the model's root does.
+        public static Transform HoldBones(BodyAppearanceCatalog.Attachment attachment, Transform socket)
+        {
+            var root = new GameObject(attachment.Name).transform;
+            root.SetParent(socket, false);
+            var armature = attachment.Model.transform.Find(AttachmentRoot);
+            if (armature != null)
+            {
+                var copy = new GameObject(armature.name).transform;
+                copy.SetParent(root, false);
+                copy.localPosition = armature.localPosition;
+                copy.localRotation = armature.localRotation;
+                copy.localScale = armature.localScale;
+                CopyChildren(armature, copy);
+            }
+
+            return root;
+        }
+
+        private static void CopyChildren(Transform from, Transform to)
+        {
+            foreach (Transform child in from)
+            {
+                var copy = new GameObject(child.name).transform;
+                copy.SetParent(to, false);
+                copy.localPosition = child.localPosition;
+                copy.localRotation = child.localRotation;
+                copy.localScale = child.localScale;
+                CopyChildren(child, copy);
+            }
         }
 
         // The attachments with a model, one per socket bone, by name.
@@ -379,6 +426,53 @@ namespace Mmorpg.Client.Gameplay
             public void Add(SkinnedMeshRenderer renderer, Matrix4x4 toRoot, Transform boundsFrom, Transform boundsBone,
                 Func<int, bool> keep, Func<int, float> pull, Material material = null, string shape = null)
             {
+                AddMesh(renderer, toRoot, keep, pull, material, shape);
+                Encapsulate(BoundsIn(boundsFrom, renderer.localBounds, boundsBone));
+            }
+
+            // Every mesh of a skinned model held on a socket, such as a bow, given in the space of the
+            // model's root, which lies on the socket that stands at socketToRoot in the root's space,
+            // skinned to the model's own bones, which a body holds below the socket as they stand below
+            // the model's root. A model with a bone of the meshes added so far is left out, so a body
+            // holds one model of a skeleton. The body's bounds leave room around it for the socket to
+            // swing with the hand.
+            public void AddSkinned(GameObject model, Matrix4x4 socketToRoot)
+            {
+                var renderers = model.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                foreach (var renderer in renderers)
+                {
+                    foreach (var bone in renderer.bones)
+                    {
+                        if (bone == null || boneIndex.ContainsKey(bone.name))
+                        {
+                            return;
+                        }
+                    }
+                }
+
+                var reach = 0f;
+                foreach (var renderer in renderers)
+                {
+                    if (renderer.sharedMesh == null)
+                    {
+                        continue;
+                    }
+
+                    var toSocket = model.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
+                    AddMesh(renderer, socketToRoot * toSocket, null, null);
+                    foreach (var vertex in meshVertices)
+                    {
+                        reach = Mathf.Max(reach, toSocket.MultiplyPoint3x4(vertex).magnitude);
+                    }
+                }
+
+                Room(socketToRoot, reach);
+            }
+
+            // The vertices, bones, and triangles of one renderer's mesh; see Add.
+            private void AddMesh(SkinnedMeshRenderer renderer, Matrix4x4 toRoot, Func<int, bool> keep, Func<int, float> pull,
+                Material material = null, string shape = null)
+            {
                 var mesh = renderer.sharedMesh;
                 if (mesh == null || !mesh.isReadable)
                 {
@@ -485,17 +579,6 @@ namespace Mmorpg.Client.Gameplay
                         triangles[slot].Add(first + meshTriangles[corner + 2]);
                     }
                 }
-
-                var meshBounds = BoundsIn(boundsFrom, renderer.localBounds, boundsBone);
-                if (hasBounds)
-                {
-                    bounds.Encapsulate(meshBounds);
-                }
-                else
-                {
-                    bounds = meshBounds;
-                    hasBounds = true;
-                }
             }
 
             // Where a bone of the meshes added so far stands in the root's space in the bind pose.
@@ -589,18 +672,29 @@ namespace Mmorpg.Client.Gameplay
                     }
                 }
 
+                Room(boneToRoot, reach);
+            }
+
+            // Room in the bounds for what a bone at boneToRoot holds within reach of it, as the bone
+            // swings with the hand.
+            private void Room(Matrix4x4 boneToRoot, float reach)
+            {
                 // The bounds are in the space of the root bone in the bind pose.
                 var centre = TryGetBoneToRoot(rootBone.name, out var rootBoneToRoot)
                     ? rootBoneToRoot.inverse.MultiplyPoint3x4(boneToRoot.GetColumn(3))
                     : (Vector3)boneToRoot.GetColumn(3);
-                var room = new Bounds(centre, Vector3.one * (2f * (reach + AttachmentReach)));
+                Encapsulate(new Bounds(centre, Vector3.one * (2f * (reach + AttachmentReach))));
+            }
+
+            private void Encapsulate(Bounds more)
+            {
                 if (hasBounds)
                 {
-                    bounds.Encapsulate(room);
+                    bounds.Encapsulate(more);
                 }
                 else
                 {
-                    bounds = room;
+                    bounds = more;
                     hasBounds = true;
                 }
             }

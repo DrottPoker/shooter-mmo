@@ -53,33 +53,51 @@ namespace Mmorpg.Client.Gameplay
         public const string ChopClip = "Chop";
         public const float UseCrossfadeSeconds = 0.2f;
 
-        // While the main hand holds a weapon that names a hold clip, such as a staff, that arm holds
-        // the clip's pose: the clip plays in the state of its name on a layer of the main hand's
-        // arm only, at full weight, over the locomotion clips. The layer rests in its empty state.
+        // While a hand holds a weapon that names a hold clip, such as a staff in the main hand or a
+        // bow in the off hand, that arm holds the clip's pose: the clip plays in the state of its
+        // name on a layer of that hand's arm only, at full weight, over the locomotion clips. A layer
+        // rests in its empty state.
         public const string MainHandHoldLayer = "MainHandHold";
+        public const string OffHandHoldLayer = "OffHandHold";
         public const string HoldStaffClip = "HoldStaff";
         public const string EmptyState = "Empty";
 
-        // Whenever a weapon's attack releases, the body plays the weapon's attack clip once, such as
-        // Cast, in the state of its name on a layer of the upper body and both arms without the
-        // fingers, over every other clip, fading in and out over these times. The clip starts and
-        // ends in the hold pose, so the fades only soften a cut. It ends early when the body moves.
+        // Whenever a weapon's attack starts, the body plays the weapon's attack clip once, such as
+        // Cast, in the state of its name on a layer of the whole body without the fingers, over
+        // every other clip, fading in and out over these times; its feet step with it. It starts so
+        // that the moment its blow lands or its arrow or bolt leaves comes when the server releases
+        // the attack. The clip starts and ends in the hold pose, so the fades only soften a cut. It
+        // ends early when the body starts to move or the attack is cancelled.
         public const string ActionLayer = "Action";
         public const string CastClip = "Cast";
         public const float ActionFadeInSeconds = 0.06f;
         public const float ActionFadeOutSeconds = 0.15f;
 
-        // The weight of an attack clip that started this many seconds ago and lasts this long.
-        public static float ActionWeight(float elapsed, float length)
+        // A melee weapon in one hand without an attack clip of its own strikes with this clip, whose
+        // blow lands this many seconds in.
+        public const string OneHandStrikeClip = "OneHandStrike";
+        public const float OneHandStrikeReleaseSeconds = 0.4f;
+
+        // The weight of an attack clip this many seconds after its start that lasts this long and
+        // shows from shownFrom seconds in, such as one that began late.
+        public static float ActionWeight(float elapsed, float length, float shownFrom = 0f)
         {
-            if (elapsed < 0f || elapsed >= length)
+            if (elapsed < shownFrom || elapsed >= length)
             {
                 return 0f;
             }
 
-            var fadeIn = Mathf.Clamp01(elapsed / ActionFadeInSeconds);
+            var fadeIn = Mathf.Clamp01((elapsed - shownFrom) / ActionFadeInSeconds);
             var fadeOut = Mathf.Clamp01((length - elapsed) / ActionFadeOutSeconds);
             return Mathf.Min(fadeIn, fadeOut);
+        }
+
+        // The seconds into an attack clip to start it at, so the moment it releases, release seconds
+        // in, comes when the attack releases, secondsUntilRelease from now: negative to start it that
+        // much later, and never past the release, so a late start still shows the blow land.
+        public static float AttackClipTime(float release, float secondsUntilRelease)
+        {
+            return release - Mathf.Max(secondsUntilRelease, 0f);
         }
 
         // The grip layer of a socket bone, or null for a socket that is not in a hand.
