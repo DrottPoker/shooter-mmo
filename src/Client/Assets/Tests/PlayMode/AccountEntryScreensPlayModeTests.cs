@@ -46,7 +46,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(panel, Is.Not.Null);
             Assert.That(panel.IsRegistering, Is.False);
             Assert.That(VisibleFields(panel), Has.Length.EqualTo(2), "Log In asks for a login and a password.");
-            Assert.That(UnityEngine.Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None), Has.Length.EqualTo(1));
+            Assert.That(UnityEngine.Object.FindObjectsByType<EventSystem>(FindObjectsInactive.Exclude), Has.Length.EqualTo(1));
 
             panel.ShowRegistration(true);
             Assert.That(VisibleFields(panel), Has.Length.EqualTo(3), "Create Account asks for an email, a username, and a password.");

@@ -81,15 +81,13 @@ function Get-Deadline {
     [DateTime]::UtcNow.AddMinutes($TimeoutMinutes)
 }
 
-function Test-EditorListed {
-    $status = Invoke-UnityCli @("status")
-    foreach ($line in "$($status.Text)".Split("`n")) {
-        $columns = $line.Split("`t")
-        if ($columns.Count -ge 3 -and [string]::Equals($columns[2].Trim().TrimEnd('\', '/'), $projectPath, [StringComparison]::OrdinalIgnoreCase)) {
-            return $true
-        }
-    }
-    $false
+# Asks only the Editor of this project. 'unity status' sends every running Editor a command that
+# the Pipeline package does not know, and the error it logs fails whatever test that Editor runs,
+# such as the Unity gate of the CI runner on the same machine. An Editor that is busy, as during
+# a domain reload, still counts as running; Wait-EditorIdle waits for it.
+function Test-EditorRunning {
+    $status = Invoke-EditorCommand "editor_status"
+    $status.ExitCode -eq 0 -or "$($status.Text)" -notmatch "EDITOR_NOT_RUNNING|NOT_A_PROJECT"
 }
 
 # Waits until the Editor answers, is not compiling or reloading, and is out of Play Mode. A
@@ -190,7 +188,7 @@ function Invoke-TestRun([string]$RunMode, [string]$RunFilter, [string]$Label) {
     }
 }
 
-if (-not (Test-EditorListed)) {
+if (-not (Test-EditorRunning)) {
     Stop-Run 3 "no running Unity Editor has '$projectPath' open. Open it with 'unity open `"$projectPath`"', or run tools/Run-UnityTests.ps1 headless."
 }
 

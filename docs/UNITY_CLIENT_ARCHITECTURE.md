@@ -2121,7 +2121,20 @@ on every such option except its own and Examine, so a stale option that did
 nothing ends nothing either.
 
 - Walk here casts the stored ray at the ground through
-  `LocalPlayerController.TryFindGroundPoint` and walks there.
+  `LocalPlayerController.TryFindGroundPoint` and walks there. When a left click
+  ran it, `WalkSteering` keeps steering the walk while `SelectHeld` stays true:
+  each frame the controller casts the pointer ray at the ground, and once the
+  steered intent's plan applied, `WalkSteering.RouteInterval` (0.1 s) has
+  passed, and the point lies `WalkSteering.MinimumShift` (0.25 m) or more from
+  the steered destination, it walks there as a new intent, without raising
+  `OptionExecuted`. The navigator discards a finished plan that a newer intent
+  replaced, so waiting for the applied intent keeps a plan slower than the
+  interval from being replaced again and again before it applies. A route at most
+  every three inputs keeps the newest path in the input batches until the worker
+  confirms it, which the worker follows as quick clicks. Releasing the button,
+  opening the menu, a blocked menu, or a navigation intent from another feature,
+  such as an attack approach or the stop on death, ends the steering; a pointer
+  over interface or without ground keeps the current route.
 - Examine posts the actor's `ExamineText` from its spawn, or "The remains of
   <name>." for a corpse, to the `GameMessageLog` that `ClientBootstrap` owns,
   while the target is still active.

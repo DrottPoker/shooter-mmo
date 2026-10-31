@@ -82,9 +82,11 @@ package, so a running Editor can be driven with the `unity` CLI. Setup and
 security rules are in `docs/LOCAL_DEVELOPMENT.md` under Unity Editor Automation
 With Unity CLI.
 
-- Run `unity status` first. When an Editor is connected, change scenes,
-  prefabs, and assets through `unity command ...` and never hand-edit `.unity`,
-  `.prefab`, or `.asset` YAML.
+- Run `unity command editor_status --project-path <checkout>/src/Client` first,
+  never `unity status`, which makes every running Editor log an error and so
+  fails the CI runner's Unity gate when it runs at that moment. When an Editor
+  is connected, change scenes, prefabs, and assets through `unity command ...`
+  and never hand-edit `.unity`, `.prefab`, or `.asset` YAML.
 - Check compile state with `unity command console_status` after C# changes.
 - Unity tests: `tools/Run-UnityEditorTests.ps1` runs both suites in the Editor
   that has the script's own checkout open, and `-Mode EditMode -Filter <fixture>`

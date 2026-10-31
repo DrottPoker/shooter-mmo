@@ -10,8 +10,10 @@ namespace Mmorpg.Client.WorldActors
     // pointer points at from the registered providers. A left click runs the top option at
     // once; a right click opens a menu with every option, which stays open until the player
     // chooses one, clicks elsewhere, presses Escape, or moves the pointer away. Walk here and
-    // Examine are its own options; combat and world interaction add theirs. It runs after
-    // input and before the features, so they can tell that an Escape only closed the menu.
+    // Examine are its own options; combat and world interaction add theirs. A left click
+    // that walked keeps steering the walk toward the ground under the pointer while the
+    // button stays down. It runs after input and before the features, so they can tell that
+    // an Escape only closed the menu.
     [DefaultExecutionOrder(-50)]
     [DisallowMultipleComponent]
     public sealed class WorldMenuController : MonoBehaviour, IWorldMenuProvider
@@ -24,9 +26,13 @@ namespace Mmorpg.Client.WorldActors
         private readonly WorldMenuBuilder hover = new WorldMenuBuilder();
         private readonly List<WorldMenuOption> menuOptions = new List<WorldMenuOption>();
         private readonly List<ProviderEntry> providers = new List<ProviderEntry>();
+        private readonly WalkSteering walkSteering = new WalkSteering();
         private WorldActorClientController actorController;
         private GameMessageLog messages;
         private LocalPlayerController localPlayer;
+        // The navigation intent and destination of the latest Walk here.
+        private int walkIntentId;
+        private Vector3 walkDestination;
         private int cancelConsumedFrame = -1;
 
         // Raised when the menu opens or closes.
@@ -171,7 +177,8 @@ namespace Mmorpg.Client.WorldActors
                         return false;
                     }
 
-                    localPlayer.MoveTo(point);
+                    walkIntentId = localPlayer.MoveTo(point);
+                    walkDestination = point;
                     return true;
                 case ExamineAction:
                     // A target that left while the menu stayed open is not described.
@@ -195,7 +202,13 @@ namespace Mmorpg.Client.WorldActors
             {
                 hover.Begin(default(Ray), null);
                 CloseMenu();
+                walkSteering.End();
                 return;
+            }
+
+            if (!input.SelectHeld)
+            {
+                walkSteering.End();
             }
 
             var hasRay = localPlayer.TryGetPointerRay(out var ray);
@@ -236,19 +249,55 @@ namespace Mmorpg.Client.WorldActors
             {
                 OpenFromHover(input.PointerPosition);
             }
+            else if (walkSteering.IsSteering)
+            {
+                SteerWalk();
+            }
         }
 
+        // A left click that walked keeps steering the walk while the button stays down.
         private void RunDefaultOfHover()
         {
-            if (hover.Options.Count > 0)
+            walkSteering.End();
+            if (hover.Options.Count == 0)
             {
-                Execute(hover.Default);
+                return;
+            }
+
+            var option = hover.Default;
+            if (Execute(option) && ReferenceEquals(option.Provider, this) && option.Action == WalkAction)
+            {
+                walkSteering.Follow(walkIntentId, walkDestination, Time.unscaledTime);
+            }
+        }
+
+        // Plans a route to the ground under the pointer whenever the steering says so. A menu
+        // that offers nothing, as while the character is dead, ends the steering, and a pointer
+        // that meets no ground keeps the current route.
+        private void SteerWalk()
+        {
+            if (hover.IsBlocked)
+            {
+                walkSteering.End();
+                return;
+            }
+
+            var now = Time.unscaledTime;
+            if (localPlayer.TryFindGroundPoint(hover.Ray, out var point)
+                && walkSteering.ShouldSteerTo(
+                    point,
+                    localPlayer.NavigationIntentId,
+                    localPlayer.AppliedNavigationIntentId,
+                    now))
+            {
+                walkSteering.Follow(localPlayer.MoveTo(point), point, now);
             }
         }
 
         private void OpenFromHover(Vector2 screenPosition)
         {
             CloseMenu();
+            walkSteering.End();
             if (hover.Options.Count == 0)
             {
                 return;
@@ -263,20 +312,20 @@ namespace Mmorpg.Client.WorldActors
         private void OnDisable()
         {
             CloseMenu();
+            walkSteering.End();
         }
 
-        private void Execute(WorldMenuOption option)
+        // True when the option acted.
+        private bool Execute(WorldMenuOption option)
         {
             CloseMenu();
-            if (!IsRegistered(option.Provider))
+            if (!IsRegistered(option.Provider) || !option.Provider.ExecuteWorldMenuOption(option))
             {
-                return;
+                return false;
             }
 
-            if (option.Provider.ExecuteWorldMenuOption(option))
-            {
-                OptionExecuted?.Invoke(option);
-            }
+            OptionExecuted?.Invoke(option);
+            return true;
         }
 
         private void AddExamine(WorldMenuBuilder menu, int index, WorldPointerCandidate candidate)

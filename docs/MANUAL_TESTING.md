@@ -445,23 +445,34 @@ Keep the Game view focused in Development World 2.
    the closest reachable point beside the hall and stops there.
 4. Click a new spot while the character walks. Expected result: the new click
    replaces the route at once.
-5. Drag with the middle mouse button, then hold each arrow key. Expected result:
+5. Left-click the ground a few meters ahead and keep the button down, then move
+   the pointer in a wide arc around the character, over Mira, and over the
+   Debug menu, and release it. Expected result: the character keeps walking
+   toward the ground under the pointer and turns with it, the yellow disc
+   follows the pointer, and the path id in the `Movement` tab rises about ten
+   times a second while the pointer moves. Over Mira it walks on instead of
+   talking, over the menu it keeps its route, and after the release it walks
+   to the last disc and stops. Hold the button with the pointer still a few
+   meters ahead of the character. Expected result: it keeps walking, because
+   the camera follows it and the ground under the pointer moves ahead.
+6. Drag with the middle mouse button, then hold each arrow key. Expected result:
    dragging turns and tilts the camera around the character, left and right
    turn it, up and down tilt it, and the tilt stops at 10 and 80 degrees.
-6. Scroll the mouse wheel both ways. Expected result: each notch zooms by about
+7. Scroll the mouse wheel both ways. Expected result: each notch zooms by about
    15 percent between 0.6 and 15 meters, and the zoom eases instead of jumping.
    Fully zoomed in, the camera stays about 30 centimeters from the head and the
    shoulders at every tilt.
-7. Walk so that a building stands between the character and the camera.
+8. Walk so that a building stands between the character and the camera.
    Expected result: the camera moves in front of the building at once and eases
    back out afterwards.
-8. With the Debug menu open, click and scroll on it. Expected result: the
+9. With the Debug menu open, click and scroll on it. Expected result: the
    character does not move and the camera does not zoom.
-9. Hover Mira the Quartermaster, then left-click her from more than three
-   meters away. Expected result: `Talk-to Mira the Quartermaster / 9 more
-   options` appears next to the pointer. The character walks to about 2.5
-   meters from her and stops, and her interaction panel opens.
-10. Press Escape. Expected result: the interaction closes.
+10. Hover Mira the Quartermaster, then left-click her from more than three
+    meters away and keep the button down. Expected result: `Talk-to Mira the
+    Quartermaster / 9 more options` appears next to the pointer. The character
+    walks to about 2.5 meters from her and stops, and her interaction panel
+    opens; moving the pointer while holding does not steer it.
+11. Press Escape. Expected result: the interaction closes.
 
 Throughout, the cursor stays visible and free. WASD, Shift, Space, F1, and E do
 nothing, and the right mouse button opens the [world menu](#world-menu). The
