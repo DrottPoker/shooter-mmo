@@ -1,6 +1,7 @@
 # Runs the checks that the changes of this branch can affect. Before a push it takes the place of
-# the full quality gate in README.md, which CI runs for every pull request, so a task waits
-# seconds or a few minutes instead of the whole gate. It speeds up the loop and never replaces CI.
+# the full quality gate in docs/LOCAL_DEVELOPMENT.md, which CI runs for every pull request, so a
+# task waits seconds or a few minutes instead of the whole gate. It speeds up the loop and never
+# replaces CI.
 #
 # The changes are every file that differs from the merge base with -Base, committed or not, and
 # every untracked file. The first rule in $rules that matches a file names the checks the file can
@@ -41,8 +42,8 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 #   all-tests        every .NET test project
 #   test:<project>   one .NET test project
 #   unity            the Unity EditMode and PlayMode suites
-#   art              tools/Verify-ArtAssets.ps1
-#   blender-python   the art pipeline's Python tests in tools/blender/tests, without Blender
+#   art              tools/art/Verify-ArtAssets.ps1
+#   blender-python   the art pipeline's Python tests in tools/art/blender/tests, without Blender
 #   deps             tools/Verify-DependencyPolicy.ps1
 #   observability    tools/Verify-Observability.ps1
 #   verify-content   the item catalog, world collision, and world actor verifiers
@@ -52,7 +53,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $rules = @(
     @{ Pattern = '^(Directory\.Build\.(props|targets)|global\.json|Mmorpg\.slnx|\.editorconfig|\.gitattributes|tests/Directory\.Build\.props|tests/TestOutput/.+|tools/Test-Changes\.ps1)$'
         Checks = @("full"); Reason = "shared build, format, or test settings" },
-    @{ Pattern = '^docs/SERVICE_FEATURES\.md$'
+    @{ Pattern = '^docs/MONITORING\.md$'
         Checks = @("test:Mmorpg.SimulationWorker.Tests"); Reason = "a realtime metric test reads it" },
     @{ Pattern = '\.md$'
         Checks = @("none"); Reason = "documentation" },
@@ -76,9 +77,9 @@ $rules = @(
         Checks = @("owner", "unity"); Reason = "the Unity client" },
     # The Unity Editor reads the art manifests and skeletons, and a Unity test the clip speeds in
     # the Blender animation script.
-    @{ Pattern = '^(art|tools/blender)/'
+    @{ Pattern = '^(art|tools/art/blender)/'
         Checks = @("art", "blender-python", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
-    @{ Pattern = '^tools/([^/]*Art[^/]*|Sync-[^/]+)\.ps1$'
+    @{ Pattern = '^tools/art/[^/]+\.ps1$'
         Checks = @("art"); Reason = "the art pipeline" },
     @{ Pattern = '^tools/Verify-DependencyPolicy\.ps1$'
         Checks = @("deps"); Reason = "the dependency policy" },
@@ -86,6 +87,8 @@ $rules = @(
         Checks = @("unity"); Reason = "a Unity test runner" },
     @{ Pattern = '^tools/[^/]+\.ps1$'
         Checks = @("none"); Reason = "a tool script" },
+    @{ Pattern = '^tools/ci/[^/]+\.ps1$'
+        Checks = @("none"); Reason = "a setup script of the self-hosted runner" },
     @{ Pattern = '^tools/(ContentPipeline|ItemCatalogCompiler|WorldActorCompiler)/'
         Checks = @("owner!", "unity"); Reason = "a content compiler that the Unity Editor runs" },
     @{ Pattern = '^(src/Server|tools|tests)/'
@@ -372,7 +375,7 @@ function Initialize-TestServices {
 
     $envFile = Find-EnvFile
     if (-not $envFile) {
-        throw "$($missing -join ' and ') are not set and no .env file was found. Set them as README.md shows, or pass -SkipIntegration."
+        throw "$($missing -join ' and ') are not set and no .env file was found. Set them as tests/README.md shows, or pass -SkipIntegration."
     }
     foreach ($name in $missing) {
         $value = Read-EnvValue $envFile $name
@@ -572,13 +575,13 @@ try {
         $null = Invoke-Check "Dependency policy" { (Invoke-Script "Verify-DependencyPolicy.ps1") -eq 0 }
     }
     if ($full -or $tokens.Contains("art")) {
-        $null = Invoke-Check "Art assets" { (Invoke-Script "Verify-ArtAssets.ps1") -eq 0 }
+        $null = Invoke-Check "Art assets" { (Invoke-Script "art/Verify-ArtAssets.ps1") -eq 0 }
     }
     if ($full -or $tokens.Contains("blender-python")) {
         # Windows installs Python as python, and its python3 may be a store stub.
         $python = if ($env:OS -eq "Windows_NT") { "python" } else { "python3" }
         $null = Invoke-Check "Art pipeline Python tests" {
-            (Invoke-Native $python @("-m", "unittest", "discover", "-s", (Join-Path $repositoryRoot "tools/blender/tests"))) -eq 0
+            (Invoke-Native $python @("-m", "unittest", "discover", "-s", (Join-Path $repositoryRoot "tools/art/blender/tests"))) -eq 0
         }
     }
     if ($full -or $tokens.Contains("observability")) {

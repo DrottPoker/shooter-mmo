@@ -43,11 +43,11 @@ jobs:
 
       - name: Verify art assets
         shell: pwsh
-        run: ./tools/Verify-ArtAssets.ps1
+        run: ./tools/art/Verify-ArtAssets.ps1
 
       # The art pipeline's kinematic cloth lays the chains as the Unity client does.
       - name: Test the art pipeline's Python
-        run: python3 -m unittest discover -s tools/blender/tests -v
+        run: python3 -m unittest discover -s tools/art/blender/tests -v
 
       # Every tracked file must match a rule of the local change-based checks.
       - name: Verify test selection rules
@@ -228,7 +228,7 @@ jobs:
 
   # Unity needs an installed and licensed Editor, so this job runs on the self-hosted runner
   # described in docs/LOCAL_DEVELOPMENT.md. Pull requests from forks are skipped. The runner's
-  # job-started hook, tools/Assert-TrustedRunnerJob.ps1, refuses them as well, because a
+  # job-started hook, tools/ci/Assert-TrustedRunnerJob.ps1, refuses them as well, because a
   # fork pull request runs its own copy of this file. Windows PowerShell keeps PowerShell 7
   # off the runner requirements; the backend job already verifies the dependency policy.
   unity:

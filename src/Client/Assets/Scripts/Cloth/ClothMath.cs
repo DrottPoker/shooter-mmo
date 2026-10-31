@@ -3,7 +3,7 @@ using Unity.Mathematics;
 namespace Mmorpg.Client.Cloth
 {
     // The vector and rotation arithmetic of the cloth, written out so that the art pipeline's
-    // tools/blender/art_pipeline/cloth_core.py follows it step by step: Unity's own ways to
+    // tools/art/blender/art_pipeline/cloth_core.py follows it step by step: Unity's own ways to
     // normalize, to turn a vector by a rotation, and to blend rotations and directions.
     public static class ClothMath
     {

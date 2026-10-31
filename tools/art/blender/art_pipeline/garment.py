@@ -1,0 +1,1560 @@
+"""Garment templates: the form of a garment kind, as a mesh skinned to the shared skeleton, made on
+the garment cage of its skeleton and fitted to every body of the cage. See
+docs/EQUIPMENT_VISUALS_DESIGN.md.
+
+The file holds, per body, the collection Export_<Label> with the body's armature <Label> and the
+template's version <Name>_<Label> bound to it; in the Reference collection the body's source body,
+eyes, teeth, and tongue, which show it and which the weights read; and in the Cage collection the
+cage's version Cage_<Label> on every body, taken from the cage's file, whose SHA-256 the scene
+keeps. The first body's version is the template a person shapes.
+
+A recipe builds the first version from the first body's cage: the faces of its regions, cut at its
+standard lines, offset into the band along the cage's normals, with more room at the armpits, its
+UVs unfolded along seams where clothes have them, and every open edge turned inward. Where the
+recipe says the template lies over an inner garment beyond a standard line, such as a top over the
+trousers below the waistband, its band there is measured from the inner garment's surface: it is
+lifted by the inner band's distance from the cage, fading in over a few centimeters before the
+line. A modeled
+template's first version is modeled by hand instead. Every other version is fitted from the first
+through the cage: each vertex is bound to a triangle of the first body's cage, by barycentric
+coordinates and an offset in the triangle's frame, and placed at the same triangle and offset of the
+other body's cage, and a vertex or a face centre that then leaves the band is moved back into it.
+Every body's cage has the same faces, so this needs nothing of the bodies' own topology. When the
+cage changes, the first version is bound to the old cage and placed on the new one, so it follows. A
+person's corrections of a fitted version are kept as the difference to the attribute "fitted", the
+shape the last fitting gave, and the attribute "built" holds the shape the recipe gave the first
+version, so a new build of a changed recipe carries the handmade shape over.
+
+Every vertex takes the weights of the nearest skin of the body part its cage face lies on, the
+region and side of the cage, interpolated from the corners of the skin's triangle and not smoothed,
+so it moves like the skin it covers: a sleeve's inside at the armpit moves with the arm. The attribute
+"transferred_weights" holds a checksum of the weights the last transfer gave each vertex of the first
+version; a vertex whose weights differ from it was painted by hand and keeps them, also in the other
+versions.
+
+A hairstyle has the shape key UnderHeadwear, the hair pressed flat to fit under hoods and helmets,
+made by hand on the first version like the hair itself. Every other version's shape key is fitted
+from the first's the same way as its shape, and its corrections are kept as the difference to the
+attribute "fitted_under_headwear"."""
+
+import contextlib
+import hashlib
+import json
+import math
+import os
+import zlib
+
+import bmesh
+import bpy
+import numpy as np
+from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
+from mathutils.interpolate import poly_3d_calc
+from mathutils.kdtree import KDTree
+
+from . import bodies, body_files, cage, cloth, hang, poses
+from .scene import ArtPipelineError, relative_image_paths
+
+FITTED = "fitted"
+BUILT = "built"
+TRANSFERRED = "transferred_weights"
+CAGE_COLLECTION = "Cage"
+CAGE_SHA = "cage_sha256"
+RECIPE = "recipe"
+MODELED = "modeled"
+# The shape key of a hairstyle that presses it flat under headwear, and the shape a fitting gave it.
+UNDER_HEADWEAR = "UnderHeadwear"
+FITTED_UNDER = "fitted_under_headwear"
+# The shape keys each visual slot's templates have besides the basis; every other slot has none.
+SHAPE_KEYS = {"hair": (UNDER_HEADWEAR,)}
+MAX_INFLUENCES = 4
+# How far a fitted vertex or a weight may differ from what a sync gives before the file is stale.
+FIT_TOLERANCE = 1e-5
+WEIGHT_TOLERANCE = 1e-4
+# The distance from the cage each band allows, in meters: the smallest and the largest. Hair lies
+# close at its hairline and its parting and falls free from the head.
+BANDS = {"tight": (0.0, 0.008), "mid": (0.005, 0.025), "outer": (0.010, 0.060), "loose": (0.010, None),
+         "hair": (0.002, None)}
+SLOTS = ("head", "body", "legs", "hands", "feet", "back", "hair")
+# A recipe builds a template this far from the cage: clothes lie as close to the body as they can.
+OFFSETS = {"tight": 0.002, "mid": 0.010, "outer": 0.020, "loose": 0.020, "hair": 0.010}
+# The ease of a recipe fades out over this distance from the lower half of an armhole, the part of
+# the border between the trunk and an arm that lies this far or more below the shoulder joint.
+EASE_REACH = 0.06
+ARMPIT_DROP = 0.04
+# A turned edge folds back inside the cloth this far.
+HEM_FLAP = 0.012
+# A cage vertex this close to a line moves onto it before the cut, so the cut leaves no slivers and
+# the edge runs straight.
+LINE_SNAP = 0.008
+# A template that lies over an inner garment beyond a line rises to it over this distance before
+# the line.
+OVER_FADE = 0.03
+UV_MARGIN = 0.02
+# A boot's sole is where its faces look this far down, the cosine of their angle to straight down.
+SOLE_FACING = 0.5
+# A vertex or a face centre that leaves its band moves back into it by the difference and this
+# margin, a few times over, because moving one face moves the corners it shares.
+SETTLE_MARGIN = 0.0005
+SETTLE_PASSES = 4
+# A point that a push along the nearest normal cannot settle moves along the mean of the cage's
+# normals this close around it, by at most this much.
+SETTLE_AROUND = 0.02
+SETTLE_REACH = 0.01
+ALPHA_CUT = 0.5
+# A modeled template moves with a smooth field of its cage's change: a cage vertex counts by a
+# Gaussian of how much farther it lies than the nearest one, this wide at the cage and growing by
+# this share of the point's distance from it.
+FIELD_WIDTH = 0.015
+FIELD_GROWTH = 0.7
+REVIEW_GREY = (0.62, 0.62, 0.62, 1.0)
+# The review file places the bodies side by side, this far apart.
+REVIEW_OFFSET = 0.8
+POSE_FRAMES = 24
+
+
+def collection_name(label: str) -> str:
+    return f"Export_{label}"
+
+
+def version_name(name: str, label: str) -> str:
+    return f"{name}_{label}"
+
+
+def material_name(name: str) -> str:
+    return f"M_Garment_{name}"
+
+
+def image_name(name: str) -> str:
+    return f"T_Garment_{name}"
+
+
+def cage_object(label: str) -> bpy.types.Object:
+    obj = bpy.data.objects.get(cage.version_name(label))
+    if obj is None or obj.type != "MESH":
+        raise ArtPipelineError(f'The garment has no cage "{cage.version_name(label)}"; run tools/art/Sync-GarmentAsset.ps1.')
+    return obj
+
+
+def file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def recipe_text(recipe) -> str:
+    """A recipe as the file keeps it, with its numbers as floats, so 0 and 0.0 read alike, and
+    without an empty list of what it lies over, so a recipe from before that field reads alike."""
+    if isinstance(recipe, dict):
+        recipe = {**recipe, "ease": float(recipe["ease"]), "hem": float(recipe["hem"])}
+        if not recipe.get("over"):
+            recipe.pop("over", None)
+        if recipe.get("hang"):
+            recipe["hang"] = [{**part, **{key: float(part[key]) for key in ("flare", "top", "width") if key in part}}
+                              for part in recipe["hang"]]
+        else:
+            recipe.pop("hang", None)
+    return json.dumps(recipe, sort_keys=True, separators=(",", ":"))
+
+
+def recipe_regions(recipe) -> tuple[str, ...] | None:
+    """The cage regions a template is bound to and measured from: every region but the hands and
+    the feet that it does not cover, so the hem of a sleeve or a trouser leg follows its limb and not
+    the hand or the foot beyond it, or None for a modeled template, which may lie on any."""
+    if not isinstance(recipe, dict):
+        return None
+    return tuple(r for r in cage.REGIONS if r not in cage.ATTACHED or r in recipe["regions"])
+
+
+def over_lift(recipe, lines: list[dict], label: str, points: np.ndarray) -> np.ndarray:
+    """How far each point of a template on a body lies farther from the cage than its band, because
+    the recipe says the template lies over an inner garment beyond a standard line there: the inner
+    band's distance from the cage on the line's side the inner garment keeps, fading in over
+    OVER_FADE before the line, and only in the line's region of the cage and the regions that hang
+    from it, such as a hand from its arm."""
+    lift = np.zeros(len(points))
+    entries = recipe.get("over", []) if isinstance(recipe, dict) else []
+    if not entries:
+        return lift
+    shell = cage_object(label)
+    # A point is over the region of the template it belongs to: a hem turned in at the border of
+    # the template's region, such as a cloak's neckline over a shirt's, is nearer the region beyond.
+    surface = Surface(shell, [], tuple(r for r in cage.REGIONS if r in recipe["regions"]))
+    keys = cage_keys(shell, surface)
+    nearest = [surface.tree.find_nearest(Vector(p))[2] for p in points]
+    by_name = {line["name"]: line for line in lines}
+    for entry in entries:
+        line = by_name[entry["line"]]
+        regions = {line["region"]} | {end for end, parent in cage.ATTACHED.items() if parent == line["region"]}
+        for side, point, normal in cage.line_planes(label, line):
+            inside = np.array([t is not None and keys[t][0] in regions and (not side or keys[t][1] == side)
+                               for t in nearest])
+            # The side a cut keeping the bone's head keeps lies behind the line's normal.
+            signed = cage.line_offsets(line, point, normal, points)
+            beyond = -signed if entry["keep"] == "head" else signed
+            share = np.clip(1.0 + beyond / OVER_FADE, 0.0, 1.0)
+            share = share * share * (3.0 - 2.0 * share)
+            lift = np.maximum(lift, np.where(inside, share * OFFSETS[entry["band"]], 0.0))
+    return lift
+
+
+def band_limits(recipe, lines: list[dict], label: str, points: np.ndarray, band: str) -> tuple[np.ndarray, np.ndarray | None]:
+    """The band of each point of a template on a body, from the cage: the recipe's band, measured
+    from the inner garment's surface where the template lies over one."""
+    low, high = BANDS[band]
+    lift = over_lift(recipe, lines, label, points)
+    return low + lift, (high + lift if high is not None else None)
+
+
+def field_place(source: np.ndarray, target: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """Points moved with a cage from its shape on one body to its shape on another, each by the
+    cage's displacement around it: the cage's vertices weighted by a Gaussian of how much farther they
+    lie than the nearest one, wider the farther the point stands off the cage. A form that stands off
+    the body, such as hair or a helmet, so keeps its shape, where binding each point to the nearest
+    face of the cage would crumple it."""
+    tree = KDTree(len(source))
+    for i, p in enumerate(source):
+        tree.insert(p, i)
+    tree.balance()
+    shift = np.asarray(target) - np.asarray(source)
+    moved = np.empty_like(np.asarray(points, float))
+    for i, p in enumerate(points):
+        _co, _index, nearest = tree.find(p)
+        width = FIELD_WIDTH + FIELD_GROWTH * nearest
+        found = tree.find_range(p, nearest + 3.0 * width)
+        index = np.array([f[1] for f in found], np.int64)
+        weight = np.exp(-((np.array([f[2] for f in found]) - nearest) / width) ** 2)
+        moved[i] = p + (weight[:, None] * shift[index]).sum(axis=0) / weight.sum()
+    return moved
+
+
+def _points(co: np.ndarray, polygons: list[tuple[int, ...]]) -> np.ndarray:
+    """Every vertex and the centre of every face, the points a band holds for."""
+    return np.concatenate([co, np.array([co[list(p)].mean(axis=0) for p in polygons]).reshape(-1, 3)])
+
+
+def _loose(mesh: bpy.types.Mesh) -> np.ndarray:
+    """Which vertices belong to loose parts, which hang on the cloth chains instead of the cage."""
+    values = _attribute(mesh, hang.HANG, "INT")
+    return values > 0 if values is not None else np.zeros(len(mesh.vertices), bool)
+
+
+def limits(recipe, lines: list[dict], label: str, co: np.ndarray, polygons: list[tuple[int, ...]], band: str,
+           loose: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
+    """The band of every vertex and face centre of a template on a body, as band_limits gives it,
+    and none for the vertices of loose parts and the faces that touch them, which hang off the cage."""
+    low, high = band_limits(recipe, lines, label, _points(co, polygons), band)
+    if not loose.any():
+        return low, high
+    free = np.concatenate([loose, np.array([loose[list(p)].any() for p in polygons], bool)])
+    low = np.where(free, -np.inf, np.broadcast_to(np.asarray(low, float), free.shape))
+    high = np.where(free, np.inf, np.broadcast_to(np.asarray(np.inf if high is None else high, float), free.shape))
+    return low, high
+
+
+def _triangles(mesh: bpy.types.Mesh) -> list[tuple[int, int, int, int]]:
+    """Every polygon as a fan from its first corner: (polygon, a, b, c). The order depends only on
+    the topology, so meshes of the same topology give the same triangles."""
+    found = []
+    for polygon in mesh.polygons:
+        corners = list(polygon.vertices)
+        for i in range(1, len(corners) - 1):
+            found.append((polygon.index, corners[0], corners[i], corners[i + 1]))
+    return found
+
+
+class Surface:
+    """A mesh's surface for fitting, such as a body or a cage: its triangles, their frames, and the
+    mesh's weights over the given bones, or over its own vertex groups. A cage's surface may hold
+    only the faces of some of its regions, those recipe_regions gives a template."""
+
+    def __init__(self, obj: bpy.types.Object, names: list[str] | None = None, regions: tuple[str, ...] | None = None):
+        mesh = obj.data
+        self.co = bodies.world_positions(obj)
+        self.triangles = _triangles(mesh)
+        if regions is not None:
+            values = cage.face_ints(mesh, "region", -1)
+            wanted = {cage.REGIONS.index(r) for r in regions}
+            self.triangles = [t for t in self.triangles if values[t[0]] in wanted]
+        self.tree = BVHTree.FromPolygons([tuple(p) for p in self.co], [t[1:] for t in self.triangles])
+        self.names = names if names is not None else [g.name for g in obj.vertex_groups]
+        self.weights = bodies.weights_of(obj, self.names) if self.names else np.zeros((len(self.co), 0))
+
+    def frame(self, triangle: int) -> tuple[Vector, Vector, Vector]:
+        _p, a, b, c = self.triangles[triangle]
+        pa, pb, pc = (Vector(self.co[i]) for i in (a, b, c))
+        normal = (pb - pa).cross(pc - pa).normalized()
+        tangent = (pb - pa).normalized()
+        return tangent, normal.cross(tangent), normal
+
+    def corners(self, triangle: int) -> list[Vector]:
+        _p, a, b, c = self.triangles[triangle]
+        return [Vector(self.co[i]) for i in (a, b, c)]
+
+    def bind(self, point: Vector) -> tuple[int, list[float], tuple[float, float, float]]:
+        """The triangle closest to the point, the point's barycentric coordinates on it, and its
+        offset in the triangle's frame."""
+        found, _normal, triangle, _distance = self.tree.find_nearest(point)
+        if found is None:
+            raise ArtPipelineError(f"No surface near {tuple(point)}.")
+        weights = poly_3d_calc(self.corners(triangle), found)
+        tangent, bitangent, normal = self.frame(triangle)
+        offset = point - found
+        return triangle, weights, (offset.dot(tangent), offset.dot(bitangent), offset.dot(normal))
+
+    def place(self, triangle: int, weights, offset) -> Vector:
+        corners = self.corners(triangle)
+        point = corners[0] * weights[0] + corners[1] * weights[1] + corners[2] * weights[2]
+        tangent, bitangent, normal = self.frame(triangle)
+        return point + tangent * offset[0] + bitangent * offset[1] + normal * offset[2]
+
+    def weights_at(self, triangle: int, weights) -> np.ndarray:
+        _p, a, b, c = self.triangles[triangle]
+        return _limited(self.weights[a] * weights[0] + self.weights[b] * weights[1] + self.weights[c] * weights[2])
+
+    def nearest(self, point: Vector) -> tuple[float, Vector, int]:
+        """The distance from the nearest point of the surface along its normal, that normal, and the
+        polygon of that point."""
+        found, normal, triangle, _distance = self.tree.find_nearest(point)
+        if found is None:
+            return float("inf"), Vector((0.0, 0.0, 1.0)), -1
+        return (point - found).dot(normal), normal, self.triangles[triangle][0]
+
+    def signed_distance(self, point: Vector) -> tuple[float, int]:
+        distance, _normal, polygon = self.nearest(point)
+        return distance, polygon
+
+    def straight_distance(self, point: Vector) -> float:
+        """The distance to the nearest point of the surface, negative on the inner side of its face.
+        In front of a sharp edge of the surface, such as the cage's nose, the nearest point lies on
+        the edge, and the distance along either face's normal falls far short of this one."""
+        found, normal, _triangle, distance = self.tree.find_nearest(point)
+        if found is None:
+            return float("inf")
+        return distance if (point - found).dot(normal) >= 0.0 else -distance
+
+
+class RegionSkin:
+    """A body's skin with its weights, split by the regions and sides of the cage, so cloth takes the
+    weights of the body part it lies on: a sleeve's inside at the armpit those of the arm, not of
+    the trunk next to it. A hand's skin is also split by its digits, each finger and the thumb with
+    the palm, so a glove's finger moves with its own finger and not with the next one."""
+
+    def __init__(self, body: bpy.types.Object, names: list[str]):
+        self.surface = Surface(body, names)
+        zones = bodies.zones_of(body)
+        digits = cage.face_digits(body)
+        centres = np.array([self.surface.co[list(t[1:])].mean(axis=0) for t in self.surface.triangles])
+        hands = bodies.ZONES.index("Hands")
+        self.trees = {}
+
+        def add(key, keep) -> None:
+            found = [i for i, t in enumerate(self.surface.triangles) if keep(t[0], centres[i][0])]
+            tree = BVHTree.FromPolygons([tuple(p) for p in self.surface.co], [self.surface.triangles[i][1:] for i in found])
+            self.trees[key] = (tree, found)
+
+        for region in cage.REGIONS:
+            wanted = {bodies.ZONES.index(z) for z in cage.SKIN_ZONES[region]}
+            for side in (("L", "R") if region in cage.SIDED else ("",)):
+                add((region, side), lambda p, x, w=wanted, s=side: zones[p] in w and (not s or cage.side_of(x) == s))
+        for side in ("L", "R"):
+            for digit in range(1, len(cage.DIGITS) + 1):
+                add(("hands", side, digit),
+                    lambda p, x, s=side, d=digit: zones[p] == hands and cage.side_of(x) == s and digits[p] in (0, d))
+
+    def weights(self, key: tuple, point: Vector) -> np.ndarray:
+        """The weights of the nearest skin of a cage region and side, or of a hand's digit with the
+        palm when the key also names a digit other than 0."""
+        tree, found = self.trees[key if len(key) < 3 or key[2] else key[:2]]
+        location, _normal, index, _distance = tree.find_nearest(point)
+        if location is None:
+            location, _normal, triangle, _distance = self.surface.tree.find_nearest(point)
+        else:
+            triangle = found[index]
+        return self.surface.weights_at(triangle, poly_3d_calc(self.surface.corners(triangle), location))
+
+
+def cage_keys(cage_obj: bpy.types.Object, surface: Surface) -> list[tuple[str, str, int]]:
+    """The region, side, and digit of every triangle of a cage's surface."""
+    regions = cage.face_ints(cage_obj.data, "region", -1)
+    digits = cage.face_ints(cage_obj.data, cage.DIGIT, 0)
+    keys = []
+    for polygon, a, b, c in surface.triangles:
+        region = cage.REGIONS[int(regions[polygon])]
+        x = surface.co[[a, b, c]].mean(axis=0)[0]
+        keys.append((region, cage.side_of(x) if region in cage.SIDED else "", int(digits[polygon])))
+    return keys
+
+
+def _settle(positions: np.ndarray, polygons: list[tuple[int, ...]], surface: Surface, low, high) -> np.ndarray:
+    """The positions with every vertex, and the corners of every face whose centre, that lies closer
+    to the surface than low or farther than high moved along the surface's normal there into the
+    band, so the whole surface keeps it, not only its corners. low and high hold for every point, or
+    per vertex and then per face, as band_limits gives them."""
+    co = positions.copy()
+    points = [(i,) for i in range(len(co))] + list(polygons)
+    lows = np.broadcast_to(np.asarray(low, float), (len(points),))
+    highs = None if high is None else np.broadcast_to(np.asarray(high, float), (len(points),))
+    for _ in range(SETTLE_PASSES):
+        settled = True
+        for index, polygon in enumerate(points):
+            corners = list(polygon)
+            distance, normal, _p = surface.nearest(Vector(co[corners].mean(axis=0)))
+            if distance < lows[index]:
+                co[corners] += np.array(normal) * (lows[index] + SETTLE_MARGIN - distance)
+                settled = False
+            elif highs is not None and distance > highs[index]:
+                co[corners] -= np.array(normal) * (distance - highs[index] + SETTLE_MARGIN)
+                settled = False
+        if settled:
+            return co
+    # Where the cage's normals point against each other, such as across the crotch between the
+    # thighs, a push along the nearest one moves the point toward the other. Such a point moves along
+    # the mean of the cage's normals around it instead, which points away from both, by at most
+    # SETTLE_REACH in all.
+    moved = np.zeros(len(points))
+    for _ in range(SETTLE_PASSES * 2):
+        settled = True
+        for index, polygon in enumerate(points):
+            corners = list(polygon)
+            centre = Vector(co[corners].mean(axis=0))
+            distance, _normal, _p = surface.nearest(centre)
+            if distance < lows[index] and moved[index] < SETTLE_REACH:
+                around = surface.tree.find_nearest_range(centre, SETTLE_AROUND)
+                mean = sum((n for _c, n, _i, _d in around), Vector())
+                if mean.length < 1e-6:
+                    continue
+                step = min(lows[index] + SETTLE_MARGIN - distance, SETTLE_REACH - moved[index])
+                co[corners] += np.array(mean.normalized()) * step
+                moved[index] += step
+                settled = False
+        if settled:
+            break
+    return co
+
+
+def _settle_band(co: np.ndarray, polygons: list[tuple[int, ...]], surface: Surface, recipe, lines: list[dict],
+                 label: str, band: str, loose: np.ndarray) -> np.ndarray:
+    """The positions settled into the band that limits gives where the points end up: a point that
+    moves may come to lie over another region of the cage, where the template lies over an inner
+    garment or does not, so the band is taken again until it holds."""
+    for _ in range(SETTLE_PASSES):
+        settled = _settle(co, polygons, surface, *limits(recipe, lines, label, co, polygons, band, loose))
+        if np.array_equal(settled, co):
+            break
+        co = settled
+    return co
+
+
+def _limited(row: np.ndarray) -> np.ndarray:
+    """A weight row with its four largest weights, adding up to one."""
+    keep = np.argsort(row, kind="stable")[::-1][:MAX_INFLUENCES]
+    limited = np.zeros_like(row)
+    limited[keep] = row[keep]
+    total = limited.sum()
+    return limited / total if total > 0 else limited
+
+
+def _checksum(row: np.ndarray, names: list[str]) -> int:
+    """A checksum of one vertex's weights, as a signed 32-bit integer attribute holds it."""
+    text = ";".join(f"{names[i]}:{row[i]:.4f}" for i in np.nonzero(row > 0)[0])
+    value = zlib.crc32(text.encode("utf-8"))
+    return value - (1 << 32) if value >= 1 << 31 else value
+
+
+def _attribute(mesh: bpy.types.Mesh, name: str, kind: str = "FLOAT_VECTOR") -> np.ndarray | None:
+    attribute = mesh.attributes.get(name)
+    if attribute is None or attribute.domain != "POINT" or attribute.data_type != kind:
+        return None
+    if kind == "INT":
+        values = np.empty(len(mesh.vertices), np.int32)
+        attribute.data.foreach_get("value", values)
+        return values
+    values = np.empty(len(mesh.vertices) * 3, np.float32)
+    attribute.data.foreach_get("vector", values)
+    return values.reshape(-1, 3).astype(np.float64)
+
+
+def _store(mesh: bpy.types.Mesh, name: str, values: np.ndarray, kind: str = "FLOAT_VECTOR") -> None:
+    attribute = mesh.attributes.get(name)
+    if attribute is not None and (attribute.domain != "POINT" or attribute.data_type != kind):
+        mesh.attributes.remove(attribute)
+        attribute = None
+    attribute = attribute or mesh.attributes.new(name, kind, "POINT")
+    if kind == "INT":
+        attribute.data.foreach_set("value", np.asarray(values, np.int32))
+    else:
+        attribute.data.foreach_set("vector", np.asarray(values, np.float32).reshape(-1))
+
+
+def _rounded_weights(weights: np.ndarray) -> np.ndarray:
+    # As vertex groups store them.
+    return weights.astype(np.float32).astype(np.float64)
+
+
+def under_positions(obj: bpy.types.Object) -> np.ndarray | None:
+    """The world positions of a version's shape key UnderHeadwear, or None when it has none."""
+    keys = obj.data.shape_keys
+    block = keys.key_blocks.get(UNDER_HEADWEAR) if keys is not None else None
+    if block is None:
+        return None
+    co = np.empty(len(obj.data.vertices) * 3)
+    block.data.foreach_get("co", co)
+    m = np.array(obj.matrix_world)
+    return co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
+
+
+def _match_shape_keys(first: bpy.types.Object, target: bpy.types.Object) -> None:
+    """Gives a fitted version the shape keys of the first version, by name, and no others."""
+    wanted = [k.name for k in first.data.shape_keys.key_blocks] if first.data.shape_keys is not None else []
+    have = [k.name for k in target.data.shape_keys.key_blocks] if target.data.shape_keys is not None else []
+    if have == wanted:
+        return
+    if target.data.shape_keys is not None:
+        target.shape_key_clear()
+    for index, name in enumerate(wanted):
+        block = target.shape_key_add(name=name, from_mix=False)
+        if index:
+            block.relative_key = target.data.shape_keys.key_blocks[0]
+
+
+def _set_shape(obj: bpy.types.Object, positions: np.ndarray, under: np.ndarray | None = None) -> None:
+    """Sets a version's positions, which its armature at the origin keeps in world space, with its
+    basis, and the shape key UnderHeadwear when it has one."""
+    obj.data.vertices.foreach_set("co", np.asarray(positions, float).reshape(-1))
+    keys = obj.data.shape_keys
+    if keys is not None:
+        keys.key_blocks[0].data.foreach_set("co", np.asarray(positions, float).reshape(-1))
+        if under is not None and UNDER_HEADWEAR in keys.key_blocks:
+            keys.key_blocks[UNDER_HEADWEAR].data.foreach_set("co", np.asarray(under, float).reshape(-1))
+    obj.data.update()
+
+
+def append_cages(cage_file: str, labels: list[str]) -> None:
+    """The cage's version on every body, taken from the cage's file into the Cage collection,
+    replacing earlier ones, and the file's SHA-256 kept on the scene."""
+    wanted = [cage.version_name(label) for label in labels]
+    for name in wanted:
+        old = bpy.data.objects.get(name)
+        if old is not None:
+            mesh = old.data
+            bpy.data.objects.remove(old, do_unlink=True)
+            if mesh is not None and mesh.users == 0:
+                bpy.data.meshes.remove(mesh)
+    with bpy.data.libraries.load(cage_file, link=False) as (source, target):
+        missing = [n for n in wanted if n not in source.meshes]
+        if missing:
+            raise ArtPipelineError(f"{cage_file} has no cage versions {missing}; run tools/art/Sync-CageAsset.ps1.")
+        target.meshes = wanted
+    collection = body_files.collection(CAGE_COLLECTION)
+    for mesh in target.meshes:
+        mesh.name = mesh.name.split(".")[0]
+        obj = bpy.data.objects.new(mesh.name, mesh)
+        collection.objects.link(obj)
+        obj.hide_select = True
+        obj.hide_render = True
+        obj.hide_set(True)
+    bpy.context.scene[CAGE_SHA] = file_sha256(cage_file)
+
+
+PAIR_COLLECTION = "Pairs"
+
+
+def append_inner(template_file: str, template: str, labels: list[str], compressed: bool = False) -> list[bpy.types.Object]:
+    """The versions of another template, of a lower layer, from its own file, put on the bodies of
+    this file for the pair check and the review sheet: each skinned to the armature of its body
+    here, in the collection Pairs, which a sync never saves because it only appears in a check. A
+    hairstyle under headwear that compresses the hair takes its form UnderHeadwear."""
+    wanted = [version_name(template, label) for label in labels]
+    with bpy.data.libraries.load(template_file, link=False) as (source, target):
+        missing = [n for n in wanted if n not in source.objects]
+        if missing:
+            raise ArtPipelineError(f"{template_file} has no versions {missing}.")
+        target.objects = wanted
+    collection = bpy.data.collections.get(PAIR_COLLECTION) or bpy.data.collections.new(PAIR_COLLECTION)
+    if collection.name not in bpy.context.scene.collection.children:
+        bpy.context.scene.collection.children.link(collection)
+    found = []
+    for obj, label in zip(target.objects, labels):
+        collection.objects.link(obj)
+        obj.parent = bpy.data.objects[label]
+        obj.matrix_parent_inverse = Matrix.Identity(4)
+        bodies.bind(obj, bpy.data.objects[label])
+        keys = obj.data.shape_keys
+        if compressed and keys is not None and UNDER_HEADWEAR in keys.key_blocks:
+            keys.key_blocks[UNDER_HEADWEAR].value = 1.0
+        found.append(obj)
+    return found
+
+
+def _first_version(name: str, labels: list[str]) -> bpy.types.Object:
+    obj = bpy.data.objects.get(version_name(name, labels[0]))
+    if obj is None or obj.type != "MESH":
+        raise ArtPipelineError(f'The garment has no version "{version_name(name, labels[0])}" on its first body.')
+    return obj
+
+
+def _material(name: str) -> bpy.types.Material:
+    """The template's material: a neutral grey without an image, drawn from both sides like the
+    game draws garments. Its textures bring their own materials."""
+    material = bpy.data.materials.get(material_name(name)) or bpy.data.materials.new(material_name(name))
+    material.use_nodes = True
+    bsdf = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Base Color"].default_value = REVIEW_GREY
+    bsdf.inputs["Roughness"].default_value = 0.7
+    bsdf.inputs["Metallic"].default_value = 0.0
+    material.use_backface_culling = False
+    return material
+
+
+def _armpits(cage_obj: bpy.types.Object, arm: bpy.types.Object) -> np.ndarray:
+    """The points of the cage on the lower half of each armhole, the border between the trunk and an
+    arm, where the skin folds when the arms swing."""
+    mesh = cage_obj.data
+    regions = np.empty(len(mesh.polygons), np.int32)
+    mesh.attributes["region"].data.foreach_get("value", regions)
+    seen: dict[int, set[int]] = {}
+    for polygon, region in zip(mesh.polygons, regions):
+        for v in polygon.vertices:
+            seen.setdefault(v, set()).add(int(region))
+    trunk, arms = cage.REGIONS.index("trunk"), cage.REGIONS.index("arms")
+    co = bodies.world_positions(cage_obj)
+    points = []
+    for v, found in seen.items():
+        if trunk in found and arms in found:
+            bone = arm.data.bones[f"UpperArm_{cage.side_of(co[v][0])}"]
+            if co[v][2] <= (arm.matrix_world @ bone.head_local).z - ARMPIT_DROP:
+                points.append(co[v])
+    return np.array(points).reshape(-1, 3)
+
+
+def _cut(cage_obj: bpy.types.Object, arm: bpy.types.Object, recipe: dict, lines: list[dict]) -> bmesh.types.BMesh:
+    """The first body's cage with the faces of the recipe's regions, cut at its lines, each keeping
+    the side toward its bone's head or its tail."""
+    bm = bmesh.new()
+    bm.from_mesh(cage_obj.data)
+    region_layer = bm.faces.layers.int.get("region")
+    wanted = {cage.REGIONS.index(r) for r in recipe["regions"]}
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[region_layer] not in wanted], context="FACES")
+    by_name = {line["name"]: line for line in lines}
+    for cut in recipe["cuts"]:
+        line = by_name[cut["line"]]
+        region = cage.REGIONS.index(line["region"])
+        for side, point, normal in cage.line_planes(arm.name, line):
+            faces = [f for f in bm.faces if f[region_layer] == region and (not side or cage.side_of(f.calc_center_median().x) == side)]
+            if not faces:
+                continue
+            verts = list({v for f in faces for v in f.verts})
+            # Moving along the normal changes no point's distance to the side, so a snapped vertex
+            # lies on a rising line's curve too.
+            for v in verts:
+                distance = float(cage.line_offsets(line, point, normal, np.array(v.co))[()])
+                if abs(distance) < LINE_SNAP:
+                    v.co -= normal * distance
+            if line.get("rise"):
+                _cut_curved(bm, faces, line, point, normal, cut["keep"])
+                continue
+            geom = list({e for f in faces for e in f.edges}) + verts + faces
+            bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=point, plane_no=normal,
+                                   clear_outer=cut["keep"] == "head", clear_inner=cut["keep"] == "tail")
+    # A part across the back with a top trims the template to a yoke it hangs from.
+    for part in hang.parts(recipe):
+        if part.get("top") is not None:
+            _side, point, normal = cage.line_planes(arm.name, by_name[part["line"]])[0]
+            hang.trim(bm, part, arm, point, normal)
+    loose = [v for v in bm.verts if not v.link_faces]
+    bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    bm.normal_update()
+    return bm
+
+
+def _cut_curved(bm: bmesh.types.BMesh, faces: list, line: dict, point: Vector, normal: Vector, keep: str) -> None:
+    """Cuts faces at a curved standard line, as bisect_plane cuts at a plane: every edge that crosses
+    the line is split where it does, every face crossed joins its two points on the line, and the
+    faces on the side the cut does not keep go."""
+    def offset(co: Vector) -> float:
+        return float(cage.line_offsets(line, point, normal, np.array(co))[()])
+
+    near = 1e-6
+    on = {v for f in faces for v in f.verts if abs(offset(v.co)) <= near}
+    for edge in list({e for f in faces for e in f.edges}):
+        a, b = edge.verts
+        da, db = offset(a.co), offset(b.co)
+        if abs(da) > near and abs(db) > near and (da < 0.0) != (db < 0.0):
+            _edge, vert = bmesh.utils.edge_split(edge, a, da / (da - db))
+            on.add(vert)
+    # The faces keep their identity through the edge splits; a face split adds the other half.
+    pieces = list(faces)
+    for face in faces:
+        corners = [v for v in face.verts if v in on]
+        if len(corners) == 2 and not any(set(e.verts) == set(corners) for e in face.edges):
+            other, _edge = bmesh.utils.face_split(face, corners[0], corners[1])
+            pieces.append(other)
+    beyond = [f for f in pieces if (offset(f.calc_center_median()) > 0.0) == (keep == "head")]
+    bmesh.ops.delete(bm, geom=beyond, context="FACES")
+
+
+def _palm_normal(arm: bpy.types.Object, side: str) -> Vector:
+    """The direction a hand's palm faces at rest: at right angles to the hand's bone and to the line
+    from the index finger's base to the little finger's, on the side of the hand the thumb lies on."""
+    world = arm.matrix_world
+    hand = arm.data.bones[f"Hand_{side}"]
+    along = (world @ hand.tail_local) - (world @ hand.head_local)
+    across = (world @ arm.data.bones[f"LittleProximal_{side}"].head_local) - (world @ arm.data.bones[f"IndexProximal_{side}"].head_local)
+    normal = along.cross(across).normalized()
+    # The bones mirror, so the cross product turns the other way on the left hand.
+    return -normal if side == "L" else normal
+
+
+def _mark_seams(bm: bmesh.types.BMesh, arm: bpy.types.Object) -> None:
+    """Seams where clothes have them: between the front and the back of the trunk and the neck,
+    down the sides and over the shoulders, along the underside of each arm, along the inside of each
+    leg, where an arm or a leg meets the trunk, and where a hand or a foot meets its limb; a glove's
+    between its palm and its back, along the sides of the fingers, and a boot's around its sole and
+    up the back of its heel. A neckline runs on from the trunk up the neck without a seam."""
+    region_layer = bm.faces.layers.int.get("region")
+    trunk, neck, arms, legs, hands, feet = (cage.REGIONS.index(r) for r in ("trunk", "neck", "arms", "legs", "hands", "feet"))
+    middle = float(np.mean([v.co.y for v in bm.verts]))
+    palms = {side: _palm_normal(arm, side) for side in ("L", "R")}
+
+    def palm(face) -> bool:
+        return face.normal.dot(palms[cage.side_of(face.calc_center_median().x)]) > 0.0
+
+    def sole(face) -> bool:
+        return face.normal.z < -SOLE_FACING
+
+    def heel(face) -> float:
+        """Across the foot behind its ankle, on which side of the foot's middle the face lies, or 0
+        in front of the ankle."""
+        side = cage.side_of(face.calc_center_median().x)
+        joint = arm.matrix_world @ arm.data.bones[f"LowerLeg_{side}"].tail_local
+        forward = (arm.matrix_world @ arm.data.bones[f"Toes_{side}"].tail_local) - joint
+        forward.z = 0.0
+        forward.normalize()
+        offset = face.calc_center_median() - joint
+        if offset.dot(forward) >= 0.0:
+            return 0.0
+        return 1.0 if offset.dot(forward.cross(Vector((0.0, 0.0, 1.0)))) > 0.0 else -1.0
+
+    def angle(face, bone_name: str, seam_side: Vector) -> float:
+        # Around a limb's bone, measured so it wraps where the seam runs.
+        bone = arm.data.bones[bone_name]
+        head, tail = arm.matrix_world @ bone.head_local, arm.matrix_world @ bone.tail_local
+        axis = (tail - head).normalized()
+        toward = (seam_side - axis * seam_side.dot(axis)).normalized()
+        across = axis.cross(toward)
+        offset = face.calc_center_median() - head
+        return math.atan2(offset.dot(across), -offset.dot(toward))
+
+    def limb_angle(face, region: int) -> float:
+        side = cage.side_of(face.calc_center_median().x)
+        if region == arms:
+            # Under the upper arm, around its bone, and on to the inside of the forearm, around the
+            # forearm's bone, which hangs down too far for "under" to name a side of it.
+            upper = arm.data.bones[f"UpperArm_{side}"]
+            head, tail = arm.matrix_world @ upper.head_local, arm.matrix_world @ upper.tail_local
+            if (face.calc_center_median() - tail).dot((tail - head).normalized()) <= 0.0:
+                return angle(face, f"UpperArm_{side}", Vector((0.0, 0.0, -1.0)))
+            inward = Vector((1.0 if face.calc_center_median().x < 0.0 else -1.0, 0.0, -1.0))
+            return angle(face, f"LowerArm_{side}", inward)
+        # On the inside of the leg, toward the other one, around the bone of the thigh or the shin.
+        knee = arm.matrix_world @ arm.data.bones[f"LowerLeg_{side}"].head_local
+        bone = f"UpperLeg_{side}" if face.calc_center_median().z > knee.z else f"LowerLeg_{side}"
+        inward = Vector((-1.0 if face.calc_center_median().x > 0.0 else 1.0, 0.0, 0.0))
+        return angle(face, bone, inward)
+
+    for edge in bm.edges:
+        faces = list(edge.link_faces)
+        if len(faces) != 2:
+            continue
+        a, b = faces
+        ra, rb = a[region_layer], b[region_layer]
+        if ra != rb and {ra, rb} != {trunk, neck}:
+            edge.seam = True
+        elif ra in (trunk, neck):
+            edge.seam = (a.calc_center_median().y < middle) != (b.calc_center_median().y < middle)
+        elif ra in (arms, legs):
+            ta, tb = limb_angle(a, ra), limb_angle(b, ra)
+            edge.seam = (ta < 0.0) != (tb < 0.0) and abs(ta) > math.pi / 2 and abs(tb) > math.pi / 2
+        elif ra == hands:
+            edge.seam = palm(a) != palm(b)
+        elif ra == feet:
+            ha, hb = heel(a), heel(b)
+            edge.seam = sole(a) != sole(b) or (not sole(a) and ha * hb < 0.0)
+
+
+def _unwrap(mesh: bpy.types.Mesh) -> None:
+    """UVs unfolded along the mesh's seams and borders and packed into the image."""
+    obj = bpy.data.objects.new("_unwrap", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    try:
+        for other in bpy.context.view_layer.objects:
+            other.select_set(False)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        if not mesh.uv_layers:
+            mesh.uv_layers.new(name="UVMap")
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.uv.unwrap(method="ANGLE_BASED", margin=UV_MARGIN)
+        bpy.ops.object.mode_set(mode="OBJECT")
+    finally:
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def _turn_edges(mesh: bpy.types.Mesh, depth: float) -> None:
+    """Every open edge turned inward: a rim of the given depth toward the body and a flap back
+    inside the cloth, with the UVs of the edge, so a hem shows the cloth's thickness. The edge of a
+    loose part turns with it: its rim and flap belong to the part."""
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.normal_update()
+    uv = bm.loops.layers.uv.active
+    loose = bm.verts.layers.int.get(hang.HANG)
+    loose_faces = bm.faces.layers.int.get(hang.HANG_FACE)
+    border = [e for e in bm.edges if e.is_boundary]
+    rim, flap = {}, {}
+    for v in {v for e in border for v in e.verts}:
+        along = [e.other_vert(v).co - v.co for e in v.link_edges if e.is_boundary]
+        tangent = (along[0] - along[1]).normalized() if len(along) == 2 else along[0].normalized()
+        inward = v.normal.cross(tangent).normalized()
+        # Toward the cloth: the side of the vertex's neighbors off the edge.
+        inside = [e.other_vert(v).co - v.co for e in v.link_edges if not e.is_boundary]
+        toward = sum(inside, Vector()) if inside else sum((f.calc_center_median() - v.co for f in v.link_faces), Vector())
+        if inward.dot(toward) < 0.0:
+            inward = -inward
+        rim[v] = bm.verts.new(v.co - v.normal * depth)
+        flap[v] = bm.verts.new(rim[v].co + inward * HEM_FLAP)
+        if loose is not None:
+            rim[v][loose] = flap[v][loose] = max(v[loose], 0)
+    for edge in border:
+        face = edge.link_faces[0]
+        loops = {loop.vert: loop for loop in face.loops}
+        a, b = edge.verts
+        # The new faces run the shared edge against the face's own direction.
+        if loops[a].link_loop_next.vert != b:
+            a, b = b, a
+        for corners in ((b, a, rim[a], rim[b]), (rim[b], rim[a], flap[a], flap[b])):
+            new = bm.faces.new(corners)
+            new.material_index = face.material_index
+            new.smooth = True
+            if loose_faces is not None:
+                new[loose_faces] = face[loose_faces]
+            for loop in new.loops:
+                source = a if loop.vert in (a, rim[a], flap[a]) else b
+                loop[uv].uv = loops[source][uv].uv
+    bm.to_mesh(mesh)
+    bm.free()
+
+
+def _hang_line(recipe, lines: list[dict], label: str, part: dict) -> tuple[Vector, Vector]:
+    """The plane of the standard line a loose part hangs from, on a body."""
+    line = next(line for line in lines if line["name"] == part["line"])
+    _side, point, normal = cage.line_planes(label, line)[0]
+    return point, normal
+
+
+def _add_hangs(bm: bmesh.types.BMesh, arm: bpy.types.Object, recipe, lines: list[dict], label: str) -> None:
+    """Adds the recipe's loose parts to the cut cage: per part a grid of rings below the open edge
+    at its line, laid on its scaffold on the first body, with the faces marked as the part's and,
+    around a skirt, a seam down the back. The edge's vertices and the rings' keep their column in
+    "hang_top", and the rings' vertices their ring in "hang_ring"."""
+    entries = hang.parts(recipe)
+    if not entries:
+        return
+    loose = bm.verts.layers.int.new(hang.HANG)
+    top_layer = bm.verts.layers.int.new(hang.HANG_TOP)
+    ring_layer = bm.verts.layers.int.new(hang.HANG_RING)
+    face_layer = bm.faces.layers.int.new(hang.HANG_FACE)
+    region_layer = bm.faces.layers.int.get("region")
+    body = bodies.source_body(label)
+    names = [b.name for b in arm.data.bones if b.use_deform]
+    for number, part in enumerate(entries):
+        point, normal = _hang_line(recipe, lines, label, part)
+        edge = hang.edge(bm, part, point, normal)
+        closed = part["side"] == "all"
+        top = np.array([tuple(v.co) for v in edge])
+        rings = hang.ring_count(part, arm, top)
+        co, _weights = hang.scaffold(part, arm, body, top, np.zeros((len(top), len(names))), names, rings)
+        for column, v in enumerate(edge):
+            v[loose] = -(number + 1)
+            v[top_layer] = column
+        grid = [edge]
+        for k in range(1, rings + 1):
+            row = [bm.verts.new(tuple(p)) for p in co[k]]
+            for column, v in enumerate(row):
+                v[loose] = number + 1
+                v[ring_layer] = k
+                v[top_layer] = column
+            grid.append(row)
+        # The new faces run the edge against the faces of the template there.
+        a, b = edge[0], edge[1]
+        face = next(f for f in a.link_faces if b in f.verts)
+        runs = next(loop for loop in face.loops if loop.vert is a).link_loop_next.vert is b
+        columns = len(edge) if closed else len(edge) - 1
+        for k in range(rings):
+            for c in range(columns):
+                n = (c + 1) % len(edge)
+                corners = (grid[k][n], grid[k][c], grid[k + 1][c], grid[k + 1][n]) if runs else \
+                    (grid[k][c], grid[k][n], grid[k + 1][n], grid[k + 1][c])
+                new = bm.faces.new(corners)
+                new[region_layer] = len(cage.REGIONS)
+                new[face_layer] = number + 1
+                new.smooth = True
+        if closed:
+            # A skirt opens for its UVs down the middle of its back.
+            back = min(range(len(edge)), key=lambda c: (abs(edge[c].co.x), edge[c].co.y))
+            for k in range(rings):
+                between = bm.edges.get((grid[k][back], grid[k + 1][back]))
+                if between is not None:
+                    between.seam = True
+    bm.normal_update()
+
+
+def _hang_columns(mesh: bpy.types.Mesh, number: int) -> tuple[np.ndarray, int]:
+    """The vertices of the edge a loose part hangs from, in its order, and its number of rings."""
+    loose = _attribute(mesh, hang.HANG, "INT")
+    top = _attribute(mesh, hang.HANG_TOP, "INT")
+    rings = _attribute(mesh, hang.HANG_RING, "INT")
+    edge = np.nonzero(loose == -(number + 1))[0]
+    edge = edge[np.argsort(top[edge], kind="stable")]
+    return edge, int(rings[loose == number + 1].max())
+
+
+def _lay_hangs(mesh: bpy.types.Mesh, arm: bpy.types.Object, recipe, label: str) -> None:
+    """Lays the rings of every loose part on its scaffold from the edge where it now lies, before
+    its edges are turned."""
+    entries = hang.parts(recipe)
+    if not entries:
+        return
+    names = [b.name for b in arm.data.bones if b.use_deform]
+    loose = _attribute(mesh, hang.HANG, "INT")
+    columns = _attribute(mesh, hang.HANG_TOP, "INT")
+    rings_of = _attribute(mesh, hang.HANG_RING, "INT")
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    for number, part in enumerate(entries):
+        edge, rings = _hang_columns(mesh, number)
+        laid, _weights = hang.scaffold(part, arm, bodies.source_body(label), co[edge], np.zeros((len(edge), len(names))),
+                                       names, rings)
+        members = np.nonzero((loose == number + 1) & (rings_of > 0))[0]
+        co[members] = laid[rings_of[members], columns[members]]
+    mesh.vertices.foreach_set("co", co.reshape(-1))
+    mesh.update()
+
+
+def build(name: str, band: str, recipe: dict, lines: list[dict], label: str) -> bpy.types.Mesh:
+    """The template's first version as its recipe gives it, on the cage of the first body, with its
+    loose parts hanging on their scaffolds."""
+    cage_obj = cage_object(label)
+    arm = bpy.data.objects[label]
+    bm = _cut(cage_obj, arm, recipe, lines)
+    _add_hangs(bm, arm, recipe, lines, label)
+    _mark_seams(bm, arm)
+    mesh = bpy.data.meshes.new(version_name(name, label))
+    bm.to_mesh(mesh)
+    bm.free()
+    # The cage's own attributes stay with the cage.
+    for attribute in cage.OWN_ATTRIBUTES:
+        if attribute in mesh.attributes:
+            mesh.attributes.remove(mesh.attributes[attribute])
+    for polygon in mesh.polygons:
+        polygon.use_smooth = True
+    _unwrap(mesh)
+
+    # Into the band along the cage's normals, with more room at the armpits; loose parts hang
+    # where their scaffold lays them.
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    normals = np.empty(len(mesh.vertices) * 3)
+    mesh.vertex_normals.foreach_get("vector", normals)
+    normals = normals.reshape(-1, 3)
+    loose = _loose(mesh)
+    offset = np.full(len(co), OFFSETS[band]) + over_lift(recipe, lines, label, co)
+    armpits = _armpits(cage_obj, arm)
+    if recipe.get("ease", 0.0) > 0.0 and len(armpits):
+        near = KDTree(len(armpits))
+        for i, point in enumerate(armpits):
+            near.insert(point, i)
+        near.balance()
+        for i, point in enumerate(co):
+            distance = near.find(point)[2]
+            share = max(0.0, 1.0 - distance / EASE_REACH)
+            offset[i] += recipe["ease"] * share * share * (3.0 - 2.0 * share)
+    co = co + normals * np.where(loose, 0.0, offset)[:, None]
+    surface = Surface(cage_obj, [], recipe_regions(recipe))
+    polygons = [tuple(p.vertices) for p in mesh.polygons]
+    co = _settle_band(co, polygons, surface, recipe, lines, label, band, loose)
+    mesh.vertices.foreach_set("co", co.reshape(-1))
+    mesh.update()
+    _lay_hangs(mesh, arm, recipe, label)
+    if recipe.get("hem", 0.0) > 0.0:
+        _turn_edges(mesh, recipe["hem"])
+        # The turned edges keep the band too.
+        co = np.empty(len(mesh.vertices) * 3)
+        mesh.vertices.foreach_get("co", co)
+        co = co.reshape(-1, 3)
+        polygons = [tuple(p.vertices) for p in mesh.polygons]
+        co = _settle_band(co, polygons, surface, recipe, lines, label, band, _loose(mesh))
+        mesh.vertices.foreach_set("co", co.reshape(-1))
+        mesh.update()
+    mesh.validate()
+    return mesh
+
+
+@contextlib.contextmanager
+def _scaffold(part: dict, arm: bpy.types.Object, top: np.ndarray, top_weights: np.ndarray, names: list[str], rings: int):
+    """A loose part's scaffold on a body as a surface to bind to and place on, with the chains'
+    weights, for the time of a with block."""
+    co, weights = hang.scaffold(part, arm, bodies.source_body(arm.name), top, top_weights, names, rings)
+    obj = hang.surface_object(co, weights, names, part["side"] == "all")
+    try:
+        yield Surface(obj, names)
+    finally:
+        hang.remove(obj)
+
+
+def _plan(name: str, arms: list[bpy.types.Object], band: str, recipe, lines: list[dict], transfer_all: bool = False) -> dict:
+    """What a sync gives every version: its positions, its weights over the first body's bones,
+    the binding of the first version to its cage, and the checksums of the transferred weights of
+    the first version, with the number of vertices painted by hand."""
+    labels = [a.name for a in arms]
+    first = _first_version(name, labels)
+    # Every deforming bone, so weights painted by hand on cloth chain bones, which the body has
+    # none of, are kept too.
+    names = [b.name for b in arms[0].data.bones if b.use_deform]
+    regions = recipe_regions(recipe)
+    first_cage = Surface(cage_object(labels[0]), [], regions)
+    co = bodies.world_positions(first)
+    binding = [first_cage.bind(Vector(p)) for p in co]
+    # A hairstyle's form under headwear is fitted the same way.
+    under_first = under_positions(first)
+    under_binding = [first_cage.bind(Vector(p)) for p in under_first] if under_first is not None else None
+    polygons = [tuple(p.vertices) for p in first.data.polygons]
+    # Every body's cage has the same triangles, so the regions of the first body's hold for all.
+    keys = cage_keys(cage_object(labels[0]), first_cage)
+
+    def weights_on(label: str, positions: np.ndarray, surface: Surface) -> np.ndarray:
+        skin = RegionSkin(bodies.source_body(label), names)
+        return _rounded_weights(np.array([skin.weights(keys[t], Vector(p)) for p, (t, _w, _o) in zip(positions, binding)]))
+
+    transferred = weights_on(labels[0], co, first_cage)
+    # Loose parts hang on scaffolds instead of the cage: on the first body each of their vertices is
+    # bound to the scaffold there and takes its weights, the chains', from it.
+    entries = hang.parts(recipe)
+    loose = _loose(first.data)
+    values = _attribute(first.data, hang.HANG, "INT")
+    members = [np.nonzero(values == number + 1)[0] for number in range(len(entries))]
+    columns = [_hang_columns(first.data, number) for number in range(len(entries))]
+    hangs = []
+    for number, part in enumerate(entries):
+        edge, rings = columns[number]
+        with _scaffold(part, arms[0], co[edge], transferred[edge], names, rings) as surface:
+            bound = [surface.bind(Vector(co[i])) for i in members[number]]
+            transferred[members[number]] = _rounded_weights(np.array([surface.weights_at(t, w) for t, w, _o in bound]))
+        hangs.append(bound)
+    current = bodies.weights_of(first, names)
+    stored = _attribute(first.data, TRANSFERRED, "INT")
+    if transfer_all or stored is None:
+        hand = np.zeros(len(co), bool)
+    else:
+        sums = np.array([_checksum(row, names) for row in current])
+        hand = (sums != stored) & (current.sum(1) > 0)
+    first_weights = np.where(hand[:, None], current, transferred)
+    checksums = np.array([_checksum(row, names) for row in transferred])
+    if stored is not None and not transfer_all:
+        checksums = np.where(hand, stored, checksums)
+    plan = {"names": names, "hand": int(hand.sum()), "binding": binding,
+            "versions": {first.name: {"positions": None, "under": None, "weights": first_weights,
+                                      "checksums": checksums}}}
+    # A modeled form, such as hair or a helmet, stands off the cage and moves with its smooth field;
+    # a recipe's cloth lies on the cage and follows each of its faces.
+    modeled = not isinstance(recipe, dict)
+    first_shape = bodies.world_positions(cage_object(labels[0]))
+    for arm in arms[1:]:
+        own = Surface(cage_object(arm.name), [], regions)
+        own_shape = bodies.world_positions(cage_object(arm.name))
+        if modeled:
+            placed = field_place(first_shape, own_shape, co)
+        else:
+            placed = np.array([own.place(t, w, o) for t, w, o in binding])
+        positions = _settle_band(placed, polygons, own, recipe, lines, arm.name, band, loose)
+        under = None
+        if under_binding is not None:
+            under = field_place(first_shape, own_shape, under_first) if modeled else \
+                np.array([own.place(t, w, o) for t, w, o in under_binding])
+            under = _settle_band(under, polygons, own, recipe, lines, arm.name, band, loose)
+        weights = weights_on(arm.name, positions, own)
+        # Then the loose parts, on this body's scaffolds from where their edges now lie.
+        for number, part in enumerate(entries):
+            edge, rings = columns[number]
+            with _scaffold(part, arm, positions[edge], weights[edge], names, rings) as surface:
+                positions[members[number]] = np.array([surface.place(t, w, o) for t, w, o in hangs[number]])
+                weights[members[number]] = _rounded_weights(
+                    np.array([surface.weights_at(t, w) for t, w, _o in hangs[number]]))
+        plan["versions"][version_name(name, arm.name)] = {
+            "positions": positions, "under": under, "weights": np.where(hand[:, None], first_weights, weights),
+            "checksums": None}
+    return plan
+
+
+def _apply(plan: dict, name: str, arms: list[bpy.types.Object]) -> None:
+    """Writes the plan: fits every other version, keeping its corrections, gives every version its
+    weights and binding, and keeps the first version's binding to its cage."""
+    first = _first_version(name, [a.name for a in arms])
+    names = plan["names"]
+    for arm in arms:
+        target = bpy.data.objects.get(version_name(name, arm.name))
+        entry = plan["versions"][version_name(name, arm.name)]
+        if entry["positions"] is not None:
+            fitted, under = entry["positions"], entry["under"]
+            under_correction = np.zeros_like(fitted)
+            if target is None:
+                mesh = first.data.copy()
+                mesh.name = version_name(name, arm.name)
+                target = bpy.data.objects.new(mesh.name, mesh)
+                bpy.data.collections[collection_name(arm.name)].objects.link(target)
+                correction = np.zeros_like(fitted)
+            else:
+                if len(target.data.vertices) != len(first.data.vertices):
+                    raise ArtPipelineError(f'"{target.name}" no longer has the topology of "{first.name}"; delete it so '
+                                           "the next sync fits it again.")
+                previous = _attribute(target.data, FITTED)
+                correction = bodies.world_positions(target) - previous if previous is not None else np.zeros_like(fitted)
+                previous_under, current_under = _attribute(target.data, FITTED_UNDER), under_positions(target)
+                if previous_under is not None and current_under is not None:
+                    under_correction = current_under - previous_under
+            _match_shape_keys(first, target)
+            _set_shape(target, fitted + correction, under + under_correction if under is not None else None)
+            _store(target.data, FITTED, fitted)
+            if under is not None:
+                _store(target.data, FITTED_UNDER, under)
+            for attribute in (TRANSFERRED, BUILT) + (() if under is not None else (FITTED_UNDER,)):
+                if attribute in target.data.attributes:
+                    target.data.attributes.remove(target.data.attributes[attribute])
+            target.data.update()
+        else:
+            _store(target.data, TRANSFERRED, entry["checksums"], "INT")
+        target.parent = arm
+        target.matrix_parent_inverse = Matrix.Identity(4)
+        bodies.set_weights(target, entry["weights"], names)
+        bodies.bind(target, arm)
+
+
+def _show_first(arms: list[bpy.types.Object]) -> None:
+    """Shows the first body and its version in the viewport, the one a person edits, and hides the
+    others, which stand at the same place, and the cages."""
+    for index, arm in enumerate(arms):
+        for obj in [arm] + list(arm.children_recursive):
+            obj.hide_set(index > 0)
+    collection = bpy.data.collections.get(CAGE_COLLECTION)
+    for obj in (collection.objects if collection is not None else []):
+        obj.hide_set(True)
+
+
+def _state(name: str, labels: list[str]) -> str:
+    """SHA-256 of everything a sync writes, so a sync that changes nothing leaves the file as it is."""
+    digest = hashlib.sha256()
+    digest.update(str(bpy.context.scene.get(CAGE_SHA)).encode("utf-8"))
+    for label in labels:
+        arm = bpy.data.objects.get(label)
+        body = bodies.source_body(label)
+        digest.update(label.encode("utf-8"))
+        if arm is not None and arm.type == "ARMATURE" and body is not None:
+            digest.update(body_files.fingerprint(arm, body).encode("utf-8"))
+        shell = bpy.data.objects.get(cage.version_name(label))
+        if shell is not None and shell.type == "MESH":
+            digest.update((np.round(bodies.world_positions(shell), 6) + 0.0).tobytes())
+        obj = bpy.data.objects.get(version_name(name, label))
+        if obj is None or obj.type != "MESH":
+            continue
+        groups = sorted(g.name for g in obj.vertex_groups)
+        digest.update(f"{obj.parent.name if obj.parent else ''}|{[m.type for m in obj.modifiers]}|{groups}".encode())
+        digest.update(str(obj.get(RECIPE)).encode("utf-8"))
+        digest.update((np.round(bodies.world_positions(obj), 6) + 0.0).tobytes())
+        digest.update((np.round(bodies.weights_of(obj, groups), 5) + 0.0).tobytes())
+        keys = obj.data.shape_keys
+        digest.update(str([k.name for k in keys.key_blocks] if keys is not None else []).encode("utf-8"))
+        under = under_positions(obj)
+        digest.update(b"-" if under is None else (np.round(under, 6) + 0.0).tobytes())
+        for attribute, kind in ((FITTED, "FLOAT_VECTOR"), (BUILT, "FLOAT_VECTOR"), (TRANSFERRED, "INT"),
+                                (FITTED_UNDER, "FLOAT_VECTOR")):
+            values = _attribute(obj.data, attribute, kind)
+            digest.update(b"-" if values is None else (np.round(values, 6) + 0).tobytes())
+    return digest.hexdigest()
+
+
+def _new_first_version(name: str, band: str, recipe, lines: list[dict], first: bpy.types.Object) -> bpy.types.Object:
+    """The first version built from the recipe and placed on the first body."""
+    mesh = build(name, band, recipe, lines, first.name)
+    obj = bpy.data.objects.new(mesh.name, mesh)
+    bpy.data.collections[collection_name(first.name)].objects.link(obj)
+    obj.parent = first
+    mesh.materials.clear()
+    mesh.materials.append(_material(name))
+    for polygon in mesh.polygons:
+        polygon.material_index = 0
+    _store(mesh, BUILT, bodies.world_positions(obj))
+    obj[RECIPE] = recipe_text(recipe)
+    return obj
+
+
+def create(file: str, name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]],
+           cage_file: str) -> None:
+    """Writes the first file of a template: the bodies, their cages, and the first version as the
+    recipe builds it, fitted to every body; a modeled template gets no first version, which a person
+    models on the first body."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    arms = [body_files.append_body(path, root, collection_name(root)) for path, root in body_list]
+    append_cages(cage_file, [a.name for a in arms])
+    if recipe != MODELED:
+        _new_first_version(name, band, recipe, lines, arms[0])
+        _apply(_plan(name, arms, band, recipe, lines, transfer_all=True), name, arms)
+    _show_first(arms)
+    relative_image_paths()
+    bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
+
+
+def _carry_over(old: bpy.types.Object, new: bpy.types.Object) -> int:
+    """Gives a new build of the first version the handmade shape of the old one: each new vertex
+    takes the difference between the old version and the old build at the nearest point of the old
+    build. Returns how many old vertices had been shaped by hand."""
+    built = _attribute(old.data, BUILT)
+    shaped = bodies.world_positions(old)
+    if built is None or len(built) != len(shaped):
+        return 0
+    difference = shaped - built
+    near = KDTree(len(built))
+    for i, point in enumerate(built):
+        near.insert(point, i)
+    near.balance()
+    co = bodies.world_positions(new)
+    moved = np.array([difference[near.find(point)[1]] for point in co])
+    new.data.vertices.foreach_set("co", (co + moved).reshape(-1))
+    new.data.update()
+    return int((np.linalg.norm(difference, axis=1) > FIT_TOLERANCE).sum())
+
+
+def sync(file: str, name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]], cage_file: str,
+         transfer_all: bool = False, rebuild: bool = False) -> tuple[bool, int, list[str]]:
+    """Appends the bodies and the cages again that changed in their own files, moving the first
+    version with its cage, builds the first version again from a changed recipe when asked, keeping
+    its handmade shape, fits every other version again from the first, and gives every version its
+    weights, keeping the corrections and the weights painted by hand, unless every weight is
+    transferred again. Returns whether the file changed, the number of vertices with weights painted
+    by hand, and notes for the report. An unchanged file is not saved, so its approvals stay valid."""
+    bpy.ops.wm.open_mainfile(filepath=file)
+    labels = [root for _path, root in body_list]
+    notes = []
+    before = _state(name, labels)
+    stale = set(body_files.stale_bodies(body_list))
+    for path, root in body_list:
+        if root in stale:
+            body_files.replace_body(path, root, collection_name(root))
+    arms = [bpy.data.objects[label] for label in labels]
+    # A body no longer of the cage leaves the file with its version, which is a change too.
+    gone = [o for o in bpy.data.objects if o.type == "ARMATURE" and o.name not in labels]
+    gone += [o for o in bpy.data.objects if o.name.startswith(cage.version_name("")) and
+             o.name[len(cage.version_name("")):] not in labels]
+    removed = len(gone)
+    for obj in gone:
+        for child in list(obj.children_recursive):
+            bpy.data.objects.remove(child, do_unlink=True)
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+    first = bpy.data.objects.get(version_name(name, labels[0]))
+    if bpy.context.scene.get(CAGE_SHA) != file_sha256(cage_file) or any(
+            bpy.data.objects.get(cage.version_name(label)) is None for label in labels):
+        binding = built_binding = under_binding = old_shape = None
+        if first is not None and bpy.data.objects.get(cage.version_name(labels[0])) is not None:
+            old_shape = bodies.world_positions(cage_object(labels[0]))
+            old = Surface(cage_object(labels[0]), [], recipe_regions(recipe))
+            binding = [old.bind(Vector(p)) for p in bodies.world_positions(first)]
+            under = under_positions(first)
+            if under is not None:
+                under_binding = [old.bind(Vector(p)) for p in under]
+            # The shape the recipe gave moves with the cage too, so a later rebuild carries over
+            # only the handmade shape, not the cage's change.
+            built = _attribute(first.data, BUILT)
+            if built is not None:
+                built_binding = [old.bind(Vector(p)) for p in built]
+        append_cages(cage_file, labels)
+        if binding is not None:
+            own = Surface(cage_object(labels[0]), [], recipe_regions(recipe))
+
+            # The cage's vertices it had before, where regions were added after them.
+            new_shape = bodies.world_positions(cage_object(labels[0]))[:len(old_shape)]
+
+            def follow(points: np.ndarray, bound: list) -> np.ndarray:
+                # Where the cage did not move, such as when only other regions were added to it, a
+                # point stays exactly where it was, so the fitting of the other bodies, which looks
+                # for the nearest triangle of the cage, finds what it found before. A modeled form
+                # moves with the cage's smooth field, as it is fitted to the other bodies.
+                if isinstance(recipe, dict):
+                    placed = np.array([tuple(own.place(t, w, o)) for t, w, o in bound])
+                else:
+                    placed = field_place(old_shape, new_shape, points)
+                return np.where((np.linalg.norm(placed - points, axis=1) > FIT_TOLERANCE)[:, None], placed, points)
+
+            current = bodies.world_positions(first)
+            moved = follow(current, binding)
+            _set_shape(first, moved, follow(under_positions(first), under_binding) if under_binding is not None else None)
+            if built_binding is not None:
+                _store(first.data, BUILT, follow(_attribute(first.data, BUILT), built_binding))
+            first.data.update()
+            if np.abs(moved - current).max(initial=0.0) > 0.0:
+                notes.append(f"{first.name} moved with its changed cage.")
+            else:
+                notes.append(f"{first.name} stays where it is: its regions of the changed cage did not move.")
+
+    if recipe != MODELED and (first is None or rebuild):
+        new = _new_first_version(name, band, recipe, lines, arms[0])
+        if first is not None:
+            shaped = _carry_over(first, new)
+            notes.append(f"{version_name(name, labels[0])} was built again from its recipe; {shaped} vertices keep "
+                         "their handmade shape.")
+            for obj in [bpy.data.objects.get(version_name(name, arm.name)) for arm in arms[1:]] + [first]:
+                if obj is not None:
+                    mesh = obj.data
+                    bpy.data.objects.remove(obj, do_unlink=True)
+                    if mesh.users == 0:
+                        bpy.data.meshes.remove(mesh)
+            new.name = new.data.name = version_name(name, labels[0])
+        first = new
+    if first is None:
+        raise ArtPipelineError(f'Model the template "{version_name(name, labels[0])}" on the first body first.')
+
+    plan = _plan(name, arms, band, recipe, lines, transfer_all)
+    _apply(plan, name, arms)
+    if not removed and _state(name, labels) == before:
+        return False, plan["hand"], notes
+    _show_first(arms)
+    relative_image_paths()
+    bpy.ops.wm.save_as_mainfile(filepath=file, compress=True, relative_remap=False)
+    return True, plan["hand"], notes
+
+
+def stale_errors(name: str, band: str, recipe, lines: list[dict], body_list: list[tuple[str, str]], cage_file: str) -> list[str]:
+    """A template is checked as a sync would leave it: its bodies and its cages are the current ones
+    of their files, its first version was built from the recipe of its asset.json, every fitted
+    version is fitted to the current first version, and every version has the weights a sync gives
+    it."""
+    labels = [root for _path, root in body_list]
+    stale = body_files.stale_bodies(body_list)
+    if stale:
+        return [f"The bodies {stale} of the garment changed in their own files; run tools/art/Sync-GarmentAsset.ps1."]
+    if bpy.context.scene.get(CAGE_SHA) != file_sha256(cage_file):
+        return ["The garment's cage changed in its own file; run tools/art/Sync-GarmentAsset.ps1."]
+    first = bpy.data.objects.get(version_name(name, labels[0]))
+    if first is not None and recipe != MODELED and first.get(RECIPE) != recipe_text(recipe):
+        return [f'"{first.name}" was built from another recipe than its asset.json names; run '
+                "tools/art/Sync-GarmentAsset.ps1 -Rebuild."]
+    arms = [bpy.data.objects[label] for label in labels]
+    try:
+        plan = _plan(name, arms, band, recipe, lines)
+    except ArtPipelineError:
+        # garment_errors reports the missing first version or cage.
+        return []
+    errors = []
+    for version, entry in plan["versions"].items():
+        obj = bpy.data.objects.get(version)
+        if obj is None:
+            errors.append(f'The garment has no version "{version}"; run tools/art/Sync-GarmentAsset.ps1.')
+            continue
+        if entry["positions"] is not None:
+            fitted = _attribute(obj.data, FITTED)
+            if fitted is None or fitted.shape != entry["positions"].shape or \
+                    np.abs(fitted - entry["positions"]).max() > FIT_TOLERANCE:
+                errors.append(f'"{version}" is not fitted to the current "{version_name(name, labels[0])}"; '
+                              "run tools/art/Sync-GarmentAsset.ps1.")
+                continue
+            if entry["under"] is not None:
+                fitted_under = _attribute(obj.data, FITTED_UNDER)
+                if fitted_under is None or fitted_under.shape != entry["under"].shape or \
+                        np.abs(fitted_under - entry["under"]).max() > FIT_TOLERANCE or under_positions(obj) is None:
+                    errors.append(f'The shape key {UNDER_HEADWEAR} of "{version}" is not fitted to the current '
+                                  f'"{version_name(name, labels[0])}"; run tools/art/Sync-GarmentAsset.ps1.')
+                    continue
+        if np.abs(bodies.weights_of(obj, plan["names"]) - entry["weights"]).max(initial=0.0) > WEIGHT_TOLERANCE:
+            errors.append(f'"{version}" does not have the weights its body gives it; run tools/art/Sync-GarmentAsset.ps1.')
+    return errors
+
+
+def shape_key_errors(obj: bpy.types.Object, slot: str | None) -> list[str]:
+    """A template has exactly the shape keys of its slot: a hairstyle the basis and UnderHeadwear,
+    relative to the basis and at rest, so the version shows its own form, and every other slot none."""
+    wanted = ["Basis", *SHAPE_KEYS[slot]] if slot in SHAPE_KEYS else []
+    keys = obj.data.shape_keys
+    have = [k.name for k in keys.key_blocks] if keys is not None else []
+    if have != wanted:
+        return [f'"{obj.name}" must have the shape keys {wanted or "none"}, not {have or "none"}.']
+    if keys is not None and any(k.relative_key != keys.key_blocks[0] or k.value != 0.0 or k.mute
+                                for k in keys.key_blocks[1:]):
+        return [f'The shape keys of "{obj.name}" must be relative to its basis, at 0, and not muted.']
+    return []
+
+
+def garment_errors(name: str, labels: list[str], band: str, budget: int, recipe=None, lines: list[dict] | None = None,
+                   slot: str | None = None) -> list[str]:
+    """The model rules of a template: a version per body with the first version's topology and one
+    material, within the triangle budget and its band from the cage, at every vertex and at the
+    centre of every face, so a large flat face over a round shoulder cannot dip under the cage
+    between its corners and cloth cannot sink into a pit, and UVs on the first version. Where the
+    template lies over an inner garment, its band is measured from that garment's surface. A
+    hairstyle keeps its band in its form under headwear too."""
+    errors = []
+    try:
+        first = _first_version(name, labels)
+    except ArtPipelineError as error:
+        return [str(error)]
+    if first.data.uv_layers.active is None:
+        errors.append(f'"{first.name}" needs UVs that its textures are painted in.')
+    polygons = [tuple(p.vertices) for p in first.data.polygons]
+    low, high = BANDS[band]
+    for label in labels:
+        obj = bpy.data.objects.get(version_name(name, label))
+        if obj is None or obj.type != "MESH":
+            errors.append(f'The garment has no version "{version_name(name, label)}"; run tools/art/Sync-GarmentAsset.ps1.')
+            continue
+        if [tuple(p.vertices) for p in obj.data.polygons] != polygons:
+            errors.append(f'"{obj.name}" does not have the topology of "{first.name}".')
+        if len(obj.data.materials) == 0 or any(m is None or m.name != material_name(name) for m in obj.data.materials):
+            errors.append(f'"{obj.name}" must use the one material "{material_name(name)}".')
+        triangles = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+        if triangles > budget:
+            errors.append(f'"{obj.name}" has {triangles} triangles; the budget is {budget}.')
+        errors += shape_key_errors(obj, slot)
+        forms = [("", bodies.world_positions(obj))]
+        under = under_positions(obj)
+        if under is not None:
+            forms.append((f" in its shape key {UNDER_HEADWEAR}", under))
+        for form, co in forms:
+            try:
+                distances, straight, nearest = _distances(obj, label, recipe_regions(recipe), co)
+            except ArtPipelineError as error:
+                errors.append(str(error))
+                break
+            lows, highs = limits(recipe, lines or [], label, co, polygons, band, _loose(first.data))
+            # Too close by the straight distance, which a sharp edge of the cage does not shorten;
+            # too far by the distance along the cage's normal, as the recipes build the cloth.
+            near = straight < lows - 1e-4
+            far = distances > highs + 1e-4 if highs is not None else np.zeros_like(near)
+            if near.any() or far.any():
+                # Where they are, so a person knows where to shape the garment.
+                zones = bodies.zones_of(bodies.source_body(label))
+                counts = np.bincount(zones[nearest[near | far]], minlength=len(bodies.ZONES))
+                places = ", ".join(f"{bodies.ZONES[z]} {counts[z]}" for z in np.argsort(-counts, kind="stable") if counts[z])
+                worst = []
+                if near.any():
+                    worst.append(f"the closest {straight[near].min() * 1000:.1f} mm")
+                if far.any():
+                    worst.append(f"the farthest {distances[far].max() * 1000:.1f} mm")
+                over = " (measured from the inner garment where it lies over one)" if (lows > low).any() else ""
+                errors.append(f'"{obj.name}"{form} leaves its {band} band{over} of {low * 1000:.0f} to '
+                              f'{"any" if high is None else f"{high * 1000:.0f}"} mm from the cage at {int((near | far).sum())} '
+                              f"vertices and face centres ({int(near.sum())} too close, {int(far.sum())} too far; "
+                              f"{', '.join(worst)}), over {places}.")
+    return errors
+
+
+def _distances(obj: bpy.types.Object, label: str, regions: tuple[str, ...] | None,
+               co: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The distance from the cage's regions a template covers of every vertex and of the centre of
+    every face, along the normal of the cage's nearest face and straight, and the body polygon each
+    is nearest to; of the version's own positions or of others of its topology, such as its shape
+    key UnderHeadwear."""
+    shell = Surface(cage_object(label), [], regions)
+    skin = Surface(bodies.source_body(label), [])
+    co = bodies.world_positions(obj) if co is None else co
+    points = [Vector(p) for p in list(co) + [co[list(p.vertices)].mean(axis=0) for p in obj.data.polygons]]
+    return (np.array([shell.signed_distance(p)[0] for p in points]),
+            np.array([shell.straight_distance(p) for p in points]),
+            np.array([skin.signed_distance(p)[1] for p in points], np.int64))
+
+
+def report(name: str, labels: list[str], recipe) -> list[str]:
+    """How far every version lies from the cage, its loose parts left out, which hang on the cloth
+    chains, and its triangles."""
+    lines = []
+    for label in labels:
+        obj = bpy.data.objects.get(version_name(name, label))
+        if obj is None or bpy.data.objects.get(cage.version_name(label)) is None:
+            continue
+        distances, straight, _polygons = _distances(obj, label, recipe_regions(recipe))
+        polygons = [tuple(p.vertices) for p in obj.data.polygons]
+        loose = _loose(obj.data)
+        free = np.concatenate([loose, np.array([loose[list(p)].any() for p in polygons], bool)])
+        fixed = distances[~free]
+        # The closest as the band's lower bound measures it, the farthest as its upper bound does.
+        closest = straight[~free].min()
+        triangles = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+        hanging = "".join(f", {int((_attribute(obj.data, hang.HANG, 'INT') == number + 1).sum())} vertices hanging on the "
+                          f"{part['chains']} chains" for number, part in enumerate(hang.parts(recipe)))
+        lines.append(f"{obj.name}: {triangles} triangles, {closest * 1000:.1f} to {fixed.max() * 1000:.1f} mm "
+                     f"from the cage, median {np.median(fixed) * 1000:.1f} mm{hanging}")
+    return lines
+
+
+def export_paths(name: str, labels: list[str], folder: str) -> list[tuple[str, str]]:
+    return [(label, os.path.join(folder, f"{version_name(name, label)}.fbx")) for label in labels]
+
+
+def review_file(file: str, labels: list[str], output: str) -> str:
+    """The garment on every body side by side, with an action RigTest_<Label> on each armature that
+    steps through the test poses, for the reviewer to play in Blender. The cloth chains of its loose
+    parts lie in every pose as the runtime solver lays them."""
+    bpy.ops.wm.open_mainfile(filepath=file)
+    scene = bpy.context.scene
+    frame = 0
+    for index, label in enumerate(labels):
+        arm = bpy.data.objects[label]
+        kinds, reach = cloth.worn(arm, [o for o in arm.children_recursive if o.type == "MESH"])
+        found = cloth.capsules(arm, bodies.source_body(label)) if kinds else []
+        arm.location.x = index * REVIEW_OFFSET
+        for obj in [arm] + list(arm.children_recursive):
+            obj.hide_set(False)
+        action = bpy.data.actions.new(f"RigTest_{label}")
+        arm.animation_data_create()
+        arm.animation_data.action = action
+        frame = 0
+        for _name, _description, pose in poses.POSES[1:]:
+            for f, p in ((frame, {}), (frame + POSE_FRAMES // 2, pose), (frame + POSE_FRAMES, pose)):
+                _key_pose(arm, p, f, kinds, found, reach)
+            frame += POSE_FRAMES + POSE_FRAMES // 2
+        _key_pose(arm, {}, frame, kinds, found, reach)
+    scene.frame_start, scene.frame_end = 0, frame
+    scene.render.fps = POSE_FRAMES
+    scene.frame_set(0)
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    bpy.ops.wm.save_as_mainfile(filepath=output, compress=True, relative_remap=False)
+    return output
+
+
+def _key_pose(arm: bpy.types.Object, pose: dict, frame: int, kinds: list[str], found: list, reach: dict) -> None:
+    poses.apply(arm, pose)
+    cloth.follow(arm, kinds, found, reach)
+    for pb in arm.pose.bones:
+        pb.keyframe_insert("rotation_quaternion", frame=frame)
+    arm.pose.bones["Hips"].keyframe_insert("location", frame=frame)
+
+
+def read_wearing(manifest: str) -> tuple[str, str | None]:
+    """The visual slot of a template's asset.json and, for headwear, what it does to the hair under
+    it: hide, compress, or show."""
+    with open(manifest, encoding="utf-8") as handle:
+        data = json.load(handle)
+    return str(data["slot"]), data.get("hair")
+
+
+def read_manifests(manifest: str, cage_manifest: str) -> tuple[str, object, list[dict], str]:
+    """The band and the recipe of a template's asset.json, and the standard lines and the file of
+    its cage."""
+    with open(manifest, encoding="utf-8") as handle:
+        data = json.load(handle)
+    _figure, lines = cage.read_manifest(cage_manifest)
+    folder = os.path.dirname(os.path.abspath(cage_manifest))
+    return str(data["band"]), data["recipe"], lines, os.path.join(folder, f"{os.path.basename(folder)}.blend")

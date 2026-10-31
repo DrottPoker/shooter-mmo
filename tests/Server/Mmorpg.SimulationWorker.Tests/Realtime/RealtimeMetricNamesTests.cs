@@ -172,12 +172,12 @@ public sealed class RealtimeMetricNamesTests
     }
 
     [Fact]
-    public void ServiceFeaturesDocumentNamesTheRealtimeMeters()
+    public void MonitoringDocumentNamesTheRealtimeMeters()
     {
         var document = File.ReadAllText(Path.Combine(
             RepositoryPaths.Root,
             "docs",
-            "SERVICE_FEATURES.md"));
+            "MONITORING.md"));
 
         Assert.Contains($"`{RealtimeNetworkMetrics.MeterName}`", document, StringComparison.Ordinal);
         Assert.Contains(
