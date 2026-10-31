@@ -7,8 +7,6 @@ namespace Mmorpg.Client.Ui
         Logout,
         LoadSelection,
         CreateCharacter,
-        RefreshCharacters,
-        RefreshShards,
         JoinShard,
         RefreshSimulationSession,
         LeaveShard

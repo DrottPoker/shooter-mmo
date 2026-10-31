@@ -7,8 +7,6 @@ using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
@@ -127,7 +125,7 @@ namespace Mmorpg.Client.Ui
 
         private void BuildUi()
         {
-            EnsureEventSystem();
+            TemporaryUiKit.EnsureEventSystem();
             var canvasObject = new GameObject(
                 "TemporaryWorldInteractionCanvas",
                 typeof(RectTransform),
@@ -573,20 +571,6 @@ namespace Mmorpg.Client.Ui
         {
             var button = TemporaryUiKit.CreateButton(content, label, action, interactable, tone);
             button.GetComponent<LayoutElement>().preferredHeight = 36f;
-        }
-
-        private static void EnsureEventSystem()
-        {
-            if (FindAnyObjectByType<EventSystem>() != null)
-            {
-                return;
-            }
-
-            var eventSystem = new GameObject(
-                "EventSystem",
-                typeof(EventSystem),
-                typeof(InputSystemUIInputModule));
-            DontDestroyOnLoad(eventSystem);
         }
     }
 }

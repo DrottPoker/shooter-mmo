@@ -188,7 +188,8 @@ namespace Mmorpg.Client.Tests.EditMode
 
             look.StepBodyModel(1);
             Assert.That(Describe(look.ToRequest()), Is.EqualTo("Human_Female face=Blush"));
-            Assert.That(look.OfferLabel(0), Is.EqualTo("face"));
+            Assert.That(look.OfferKind(0), Is.EqualTo("face"));
+            Assert.That(look.OfferSlot(0), Is.Empty);
             look.StepBodyModel(1);
             Assert.That(look.BodyModel, Is.EqualTo("Human_Male"));
             Assert.That(new CharacterCreationLook(null).IsAvailable, Is.False);

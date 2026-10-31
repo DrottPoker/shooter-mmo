@@ -233,7 +233,7 @@ ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes
   +-- account-session validation and scene lifecycle recovery
 
 LoginMenu and CharacterSelect
-  +-- LoginMenuPanel or CharacterSelectPanel (immediate-mode GUI)
+  +-- LoginMenuPanel or CharacterSelectPanel (code-built uGUI on TemporaryEntryScreen)
       +-- ClientOperationState
       +-- API coroutine flow
       +-- ClientSessionRecovery
@@ -624,19 +624,48 @@ the error and leaves the joined simulation session gracefully. Addressables
 releases the World scene's handle and bundles when the scene unloads, so a return
 to a built-in scene needs no explicit release.
 
+### Account Entry Screens
+
+LoginMenu and CharacterSelect are built in code on `TemporaryEntryScreen`, a
+full-screen canvas at sorting order 10 with a dark backdrop and cards on it. It
+holds the keyboard rules of a form: `Tab` and `Shift+Tab` move between the
+visible text fields in the order they were added, and `Enter` runs the screen's
+main action. It clears the EventSystem selection whenever a button holds it, so
+the UI module's `Submit` can never click a button a second time. Each screen
+disables its controls through a `CanvasGroup` while its `ClientOperationState`
+runs an operation. The texts, such as `Human_Male` read as `Human Male`, an
+error with its code, and why Enter World cannot run, come from
+`AccountEntryPresentation`, which EditMode tests cover without a scene.
+
+`AccountEntryPreferences` keeps, in `PlayerPrefs`, the login name of the last
+successful login and the character and shard of the last accepted join, never a
+password or a token. A remembered character id of another account matches none
+of the listed characters, so one entry serves every account.
+
 ### LoginMenu
 
-`LoginMenuPanel` draws the temporary login UI with immediate-mode GUI, runs
+`LoginMenuPanel` shows a card with a `Log In` and a `Create Account` page, runs
 registration or login, and loads CharacterSelect after successful
-authentication.
+authentication. `Log In` sends the login field as the `login` of
+`POST /api/accounts/login`, which GameService matches against the email and the
+username. Only the Editor and development builds, `Debug.isDebugBuild`, fill in
+the local development account. A failed request puts the caret back in the
+password field once the form is enabled again.
 
 ### CharacterSelect
 
-`CharacterSelectPanel` draws with immediate-mode GUI and loads characters and
-shards sequentially. It supports character creation with the appearance rows of
-[Character Looks](#character-looks), selection, refresh, logout, and simulation
-join. Join ticket creation and the UDP handshake run inside one coroutine so the
-operation cannot be partially overlapped by another click.
+`CharacterSelectPanel` loads the characters, the shards, and what creation
+offers sequentially into `CharacterSelectState`, and draws the state again on its
+`Changed` event; the widgets are in `CharacterSelectPanel.Layout.cs`. The state
+keeps the chosen character and shard by id across a refresh, lets only an online
+shard be chosen, and keeps creation open while the account has no character. A
+list is built again only when its version changes, so a selection only recolors
+rows, and a double click, read by `TemporaryDoubleClick` from the pointer's click
+count, lands on the row it started on. The panel copies the chosen character and
+shard to `ClientSession`, which the inventory controller observes. Creation uses
+the appearance offers of [Character Looks](#character-looks). Join ticket
+creation and the UDP handshake run inside one coroutine so the operation cannot
+be partially overlapped by another click.
 
 ### World Scenes
 
@@ -644,8 +673,10 @@ A World scene holds the authored composition that
 [World Scene Composition](DEVELOPMENT_WORLDS.md#world-scene-composition)
 describes; everything else comes from `ClientBootstrap` at runtime. Every panel
 of a World scene is runtime uGUI, so `WorldPointerFocus` can tell from the
-EventSystem whether the pointer is over interface. The canvases sort from the
-bottom up:
+EventSystem whether the pointer is over interface. No scene authors an
+EventSystem: `TemporaryUiKit.EnsureEventSystem` makes one for the first panel
+that needs it, with the Input System UI module, and keeps it across scene loads.
+The canvases sort from the bottom up:
 
 | Sorting order | Canvas |
 | ---: | --- |
@@ -727,7 +758,7 @@ The stable `account_session_replaced` code identifies a login from another
 client. Recovery writes a specific temporary Unity Console message rather than
 presenting it as an ordinary expired session.
 
-Logout is different from recovery. A normal Back To Login action first asks
+Logout is different from recovery. A normal `Log Out` action first asks
 GameService to revoke the active account session, then clears local state.
 
 ## Local Player Lifecycle
@@ -1886,12 +1917,12 @@ of the hair slot. `RealtimeSimulationClient` keeps the latest
   character wears an item whose presentation has lowered garments, such as the
   Wool Hood, and asks for the other headwear state.
 - **Character Select** loads what creation offers from
-  `GET /api/character-appearance` and shows temporary rows,
-  `CharacterCreationLook`, that step through the body models and the options of
-  every kind and slot of the chosen body, starting at the first option of a
-  required kind and at `none` for a kind a character may go without;
-  `Create Character` sends the chosen body model and look, and the list names
-  each character's body model.
+  `GET /api/character-appearance` into `CharacterCreationLook`: one button per
+  body model and one row per kind and slot of the chosen body that steps through
+  its options, starting at the first option of a required kind and at `none` for
+  a kind a character may go without; another body model starts from its own
+  defaults. `Create Character` sends the chosen body model and look, and the list
+  names each character's body model.
 
 `CharacterLookTests` holds `content/characters/appearance.json` to both bodies'
 catalogs and to `AppearanceRules`.
@@ -2431,7 +2462,8 @@ namespace rule are in [Folder Layout](#folder-layout).
   Addressables settings. PlayMode tests cover what needs the running bootstrap or
   a real body: the bootstrap and its controllers, a World scene loaded through
   Addressables without a joined session, the inventory panel drawn from a
-  committed snapshot, and real bodies dying, using tools, and attacking.
+  committed snapshot, the LoginMenu and CharacterSelect screens against an
+  unreachable GameService, and real bodies dying, using tools, and attacking.
 - **Fixtures.** Tests never depend on the layout of a development World:
   `FixtureCollisionWorld`, `FixtureItemCatalog`, and `FixtureWorldActorContent` in
   `Tests/EditMode/Fixtures` provide test-owned collision, items, and actors; see

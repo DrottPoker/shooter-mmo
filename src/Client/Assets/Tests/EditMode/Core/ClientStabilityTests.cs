@@ -15,10 +15,10 @@ namespace Mmorpg.Client.Tests.EditMode
             var state = new ClientOperationState();
 
             Assert.That(state.TryBegin(ClientOperation.JoinShard), Is.True);
-            Assert.That(state.TryBegin(ClientOperation.RefreshShards), Is.False);
+            Assert.That(state.TryBegin(ClientOperation.LoadSelection), Is.False);
             Assert.That(state.Current, Is.EqualTo(ClientOperation.JoinShard));
 
-            state.Complete(ClientOperation.RefreshShards);
+            state.Complete(ClientOperation.LoadSelection);
             Assert.That(state.IsBusy, Is.True);
 
             state.Complete(ClientOperation.JoinShard);
