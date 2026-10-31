@@ -566,9 +566,11 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             return RealtimeCombatAttackStatus.OutOfRange;
         }
 
-        // Line of sight costs a raycast, so it is checked when an attack is due and a few
-        // times per second otherwise.
-        var attackDue = CombatTicks.IsReached(serverTick, attacker.NextAttackTick);
+        // Line of sight costs a raycast, so it is checked when an attack is due to start or to
+        // release and a few times per second otherwise; a release never looses through cover the
+        // target reached since the last check.
+        var attackDue = CombatTicks.IsReached(serverTick, attacker.NextAttackTick)
+            || (attacker.Pending is { } pending && CombatTicks.IsReached(serverTick, pending.ReleaseTick));
         if (attackDue
             || attacker.LineOfSightTargetEntityId != target.EntityId
             || CombatTicks.IsReached(serverTick, attacker.NextLineOfSightCheckTick))

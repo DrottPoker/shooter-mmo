@@ -570,8 +570,8 @@ catalog and Mob values from the actor catalog.
   for a magic weapon the character has the weapon's mana cost. Otherwise the
   owner sees the attack status that holds the attack; `NotEnoughMana` keeps the
   target and the attack resumes once the mana is back. Line of sight
-  costs a raycast, so it is checked when an attack is due and five times per
-  second otherwise.
+  costs a raycast, so it is checked when an attack is due to start or to release
+  and five times per second otherwise.
 - An attack starts on the cooldown with an `AttackStarted` event that names the
   tick at which it releases, and releases its blow, arrow, or bolt when the
   windup of its weapon family ends: 0.35 s for `sword`, 0.6 s for `axe`, 0.8 s
