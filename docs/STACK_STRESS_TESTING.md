@@ -1,7 +1,5 @@
 # Stack Stress Testing
 
-Last updated: 2026-10-25
-
 ## Purpose
 
 `tools/StackStressGenerator` is the repeatable load harness for the realtime
@@ -18,26 +16,35 @@ does after joining:
 
 | Workload | Supported mode | Durable item traffic | Movement pattern | Primary use |
 | --- | --- | :---: | --- | --- |
-| `lifecycle` | `worker-only`, `full-stack` | No | Square walking path | Preserve the comparable admission and realtime baseline |
-| `inventory` | `full-stack` | Yes | Square walking path | Relocate one item between Permanent Inventory and Secure Container |
-| `loot-hotspot` | `full-stack` | Yes | Hold at the shared corpse | Contend on one durable Mob corpse with deposit and partial loot |
-| `mixed-gameplay` | `full-stack` | Yes | Bounded movement near the corpse | Combine movement, inventory relocation, corpse deposit, and corpse loot |
+| `lifecycle` | `worker-only`, `full-stack` | No | Square walking loop | Preserve the comparable admission and realtime baseline |
+| `inventory` | `full-stack` | Yes | Square walking loop | Relocate one item between Permanent Inventory and Secure Container |
+| `loot-hotspot` | `full-stack` | Yes | Stand at the shared corpse | Contend on one durable Mob corpse with deposit and partial loot |
+| `mixed-gameplay` | `full-stack` | Yes | Step back and forth beside the corpse | Combine movement, inventory relocation, corpse deposit, and corpse loot |
 
 Both modes run independent headless LiteNetLib clients through the real join,
 movement, snapshot, entity lifecycle, simulation-session, and graceful-leave
-paths. Runs target `local-shard-2` and Development World 1, the 64 m stress
-arena, by default, and every bot starts on its spawn, so all bots stay inside
-the same interest radius.
-This intentionally measures a worst-case local crowd, not the distributed
-capacity of a future larger World.
+paths. Each bot owns an independent UDP endpoint, and the clients use LiteNetLib
+manual polling, so the harness does not create one transport thread per bot.
+The generator polls every bot every 3 ms with a high-resolution timer and sends
+a due input in the same poll, so inputs reach the worker once per tick like a
+Unity client's instead of in bursts. A square loop has legs of two seconds of
+walking.
 
-Use [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) when the goal is a
+Runs target `local-shard-2` and Development World 1, the 64 m stress arena, by
+default, and every bot starts on the World spawn, so all bots stay inside the
+same interest radius. This intentionally measures a worst-case local crowd, not the
+distributed capacity of a future larger World.
+
+Run the stress flow before accepting a new capacity baseline and after changing
+the realtime loop, collision, interest, snapshots, session heartbeats, accounts,
+placement, or database behavior. Use
+[Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) when the goal is a
 long-running visible population beside a real local Unity player. That tool is
 not a repeatable capacity benchmark.
 
 ## Architecture
 
-### Worker-only mode
+### Worker-only Mode
 
 ```text
 StackStressGenerator
@@ -45,17 +52,17 @@ StackStressGenerator
   headless stress bots        -------- LiteNetLib UDP ---> SimulationWorker
 
 GameService: not running
-PostgreSQL: not used
+PostgreSQL and Redis: not used
 Unity: not used
 ```
 
-The in-memory authority implements only the service contracts required by
-SimulationWorker: readiness, worker heartbeat and offline registration,
+The in-memory authority implements only the service contracts that
+SimulationWorker needs: readiness, worker heartbeat and offline registration,
 one-time ticket consumption, simulation-session heartbeat and release, and
 empty durable-corpse restoration. Identities, tickets, and sessions exist only
 for the lifetime of the generator process.
 
-### Full-stack mode
+### Full-stack Mode
 
 ```text
 StackStressGenerator ---- player HTTP APIs ----> GameService ---- SQL ----> PostgreSQL
@@ -68,7 +75,8 @@ GameService and SimulationWorker health checks ---------------------> Redis
 Each full-stack bot completes the normal public lifecycle:
 
 1. Register an account.
-2. Create a character.
+2. Create a character. A gameplay workload then receives its initial fixture
+   items.
 3. Log out the registration session.
 4. Log in with the created account.
 5. Optionally repeat authenticated session validation requests to isolate the
@@ -81,73 +89,69 @@ Each full-stack bot completes the normal public lifecycle:
    worker-only mode.
 9. Leave the simulation cleanly and log out the account session.
 
-All bots still use production account authentication, placement, join tickets,
-UDP item commands, worker authority checks, GameService transactions, and
-PostgreSQL custody. Non-lifecycle workloads use guarded Development-only fixture
-routes only to create each bot's initial items and the shared durable corpse.
-The measured gameplay operations do not call those fixture routes. Each bot owns
-an independent UDP endpoint. Clients use LiteNetLib manual polling so the
-harness does not create one transport thread per bot.
+All bots use production account authentication, placement, join tickets, UDP
+item commands, worker authority checks, GameService transactions, and
+PostgreSQL custody. Gameplay workloads use guarded Development-only fixture
+routes only to create each bot's initial items and, for the loot workloads, the
+shared durable corpse, which one extra fixture account sets up before the ramp.
+The measured gameplay operations never call those routes.
 
-### Dense Replication And Shared Corpse Scheduling
+### What A Dense Run Exercises
 
-The realtime protocol separates local authority from degradable remote
-presentation. Every joined client receives a small owner snapshot at the full
-configured 15 Hz. That packet carries the authoritative local state and input
-acknowledgement. Remote visible entities use MTU-safe chunks of at most 24
-records and a rotating fair scheduler. When a dense visibility set cannot fit
-inside the worker-wide byte budget, remote entity cadence decreases while owner
-cadence remains fixed.
+A crowd in one interest radius drives two overload paths of the worker:
 
-`SimulationWorker:SnapshotReplication:OverloadTargetUtilizationBasisPoints`
-defaults to `9500`. The scheduler targets 95 percent of each recipient's fair
-share, leaving token-bucket margin for tick jitter. The worker reports remote
-work not sent in the current frame through
-`simulation_worker.simulation.snapshot.entity_updates_deferred`. This is
-scheduled quality degradation, not a dropped owner frame. Stress report
-`estimatedMissingSnapshots` counts owner sequence gaps only. At the current
-38 MiB/s aggregate budget, 400 mutually visible players receive owner state at
-15 Hz and about 5.6 Hz average remote entity state. A larger World should reduce
-the visible set before this dense fallback is needed.
-
-Shared corpse traffic has two separate bounds. One committed mutation is
-encoded once and reuses the same packet bytes for every viewer. Open and refresh
-state targets only the requester. Mutations for one corpse enter GameService one
-at a time through a worker-local coordinator, while different corpses remain
-parallel. This retains GameService idempotency and final PostgreSQL validation
-without occupying the complete connection pool with waiters for one corpse row.
-The performance meter publishes
-`simulation_worker.corpse.mutation.backlog` and
-`simulation_worker.corpse.mutation.active_aggregates`, and the interval log
-retains the maximum observed queue depth.
+- Snapshots. Every joined client receives its own owner snapshot at the full
+  15 Hz, while remote entities share the rest of the worker-wide snapshot byte
+  budget in rotating fair chunks, so remote cadence drops before owner cadence
+  does. The worker counts the remote work it put off in
+  `simulation_worker.simulation.snapshot.entity_updates_deferred`; that is
+  scheduled degradation, not a dropped owner frame. The report's
+  `estimatedMissingSnapshots` counts owner sequence gaps only. The rules are in
+  [Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication)
+  and [UDP Resilience And Quotas](SERVICE_FEATURES.md#udp-resilience-and-quotas).
+- The shared corpse. One committed corpse mutation is encoded once for every
+  viewer, open and refresh state go only to the requester, and the mutations of
+  one corpse enter GameService one at a time through a worker-local coordinator
+  while different corpses stay parallel, as
+  [World Actors And Interaction](SERVICE_FEATURES.md#world-actors-and-interaction)
+  describes. The corpse mutation backlog and active aggregates are published as
+  metrics, and the interval log keeps the deepest queue it saw.
 
 ## Full-stack Database Safety
 
-Full-stack mode is intentionally restricted to a disposable local database.
-It refuses to start unless all of these checks pass:
+Full-stack mode is restricted to a disposable local database. The generator
+refuses to start unless all of these checks pass:
 
 - GameService and PostgreSQL use loopback addresses.
 - The PostgreSQL database name contains `stress` or `test`.
 - `--confirm-disposable-database` exactly matches the connected database name.
 - GameService has initialized the schema.
 - The `accounts` table is empty before the run.
-- The final account row count matches the number of successful registrations.
 
-Gameplay fixtures add another safety boundary. GameService accepts fixture
-creation only when all of these conditions hold:
+After the run, the account row count must equal the accounts the run
+registered, including the loot fixture account. GameService reads `.env` like in
+normal development, so set its connection strings in its terminal exactly as
+[Run Full-stack Mode](#run-full-stack-mode) shows; this final check fails when
+GameService wrote to another database.
+
+Gameplay fixtures add another safety boundary. GameService refuses to start
+with `StackStressFixtures:Enabled` set to true unless:
 
 - The hosting environment is `Development`.
-- `StackStressFixtures:Enabled` is explicitly true.
-- GameService is connected to loopback PostgreSQL whose database name contains
-  `stress` or `test`.
-- The request is authenticated as a real account, originates from loopback, and
-  supplies the configured fixture secret.
+- `STACK_STRESS_FIXTURE_SECRET` holds a non-placeholder secret of at least 32
+  characters.
+- GameService uses a loopback PostgreSQL host and a database whose name
+  contains `stress` or `test`.
 - `StackStressFixtures:InventoryDefinitionId` and
-  `StackStressFixtures:LootDefinitionId` name the stackable definitions that the
-  fixtures grant to bots and place on loot corpses. The checked-in Development
-  settings use `potion.minor_healing` and `material.iron_ore`. The fixture
-  responses carry both ids, so the generator and its invariant sampler never
-  name game content.
+  `StackStressFixtures:LootDefinitionId` name the stackable definitions that
+  the fixtures grant to bots and place on loot corpses. The checked-in
+  Development settings use `potion.minor_healing` and `material.iron_ore`. The
+  fixture responses carry both ids, so the generator and its invariant sampler
+  never name game content.
+
+Every fixture request must also come from loopback, be authenticated as a real
+account, and carry the fixture secret in the `X-Stack-Stress-Fixture-Key`
+header.
 
 Fixture creation uses `ItemTransactionService` and the durable corpse service.
 It does not write inventory rows directly. The generator validates final item
@@ -157,20 +161,23 @@ separate read-only PostgreSQL sampler.
 The generator does not delete accounts or other durable rows. Recreate the
 disposable stack before every full-stack run. Never point this mode at a normal
 developer, staging, or production database. Prefer the `STACK_STRESS_POSTGRES`
-environment variable instead of a command-line connection string so the
-password is not exposed through process arguments. Database credentials and
-session secrets are not written to the JSON report.
+environment variable instead of `--postgres-connection-string`, so the password
+is not exposed through process arguments. Database credentials and session
+secrets are not written to the JSON report.
 
-`docker-compose.stack-stress.yml` provides isolated PostgreSQL and Redis ports.
-PostgreSQL uses a temporary in-memory filesystem, so `docker compose down`
-discards the complete stress database.
+`docker-compose.stack-stress.yml` provides PostgreSQL on `127.0.0.1:56432` and
+Redis on `127.0.0.1:56379`, apart from the development and test containers.
+PostgreSQL keeps its data on a temporary in-memory filesystem, so
+`docker compose down` discards the complete stress database.
 
-GameService caps its Npgsql pool at `Database:MaximumPoolSize`, currently `64`.
-Do not raise this value merely to make a stress tier pass. The combined pool
-limits of all GameService replicas plus worker, health, monitoring, and
-administrative clients must remain below PostgreSQL's non-reserved connection
-capacity. Pool saturation should queue bounded work. A transient database
-connection failure returns `503 database_unavailable`.
+GameService caps its Npgsql pool at `Database:MaximumPoolSize`, 64 in the
+checked-in configuration. Do not raise it merely to make a stress tier pass.
+Without the cap, one GameService process can open as many connections as
+PostgreSQL allows and fail requests with `too many clients already`. The
+combined pool limits of all GameService replicas plus worker, health,
+monitoring, and administrative clients must stay below PostgreSQL's
+non-reserved connection capacity, so pool saturation queues bounded work. A
+transient database connection failure returns `503 database_unavailable`.
 
 ## Build
 
@@ -190,7 +197,9 @@ service configuration with every accepted baseline.
 
 ## Run Worker-only Mode
 
-GameService, PostgreSQL, Redis, and Unity are not required.
+GameService, PostgreSQL, Redis, and Unity are not required. The worker binds UDP
+port `27016` by default, the port of the local stress arena worker, so stop that
+worker first or choose another `--worker-udp-port`.
 
 In the first PowerShell terminal, start the generator:
 
@@ -207,12 +216,12 @@ dotnet run --project tools/StackStressGenerator `
   --report-interval-seconds 10
 ```
 
-The tool binds an in-memory authority to `http://127.0.0.1:5099`, creates an
+The tool binds its in-memory authority to `http://127.0.0.1:5099`, creates an
 ephemeral worker secret, prints the exact SimulationWorker environment
 commands, and waits for the worker heartbeat.
 
-In the second PowerShell terminal, copy the printed environment commands, then
-start the worker. The following metrics override is also useful:
+In the second PowerShell terminal, paste the printed environment commands, add
+a ten-second metrics interval, and start the worker:
 
 ```powershell
 $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
@@ -232,11 +241,14 @@ Expected result:
   corpse operations. A bot that fails releases its worker connection at once,
   so its character does not stay joined until the run ends.
 - Every joined bot requests a graceful leave after the steady interval.
-- The command exits zero only when every requested bot joined and left cleanly.
-- A JSON report is written under `artifacts/stress`.
+- The worker log shows no `Movement simulation exceeded its catch-up budget`
+  warning.
+- The command exits with code 0 only when every requested bot joined and left
+  cleanly.
+- A JSON report is written under `artifacts/stress`, which Git ignores.
 
-Stop SimulationWorker when the generator completes. Clear the overrides printed
-by the generator and this metrics override before normal local development:
+Stop SimulationWorker when the generator completes. Clear the printed overrides
+and the metrics override before normal local development:
 
 ```powershell
 Remove-Item Env:GAME_SERVICE_BASE_URL -ErrorAction SilentlyContinue
@@ -255,9 +267,10 @@ Remove-Item Env:SimulationWorker__NetworkMetricsLogSeconds -ErrorAction Silently
 
 ## Run Full-stack Mode
 
-This workflow uses three PowerShell terminals plus the isolated Docker stack.
+This workflow uses three PowerShell terminals plus the disposable Docker stack.
 Use the shown local-only worker secret in both service terminals, or replace it
-with another identical value of at least 32 characters.
+with another identical value of at least 32 characters. The worker uses UDP port
+`27025`, so the normal local workers can keep running.
 
 First, recreate and start the disposable dependencies:
 
@@ -267,10 +280,10 @@ docker compose -f docker-compose.stack-stress.yml up -d --wait
 ```
 
 In terminal 1, start GameService against the disposable database. The high
-authentication limit is a load-test override because the normal local limit is
-five authentication requests per minute per client address. GameService accepts
-at most 1,000 authentication requests per window, which covers the registration
-and login of 100 bots in one minute.
+authentication limit is a load-test override: the normal local limit is five
+authentication requests per minute per client address, and GameService accepts
+at most 1,000 per window, which covers the registration and login of 100 bots
+in one minute.
 
 ```powershell
 $env:ConnectionStrings__Postgres = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
@@ -283,11 +296,10 @@ $env:ASPNETCORE_URLS = "http://127.0.0.1:5500"
 dotnet run --project src/Server/GameService --configuration Release --no-build --no-launch-profile
 ```
 
-Expected result: migrations complete and GameService listens on
-`http://127.0.0.1:5500`.
-
 For `inventory`, `loot-hotspot`, or `mixed-gameplay`, also set the guarded
-fixture configuration before starting GameService:
+fixture configuration in terminal 1 before starting GameService. The fixture
+secret is local test data, but it must contain at least 32 characters and match
+the value the generator uses.
 
 ```powershell
 $env:DOTNET_ENVIRONMENT = "Development"
@@ -295,11 +307,11 @@ $env:StackStressFixtures__Enabled = "true"
 $env:STACK_STRESS_FIXTURE_SECRET = "stack-stress-local-fixture-secret-2026"
 ```
 
-The fixture secret is local test data, but it must contain at least 32
-characters and match the value used by the generator.
+Expected result: migrations complete and GameService listens on
+`http://127.0.0.1:5500`.
 
-In terminal 2, start SimulationWorker with the matching secret and isolated
-Redis endpoint:
+In terminal 2, start SimulationWorker with the matching secret and the
+disposable Redis endpoint:
 
 ```powershell
 $env:GAME_SERVICE_BASE_URL = "http://127.0.0.1:5500"
@@ -315,17 +327,17 @@ $env:SimulationWorker__NetworkMetricsLogSeconds = "10"
 dotnet run --project src/Server/SimulationWorker --configuration Release --no-build --no-launch-profile
 ```
 
-Expected result: the worker registers `local-shard-2` and
-`development-world-1`, the stress arena, with GameService and advertises UDP
-port `27025`.
-
-For `loot-hotspot` or `mixed-gameplay`, use a one-second durable corpse
-reconciliation interval so a newly provisioned stress corpse becomes visible
-quickly:
+For `loot-hotspot` or `mixed-gameplay`, also set a one-second durable corpse
+reconciliation interval in terminal 2 before starting the worker, so the new
+stress corpse becomes visible quickly:
 
 ```powershell
 $env:SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds = "1"
 ```
+
+Expected result: the worker registers `local-shard-2` and
+`development-world-1`, the stress arena, with GameService and advertises UDP
+port `27025`.
 
 In terminal 3, run the complete lifecycle. Set the connection string in the
 environment instead of passing it as an argument:
@@ -359,12 +371,12 @@ Expected result:
 - Every active account session is logged out.
 - PostgreSQL reports no expired unreleased simulation sessions or deadlocks.
 - The final database account count is exactly 100.
-- The command exits zero and writes a full-stack JSON report.
+- The command exits with code 0 and writes a full-stack JSON report.
 
 ### Run Gameplay Workloads
 
-After starting the same disposable stack with the fixture configuration, select
-one explicit workload in terminal 3. This example runs the complete mixed path:
+Start the same disposable stack with the fixture configuration, then select one
+workload in terminal 3. This example runs the complete mixed path:
 
 ```powershell
 $env:STACK_STRESS_POSTGRES = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
@@ -388,8 +400,8 @@ dotnet run --project tools/StackStressGenerator `
 ```
 
 Replace `mixed-gameplay` with `inventory` or `loot-hotspot` to isolate one item
-path. Recreate the Docker stack before every workload because the database must
-start empty.
+path. Recreate the Docker stack before every workload, because the database
+must start empty.
 
 Expected result:
 
@@ -401,15 +413,17 @@ Expected result:
 - Concurrent revision conflicts are reported as expected conflicts, not hidden
   as successes or counted as infrastructure failures.
 - In `mixed-gameplay`, `corpse_out_of_range` also counts as an expected
-  conflict. All bots start crowded on the corpse at the World spawn and keep
-  moving, so the worker correctly rejects a request from a bot that drifted past
-  the 3 m interaction radius. Repeated runs showed it in both the old and the new
-  code, from zero to about one percent of corpse requests. The stationary
+  conflict: the bots start crowded on the corpse and keep moving, so the worker
+  correctly rejects a request from a bot that drifted past the 3 m interaction
+  radius, for up to about one percent of corpse requests. The stationary
   `loot-hotspot` bots never leave the radius, so there it stays unexpected.
-- The run exits zero only when lifecycle checks, gameplay operations, and final
-  PostgreSQL item invariants pass.
+- The run exits with code 0 only when lifecycle checks, gameplay operations, and
+  final PostgreSQL item invariants pass.
 
-Stop GameService and SimulationWorker with Ctrl+C, then clean up:
+### Clean Up
+
+Stop GameService and SimulationWorker with Ctrl+C, then remove the disposable
+stack and every override:
 
 ```powershell
 docker compose -f docker-compose.stack-stress.yml down
@@ -441,11 +455,19 @@ No manual Unity Editor steps are required for either mode.
 
 ## Redis Session-cache A/B Baseline
 
-The 2026-07-19 local A/B run used `development-world-2`, 100 full-stack
-lifecycle bots, HTTP concurrency 64, and 50 explicit session validation
-requests per bot. Both runs used the distributed Redis authentication rate
-limit. Only `RedisAcceleration:SessionCacheEnabled` changed. The disposable
-PostgreSQL and Redis stack was recreated between runs.
+The A/B method measures what the Redis account-session cache saves. Run the
+same full-stack `lifecycle` profile twice with many
+`--session-validation-requests-per-bot`, so session validation dominates:
+once with `$env:RedisAcceleration__SessionCacheEnabled = "false"` set in
+terminal 1 before GameService starts, and once without it, since the cache is on
+by default. Recreate the disposable stack between the runs and change nothing
+else, so both runs keep the distributed Redis authentication rate limit. Compare
+the `account_session_validate` latency and the PostgreSQL committed
+transactions of the two reports. The cache itself is described in
+[Redis Account-session Acceleration](SERVICE_FEATURES.md#redis-account-session-acceleration).
+
+The current baseline used 100 bots on Development World 2, HTTP concurrency 64,
+and 50 validation requests per bot:
 
 | Metric | Cache off | Cache on | Change |
 | --- | ---: | ---: | ---: |
@@ -461,30 +483,19 @@ PostgreSQL and Redis stack was recreated between runs.
 
 Both runs admitted and cleanly logged out 100 of 100 clients with no HTTP
 failures, deadlocks, expired unreleased sessions, or item invariant violations.
-After the cache-on run completed, Redis contained 200 temporary revocation
-tombstones and zero token cache entries, matching the registration-session and
-final-session logout paths.
+After the cache-on run, Redis held 200 temporary revocation tombstones and no
+token cache entries, one tombstone for each bot's registration session and one
+for its final session.
 
-This result validates the narrow optimization: repeated authentication no
-longer needs one PostgreSQL lookup per request. It does not remove the current
-admission-wave connection spike. Registration, BCrypt password work, character
-creation, login replacement, placement, join-ticket creation, and simulation
-session setup still reach PostgreSQL and should be profiled separately before
-changing pool limits or service boundaries.
-
-A cache-on `mixed-gameplay` regression then admitted and cleanly logged out 100
-of 100 clients on `development-world-2`. It completed 978 inventory relocations,
-431 corpse deposits, 198 partial corpse-loot attempts, 100 corpse opens, and 470
-corpse refreshes. Revision conflicts were classified as expected contention.
-There were no unexpected rejections, timeouts, incomplete operations, deadlocks,
-expired unreleased sessions, or item invariant violations.
-
-The live dependency-failure check stopped Redis after creating an active cached
-session. `GET /api/accounts/session` still returned 204 through PostgreSQL
-fallback. Logout returned 503 because its tombstone could not be stored. After
-Redis restarted, the same session still returned 204, proving the failed logout
-did not commit a durable revocation, and the next logout returned 204. This is
-the required safety contract for cache availability failures.
+Repeated authentication therefore no longer needs one PostgreSQL lookup per
+request. The cache does not remove the admission-wave connection spike:
+registration, BCrypt password work, character creation, login replacement,
+placement, join-ticket creation, and simulation session setup still reach
+PostgreSQL, so profile them separately before changing pool limits or service
+boundaries. A check on the same stack confirmed the failure contract: with
+Redis stopped, session validation keeps working through PostgreSQL and logout
+returns 503, and after Redis returns, the session is still valid and logout
+succeeds.
 
 ## Ramp And Soak Strategy
 
@@ -538,8 +549,8 @@ Full-stack reports additionally contain:
 - Per-gameplay-operation request, success, expected-conflict,
   unexpected-rejection, timeout, incomplete-request, stable result-code, and
   latency summaries.
-- GameService process CPU, memory, and thread summaries when the local process
-  can be identified.
+- GameService process CPU, memory, and thread summaries when exactly one local
+  GameService process can be identified.
 - PostgreSQL connection, active wait, idle-in-transaction, transaction, row,
   temporary-file, I/O timing, and deadlock statistics.
 - Maximum active and expired unreleased simulation sessions, minimum observed
@@ -550,13 +561,12 @@ Full-stack reports additionally contain:
 SimulationWorker logs interval timing for network polling, asynchronous
 completion handling, join queue and finalization, simulation ticks and lag,
 movement, collision streaming, interest work, snapshot construction and send,
-and fixed-tick resynchronization. Timing metrics are also published through the
-`Mmorpg.SimulationWorker.Performance` meter. Network counters remain under
-`Mmorpg.SimulationWorker.Realtime`. Performance counters also expose shared
-snapshot packet encoding, sent packets, and deferred remote entity updates.
-Set `Telemetry__OtlpEndpoint` for GameService and SimulationWorker and start the
-[monitoring stack](MONITORING.md) to watch a run live in Grafana; the generator's
-own report remains the measurement of record.
+and fixed-tick resynchronization. The same values are published as metrics of
+the `Mmorpg.SimulationWorker.Performance` and `Mmorpg.SimulationWorker.Realtime`
+meters, listed in [Monitoring](MONITORING.md#simulationworker). Set
+`Telemetry__OtlpEndpoint` for GameService and SimulationWorker and start the
+[monitoring stack](MONITORING.md) to watch a run live in Grafana; the
+generator's own report remains the measurement of record.
 
 ## Quality Boundary
 
@@ -565,7 +575,8 @@ A tier is not supported merely because every process remains alive. Require:
 - Every requested bot joins and leaves successfully.
 - No unexpected disconnect, protocol error, or normal-input quota rejection.
 - No fixed-tick resynchronization during the steady interval.
-- Simulation tick p99 remains below the 33.34 ms fixed-tick budget.
+- Simulation tick p99 stays below the 33.34 ms fixed-tick budget of a 30 Hz
+  tick.
 - Owner snapshot gaps are zero, snapshot drops are zero, and input
   acknowledgement latency remains stable.
 - Remote entity cadence and deferred-update rate match the tier's documented
@@ -583,260 +594,109 @@ A tier is not supported merely because every process remains alive. Require:
 
 Record the first boundary that fails and the phase whose duration grows with
 load. Optimize only after a repeatable run identifies the limiting phase, then
-rerun the same seed, mode, and tier for comparison.
-
-Every future high-frequency gameplay feature must add or extend a workload that
-captures its fan-out, database operations, allocation rate, backlog, and encoded
-bytes before a higher tier is accepted. Preserve owner feedback and session
-leases before degrading remote presentation work.
+rerun the same seed, mode, and tier for comparison. The
+[Realtime Performance Contract](PROJECT_ARCHITECTURE.md#realtime-performance-contract)
+requires every new high-frequency gameplay feature to add or extend a workload
+before a higher tier is accepted. Before the full-stack load targets are raised,
+measure what the item-state lock and the session heartbeats cost in extra
+GameService round trips with a full-stack run.
 
 ## Current Worker-only Baseline
 
-These measurements were recorded on 2026-07-14 with the generator and worker
-sharing one Windows development machine:
+These are the latest accepted worker-only numbers. They were measured on an AMD
+Ryzen 7 5800 with 8 cores, 16 logical processors, and 31.9 GiB of memory under
+Windows, with the generator, the worker, and the Unity Editor on one machine.
+The worker ran 30 simulation ticks and 15 snapshots per second, every bot stayed
+inside one interest radius, and the runs used seed `1337`, ramp steps of 50 or
+100 bots five seconds apart, and a 60-second steady interval. They measured the
+current realtime loop, with its high-resolution tick timer, staggered interest
+refresh, and budget-sized packet pool, as
+[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport) and
+[Interest Management](SERVICE_FEATURES.md#interest-management) describe, and
+bots that send one input per tick.
 
-- AMD Ryzen 7 5800, 8 cores and 16 logical processors.
-- 31.9 GiB physical memory.
-- 30 simulation ticks and 15 snapshots per second.
-- Seed 1337 and the current small map, where all bots are mutually visible.
+| Bots | Tick lag avg / max | Simulation tick avg | Interest avg | Snapshot broadcast avg | Allocated per 10 s | Gen0 / gen1 per 10 s | Input ack p50 / p95 / p99 | Worker average single-core CPU |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 200 | 0.3 / 1.2 ms | 1.2 ms | 0.3 ms | 1.2 ms | 29 MiB | 1 / 0 | 57.9 / 90.4 / 105.2 ms | 44.1% |
+| 500 | 0.5 / 2.0 ms | 4.3 ms | 1.9 ms | 4.7 ms | 70 MiB | 4 / 0 | 78.6 / 119.7 / 140.3 ms | 87.8% |
 
-| Run | Bots | Steady interval | Clean join and leave | Snapshot gaps | Input ack p95 | Worker average single-core CPU | Simulation tick p99 bucket | Maximum working set | Result |
-| --- | ---: | ---: | :---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Before optimization | 200 | 30 s | 200/200 | 0 | 144.0 ms | 69.2% | at most 50 ms | 111.9 MiB | Outside tick budget |
-| Snapshot and interest optimization | 200 | 30 s | 200/200 | 0 | 137.4 ms | 54.9% | at most 8 ms | 112.5 MiB | Clean short run |
-| Final clean tier | 250 | 30 s | 250/250 | 0 | 148.9 ms | 70.8% | at most 16 ms | 129.8 MiB | Clean short run |
-| 2026-07-19 validation | 250 | 60 s | 250/250 | 0 | 144.2 ms | 61.8% | at most 16 ms | 107.9 MiB | Clean short run |
-| Controlled overload | 400 | 120 s | 400/400 | 461,263 | 427.0 ms | 95.6% | at most 50 ms | 239.5 MiB | Not a supported quality tier |
-| Protocol 13 identical baseline | 400 | 60 s | 400/400 | 226,962 | 425.0 ms | 76.5% | at most 24 ms | 176.7 MiB | Snapshot quality failed |
-| Protocol 14 owner-priority scheduling | 400 | 60 s | 400/400 | 0 | 160.1 ms | 78.9% | at most 24 ms | 155.1 MiB | Clean owner path, remote cadence about 5.6 Hz |
-| Protocol 14 development `2d83d3f`, mean of three | 400 | 60 s | 400/400 | 0 | 169.0 ms | 86.6% | at most 24 ms | 191.7 MiB | Comparison baseline for the generated codec |
-| Protocol 14 generated span codec, mean of three | 400 | 60 s | 400/400 | 0 | 156.7 ms | 83.1% | at most 24 ms | 213.0 MiB | Clean short runs, same wire as development |
-| Protocol 15 click-to-move paths, single run on 2026-10-16 | 400 | 60 s | 400/400 | 0 | 155.6 ms | 89.8% | at most 16 ms | 204.6 MiB | Clean short run with the Unity Editor open |
+Every run joined and left every bot cleanly with zero owner snapshot gaps and
+drops. The timing and allocation columns come from the worker's interval log of
+one steady interval, and the latencies and CPU from the generator's run summary.
 
-Protocol 15 bots follow click-to-move paths: the lifecycle workload walks a
-square of 10 meter legs at walking speed instead of sprinting and jumping, and
-each input names a path instead of carrying a direction, camera yaw, and
-buttons. In the protocol 15 run the worker received about 362 KiB/s in 7,761
-packets per second, about 48 bytes per input batch.
+What the numbers mean:
 
-At 200 bots, reusable interest state and visibility-set packet sharing reduced
-steady process allocation from about 1,690 MiB to 258 MiB per ten-second metrics
-interval. Snapshot-pipeline average fell from 11.9 ms to 2.4 ms and worker CPU
-fell by about 21 percent.
-
-The identical 400-bot comparison used seed `1337`, four 100-bot ramp steps five
-seconds apart, and a 60-second steady interval. Protocol 13 attempted the full
-400-entity set for every recipient at 15 Hz. That required about 100 MB/s before
-transport overhead while the checked-in worker budget is 38 MiB/s. Aggregate
-backpressure therefore created 226,962 snapshot sequence gaps and raised input
-acknowledgement p95 to 425.0 ms.
-
-Protocol 14 preserves a dedicated 15 Hz owner packet, applies the 95 percent
-fair-share target, and rotates 149 remote entity records per dense frame. The
-same tier completed with zero owner sequence gaps, zero snapshot drops, input
-acknowledgement p95 of 160.1 ms, and no tick resynchronization. Steady worker
-traffic was about 36.9 MiB/s. This establishes a clean local authority path for
-400 co-located players, not 15 Hz full-state replication of all 399 remote
-players. The current average remote entity cadence is about 5.6 Hz. Raising the
-budget is not the default fix. Larger maps should reduce interest cardinality,
-and future protocol work may add measured quantization or delta compression.
-On 2026-10-16 the schema-generated codec with its span-based core was compared
-with development `2d83d3f` on the same machine and tier: seed `1337`, 400 bots
-in four 100-bot steps five seconds apart, and a 60-second steady interval, in
-three alternating pairs. Every run joined and left 400 of 400 bots cleanly with
-zero snapshot gaps. Averaged over the three runs, input acknowledgement p50 fell
-from 114.3 ms to 105.5 ms and p95 from 169.0 ms to 156.7 ms, and average
-single-core worker CPU fell from 86.6 percent to 83.1 percent. Steady process
-allocation fell from about 569 MiB to 523 MiB per ten-second metrics interval,
-with gen0 collections down from about 37 to 33 per interval. Average simulation
-tick and snapshot broadcast times stayed within run-to-run noise, and the
-maximum working set varied between 170 and 213 MiB across all six runs. Codec
-work is a small share of a tick, so the gain comes mostly from fewer
-allocations.
-
-### Loop Timing, Interest, And Packet Pool, 2026-10-20
-
-These runs used the same machine with the Unity Editor open, seed `1337`, ramp
-steps of 50 or 100 bots five seconds apart, and a 60-second steady interval
-unless noted. Development `3c325da` is the comparison baseline.
-
-| Run | Bots | Tick lag avg / max | Simulation tick avg | Interest avg | Snapshot broadcast avg | Allocated per 10 s | Gen0 / gen1 per 10 s | Input ack p50 / p95 / p99 | Worker average single-core CPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Development `3c325da` | 200 | 9.1 / 29.1 ms | 2.2 ms | 1.6 ms | 2.7 ms | 255 MiB | 18 / 17 | 95.2 / 131.1 / 147.1 ms | 53.4% |
-| All changes | 200 | 0.3 / 1.2 ms | 1.2 ms | 0.3 ms | 1.2 ms | 29 MiB | 1 / 0 | 57.9 / 90.4 / 105.2 ms | 44.1% |
-| Development `3c325da` | 500 | 15.3 / 57.0 ms | 8.0 ms | 8.1 ms | 11.9 ms | 569 MiB | 37 / 34 | 115.9 / 175.4 / 201.7 ms | 97.5% |
-| Worker changes only | 500 | 0.5 / 2.6 ms | 4.5 ms | 2.0 ms | 5.0 ms | 75 MiB | 5 / 0 | 113.1 / 163.8 / 187.2 ms | 89.5% |
-| All changes | 500 | 0.5 / 2.0 ms | 4.3 ms | 1.9 ms | 4.7 ms | 70 MiB | 4 / 0 | 78.6 / 119.7 / 140.3 ms | 87.8% |
-
-Every run joined and left every bot cleanly with zero snapshot gaps and drops.
-The metrics are the interval log of one steady interval; the latencies and CPU
-are the generator's run summary. The worker changes are:
-
-- The realtime loop sleeps with a high-resolution timer on its own thread
-  instead of `Task.Delay`, which waited a whole 15.6 ms Windows timer tick and
-  started ticks up to a full tick late. That tick lag delayed snapshots
-  unevenly: the Unity client saw owner snapshots 67 ms apart at the median but
-  up to 128 ms apart, and remote players ran ahead and fell behind.
-- The loop wakes LiteNetLib's update thread at the end of every iteration, so
-  queued packets leave at once instead of after up to 15 ms.
-- LiteNetLib's packet pool covers one broadcast instead of 1,000 packets: one
-  owner packet per allowed connection plus the remote chunks the aggregate
-  snapshot budget allows. A broadcast queues them all first, so every packet
-  beyond the pool was a new allocation, and gen1 collections almost matched
-  gen0.
-- Each connection's visibility set is refreshed every third snapshot, the
-  connections in turn, and the spatial cells store positions. At 500 bots the
-  interest phase fell from 8.1 to 2.0 ms.
-- The worker steps each character once per input through a short queue instead
-  of once per tick with the newest input, as described in
-  [Service Features](SERVICE_FEATURES.md#server-authoritative-movement). In the
-  Unity client with 200 bots the reconciliation corrections fell from 0.17 m at
-  p95 and 0.50 m at most to none, and remote walking speed, 5 m/s, stopped
-  swinging up to 7.5 m/s.
-- The packet pool size above was first eight packets per connection; the
-  "Worker changes only" row used it.
-
-The bot changes poll every bot every 3 ms with a high-resolution timer and send
-a due input in the same poll, so inputs reach the worker once per tick like a
-Unity client's instead of in bursts. Most of the remaining input
-acknowledgement latency is structural: an input waits for the next tick, and
-its acknowledgement for the next owner snapshot, which goes out every second
-tick.
-
-An intermediate pool of eight packets per connection covered 500 bots but not
-200, whose 2,000 packets per broadcast exceeded its 1,600: gen1 collections still
-matched gen0, and the managed heap grew to 122 MiB before a full collection. A
-heap dump showed 13 MiB of live objects, so that growth was uncollected garbage,
-not a leak. Sizing the pool from the snapshot budget removed it. Single runs on a
-shared machine still vary; one 200-bot run measured an input acknowledgement p99
-of 188 ms.
-
-At 500 bots most of the remaining worker CPU is LiteNetLib's update thread
-sending about 45,000 packets per second. Its experimental `UseNativeSockets`
-option raised the worker to 96% of a core in the same run, so it stays off.
-Fewer and smaller remote records, through quantization or larger chunks, are
-the next lever and need a protocol change.
-
-The 250- and 400-bot results are short runs. A 30 to 60 minute soak is still
-required before declaring a supported production tier.
+- Ticks start within a few milliseconds of their schedule and stay far inside
+  the tick budget, and almost no garbage survives into generation 1.
+- Most of the remaining input acknowledgement latency is structural: an input
+  waits for the next tick, and its acknowledgement for the next owner snapshot,
+  which goes out every second tick.
+- At 500 bots most of the worker CPU is LiteNetLib's update thread, which sends
+  about 45,000 packets per second. LiteNetLib's experimental `UseNativeSockets`
+  option raised the worker to 96 percent of a core in the same run, so it stays
+  off. Fewer and smaller remote records, through quantization or larger chunks,
+  are the next lever and need a protocol change.
+- Full 15 Hz replication of 400 mutually visible players would need about
+  100 MB/s before transport overhead, against the 38 MiB/s aggregate snapshot
+  budget, so remote cadence drops in a dense crowd while owner state stays at
+  15 Hz. With 400 mutually visible players the average remote entity cadence
+  was about 5.6 Hz. Raising the budget is not the default fix: larger Worlds
+  should reduce the visible set, and future protocol work may add measured
+  quantization or delta compression.
+- Single runs on a shared machine vary; one 200-bot run measured an input
+  acknowledgement p99 of 188 ms. All of these are short runs, and a 30 to 60
+  minute soak is still required before a tier counts as supported.
 
 ## Current Full-stack Baseline
 
-These local runs were recorded on 2026-07-19 on the same Ryzen 7 5800 machine.
-They used the normal GameService account and placement APIs, real PostgreSQL,
-real worker ticket consumption and session leases, and the realtime UDP load.
+These are the latest accepted full-stack numbers, from the `mixed-gameplay`
+workload on development `1eeebca` on the same machine. They used the normal
+account and placement APIs, real PostgreSQL, worker ticket consumption and
+session leases, one shared durable corpse, UDP item and corpse commands,
+GameService transactions, and the final database invariant checks, with
+three-second inventory and four-second corpse operations. The 100-client run
+used 32-way HTTP admission, four 25-client ramp steps ten seconds apart, and a
+120-second steady interval. The 250-client run used 64-way admission, five
+50-client ramp steps five seconds apart, and a 60-second steady interval.
 
-| Run | Bots | HTTP concurrency | Steady interval | Complete lifecycle | HTTP failures | PostgreSQL max connections | Snapshot gaps | Input ack p95 | Result |
-| --- | ---: | ---: | ---: | :---: | ---: | ---: | ---: | ---: | --- |
-| Initial baseline | 100 | 32 | 60 s | 100/100 | 0 | 34 | 0 | 126.2 ms | Clean short run |
-| Before pool bound | 250 | 64 | 60 s | 198/250 | 48 | 100 | 0 | 133.7 ms | PostgreSQL connection exhaustion |
-| After pool bound | 250 | 64 | 60 s | 250/250 | 0 | 66 | 0 | 148.4 ms | Clean short run |
-| Controlled overload | 400 | 64 | 30 s | 400/400 | 0 | 66 | 128,529 | 479.5 ms | Worker snapshot quality boundary failed |
-
-Before the pool bound, one GameService process could grow its implicit Npgsql
-pool to PostgreSQL's complete 100-connection limit. PostgreSQL logged repeated
-`too many clients already` failures across registration, character, login,
-placement, and worker ticket-consumption requests. This caused 52 bot failures.
-
-With `Database:MaximumPoolSize` set to `64`, the exact same 250-bot and
-64-concurrency profile completed every lifecycle. Database connections remained
-at or below 66 including non-GameService clients, with no rollback, deadlock, or
-expired unreleased session. Registration and login p95 were 5.46 and 5.33
-seconds under the intentional password-hashing and pool queue burst. This is
-bounded admission backpressure, not a steady-state gameplay delay.
-
-The historical 400-bot full-stack run proves the pool boundary also held during
-protocol 13 controlled overload. Its lifecycle completed, but dense replication
-failed the old worker quality boundary. The protocol 14 worker-only comparison
-above fixes owner starvation. A protocol 14 full-stack 400-bot lifecycle rerun
-is still required before replacing this historical row.
-
-### Mixed Gameplay Results
-
-The following profiles used one shared durable corpse, real UDP item and corpse
-commands, GameService transactions, PostgreSQL custody, and final database
-invariant checks. The 250-bot comparisons used the same seed, 64-way HTTP
-admission, five 50-bot ramp steps five seconds apart, three-second inventory
-operations, four-second corpse operations, and a 60-second steady interval.
-
-| Run | Bots | Complete lifecycle | Unexpected gameplay rejections | Transaction timeout codes | PostgreSQL max connections | Maximum active waits | Input ack p95 | Worker average single-core CPU | Maximum working set | Result |
-| --- | ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Clean mixed baseline | 100 | 100/100 | 0 | 0 | 55 | 17 | 135.5 ms | 39.4% | 122.5 MiB | Clean short run |
-| Before corpse fan-out optimization | 250 | 250/250 | 322 | 10 | 66 | 62 | 662.0 ms | 115.6% | 602.7 MiB | Failed gameplay quality |
-| Encoded reuse and targeted refresh | 250 | 250/250 | 3 | 3 | 67 | 61 | 190.3 ms | 73.7% | 168.1 MiB | Database hotspot remained |
-| Per-corpse mutation coordination | 250 | 250/250 | 0 | 0 | 66 | 39 | 186.5 ms | 68.9% | Clean short run |
-
-Before optimization, every successful open or refresh rebuilt a full corpse
-view and broadcast it to every viewer. Every viewer also re-encoded identical
-chunks. The resulting multiplicative fan-out drove worker allocation above
-2 GiB per ten-second metrics interval, grew the completion backlog to 188, and
-produced hundreds of range and transaction failures as acknowledgements fell
-behind.
-
-The final implementation sends open and refresh state only to the requester,
-encodes each committed update once for all viewers, reserves snapshot burst
-headroom, and serializes only mutations that target the same corpse. Different
-corpses and ordinary inventory operations remain parallel. The final run had
-zero snapshot drops, zero operation timeouts, zero unexpected gameplay results,
-zero deadlocks, zero expired unreleased sessions, and exact item quantity, slot,
-custody, and operation-journal invariants. It completed 5,056 successful
-inventory relocations and 2,514 successful corpse refreshes.
-
-The intentionally pathological shared corpse still exposes aggregate latency:
-2,407 stale deposit attempts were reported as expected conflicts and deposit
-p95 was 3.44 seconds because one corpse is one serialized custody aggregate.
-This is now bounded backpressure instead of database pool exhaustion. Multiple
-geographically separate corpse hotspots need a future workload to verify that
-the per-corpse coordinator preserves parallel throughput. The clean result is a
-short stability run, not a production capacity declaration.
-
-### Logged-in Clients After The Timing Changes, 2026-10-20
-
-These `mixed-gameplay` runs repeat the profiles above on development `1eeebca`,
-which contains the worker loop, movement, interest, and bot changes described in
-[Loop Timing, Interest, And Packet Pool](#loop-timing-interest-and-packet-pool-2026-10-20).
-The 100-client run used 32-way HTTP admission, four 25-client ramp steps ten
-seconds apart, and a 120-second steady interval; the 250-client runs used the
-64-way profile of the table above with a 60-second steady interval. All runs
-used three-second inventory and four-second corpse operations. The comparison
-run repeated the 250-client profile on development `3c325da`, before those
-changes, right after the 250-client run on `1eeebca` and under the same
-conditions.
-
-The local development stack ran next to the disposable stress stack with 300
-`ActiveSimulationBots`, about one core of the 16 logical processors. Because two
+The local development stack ran beside the disposable stack with 300
+ActiveSimulationBots, about one of the 16 logical processors. Because two
 GameService and two SimulationWorker processes ran, the generator could not
-attribute process CPU; the worker CPU below comes from the stress worker's own
+attribute process metrics: the worker CPU below comes from the stress worker's
 interval log, and the GameService process metrics are missing.
 
-| Run | Clients | Complete lifecycle | Join failures | Input ack p50 / p95 / p99 | Login p50 / p95 | Join ticket p50 / p95 | PostgreSQL max connections / active waits | Rollbacks | Expired unreleased sessions | Corpse refresh p95 | Worker average single-core CPU |
-| --- | ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Development `1eeebca` | 100 | 100/100 | 0 | 47.2 / 78.2 / 85.2 ms | 0.57 / 0.84 s | 0.28 / 0.58 s | 67 / 12 | 0 | 0 | 50 ms | about 30% |
-| Development `1eeebca` | 250 | 250/250 | 0 | 73.2 / 114.4 / 139.2 ms | 1.03 / 1.38 s | 2.23 / 4.15 s | 66 / 60 | 0 | 0 | 115 ms | about 90% |
-| Development `3c325da` | 250 | 210/250 | 40 | 116.3 / 210.0 / 333.4 ms | 1.06 / 1.64 s | 3.37 / 6.35 s | 67 / 57 | 38 | 3 | 215 ms | about 73% with 210 joined |
+| Clients | Complete lifecycle | Join failures | Input ack p50 / p95 / p99 | Login p50 / p95 | Join ticket p50 / p95 | PostgreSQL max connections / active waits | Rollbacks | Expired unreleased sessions | Corpse refresh p95 | Worker average single-core CPU |
+| ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 100/100 | 0 | 47.2 / 78.2 / 85.2 ms | 0.57 / 0.84 s | 0.28 / 0.58 s | 67 / 12 | 0 | 0 | 50 ms | about 30% |
+| 250 | 250/250 | 0 | 73.2 / 114.4 / 139.2 ms | 1.03 / 1.38 s | 2.23 / 4.15 s | 66 / 60 | 0 | 0 | 115 ms | about 90% |
 
-Every run had zero deadlocks, zero unexpected gameplay rejections, zero
+Both runs had zero deadlocks, zero unexpected gameplay rejections, zero
 operation timeouts, and exact item quantity, slot, custody, and operation
 invariants. The 100-client run completed 4,369 inventory relocations, 541
-corpse deposits, and 497 partial loots; its deposit p95 was 352 ms. The
-250-client run on `1eeebca` completed 3,729 relocations and 1,679 corpse
-refreshes.
+corpse deposits, and 497 partial loots with a deposit p95 of 352 ms; the
+250-client run completed 3,729 relocations and 1,679 corpse refreshes.
 
-The 40 failed joins on `3c325da` were all `auth_service_timeout`: during the
-admission wave the worker's ticket consumption call to GameService exceeded its
-five-second timeout. On `1eeebca` every client joined, and input
-acknowledgement p99 fell from 333 to 139 ms. The likely reason is that the
-realtime loop no longer runs on the thread pool, which the worker's GameService
-calls share, but this run does not isolate it.
+What the numbers mean:
 
-The shared corpse was saturated in both versions: deposit p95 was 8.5 seconds on
-`1eeebca` and 7.8 seconds on `3c325da`, against 3.44 seconds in the July run
-above, and almost every deposit and loot was a stale-revision conflict. With 250
-clients the demand exceeds what one serialized corpse aggregate can commit, so
-the queue in front of it, up to 142 waiting mutations, sets the latency, and on
-this day's busier machine each database transaction took longer. Because both
-versions show the same hotspot under the same conditions, it is the database
-environment and not the timing changes.
+- PostgreSQL connections stay at about 66, GameService's pool of 64 plus a few
+  other clients such as the generator's sampler, so pool saturation queues work
+  instead of failing it.
+- Admission is the slow phase. At 250 clients join tickets wait seconds while
+  password hashing, character creation, login, placement, and ticket creation
+  queue for the pool; the `lifecycle` workload at 250 clients and 64-way
+  admission showed registration and login p95 of about 5.5 seconds for the same
+  reason. That is bounded admission backpressure, not a steady-state gameplay
+  delay.
+- The shared corpse is deliberately pathological. One corpse is one serialized
+  custody aggregate, so with 250 clients almost every deposit and loot is a
+  stale-revision conflict, the queue in front of the corpse, up to 142 waiting
+  mutations, sets the latency, and deposit p95 reached 8.5 seconds. That is
+  bounded backpressure instead of database pool exhaustion. A workload with
+  several separate corpse hotspots is still needed to show that the per-corpse
+  coordinator keeps parallel throughput.
+- No full-stack run at 400 clients exists with the current snapshot scheduler.
+  Run one before claiming a 400-client full-stack tier.
+- These are short stability runs, not a production capacity declaration.
 
 ## Scope Boundary
 
@@ -851,38 +711,57 @@ Recovery Storage, equipment, Bag nesting, and multiple geographically separated
 loot hotspots are not generated. Add those as explicit future workload profiles
 so the stable lifecycle baseline does not silently change.
 
-Distributed load generation and remote service targets are not implemented.
+Distributed load generation and remote service targets are not implemented:
+every URL and the PostgreSQL host must be loopback.
 
 ## Command Reference
 
-List every supported option:
+List every option with its default:
 
 ```powershell
 dotnet run --project tools/StackStressGenerator -- --help
 ```
 
-Important mode-specific options are:
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--mode` | `worker-only` | `worker-only` or `full-stack` |
+| `--workload` | `lifecycle` | `lifecycle`, `inventory`, `loot-hotspot`, or `mixed-gameplay`; every workload except `lifecycle` needs `full-stack` |
+| `--authority-url` | `http://127.0.0.1:5099` | Loopback URL of the worker-only in-memory authority |
+| `--game-service-url` | `http://127.0.0.1:5000` | Loopback URL of the full-stack GameService |
+| `--postgres-connection-string` | `STACK_STRESS_POSTGRES` | Full-stack metrics and safety connection; prefer the variable |
+| `--confirm-disposable-database` | none | The exact disposable database name, required in full-stack mode |
+| `--run-id` | random | 1 to 12 ASCII letters or digits in the names of the full-stack accounts and characters |
+| `--http-timeout-seconds` | `30` | Full-stack HTTP timeout |
+| `--http-concurrency` | `32` | Concurrent full-stack account lifecycles, 1 to 512 |
+| `--session-validation-requests-per-bot` | `0` | 0 to 1000 authenticated session checks after each login, full-stack only |
+| `--worker-host` | `127.0.0.1` | Worker-only: the UDP host the bots use and the worker advertises |
+| `--worker-udp-port` | `27016` | Worker-only: the worker's UDP port, the stress arena port |
+| `--worker-id` | `local-simulation-worker-2` | The worker the run expects; full-stack mode checks it in every join response |
+| `--fleet-id`, `--node-id` | `local-fleet`, `local-node-1` | Worker-only: the identity the worker must register |
+| `--shard-id` | `local-shard-2` | The Shard the bots join |
+| `--world-id` | `development-world-1` | The World that Shard must run |
+| `--worker-secret` | random | Worker-only: the ephemeral worker secret, at least 32 characters |
+| `--bots` | `100` | Total bots, 1 to 10,000 |
+| `--bot-start-index` | `1` | Index of the first bot; the same seed and indices repeat the same movement |
+| `--ramp-step` | `25` | Bots added per ramp interval, at most `--bots` |
+| `--ramp-interval-seconds` | `10` | Delay between ramp steps |
+| `--duration-seconds` | `300` | Steady interval after the ramp |
+| `--worker-wait-seconds` | `120` | How long to wait until the worker or the full stack is ready |
+| `--join-timeout-seconds` | `10` | Per-bot join timeout |
+| `--inventory-operation-interval-seconds` | `8` | Inventory mutation cadence |
+| `--loot-operation-interval-seconds` | `3` | Corpse mutation cadence |
+| `--gameplay-operation-timeout-seconds` | `30` | Timeout of one realtime item or corpse operation |
+| `--loot-hotspot-x`, `-y`, `-z` | `0`, `0`, `0` | Position of the shared corpse, the stress arena spawn |
+| `--report-interval-seconds` | `10` | Console report interval |
+| `--seed` | `1337` | Movement seed |
+| `--output` | `artifacts/stress/stack-stress-<mode>-<workload>-<time>.json` | Path of the JSON report |
 
-- `--mode worker-only|full-stack`
-- `--workload lifecycle|inventory|loot-hotspot|mixed-gameplay`
-- `--authority-url` for the worker-only in-memory authority
-- `--game-service-url` for full-stack GameService
-- `--confirm-disposable-database` for the exact full-stack database name
-- `--http-concurrency` for concurrent full-stack account lifecycles
-- `--session-validation-requests-per-bot` for 0 to 1000 repeated authenticated
-  session checks after each login
-- `--run-id` for durable full-stack stress identity names
+`STACK_STRESS_FIXTURE_SECRET` supplies the fixture secret of the gameplay
+workloads; it is intentionally not accepted as a command-line argument. The
+same seed and bot indices reproduce movement patterns, while tickets, account
+session tokens, and generated passwords stay random for every run.
 
-Common load options include `--bots`, `--bot-start-index`, `--ramp-step`,
-`--ramp-interval-seconds`, `--duration-seconds`, `--join-timeout-seconds`,
-`--report-interval-seconds`, `--seed`, and `--output`.
-
-Gameplay options include `--inventory-operation-interval-seconds`,
-`--loot-operation-interval-seconds`,
-`--gameplay-operation-timeout-seconds`, and `--loot-hotspot-x`,
-`--loot-hotspot-y`, and `--loot-hotspot-z`. Supply the fixture secret through
-`STACK_STRESS_FIXTURE_SECRET`; it is intentionally not accepted as a command-line
-argument.
-
-The same seed and bot indices reproduce movement patterns. Tickets, account
-session tokens, and generated passwords remain random for every run.
+Exit codes: 0 when every requested bot joined and left cleanly, every admitted
+account logged out, no gameplay operation failed unexpectedly, and the item
+invariants held; 1 for any other result or failure; 2 for an invalid option;
+130 when the run was cancelled with Ctrl+C.

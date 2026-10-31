@@ -1,13 +1,14 @@
 # Development Worlds
 
-Last updated: 2026-10-26
+The repository has two development Worlds: a test World with a zone for every
+developed feature, and a stress arena that keeps every player and actor in one
+interest radius. This document describes what each one is for, their layouts,
+how their scenes are composed, rebuilt, and baked, and the rules for authoring
+World collision.
 
-## Purpose
-
-This document defines the two checked-in development Worlds, what each one is
-for, their layout, and how their scenes are rebuilt and baked. A World is
-reusable content. A shard references one World at a time and may change that
-reference only while the shard is fully offline and drained.
+A World is reusable content. A shard references one World at a time and may
+change that reference only while the shard is fully offline and drained; see
+[Rebind An Offline Shard](LOCAL_DEVELOPMENT.md#rebind-an-offline-shard-to-another-world).
 
 ## Checked-In World Registry
 
@@ -24,23 +25,28 @@ run side by side; see
 GameService accepts and persists a shard's World binding only when the shard is
 offline and drained.
 
-The client catalog maps each World id to its scene, and both scenes are
-Addressables World scenes. Build Profiles contain only LoginMenu and
-CharacterSelect.
+The client's World scene catalog, `Assets/Content/Worlds/world-scene-catalog.json`,
+maps each World id to its scene, and both scenes are Addressables World scenes.
+Build Profiles contain only LoginMenu and CharacterSelect; see
+[Scene And UI Flow](UNITY_CLIENT_ARCHITECTURE.md#scene-and-ui-flow).
 
 Both scenes are built by checked-in editor builders, so neither is edited by
-hand. `world.json` is the only source of the spawn and the playable bounds: the
-builders read it to place `PlayerSpawn` and the boundary walls, and
-SimulationWorker reads it to spawn characters and clamp movement.
-`actor-spawns.json` is the only source of NPC, Mob, and resource node
-positions; the layouts only keep those positions clear. A resource node blocks
-movement with its collision box, which the collision compilers add to the
-World's collision from the compiled actors.
+hand. Each World's content lives in `content/worlds/<WorldId>`:
+
+- `world.json` is the only source of the spawn and the playable bounds. The
+  builders read it to place `PlayerSpawn` and the boundary walls, and
+  SimulationWorker reads it to spawn characters and clamp movement.
+- `actor-spawns.json` is the only source of NPC, Mob, and resource node
+  positions; the layouts only keep those positions clear. A resource node blocks
+  movement with its collision box, which the collision compilers add to the
+  World's collision from the compiled actors.
+- `collision.json` is the collision the bake writes from the scene; see
+  [Rebuild And Bake Workflow](#rebuild-and-bake-workflow).
 
 ## Shared Look
 
-The Worlds are a readable greybox, not final art. The colors mean the same
-thing in both:
+The Worlds are a readable greybox, not final art. The colors mean the same thing
+in both:
 
 | Color | Meaning |
 | --- | --- |
@@ -68,8 +74,8 @@ roads, floor paint, sign boards, labels, and tree crowns do not.
 
 A 64 by 64 meter walled floor whose diagonal of about 88 m stays inside the
 128 m interest enter radius, so every player, bot, NPC, and Mob is visible to
-everyone at once. This is the worst case for replication, interest, and Mob
-AI load.
+everyone at once. This is the worst case for replication, interest, and Mob AI
+load.
 
 | Element | Position or area | Notes |
 | --- | --- | --- |
@@ -139,17 +145,17 @@ step height, the 45 degree slope limit, and the 0.7 m body width.
 | Maze | X `-58` to `-34`, Z `76` to `100`, 6 m lanes | In from the south, out to the north |
 | Camera tests | A corridor at X `44`, Z `80` to `92`, with a 2.6 m ceiling, and a 2 m alley between 8 m walls at X `40` to `42`, Z `100` to `116` | Camera collision in tight spaces |
 
-The route planner searches a 0.5 m grid whose cell centers lie on odd
-multiples of 0.25 m, and it keeps 0.4 m of clearance from walls. A gap narrower
-than 1.3 m is therefore routed only where a cell center has that clearance on
-both sides, which is why the station gaps are centered on cell centers.
+The route planner searches a 0.5 m grid whose cell centers lie on odd multiples
+of 0.25 m, and it keeps 0.4 m of clearance from walls. A gap narrower than 1.3 m
+is therefore routed only where a cell center has that clearance on both sides,
+which is why the station gaps are centered on cell centers.
 
 ### Highlands
 
 The terrain test area. A Unity Terrain baked as a collision heightfield, so
 hills, a mountain, and a tunnel use the same authoritative movement and route
-planning as the boxes. The builder computes every height from a fixed function
-of the position, so a rebuild reproduces the same terrain.
+planning as the boxes. The builder computes every height from a fixed function of
+the position, so a rebuild reproduces the same terrain.
 
 | Element | Position or area | Notes |
 | --- | --- | --- |
@@ -162,8 +168,8 @@ of the position, so a rebuild reproduces the same terrain.
 | North portal | Z `162` to `170` | Terrain holes at Z `163` to `168` open the north cliff |
 
 Terrain layers paint grass where the ground is 40 degrees or flatter and rock
-where it is steeper. Rock means a slope the character cannot walk up, because
-the walkable limit is 45 degrees.
+where it is steeper. Rock means a slope the character cannot walk up, because the
+walkable limit is 45 degrees.
 
 Collision triangles are one-sided. The terrain faces up, so a walker inside the
 tunnel passes below it. The tunnel arch faces in, so a walker on the peak passes
@@ -180,8 +186,8 @@ generated assets below `Assets/Art/Terrain/DevelopmentWorld2`.
 | PvP arena | 40 by 40 m around `(100, 0, 0)` | A 1.2 m wall that eyes see over, 6 m openings to the west and east, four 4 m full-cover pillars, and two 1 m low covers |
 | Range lane | X `130` to `165` at Z `24` to `36` | A cyan start stripe and a stripe every 5 m, labeled up to 35 m, for measuring attack range |
 
-Wolves are the combat targets in Development World 2, and other players are
-the targets in the arena when the Shard allows player versus player.
+Wolves are the combat targets in Development World 2, and other players are the
+targets in the arena when the Shard allows player versus player.
 
 ### Interest Road And Outpost
 
@@ -189,8 +195,8 @@ A road leads west from the town to an outpost at `(-172, 0, 0)` with a guard at
 `(-170, 0, 0)`. Cyan markers and signs stand at 64 m (the collision streaming
 radius of two 32 m chunks), 128 m (the interest enter radius), and 144 m (the
 interest exit radius) from the town center. The outpost is more than 160 m from
-the spawn and every town actor, so walking out removes the town from the
-client and brings the guard in, and walking back reverses it.
+the spawn and every town actor, so walking out removes the town from the client
+and brings the guard in, and walking back reverses it.
 
 ### Wolf Woods
 
@@ -202,15 +208,15 @@ client and brings the guard in, and walking back reverses it.
 
 ### Quarry
 
-Seven Iron Veins: a 2 by 2 group 6 m apart around `(84, 0, -84)` and single
-veins at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)`, inside rock
-walls on the south and east sides.
+Seven Iron Veins: a 2 by 2 group 6 m apart around `(84, 0, -84)` and single veins
+at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)`, inside rock walls on
+the south and east sides.
 
 ### Meadow And Sandbox
 
-The meadow south of the town is open ground with six greybox trees, for crowds
-of bots and players. East of them, toward the quarry, the oak grove holds four Oak Trees, the
-resource nodes that a Woodcutting Axe chops down, at `(38, 0, -80)`,
+The meadow south of the town is open ground with six greybox trees, for crowds of
+bots and players. East of them, toward the quarry, the oak grove holds four Oak
+Trees, the resource nodes that a Woodcutting Axe chops down, at `(38, 0, -80)`,
 `(48, 0, -88)`, `(32, 0, -92)`, and `(42, 0, -100)`, with an `OAK GROVE` sign at
 `(28, 0, -74)`. The sandbox is a 100 by 100 m teal pad centered at
 `(-120, 0, 120)`, kept free for features that need space of their own.
@@ -230,41 +236,104 @@ while sight and arrows pass it.
 | `development-world-2` | Iron Vein | Seven in the quarry: a 2 by 2 group 6 m apart around `(84, 0, -84)` and single veins at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)` |
 | `development-world-2` | Oak Tree | Four in the oak grove: `(38, 0, -80)`, `(48, 0, -88)`, `(32, 0, -92)`, and `(42, 0, -100)`, turned 0, 70, 140, and 215 degrees |
 
+## World Scene Composition
+
+Every World scene has three root objects:
+
+- `Environment`, everything the builder generates: the ground, the boundary
+  walls, the zones, signs, and labels. It carries the scene's
+  `WorldCollisionAuthoring`, and every collider below it that the bake reads is
+  World collision.
+- `Gameplay`, with `PlayerSpawn`, placed at the spawn of the World's
+  `world.json`, and a `WorldSceneContext` object whose component references the
+  `LocalPlayer.prefab` and `RemotePlayer.prefab` assets and `PlayerSpawn`. The
+  builders change nothing in `Gameplay` apart from the `PlayerSpawn` transform.
+- One `Directional Light`.
+
+A World scene contains no LocalPlayer instance and no camera. After an accepted
+join, `WorldSceneContext` creates one LocalPlayer from the assigned prefab at
+`PlayerSpawn`, connects it to the authoritative movement state, and connects its
+camera, the only gameplay camera and AudioListener. The views of other players
+are roots of the World scene, never children of the LocalPlayer. Opening a World
+scene directly without a joined session creates no player and reports no
+missing reference. Everything else in a running World scene comes from the
+client's bootstrap at runtime; see
+[Local Player Lifecycle](UNITY_CLIENT_ARCHITECTURE.md#local-player-lifecycle) and
+[World Scenes](UNITY_CLIENT_ARCHITECTURE.md#world-scenes).
+
 ## Rebuild And Bake Workflow
 
-The checked-in editor builders reproduce each environment completely. They
-never touch `Gameplay` content other than the `PlayerSpawn` transform, and they
-never change actor content. A builder writes a palette material only when its
-color, texture, or smoothness changes, and then in the form the shader's
-Inspector keeps, since URP Lit derives the legacy `_Color` from `_BaseColor`
-with slightly different floats whenever it validates a material; a rebuild with
-the same palette leaves every material file as it is.
+The builders in `src/Client/Assets/Editor/DevelopmentWorlds` reproduce each
+environment completely. A builder opens its scene, configures
+`WorldCollisionAuthoring` on the `Environment` root (the World id, chunk size
+`32`, the root itself as collision root, and layer mask `3`), replaces every
+child of `Environment`, moves `Gameplay/PlayerSpawn` to the spawn and facing in
+the World's `world.json`, marks the environment static, and saves the scene. It
+never touches other `Gameplay` content and never changes actor content. A
+builder writes a palette material only when its color, texture, or smoothness
+changes, and then in the form the shader's Inspector keeps, since URP Lit
+derives the legacy `_Color` from `_BaseColor` with slightly different floats
+whenever it validates a material; a rebuild with the same palette leaves every
+material file as it is.
 
-1. Open `src/Client` in Unity and allow asset import to finish.
+To rebuild and bake both Worlds:
+
+1. Open `src/Client` in Unity, let asset import finish, and exit Play Mode; the
+   builders and the bake do not run in Play Mode.
 2. Select `MMORPG > Tools > Development Worlds > Rebuild Development World 1
-   Environment` or `Rebuild Development World 2 Environment` and confirm
-   `Rebuild`. The builder opens the scene, replaces every child under
-   `Environment`, moves `PlayerSpawn` to the manifest spawn, and saves the
-   scene. If an open scene has unsaved changes, Unity first asks whether to save
-   them, and cancelling stops the rebuild.
-3. Select `MMORPG > Tools > World Collision > Bake World Scenes`.
-4. Confirm the Console reports `development-world-1` with 30 boxes, 0 meshes,
-   and 0 heightfields in 4 chunks, and 9 resource node boxes, and
-   `development-world-2` with 201 boxes, 1 mesh, and 1 heightfield in 144
-   chunks, and 11 resource node boxes. The bake compiles the World actors from
-   their authoring and stops when they differ from the compiled ones, so save
-   actor changes in Actor Studio or Spawn Authoring first.
+   Environment` and confirm `Rebuild`, then the same for Development World 2. If
+   an open scene has unsaved changes, Unity first asks whether to save them, and
+   cancelling stops the rebuild. Expected result: the Console reports
+   `[DEVELOPMENT WORLD 1] Rebuilt the environment with ...` and
+   `[DEVELOPMENT WORLD 2] Rebuilt the environment with ...`, each with its
+   collision boxes, meshes, and terrains, and `Actor content was not changed.`
+3. Select `MMORPG > Tools > World Collision > Bake World Scenes` and wait for
+   asset import and script compilation to finish.
 
-To change a layout, edit the builder in
-`src/Client/Assets/Editor/DevelopmentWorlds` instead of the scene, then rebuild
-and bake. To move the spawn or the bounds, edit `world.json` first. To move an
-actor, edit `actor-spawns.json` and run the World Actor Compiler. Keep every
-actor position, patrol point, and the spawn on clear, flat ground; the layout
-tests check it.
+Expected result: the Console reports `[WORLD COLLISION] Baked world
+'development-world-1' at revision <revision> with ... boxes, ... meshes, and
+... heightfields in 4 chunks, and ... resource node boxes.`, and the same for
+`development-world-2` in 144 chunks; the revision is a SHA-256 of the World's
+collision. A rebuild and bake without a layout or actor change bakes the same
+revisions, so Git shows no change.
 
-Keep both scenes entries with their scene names as addresses in the `World
-Scenes` Addressables group, and out of `File > Build Profiles`. `MMORPG > Tools
-> Addressables > Apply Client Layout` restores both.
+`Bake World Scenes` validates the World scene catalog against the Addressables
+World scenes and bakes every mapped World in one deterministic pass, then
+restores the scenes that were open. When several Worlds share one reusable
+scene, the scene is opened once and baked once for each of those Worlds, and its
+`WorldCollisionAuthoring` World id must be one of them.
+`MMORPG > Tools > World Collision > Bake Open Scene` bakes only the open scene.
+
+The bake reads the enabled, non-trigger BoxColliders, non-convex MeshColliders,
+and TerrainColliders below the collision root; meshes and terrains bake as
+one-sided triangles that collide only from their front. It stops with a red
+error for any other collider type, a convex MeshCollider, a MeshCollider without
+a mesh, a zero scale, and a rotated or scaled Terrain. It adds one movement-only
+box per resource node from the World actors, which it compiles from their
+authoring; it stops when they differ from the compiled actors, so save actor
+changes in Actor Studio or Spawn Authoring, or run the World Actor Compiler,
+first. For each World it writes:
+
+- `content/worlds/<WorldId>/collision.json`, the neutral authoring of the scene.
+- `src/Shared/WorldData/Generated/WorldCollision/<WorldId>/manifest.json`.
+- One `chunk_*.bytes` file per 32 m chunk in the same generated directory.
+
+The bake writes every file to a temporary `.tmp` sibling first and then swaps
+them in with a backup of each previous file. If any write or swap fails, the
+previous files are restored, so a failed bake never leaves a manifest whose
+checksums do not match its chunks. Unity ignores the `.tmp` files.
+
+To change a layout, edit the builder instead of the scene, then rebuild and
+bake. To move the spawn or the bounds, edit `world.json` first. To move an actor,
+edit `actor-spawns.json` and run the World Actor Compiler, as
+[Compile And Verify](../content/README.md#compile-and-verify) describes. Keep
+every actor position, patrol point, and the spawn on clear, flat ground; the
+layout tests check it.
+
+Keep both scenes as entries with their scene names as addresses in the
+`World Scenes` Addressables group, and out of `File > Build Profiles`.
+`MMORPG > Tools > Addressables > Apply Client Layout` restores both; see
+[Working Rules For New Content](UNITY_CLIENT_ARCHITECTURE.md#working-rules-for-new-content).
 
 ## Layout Tests
 
@@ -272,62 +341,63 @@ Scenes` Addressables group, and out of `File > Build Profiles`. `MMORPG > Tools
 baked collision of both Worlds with the shared route planner and movement
 simulation:
 
-- Every actor spawn, patrol point, and the World spawn lies inside the bounds
-  on ground, with a free 0.6 m radius column above the step height in the
-  scene's own collision.
-- The tests read the compiled collision chunks, as the server and the client
-  do. Every resource node has its box there, on the movement layer only, and a
+- Every actor spawn, patrol point, and the World spawn lies inside the bounds on
+  ground, with a free 0.6 m radius column above the step height in the scene's
+  own collision.
+- The tests read the compiled collision chunks, as the server and the client do.
+  Every resource node has its box there, on the movement layer only, and a
   character walking straight at the north oak of the grove stops at its trunk,
   while a planned route walks around it.
 - The stress arena fits inside one interest radius, and the stress bot square
   from its spawn is free.
 - The stress arena hotspots are reachable from its spawn.
 - Every movement course station behaves as its label says.
-- The town, bridge, maze, camera tests, arena, and highlands routes work, and
-  the inside of the peak stays unreachable.
+- The town, bridge, maze, camera tests, arena, and highlands routes work, and the
+  inside of the peak stays unreachable.
 - The outpost lies beyond the interest exit radius from the town.
 
 The Unity `AuthoredGameplayAssetTests` check that both scenes keep the World
-scene composition, that `PlayerSpawn` and the boundary walls match the
-manifest, that the labels are world-space text without raycasts, that every
-development World material is used, that every project material is in the form
-its shader's Inspector keeps, so selecting one never changes its file, and that
-the checked-in bake holds exactly
-the scene's boxes, terrain cells, and mesh triangles, and one movement-only box
-per placed resource node.
+scene composition, that `PlayerSpawn` and the boundary walls match the manifest,
+that the labels are world-space text without raycasts, that every development
+World material is used, that every project material is in the form its shader's
+Inspector keeps, so selecting one never changes its file, and that the checked-in
+bake holds exactly the scene's boxes, terrain cells, and mesh triangles, and one
+movement-only box per placed resource node.
 
 ## Terrain And Mesh Collision Authoring
 
 These rules apply to every World scene, including a future production map.
 
 - Sculpt terrain with a Unity Terrain below the collision root. Keep the Terrain
-  unrotated and unscaled. The bake reads every heightmap sample and every
-  terrain hole.
+  unrotated and unscaled. The bake reads every heightmap sample and every terrain
+  hole.
 - Hills and mountains need no extra collision. Ground steeper than 45 degrees
   blocks like a wall, so paint it so players can tell it apart from walkable
   ground.
 - Model caves, overhangs, and tunnel interiors as MeshColliders with Convex
   cleared. Each triangle collides only from its front, the side whose rendered
-  face is visible. Point every face toward where players walk.
+  face is visible. Point every face toward where players walk. A mirrored
+  transform is allowed; the bake keeps the rendered faces in front.
 - Where a tunnel enters terrain, cut terrain holes for its opening. Then seal
-  every gap between the hole edges and the tunnel with boxes or front-facing
-  mesh walls. The space below terrain is otherwise open, because terrain only
-  collides from above.
+  every gap between the hole edges and the tunnel with boxes or front-facing mesh
+  walls. The space below terrain is otherwise open, because terrain only collides
+  from above.
 - Leave the world ground box or terrain below tunnel floors, or give the tunnel
   mesh its own floor that faces up.
 
 ## Post-Authoring Verification
 
-From the repository root, verify the new collision outputs:
+From the repository root, verify the checked-in collision against its sources
+and run the layout tests:
 
 ```powershell
-dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldCollisionCompiler -- --verify
 dotnet test tests/Shared/Mmorpg.Shared.Tests --configuration Release --filter "FullyQualifiedName~DevelopmentWorldLayoutTests"
 ```
 
-Expected result: the collision verifier reports `development-world-1` with 4
-chunks and `development-world-2` with 144 chunks and deterministic revisions,
-and every layout test passes. Then run the Unity EditMode and PlayMode tests as
-described in [Local Development](LOCAL_DEVELOPMENT.md). `Bake World Scenes`
-also verifies every catalog mapping to an Addressables World scene before
-writing collision output.
+Expected result: the compiler reports `Collision data verified for world
+development-world-1 at revision <revision> with 4 chunks.` and the same for
+`development-world-2` with 144 chunks, at the revisions the bake reported, and
+every layout test passes. The compiler exits with code 1 when a World's
+collision source and its generated data differ. Then run the Unity tests as
+[Run The Unity Tests](LOCAL_DEVELOPMENT.md#run-the-unity-tests) describes.

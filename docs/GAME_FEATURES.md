@@ -1,140 +1,145 @@
 # Game Features
 
-Last updated: 2026-10-26
+What a player can do and see in the game today: the flows, the controls, the
+panels, and the numbers a player notices. Everything here is implemented. Every
+panel is temporary development UI over permanent client and server foundations,
+while the final custom UI is being designed.
 
-## Purpose
+How the client builds these features is in
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md), and the server
+behavior behind them is in [Service Features](SERVICE_FEATURES.md). The product
+direction and what is planned next are in [Game Design](GAME_DESIGN.md), and how
+to check each feature by hand is in [Manual Testing](MANUAL_TESTING.md).
 
-This document records implemented player-facing game features and how they work.
-It is deliberately separate from service capabilities and the broader product
-design. Features are added here only when working code exists.
+## Controls
+
+| Input | Does |
+| --- | --- |
+| Left click | Runs the top option of the [World Menu](#world-menu) at once: walk, attack, talk, gather, or loot |
+| Right click | Opens the world menu with every option for what is under the pointer |
+| Middle mouse button, dragged | Turns and tilts the camera |
+| Arrow keys | Left and right turn the camera, up and down tilt it |
+| Scroll wheel | Zooms the camera |
+| `Escape` | Closes an open world menu and does nothing else; otherwise ends the attack, closes the open interaction and the inventory, and cancels an Admin teleport pick |
+| `B` | Opens or closes the inventory with character storage only |
+| `C` | Opens or closes the inventory with equipment and character storage |
+| `I` | Opens or closes the complete inventory with Bank, Recovery Storage, a corpse, or a vendor |
+| `F2` | Opens or closes the [Debug Menu](#debug-menu-f2) |
+| `F3` | Opens or closes the [Admin Menu](#admin-menu-f3), whose tools work in the Development environment |
+
+Clicks and scrolling over a panel never reach the world. The cursor always stays
+visible and free. There is no keyboard movement, sprint, jump, or aim. Gamepad
+bindings and player-configurable rebinding are not implemented.
 
 ## Account Entry Flow
 
-Status: UI prototype on implemented account flow
-
-The temporary LoginMenu UI allows a player to register or log in. A successful
-request stores the account session in the persistent Unity client state and loads
-CharacterSelect. Duplicate submissions are blocked while a request is active.
-Only one client session may remain active for an account. A successful login on
-a second client replaces the first client, disconnects its active shard peer if
-needed, clears its local account state, and returns it to LoginMenu with a
-temporary Unity Console explanation.
-
-This is functional development UI, not final art or UX.
+- LoginMenu asks for an email and a password and offers `Register` and `Login`.
+  A successful request loads CharacterSelect. While a request runs, a second
+  click cannot send it again.
+- Only one client session may be active for an account. A login on a second
+  client replaces the first one: the first client is disconnected from its
+  shard, clears its local account state, and returns to LoginMenu with an
+  explanation in the Unity Console.
+- When the account session expires or is revoked, the client returns to
+  LoginMenu within a few seconds, also outside a World.
 
 ## Character Selection
 
-Status: UI prototype on implemented character flow
+CharacterSelect lists the account's characters, each with its body model, and
+the online shards, each with its region, fleet, status, players, and capacity:
 
-The temporary CharacterSelect UI supports:
+- Creating a character chooses its body model, `Human_Male` or `Human_Female`,
+  and its look with temporary rows that step through the choices with `<` and
+  `>`: face, eyes, scar, tattoo, underwear per body slot, and hair. A required
+  choice starts at its first option, and scar, tattoo, and hair start at `none`,
+  so a character may be bald. `Create Character` creates it.
+- `Refresh Characters` and `Refresh Shards` reload the lists, and
+  `Join Selected Shard` enters the World of the selected shard with the selected
+  character, as [Shard Entry And Exit](#shard-entry-and-exit) describes.
+- `Back To Login` logs the account out and returns to LoginMenu.
 
-- Loading the account's characters, each with its body model.
-- Creating a character with temporary rows that choose its body model, face,
-  eyes, scar, tattoo, underwear, and hair, or none for a bald head.
-- Selecting one character for shard entry.
-- Loading and selecting an online shard with region, fleet, player count, and
-  capacity information.
-- Requesting and validating a simulation join in one sequential operation.
-- Logging out before returning to LoginMenu.
-
-The body model and the look are stored with the character and every client shows
-them. Changing a look in the game, such as at a barber, deletion, progression,
-and statistics are not implemented.
+The body model and the look are stored with the character, and every client
+shows them. Changing the look in the game, such as at a barber, deleting a
+character, progression, and statistics are not implemented.
 
 ## Shard Entry And Exit
 
-Status: Foundation implemented with temporary UI
+- Joining validates the shard placement, connects to the shard's worker, and
+  loads the World only after the worker accepts the character. CharacterSelect
+  shows `Joined shard <shard> as <character>. Loading <scene>.` and stays visible,
+  with its buttons disabled, until the World replaces it. A World that fails to
+  load shows the error and leaves the shard. A refused join stays in
+  CharacterSelect and shows the server's reason.
+- `Leave Shard` in the Debug menu waits until the worker confirms the leave and
+  then returns to CharacterSelect.
+- An unexpected disconnect returns the player to CharacterSelect, and an expired
+  account session returns it to LoginMenu.
 
-A selected character can enter an online local shard through the authenticated
-placement and join-ticket flow. GameService selects the assigned healthy worker
-runtime and returns its endpoint only with the ticket. The client validates the
-placement, connects with LiteNetLib, sends the ticket through the shared
-versioned protocol, and loads the World scene mapped from the accepted WorldId
-only after SimulationWorker accepts the session. The selected World scene
-displays character, shard, World, worker, runtime, session, and UDP connection
-state.
+## Worlds
 
-Leave sends the exact simulation-session id over the active peer and waits for server
-acknowledgement before returning to CharacterSelect. Unexpected disconnects
-clear shard state and return an authenticated player to CharacterSelect. HTTP
-401 from GameService still clears account state and returns the player to
-LoginMenu.
+The game has two development Worlds, both readable greyboxes with a meter grid
+on the ground, signs that name every zone and test station, and floor labels
+with the measured values. Development World 2, the test World, is 384 by 384
+meters with a walled town in the center and a test zone in each direction, and
+Development World 1, the stress arena, is a 64 by 64 meter walled floor that
+keeps every player, bot, and actor within one interest radius, so everyone sees
+everyone. Their layouts are in [Development Worlds](DEVELOPMENT_WORLDS.md).
 
-## World Preview
+Other players, NPCs, Mobs, and resource nodes appear when they come within
+128 m and disappear when they move beyond 144 m. Other characters move smoothly,
+at an even speed, about 133 ms behind the server; after a network stall that
+delay recovers instead of growing. Interest is described in
+[Interest Management](SERVICE_FEATURES.md#interest-management).
 
-Status: Initial content on implemented network gameplay foundation
+## Characters And Their Looks
 
-Two development Worlds exist, both readable greyboxes with a meter grid on the
-ground, signs that name every zone and test station, and floor labels with the
-measured values. [Development Worlds](DEVELOPMENT_WORLDS.md) has their full
-layouts.
+- Every player shows a human body, male or female, in the look stored with its
+  character: face, eyes, paint layers such as a scar, a tattoo, or underwear,
+  and hair. The body stands, walks, and jogs with the speed it moves at.
+- Every player wears the garments of the items it has equipped, such as a linen
+  shirt, a wool robe, or a blue wool cloak, and holds its weapon and shield. The
+  local player changes as soon as it equips an item, and others as the worker
+  sends their equipment. Robes and cloaks swing with the body.
+- A gathering tool shows only while its character gathers; see
+  [Gathering](#gathering).
+- A worn hood can be lowered and raised with the `Lower <item>` or
+  `Raise <item>` button in the inventory footer, and every client shows it.
+- A dying body keeps its clothes until its character respawns. A player corpse
+  then shows the dead character's body, look, and the garments still in it, and
+  an item looted from it, such as the cloak, leaves the lying body at once.
+- Development bots show either body with a varied look, outfit, and weapons
+  chosen by their ids.
+- In the Development environment, the Admin menu's Look tab changes the stored
+  body model and look; see [Admin Menu (F3)](#admin-menu-f3).
+- The Debug menu setting `Tint bodies: you purple, players orange, bots blue`,
+  off by default, tints the local player purple, other players orange, and
+  development bots blue.
 
-- DevelopmentWorld2, the test World, is 384 by 384 meters with a walled town in
-  the center and one test zone in each direction: a movement course with step,
-  slope, and gap stations just inside and outside the movement limits, stairs,
-  a bridge, a maze, and camera tests; the highlands terrain with a peak, cliffs,
-  and a tunnel; a combat range with a PvP arena and a range lane; an interest
-  road to an outpost beyond the interest radius; the wolf woods with the Feral
-  Alpha's lair; a quarry with seven Iron Veins; an open meadow with an oak
-  grove of four Oak Trees; and a sandbox
-  reserved for new features. Green stations get the character through, red
-  ones must not.
-- DevelopmentWorld1, the stress arena, is a 64 by 64 meter walled floor that
-  keeps every player, bot, and actor inside one interest radius, with Mira,
-  nine Iron Veins, a wolf pen, and a platform around an open spawn.
-
-Each registered World scene owns a LocalPlayer prefab reference, an explicit
-spawn point, and a separate entity presentation root. After SimulationWorker
-accepts a character join, the mapped scene creates one runtime LocalPlayer
-instance whose prefab owns the orbit camera. Without an active joined session,
-no local player exists in the scene.
-
-The test shard has no durable gameplay simulation yet. During authenticated play, other
-connected characters are represented by an authored RemotePlayer prefab and
-rendered from interpolated SimulationWorker snapshots. Every player shows a human
-body, which stands, walks, and jogs with the speed it moves at, in the body
-model and look stored with its character, and development bots either body and
-a varied look and outfit by their ids. Every player wears the garments of the
-items it has equipped, such as a linen shirt, a wool robe, or a blue wool cloak:
-the local player as soon as it equips them, and others as the worker sends them.
-The inventory lowers and raises a worn Wool Hood, which every client shows. A
-dying body keeps its clothes until its character respawns, and a player corpse
-shows the dead character's body, look, and the garments still in it. In the
-Development environment the Admin menu (F3) changes the stored body model
-and look. With the
-Debug menu setting `Tint bodies` on, off by default, the local player is tinted
-purple, other players orange, and synthetic development bots blue. SimulationWorker assigns each live
-player a network entity id. Reliable spawn and despawn messages decide when a
-remote player exists, while unreliable snapshots update only its movement.
-Remote instances are roots of the active World scene, outside the runtime
-LocalPlayer hierarchy.
-SimulationWorker uses distance-based interest management, so distant entities are
-removed reliably and recreated reliably when they enter the configured area of
-interest. Snapshot loss never decides whether a remote player exists.
+How the bodies and garments are put together is in
+[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md).
 
 ## World Menu
-
-Status: Implemented with temporary presentation
 
 Every world action goes through one menu, as in RuneScape:
 
 - A right click opens a menu with every option for what is under the pointer,
   headed `Choose Option` and ending with `Cancel`. A left click runs the top
   option at once, without opening the menu.
-- The menu lists every target under the pointer, nearest first, and never
-  targets hidden behind solid geometry. Each target's actions come first, then
-  `Walk here`, then `Examine` for each target. A wolf in front of an Iron Vein
-  gives `Attack Feral Wolf`, `Mine Iron Vein`, `Walk here`, `Examine Feral
-  Wolf`, `Examine Iron Vein`, and `Cancel`.
+- The menu lists every target under the pointer, up to 100 m from the camera,
+  nearest first, and never targets hidden behind solid geometry. Each target's
+  actions come first, then `Walk here`, then `Examine` for each target. A wolf in
+  front of an Iron Vein gives `Attack Feral Wolf`, `Mine Iron Vein`, `Walk here`,
+  `Examine Feral Wolf`, `Examine Iron Vein`, and `Cancel`.
 - An NPC or resource node offers one option per capability, in the order its
   content lists them, with the verb from the content, such as `Talk-to`,
   `Trade`, `Bank`, `Recover`, `Insure`, `Quests`, `Turn-in`, and `Craft` for Mira
-  the Quartermaster or `Mine` for an Iron Vein. The first is the left-click
-  action. Choosing one walks into range, opens the interaction, and starts that
-  service: `Trade` opens the vendor, `Bank` the Character Bank, `Recover`
-  Recovery Storage, and `Mine` starts mining. `Talk-to`, `Insure`, and `Quests`
-  open the interaction panel, where their choices are. When the interaction is
-  already open, the service starts without walking.
+  the Quartermaster, `Mine` for an Iron Vein, or `Chop down` for an Oak Tree. The
+  first is the left-click action. Choosing one walks into range, opens the
+  interaction, and starts that service: `Trade` opens the vendor, `Bank` the
+  Character Bank, `Recover` Recovery Storage, and `Mine` starts mining.
+  `Talk-to`, `Insure`, and `Quests` open the interaction panel, where their
+  choices are. When the interaction is already open, the service starts without
+  walking.
 - A living Mob offers `Attack`, and so does another character when the Shard
   allows player versus player. A Mob walking home after a fight offers no
   `Attack`, so a left click on it walks there.
@@ -142,290 +147,224 @@ Every world action goes through one menu, as in RuneScape:
 - `Walk here` is always offered and walks to the ground under the pointer.
 - `Examine` shows the target's short description from the actor content in the
   message area in the bottom left corner, such as "A lean, hungry wolf. It eyes
-  you like a meal." A corpse shows "The remains of <name>." Messages fade out
-  after 12 seconds. A target the player cannot reach also leaves a message
-  there.
+  you like a meal." A corpse shows "The remains of <name>." The area shows the
+  newest five messages, and each fades out after 12 seconds. A target the player
+  cannot reach also leaves a message there.
 - Target names are colored by kind: NPCs and Mobs yellow, objects such as
   resource nodes cyan, corpses orange, and other characters white.
 - Next to the pointer, the left-click option is shown with the number of other
   options, such as `Attack Feral Wolf / 3 more options`. Bare ground shows
   nothing.
 - The menu closes when an option or `Cancel` is chosen, on a click elsewhere in
-  the world, on `Escape`, or when the pointer moves more than a short distance
-  away from it. An `Escape` that closes the menu does nothing else: the attack,
-  the open interaction, and the inventory stay as they are.
+  the world, on `Escape`, or when the pointer moves a short distance away from
+  it. An `Escape` that closes the menu does nothing else: the attack, the open
+  interaction, and the inventory stay as they are.
 - Options run against the world as it is when they are chosen, so an option for
-  a target that left or died in the meantime does nothing and ends nothing
-  else, such as an attack.
+  a target that left or died in the meantime does nothing and ends nothing else,
+  such as an attack.
 - While the character is dead the menu offers nothing.
 - Every option except `Examine` ends an attack, as walking away does.
 
 Capability availability is not known before an interaction opens, so the menu
-lists every capability, and a capability that is not available reports that in
-the interaction panel. SimulationWorker still validates range, line of sight,
+lists every capability, and a capability that is not available says so in the
+interaction panel. SimulationWorker still validates range, line of sight,
 revision, session, and availability for every request.
 
 ## Player Movement
 
-Status: Server-authoritative click-to-move implemented
-
-- Left-click the ground, or choose `Walk here` in the [World Menu](#world-menu),
-  to walk there. The client plans a route around walls,
-  buildings, and cover on a fine internal grid that the player never sees, and
-  the character starts walking on the next simulation tick.
+- Left-click the ground, or choose `Walk here`, to walk there. The client plans
+  a route around walls, buildings, and cover on a fine internal grid that the
+  player never sees, and the character starts walking on the next simulation
+  tick.
 - A click on a spot that cannot be reached, such as a wall face or a roof, walks
   to the closest reachable point on open ground. A point under a roof, bridge,
   or mountain that is lower than the click, such as a tunnel floor right below a
   clicked mountainside, is used only when no open point is reachable. A click
   more than 64 meters away walks toward it as far as the search reaches.
-- A new click replaces the current route at once.
-- Route planning runs on a background thread, so a long search never stalls a
-  frame. The previous route continues until the new one is ready.
-- The character walks at one speed, 5 meters per second scaled by carry weight,
-  and turns toward its direction of travel. It follows ramps and steps up to the
-  step height, and it falls when it walks off a higher ledge. An airborne
-  character keeps its momentum until it lands.
+- A new click replaces the current route at once, and the previous route
+  continues until the new one is planned, so a long search never stalls a frame.
+- The character walks at one speed, 5 meters per second, slowed by a heavy load
+  as [Carry Weight And Encumbrance](#carry-weight-and-encumbrance) describes, and
+  turns toward its direction of travel. It climbs steps up to 0.35 m and slopes
+  up to 45 degrees; steeper surfaces are not ground. Routes never step off a
+  ledge higher than 0.4 m, so from a raised platform they take the stairs down; a
+  character that leaves the ground falls and keeps its momentum until it lands.
 - A route that collision blocks for half a second ends, so the character never
   keeps pushing against a wall.
 - A small yellow disc marks the destination until the character arrives.
-- Clicks and scrolling over interface panels never reach the world.
-- Keyboard movement, sprint, jump, and aim no longer exist. Running with run
-  energy is planned in [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md).
-- Movement uses a PlayerInput-owned Unity Input Actions asset.
-- The local player predicts each fixed input tick immediately. A separate local
-  presentation state interpolates those predictions at the render frame rate so
-  the player and camera do not move in 30 Hz steps.
-- SimulationWorker owns the accepted position, velocity, facing, grounded state,
-  and route progress. It follows the same route waypoints as the client and
-  checks only their limits, so the collision stays authoritative.
-- SimulationWorker resolves the player capsule against the baked ground,
-  boundaries, buildings, ramps, steps, and cover.
-- Walkable slopes up to the configured 45 degree limit hold a grounded character
-  in place when it stands. Steeper surfaces are not treated as ground.
-- The simulation capsule uses a slope-aware support height to avoid penetration
-  correction along the slope. Presentation removes only that geometric offset,
-  preserving render-frame interpolation instead of replacing it with the latest
-  surface height.
-- Grounded transitions over configured steps and small drops use an additional
-  100 ms vertical presentation blend. Airborne movement, steep surfaces,
-  teleports, and large corrections bypass this blend.
-- Authoritative snapshots acknowledge processed input sequences and route
-  progress. The client replays remaining input and smooths small corrections.
-- Remote players advance on an adaptive frame-rate render clock two snapshot
-  intervals, about 133 ms, behind an estimate of server time that advances
-  smoothly between snapshots. They walk at an even speed instead of speeding up
-  and slowing down with every snapshot. Bounded clock correction restores that
-  delay after a network stall instead of accumulating permanent latency.
-- SimulationWorker moves the character exactly one step per input, like the
-  prediction, so uneven packet timing no longer corrects the local player back
-  and forth. A route continues for about 100 ms when inputs are late; after a
-  longer gap the character waits on the worker until the inputs arrive and then
-  catches up.
-- Health bars and damage numbers are placed after the camera followed the
-  player, so they stay over the heads they belong to.
+- The character moves smoothly at the frame rate, not in steps of the 30 Hz
+  simulation, and small corrections from the server are smoothed. The worker
+  moves the character one step per input like the client, so uneven packet timing
+  does not pull it back and forth. A route continues for about 100 ms when inputs
+  arrive late; after a longer gap the character waits until the inputs arrive and
+  then catches up.
+- Steps and short drops on flat ground are smoothed over 100 ms; ramps, falls,
+  teleports, and large corrections are not.
 
-Gamepad bindings and player-configurable rebinding are not implemented yet.
-
-Movement speed, gravity, terminal fall speed, facing, capsule dimensions, slope
-and step rules, route limits, authored collision, and world bounds are validated
-and simulated by SimulationWorker.
-The active UDP connection carries sequenced input with the route of the newest
-click and periodic movement snapshots in addition to session control.
-The character root is the shared logical ground point for players and NPCs.
-`CharacterBody` configures the CharacterController contact envelope around that
-point, including skin width, without moving the presentation hierarchy. Visual
-assets use a feet-at-zero convention below PlayerVisual, and spawn placement
-aligns the character root directly to the spawn point. Authenticated play keeps
-simulation at the shared fixed tick rate and renders an interpolated
-presentation state at the same root convention.
-
-Each development map is baked into versioned collision chunks shared by the
-server and client prediction. Authenticated movement and route planning
-therefore use the selected scene's authored boxes, meshes, and terrain. SimulationWorker sends
-the authoritative collision revision when the character joins, and the client
-refuses to predict against a different revision. The LocalPlayer prefab moves
-only in an authenticated World-scene session and has no offline movement mode.
-
-The Development World 2 movement course shows each limit with click-to-move:
-steps up to 0.34 m and slopes up to 42 degrees are climbed, while 0.36 m steps
-and 48 degree slopes are not; gaps of 1.5 and 1.0 m are walked through and a
-0.6 m gap is walked around. Routes never step off a ledge higher than 0.4 m, so
-from a raised platform they take the stairs down. Ramps and stairs lead onto
-platforms joined by a bridge that can be walked over and under.
-
-Terrain works with click-to-move. In the Development World 2 highlands the
-player walks over hills and up a mountain's walkable face, is stopped by cliffs
-steeper than 45 degrees, and walks through a tunnel below the mountain. Rock
-paint marks the ground that is too steep to climb. Moving platforms, dynamic
-doors, and rigid-body objects are not gameplay features yet. Dynamic server
-collision already has a spatial registry, while transform replication is a
-later slice.
+SimulationWorker owns the position, collision, and route progress; see
+[Server-Authoritative Movement](SERVICE_FEATURES.md#server-authoritative-movement).
+The movement course and the highlands of Development World 2 show every limit,
+as [Development Worlds](DEVELOPMENT_WORLDS.md#movement-course) describes. In the
+highlands the player walks over hills, up a mountain's walkable face, and
+through a tunnel below it, and is stopped by cliffs steeper than 45 degrees,
+which rock paint marks. Moving platforms, dynamic doors, and physics objects are
+not implemented, and running with run energy is planned in
+[Movement And Camera](GAME_DESIGN.md#movement-and-camera).
 
 ## Orbit Camera
 
-Status: Local foundation implemented
-
 - The camera orbits the player from behind and above. Drag with the middle mouse
-  button to turn and tilt it, or hold the arrow keys: left and right turn it,
-  up and down tilt it.
-- The scroll wheel zooms between 0.6 and 15 meters from the pivot at neck
-  height. Fully zoomed in, the camera stays about 30 centimeters from the
-  character. Each notch changes the distance by 15 percent, and the zoom eases
-  in.
+  button to turn and tilt it, or hold the arrow keys: left and right turn it, up
+  and down tilt it.
+- The scroll wheel zooms between 0.6 and 15 meters from the pivot at neck height,
+  15 percent per notch, and the zoom eases in. Fully zoomed in, the camera stays
+  about 30 centimeters from the character.
 - Tilt is limited to 10 through 80 degrees above the horizon. The camera starts
   12 meters away and 40 degrees above the horizon, behind the player.
-- The cursor always stays visible and free.
-- The LocalPlayer prefab owns `LocalPlayerCamera`, so other scene cameras can be
-  added without becoming the gameplay camera by accident.
-- Camera focus follows a single player CameraTarget height.
-- Spherecast collision pulls the camera in front of walls at once and eases it
-  back out after the obstruction clears. Hiding roofs and occluding walls is
-  planned.
-- The collision filter ignores the local player hierarchy.
+- Walls pull the camera in front of them at once, and it eases back out after the
+  obstruction clears. The camera never collides with its own character. Hiding
+  roofs and occluding walls is not implemented.
+- Scrolling over a panel does not zoom.
 
 ## Debug Menu (F2)
 
-Status: Temporary UI presentation
-
-- F2 opens and closes the Debug menu in the top-right corner, and its `X`
-  button closes it too. It is closed when a World scene loads. Its values
-  refresh four times a second, as often as the frame statistics change.
+- F2 opens and closes the Debug menu in the top-right corner, and its `X` button
+  closes it too. It is closed when a World scene loads. Its values refresh four
+  times a second.
 - The menu has four tabs:
-  - **Overview**: the player's position, facing, and collision chunk, the
-    ground under the pointer, `Copy player` and `Copy pointer` buttons that put
+  - **Overview**: the player's position, facing, and collision chunk, the ground
+    under the pointer, `Copy player` and `Copy pointer` buttons that put
     `x, y, z` on the clipboard, a quick check of the frame, ping, latest
     snapshot, and connection, and what the world shows for debugging.
-  - **Performance**: frame average, p95, and maximum time, FPS, resolution,
-    quality, VSync, and Unity memory.
-  - **Network**: connection identity, ping, snapshot age and observed rate,
-    estimated missing snapshot sequences, payload rates, and known entities.
-  - **Movement**: the prediction, the walk speed, carry weight, pending
-    predicted inputs, reconciliation statistics, the current route and
-    waypoint, and the latest route plan with its search size and time.
-- `Show in the world` on the Overview tab has three settings, all off when the
-  client starts:
-  - `Collision around you` draws the baked collision 24 m around the player
-    while the menu is open: green for walkable ground, yellow for surfaces too
-    steep to stand on, red for boxes that block movement and sight, orange for
-    boxes that block movement only, such as resource nodes, and purple for
-    boxes that block sight only. It is the collision the planner, the
+  - **Performance**: FPS against a 60 FPS budget, frame average, p95, and
+    maximum time, resolution, quality, VSync, Unity memory, and the managed heap.
+  - **Network**: connection state, character, shard, World, worker, runtime, UDP
+    endpoint and protocol, the observed server tick, round trip time, snapshot
+    age and observed rate, application packets and payload in and out,
+    estimated snapshot loss, and known entities.
+  - **Movement**: the authority, tick and snapshot rates, the walk speed, carry
+    weight and capacity, item-state revision and movement percentage, pending
+    predicted inputs, reconciliations and hard snaps, the latest correction, the
+    current route and waypoint, and the latest route plan with its search size
+    and time.
+- `Show in the world` on the Overview tab has three settings. The first two are
+  off whenever the client starts, and the third is off by default:
+  - `Collision around you` draws the baked collision in a square 48 m wide
+    around the player while the menu is open: green for walkable ground, yellow
+    for surfaces too steep to stand on, red for boxes that block movement and
+    sight, orange for boxes that block movement only, such as resource nodes, and
+    purple for boxes that block sight only. It is the collision the planner, the
     prediction, and SimulationWorker use.
   - `Path you follow` draws the rest of the current route in cyan.
   - `Tint bodies: you purple, players orange, bots blue` is kept between
     sessions.
 - The footer shows the status and `Leave Shard`.
-- During an authenticated simulation session, the Debug menu shows only
-  information available to that client. SimulationWorker CPU, memory, total
-  population, bot population, capacity, and internal tick timing remain
-  server-side operational data and are not sent to gameplay clients.
+- The Debug menu shows only what the client itself observes. SimulationWorker
+  CPU, memory, total population, bot population, capacity, and internal tick
+  timing stay server-side and are not sent to game clients.
 
 ## Admin Menu (F3)
 
-Status: Temporary UI presentation over an implemented Development-only
-authority
-
-- F3 opens and closes the Admin menu below the player frame. Its tools work
-  only against a SimulationWorker in the Development environment with
-  `DevelopmentAdmin:Enabled`, which is on in `appsettings.Development.json`.
-  Such a worker sends the character's admin state after every join; without it
-  the menu greys out its tabs and says that the tools are off.
+- F3 opens and closes the Admin menu below the player frame. Its tools work only
+  against a SimulationWorker in the Development environment that allows them, as
+  the local stack does; see
+  [Development Admin Tools](SERVICE_FEATURES.md#development-admin-tools). Such a
+  worker sends the character's admin state after every join; without it the menu
+  greys out its tabs and says that the tools are off.
 - **Look** steps through the stored body model, every appearance slot, every
-  paint category and slot, and the hair, and shows whether a player chooses
-  each at creation only or in the game too. A Development GameService stores
-  the change.
-- **Movement** sets the walk speed to 1x, 2x, 3x, 5x, or 10x. SimulationWorker
-  walks the character at that speed and the client predicts with the same
-  settings, so the faster walk needs no corrections. The speed lasts until the
-  character leaves the World, and a reconnect of the same session keeps it.
-- **Movement** also teleports: `Pick a spot`, then a left click on the ground,
-  or, while the menu is open, `Teleport here` in the right-click world menu.
-  SimulationWorker moves a living character onto walkable ground inside the
-  World and shows it there to everyone who sees it, as a respawn does.
+  paint category and slot, and the hair, with `none` where a character may go
+  without, and shows whether a player chooses each at creation only or in the
+  game too. A Development GameService stores the change, and the new look shows
+  when the worker sends it back.
+- **Movement** sets the walk speed to 1x, 2x, 3x, 5x, or 10x. The character walks
+  at that speed without corrections until it leaves the World, and a reconnect
+  of the same session keeps it.
+- **Movement** also teleports: `Pick a spot`, then a left click on the ground, or,
+  while the menu is open, `Teleport here` in the right-click world menu. `Escape`
+  cancels a pick. SimulationWorker moves a living character onto walkable ground
+  inside the World and shows it there to everyone who sees it, as a respawn does.
 - **Combat** shows the character's health and mana, fills both with
   `Restore health and mana`, and switches `Invulnerable`, which makes hits leave
   its health as it is until the character leaves the World.
-- The footer shows what the worker answered, such as `Teleport to 85.0, 1.9,
-  80.0: done.` or the reason a tool was refused.
+- The footer shows what the worker answered, such as
+  `Teleport to 85.0, 1.9, 80.0: done.` or the reason a tool was refused.
 
 ## Carry Weight And Encumbrance
 
-Status: Implemented authority and transport foundation
-
-Every accepted world session receives the character's authoritative unitless
-carried weight, capacity, and item-state revision. Base capacity is `2000`, set in
-catalog content, and an equipped Bag can add its authored capacity bonus. Permanent inventory,
-Bag contents, carried empty Bags, and Secure Container contents contribute to
-weight. Items assigned to equipment slots, including the equipped Bag item
-itself, do not. The equipped Bag's capacity bonus still applies. Bank, Recovery
-Storage, and corpse custody do not contribute.
-
-Movement remains at full speed through 100 percent capacity. Above 100 percent,
-walking speed uses a linear multiplier until movement reaches `0.20` at the
-140 percent hard cap. Durable weight-increasing item operations that would
-exceed that cap are rejected atomically.
-
-GameService owns the persistent tuple. SimulationWorker owns its movement
-effect, and Unity predicts with the same shared GameSimulation rules. Join and
-reconnect restore one fenced committed revision. Later revisions advance over
-the reliable control path. The Debug menu's Movement tab shows the current
-weight, capacity, revision, and movement percentage.
-
-Active characters now have one authoritative in-world mutation path for
-relocation, equip, unequip, stack split and merge, allowed destruction, Secure
-Container access, ordinary occupied-slot swap, and complete Recovery Storage
-claims. Bank and Recovery Storage require an open interaction with an NPC that
-offers them, such as Mira the Quartermaster. Walking out of range or losing line
-of sight closes the interaction and ends the access. Secure Container access has
-no city requirement. Only committed GameService results can
-change the live carry tuple, and reconnect restores the same committed revision.
-
-Local Development explicitly enables global Bank and Recovery access so item
-flows can be tested anywhere on the map. Production keeps the NPC interaction
-requirement, and insurance access is never included in the Development override.
-
-Unity now exposes the first player-facing inventory loop. Press `B` in
-an active World scene for character storage only, `C` for equipment together
-with character storage, or `I` for the complete Development view including Bank
-and Recovery.
-Drag items to valid container or equipment destinations. Dropping onto an
-occupied compatible container slot merges compatible stacks and otherwise
-submits one atomic swap. Click selection is retained only for split and
-allowed-destroy actions. The ammunition slot holds one stack up to its
-slot limit. Dropping a compatible stack onto the equipped stack tops it up, and
-`Split` from the equipped stack moves part of it into an empty slot.
-An item cannot be equipped into a slot that an equipped item blocks, such as
-the off hand next to a two-handed bow, or while it would block an occupied
-slot. An item whose level requirement is above the character's level cannot be
-equipped either; every character is level 1 and every shipped item requires
-level 1 until experience exists. All mutations use the existing authoritative
-SimulationWorker and GameService path. The panel renders only refreshed
-committed snapshots and never pretends that a pending mutation has completed.
-See the manual and automated checks in [Local Development](LOCAL_DEVELOPMENT.md).
+- A character can carry 2,000 weight units, plus the capacity bonus of its
+  equipped Bag. Items in Permanent inventory, in the equipped Bag, and in the
+  Secure Container count; equipped items, the Bank, Recovery Storage, and corpses
+  do not. The full rules are in
+  [Carry Weight And Encumbrance](INVENTORY_AND_DEATH_LOOT_DESIGN.md#carry-weight-and-encumbrance).
+- Up to full capacity the character walks at full speed. Above it the speed
+  falls evenly to 20 percent at the 140 percent hard cap. No action may carry the
+  character past the hard cap, but a death may leave more weight in the Secure
+  Container; the character then still joins and moves at 20 percent speed, and
+  may only lighten its load.
+- The inventory's carry meter and the Debug menu's Movement tab show the current
+  weight, capacity, load, and movement speed.
 
 ## Player Inventory Foundation
 
-Status: Functional MVP foundation with temporary presentation
+`B` shows character storage only, `C` adds the equipment, and `I` shows the
+complete view with the contextual storage. Pressing another inventory key
+switches the view, pressing the same key or `Escape` closes it, and a click on
+the panel never moves the character. Opening the Bank or Recovery Storage of an
+NPC, a vendor, or a corpse opens the complete view with it.
 
-The inventory panel has three columns. Equipment is a paper doll on the left.
-Bank, Recovery Storage, a vendor, or a corpse uses the middle context column,
-while Permanent inventory, equipped Bag contents, and the Secure Container, shown
-as Warded Pouch, stay visible in the right column. Bank and Recovery may be
-inspected globally for the owning character. Mutations still require a joined
-simulation session. Production validates live city-service access, while the
-explicit Development configuration permits Bank and Recovery mutations from any
-authoritative player position.
+The panel has three columns that never move each other:
 
-A carry meter shows authoritative weight, capacity, load percentage, and
-movement speed, from green through amber when slowed to red at the 140 percent
-hard cap. The character header shows the Gold balance and the item-state
-revision. Every slot has the same size. Occupied slots show the item name, a
-category color, the stack
-quantity, and a protection or insurance badge, and empty slots are darker.
-Specialized Bag slots show the item types they accept, and an equipment slot
-that an equipped two-handed item blocks is marked Blocked. Hovering a slot
-shows a tooltip with the item details. Local definition lookups disable obvious invalid
-equipment, tag, Secure Container, non-empty Bag, stack, destroy, and hard-cap
-targets, but the server remains final authority.
+- **Equipment**, on the left, is a paper doll in three columns: tool, head, and
+  Bag on top, ammunition, neck, and hands below them, main hand, body, and off
+  hand in the middle, the two rings beside legs, and back and feet at the bottom.
+  A slot the catalog adds later appears in an extra row.
+- **Context**, in the middle, shows the Bank, Recovery Storage, a corpse, or a
+  vendor in tabs, with a `Refresh` button. Its header names the NPC whose open
+  interaction offers the shown storage or trade. Recovery Storage heads each
+  delivery with its source, `Recovered: consumed insurance` or
+  `Recovered: protected on death`.
+- **Character**, on the right, keeps its place in every view: a carry meter,
+  Permanent inventory, the equipped Bag's contents, and the Secure Container,
+  shown with its tier name, such as Warded Pouch. Its header shows the balance
+  and the item-state revision, such as `1,250 Gold    Revision 12`.
+
+Every slot has the same size. An occupied slot shows the item name, a category
+color strip in place of item art, the stack quantity in its lower-right corner, a
+`P` or `I` badge for protection on death or insurance, and the equipment slot or
+accepted item types in its upper-left corner. An empty slot is darker and shows
+only its equipment slot name or accepted types. An empty equipment slot that an
+equipped item blocks, such as the off hand next to the two-handed Training
+Shortbow, is red and marked Blocked. Hovering a slot shows a tooltip with the item
+name, category, quantity and stack limit, weight, equipment slots and blocked
+slots, active policies with their source, such as `Insurance NPC`, `Quest grant`,
+or `Catalog rule`, destruction and Secure Container restrictions, and the slot
+location; tooltips never show during a drag.
+
+The carry meter spans zero to the 140 percent hard cap with a marker at full
+capacity. It is green up to full capacity, amber while movement is slowed, and
+red at the hard cap, and its caption shows weight, capacity, load, and movement
+speed. The footer below the character column holds the selected item, its split
+quantity, `Split`, `Destroy` with `Confirm destroy`, and `Clear`, and the status
+line, so they work in every view.
+
+Items move by drag and drop:
+
+- Drop an item on a valid container or equipment slot. Valid targets light up
+  green and invalid ones red. The dragged item trails below and to the right of
+  the pointer, so it never hides the target.
+- Dropping onto an occupied slot merges compatible stacks and otherwise swaps
+  the two items when each fits the other's slot. On an occupied equipment slot, a
+  stack of the equipped item tops it up, and another item equips and sends the
+  equipped one to the slot the new item came from.
+- A click only selects an item for `Split` or `Destroy`. `Split` moves part of a
+  stack, also of the equipped arrows, into an empty slot.
+- The ammunition slot holds one stack of up to 1,000 arrows.
+- An item cannot be equipped into a slot that an equipped item blocks, such as
+  the off hand next to a two-handed bow, or while it would block an occupied
+  slot. An item whose level requirement is above the character's level cannot be
+  equipped either; every character is level 1, and every item requires level 1
+  until experience exists.
+- Dropping any item of a Recovery delivery claims the whole delivery.
 
 A right-click moves an item to where it belongs, as a shortcut for a drag:
 
@@ -433,8 +372,8 @@ A right-click moves an item to where it belongs, as a shortcut for a drag:
   Container equips: it takes the first free compatible slot, such as Ring 1 and
   then Ring 2, or else replaces the item in the first compatible slot, which
   swaps into the slot the new item came from. Equipped items that block the slot
-  move to the inventory first, so a two-handed bow takes the shield off. Arrows
-  of the equipped kind top up the equipped stack.
+  move to the inventory first, so a two-handed bow takes the shield off. Arrows of
+  the equipped kind top up the equipped stack.
 - An equipped item goes to the inventory.
 - While the Bank tab shows, every one of your own items goes to the Bank, and a
   Bank item comes back to the inventory.
@@ -443,296 +382,232 @@ A right-click moves an item to where it belongs, as a shortcut for a drag:
 - A corpse item takes a free compatible equipment slot, or tops up equipped
   arrows, but never replaces an equipped item; anything else goes to the
   inventory. A corpse Bag takes an empty Bag slot together with its contents.
-- While a vendor's tab shows, a carried item goes into the `Sell` slot, where
-  you confirm the sale as after a drag.
+- While a vendor's tab shows, a carried item goes into the `Sell` slot, where you
+  confirm the sale as after a drag.
 - The inventory fills as a purchase does: whole items top up a stack first, then
   take a free slot, matching specialized Bag slots first, then Permanent
   inventory, then general Bag slots, never the Secure Container.
-- A right-click that has nothing to do, such as on an ore with no Bank open,
-  says why in the status line.
+- A right-click that has nothing to do, such as on an ore with no Bank open, says
+  why in the status line.
 
-The corpse view's `Loot all` button takes everything that fits from the corpse
-in one server operation. The corpse equipment comes first, then the corpse
-inventory, then its Bag contents. An equippable item takes a free compatible
-equipment slot, and equipped arrows are topped up; the rest goes into the
-inventory as a right-click would place it, also as part of a stack when the
-whole stack does not fit. A corpse Bag with items takes an empty Bag slot with
-everything in it; when you already have a Bag, its contents come first and the
-emptied Bag follows. Whatever does not fit in a slot or under the 140 percent
-carry cap stays in the corpse. A live Mob corpse gives only whole items, and the
-client cannot tell a live from a durable Mob corpse, so the inventory shows whole
-items for every Mob corpse until the server answers. The client does not know
-the character level, so it shows equipment with a level requirement going into
-the inventory until the server answers.
-
-Every item move reacts at once: moving, swapping, merging, splitting, equipping
+Every item move shows at once: moving, swapping, merging, splitting, equipping
 and unequipping items and Bags, destroying, claiming a Recovery delivery,
-looting, Loot all, depositing, and rearranging a corpse, swapping Bags with a
-corpse, and buying or selling at a vendor. The item lands where you drop it and the balance
-changes before the server answers, and you can keep going while up to eight
-moves wait. The server still decides every move. When it rejects one, every
-waiting move is undone, the items jump back and flash red, and the status line
-says `Item move undone:` with the reason. A new stack from a split, a purchase,
-or a partial loot, and the contents of a Bag you just equipped, can be used once
-the server has confirmed them, a fraction of a second later. Committed changes
-update the inventory directly, and opening the Bank or Recovery tab shows them
-without reloading.
+looting, `Loot all`, depositing, rearranging a corpse, swapping Bags with a
+corpse, and buying or selling at a vendor. The item lands where you drop it and
+the balance changes before the server answers, and you can keep going while up
+to eight moves wait. The server still decides every move. When it rejects one,
+every waiting move is undone, the items jump back and flash red for 1.5 seconds,
+and the status line says `Item move undone:` with the reason. A new stack from a
+split, a purchase, or a partial loot, and the contents of a Bag you just
+equipped, can be used once the server has confirmed them, a fraction of a second
+later. Committed changes update the inventory directly, and opening the Bank or
+Recovery tab shows them without reloading. A client whose item catalog does not
+match the server's says that a client update is required and shows no stale
+items.
 
-The client loads the gameplay and presentation catalogs once through its
-persistent bootstrap. Stable definition ids resolve fallback names,
-localization keys, optional icons, and optional prefab presentation keys
-locally. A source or server catalog revision mismatch reports that a client
-update is required and does not render stale item state.
+The Bank and Recovery Storage can be inspected from anywhere, but using them
+needs an open interaction with an NPC that offers them, such as Mira the
+Quartermaster; walking out of range or losing line of sight closes the
+interaction and ends the access. In the Development environment, the local stack
+lets both be used from anywhere, so item flows can be tested anywhere on the map;
+insurance always needs the NPC. The Secure Container needs no NPC.
 
-`B` toggles character storage, `C` toggles equipment plus character storage, and
-`I` toggles the complete Development view. Pressing a different inventory key
-switches the open view, and `Escape` closes it. Clicks on the panel never move
-the character. Each window is a separate fixed module root,
-so opening Equipment or Context never moves the character column. The uGUI
-visuals are deliberately temporary, but catalog, snapshot, revision,
-operation-id, error, refresh, reconnect, and authority handling are permanent
-foundations.
+## Corpses And Looting
 
-A nearby player corpse shows the body of the character lying where and as it
-fell, in the last pose of its death; a Mob corpse uses a generic replaceable
-capsule presentation. Click a corpse to walk to it and open it. An open corpse always shows in the complete
-view, which the panel switches to; switching to `B` or `C` closes the corpse.
-The Corpse tab lists nearby corpses but cannot open them. The contextual module
-shows general inventory, equipment, and Bag contents only after a complete
-authoritative snapshot has arrived. Drag full items into Permanent inventory,
-the equipped Bag, or Secure Container, or drag carried items back into
-compatible corpse slots. Enable the
-partial-stack control before dragging to request a specific quantity in either
-direction. Items can also be dragged between empty or occupied slots in any
-corpse section. Compatible stacks with remaining capacity merge. Dropping a
-complete item that cannot merge onto an occupied slot swaps the two items only
-when both original slots accept the opposite item and the result stays within
-the hard cap. Every corpse equipment slot displays its equipment type and
-accepts only a compatible definition up to its equipment slot limit. Dropping either equipped
-Bag onto the other occupied Bag slot submits one atomic aggregate swap when both
-complete Bags satisfy the rules. A corpse Bag dropped on your empty Bag slot
-equips it with everything in it, and an empty corpse Bag, such as a spare one
-from the corpse inventory, drops into an empty slot like any item. Drag a whole corpse item onto a compatible
-equipment slot to equip it straight from the corpse: an empty slot equips it,
-equipped arrows of the same type are topped up, and an occupied slot swaps your
-equipped item into the corpse slot the loot came from. A live Mob corpse, such
-as a Feral Wolf's, cannot take an item back, so its loot fills an empty slot or
-tops up a stack of the same item in the inventory or the equipment, but never
-swaps. Bank and Recovery Storage items cannot enter corpse
-custody, and an ordinary equipped item enters it only through that swap. Every
-corpse transfer and rearrangement shows on both sides at once, and the committed
-change and the corpse view that follow it confirm what you see.
+A player corpse lies where and as the character fell, in the last pose of its
+death, in its body and look, wearing the garments still in it. A wolf's corpse
+shows the wolf lying dead, and the Feral Alpha's the larger, darker wolf. A
+corpse without a model of its own is a capsule. A player corpse lasts 5 minutes,
+also when it is empty, a Feral Wolf's 2 minutes, and the Feral Alpha's 10
+minutes.
 
+Left-click a corpse, or choose `Loot Corpse of <name>`, to walk to it and open
+it. An open corpse always shows in the complete view, which the panel switches
+to; switching to `B` or `C`, or closing the inventory, closes the corpse. The
+Corpse tab lists the corpses within 32 m but opens none; it says to click a
+corpse in the world. The corpse shows its general inventory, equipment, and Bag
+contents once its complete state has arrived, and `Loot all`, `Close`,
+`Refresh`, and `Partial stack: off` above them.
+
+- Drag whole items into Permanent inventory, the equipped Bag, or the Secure
+  Container, or drag carried items back into compatible corpse slots. Turn on
+  `Partial stack` before dragging to move a chosen quantity in either direction.
+- Items can be dragged between empty or occupied slots in any corpse section.
+  Compatible stacks with room merge. A whole item that cannot merge swaps with
+  the item on the occupied slot only when both slots accept the other item and
+  the result stays within the hard cap. Every corpse equipment slot shows its
+  equipment type and accepts only a compatible item.
+- Drag a whole corpse item onto a compatible equipment slot to equip it straight
+  from the corpse: an empty slot equips it, equipped arrows of the same type are
+  topped up, and an occupied slot swaps your equipped item into the corpse slot
+  the loot came from.
+- Dropping a corpse Bag onto your occupied Bag slot swaps the two Bags with their
+  contents, and onto your empty Bag slot equips it with everything in it. An
+  empty corpse Bag, such as a spare one from the corpse inventory, drops into an
+  empty slot like any item.
+- A live Mob corpse, such as a Feral Wolf's, cannot take an item back, so its loot
+  fills an empty slot or tops up a stack of the same item in the inventory or
+  the equipment, but never swaps, and it gives only whole stacks.
+- Bank and Recovery Storage items cannot enter a corpse, and an equipped item
+  enters one only through a swap.
+- `Loot all` takes everything that fits in one server operation: the corpse
+  equipment first, then the corpse inventory, then its Bag contents. An
+  equippable item takes a free compatible equipment slot, and equipped arrows
+  are topped up; the rest goes into the inventory as a right-click would place
+  it, also as part of a stack when the whole stack does not fit. A corpse Bag
+  with items takes an empty Bag slot with everything in it; when you already
+  have a Bag, its contents come first and the emptied Bag follows. Whatever does
+  not fit in a slot or under the hard cap stays in the corpse.
+
+Every corpse transfer and rearrangement shows on both sides at once, and other
+players looking at the same corpse see it change. Several players may open the
+same corpse, and the dead character loots by the same rules as everyone else.
 A live Mob corpse closes for every viewer once its last item is taken, and any
-corpse closes when it expires. The Corpse context then names the reason in
-neutral text, such as `The corpse is empty.` or `The corpse expired and is no
-longer available.`, and the same applies when the viewer dies. Closing the view
-yourself leaves no message. Only a corpse that ended through an error, such as
-`corpse_invalidated` when its state could no longer be trusted, shows a red
-error.
+corpse closes when it expires or when the viewer dies. The Corpse context then
+names the reason in neutral text, such as `The corpse is empty.` or
+`The corpse expired and is no longer available.` Closing the view yourself
+leaves no message. Only a corpse that ended through an error, such as one whose
+state could no longer be trusted, shows a red error. A refused loot, such as one
+past the hard cap, shows its reason in red while the corpse stays open.
 
-The implemented inventory presentation keeps character equipment on the left,
-contextual containers such as bank, corpse, Recovery Storage, or world loot in
-the middle, and the character inventory on the right. Permanent inventory,
-equipped Bag contents, and Secure Container access remain in the right column
-while another container is open.
+## Death
 
-Item icons and other visual metadata are client-owned presentation assets keyed
-by stable definition id. The bundled presentation catalog records the exact
-gameplay source revision and its own deterministic presentation revision. Unity
-validates and caches this catalog once per matching revision, then inventory,
-Bank, and Recovery Storage views reuse local lookups for state received from the
-server. The corpse context consumes presence, complete snapshots, targeted deltas,
-operation results, and stable closure messages. World loot has a reserved
-context but no producer yet.
+A character at 0 health dies. Above every open window, `You died` counts down
+`Respawning in <n> s` from 5 seconds, and the character then respawns at the
+World spawn with full health and mana. What happens to its items follows the
+[Player Death Partition](INVENTORY_AND_DEATH_LOOT_DESIGN.md#player-death-partition):
 
-## Durable Player Death Foundation
+- Currency and the Secure Container's contents stay with the character.
+- Items protected on death, and insured items that would otherwise be lootable,
+  go to Recovery Storage; insurance is used up only when it actually protects an
+  item.
+- Everything else from Permanent inventory, the equipment, and the Bag goes into
+  the corpse at the place of death, where anyone may loot it for 5 minutes.
+  Whatever is left when it expires is destroyed.
 
-Status: Implemented, with combat deaths since protocol 18
-
-An authoritative player death can now be committed as one idempotent durable
-transaction. Currency and Secure Container contents stay with the character.
-Protected items and otherwise-lootable insured items enter Recovery Storage,
-while the remaining permanent inventory, equipment, Bag, and independently
-evaluated Bag children enter a five-minute PostgreSQL corpse. Insurance is
-consumed only when it actually protects an item. A protected item does not reveal
-an item placeholder to a future looter.
-
-Death cannot be rejected because removing the equipped Bag bonus leaves retained
-Secure Container weight above 140 percent. This involuntary state is durable,
-but subsequent item operations may neither increase weight nor worsen the exact
-load ratio until the character is within the hard cap. Any further weight
-increase or ratio degradation is rejected. The character can still join a Shard
-in this state and moves at the minimum `0.20` multiplier.
-
-Player corpses retain their Shard, transform, source name, generic presentation
-key, three item sections, snapshots, revisions, database creation time, and one
-absolute five-minute deadline. They remain through the deadline even when empty.
-A restarted SimulationWorker restores only its own open and unexpired Shard
-corpses. Expiry destroys each remaining item once with durable audit.
-
-The interactive corpse loop is available for existing durable corpses.
-SimulationWorker restores their presentation, advertises nearby corpses,
-enforces three-dimensional proximity and lifetime, and permits multiple players
-to inspect the same corpse. Full and partial item transfers, corpse-internal
-moves, compatible stack merges, ordinary occupied-slot swaps, typed corpse
-equipment destinations, and Bag aggregate swaps commit through GameService.
-Every viewer receives committed state, while a stale or losing request gets a
-stable refreshable result. The dead character competes under the same rules as
-every other player.
-
-[Combat](#combat) produces these deaths. Development testing can also create
-a real durable corpse from an offline source character through `MMORPG >
-Tools > Inventory Item Grants`. The generic capsule and current uGUI are
-temporary visuals over permanent protocol, state, authority, transaction, and
-revision foundations.
+The inventory shows the moved items at once, without a new login. A death that
+leaves more weight than the hard cap allows, because the equipped Bag's bonus
+went with the corpse, still happens; see
+[Carry Weight And Encumbrance](#carry-weight-and-encumbrance). A worker restart
+keeps player corpses until they expire. Development testing can also create a
+real corpse from an offline character with the development item tools; see
+[Inventory Item Grants Window](MANUAL_TESTING.md#inventory-item-grants-window).
 
 ## World Actors And Interaction
 
-Status: Implemented with temporary presentation
-
-The shared player-facing foundation for NPCs, Mobs, corpses, and future world
-interactables is implemented:
-
-- `NPC` identifies a social or service actor with freely composable dialogue,
-  vendor, quest, crafting, insurance, trainer, bank, and Recovery capabilities.
-- `Mob` identifies a combat actor. A left click on a Mob attacks it, an
-  aggressive Mob attacks characters it notices, and a dead Mob leaves loot in
-  its corpse and respawns.
-- A resource node identifies a gatherable world object, such as an Iron Vein,
-  with exactly one gathering capability. See [Gathering](#gathering).
-- The pointer picks registered targets with a direct ray and a `0.15` metre
-  spherecast tolerance, up to `100` metres from the camera and never through
-  solid geometry. The [World Menu](#world-menu) offers their options.
-- Choosing an option of a target walks the player to `2.5` metres and asks
-  SimulationWorker to open the interaction once it is within `2.75` metres, and
-  the interaction panel says `Walking to <name>...` meanwhile. A new option
-  elsewhere cancels the walk, and `Escape` closes the active NPC or corpse
+- NPCs offer services. Mira the Quartermaster offers dialogue, trade, the
+  Character Bank, Recovery Storage, insurance, quests, and crafting, and the City
+  Guards dialogue and training. Every NPC and resource node is invulnerable.
+- Mobs fight: the Feral Wolf and the Feral Alpha; see [Combat](#combat).
+- Resource nodes are gathered: Iron Veins and Oak Trees; see
+  [Gathering](#gathering).
+- Choosing an option of a target walks the player to about 2.5 m from it, and
+  the interaction opens within 3 m and stays open up to 3.5 m while the target is
+  in sight, as
+  [Interaction Targeting And Input](NPC_AND_MOB_SYSTEM_DESIGN.md#interaction-targeting-and-input)
+  describes. The interaction panel says `Walking to <name>...` meanwhile. A new
+  option elsewhere cancels the walk, and `Escape` closes the active NPC or corpse
   interaction.
-- SimulationWorker opens an interaction only within the authoritative `3.0`
-  metre start range after validating session, Shard, target identity and
-  revision, active state, line of sight, capability, and request limits.
-- An open interaction remains valid through `3.5` metres to avoid boundary
-  flicker, but the server revalidates every later action.
-- One player may hold one active interaction, including a corpse view. Multiple
-  players may interact with the same target independently.
-- The temporary uGUI lists only the capability summary returned by the server.
-  Permanent actor, target, operation, revision, interaction-session, and
-  reconnect state remains outside that panel.
-- Corpse targeting joins the shared pointer selection and interaction
-  lease without replacing the existing authoritative corpse view and mutation
-  flow.
-
-All city NPCs, including guards, and all resource nodes are invulnerable in the
-first version. Faction and disposition own friendly or hostile behavior
-independently from actor kind. The checked-in actor catalog contains one
-composable service NPC, one guard NPC, two Mob definitions, and the Iron Vein
-and Oak Tree resource nodes, each with an examine text and a menu option per
-capability. Development World 1 places 14 deterministic actor instances and
-Development World 2 21. The Character Bank and Recovery Storage buttons open
-the inventory with that storage, and `Trade` opens it with the vendor; each stays
-usable while the interaction is open. The insurance and quest offer
-capabilities run their item lifecycle. Dialogue, crafting, trainer, and quest
-completion buttons return an explicit server result and never fabricate
-success. Quest progression and crafting remain unimplemented. Combat damages
-and kills Mobs, rolls their loot, and fills the live or durable Mob corpse, and
-Mobs chase, bite, and walk home.
+- A player has one active interaction at a time, including a corpse view, and
+  several players may use the same target at once.
+- The interaction panel lists only the capabilities the server returned when the
+  interaction opened. `Character Bank` and `Recovery Storage` show as
+  `Open Character Bank` and `Open Recovery Storage`, because they open the
+  inventory with that storage; `Trade` opens it with the vendor; each stays
+  usable while the interaction is open.
+- `Insurance` lists the character's insurance-eligible items, each with
+  `Insure: <item>` or `Insured, remove: <item>`. `Available Quests` offers to
+  accept the quest, which grants its required item, the Sealed Letter, and to
+  abandon it, which removes that item again. The inventory and Recovery Storage
+  show the result.
+- Talk, crafting, training, and quest completion answer that they are not
+  available yet; they never pretend to succeed. Quest progression and crafting
+  are not implemented.
 
 ## Currency And Vendor Trade
 
-Status: MVP implemented with temporary presentation
-
-- Every character has a persistent balance of one currency, Gold. The currency
-  name and the starting balance are catalog content. A new character starts with
-  `100` Gold, and existing characters keep their balance. The inventory's
-  character header shows the balance, such as `1,250 Gold`, before the item-state
-  revision.
+- Every character has a persistent balance of one currency, Gold. A new
+  character starts with 100 Gold. The inventory's character header shows the
+  balance, such as `1,250 Gold`.
 - Currency is not an item. It takes no slot and no weight, and it stays with the
   character on death.
 - Mira the Quartermaster offers `Trade`, in her right-click menu and in her
   interaction panel. Choosing it opens the complete inventory view on the
-  `Vendor` tab with the General Store and the current balance. Trading works
-  only while the interaction stays open; walking out of range closes it.
-- The General Store sells Bronze Arrow for `1`, Minor Healing Potion for `25`,
-  Cooked Trout for `10`, Starter Pickaxe and Woodcutting Axe for `50` Gold
-  each, the clothes, the
-  Iron Sword for `120`, the Iron Greataxe for `180`, and the Heater Shield for
-  `80`, at 100 percent of each
-  item's value, with unlimited stock. Each offer has a quantity field and a
-  button that names the total, such as `Buy for 50 Gold`.
+  `Vendor` tab with the General Store and the current balance. Trading works only
+  while the interaction stays open; walking out of range closes it.
+- The General Store sells arrows, a potion, food, both gathering tools, clothes,
+  a helm, the melee and magic weapons, and the shield at 100 percent of each
+  item's value, with unlimited stock. Its offers are the vendor profile
+  `content/items/vendors/vendor.city_general_store.json`, and the item values
+  are in the item definitions; see
+  [Vendor Profiles](../content/items/README.md#vendor-profiles).
+- The Vendor tab shows the balance, then every offer in catalog order with its
+  unit price, a quantity field, and a button that names the total as you type,
+  such as `Buy for 50 Gold`. Without an open vendor interaction the tab says to
+  talk to a vendor, such as Mira, and choose `Trade`.
 - A purchase goes into carried storage. It first tops up existing stacks, then
   fills free slots: matching specialized Bag slots, Permanent inventory, and
   general Bag slots, never the Secure Container. A purchase that does not fit,
-  that the balance cannot pay, or that would pass the 140 percent hard cap is
-  rejected without a partial result.
-- To sell, drag a carried item from Permanent inventory, the equipped Bag, or
-  the Secure Container onto the `Sell` slot, choose a quantity, which defaults to
-  the whole stack, and confirm `Sell <n> <item> for <total>`. The vendor pays 40
-  percent of the value, rounded down on the total, and part of a stack can be
-  sold. A sale worth 0 Gold after rounding is refused. Equipped and banked items, protected and insured items, quest items,
-  non-empty Bags, and items without a value are refused. There is no buyback:
-  a sold item is destroyed with an audit record.
-- Prices are fixed. The client shows the price it expects, and GameService
-  rejects the trade if the price no longer matches. Client checks of price,
-  balance, quantity, location, policies, and weight are advisory only.
-- A purchase or sale is one idempotent GameService transaction that changes the
-  balance and the items together and writes a currency ledger row, so trades
-  are persistent and auditable.
+  that the balance cannot pay, or that would pass the hard cap is refused without
+  a partial result.
+- To sell, drag a carried item from Permanent inventory, the equipped Bag, or the
+  Secure Container onto the `Sell` slot, choose a quantity, which defaults to the
+  whole stack, and confirm `Sell <n> <item> for <total>`, or press `Cancel`. The
+  vendor pays 40 percent of the value, rounded down on the total, and part of a
+  stack can be sold. A sale worth 0 Gold after rounding is refused. Equipped and
+  banked items, protected and insured items, quest items, non-empty Bags, and
+  items without a value are refused. There is no buyback: a sold item is
+  destroyed.
+- Prices are fixed. The client shows the price it expects, and the server refuses
+  the trade if the price no longer matches. A purchase or sale changes the
+  balance and the items together and is recorded, so trades persist.
 
-Known limitations: one vendor with one profile, no buyback, no stock limits, no
-player trading, and temporary uGUI. Manual test steps are in
-[Local Development](LOCAL_DEVELOPMENT.md#vendor-and-gathering-verification).
+Known limitations: one vendor with one profile, no buyback, no stock limits, and
+no trading between players. The pricing rules are in
+[Vendor Trades](INVENTORY_AND_DEATH_LOOT_DESIGN.md#vendor-trades).
 
 ## Gathering
-
-Status: MVP implemented with temporary presentation
 
 - Iron Veins and Oak Trees are resource nodes. Development World 2 has seven
   Iron Veins in the quarry southeast of the town and four Oak Trees in the oak
   grove south of the town, and Development World 1 has nine Iron Veins east of
   the spawn.
-- An Iron Vein is the game's first authored 3D model: grey faceted rocks with
-  chunky rust-orange iron ore that shows from every camera angle. A depleted
-  vein keeps its rocks, now with broken flat tops and rubble around them, but
-  without ore.
-- An Oak Tree is a fantasy oak about 5.6 m high: a twisted trunk on thick
-  roots, a broad crown of faceted green clumps, and large golden acorns hanging
-  below it. A felled tree is a stump with a pale cut face and wood chips.
-- Equip a gathering tool, such as the Starter Pickaxe, in the `Tool` slot and
-  left-click a vein, or choose `Mine Iron Vein` in its right-click menu. The
-  character walks into range, the interaction opens, and mining starts. Without
-  a gathering tool the panel asks the player to equip one. Each node needs its
-  own tool kind: a pickaxe mines an Iron Vein, and a Woodcutting Axe chops an
-  Oak Tree with `Chop down Oak Tree`. With the wrong tool equipped, gathering
-  never starts, and the panel names the tool it needs, such as
-  `Woodcutting Axe required in the Tool slot.`.
+- An Iron Vein is grey faceted rock with chunky rust-orange iron ore that shows
+  from every camera angle. A depleted vein keeps its rocks, now with broken flat
+  tops and rubble around them, but without ore.
+- An Oak Tree is a fantasy oak about 5.6 m high: a twisted trunk on thick roots, a
+  broad crown of faceted green clumps, and large golden acorns hanging below it. A
+  felled tree is a stump with a pale cut face and wood chips.
+- Equip a gathering tool in the `Tool` slot and left-click a node, or choose its
+  option in the right-click menu, such as `Mine Iron Vein`. The character walks
+  into range, the interaction opens, and gathering starts. Each node needs its own
+  tool kind: the Starter Pickaxe mines an Iron Vein, and the Woodcutting Axe chops
+  an Oak Tree with `Chop down Oak Tree`. Without a gathering tool the panel says
+  `Equip a gathering tool in the Tool slot to gather here.`, and with the wrong one
+  gathering never starts and the panel names the tool it needs, such as
+  `Woodcutting Axe required in the Tool slot.`
 - Resource nodes are solid: characters and Mobs walk around a vein or an oak's
   trunk, and a click beyond one routes around it. A felled oak's stump and a
   depleted vein's rubble stay solid. Sight and arrows pass them.
-- One click mines continuously: one Iron Ore every 3 seconds, shown as `Mine...`
-  with a progress bar and the gathered count. The ore enters carried storage by
-  the same rule as a purchase. Chopping works the same, one Oak Log every 3
-  seconds, shown as `Chop...`.
+- One click gathers continuously: one Iron Ore or one Oak Log every 3 seconds,
+  shown as `Mine...` or `Chop...` with a progress bar and the gathered count. The
+  yield enters carried storage by the same rule as a purchase.
 - While a character gathers, it holds the tool of its `Tool` slot in both hands
   and swings it, two strokes per yield, and every player nearby sees it: the
   Starter Pickaxe, a curved iron pick with a blue ore crystal and a brass band
-  with the rune Fehu, in an overhead `Mine` stroke, and the Woodcutting Axe, a
-  bearded axe with a golden oak leaf on its cheeks and a golden acorn at the
-  butt, in a diagonal `Chop`. A sword and a shield it holds are put away
-  meanwhile, and the tool goes back to the `Tool` slot when gathering stops. A
-  character that walks away stops swinging at once.
-- Mining stops when the vein is depleted, the character moves, the interaction
-  closes, carried storage is full, the ore would pass the hard cap, or the tool
-  is no longer equipped. The panel names the reason, and `Mine` starts again.
-- Veins are shared by every player on the Shard. A vein holds 5 ore. When the
-  last one is mined, it turns depleted for every player and everyone mining it
-  stops. A depleted vein stays visible but cannot be targeted, and it returns
-  after 30 seconds. An Oak Tree holds 5 logs, falls to its stump the same way,
-  and grows back after 30 seconds.
-- SimulationWorker owns the vein charges, cycle timing, depletion, and respawn
-  as live Shard state, so a worker restart restores every vein to full.
-  GameService checks the required tool in the `Tool` slot and grants each ore
-  transactionally.
+  with the rune Fehu, in an overhead stroke, and the Woodcutting Axe, a bearded
+  axe with a golden oak leaf on its cheeks and a golden acorn at the butt, in a
+  diagonal chop. A sword and a shield it holds are put away meanwhile, and the
+  tool goes back to the `Tool` slot when gathering stops. A character that walks
+  away stops swinging at once.
+- Gathering stops when the node is depleted, the character moves, the interaction
+  closes, carried storage is full, the yield would pass the hard cap, or the tool
+  is no longer equipped. The panel shows the gathered count and the reason, and
+  the capability button, such as `Mine`, starts again.
+- Nodes are shared by every player on the Shard. A node holds 5 yields. When the
+  last one is taken, it turns depleted for every player and everyone gathering
+  from it stops. A depleted node stays visible but cannot be targeted, and it
+  returns after 30 seconds. A worker restart restores every node to full.
 
 Known limitations: two resource types, no Mining or Woodcutting experience or
 level, and no success chance per cycle. The character swings in the direction it
@@ -740,22 +615,19 @@ faces, which is toward the node after it walked there, but it does not turn to a
 node it already stands next to, and a stroke reaches about 0.7 m ahead whatever
 the node's size. In the highest frames of the strokes some garments, such as a
 shirt's sleeve on the female body or a raised hood, let the skin come through by
-up to about 2 cm. A node's collision is an upright box aligned to the World
-axes, so a round trunk collides as a square. Manual test steps are in
-[Local Development](LOCAL_DEVELOPMENT.md#vendor-and-gathering-verification).
+up to about 2 cm. A node's collision is an upright box aligned to the World axes,
+so a round trunk collides as a square.
 
 ## Combat
 
-Status: Implemented with temporary presentation
-
 Combat is target based and server authoritative:
 
-- A left click on a living Mob, or on another character when the Shard allows
-  player versus player, or `Attack` in its right-click menu, selects it as the
-  target. The character walks into the range of its equipped weapon, about 9 m
-  for the Training Shortbow, and attacks on the weapon's cooldown, every 2.4
-  seconds for the shortbow, while it stands still. Moving between shots is
-  allowed.
+- A left click on a living Mob, on another character when the Shard allows player
+  versus player, or `Attack` in its right-click menu, selects it as the target.
+  The character walks into the range of its equipped weapon, a little inside it,
+  such as about 9 m for the Training Shortbow, and attacks on the weapon's
+  cooldown while it stands still. Moving between attacks is allowed. Without a
+  weapon the character does not walk and reports `No weapon equipped`.
 - An attack starts at once and releases when its weapon family's windup ends:
   the sword's blow lands after 0.35 s, the axe's after 0.6 s, the bow's arrow
   leaves after 0.8 s, and the staff's bolt after 0.15 s. A step, a new target, or
@@ -764,89 +636,72 @@ Combat is target based and server authoritative:
   the windup is still hit while it stays within a quarter more than the weapon's
   range. An arrow or a bolt in flight still hits when the character moves on.
 - Any other world option except `Examine`, or `Escape`, ends the attack.
+- When the worker reports the target out of range, the character walks closer
+  by itself, at most once a second, and 2 m closer each time the line of sight is
+  blocked.
 - A bow needs arrows of its family in the Ammunition slot. Every shot spends one
-  arrow, even when it flies at a target that died, and the inventory shows the
-  live arrow count. An equipment change holds attacks for 1 second.
-- The Iron Sword, the first melee weapon, hits at 2.5 m for 11 to 19 every 2.4
-  seconds and needs no ammunition; every attack is a cut with a step in. The
-  Heater Shield goes in the off hand and has no armor values yet. Both show in
-  the hands of their wearer, as
-  [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#attachments) describes.
-- The Iron Greataxe, an axe for both hands, hits at 2.5 m for 16 to 27 every 3
-  seconds; the General Store sells it for 180 gold. Its wearer rests it on the
-  right shoulder, and every attack is a two-handed swing.
-- The Training Shortbow takes both hands: the left holds the bow and the right
-  draws. Every attack turns the archer into a stance with the right foot back,
-  draws the string to the jaw with an arrow on it while the bow bends, and looses
-  that arrow at the release; everyone who sees the archer sees the shot. A melee
-  weapon in one hand without an attack of its own strikes with a step into a
-  blow.
-- The Oak Staff, the first magic weapon, takes both hands and casts a bolt of
-  Normal damage for 10 to 18 every 2.4 seconds at up to 10 m. Every bolt costs 5
-  mana when it leaves the staff, and a character has 100 mana. Without enough
-  mana the attack status shows `Not enough mana`, the target stays selected, and
-  the character casts again by itself once its mana is back. The General Store
-  sells the staff for 120 gold. A character holds it upright beside its right
-  hip, also while it walks, and every cast thrusts it toward the target while
-  the other hand points at it; everyone who sees the character sees the cast. A
-  glowing blue-white bolt leaves the staff's crystal and flies at 20 m/s.
-- The top-left frame shows health, mana, arrows, and the attack status, such as
-  `Out of range`, `No ammunition`, or `Not enough mana`. The target frame shows
-  the target's health, damaged combatants get health bars, hits show white
-  damage numbers, and arrows and bolts fly to their target.
-- A character at 0 health dies: `You died` counts down 5 seconds above every
-  open window, the character respawns at the World spawn with full health, and
-  its items follow the
-  [Durable Player Death Foundation](#durable-player-death-foundation). The
-  inventory shows the moved items at once, without a new login.
-- A character is in combat until 5 seconds after its last attack or hit. Out
-  of combat it regains 1 health and 1 mana every second. A respawn and a login
-  start with full health and mana.
-- Wolves are aggressive: a wolf notices a living character within 8 m that it
-  can see, runs to it at 4.5 m/s, and bites for 4 to 9 every 1.8 seconds. A
-  wolf hit by a character always fights back. A wolf that is lured more than 30
-  m from where the fight started, or that neither bites nor is hit for 10
-  seconds, turns back home, cannot be damaged on the way, and arrives with full
-  health. Wolves walk their patrol path between fights.
-- A Feral Wolf has 50 health, drops a Wolf Pelt and sometimes Bronze Arrows,
-  and returns after 30 seconds. The Feral Alpha boss has 240 health, leaves a
-  durable corpse, notices characters within 10 m, bites for 7 to 12 every 2.4
-  seconds, and returns after 300 seconds. In Development World 2 five
-  wolves live in the wolf woods southwest of the town, X and Z between `-120`
-  and `-90`, and the Feral Alpha stands in its lair at `(-160, 0, -160)`. In
-  Development World 1 four wolves patrol a pen west of the spawn.
+  arrow, even when it flies at a target that died, and the inventory's
+  ammunition slot shows the live arrow count, also 0 or 1, without redrawing the
+  panel. An equipment change holds attacks for 1 second.
+- The weapons:
 
-[Combat Verification](LOCAL_DEVELOPMENT.md#combat-verification) walks through
-the loop.
+| Weapon | Hands | Range | Damage | Every | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Training Shortbow | Both | 10 m | 10 to 18 | 2.4 s | Needs arrows, which fly at 30 m/s; a Bronze Arrow adds 5 percent |
+| Iron Sword | Main hand | 2.5 m | 11 to 19 | 2.4 s | A cut with a step in |
+| Iron Greataxe | Both | 2.5 m | 16 to 27 | 3 s | Rests on the right shoulder; a two-handed swing |
+| Oak Staff | Both | 10 m | 10 to 18 | 2.4 s | 5 mana per bolt; the bolt flies at 20 m/s |
 
-## Planned Feature Categories
+- The Training Shortbow is held in the left hand and drawn with the right. Every
+  attack turns the archer into a stance with the right foot back, draws the
+  string to the jaw with an arrow on it while the bow bends, and looses that
+  arrow at the release. A melee weapon in one hand without an attack of its own
+  strikes with a step into a blow. The Heater Shield goes in the off hand and has
+  no armor values yet. Weapons and shields show in the hands of their wearer, and
+  everyone who sees an attacker sees its attack.
+- The Oak Staff deals Normal damage like every weapon. A character has 100 mana,
+  and every bolt costs 5 mana when it leaves the staff. Without enough mana the
+  attack status shows `Not enough mana`, the target stays selected, and the
+  character casts again by itself once its mana is back. A character holds the
+  staff upright beside its right hip, also while it walks, and every cast thrusts
+  it toward the target while the other hand points at it. A glowing blue-white
+  bolt leaves the staff's crystal.
+- A character that attacks while standing turns to face its target.
+- The top-left frame shows health with a bar, mana with a blue bar, the live
+  arrow count, the attack status, and `In combat` while the character is in
+  combat. A refused attack request shows its reason below the frame for four
+  seconds. The attack status is one of
+  `No target`, `Attacking`, `Stop moving to attack`, `Out of range`,
+  `No line of sight`, `Equipment changed`, `No weapon equipped`,
+  `No ammunition`, `Wrong ammunition`, `Not enough mana`, or `Dead`.
+- The target frame at the top center shows the target's name, health, and
+  `In combat` or `Returning home`. Every damaged living combatant in
+  view within 60 m has a health bar, green, amber below half, and red below a
+  quarter. Every hit shows a white damage number that rises and fades over 1.1
+  seconds, and arrows and bolts fly to their target.
+- A character is in combat until 5 seconds after its last attack or hit. Out of
+  combat it regains 1 health and 1 mana every second. A respawn and a login start
+  with full health and mana. A character has 100 health.
+- Dying is described in [Death](#death).
+- Wolves are aggressive: a Feral Wolf notices a living character within 8 m that
+  it can see, runs to it at 4.5 m/s, and bites for 4 to 9 every 1.8 seconds. A
+  wolf hit by a character always fights back. A wolf that is lured more than 30 m
+  from where the fight started, or that neither bites nor is hit for 10 seconds,
+  turns back home, cannot be damaged on the way, and arrives with full health.
+  Wolves walk their patrol path between fights.
+- A Feral Wolf has 50 health, drops a Wolf Pelt and sometimes Bronze Arrows, and
+  returns after 30 seconds. The Feral Alpha boss has 240 health, notices
+  characters within 10 m, bites for 7 to 12 every 2.4 seconds, drops three Wolf
+  Pelts and sometimes a Copper Ring in a durable corpse, and returns after 300
+  seconds. In Development World 2 five wolves live in the wolf woods southwest of
+  the town, and the Feral Alpha stands in its lair; in Development World 1 four
+  wolves patrol a pen west of the spawn.
 
-These categories are defined by the project direction but are not implemented.
-They remain in the MVP specification until working behavior is available:
+The rules behind combat are in [Target-Based Combat](SERVICE_FEATURES.md#target-based-combat)
+and [Mob Brains](SERVICE_FEATURES.md#mob-brains).
 
-- Dynamic collision transform replication.
-- A threat table, Mob abilities and groups, more melee and magic weapons,
-  mana potions, armor values, attack animations for swords and bows, and final
-  combat visuals.
-- Final inventory art, interaction polish, accessibility, item policy details,
-  and loot presentation.
-- Final corpse art and loot presentation, and insurance or quest UI polish.
-- Crafting, professions, further resource types and gathering progression, and
-  the player economy beyond the first NPC vendor.
-- Complete NPC capability behavior, quests, events, and world activities.
-- Character progression and long-term persistence.
-- Zone partitioning, cross-zone handoff, and population layers.
-- Social, grouping, guild, chat, and trading systems.
-- Final UI, audio, visual effects, animation, and accessibility.
+## Not Implemented Yet
 
-## Feature Documentation Template
-
-When a game feature is implemented, document it here with:
-
-1. A clear status such as Foundation, MVP, or Production-ready. Use Prototype
-   only for temporary UI presentation.
-2. The player-visible behavior.
-3. Inputs, rules, and important edge cases.
-4. Whether the behavior is local, server-authoritative, or persistent.
-5. Known limitations.
-6. A link to manual test steps in [Local Development](LOCAL_DEVELOPMENT.md).
+What the game does not have yet is in the [Status](GAME_DESIGN.md#status) and
+[Deferred Features](GAME_DESIGN.md#deferred-features) of Game Design, and the
+status of each area of the project in [Project Overview](PROJECT_OVERVIEW.md).

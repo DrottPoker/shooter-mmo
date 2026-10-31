@@ -1,129 +1,111 @@
 # Documentation
 
-Last updated: 2026-10-23
-
-This directory is the documentation entry point for MMORPG. Each active
-document has one clear responsibility so architecture, implemented behavior,
-operations, and future design do not drift into duplicate descriptions.
+Every document has one responsibility, and every fact lives in exactly one document. Other
+documents link to it instead of repeating it, so nothing drifts apart. Start with
+[Project Overview](PROJECT_OVERVIEW.md).
 
 ## Start Here
 
-1. [Project Overview](PROJECT_OVERVIEW.md) for a short explanation of the current
-   project and its status.
-2. [Project Architecture](PROJECT_ARCHITECTURE.md) for system boundaries, data
-   ownership, canonical topology terminology, and communication flows.
-3. [GameService Modules](GAME_SERVICE_MODULES.md) for the GameService module
-   projects, their contracts, table ownership, cross-module access rules, lock
-   order, migration ownership, and architecture guard tests.
-4. [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) for the client
-   assemblies and their dependency rules, Addressables content loading, and the
-   detailed Unity runtime structure and client flows.
-5. [Realtime Protocol](REALTIME_PROTOCOL.md) for the binary wire format, the
-   protocol schema and its generator, the message descriptors, and the
-   versioning rules.
-6. [Service Features](SERVICE_FEATURES.md) for implemented backend and
-   infrastructure behavior.
-7. [Game Features](GAME_FEATURES.md) for implemented player-facing gameplay.
-8. [Local Development](LOCAL_DEVELOPMENT.md) for setup, startup, manual test
-   instructions, and the pull request workflow that waits for CI, merges, and
-   cleans up.
-9. [Monitoring](MONITORING.md) for the server metrics, logs, and traces, the
-   local OpenTelemetry, Prometheus, Loki, Tempo, and Grafana stack, the
-   dashboards and alerts, and what to watch during a playtest.
-10. [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only
-    and full-stack GameService, PostgreSQL, and SimulationWorker load testing.
-11. [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) for a long-running local
-    bot population that can share the real shard with a Unity player.
-12. [Development Worlds](DEVELOPMENT_WORLDS.md) for the two development maps, their
-    layouts, and the Unity rebuild and authoring workflow.
-13. [Game Content](../content/README.md) for the authored content layout, its
-    file and naming rules, the content compilers, and the generated data. The
-    item authoring contract is in [Item Catalog Authoring](../content/items/README.md).
-14. [Backend Tests](../tests/README.md) for the backend test projects, where a new
-    test goes, test traits, per-test databases, CI jobs, golden files, and test
-    access to internals.
-15. [Art Pipeline](ART_PIPELINE.md) for 3D models from Blender to Unity: the
-    asset layout, the review stages and approvals, the shared skeletons, the
-    export and import rules for static and skinned models and their textures,
-    the modeling conventions, the human base characters edited in Blender with
-    their rig, the animation libraries, paint layers, the garment cage, garment
-    templates and their textures, and the Blender MCP server for live work.
+- [Project Overview](PROJECT_OVERVIEW.md): what the game is today, how the parts fit together,
+  and the status of every area.
+- [Local Development](LOCAL_DEVELOPMENT.md): set up, run the stack, run the checks, and carry a
+  change through a pull request.
+- [Manual Testing](MANUAL_TESTING.md): try every feature by hand in the running game.
 
-## Foundation Hardening
+## Product Design
 
-- [Foundation Hardening Plan](FOUNDATION_HARDENING_PLAN.md) records the verified
-  baseline, every finding from the October 2026 audit of the existing
-  foundation, open decisions, and the fix order. It is completed before new
-  gameplay work starts.
-- [Items And Inventory Alignment Plan](ITEMS_INVENTORY_ALIGNMENT_PLAN.md)
-  records the October 2026 audit of the item and inventory system against the
-  fantasy design, the product decisions it settled, and the fixes.
+What the game should be and why. Each design document marks what is implemented and what is
+planned.
 
-## Product Direction
+- [Game Design](GAME_DESIGN.md): vision, setting, progression, movement, combat, magic, PvP,
+  professions, the MVP scope and its slices, and the open questions.
+- [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md): items, equipment,
+  storage, carry weight, currency, vendor trade, death loot, corpses, and Recovery Storage.
+- [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md): the world actor model, NPC
+  capabilities, Mobs, resource nodes, spawns, and interaction.
+- [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md): how bodies, garments, hair, cloth,
+  and carried equipment look.
 
-- [MVP Specification](MVP_SPEC.md) defines the working MVP scope and product
-  decisions.
-- [Vendor And Gathering Plan](VENDOR_AND_GATHERING_PLAN.md) records the
-  implemented vendor, currency, and gathering MVP slice: architecture, product
-  decisions, implementation order, and where the implementation differs.
-- [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md) is the product
-  source of truth for the fantasy setting, character levels and talents,
-  click-to-move movement and camera, the combat triangle, damage types and
-  resistances, weapons, ammunition, magic, mana, threat, healing, PvP combat,
-  and professions. It replaces the earlier modern third-person shooter
-  direction. Its click-to-move movement, orbit camera, and first combat slice
-  are implemented; the rest is not implemented yet.
-- [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md) is the canonical
-  source of truth for the implemented scalable world-actor model, NPC and Mob
-  distinction, composable NPC capabilities, visual spawn authoring, click
-  interaction, runtime ownership, and actor scaling rules.
-- [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md) is the source of
-  truth for how clothes, armor, hair, and carried equipment look on the bodies:
-  garments as meshes with cover masks, the garment cage they are fitted on,
-  garment templates with their textures and standard lines, fitting every body
-  type, future races, and a replaced base model, cloth chains, the art kinds,
-  and how Unity puts a character together. It is accepted; delivery steps 1 to
-  4, 5a, and 5b, the cloth chains, the garment kind, characters wearing
-  garments with the garment shader, the Wardrobe preview, the garment cage, and
-  garment templates with their textures, are implemented.
-- [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) is the
-  product and domain source of truth for items, equipment, slot inventory, Bags,
-  the Secure Container, carry weight, death loot, corpses, insurance, and
-  Recovery Storage, split into decided, proposed, and open rules.
-- [Combat And Mob Slice Plan](COMBAT_AND_MOB_SLICE_PLAN.md) records the
-  implemented MVP slice for target-based combat and the first Mob: its product
-  decisions, the architecture of combat state, attack timing, ammunition
-  batching, death events, Mob AI, protocol, and client presentation, the
-  implementation order, where the implementation differs, and the acceptance
-  run.
-- [Items And Inventory Delivery History](ITEMS_INVENTORY_IMPLEMENTATION_PLAN.md)
-  records the delivered phases of the item and world-actor foundation. The
-  current implementation status is in [Project Overview](PROJECT_OVERVIEW.md).
-- [MMO Codex Project Brief](MMO_Codex_Project_Brief.md) contains the original
-  project vision and broader historical design context. Current architecture and
-  feature-specific design documents supersede conflicting details in that brief.
+## Architecture
 
-These product documents are working design references. The architecture and
-feature documents describe what is actually implemented in the repository.
+How the system is built.
+
+- [Project Architecture](PROJECT_ARCHITECTURE.md): terminology, topology, process boundaries,
+  data ownership, trust boundaries, and the core runtime flows.
+- [GameService Modules](GAME_SERVICE_MODULES.md): the GameService module projects, their
+  contracts, tables, lock order, migrations, and guard tests.
+- [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md): the client assemblies, folders,
+  runtime structure, networking, content loading, and client flows.
+- [Realtime Protocol](REALTIME_PROTOCOL.md): the binary wire format, the schema and its
+  generator, the messages, and versioning.
+
+## Implemented Features
+
+What exists today.
+
+- [Game Features](GAME_FEATURES.md): what a player can do and see, with the controls.
+- [Service Features](SERVICE_FEATURES.md): the server behavior seen from outside: the HTTP API,
+  error codes, limits, defaults, and configuration.
+
+## Guides
+
+How to work on a part of the project.
+
+- [Local Development](LOCAL_DEVELOPMENT.md) and [Manual Testing](MANUAL_TESTING.md).
+- [Art Pipeline](ART_PIPELINE.md): 3D models from Blender to Unity, with every how-to.
+- [Development Worlds](DEVELOPMENT_WORLDS.md): the two development maps and how they are
+  rebuilt.
+- [Monitoring](MONITORING.md): metrics, logs, traces, dashboards, alerts, and the local
+  monitoring stack.
+- [Stack Stress Testing](STACK_STRESS_TESTING.md): repeatable load tests of a worker or the full
+  stack.
+- [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md): a long-running bot population on a local
+  shard.
+- [Game Content](../content/README.md) and [Item Catalog Authoring](../content/items/README.md):
+  the authored content, its rules, and its compilers.
+- [Backend Tests](../tests/README.md): the test projects, where a new test goes, and the test
+  databases.
+- [Tools](../tools/README.md): every script and tool.
+
+## Where Things Belong
+
+| To document | Write it in |
+| --- | --- |
+| A game rule, its intent, or a planned feature | The matching design document |
+| A boundary, ownership, threading, or flow between processes | [Project Architecture](PROJECT_ARCHITECTURE.md) |
+| GameService module structure, tables, locks, or migrations | [GameService Modules](GAME_SERVICE_MODULES.md) |
+| A Unity class structure, client flow, or extension rule | [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md) |
+| A realtime message or the current protocol version | [Realtime Protocol](REALTIME_PROTOCOL.md) |
+| What the player sees and the controls | [Game Features](GAME_FEATURES.md) |
+| An endpoint, error code, limit, default, or configuration option | [Service Features](SERVICE_FEATURES.md) |
+| A metric, log, trace, dashboard, or alert | [Monitoring](MONITORING.md) |
+| How to check a feature by hand | [Manual Testing](MANUAL_TESTING.md) |
+| Setup, running the stack, checks, pull requests, Unity Editor automation, or operations | [Local Development](LOCAL_DEVELOPMENT.md) |
+| Making or changing art | [Art Pipeline](ART_PIPELINE.md) |
+| Authoring content or adding a kind of content | [Game Content](../content/README.md) |
+| A test project, test rule, or test database | [Backend Tests](../tests/README.md) |
+| A new script or tool | [Tools](../tools/README.md) and the guide of its area |
 
 ## Documentation Rules
 
-- Update architecture documents when boundaries, ownership, dependencies, or
-  major flows change.
-- Update feature documents in the same change that implements or changes a
-  feature.
-- Document only implemented behavior as implemented. Keep planned work clearly
-  marked as planned or deferred.
-- Use World, Fleet, Node, SimulationWorker, SimulationAssignment, Shard, Zone,
-  and Layer exactly as defined in `PROJECT_ARCHITECTURE.md`. Do not introduce a
-  Realm or reuse World as a process name.
-- Put commands and operator workflows in `LOCAL_DEVELOPMENT.md` instead of
-  duplicating them across architecture and feature documents.
-- Keep this index and the root `README.md` links current when documents are
-  added, renamed, or removed.
-- Only the current UI may be documented or implemented as temporary. All other
-  systems must be treated as maintainable foundations and must not accumulate
-  knowingly disposable architecture.
-- Every Unity change must state whether manual Unity Editor work is required. If
-  it is required, document exact steps and the expected result in
-  `LOCAL_DEVELOPMENT.md`.
+- Document a change in the same pull request as the code. A new feature usually touches its
+  design document (the rule), a features document (the behavior), Manual Testing (how to check
+  it), and, when they change, the architecture, protocol, and guide documents.
+- Write each fact once, in the document that owns it, and link to it from elsewhere. Do not
+  repeat version numbers, revisions, or counts that change with every feature, such as the
+  protocol version or the number of item definitions.
+- Describe the current state. History lives in Git: no "Last updated" lines, dates of decisions,
+  pull request numbers, delivery phases, or decision ids. State a decision as the rule it is.
+- Document implemented behavior as implemented and mark planned or deferred work clearly.
+- Use World, Fleet, Node, SimulationWorker, SimulationAssignment, Shard, Zone, and Layer exactly
+  as [Project Architecture](PROJECT_ARCHITECTURE.md#canonical-terminology) defines them. There
+  are no realms, and World never names a process.
+- Every change states how to test it by hand, with commands and the expected result, and whether
+  it needs manual Unity Editor steps. Lasting manual checks belong in
+  [Manual Testing](MANUAL_TESTING.md); exact Unity Editor steps belong in the guide of the area.
+- Only the current UI may be documented or implemented as temporary. Every other system is a
+  maintainable foundation.
+- Keep this map, the root `README.md`, and the links current when a document or heading is added,
+  renamed, or removed. Code comments refer to some headings; update them when a heading changes.
+- Write plain English in the present tense, never use the em dash, use Title Case headings, and
+  wrap prose at about 80 columns.

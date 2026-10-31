@@ -1,12 +1,16 @@
 # Realtime Protocol
 
-Last updated: 2026-10-27
-
 The realtime protocol is the binary contract between SimulationWorker and the
 Unity client over LiteNetLib. Its single source is the local Unity package
 `src/Shared/GameProtocol`: Unity compiles it as the `Mmorpg.GameProtocol`
 assembly, and `src/Shared/DotNet/GameProtocol` compiles the same files for the
 backend, the tools, and the tests.
+
+The current protocol version is `protocol.version` in
+`src/Shared/GameProtocol/Schema~/realtime-protocol.json`, compiled into
+`RealtimeProtocol.Version`. The generator prints it, and SimulationWorker logs it
+when its transport starts listening. Client and worker must run the same
+version, as [Versioning](#versioning) describes.
 
 ## Wire Format
 
@@ -16,13 +20,13 @@ its message type. All numbers are little-endian.
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 4 | Magic | `0x4F4D4D53` |
-| 2 | Version | Must equal `RealtimeProtocol.Version`, currently 27 |
+| 2 | Version | Must equal `RealtimeProtocol.Version` |
 | 1 | Message type | A defined `RealtimeMessageType` |
 
-A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes.
-Decoders reject wrong headers, truncated payloads, and trailing bytes. Encoders
-throw `ArgumentException` for invalid values and `InvalidOperationException`
-for a packet above the limit.
+A packet is at most 1,200 bytes, and an unreliable packet at most 1,023 bytes,
+LiteNetLib's single-packet limit. Decoders reject wrong headers, truncated
+payloads, and trailing bytes. Encoders throw `ArgumentException` for invalid
+values and `InvalidOperationException` for a packet above the limit.
 
 | Wire type | Encoding |
 | --- | --- |
@@ -38,13 +42,13 @@ for a packet above the limit.
 
 `src/Shared/GameProtocol/Schema~/realtime-protocol.json` describes the protocol
 once. Unity ignores folders that end in a tilde, so the schema needs no `.meta`
-files and stays out of client builds.
-`realtime-protocol.schema.json` next to it gives editors validation and
-completion. `tools/ProtocolGenerator` reads the schema strictly, rejects unknown
-properties, duplicate names or ids, and invalid values with the JSON path of the
-problem, and writes `src/Shared/GameProtocol/Runtime/Generated`.
+files and stays out of client builds. `realtime-protocol.schema.json` next to it
+gives editors validation and completion. `tools/ProtocolGenerator` reads the
+schema strictly, rejects unknown properties, duplicate names or ids, and invalid
+values with the JSON path of the problem, and writes
+`src/Shared/GameProtocol/Runtime/Generated`.
 
-The schema currently holds:
+The schema holds:
 
 - `protocol`: the namespace, version, magic, connection key, packet limits,
   channel count, and channels.
@@ -57,6 +61,14 @@ The schema currently holds:
   `PlayerState`.
 - `messages`: every message type with its id, family, direction, channel,
   delivery, and fields. The generator writes its model class and its codec.
+
+The content compilers fit the public limits: item catalog tags and equipment
+slot ids stay within `MaximumSlotTagLength` and `MaximumEquipmentSlotIdLength`
+(64), a Bag slot accepts at most `MaximumSlotTags` (16) tags, and actor examine
+texts and menu options stay within their limits, as
+[World Actor Spawns And Menu Options](#world-actor-spawns-and-menu-options)
+describes. A test keeps the `ItemCatalogFormat` limits within
+`RealtimeProtocolLimits`.
 
 The generator owns `Runtime/Generated`. `RealtimeProtocol.Core.g.cs` holds
 `RealtimeMessageType`, the protocol constants, `RealtimeProtocolLimits`, and the
@@ -83,17 +95,40 @@ schema cannot say:
 | `Movement` | `Movement/RealtimeProtocol.Movement.cs`: cross-field rules |
 | `Replication` | `Replication/RealtimeProtocol.Replication.cs`: the player archetype ids |
 | `Items` | `Items/RealtimeProtocol.Items.cs`: cross-field rules |
-| `Corpses` | `Corpses/RealtimeProtocol.Corpses.cs`: cross-field rules and the shorter `RealtimeCorpseSlot` constructors |
+| `Corpses` | `Corpses/RealtimeProtocol.Corpses.cs`: cross-field rules, the shorter `RealtimeCorpseSlot` constructors, and the corpse view closure codes |
 | `WorldActors` | `WorldActors/RealtimeProtocol.WorldActors.cs`: cross-field rules |
-| `Combat` | `Combat/RealtimeProtocol.Combat.cs`: cross-field rules |
+| `Combat` | `Combat/RealtimeProtocol.Combat.cs`: cross-field rules and the combat intent error codes |
 | `Admin` | None |
 
 `RealtimeError` is the generated `Error` struct of the `Session` family.
 
+### Generate And Verify
+
+After a schema change, regenerate and verify from any repository directory:
+
+```powershell
+dotnet run --project tools/ProtocolGenerator --configuration Release
+dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
+```
+
+Expected result: the first command prints
+`Realtime protocol version <version> generated: <messages> messages, <files> generated files.`
+and the second prints the same line with `verified`. The first command rewrites
+only changed files and removes files that the schema no longer produces. The
+second fails and names the file when a generated file is stale, missing, or not
+produced by the schema. `--repository-root <directory>` points the generator at
+another checkout.
+
+Commit the schema, `realtime-protocol.lock.json`, the generated `.cs` files, and
+their `.meta` files together. When generation reports that the wire contract of
+the current protocol version changed, the schema change alters bytes or
+acceptance: increase `protocol.version` in the schema and generate again, and the
+lock records the new version next to the old ones. No Unity Editor step is
+required, because the generator writes the `.meta` files with stable GUIDs and
+Unity compiles the new code when it next refreshes.
+
 The quality gate, CI, and `ProtocolGeneratorTests` in `Mmorpg.Tools.Tests` all
 fail when a generated file is stale, missing, or not produced by the schema.
-The commands are in
-[Local Development](LOCAL_DEVELOPMENT.md#realtime-protocol-generation).
 
 ## Fields, Structs, And Value Rules
 
@@ -149,8 +184,8 @@ Text must not be empty or whitespace unless its field sets `blank`:
 - `"blank": "allow"` makes empty and whitespace text valid in both directions,
   so the length prefix may be 0. `WorldInteractionResult.Message` uses it.
 - `"blank": "acceptOnDecode"` keeps the encoder strict but lets the decoder
-  accept blank text, as the Session messages always did, so the receiving code
-  decides what blank text means. On a struct field, such as the `Error` of
+  accept blank text, so the receiving code decides what blank text means, as
+  the Session messages do. On a struct field, such as the `Error` of
   `JoinRejected`, it applies to every text field of that struct, which may then
   contain no struct or array fields. It belongs to message fields only, not to
   struct fields or variant fields.
@@ -210,9 +245,9 @@ largest size exceeds 1,023 bytes fails generation, so snapshots provably fit.
 A reliable message whose largest size can exceed 1,200 bytes must set
 `"runtimeSizeCheck": true`, which makes the risk a visible decision; encoding
 such a packet then throws `InvalidOperationException` when it is too large. A
-message that cannot exceed the limit must not set it.
-Text counts as up to three UTF-8 bytes per allowed UTF-16 character, the most
-any character encodes to.
+message that cannot exceed the limit must not set it. Text counts as up to
+three UTF-8 bytes per allowed UTF-16 character, the most any character encodes
+to.
 
 ## Message Descriptors
 
@@ -267,9 +302,71 @@ The control channel is 0, the movement input channel is 1, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
 table from the descriptors, the Unity client recognizes snapshots by their
 unreliable delivery, and `RealtimeReplicationContractTests` checks that every
-packet the worker sends travels as its descriptor says.
+packet the worker sends travels as its descriptor says. The owner snapshot is
+small enough to stay prioritized at the snapshot rate, while remote snapshots
+carry application-level tick and chunk metadata.
 
-## Player Archetypes
+## Session Messages
+
+- `JoinRequest` carries the join ticket. `JoinAccepted` carries the simulation
+  session, account, and character identity, the Shard and World identity, the
+  controlled entity id, the simulation and collision revisions, the join and
+  session expiry times, whether the join was a reconnect, the carry state, the
+  movement settings, the initial player state, and `ShardRules`, so the client
+  knows whether a click on another character attacks.
+- `JoinRejected`, `LeaveRejected`, and `ServerDisconnect` carry an `Error`: a
+  code of up to `MaximumErrorCodeLength` (64) characters and a message of up to
+  `MaximumErrorMessageLength` (512). Decoders accept blank text, and the
+  receiving code decides what it means.
+- Error codes, closure codes, and despawn reasons are ordinary text up to the
+  error-code limit, so a new code needs no new protocol version. The stable
+  codes are listed in [Realtime Codes](SERVICE_FEATURES.md#realtime-codes).
+  `EntityDespawn.Reason` and `WorldActorDespawn.Reason` are informational, such
+  as `out_of_interest`, `left_shard`, `teleported`, or `died`.
+
+## Movement Input And Paths
+
+Every `MovementInput` names the path the player follows with `PathId`, or 0 to
+stand. `MovementInputBatch` carries up to `MaximumInputBatchSize` (4) inputs and
+an optional `Path` with its id and 1 to `MaximumMovementPathWaypoints` (32)
+waypoints. The hand-written rule requires the path id to equal the path id of
+the newest input in the batch, so a path always travels with the inputs that
+name it and can never arrive after them. The client keeps sending the path until
+an owner snapshot reports that path id. A batch whose newest input names a path
+the worker never received is a protocol error, `unknown_movement_path`.
+
+`OwnerSimulationSnapshot.LastProcessedInputSequence` names the newest input the
+worker processed, and the state in the same snapshot is the state right after
+it. The worker may take a few steps ahead of a late input along the current
+path; those steps never appear in the owner snapshot until their input arrived,
+so the client replays exactly the inputs after the acknowledged one. Remote
+`SimulationSnapshot` records carry the current state, including such steps.
+
+`OwnerSimulationSnapshot` ends with `MovementPathProgress`: the followed path id,
+the next waypoint index, at most 32, which equals the waypoint count once the
+path ended, and the consecutive ticks in which collision blocked the path.
+Without a path, the index and the blocked ticks must be 0. Remote `PlayerState`
+records carry position, velocity, facing, and one flag, `IsGrounded`, and no
+path data. `MovementSettings` carries the tick and snapshot rates, the walk
+speed, turn rate, falling, the World bounds and ground height, and the character
+capsule and motor settings that the client predicts with.
+
+## Replication Messages
+
+`EntitySpawn` announces a player entity with its kind, persistent id, display
+name, archetype, server tick, initial state, and look. A remote simulation
+snapshot chunk carries the snapshot sequence, server tick, chunk index and
+count, and up to `MaximumSnapshotEntitiesPerChunk` (24) `EntitySnapshot`
+records, each an entity id, its last processed input sequence, and its
+`PlayerState`.
+
+A moving Mob travels in `SimulationSnapshot` like a remote player: an
+`EntitySnapshot` with the Mob's world actor entity id, input sequence 0, and its
+`PlayerState`, while its pose changes. The first tick it stands still sends one
+reliable `WorldActorState` with its rest pose and a newer state revision.
+Clients skip snapshot entities they do not know.
+
+### Player Archetypes
 
 `EntitySpawn.ArchetypeId` names how the client presents a player entity. It is
 free text on the wire, and the hand-written `RealtimePlayerArchetypeIds` in the
@@ -284,204 +381,69 @@ neither the wire format nor the protocol version:
 The Unity client presents a spawn with any other archetype as nothing and logs
 a warning.
 
-## Movement Input And Paths
+### Character Appearance
 
-Protocol version 15 added click-to-move. Every `MovementInput` names the path
-the player follows with `PathId`, or 0 to stand. `MovementInputBatch` adds an
-optional `Path` with its id and 1 to `MaximumMovementPathWaypoints` (32)
-waypoints. The hand-written rule requires the path id to equal the path id of
-the newest input in the batch, so a path always travels with the inputs that
-name it and can never arrive after them. The client keeps sending the path until
-an owner snapshot reports that path id. A batch whose newest input names a path
-the worker never received is a protocol error, `unknown_movement_path`.
+`CharacterAppearance` sends every client how a player looks, as
+[The Look On The Server](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server)
+describes. It holds the `BodyModel`, such as `Human_Female`, up to
+`MaximumAppearanceChoices` (16) `AppearanceChoice` structs, each a `Kind`, an
+optional `Slot` for a kind worn per slot such as underwear in `legs`, and an
+`Option`, up to `MaximumVisibleEquipment` (8) `VisibleEquipment` structs, each an
+equipment slot and an item definition with distinct slots, `HeadwearLowered`,
+and an optional `ToolInUse`. Kinds and slots are at most
+`MaximumAppearanceKindLength` and `MaximumAppearanceSlotLength` (32)
+characters, body models, options, and definitions at most
+`MaximumAppearanceNameLength` (64), and the tool definition at most
+`MaximumDefinitionIdLength` (128).
 
-`OwnerSimulationSnapshot.LastProcessedInputSequence` names the newest input the
-worker processed, and the state in the same snapshot is the state right after
-it. SimulationWorker steps once per input, in sequence order, and may take a few
-steps ahead of a late input along the current path; those steps never appear in
-the owner snapshot until their input arrived. The client therefore replays
-exactly the inputs after the acknowledged one. Remote `SimulationSnapshot`
-records carry the current state, including such steps. This needed no wire
-change.
+- `EntitySpawn` ends with the player's `Appearance`. The worker fills it from the
+  look GameService sent with the join ticket and the items of the visible
+  equipment slots of `content/characters/appearance.json` in their content
+  order, and for a development bot from the look and outfit it picks from the
+  bot's character id.
+- `EntityAppearanceChanged` (36) sends a player's new look, by its entity id, to
+  every connection that sees the player and to its owner. The owner gets its own
+  look after the join, since it never receives a spawn of its own player. The
+  worker sends it when the look, the visible equipment, the headwear, or the
+  tool in use changed, and the client drops a change for a player it does not
+  see.
+- `ToolInUse` names the item of the player's Tool slot while it gathers, and is
+  empty otherwise and for every corpse; see
+  [Tools In Use](EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
+- `AppearanceIntent` (37) asks to lower the headwear (`LowerHeadwear` = 1), raise
+  it (`RaiseHeadwear` = 2), or in Development set another body model and look
+  (`SetDevelopmentLook` = 3, with `BodyModel` and `Choices`). The worker answers
+  with `AppearanceIntentResult` (38), which echoes the operation id and kind;
+  the new look follows as `EntityAppearanceChanged`.
+- `CorpsePresence` ends with an optional `Appearance`: a player corpse shows the
+  dead character's body model, look, and headwear, with the items still in the
+  corpse's equipment section, and a Mob corpse has none. A corpse whose look
+  would not fit one presence packet is sent without it and shows the default
+  body.
 
-`OwnerSimulationSnapshot` ends with `MovementPathProgress`: the followed path id,
-the next waypoint index, at most 32, which equals the waypoint count once the
-path ended, and the consecutive ticks in which collision blocked the path.
-Without a path, the index and the blocked ticks must be 0. Remote
-`PlayerState` records carry no path data, and its only flag is `IsGrounded`.
-`MovementSettings` no longer has sprint speed or jump velocity.
+## Item Messages
 
-## Corpse Sections
+- `CarryStateChanged` (12) carries a newer committed carry state: the item-state
+  revision, carried weight, and carry capacity, all unitless integers. The worker
+  sends it before the newer state affects movement.
+- `ItemOperationIntent` (13) carries an operation id, an `ItemOperationKind`
+  (`Relocate`, `Equip`, `Unequip`, `SplitStack`, `MergeStacks`, `Destroy`,
+  `ClaimRecoveryDelivery`, or `SwapContainerItems`), the expected character
+  revision, and the variant fields of its kind. `ItemOperationResult` (14)
+  correlates it by operation id and carries success, whether the client must
+  refresh its inventory, the carry state, the `Error` on failure, and the item,
+  container, and Recovery delivery revisions it changed.
+- `OwnerItemQuantityChanged` (34) tells the owner that a committed operation it
+  did not ask for changed an item's quantity, today only spent arrows: the
+  reason, the item-state revision it applies to, the new carry state, the item,
+  and its new quantity and revision, both 0 when the stack was used up. The
+  client patches its inventory when its known revision matches and refreshes it
+  otherwise.
 
-A corpse view section may have zero slots. Protocol version 16 allows
-`SectionSlotCapacity` 0, because a live Mob corpse carries only general loot and
-its equipment and Bag sections are empty, and a fully looted live Mob corpse has
-no general slots left. Carried weight and carry capacity are unitless integers.
+### Owner Item State Changes
 
-## Corpse Presence Facing
-
-Since protocol version 23, every `CorpsePresence` carries `YawDegrees`, the
-facing of whoever left the corpse around the vertical axis. The worker takes it
-from the rotation it stores with a player corpse, a turn around Y that the death
-request builds from the character's yaw, so the client lays the body of a player
-corpse down as it fell. A live and a durable Mob corpse both carry the facing its
-Mob had when it died, so the client lays the Mob's model down as it fell.
-
-The presentation key tells the client what to show. A player corpse sends
-`corpse.remains`, which the client shows as the body. A Mob corpse sends
-`corpse.` followed by its Mob's presentation archetype, such as
-`corpse.mob.feral_wolf` for `mob.feral_wolf`, which the client shows as the
-model of that archetype's prefab lying dead; `WorldActorCorpseRules` builds the
-key, and a Mob whose archetype does not start with `mob.` sends `corpse.mob`. A
-key whose archetype has no model, and `corpse.mob`, keep the generic capsule.
-GameService accepts `corpse.remains` for player deaths and only `corpse.mob` and
-the keys below it for durable Mob corpses, and every Mob corpse key takes whole
-items only. The keys are content, not protocol, so a new Mob model needs no new
-protocol version.
-
-## Corpse View Closures
-
-`CorpseViewClosed` names why a view ended with a stable code, and the hand-written
-`RealtimeCorpseViewClosureCodes` holds the codes the worker sends itself:
-
-| Code | Meaning |
-| --- | --- |
-| `corpse_view_closed` | The viewer closed the view; it follows the close result. |
-| `corpse_emptied` | The last item of a live Mob corpse was taken. |
-| `corpse_expired` | The corpse reached its deadline. |
-| `corpse_invalidated` | The corpse disappeared or its state can no longer be trusted. |
-| `corpse_not_found` | The worker or GameService no longer knows the corpse. |
-
-A view also closes with `combat_character_dead` when its viewer dies, and with
-the code of a rejection that ends it, such as `wrong_simulation_worker`. The code
-is ordinary text up to the error-code limit, so `corpse_emptied` was added without
-a new protocol version. The client treats the viewer's own close, an emptied or
-expired corpse, and a death as intended ends and every other code as an error.
-
-## Capability Actions
-
-Protocol version 17 added vendor trades and gathering. A
-`WorldInteractionIntent` of kind `CapabilityAction` carries a
-`CapabilityActionKind`, renamed from `NpcLifecycleActionKind`: `None` (open the
-capability), the insurance and quest actions, and the new `VendorPurchase`
-(5), `VendorSale` (6), and `StartGathering` (7). The action also carries
-`OfferDefinitionId`, `Quantity`, and `ExpectedPrice`. The hand-written rules
-accept only the fields each action uses:
-
-- `VendorPurchase` targets a `Vendor` capability and needs an offer definition,
-  a quantity of at least 1, and an expected price of 0 or more, with no item and
-  no destination.
-- `VendorSale` targets a `Vendor` capability and needs an item, a quantity of
-  at least 1, and an expected price, with no offer definition and no
-  destination.
-- `StartGathering` targets a `Gathering` capability and carries no character
-  revision, item, destination, or vendor terms.
-
-The expected price is the total the player was shown. GameService recomputes
-the price from the catalog and rejects a difference with `vendor_price_changed`,
-so a stale client display can never charge a different amount.
-
-`WorldActorKind` gained `ResourceNode` (3), and `WorldActorCapabilityKind`
-gained `Gathering` (10). Every `WorldActorCapability` now carries a `ProfileId`:
-the item catalog vendor profile of a `Vendor` capability, the resource profile
-of a `Gathering` capability, and empty for every other kind.
-
-`GatheringState` reports gathering at a resource node to the gathering player,
-keyed by the interaction session and the node's entity and runtime id. Its
-`Kind` is `Started` with the cycle time in milliseconds, `Yielded` with the
-cycle time, the yield definition and quantity, and the item-state revision
-after the yield, or `Stopped` with a stable code and a message, such as
-`resource_node_depleted`, `gathering_interrupted`, `world_interaction_closed`,
-or a GameService rejection code. A `Yielded` or `Stopped` can arrive after the
-interaction closed, and a `Yielded` even after `Stopped`, because a cycle that
-was already in flight still completes. The worker always sends the `Yielded` of
-a committed cycle, so the client learns the item-state revision that holds the
-yield.
-
-## Combat
-
-Protocol version 18 added target-based combat, a `Combat` message family, an
-owner item delta, and the Shard rules:
-
-- `CombatIntent` selects the attack target with `AttackTarget` and a target
-  entity id of at least 1, or clears it with `ClearTarget` and no target.
-  `CombatIntentResult` answers it with the target afterwards and, on failure,
-  one of the stable codes in `RealtimeCombatErrorCodes`:
-  `combat_target_not_found`, `combat_target_not_attackable`,
-  `combat_target_dead`, `combat_target_self`,
-  `combat_player_versus_player_disabled`, `combat_character_dead`, and
-  `combat_intent_invalid`. Combat intents share a per-peer budget of 8 per second
-  with a burst of 12; more return `combat_intent_rate_limited`.
-- `CombatantState` carries the health, maximum health, life state, combat flag,
-  and attack target of a visible combatant with a revision that only grows. It
-  follows every `EntitySpawn` and `WorldActorSpawn` of a combatant, so a client
-  never shows a combatant without health. A dead combatant has 0 health and no
-  target, and nobody targets itself.
-- `CombatEventBatch` carries the events of one server tick that involve a
-  combatant the recipient sees or controls, in simulation order:
-  `AttackStarted` with the tick at which the attack releases, `AttackReleased`
-  with the impact tick, `AttackCancelled` when an attack ended in its windup,
-  `Hit` with the damage, damage type, and health afterwards, and `Died` with the
-  killer, or 0 when none is known. Unused fields are 0. More than
-  `MaximumCombatEventsPerBatch` (32) events split into several batches.
-- `OwnerCombatState` goes to the owner only: its health, life state, a
-  `LifeSequence` that grows with every death and respawn, the respawn tick while
-  dead, the target, the attack status, the next attack tick, the end of the
-  equipment lockout, and the equipped arrow stack with the live arrow count,
-  which already subtracts shots that are not committed yet. Conditions that
-  change every tick are attack statuses (`Moving`, `OutOfRange`,
-  `LineOfSightBlocked`, `EquipmentLockout`, `WeaponMissing`, `AmmunitionMissing`,
-  `AmmunitionIncompatible`), not errors.
-- `OwnerItemQuantityChanged`, in the Items family, tells the owner that a
-  committed operation it did not ask for changed an item's quantity, today only
-  spent arrows: the item-state revision it applies to, the new carry state, the
-  item, and its new quantity and revision, both 0 when the stack was used up.
-  The client patches its inventory when its known revision matches and refreshes
-  it otherwise.
-- `JoinAccepted` ends with `ShardRules`, so the client knows whether a click on
-  another character attacks.
-
-Protocol version 28 added magic and mana:
-
-- `OwnerCombatState` carries the owner's `Mana` and `MaximumMana` after its
-  maximum health, and the mana never exceeds its maximum. Only the owner learns
-  its mana.
-- `CombatAttackStatus.NotEnoughMana` (11) holds a magic attack while the
-  character's mana is below the weapon's cost.
-- `CombatEvent` ends with `AttackStyle`, a `CombatAttackStyle` of `Melee` (1),
-  `Ranged` (2), or `Magic` (3): for `AttackReleased` the combat style of the
-  attack, which selects how a client draws it, such as an arrow or a magic bolt,
-  and `Melee` for every other kind.
-
-Protocol version 29 added the windup of an attack:
-
-- A player's attack starts on its weapon's cooldown and releases its blow,
-  arrow, or bolt when the windup of its weapon family ends, so the body's attack
-  clip strikes or looses when the server lets the attack land.
-- `CombatEventKind.AttackStarted` (4) names the attacker, the target, the
-  attack style, and in `Tick` the server tick at which the attack releases.
-  Every client that sees the attacker plays its attack clip from it, timed so
-  the clip strikes or looses at that tick.
-- `CombatEventKind.AttackCancelled` (5) names the attacker, the target, and the
-  attack style of an attack that ended in its windup, such as by a step, a lost
-  target, or missing arrows, with `Tick` 0. Nothing of it was spent, and the
-  next attack may start at once.
-- `CombatEvent.ImpactTick` became `Tick`: the release tick of a started attack,
-  the impact tick of a released one, and 0 for every other kind. A Mob's bite
-  still releases at once, with `AttackReleased` alone.
-
-Since the Mob brains, a moving Mob travels in `SimulationSnapshot` like a remote
-player: an `EntitySnapshot` with the Mob's world actor entity id, input sequence
-0, and its `PlayerState`, while its pose changes. The first tick it stands still
-sends one reliable `WorldActorState` with its rest pose and a newer state
-revision. The wire format already allowed any entity id, and clients skip
-snapshot entities they do not know, so this needed no new protocol version.
-
-## Owner Item State Changes
-
-Protocol version 21 added `OwnerItemStateChanged` (35), in the Items family, so
-the client patches its inventory after a committed transaction instead of
-reloading it over HTTP. It carries:
+`OwnerItemStateChanged` (35) lets the client patch its inventory after a
+committed transaction instead of reloading it over HTTP. It carries:
 
 - `OperationId`: the client operation that committed the change, or empty when
   no client intent caused it, such as a gathering yield.
@@ -499,116 +461,230 @@ reloading it over HTTP. It carries:
   definition, a quantity of at least 1, the revision, the container, and a slot
   of at least 0; `Equipment` (3) carries the definition, quantity, revision, and
   the equipment slot. The definition and the equipment slot are optional text,
-  and each item lists up to `MaximumItemPolicies` (8) active
-  `ItemPolicySummary` structs with a kind, a status, and a protection source of
-  up to `MaximumItemPolicyTextLength` (64) characters. Since protocol version
-  22 a Bag in the Bag equipment slot also names its `BagContentsContainerId`
-  and `BagContentsRevision`, and the change lists every item inside a Bag that
-  the transaction put into the Bag slot. A hand-written rule rejects any field
-  that does not belong to the location, and contents on anything but equipment.
-- `ClaimedRecoveryDeliveryIds`: since protocol version 22, up to
-  `MaximumItemResultRecoveryDeliveries` (8) distinct deliveries that a Recovery
-  claim took out of Recovery Storage, whose items the change places elsewhere.
+  and each item lists up to `MaximumItemPolicies` (8) active `ItemPolicySummary`
+  structs with a kind, a status, and a protection source of up to
+  `MaximumItemPolicyTextLength` (64) characters. A Bag in the Bag equipment slot
+  also names its `BagContentsContainerId` and `BagContentsRevision`, and the
+  change lists every item inside a Bag that the transaction put into the Bag
+  slot. A hand-written rule rejects any field that does not belong to the
+  location, and contents on anything but equipment.
+- `ClaimedRecoveryDeliveryIds`: up to `MaximumItemResultRecoveryDeliveries` (8)
+  distinct deliveries that a Recovery claim took out of Recovery Storage, whose
+  items the change places elsewhere.
 
 The message can exceed the packet limit, so it sets `runtimeSizeCheck`, and
 `RealtimeProtocol.CanEncodeOwnerItemStateChanged` lets the worker check a change
 before it encodes it. The worker sends the change only when the transaction
 reports every changed item, touches the owner alone, adds no Recovery delivery
-other than by a claim, changes no Secure Container tier, and fits one packet; the
-client reloads its inventory in every other case. It always goes out before the
-carry state and the result of the operation that caused it.
-## Corpse Loot Into Equipment
+other than by a claim, changes no Secure Container tier, and fits one packet;
+the client reloads its inventory in every other case. It always goes out before
+the carry state and the result of the operation that caused it.
 
-Protocol version 19 added `CorpseInteractionKind.LootToEquipment` (11) and the
-variant field `EquipmentSlotId` to `CorpseInteractionIntent`. The case carries
-the whole corpse item (`ItemInstanceId`, `ExpectedItemRevision`), the
-equipment slot, and, as the `TargetItemInstanceId` group, the item the
-character had equipped in that slot when the client looked, or no target for
-an empty slot. The hand-written rule rejects a target equal to the looted
-item. GameService tops up an equipped stack of the same definition, equips into
-an empty slot, or swaps the equipped item into the corpse slot the loot left;
-a live Mob corpse never swaps: it fills an empty slot or tops up the named stack
-of the same item, and GameService rejects any other target. Payloads of every earlier case are
-unchanged.
+## Corpse Messages
 
-Since protocol version 26 a corpse Bag also loots into equipment: with no
-target it takes the empty Bag slot together with whatever it holds, and the
-corpse keeps a new, empty Bag section. An occupied Bag slot still needs
-`SwapBag`. An empty corpse Bag also loots into an empty container slot through
+- `CorpsePresenceSnapshotChunk` (15) carries the nearby corpses in chunks of up
+  to `MaximumCorpsePresencePerChunk` (6) `CorpsePresence` structs, each with its
+  id, position, facing, absolute expiry, whether it is empty, source name,
+  presentation key, and optional look.
+- `CorpseInteractionIntent` (16) carries an operation id, a
+  `CorpseInteractionKind`, the corpse, its expected revision, and the variant
+  fields of the kind; `CorpseInteractionResult` (17) correlates it and says
+  whether the client must refresh the corpse or its inventory.
+- `CorpseViewStateChunk` (18) carries a complete snapshot or a targeted delta of
+  one corpse view, one section at a time in chunks of up to
+  `MaximumCorpseViewSlotsPerChunk` (4) slots, with the base and new revision.
+  Every slot carries the tags it accepts, and every corpse equipment slot its
+  canonical equipment-slot id.
+- Corpse chunks are packed by encoded UTF-8 size under the 1,200 byte limit, and
+  one chunked update has at most `MaximumCorpseChunkCount` (256) chunks.
+
+### Corpse Sections
+
+A corpse view section may have zero slots: `SectionSlotCapacity` may be 0,
+because a live Mob corpse carries only general loot and its equipment and Bag
+sections are empty, and a fully looted live Mob corpse has no general slots
+left. Carried weight and carry capacity are unitless integers.
+
+### Corpse Presence Facing
+
+Every `CorpsePresence` carries `YawDegrees`, the facing of whoever left the
+corpse around the vertical axis. The worker takes it from the rotation it stores
+with a player corpse, a turn around Y that the death request builds from the
+character's yaw, so the client lays the body of a player corpse down as it fell.
+A live and a durable Mob corpse both carry the facing its Mob had when it died.
+
+The presentation key tells the client what to show. A player corpse sends
+`corpse.remains`, which the client shows as the body. A Mob corpse sends
+`corpse.` followed by its Mob's presentation archetype, such as
+`corpse.mob.feral_wolf` for `mob.feral_wolf`, which the client shows as the
+model of that archetype's prefab lying dead; `WorldActorCorpseRules` builds the
+key, and a Mob whose archetype does not start with `mob.` sends `corpse.mob`. A
+key whose archetype has no model, and `corpse.mob`, keep the generic capsule.
+The keys are content, not protocol, so a new Mob model needs no new protocol
+version. The keys that GameService accepts are listed in
+[Corpse Interaction](SERVICE_FEATURES.md#corpse-interaction).
+
+### Corpse Loot Into Equipment
+
+`CorpseInteractionKind.LootToEquipment` (11) carries the whole corpse item
+(`ItemInstanceId`, `ExpectedItemRevision`), the variant field `EquipmentSlotId`,
+and, as the `TargetItemInstanceId` group, the item the character had equipped in
+that slot when the client looked, or no target for an empty slot. The
+hand-written rule rejects a target equal to the looted item. How GameService
+places the item is in
+[Equipment](INVENTORY_AND_DEATH_LOOT_DESIGN.md#equipment).
+
+A corpse Bag with contents also loots into equipment: with no target it takes
+the empty Bag slot together with whatever it holds. An occupied Bag slot needs
+`SwapBag`, and an empty corpse Bag loots into an empty container slot through
 `LootItem`.
 
-## Corpse Loot All
+### Corpse Loot All
 
-Protocol version 26 added `CorpseInteractionKind.LootAll` (12). It carries only
-the operation, the corpse, and `ExpectedCorpseRevision`, which must equal the
-corpse's revision when the worker handles it, so a corpse that changed answers
-`item_state_conflict` with a refresh. GameService plans every destination, as
-[Game Features](GAME_FEATURES.md#player-inventory-foundation) describes, and
-takes everything that fits in one transaction; nothing fitting is the
-`inventory_full` rejection. The result, the committed change, and the corpse
-view follow as for any corpse mutation; a Loot all that changes more than one
-`OwnerItemStateChanged` can describe makes the client reload its inventory.
+`CorpseInteractionKind.LootAll` (12) carries only the operation, the corpse, and
+`ExpectedCorpseRevision`, which must equal the corpse's revision when the worker
+handles it, so a corpse that changed answers `item_state_conflict` with a
+refresh. GameService plans every destination as
+[Loot All](INVENTORY_AND_DEATH_LOOT_DESIGN.md#loot-all) defines and takes
+everything that fits in one transaction. The result, the committed change, and
+the corpse view follow as for any corpse mutation; a Loot all that changes more
+than one `OwnerItemStateChanged` can describe makes the client reload its
+inventory.
 
-## World Menu Options
+### Corpse View Closures
 
-Protocol version 20 appended two fields to `WorldActorSpawn` for the client's
-right-click world menu: `ExamineText`, up to
-`MaximumWorldActorExamineTextLength` (200) characters, and `MenuOptions`, up to
-`MaximumWorldActorCapabilities` (16) `WorldActorMenuOption` structs with
-distinct `CapabilityId` values. Each option names a capability, its
+`CorpseViewClosed` (19) names why a view ended with a stable code and a message.
+The hand-written `RealtimeCorpseViewClosureCodes` holds the codes the worker
+sends itself: `corpse_view_closed`, `corpse_emptied`, `corpse_expired`,
+`corpse_invalidated`, and `corpse_not_found`. A view also closes with
+`combat_character_dead` when its viewer dies, and with the code of a rejection
+that ends it, such as `wrong_simulation_worker`. The meanings are in
+[Realtime Codes](SERVICE_FEATURES.md#realtime-codes).
+
+## World Actor Messages
+
+The world actor messages keep actor visibility apart from interaction state:
+
+- `WorldActorSpawn` (20), `WorldActorState` (21), and `WorldActorDespawn` (22)
+  carry the actor's runtime and network identity, its definition and spawn ids,
+  display name, kind, faction, disposition, presentation archetype, state and
+  interaction revisions, active flag, position, facing, activity tier, and
+  interaction bounds. A state update goes out only when replicated state
+  changes, and a resource node's available or depleted state reuses `IsActive`.
+- `WorldInteractionIntent` (23) opens, closes, or acts on an interaction. Every
+  intent carries an operation id, the simulation session, the interaction
+  session, the target kind, entity id, and runtime id, and the expected target
+  revision. A `CapabilityAction` also carries the capability id, kind, and
+  expected revision, the action, and the action's fields.
+- `WorldInteractionOpened` (24) carries the interaction session, the target, the
+  capability summary revision, and the player-specific capability summary: every
+  `WorldActorCapability` with its id, kind, display name, `ProfileId`,
+  availability, and revision. `ProfileId` names the item catalog vendor profile
+  of a `Vendor` capability, the resource profile of a `Gathering` capability,
+  and is empty for every other kind.
+- `WorldInteractionResult` (25) correlates an operation by id and carries the
+  target and item-state revisions, a message that may be blank, and an `Error`
+  on failure. `WorldInteractionClosed` (26) names a server-initiated closure
+  with a stable code and a message.
+
+Strings and lists are bounded. Large future capability state must use explicit
+chunking or a focused service read rather than an oversized actor packet.
+
+### World Actor Spawns And Menu Options
+
+`WorldActorSpawn` ends with two fields for the client's right-click world menu:
+`ExamineText`, up to `MaximumWorldActorExamineTextLength` (200) characters, and
+`MenuOptions`, up to `MaximumWorldActorCapabilities` (16) `WorldActorMenuOption`
+structs with distinct `CapabilityId` values. Each option names a capability, its
 `WorldActorCapabilityKind`, and its `Label`, the menu verb of up to
 `MaximumWorldActorMenuOptionLength` (32) characters, in the actor's authored
 capability order. The spawn carries no availability, revision, or profile: those
 stay in the player-specific capability summary of `WorldInteractionOpened`. Both
-limits are public, and `WorldActorTextRules` in WorldData must fit them.
+text limits are public, and `WorldActorTextRules` in WorldData must fit them.
 
-## Character Appearance
+### Capability Actions
 
-Protocol version 24 sends every client how a player looks, as
-[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server)
-describes. `CharacterAppearance` holds the `BodyModel`, such as `Human_Female`,
-up to `MaximumAppearanceChoices` (16) `AppearanceChoice` structs, each a `Kind`,
-an optional `Slot` for a kind worn per slot such as underwear in `legs`, and an
-`Option`, up to `MaximumVisibleEquipment` (8) `VisibleEquipment` structs, each an
-equipment slot and an item definition with distinct slots, and `HeadwearLowered`.
-Kinds and slots are at most `MaximumAppearanceKindLength` and
-`MaximumAppearanceSlotLength` (32) characters, and body models, options, and
-definitions at most `MaximumAppearanceNameLength` (64).
+A `WorldInteractionIntent` of kind `CapabilityAction` carries a
+`CapabilityActionKind`: `None` (0) opens the capability, `ApplyInsurance` (1),
+`RemoveInsurance` (2), `AcceptQuest` (3), and `AbandonQuest` (4) are the
+insurance and quest actions, and `VendorPurchase` (5), `VendorSale` (6), and
+`StartGathering` (7) trade and gather. The action also carries the expected
+character revision, an item, a destination, `OfferDefinitionId`, `Quantity`,
+and `ExpectedPrice`. The hand-written rules accept only the fields each action
+uses:
 
-- `EntitySpawn` appends the player's `Appearance`. The worker fills it from the
-  look GameService sent with the join ticket, the items of the visible equipment
-  slots of `content/characters/appearance.json` in their content order, and for a
-  development bot the look and outfit it picks from the bot's character id.
-- `EntityAppearanceChanged` (36) sends a player's new look, by its entity id, to
-  every connection that sees the player and to its owner. The owner gets its own
-  look after the join, since it never receives a spawn of its own player. The
-  worker sends it when the look, the visible equipment, or the headwear changed,
-  and the client drops a change for a player it does not see.
-- `AppearanceIntent` (37) asks to lower the headwear (`LowerHeadwear` = 1), raise
-  it (`RaiseHeadwear` = 2), or in Development set another body model and look
-  (`SetDevelopmentLook` = 3, with `BodyModel` and `Choices`). The worker asks
-  GameService, which refuses a development look outside the Development
-  environment, and answers with `AppearanceIntentResult` (38), which echoes the
-  operation id and kind; the new look follows as `EntityAppearanceChanged`. A
-  development bot cannot change its look, and one change per peer runs at a time.
-- `CorpsePresence` appends an optional `Appearance`: a player corpse shows the
-  dead character's body model, look, and headwear, with the items still in the
-  corpse's equipment section, and a Mob corpse has none. A corpse whose look would
-  not fit one presence packet is sent without it and shows the default body.
+- `VendorPurchase` targets a `Vendor` capability and needs an offer definition,
+  a quantity of at least 1, and an expected price of 0 or more, with no item and
+  no destination.
+- `VendorSale` targets a `Vendor` capability and needs an item, a quantity of
+  at least 1, and an expected price, with no offer definition and no
+  destination.
+- `StartGathering` targets a `Gathering` capability and carries no character
+  revision, item, destination, or vendor terms.
 
-Protocol version 25 appended an optional `ToolInUse` to `CharacterAppearance`:
-the item definition, at most `MaximumDefinitionIdLength` (128) characters, of the
-tool the character holds while it uses it, which is the item of its Tool slot
-while it gathers, and empty otherwise and for every corpse. The worker sends a
-new look when the player starts or stops using its tool; see
-[Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
+The expected price is the total the player was shown; GameService rejects a
+different current price with `vendor_price_changed`.
+
+### Gathering State
+
+`GatheringState` (28) reports gathering at a resource node to the gathering
+player, keyed by the interaction session and the node's entity and runtime id.
+Its `Kind` is `Started` with the cycle time in milliseconds, `Yielded` with the
+cycle time, the yield definition and quantity, and the item-state revision
+after the yield, or `Stopped` with a stable code and a message. A `Yielded` or
+`Stopped` can arrive after the interaction closed, and a `Yielded` even after
+`Stopped`, because a cycle that was already in flight still completes. The
+worker always sends the `Yielded` of a committed cycle, so the client learns the
+item-state revision that holds the yield.
+
+## Combat
+
+- `CombatIntent` (29) selects the attack target with `AttackTarget` and a target
+  entity id of at least 1, or clears it with `ClearTarget` and no target.
+  `CombatIntentResult` (30) answers it with the target afterwards and, on
+  failure, one of the stable codes in `RealtimeCombatErrorCodes`.
+- `CombatantState` (31) carries the health, maximum health, life state
+  (`Alive`, `Dead`, or `Evading`), combat flag, and attack target of a visible
+  combatant with a revision that only grows. It follows every `EntitySpawn` and
+  `WorldActorSpawn` of a combatant, so a client never shows a combatant without
+  health. A dead combatant has 0 health and no target, and nobody targets
+  itself.
+- `CombatEventBatch` (32) carries the events of one server tick that involve a
+  combatant the recipient sees or controls, in simulation order. Every
+  `CombatEvent` has a kind, source, target, `Tick`, damage, damage type, health
+  afterwards, and attack style; unused fields are 0. More than
+  `MaximumCombatEventsPerBatch` (32) events split into several batches.
+  - `AttackStarted` (4) names the attacker, the target, the attack style, and in
+    `Tick` the server tick at which the attack releases. Every client that sees
+    the attacker plays its attack clip from it, timed so the clip strikes or
+    looses at that tick.
+  - `AttackReleased` (1) names the attack style and in `Tick` the impact tick. A
+    Mob's bite releases at once, with `AttackReleased` alone.
+  - `AttackCancelled` (5) names the attacker, the target, and the attack style of
+    an attack that ended in its windup, with `Tick` 0.
+  - `Hit` (2) carries the damage, the damage type, and the health afterwards,
+    and `Died` (3) the killer, or 0 when none is known.
+  - `AttackStyle` is a `CombatAttackStyle` of `Melee` (1), `Ranged` (2), or
+    `Magic` (3): the combat style of a started, released, or cancelled attack,
+    which selects how a client draws it, such as an arrow or a magic bolt, and
+    `Melee` for every other kind.
+- `OwnerCombatState` (33) goes to the owner only: its health and maximum health,
+  its `Mana` and `MaximumMana`, the mana never above its maximum, its life
+  state, a `LifeSequence` that grows with every death and respawn, the respawn
+  tick while dead, the target, the attack status, the next attack tick, the end
+  of the equipment lockout, and the equipped arrow stack with the live arrow
+  count, which already subtracts shots that are not committed yet. Conditions
+  that change every tick are attack statuses (`Idle`, `Attacking`, `Moving`,
+  `OutOfRange`, `LineOfSightBlocked`, `EquipmentLockout`, `WeaponMissing`,
+  `AmmunitionMissing`, `AmmunitionIncompatible`, `Dead`, and `NotEnoughMana`),
+  not errors. Only the owner learns its mana.
 
 ## Development Admin Tools
 
-Protocol version 27 added the Admin family for the development tools of the
-Unity Admin menu (F3), which only a SimulationWorker with `DevelopmentAdmin:Enabled`
-carries out; see
-[Development Admin Tools](SERVICE_FEATURES.md#development-admin-tools).
+The Admin family carries the development tools of the Unity Admin menu (F3),
+which only a SimulationWorker with `DevelopmentAdmin:Enabled` carries out, as
+[Development Admin Tools](SERVICE_FEATURES.md#development-admin-tools)
+describes.
 
 - `AdminIntent` (39) carries an operation id and an `AdminIntentKind` with the
   fields of its case: `SetMovementSpeed` (1) with `SpeedPercent`, a u16 from
@@ -624,7 +700,7 @@ carries out; see
   `JoinAccepted` and after every change of either, so a client that never
   receives one knows the tools are off. The client predicts with the walk speed
   it carries, through the shared `MovementSimulationSettings.WithWalkSpeedPercent`
-  that the worker steps with, so the simulation revision stays the same.
+  that the worker steps with, so the movement simulation revision stays the same.
 
 ## Versioning
 
@@ -659,6 +735,10 @@ the contract of a locked version changes, records a new entry when
 a version number is never reused. The fingerprint cannot see inside a
 hand-written `SatisfiesRules` overload: a change there that alters what a peer
 accepts needs a version bump by hand.
+
+Content that travels as free text, such as player archetypes, corpse
+presentation keys, error and closure codes, and despawn reasons, can grow
+without a new version, as long as it fits the field's limit.
 
 ## Golden Tests
 

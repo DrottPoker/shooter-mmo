@@ -1,5 +1,6 @@
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Placement.Development;
 using Mmorpg.GameService.Placement.Integration;
 using Mmorpg.GameService.Placement.Persistence;
 using Mmorpg.GameService.Platform.Database;

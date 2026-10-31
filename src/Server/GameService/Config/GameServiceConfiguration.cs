@@ -5,6 +5,7 @@ using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Placement.Development;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Telemetry;
 

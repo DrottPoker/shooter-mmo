@@ -1,51 +1,49 @@
 # Equipment Visuals Design
 
-Last updated: 2026-10-25
+This document is the source of truth for how characters look and why: what
+clothes, armor, hair, and carried equipment are made of, how they fit every body
+type, how they hide the body and each other, how loose cloth moves, and how
+items show them. How the art is made, with the rules the tools enforce and every
+command, is in [Art Pipeline](ART_PIPELINE.md). How the Unity client puts a
+character together at runtime is in
+[Player Bodies](UNITY_CLIENT_ARCHITECTURE.md#player-bodies), and the equipment
+slots and item rules are in
+[Equipment](INVENTORY_AND_DEATH_LOOT_DESIGN.md#equipment).
 
-Status: accepted by Victor on 2026-10-22, with the support of future races added.
-Extended on 2026-10-23, accepted by Victor, with the garment cage, garment
-templates, and garment textures, so that clothes keep a shape of their own and
-everything adapts to new body types and a replaced base model. It is
-implemented in the order of [Delivery Plan](#delivery-plan); steps 1 to 5 are
-done: this document; the cloth chains with their solver; the garment
-kind with its fitting, weights, bands, masks, review, export, and Unity import;
-putting a character together with its garments, with the garment shader, the
-Wardrobe preview, and trying garments on in the Admin menu (F3); the garment cage with its
-standard lines, approved by Victor on 2026-10-23; and templates built from
-recipes on the cage with textures of their own, with the template `Jerkin` and
-its texture `LeatherJerkin`, approved by Victor on 2026-10-23, in place of the
-first leather jerkin. Step 5c's first step adds `Shirt`, `LongShirt`, and
-`Trousers` with their textures, the tattoo, and the pair check; `Jerkin` had
-become the same form as `Shirt` once both lay as close to the body as they can,
-so `LeatherJerkin` is a texture of `Shirt` and `Jerkin` is removed. Its second
-step adds the cage's regions `hands` and `feet`, the templates `Boots` and
-`Gloves` with five fingers, and their leather textures, approved by Victor on
-2026-10-24. Its third step adds loose parts, which hang on the cloth chains,
-with the templates `Robe` and `Cloak`, their wool textures, and cloak chains
-that hang to the middle of the calves. Its fourth step adds the cage's region
-`head`, the hairstyle `ShoulderHair` with its form under headwear and its
-texture `DarkBrownHair`, the robe's hood up and down, `HoodUp` and `HoodDown`,
-with the wool textures `WoolHoodUp` and `WoolHoodDown`, and the helmet
-`NasalHelm` with its texture `IronNasalHelm`, approved by Victor on 2026-10-24.
-Step 5d makes paint layers independent of the bodies' topology, as Victor decided
-on 2026-10-24: each layer keeps its own canvas, a copy of the body it is painted
-on, and every body gets the paint by projection, through the bodies' new paint UV
-map, which lays the two sides of a mirrored body apart, so paint can be one-sided,
-as the new tattoo `ForearmRunes` on the left forearm is. Step 6, as Victor decided
-on 2026-10-25, makes items show their garments: its first part gives the items
-their garments and dye colors, the `back` slot, dyeable wool, and the local
-player dressed by its equipment, and its second stores the body model and the
-look with the character and sends them to every client with the visible
-equipment and the lowered hood; see [Items](#items).
+## Status
 
-This document is the source of truth for how clothes, armor, hair, and carried
-equipment look on the player bodies: what they are made of, how they fit every
-body type, how they hide the body and each other, how loose cloth moves, how the
-art pipeline makes and checks them, and how Unity puts a character together.
-The art pipeline itself is in [Art Pipeline](ART_PIPELINE.md), the human bodies
-in [Human Base Characters](ART_PIPELINE.md#human-base-characters), and the
-equipment slots in
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md#equipment).
+Implemented:
+
+- The human male and female bodies, with faces and eye colors to choose from,
+  and paint layers for underwear, a scar, and tattoos, each kept on a canvas of
+  its own and moved to every body by projection.
+- Garments made as templates on the garment cage and worn with textures: shirts
+  with short and long sleeves, trousers, boots, gloves with five fingers, a robe
+  with a skirt and a cloak on the cloth chains, shoulder-length hair with its
+  form under headwear, a hood worn up or down, and a nasal helmet. Textures may
+  have holes, such as a net shirt or a laced jerkin, and the wool is dyeable.
+- Cover masks, pull-in, and the motion and pair checks that keep skin and inner
+  garments from showing through.
+- Cloth chains laid in a target pose on every visible body, with springs on the
+  bodies largest on the screen.
+- Attachments with hold poses and attack clips: a sword, a shield, a two-handed
+  greataxe, a staff, and a bow that draws its string and looses its own arrow,
+  and gathering tools held only while they are used.
+- Items that show their garments in their dye colors and their attachments, and
+  a look that is chosen at character creation, stored with the character, and
+  sent to every client; development bots are dressed from their ids.
+
+Planned:
+
+- Other playable races as body types of their own; see
+  [Future Races And Base Models](#future-races-and-base-models).
+- Skin colors, and changing a look in the game, such as a tattoo at an NPC, hair
+  at a barber, or a dye at a dyer.
+- Soft see-through fabric, such as a veil.
+- More hold poses, such as a sword raised or a shield in guard, weapons sheathed
+  at the hip or on the back out of combat, and a quiver or a backpack on the
+  back.
+- Levels of detail with fewer triangles; see [Budgets](#budgets).
 
 ## Goals
 
@@ -77,52 +75,51 @@ equipment slots in
 
 ## Decisions
 
-| # | Decision | Choice |
-| --- | --- | --- |
-| E1 | What clothes and armor are made of | A 3D mesh per slot with its own volume and folds, skinned to the shared skeleton, as in The Elder Scrolls Online, Guild Wars 2, and New World. Paint over the skin is kept for what lies on the skin: tattoos, scars, makeup, and dirt. |
-| E2 | How a garment hides the body | A cover mask per garment and body type over the body's faces, computed by the pipeline from where the garment really covers the body, reading the garment's transparency. Not whole body zones. A garment texture with transparent parts gets masks of its own. |
-| E3 | How loose cloth moves | Standard cloth chains in the skeleton, laid at runtime in a target pose that follows the legs and collides with the body, on which springs swing the cloth of the bodies largest on the screen within limits. There is no cloth simulation, neither in the game nor in the pipeline: garments get their shape from the garment cage and from their makers. |
-| E4 | Hair under headwear | Every hair has a compressed under-headwear form; headwear says whether hair is hidden, compressed, or shown. |
-| E5 | Transparent fabric | Sharp holes now: lace, net, holes, and torn cloth with alpha clipping. Soft see-through fabric such as veils later. |
-| E6 | Body variety | Fixed body types, the male and female humans now and other races later as bodies of their own. No body sliders. |
-| E7 | Dyes | Prepared from the start: every garment can carry dye channels that tint its regions. |
-| E8 | Future races and base models | Every playable humanoid race, such as elves and dwarves, is a fixed body type per sex with its own proportions and its own rig on the shared skeleton. Garments, masks, cloth chains, and clips work for it without changes to the system, also when its body has a topology of its own and when a new base model replaces today's human bodies; see [Future Races And Base Models](#future-races-and-base-models). |
-| E9 | What garments are fitted to | The garment cage: a sparse net of fixed topology that the pipeline fits to every body, smooth over the body's pits and following its figure. Garments are made and fitted on it, not on the body's own faces, so no garment depends on the topology of a body. |
-| E10 | How new clothes are made | Garment templates: a garment kind's form, built by the pipeline from a recipe of standard lines on the cage, approved once, and worn with garment textures. A texture is an asset of its own and changes no template. |
-| E11 | How garments meet | At standard lines with a fixed overlap: a top over the trousers, the trouser legs in the boots, gloves over every sleeve, each layer with its fixed order. |
+| Question | Choice |
+| --- | --- |
+| What clothes and armor are made of | A 3D mesh per slot with its own volume and folds, skinned to the shared skeleton, as in The Elder Scrolls Online, Guild Wars 2, and New World. Paint over the skin is kept for what lies on the skin: tattoos, scars, makeup, and dirt. |
+| How a garment hides the body | A cover mask per garment and body type over the body's faces, computed by the pipeline from where the garment really covers the body, reading the garment's transparency. Not whole body zones. A garment texture with transparent parts gets masks of its own. |
+| How loose cloth moves | Standard cloth chains in the skeleton, laid at runtime in a target pose that follows the legs and collides with the body, on which springs swing the cloth of the bodies largest on the screen within limits. There is no cloth simulation, neither in the game nor in the pipeline: garments get their shape from the garment cage and from their makers. |
+| Hair under headwear | Every hair has a form pressed flat for under headwear; headwear says whether hair is hidden, pressed flat, or shown. |
+| Transparent fabric | Sharp holes: lace, net, holes, and torn cloth with alpha clipping. Soft see-through fabric, such as a veil, is planned. |
+| Body variety | Fixed body types, the male and female humans now and other races later as bodies of their own. No body sliders. |
+| Dyes | A garment texture can carry up to three dye channels that tint its regions, in colors that belong to the item definition. |
+| Future races and base models | Every playable humanoid race, such as elves and dwarves, is a fixed body type per sex with its own proportions and its own rig on the shared skeleton. Garments, masks, cloth chains, and clips work for it without changes to the system, also when its body has a topology of its own and when a new base model replaces today's human bodies; see [Future Races And Base Models](#future-races-and-base-models). |
+| What garments are fitted to | The garment cage: a sparse net of fixed topology that the pipeline fits to every body, smooth over the body's pits and following its figure. Garments are made and fitted on it, not on the body's own faces, so no garment depends on the topology of a body. |
+| How new clothes are made | Garment templates: a garment kind's form, built by the pipeline from a recipe of standard lines on the cage, approved once, and worn with garment textures. A texture is an asset of its own and changes no template. |
+| How garments meet | At standard lines with a fixed overlap: a top over the trousers, the trouser legs in the boots, gloves over every sleeve, each layer with its fixed order. |
 
 ## Layers Of A Character
 
-From the inside out:
+Players change how their bodies look by layers that are made separately, as in
+World of Warcraft, so a change to one layer leaves the others as they are. From
+the inside out:
 
 1. **Body**: the skinned body with its skin, face, and eye materials and the
    [paint layers](ART_PIPELINE.md#paint-layers) on the skin. Body faces that a
    worn garment covers are removed when the character is put together.
 2. **Garments**: meshes in visual slots, ordered by layer. Each hides what it
    covers of the body and of the garments below it.
-3. **Hair**: a mesh per hairstyle, in its normal or compressed form.
-4. **Attachments**: rigid objects on the skeleton's sockets: weapons and shields
-   on `Socket_MainHand` and `Socket_OffHand`, and a quiver or a backpack on
+3. **Hair**: a garment of its own slot, in its normal form or pressed flat under
+   headwear.
+4. **Attachments**: objects on the skeleton's sockets: weapons and shields on
+   `Socket_MainHand` and `Socket_OffHand`, and later a quiver or a backpack on
    `Socket_Back`.
 
-Paint layers stay for skin-level detail. The leather jerkin, painted first as a
-proof of paint layers, became the first garment template, `Jerkin`, with its
-leather texture, `LeatherJerkin`, in step 5b, and a texture of `Shirt` in step
-5c; its paint layer is removed in step 5c, when the tattoo paint layer `Tattoo`
-takes over as the proof of paint layers.
+Paint layers stay for skin-level detail; everything with volume is a garment.
 
 ### The Look On The Skin
 
-A body's look on its skin has five kinds, as Victor decided on 2026-10-24. The
-face and the eyes are whole images of their materials, the face and eye
-variants; the others are paint layers of a category, drawn in the order of the
-table, so a tattoo lies over a scar and the underwear over both.
+A body's look on its skin has five kinds. The face and the eyes are whole images
+of their materials, the face and eye variants; the others are paint layers of a
+category, drawn in the order of the table, so a tattoo lies over a scar and the
+underwear over both.
 
 | Kind | Made as | Shown | Chosen |
 | --- | --- | --- | --- |
 | Face | A face image, such as `Stubble` and `Clean` for the man and `Blush` and `Freckles` for the woman | Exactly one | In character creation, never changed |
 | Eyes | An eye image, such as `Teal` | Exactly one | In character creation, never changed |
-| Scar | A `scar` paint layer, layers 100 to 199, such as `Scar` over the left eye | At most one | In character creation, never changed |
+| Scar | A `scar` paint layer, layers 100 to 199, such as `Scar` over the brow and down the cheek | At most one | In character creation, never changed |
 | Tattoo | A `tattoo` paint layer, layers 200 to 299, such as `Tattoo` or the one-sided `ForearmRunes` | At most one | In character creation, and changed in the game later, such as at an NPC |
 | Underwear | An `underwear` paint layer of a visual slot, layers 900 to 999: `Bra` in `body` for the woman, `Briefs` in `legs` for both | Exactly one per slot the body has underwear for, never taken off | In character creation, and changed in the game later |
 
@@ -133,29 +130,29 @@ strap shows beside it, while the briefs stay, also without trousers. The skin
 under the underwear is plain skin without detail. The net shirt does not hide
 the bra: it shows through the meshes.
 
-Paint does not depend on the bodies' topology, as Victor decided on 2026-10-24
-for step 5d: a paint layer keeps its paint on a canvas of its own, a copy of the
-body it is painted on that never changes with the bodies, and every body gets the
-paint baked into its own paint UV map when the layer is synced, exactly through
-the shared topology where a body has the canvas's, and through the garment cage
-and the rigs' landmarks otherwise. The paint UV map is a second UV map of every
-body, only for paint: the mirrored human skin keeps its texture, and the paint
-lays the two sides apart, so a tattoo can be one-sided. When a new base model
-replaces the bodies, each layer's canvas moves to its new first body and its
-paint is checked and touched up there; see
-[Paint Layers](ART_PIPELINE.md#paint-layers).
-
-Character creation, the look a server stores, and the NPC who changes a tattoo
-come later and follow these rules, which `AppearanceRules` in the client holds
-until then. The Admin menu (F3) and the Wardrobe show them: one choice per kind, with no scar or
-tattoo among the choices, and the rule of each.
+Paint does not depend on the bodies' topology. A paint layer keeps its paint on
+a canvas of its own, a copy of the body it is painted on that never changes with
+the bodies, and every body gets the paint baked into its own paint UV map when
+the layer is synced: exactly through the shared topology where a body has the
+canvas's, and through the garment cage and the rigs' landmarks otherwise. The
+paint UV map is a second UV map of every body, only for paint: the mirrored
+human skin keeps its texture, and the paint lays the two sides apart, so a
+tattoo can be one-sided. When a new base model replaces the bodies, each layer's
+canvas moves to its new first body and its paint is checked and touched up
+there; see [Paint Layers](ART_PIPELINE.md#paint-layers).
 
 Under the look lies the body model, `Human_Male` or `Human_Female`: exactly one,
-chosen in character creation and never changed (`AppearanceRules.BodyModel`).
-The Admin menu (F3) chooses it until then. One look serves both bodies, as Victor decided on
-2026-10-24: what the other body lacks, such as the face `Stubble` on the woman
-or the bra on the man, is not shown and comes back with the body that has it,
-while the garments, the tattoo, the scar, and the briefs carry over.
+chosen in character creation and never changed. One look serves both bodies: a
+choice that the shown body lacks, such as the face `Stubble` on the woman or the
+bra on the man, is kept but not shown, the body shows its own default there, and
+the choice comes back with the body that has it, while the garments, the tattoo,
+the scar, and the briefs carry over.
+
+The rule of each kind, with the body model and hair, lives in
+`content/characters/appearance.json`, which the server checks every look
+against, and in `AppearanceRules` in the client; a Unity test holds both equal.
+Changing a look in the game, such as at an NPC or a barber, is planned; until
+then the Admin menu (F3) changes any look in Development.
 
 ## Garments
 
@@ -164,9 +161,9 @@ while the garments, the tattoo, the scar, and the briefs carry over.
 A garment has one visual slot and a layer, a number from 0 to 1000 that orders
 the garments of a character from the inside out. A body wears one garment per
 visual slot: a shirt and a jerkin are both chest pieces and replace each other,
-never one over the other, as Victor decided on 2026-10-23. Where garments of
-different slots meet at a [standard line](#standard-lines), the layers give the
-order that [How Garments Meet](#how-garments-meet) fixes.
+never one over the other. Where garments of different slots meet at a
+[standard line](#standard-lines), the layers give the order that
+[How Garments Meet](#how-garments-meet) fixes.
 
 | Visual slot | Covers | Typical layers |
 | --- | --- | --- |
@@ -179,130 +176,122 @@ order that [How Garments Meet](#how-garments-meet) fixes.
 | `head` | hoods, hats, helmets, masks, over the hair | 600 |
 
 Hair lies over the cloak and falls on its yoke, and headwear lies over the hair,
-so `head` is the highest layer; Victor accepted this order on 2026-10-24.
+so `head` is the highest layer.
 
 An item names the garments it shows, so one item may show several garments,
 such as a robe with a hood. A garment may also hide whole slots below it, such
-as a floor-length robe that hides the `legs` slot. The item equipment slots
-`head`, `body`, `legs`, `hands`, and `feet` map to the visual slots of the same
-name, and the cloak's `back` slot is an equipment slot too since 2026-10-25.
-`neck`, `ring_1`, and `ring_2` show nothing, and `main_hand`, `off_hand`, and
-`bag` will show attachments.
+as a floor-length robe that hides the `legs` slot. The equipment slots `head`,
+`body`, `legs`, `hands`, `feet`, and `back` map to the visual slots of the same
+name. `main_hand` and `off_hand` show attachments, the `tool` slot shows its
+tool only while it is used, `neck`, `ring_1`, `ring_2`, and `ammunition` show
+nothing, and `bag` will show an attachment, such as a backpack (planned).
 
 One equipment slot holds one item, and a visual slot shows one garment: of two
 garments of a slot that a look names, the first in the catalog is worn, and
-trying one on takes off the other. An item may show garments of several slots,
-such as a robe with its hood in `head`; when another item's garment, such as a
-helmet, fills that slot too, the garment of the item in the equipment slot of
-that visual slot's name is worn, and otherwise the item earlier in the
-equipment's order; see [Items](#items). Sleeves are part of a `body` garment, and
-gloves sit over them.
+trying one on takes off the other. When the garments of several items fill one
+visual slot, the rule of [Items](#items) picks one. Sleeves are part of a `body`
+garment, and gloves sit over them.
 
 ### The Garment Cage
 
-The garment cage is the surface that clothes are made on. It is a sparse net
-with a fixed topology of its own, the same on every body, that the pipeline
-lays around each body: over the neck, the trunk, the arms, the hands, the legs,
-and the feet. Regions are added to it when the first garments that need them
-come, the hands and the feet with the first gloves and boots on 2026-10-24, the
-head with the first hair and hoods the same day; they add vertices and faces
-after the cage's own and change none, so every garment made before keeps its
-shape.
+The garment cage is the surface that clothes are made on: a sparse net with a
+fixed topology of its own, the same on every body, that the pipeline lays around
+each body, smooth over the body's pits and following its figure. Garments are
+made and fitted on it, so no garment depends on a body's own topology. How the
+pipeline builds, fits, and checks it is in
+[Garment Cage](ART_PIPELINE.md#garment-cage).
 
-- **Its topology** was taken once from the human base body as it was when the
-  cage was made, the faces of the neck, trunk, arms, and legs with their rings,
-  and is the cage's own from then on: a new base model changes the bodies, not
-  the cage. The cage keeps that first shape on a copy of that body's rig, its
-  reference, and its regions: `neck`, `trunk`, `arms`, `legs`, `hands`, and
-  `feet`.
-- **The hands** are the body's faces of its hands, with five fingers, met at the
-  cage's wrist rings, and each face knows the finger or the thumb it belongs to,
-  so a glove's finger follows its own finger.
+- **Its regions** are `neck`, `trunk`, `arms`, `legs`, `hands`, `feet`, and
+  `head`. A region is added when the first garments that need it come; it adds
+  vertices and faces after the cage's own and changes none, so every garment
+  made before keeps its shape.
+- **Its topology** was taken once from the human base body, the faces of the
+  neck, trunk, arms, and legs with their rings, and is the cage's own from then
+  on: a new base model changes the bodies, not the cage. The cage keeps that
+  first shape on a copy of that body's rig, its reference.
+- **The hands** are the body's hand faces with five fingers, met at the cage's
+  wrist rings, and each face knows the finger or the thumb it belongs to, so a
+  glove's finger follows its own finger.
 - **The feet** are a net of the cage's own, since a boot never shows the toes:
-  rings from the ankle ring around the heel and forward to the toe tip, closed
-  there, with the toes and the arch spanned and a flat sole.
+  rings from the ankle around the heel and forward to the toe tip, with the toes
+  and the arch spanned and a flat sole.
+- **The head** is a net of the cage's own from the neck to the crown that spans
+  the ears, the nose, and the eye sockets smoothly, for hair, hoods, and
+  helmets.
 - **Fitting it to a body** works for any body of the skeleton, whatever its
   topology:
-  1. The reference shape moves with the rig: every cage vertex follows the
-     bones of the reference rig to the body's rig, with each bone's length, so
-     a dwarf's shorter arms and an elf's longer legs carry the cage with them.
+  1. The reference shape moves with the rig, every bone with its length, so a
+     dwarf's shorter arms and an elf's longer legs carry the cage with them.
   2. Every vertex is drawn to the skin of its region.
   3. A ball whose radius is the figure scale rolls over the skin: where it does
      not fit, in a pit narrower than the ball, the cage is lifted until it does,
      so creases such as the one under the bust are softened, while larger forms
      keep the ball touching the skin and are followed.
   4. The rings around the trunk, the neck, the arms, and the legs are drawn taut
-     like a band around the body, outward only and in their own plane, as cloth
-     is held taut around a body: every groove across a ring is spanned, such as
-     the buttock cleft above the hips, the spine groove, the hollow between the
-     shoulder blades, the navel, the abdominal muscles, and the cleavage, while
-     the figure from top to bottom, the waist, the small of the back, the bust,
-     the buttocks, and the shoulders, stays. The cage never webs between an arm
-     and the trunk or between the legs, since the lift and the tension fade in
-     from the borders between its regions and from its open ends.
+     like a band, outward only and in their own plane, as cloth is held taut
+     around a body: every groove across a ring is spanned, such as the buttock
+     cleft above the hips, the spine groove, the hollow between the shoulder
+     blades, the navel, the abdominal muscles, and the cleavage, while the
+     figure from top to bottom, the waist, the small of the back, the bust, the
+     buttocks, and the shoulders, stays. The cage never webs between an arm and
+     the trunk or between the legs, since the lift and the tension fade in from
+     the borders between its regions and from its open ends.
   5. The cage is faired, and no vertex and no face centre lies closer to the
-     skin than 1 mm; one that would is moved out along the skin's normal. Nor
-     does the skin come out through a face between its corners, where a large
-     face cuts across a curve such as a woman's shoulder: such a face moves out
-     along its own normal until the skin lies 1 mm inside it, so no garment on
-     the cage shows skin through it at rest.
+     skin than 1 mm. Nor does the skin come out through a face between its
+     corners, where a large face cuts across a curve such as a woman's shoulder,
+     so no garment on the cage shows skin through it at rest.
 
-  These steps fit the neck, the trunk, the arms, and the legs together. The
-  hands and the feet are fitted after them and keep the rings they share with
-  the arms and the legs as those lie, so adding them changed nothing of the
-  rest: a hand's vertices are drawn to the skin of their own finger or thumb and
-  the palm, so the gaps between the fingers stay open, and a foot is laid on the
-  convex outlines of its cross sections, half-planes that turn about an axis in
-  front of the ankle from the ankle ring down until they stand across the foot,
-  then planes across the foot to the toe tip, so the toes and the arch are
-  spanned and the sole is flat. Both keep 1 mm from the skin like the rest.
-- **Its figure scale** is one number of the cage asset, in meters, the radius of
-  the ball: 60 mm. The reviewer judges it on the cage's review sheet and asks for
-  more or less figure. Not every groove has to go: Victor approved the cage with
-  the lower end of the buttock cleft, below the hip line, spanned only in part,
-  also for trousers.
-- **Corrections** that a person sculpts on the cage of one body are kept as a
+  The hands and the feet are fitted after the rest and keep the wrist and ankle
+  rings where the rest left them, so adding them changed nothing of it: a hand
+  follows each finger with the gaps between the fingers open, and a foot follows
+  the convex outlines of its cross sections, so the toes and the arch are
+  spanned and the sole is flat.
+- **Its figure scale**, the radius of the ball, is one number of the cage asset:
+  60 mm. The reviewer judges it on the cage's review sheet and asks for more or
+  less figure. Not every groove has to go: the cage is approved with the lower
+  end of the buttock cleft, below the hip line, spanned only in part, also for
+  trousers.
+- **Corrections** that a person makes on the cage of one body are kept as a
   difference to the fitted shape, like the corrections of a garment, so the next
   fit keeps them.
 
-The cage is an art asset of its own, reviewed and approved by Victor like every
-other. It has no export, so garments record the hash of the approved cage
+The cage is an art asset of its own, reviewed and approved like every other. It
+has no export, since Unity never needs it, so garments record the approved cage
 file they were fitted to, and a change of the cage needs new exports of its
 garments.
 
 ### Standard Lines
 
 A standard line is a place where clothes end: a short sleeve, a long sleeve, a
-trouser hem, or a top's hem. Each line is a plane across one region of the cage,
+trouser hem, or a top's hem. Each line is a plane across one region of the cage
 at a share of a bone's length, at right angles to the bone, or level across the
-trunk, which stands upright at rest while its bones lean, such as the short
-sleeve at a share of the upper arm. A line therefore lies at
-the corresponding place on every body: a dwarf's short sleeve ends where it
+trunk, which stands upright at rest while its bones lean. A line therefore lies
+at the corresponding place on every body: a dwarf's short sleeve ends where it
 ends on a dwarf's arm. Moving a line means changing its share. A line of the
 neck may also rise toward the sides, by its rise times the square of the
 distance to the side, so it curves round the neck: the neckline runs just above
 the hollow of the throat, climbs to where the shoulders meet the neck, and runs
-round the nape, as Victor asked on 2026-10-24, where the neck's base, the border
-of the cage's `neck` region, reaches out over the shoulders.
+round the nape, where the neck's base, the border of the cage's `neck` region,
+reaches out over the shoulders.
 
-| Line | Region | Where | Used by |
-| --- | --- | --- | --- |
-| `CollarStand` | `neck` | on the neck, 2 to 3 cm above its base | a stand collar's top |
-| `Neckline` | `neck` | round the neck's base, just above the throat's hollow, up its sides | a round neckline: the shirts, the robe, the cloak |
-| `CloakNape` | `trunk` | a few centimeters below the base of the neck at the back | where a cloak's back hangs from |
-| `CloakYoke` | `trunk` | a few centimeters below the collarbones, above the armpits | where a cloak's yoke ends in front |
-| `HemCrop` | `trunk` | under the bust, above the navel | a crop top's hem |
-| `SkirtWaist` | `trunk` | just below the navel | a robe's waist seam, where its skirt starts |
-| `Waist` | `trunk` | at the hip bones | the trousers' waistband |
-| `HemHip` | `trunk` | below `Waist` by the overlap | a top's hem, over the trousers |
-| `SleeveShort` | `arms` | over half the upper arm, about 9 cm below the armpit | a short sleeve |
-| `SleeveElbow` | `arms` | at the elbow | an elbow sleeve |
-| `GloveCuff` | `arms` | on the forearm, toward the elbow from `SleeveLong` by the overlap | a glove's cuff, over the sleeve |
-| `SleeveLong` | `arms` | at the wrist | a long sleeve |
-| `LegShorts` | `legs` | at half the thigh | shorts |
-| `LegKnee` | `legs` | below the knee | knee breeches |
-| `BootCalf` | `legs` | at the calf | a boot's top, over the trouser leg |
-| `LegAnkle` | `legs` | at the ankle | a trouser hem, in the boot |
+| Line | Region | Bone and share | Where | Used by |
+| --- | --- | --- | --- | --- |
+| `CollarStand` | `neck` | `Neck` 0.3 | on the neck, about 3 cm above its base | a stand collar's top |
+| `Neckline` | `neck` | `Neck` 0.19, rise 5.3 | round the neck's base: just above the hollow of the throat, up at the sides of the neck where the shoulders meet it, and at the nape | a round neckline: the shirts, the robe, the cloak |
+| `CloakNape` | `trunk` | `UpperChest` 0.85 | a few centimeters below the base of the neck at the back | where a cloak's back hangs from |
+| `CloakYoke` | `trunk` | `UpperChest` 0.55 | a few centimeters below the collarbones, above the armpits | where a cloak's yoke ends in front |
+| `HemCrop` | `trunk` | `Chest` 0.5 | under the bust, above the navel | a crop top's hem |
+| `SkirtWaist` | `trunk` | `Spine` 0.45 | just below the navel: 2 to 3 cm on the male, about 1 cm on the female | a robe's or a dress's waist seam, where its skirt starts |
+| `Waist` | `trunk` | `Spine` 0.1 | at the hip bones | the trousers' waistband |
+| `HemHip` | `trunk` | `Hips` 0.72 | about 5 cm under `Waist`, the overlap | a top's hem, over the trousers |
+| `SleeveShort` | `arms` | `UpperArm` 0.6 | over half the upper arm, about 9 cm below the armpit | a short sleeve |
+| `SleeveElbow` | `arms` | `LowerArm` 0.05 | just below the elbow | an elbow sleeve |
+| `GloveCuff` | `arms` | `LowerArm` 0.65 | on the forearm, about 5 cm toward the elbow from `SleeveLong`, the overlap | a glove's cuff, over the sleeve |
+| `SleeveLong` | `arms` | `LowerArm` 0.92 | at the wrist | a long sleeve |
+| `LegShorts` | `legs` | `UpperLeg` 0.5 | at half the thigh | shorts |
+| `LegKnee` | `legs` | `LowerLeg` 0.1 | below the knee | knee breeches |
+| `BootCalf` | `legs` | `LowerLeg` 0.55 | at the calf | a boot's top, over the trouser leg |
+| `LegAnkle` | `legs` | `LowerLeg` 0.9 | at the ankle | a trouser hem, in the boot |
 
 The lines and their shares are part of the cage asset and are approved with it;
 the borders of the cage's regions are lines too, such as the trunk's edge at the
@@ -310,11 +299,10 @@ shoulder for a sleeveless top.
 
 ### How Garments Meet
 
-Where two garments meet, the outer one ends past the inner one's edge by a
-fixed overlap, about 50 mm, so no gap opens in motion, and the part of the
-inner garment under it is removed by its underlay when the character is put
-together, so no double layer shows. The overlap is the distance between their
-lines.
+Where two garments meet, the outer one ends past the inner one's edge by a fixed
+overlap, about 50 mm, so no gap opens in motion, and the part of the inner
+garment under it is removed by its underlay when the character is put together,
+so no double layer shows. The overlap is the distance between their lines.
 
 | Where | Inner | Outer |
 | --- | --- | --- |
@@ -322,116 +310,108 @@ lines.
 | Wrist | a long sleeve, to `SleeveLong` | a glove, to `GloveCuff` |
 | Calf | trousers, to `LegAnkle` | a boot, to `BootCalf` |
 
-Over the overlap, the outer garment lies outside the inner one: its band there is
-measured from the inner garment's surface instead of the cage. A template's
-recipe says this with `over`: beyond a line, on the side the inner garment
-keeps, it lies over a garment of a given band, such as a top over the trousers
-below `Waist`, and it rises to it over 30 mm before the line. The pair check
-tests every template over every exported template of another visual slot and a
-lower layer of its cage, such as a shirt over the trousers, at rest, in the test
-poses, and in the clips: of the inner garment's faces that stay drawn, those
-whose body face the outer one leaves visible at its openings, no vertex that the
-outer one is over at rest may come out through it, and none may already lie
-outside it at rest. It reports like the motion
-check, and the outer template's export records the inner templates' exports it
-was checked over. Templates of the same slot are never worn together, so they are
-not checked against each other.
+Over the overlap, the outer garment lies outside the inner one: its band there
+is measured from the inner garment's surface instead of the cage, which its
+recipe says with `over`. The pipeline's pair check puts every template on the
+bodies over every exported template of another visual slot and a lower layer,
+such as a shirt over the trousers, at rest, in the test poses, and in the clips:
+of the inner garment's faces that stay drawn, no vertex that the outer one is
+over at rest may come out through it, and none may already lie outside it at
+rest; see [Garments](ART_PIPELINE.md#garments). Templates of the same slot are
+never worn together, so they are not checked against each other.
 
 ### Templates
 
 A garment template is the form of a garment kind, without its look: a
-short-sleeved top with a stand collar, a long-sleeved shirt, or trousers. There
-may be several templates per kind, such as a fitted and a loose shirt. A new
-item of clothing is a template and a new [texture](#textures), so it fits every
-body without new modeling. What changes the silhouette or needs an edge with
-thickness is a template of its own: the length of a sleeve or a hem, a standing
-collar, a V-neck, the width. What only opens the surface with sharp edges, such
-as holes, net, lace, torn edges, or a laced opening, is the transparency of a
-texture; an edge cut by transparency has no thickness. Parts worn on top, such
-as a belt, shoulder guards, or a fur collar, are small templates of their own.
+short-sleeved top, a long-sleeved shirt, or trousers. There may be several
+templates per kind, such as a fitted and a loose shirt. A new item of clothing
+is a template and a new [texture](#textures), so it fits every body without new
+modeling. What changes the silhouette or needs an edge with thickness is a
+template of its own: the length of a sleeve or a hem, a standing collar, a
+V-neck, the width. What only opens the surface with sharp edges, such as holes,
+net, lace, torn edges, or a laced opening, is the transparency of a texture; an
+edge cut by transparency has no thickness. Parts worn on top, such as a belt,
+shoulder guards, or a fur collar, are small templates of their own.
 
-A template is built by the pipeline from its recipe:
+The pipeline builds a template from its recipe: the cage regions it covers and
+the standard lines where it ends in them, each with the side it keeps, such as
+the `trunk` above `HemHip` and the `arms` toward the trunk from `SleeveShort`,
+its [band](#layer-bands), and its ease. A region without a line is covered
+whole, and a region that is not listed is left open, such as the arms of a
+sleeveless top. The pipeline cuts the cage's faces at the lines, offsets them
+into the band, turns every open edge inward by a few millimeters, so a hem shows
+the cloth's thickness instead of a paper edge, and unfolds the UVs along seams
+where clothes have them; see [Building A Template](ART_PIPELINE.md#building-a-template).
 
-- **The regions and lines**: the cage regions it covers and the lines where it
-  ends in them, each with the side it keeps, such as the `neck` to
-  `CollarStand`, the `trunk` above `HemHip`, and the `arms` toward the trunk
-  from `SleeveShort`. A region without a line is covered whole, and a region
-  that is not listed is left open, such as the arms of a sleeveless top.
-- **The band**: how far from the cage it lies, [below](#layer-bands).
-- **Ease**: more room where the body folds in motion, in meters, added at the
-  front and the back of the lower armholes, fading out over 60 mm. Measured on
-  the jerkin, ease there let more skin come through in the clips, because the
-  cloth then follows the arm's bones less, so the jerkin uses none; the field
-  stays for templates whose cloth stands off the body.
-- **Edges with thickness**: every open edge of its mesh, the hems, the sleeve
-  ends, a neckline, and the top of a collar, is turned inward by a few millimeters, so a hem shows the
-  cloth's thickness instead of a paper edge.
+The result is the template's version on the first body of its cage, the male;
+every other body's version is fitted from it, as
+[Fitting Every Body Type](#fitting-every-body-type) describes. A person may
+shape the first version by hand, such as folds or a flared hem; the pipeline
+keeps that shape as a difference over the cage, so it follows to every body and
+survives a refit. A recipe that changes builds the template anew: the handmade
+shape is carried over to the new build by projection, each new vertex taking
+the difference at its place on the cage, and the textures move to the new UVs by
+projection.
 
-The pipeline cuts the cage's faces at the lines, keeps the faces of the
-template, offsets them into its band, adds the ease and the turned edges, and
-unfolds its UVs along its own edges and along seams that the pipeline places
-where clothes have them: down the sides of the trunk, under the upper arms and
-along the inside of the forearms, along the inside of the legs, at the back of a
-collar, where a hand or a foot meets its limb, between a glove's palm and its
-back along the sides of the fingers, and around a boot's sole and up the back
-of its heel. The result is the
-template's version on the first body, the male; every other body's version is
-fitted from it. A person may then shape the first version by hand, such as
-folds or a flared hem; the pipeline keeps that shape as a difference over the
-cage, so it follows to every body and survives a refit. A recipe that changes
-builds the template anew: the handmade shape, the difference between the first
-version and the build it was shaped on, is carried over to the new build by
-projection, each new vertex taking the difference at its place on the cage, and
-the textures move to the new UVs by projection.
+Ease is more room where the body folds in motion, at the front and the back of
+the lower armholes. The close-fitting templates use none: ease there lets more
+skin come through in the clips, because the cloth then follows the arm's bones
+less. It is meant for templates whose cloth stands off the body.
 
 Unique garments, such as a ceremonial robe, are templates with one texture. A
 form that no recipe of lines gives, such as a hairstyle or a helmet, is a
-modeled template: its recipe is `modeled`, its first version is modeled by hand
-on the first body over the cage region it covers, and from then on it is bound
-to the cage, fitted, checked, approved, exported, and worn with textures like
-every other template. A modeled template follows a smooth field of the cage's
-moves to the other bodies rather than its nearest face, because hair or a hood
-stands far off the cage, where the nearest face changes from one vertex to the
-next and would crumple it. A person may shape another body's version by hand,
-such as the helmet's nasal over a smaller nose, and the sync keeps that shape.
+modeled template: its first version is modeled by hand on the first body over
+the cage region it covers, and from then on it is bound to the cage, fitted,
+checked, approved, exported, and worn with textures like every other template.
+A modeled template follows a smooth field of the cage's moves to the other
+bodies rather than its nearest face, because hair or a hood stands far off the
+cage, where the nearest face changes from one vertex to the next and would
+crumple it. A person may shape another body's version by hand, such as the
+helmet's nasal over a smaller nose, and the pipeline keeps that shape.
+
+### Loose Parts
+
 Loose parts, such as the skirt of a robe or the back of a cloak, hang from a
-line instead of lying on the cage and take the cloth chains. A recipe's `hang`
-entry names the trunk line a part hangs from, its side, all around for a skirt
-or across the back for a cloak, its chains, and its flare, how much wider it
-grows toward its hem. The recipe cuts the template's open edge at that line and
-hangs rings of cloth below it down to the chains' tips. On every body the rings
-follow a scaffold, and the cloth does not follow the figure under it, as Victor
-asked on 2026-10-24: every column is stretched like a string from the edge over
-the body's convex outline, a margin outside it, to where the body reaches out
+line instead of lying on the cage and take the cloth chains. A recipe names the
+trunk line a part hangs from, its side, all around for a skirt or across the
+back for a cloak, its chains, and its flare, how much wider it grows toward its
+hem. The template's open edge is cut at that line, and rings of cloth hang below
+it down to the chains' tips.
+
+On every body the rings follow a scaffold, and the cloth does not follow the
+figure under it: every column is stretched like a string from the edge over the
+body's convex outline, a margin outside it, to where the body reaches out
 farthest, and hangs straight down from there, spanning the hollows. A skirt's
-columns lie around the hips between the chains, 30 mm outside the outline, so
-the thighs of a jog stay under it, and flare by the part's flare toward the
-hem, so it falls from the widest of the hips and the legs and never narrows. A
-cloak's columns lie across the back, 20 mm behind it and a skirt's margin and
-10 mm behind the hips, so a cloak hangs clear of a skirt from the waist, and
-grow wider toward the hem by the flare. A part across the back may hang high,
-from the nape, as Victor asked on 2026-10-25: with a `top` the template keeps
-only its middle that wide, so a cloak's yoke lies on the trapezius and not on
-the shoulder muscle, and its back only above the part's line, and with a
-`width` the part fans out to that width by the first joint of its chains, both
-shares of how far the shoulder joints lie from the middle, so they fit every
-body. A loose part takes the weights of its chains, two neighbouring chains
-blended across, and blends into the weights of the edge it hangs from over its
-first ring, or down to where its chains hang from when its edge lies above
-them, such as a skirt from the waist, which moves with the hips there. Its first version is
-built on the first body's scaffold; every other version is bound to that
-scaffold and placed on its own body's. Loose parts have no band; the motion and
-pair checks follow them with their chains laid as the solver lays them, so they
-report a leg that comes through a skirt, and their swing is reviewed in the
-Wardrobe, where the solver's springs move them.
+columns lie around the belly, the hips, and the legs 30 mm outside the outline,
+so the thighs of a jog stay under it, and below where its chains hang from at
+least as far out as they, and flare toward the hem, so it falls from the widest
+of the hips and the legs and never narrows. A cloak's columns lie across the
+back, 20 mm behind it and a skirt's margin and 10 mm behind the hips and the
+legs, so a cloak hangs clear of a skirt from the waist, which bulges over the
+hips above its chains, where the game does not lay the cloak over the skirt,
+and grow wider toward the hem by the flare. A part across the back may hang high, from the
+nape: with a top, the template keeps only its middle that wide, so a cloak's
+yoke lies on the trapezius and not on the shoulder muscle, and its back only
+above the part's line; with a width, the part fans out to that width by the
+first joint of its chains. Both are shares of how far the shoulder joints lie
+from the middle, so they fit every body.
+
+A loose part takes the weights of its chains, two neighbouring chains blended
+across, and blends into the weights of the edge it hangs from over its first
+ring, or down to where its chains hang from when its edge lies above them, such
+as a skirt from the waist, which moves with the hips there. Loose parts have no
+band and cover nothing, since they swing off what they hang over. The motion and
+pair checks follow them with their chains laid as the game lays them, so they
+report a leg that comes through a skirt, and their swing is reviewed in
+[the Wardrobe](ART_PIPELINE.md#the-wardrobe).
 
 ### Textures
 
 A garment texture is the look of a template: its painted image with color,
 folds, wear, trim, and stitches in the template's UVs, its dye mask, its
 smoothness and metallic, and its transparency. It is an asset of its own with
-one review stage, `texture`, so a new texture never changes the template's file
-and its approvals.
+one review stage, so a new texture never changes the template's file and its
+approvals.
 
 - A texture belongs to one template, since the trim at a hem sits where that
   template's hem is.
@@ -451,45 +431,44 @@ and its approvals.
 
 Every body exports its editable mesh, its vertices and faces, so the pipeline
 computes a garment's masks for each body in that body's own faces. Bodies need
-not share a topology: each gets the masks of its own faces. For every body
-type a garment fits, the pipeline computes:
+not share a topology: each gets the masks of its own faces. For every body type
+a garment fits, the pipeline computes:
 
-- **The cover mask**: one bit per body face, set when the garment covers the face.
-  From sample points on the face, rays go outward in a cone around the face
-  normal up to the garment's reach, which is the distance from the skin to the
-  cage there and the band's reach above it, so rays from the bottom of a spanned
-  pit reach the cloth over it. A sample is covered when every ray hits the
-  garment where its texture is opaque, or the body itself, as in an armpit; a
-  face is covered when all its samples are and at least one ray hits the
-  garment. A ray that leaves through a hole, a crop top's open belly, or a
-  transparent part of a lace texture leaves the face visible, with its skin and
-  everything painted on it.
-- **The skin at the garment's edges is never hidden.** A look into a sleeve, under
-  a hem, or into a laced neckline sees farther than the cone of rays, and a
-  hidden face there shows as a hole in the body. A face within the edge reach of
-  an open edge of the garment, a border of its mesh or a line where its texture
-  is cut, stays visible. The edge reach is the band's, 20 mm for `tight`, 40 mm
-  for `mid`, 80 mm for `outer`, and 120 mm for `loose`, about four times the
-  band's gap between skin and cloth, or four times the gap at that edge where the
-  cloth spans a pit and hangs farther from the skin.
-- **The underlay**: for every face of the garment, the index of the body face
-  under it, the closest body face along the garment's inward normal.
+- **The cover mask**: one bit per body face, set when the garment covers the
+  face. Rays go out from the face in a cone around its normal up to the
+  garment's reach, which is the distance from the skin to the cage there and the
+  band's reach above it, so rays from the bottom of a spanned pit reach the
+  cloth over it. The face is covered when every ray hits the garment where its
+  texture is opaque, or the body itself, as in an armpit, and at least one ray
+  hits the garment. A ray that leaves through a hole, a crop top's open belly,
+  or a transparent part of a lace texture leaves the face visible, with its skin
+  and everything painted on it.
+- **The skin at the garment's edges is never hidden.** A look into a sleeve,
+  under a hem, or into a laced neckline sees farther than the cone of rays, and
+  a hidden face there shows as a hole in the body. A face within the edge reach
+  of an open edge of the garment, a border of its mesh or a line where its
+  texture is cut, stays visible. The edge reach is the band's, 20 mm for
+  `tight`, 40 mm for `mid` and `hair`, 80 mm for `outer`, and 120 mm for
+  `loose`, about four times the band's gap between skin and cloth, or four times
+  the gap at that edge where the cloth spans a pit and hangs farther from the
+  skin, up to 120 mm.
+- **The underlay**: for every face of the garment, the body face under it, the
+  closest body face along the garment's inward normal.
 - **The pull-in**: for every body vertex that stays visible but lies closer to
-  the garment than its band allows, such as the skin right at a tight collar or a
-  sleeve hem, how far to move it inward, at most 3 mm, so it cannot poke through
-  the hem.
+  the garment than its band allows, such as the skin right at a tight collar or
+  a sleeve hem, how far to move it inward, at most 3 mm, so it cannot poke
+  through the hem.
 - **In motion**, visible skin under the garment can come through it in the test
-  poses and the clips. Skinning blends the bones of a fold, such as an armpit, so
-  the gap between skin and cloth closes there in motion whatever the weights.
+  poses and the clips. Skinning blends the bones of a fold, such as an armpit,
+  so the gap between skin and cloth closes there in motion whatever the weights.
   Such skin lies at an opening that shows it, and hiding it would leave a hole
   there in every pose, so the pipeline reports it instead, and the template's
-  ease, shape, or weights fix it. A fold also turns the skin along the cloth, so
-  moving it inward along its normal does not keep it under. Skin that only passes
-  a hem's edge, with no cloth over it, does not come through. Skin that lies
-  through the garment already at rest shows in every pose, so that breaks a
-  rule instead of being reported; the cage keeps the skin inside it, so a
-  template on it has none.
-
+  shape or weights fix it. A fold also turns the skin along the cloth, so moving
+  it inward along its normal does not keep it under. Skin that only passes a
+  hem's edge, with no cloth over it, does not come through. Skin that lies
+  through the garment already at rest shows in every pose, so that breaks a rule
+  instead of being reported; the cage keeps the skin inside it, so a template on
+  it has none.
 - **Loose parts cover nothing.** A robe's skirt or a cloak's back swings off
   what it hangs over at rest, and a face hidden under it would show as a hole,
   so the skin and the inner garments under loose parts stay drawn, and the line
@@ -498,13 +477,13 @@ type a garment fits, the pipeline computes:
 - **A garment may cover nothing at all.** A template whose manifest says
   `"covers": false` keeps an empty cover mask: it lies on top of the body and
   the garments under it and hides none of them, so it can swing open or be
-  animated. The cloak is such a garment, as Victor decided on 2026-10-24. Its
-  pull-in still keeps the skin under its edges from poking through.
+  animated. The cloak is such a garment. Its pull-in still keeps the skin under
+  its edges from poking through.
 
-A mask is 545 bytes for the human bodies (4,358 faces). When Unity puts a
-character together, it removes every body face that a worn garment covers, moves
-the pull-in vertices, and removes every garment face whose underlay face is
-covered by a garment of a higher layer. A shirt over trousers thereby hides the
+A mask is 545 bytes for the human bodies (4,358 faces). When the character is
+put together, every body face that a worn garment covers is removed, the
+pull-in vertices move, and every garment face whose underlay face a garment of a
+higher layer covers is removed. A shirt over trousers thereby hides the
 trousers' waist under its hem but keeps their legs, and a floor-length robe
 hides the `legs` slot, so trousers under it are not drawn at all.
 
@@ -517,8 +496,8 @@ its pits, so a band measured from it lets cloth span a pit, and cloth that sinks
 into a pit leaves its band.
 
 Clothes lie as close to the body as they can, without air between them and the
-skin, as Victor decided on 2026-10-23: a recipe builds a `tight` template 2 mm
-from the cage, which itself lies on the skin at the body's high points.
+skin: a recipe builds a `tight` template 2 mm from the cage, which itself lies on
+the skin at the body's high points.
 
 | Band | Distance from the cage | For |
 | --- | --- | --- |
@@ -534,9 +513,9 @@ sharp edge of the cage, such as the nose, the distance along a face's normal
 falls far short of the true one and would call a helmet's nasal too close.
 
 A garment of a higher layer lies in an outer band, so an inner garment never
-reaches through an outer one where the outer one does not hide it. Where garments
-overlap at a meeting line, the outer one's band is measured from the inner one,
-as [How Garments Meet](#how-garments-meet) says.
+reaches through an outer one where the outer one does not hide it. Where
+garments overlap at a meeting line, the outer one's band is measured from the
+inner one, as [How Garments Meet](#how-garments-meet) says.
 
 ### Transparent Fabric
 
@@ -549,19 +528,17 @@ as a veil, needs dithered transparency and comes when a garment needs it.
 
 A garment texture may carry a dye mask, an image whose red, green, and blue
 channels mark up to three regions that a dye color tints, such as cloth, trim,
-and leather. The garment shader `Mmorpg/Garment` multiplies the painted color by
-the dye color as far as the region's channel reaches, so a dyeable region is
-painted in a light, neutral color with its folds and wear, and the dye gives it
-its hue. Every dyeable region's middle tone lies at the same level, 0.7 in
-linear values, so one dye color gives the same cloth on every garment. A dyeable
-texture names the natural color of each channel, which its undyed garment
-wears, so an existing texture becomes dyeable without being painted again:
-`Set-TextureDyes.ps1` divides its image by its natural colors where its mask
-reaches; see [Garment Textures](ART_PIPELINE.md#garment-textures). The wool of
-`WoolCloak`, `WoolRobe`, `WoolHoodUp`, and `WoolHoodDown` was the first, on
-2026-10-25, with one channel each, the clasps of the cloak left undyed. The dye
-colors belong to the item definition, as Victor decided on 2026-10-25: a Blue
-Wool Cloak is an item of its own; see [Items](#items).
+and leather. The garment shader multiplies the painted color by the dye color as
+far as the region's channel reaches, so a dyeable region is painted in a light,
+neutral color with its folds and wear, and the dye gives it its hue. Every
+dyeable region's middle tone lies at the same level, 0.7 in linear values, so
+one dye color gives the same cloth on every garment. A dyeable texture names the
+natural color of each channel, which its undyed garment wears, so an existing
+texture becomes dyeable without being painted again; see
+[Dyeable Textures](ART_PIPELINE.md#dyeable-textures). The wool of the cloak, the
+robe, and the hood is dyeable, one channel each, with the cloak's bronze clasps
+left undyed. The dye colors belong to the item definition: a Blue Wool Cloak is
+an item of its own; see [Items](#items).
 
 ## Fitting Every Body Type
 
@@ -574,27 +551,27 @@ pipeline fits it to every other body of the cage, also those of
   cage's normal and tangents, and placed at the same point and offset of the
   other body's cage. A template is bound to every region of the cage but the
   hands and the feet that it does not cover, so a sleeve's or a trouser leg's
-  hem follows its limb and not the hand or the foot beyond it. Every body's cage has the same faces, so this needs nothing
-  of the bodies' own topology. The first version keeps its binding to the cage
-  too, so when the first body or its cage changes, the first version follows. A
-  vertex or a face centre that leaves the garment's band moves back into it.
-  Garments stay out of the body's armpits and crotch by the same rule as they do
-  on the first body.
-- **Corrections**: where the fitted shape needs a hand, a person sculpts it on the
+  hem follows its limb and not the hand or the foot beyond it. Every body's cage
+  has the same faces, so this needs nothing of the bodies' own topology. The
+  first version keeps its binding to the cage too, so when the first body or its
+  cage changes, the first version follows. A vertex or a face centre that leaves
+  the garment's band moves back into it. Garments stay out of the body's armpits
+  and crotch by the same rule as they do on the first body.
+- **Corrections**: where the fitted shape needs a hand, a person shapes it on the
   other body's version. The pipeline keeps the correction as a difference over
   the cage, so the next fit keeps it.
 - **Weights**: a garment vertex takes the skin weights of the nearest skin of
-  the body part its cage face lies on, the region and side of the cage, not
-  smoothed, so it moves like the skin it covers: a sleeve's inside at the
-  armpit takes the arm's weights, not the trunk's next to it. Measured on the
-  jerkin, smoothed weights let the skin under a sleeve come through further, 20
-  instead of 7 mm, and weights from a ray inward along the cage's normal or from
-  the bottom of a spanned pit gave no less skin through the cloth than the
-  nearest skin. Loose parts take the cloth chains instead. Weights
-  painted by hand on the first version are kept, and the other versions copy
-  them, because every version of a garment has the same topology; rules in the
-  recipe, such as ease, are preferred to painted weights, since they carry over
-  to new bodies by themselves.
+  the body part its cage face lies on, the region and side of the cage, and on a
+  hand the finger or thumb with the palm, not smoothed, so it moves like the
+  skin it covers: a sleeve's inside at the armpit takes the arm's weights, not
+  the trunk's next to it. Smoothed weights let the skin under a short sleeve
+  come through farther, 20 instead of 7 mm, and weights from a ray inward along
+  the cage's normal or from the bottom of a spanned pit gave no less skin
+  through the cloth than the nearest skin. Loose parts take the cloth chains
+  instead. Weights painted by hand on the first version are kept, and the other
+  versions copy them, because every version of a garment has the same topology;
+  rules in the recipe are preferred to painted weights, since they carry over to
+  new bodies by themselves.
 
 ## Future Races And Base Models
 
@@ -609,9 +586,9 @@ bodies, not code:
   each body's own faces either way. What a shape cannot give, such as tusks or
   horns, is a separate mesh in the body's file.
 - **Its own rig.** The rig places the same `Humanoid` bones from the race's own
-  model, so a dwarf's legs and arms are shorter and an elf's longer, and the cloth
-  chains are placed from the model too: a dwarf's skirt chains end at a dwarf's
-  ankles.
+  model, so a dwarf's legs and arms are shorter and an elf's longer, and the
+  cloth chains are placed from the model too: a dwarf's skirt chains end at a
+  dwarf's ankles.
 - **Clips.** The library clips play on every race through Unity's Humanoid
   retargeting, which scales them to the body. The walk and jog play at a rate
   from the race's own stride length, so the feet stay planted on short and long
@@ -639,52 +616,51 @@ bodies, not code:
 A new base model that replaces today's human bodies, with another topology, is
 handled the same way: the new bodies join the cage, the cage is fitted to them,
 the templates are fitted and their masks computed anew, and the textures keep
-their images and are exported again, with new masks where they have
-transparent parts. Each paint layer's canvas moves to the new first body through
-the cage, `Sync-PaintAsset.ps1 -Canvas`, its paint is checked and touched up
-there, and the other bodies of the new model's topology get the exact move.
-A better cage of another topology is a new cage asset. Templates with a recipe of
-lines are built again from it, keeping their handmade shape by projection onto
-the new cage, and their textures move to the new UVs by projection. A modeled
-template keeps its mesh, its UVs, and its painted weights: each vertex is bound
-to the new cage at its place on the first body, and its textures stay as they
-are.
+their images and are exported again, with new masks where they have transparent
+parts. Each paint layer's canvas moves to the new first body through the cage,
+its paint is checked and touched up there, and the other bodies of the new
+model's topology get the exact move. A better cage of another topology is a new
+cage asset. Templates with a recipe of lines are built again from it, keeping
+their handmade shape by projection onto the new cage, and their textures move to
+the new UVs by projection. A modeled template keeps its mesh, its UVs, and its
+painted weights: each vertex is bound to the new cage at its place on the first
+body, and its textures stay as they are.
+
+The tooling for the first new race is planned: making a body type from a human
+body, the human base tools working for every body of the race, and adding the
+body to the cage.
 
 ## Cloth Chains
 
 ### Skeleton
 
-The `Humanoid` skeleton gets standard chains of bones for loose cloth. They are
-not Unity Humanoid bones, so Humanoid clips never move them, and the body is not
-weighted to them.
+The `Humanoid` skeleton has standard chains of bones for loose cloth: eight
+skirt chains of four bones around the hips, for skirts, robes, coat tails, and
+tabards; five cloak chains of five bones across the back, for cloaks and capes;
+and a hood chain of two bones behind the head, for the back and tip of a hood.
+[Skeletons](ART_PIPELINE.md#skeletons) lists them. They are not Unity Humanoid
+bones, so Humanoid clips never move them, and the body is not weighted to them.
 
-| Chains | Parent | Bones | For |
-| --- | --- | --- | --- |
-| `SkirtFront1` to `4`, `SkirtFrontSide1_L` to `4_L` and `_R`, `SkirtSide`, `SkirtBackSide`, and `SkirtBack`: eight chains around the hips | `Hips` | 32 | skirts, robes, coat tails, tabards |
-| `CloakCenter1` to `5`, `CloakInner1_L` to `5_L` and `_R`, and `CloakOuter`: five columns across the back | `UpperChest` | 25 | cloaks and capes |
-| `Hood1`, `Hood2` | `Head` | 2 | the back and tip of a hood |
-
-They are implemented: [Skeletons](ART_PIPELINE.md#skeletons) lists them, and
-`ClothChainSolver` moves them; see
-[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies). The rig
-places them from each body: the skirt chains on a ring at the hips that
+The rig places them from each body: the skirt chains on a ring at the hips that
 hangs to that body's ankles, the cloak chains from its shoulder blades down its
-back to the middle of its calves, halfway from the knees to the ankles, as
-Victor chose on 2026-10-24,
-the hood chain behind its head. The solver's profiles give lengths as shares of
-the chains, so the same cloth behaves alike on a dwarf and an elf. Adding them changes the rig, so the bodies and the
-animation libraries are approved again once; their clips do not change.
+back to the middle of its calves, halfway from the knees to the ankles, and the
+hood chain behind its head. The cloth profiles give lengths as shares of the
+chains, so the same cloth behaves alike on a dwarf and an elf. Adding chains
+changes the rig, so the bodies and the animation libraries are approved again
+once; their clips do not change.
 
 ### Runtime Solver
 
-The client lays the chains every frame, after the Animator posed the body and the
-camera moved, and before the bodies are drawn, as the
-[Spring Bone Redesign](#spring-bone-redesign) built them. Every visible body
-shows the **target pose**: where the chains hang in a pose, without memory, so
-the same pose always lays them alike, whatever the frame rate, and exactly as the
-art pipeline's reviews and checks lay them. On the bodies largest on the screen
-**springs** swing the cloth on it, with inertia, sway, and flare, within limits.
-The target pose is `ClothPose` in the assembly `Mmorpg.Client.Cloth`:
+Animation and the legs decide where the cloth is; springs only add swing within
+limits, so the cloth stays on the body also in hectic motion, such as the spin
+of an attack, without a cloth simulation. The client lays the chains every
+frame, after the Animator posed the body and the camera moved, and before the
+bodies are drawn. Every visible body shows the **target pose**: where the chains
+hang in a pose, without memory, so the same pose always lays them alike,
+whatever the frame rate, and exactly as the art pipeline's reviews and checks
+lay them. On the bodies largest on the screen, **springs** swing the cloth on
+it, with inertia, sway, and flare, within limits. The target pose is `ClothPose`
+in the assembly `Mmorpg.Client.Cloth`:
 
 - **Hang and follow**: every chain hangs from its animated parent with its bones
   at rest. Each bone beside a thigh or a shin, as the rig places the chains,
@@ -696,68 +672,65 @@ The target pose is `ClothPose` in the assembly `Mmorpg.Client.Cloth`:
   toward the other side, which it does not reach: a side chain follows only its
   own leg. The bone turns toward both legs in the share of the squares of their
   pushes, so a front chain follows the leg that pushes it forward, a back chain
-  the leg that kicks it back, and nothing changes at once when the legs pass each
-  other; a blend by which knee was ahead switched legs within a frame in a jog
-  and threw a hem 28 cm. So a skirt lies over raised thighs and drapes over the
-  knees when sitting, a cloak is pushed back by a leg that kicks back in a jog,
-  and both hang down over a leg that moves away from them. Hood chains hang from
-  their parent.
-- **Swing out of the body**: then each bone, from the root, swings outward in the
-  plane of its direction and the way its chain faces, by the smallest angle that
-  leaves its samples outside what its kind collides with: a skirt the trunk and
-  the legs, a cloak the arms too, a hood the trunk. A bone's samples are its end,
-  its middle, and the cloth toward each neighbouring chain: half way to where the
-  neighbour hangs as it follows the legs, at the end and at the middle of the
-  quad between them, moved with the bone as if the neighbour swung alike, so two
-  neighbours that clear the cloth between them each swing only as far as it
-  needs, and every chain is laid on its own. At the open edges of a cloak the
+  the leg that kicks it back, and nothing changes at once when the legs pass
+  each other. So a skirt lies over raised thighs and drapes over the knees when
+  sitting, a cloak is pushed back by a leg that kicks back in a jog, and both
+  hang down over a leg that moves away from them. Hood chains hang from their
+  parent.
+- **Swing out of the body**: then each bone, from the root, swings outward in
+  the plane of its direction and the way its chain faces, by the smallest angle
+  that leaves its samples outside what its kind collides with: a skirt the trunk
+  and the legs, a cloak the arms too, a hood the trunk. A bone's samples are its
+  end, its middle, and the cloth toward each neighbouring chain: half way to
+  where the neighbour hangs as it follows the legs, at the end and at the middle
+  of the quad between them, moved with the bone as if the neighbour swung alike,
+  so two neighbours that clear the cloth between them each swing only as far as
+  it needs, and every chain is laid on its own. At the open edges of a cloak the
   cloth lies as far beyond the outer chain as toward its inner neighbour. The
   legs are always inside a skirt and in front of a cloak, so the cloth is only
   ever pushed outward and cannot end on the wrong side of a leg. A sample's angle
   is advanced in steps that never pass where it first leaves a capsule, its
   depth over 1.5 times the farthest it moves per radian, eight times, and a last
-  secant step: a coarse search of 15 degree steps slipped past narrow gaps and
-  threw a cloak 19 degrees in a frame. The angle is taken in the share the swing
-  moves the sample straight out of the capsule where it leaves, so a capsule the
-  swing would only slide along does not fling the chain, and less and less
-  toward the largest swing of 165 degrees. The cloth starts to give way when a
-  capsule comes within 20 mm of it and lies on it once the capsule is as far into
-  it, so its motion starts and ends without a jolt. An arm only lifts a cloak's
-  cloth out as far as it comes into it, saturating at 8 cm: farther, the arm
-  comes through the edge rather than throw the chain.
-- **Collision**: capsules on the thighs, shins, feet, upper arms, forearms, hips,
-  spine, chest, neck, and head. Around the trunk a capsule's radius is the
+  secant step, so it never slips past a narrow gap. The angle is taken in the
+  share the swing moves the sample straight out of the capsule where it leaves,
+  so a capsule the swing would only slide along does not fling the chain, and
+  less and less toward the largest swing of 165 degrees. The cloth starts to
+  give way when a capsule comes within 20 mm of it and lies on it once the
+  capsule is as far into it, so its motion starts and ends without a jolt. An
+  arm only lifts a cloak's cloth out as far as it comes into it, saturating at
+  8 cm: farther, the arm comes through the edge rather than throw the chain.
+- **Collision**: capsules on the thighs, shins, feet, upper arms, forearms,
+  hips, spine, chest, neck, and head. Around the trunk a capsule's radius is the
   middle distance of the body's vertices that its bone moves most along its
   segment, in each of 16 directions around the bone from the body's front toward
   its right, with narrow grooves filled, so a torso that is deep in front of the
-  spine and shallow behind it keeps a cloak on its back, and the groove along the
-  spine does not catch the cloth. A round capsule of the chest's width stood out
-  12 cm behind the back and pushed the cloak out in the middle of it, which
-  Victor saw on 2026-10-24. The limbs are about round and move under the cloth,
-  which slides around them, so their capsules are round and reach out to 90
-  percent of their vertices, so the calf, the heel, and the back of the upper arm
-  do not stand out of them; an arm's are the vertices along its segment, so the
-  shoulder does not widen it. A chain need not lie in its cloth: when a garment
-  goes on, the client measures from its model how far its cloth reaches beyond
-  and within each particle of its chains (see Layers), and a sample keeps from a
-  capsule the margin its cloth keeps, the profile's margin and how far the cloth
-  lies within it, but no more than it has in the bind pose less the 20 mm band,
-  so a body in its bind pose wears its garments exactly as they were made and
-  approved, and nothing gives way there. A cloak will also clear a backpack or
-  quiver on `Socket_Back`.
-- **Layers**: a cloak worn over a robe lies over its skirt, as Victor decided on
-  2026-10-24. The vertices that a chain's bones move most lie at places along the
-  chain, such as the rings of a skirt, and each particle takes the farthest out
-  and in between the places on either side of it. The skirt chains are laid
-  first; their particles moved out by the skirt cloth's reach, joined in
-  triangles to the next chain around, are the skirt's outer side, and a cloak's
-  end and middle samples keep outside it by a gap of 10 mm and by how far the
-  cloak's own cloth lies within them, seen from the hips' own upright axis, so
-  the layers hold also when the body lies down. A ray along the seam of two
-  triangles crosses both, so a cloak chain right behind a skirt chain never slips
-  between them. The art pipeline's pair check lays both garments' chains the
-  same way, at rest too, and a robe that lies through the cloak at rest breaks a
-  rule.
+  spine and shallow behind it keeps a cloak on its back, and the groove along
+  the spine does not catch the cloth; a round capsule of the chest's width would
+  stand out 12 cm behind the back and push a cloak out in the middle of it. The
+  limbs are about round and move under the cloth, which slides around them, so
+  their capsules are round and reach out to 90 percent of their vertices, so the
+  calf, the heel, and the back of the upper arm do not stand out of them; an
+  arm's are the vertices along its segment, so the shoulder does not widen it. A
+  chain need not lie in its cloth: when a garment goes on, the client measures
+  from its model how far its cloth reaches beyond and within each particle of
+  its chains (see Layers), and a sample keeps from a capsule the margin its
+  cloth keeps, the profile's margin and how far the cloth lies within it, but no
+  more than it has in the bind pose less the 20 mm band, so a body in its bind
+  pose wears its garments exactly as they were made and approved, and nothing
+  gives way there. A cloak will also clear a backpack or a quiver on
+  `Socket_Back`.
+- **Layers**: a cloak worn over a robe lies over its skirt. The vertices that a
+  chain's bones move most lie at places along the chain, such as the rings of a
+  skirt, and each particle takes the farthest out and in between the places on
+  either side of it. The skirt chains are laid first; their particles moved out
+  by the skirt cloth's reach, joined in triangles to the next chain around, are
+  the skirt's outer side, and a cloak's end and middle samples keep outside it by
+  a gap of 10 mm and by how far the cloak's own cloth lies within them, seen
+  from the hips' own upright axis, so the layers hold also when the body lies
+  down. A ray along the seam of two triangles crosses both, so a cloak chain
+  right behind a skirt chain never slips between them. The art pipeline's pair
+  check lays both garments' chains the same way, at rest too, and a robe that
+  lies through the cloak at rest breaks a rule.
 - **Springs**: `ClothSprings` gives every particle of a chain a place and a
   speed in the frame of its anchor bone, the hips for a skirt, the upper chest
   for a cloak, and the head for a hood, and springs it toward where the target
@@ -767,129 +740,115 @@ The target pose is `ClothPose` in the assembly `Mmorpg.Client.Cloth`:
   is shown lies between the last two steps. The anchor's motion in the world is
   filtered over about 25 ms, its acceleration again, and reaches the cloth as
   forces of inertia that change no faster than the limits allow: 20 m/s², 540
-  degrees a second, and 60 rad/s², smoothly across the steps of a frame. So a
-  stop from a jog swings the hem with the whole stop, spread over a quarter of a
-  second, and a spin of an attack at 1440 degrees a second flares the cloth only
-  as a spin at the limit does. Gravity counts only as far as the anchor leans
-  away from the bind pose, damping counts against the anchor, not the air, and
-  the anchor's speed leans the cloth back as a wind, the more the farther it
-  hangs from the anchor, up to a cap. Then each step keeps neighbouring chains
-  between 0.6 and 1.4 of how far apart the target lays them; the chains within
-  their twist around the anchor's upright axis from the target, the skirt 18 and
-  the cloak 9 degrees, and toward each neighbour within 0.45 of the angle to its
-  target, so two chains never meet however close the legs push their targets;
-  the bones at their lengths and within a cone around where the target points
-  them; and the speed under 8 m/s against the anchor. Last, the body pushes the
-  cloth out: no bone of the springs lies nearer the body than the target pose,
-  the way its chain faces, so the legs and the body decide where the cloth is
-  and the springs only swing it out and to the side, and a cloak over a robe is
-  kept outside the robe's swinging skirt in every step, so its pushes add up
-  over the steps. Such a push takes the speed into the body out of the cloth,
-  slides it with a friction of 0.3, and gives it at most 0.3 m/s, so a jolt of
-  a clip, as the `Jog` clip's knee that snaps straight, moves the cloth where it
-  pushes but does not fling it. What is shown is faded in over the target and
-  laid with the target pose's collision as the body stands this frame, without
-  the contact band and the arms, which lift a cloak by a share of how far they
-  come into it rather than out of it, and every sample may lie as deep in a
-  collider as it lies in the target pose, so a body in its target pose shows it
-  exactly. A chain with a broken value starts again on its target, and a body
-  whose cloth lay within 1 mm of its target for half a second sleeps on it until
-  a step would move it farther.
+  degrees a second, and 60 rad/s², smoothly across the steps of a frame. Below
+  the limits the cloth lags, swings, and sways as with real inertia, and above
+  them it feels only the limit: a stop from a jog swings the hem with the whole
+  stop, spread over a quarter of a second, and a spin of an attack at 1440
+  degrees a second flares the cloth only as a spin at the limit does. Gravity
+  counts only as far as the anchor leans away from the bind pose, damping counts
+  against the anchor, not the air, and the anchor's speed leans the cloth back
+  as a wind, the more the farther it hangs from the anchor, up to a cap. Then
+  each step keeps neighbouring chains between 0.6 and 1.4 of how far apart the
+  target lays them, so a skirt hangs together and a knee tents it; the chains
+  within their twist around the anchor's upright axis from the target, the
+  skirt 18 and the cloak 9 degrees, and toward each neighbour within 0.45 of the
+  angle to its target, so two chains never meet however close the legs push
+  their targets; the bones at their lengths and within a cone around where the
+  target points them; and the speed under 8 m/s against the anchor. Last, the
+  body pushes the cloth out: the target pose is a floor, and no bone of the
+  springs lies nearer the body than the target pose, the way its chain faces,
+  because springs that lagged behind it let the legs through a cloak between
+  its samples. So the legs and the body decide where the cloth is, and the
+  springs only swing it out and to the side. A cloak over a robe is kept outside
+  the robe's swinging skirt in every step, so its pushes add up over the steps.
+  Such a push takes the speed into the body out of the cloth, slides it with a
+  friction of 0.3, and gives it at most 0.3 m/s, so a jolt of a clip, as the
+  `Jog` clip's knee that snaps straight, moves the cloth where it pushes but
+  does not fling it. The springs' own steps collide only to keep a cloak out of
+  the skirt: what is shown is faded in over the target and laid with the target
+  pose's collision as the body stands this frame, without the contact band and
+  the arms, which lift a cloak by a share of how far they come into it rather
+  than out of it, and every sample may lie as deep in a collider as it lies in
+  the target pose, so a body in its target pose shows it exactly. The contact
+  band and an arm's lift are not idempotent, so collision fed back into the
+  springs would push the cloth on and on. A chain with a broken value starts
+  again on its target, and a body whose cloth lay within 1 mm of its target for
+  half a second sleeps on it until a step would move it farther.
 - **Jumps**: a frame in which the body or an anchor moves more than 2 m, faster
   than 20 m/s, or turns more than 150 degrees is a jump, and so is any frame the
-  game tells the solver of with `NotifyDiscontinuity`: the local player's hard
-  corrections and teleports, and every time `RemoteMovementPresenter` presents a
-  remote player or a Mob from a new start or a restarted clock. The cloth is
-  carried along: the anchors take their new place without it reaching their
-  filters, and last frame's bones move with the body's own jump, so the steps
-  see the clips move and not the jump.
-- **Profiles**: a garment names a cloth profile, such as `robe`, `cloak`, or
-  `hood`, with its margin and slack, which the target pose reads, and its
-  springs in SI units, from the chain's root to its tip:
+  game tells the solver of: the local player's hard corrections and teleports,
+  and every time a remote player or a Mob is presented from a new start or a
+  restarted clock. The cloth is carried along: the anchors take their new place
+  without it reaching their filters, and last frame's bones move with the body's
+  own jump, so the steps see the clips move and not the jump.
+- **Profiles**: a garment names a cloth profile, `robe`, `cloak`, or `hood`, with
+  its margin and slack, which the target pose reads, and its springs in SI
+  units, from the chain's root to its tip:
 
-  | Profile | Hz root, tip | Damping root, tip | Cone root, tip | Twist | Wind per m/s, at most |
-  | --- | --- | --- | --- | --- | --- |
-  | Robe | 4, 2.5 | 0.6, 0.4 | 35, 60 degrees | 18 degrees | 0.6, 4 m/s² |
-  | Cloak | 2.5, 2.5 | 0.6, 0.6 | 40, 55 degrees | 9 degrees | 8, 30 m/s² |
-  | Hood | 6, 6 | 0.7, 0.7 | 20, 20 degrees | none | 0.3, 2 m/s² |
+  | Profile | Margin, slack | Hz root, tip | Damping root, tip | Cone root, tip | Twist | Wind per m/s, at most |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | Robe | 12 mm, 0.1 | 4, 2.5 | 0.6, 0.4 | 35, 60 degrees | 18 degrees | 0.6, 4 m/s² |
+  | Cloak | 20 mm, 0.05 | 2.5, 2.5 | 0.6, 0.6 | 40, 55 degrees | 9 degrees | 8, 30 m/s² |
+  | Hood | 10 mm, none | 6, 6 | 0.7, 0.7 | 20, 20 degrees | none | 0.3, 2 m/s² |
 
-  Victor asked on 2026-10-25 for a cloak that the speed's wind leans back from
-  the heels and that stays taut rather than flick up at its hem, so it is as
-  stiff at the hem as at the top and more damped; every profile feels gravity in
-  full. The Wardrobe tunes them; see
-  [Art Pipeline](ART_PIPELINE.md#garments).
-- **Level of detail and jobs**: one `ClothWorld` holds every dressed body in play
-  in fixed blocks, and `ClothChainScheduler` steps it once a frame from the main
-  camera, after it moved (`PresentationExecutionOrder.Cloth`). Three Burst jobs
-  run on the worker threads: one reads every body's bones, one lays every body
-  in view in its target pose and swings its springs, a body a job, and one turns
-  the chain bones. Every remote player is a root of its World scene, so the
-  transform jobs take the players side by side. A body whose cube of 4 m around
-  it lies outside the camera's view moves nothing; beyond 60 m the chains rest,
-  and a body already at rest writes nothing. Of the bodies in view within 60 m,
-  the largest on the screen have springs, about 48 of them, a robe and a cloak
-  counting two, and a body that has them keeps them against one up to a quarter
-  larger, so no body flickers between the levels; every other body shows its
-  target pose. The springs fade in over 0.3 s, always from the target, and out
-  over 0.3 s; a body out of view or at rest starts again from the target when it
-  has springs again. `ClothChainScheduler.Plan` is a pure function of the bodies'
-  distances, views, sizes on the screen, costs, and last levels, which the tests
-  check, and the profiler marker `ClothChainScheduler.Step` shows what the cloth
-  costs the main thread. Every body of one model shares what was measured of it,
-  its bind pose, capsules, and legs, and every garment model what was measured
-  of its cloth; out of play, as in the Wardrobe and the tests, each body has a
-  world of its own and measures its own, so a model exported again is measured
-  again.
+  The cloak is as stiff at its hem as at its top and more damped, so it stays
+  taut rather than flick up at its hem, and the wind of its speed leans it back
+  from the heels. Every profile feels gravity in full. The Wardrobe tunes them;
+  see [The Wardrobe](ART_PIPELINE.md#the-wardrobe).
+- **Level of detail and jobs**: one `ClothWorld` holds every dressed body in
+  play in fixed blocks, and `ClothChainScheduler` steps it once a frame from the
+  main camera, after it moved. Three Burst jobs run on the worker threads: one
+  reads every body's bones, one lays every body in view in its target pose and
+  swings its springs, a body a job, and one turns the chain bones. Every remote
+  player is a root of its World scene, so the transform jobs take the players
+  side by side. A body whose cube of 4 m around it lies outside the camera's
+  view moves nothing; beyond 60 m the chains rest without a fade, and a body
+  already at rest writes nothing. Of the bodies in view within 60 m, the largest
+  on the screen have springs, about 48 of them, a robe and a cloak counting two,
+  and a body that has them keeps them against one up to a quarter larger, so no
+  body flickers between the levels; every other body shows its target pose. The
+  springs fade in over 0.3 s, always from the target, and out over 0.3 s; a body
+  out of view or at rest starts again from the target when it has springs again.
 
-Measured on 2026-10-25 in the Editor, with Burst's safety checks on as the Editor
-runs it: a body jogging in a robe and a cloak takes 0.29 ms of one core in its
-target pose and 0.53 ms with its springs; 100 such bodies take about 3.5 ms of a
-frame on 15 worker threads in their target pose, and about 5.8 ms with springs
-on 48 of them. Without the safety checks it is about a third less. In the game,
-joined to Development World 2 with Victor's development bots, about 80 players in
-interest, 76 of them dressed, and the camera low over them, the cloth took 0.79
-ms of the main thread on average and 1.27 ms at the 95th percentile with every
-body in its target pose, at 108 FPS, and 1.22 and 1.90 ms with springs on the six
-bodies within 60 m in view, at 100 FPS. A body that springs is one job, so the
-main thread waits for the slowest of them; a body beyond 60 m costs nothing, so
-the chains still rest there without a fade. The target pose of every visible
-body stays within the redesign's goal of 1 ms of the main thread.
+The levels rest on the cost. In the Editor, with Burst's safety checks on, a
+body jogging in a robe and a cloak takes 0.29 ms of one core in its target pose
+and 0.53 ms with its springs; 100 such bodies take about 3.5 ms of a frame on 15
+worker threads in their target pose, and about 5.8 ms with springs on 48 of
+them. Without the safety checks it is about a third less. In the game, with
+about 80 players in interest, 76 of them dressed, and the camera low over them,
+the cloth took 0.79 ms of the main thread on average and 1.27 ms at the 95th
+percentile with every body in its target pose, and 1.22 and 1.90 ms with springs
+on the six bodies within 60 m in view. A body with springs is one job, so the
+main thread waits for the slowest of them. The target pose of every visible body
+stays within the goal of 1 ms of the main thread, so a body beyond 60 m needs no
+fade.
 
 The solver is presentation only. It runs the same for the local player, other
 players, and bots, and never reaches the server. It moves a few bones per chain
-and is not a cloth simulation; see E3.
+and is not a cloth simulation.
 
 ### Target Pose And Parity
 
-`ClothPose` works on plain data, and `tools/blender/art_pipeline/cloth_core.py`
-lays the same in Python with Unity's own vector and rotation arithmetic, such as
-`Quaternion.Slerp`, which above a dot of 0.95 blends straight and normalizes;
-`cloth.py` measures the bodies and garments in Blender and hands them to it, as
-[Art Pipeline](ART_PIPELINE.md#cloth-parity) describes. Their constants are the
-`cloth` section of `art/Skeletons/Humanoid.json`, which `ClothPoseTests` checks
-against the client's. `MMORPG > Tools > Art Pipeline > Write Cloth Fixtures`
-captures both bodies in the robe, the cloak, and both, in 39 poses of their
-clips, set by hand, and random, with what the world's Burst jobs laid and the
-capsules as posed and in the bind pose, in
-`tools/blender/tests/fixtures/cloth_kinematics.json`. The Unity tests lay every
-case again with `ClothPose` and capture the bodies again, so a change of the
-target pose, a body, or a garment shows as a change of the fixtures, and the
-Python tests, which CI runs, lay every case with `cloth_core.py` within 0.01 mm.
-On 2026-10-25 the two agreed within 0.002 mm, and the Blender checks of `Robe`
-and `Cloak` with the target pose met every rule: the legs come through `Robe` only
-at the hip crease in `Death`, by up to 30 mm, and through `Cloak` nowhere.
+`ClothPose` works on plain data, and the art pipeline lays the same target pose
+in Python, step by step, from the same constants, the `cloth` section of
+`art/Skeletons/Humanoid.json`, so the review sheets, the review files, and the
+checks of garments show the cloth as every visible body in the game shows it.
+Cases captured from the client keep the two within 0.01 mm of each other in CI;
+see [Cloth Parity](ART_PIPELINE.md#cloth-parity). The Blender checks of `Robe`
+and `Cloak` in the target pose meet every rule: the legs come through the robe
+only at the hip crease in `Death`, by up to 30 mm, and through the cloak
+nowhere.
 
 ### Measuring The Cloth
 
 `ClothStressMotion` lists the motions loose cloth is measured and reviewed in:
 Idle, Walk, Jog, and Death, and stress motions that move and turn the root over
 them, with no clip of their own. They are spins of 720, 1440, and 2880 degrees a
-second with a stop, turns of 90 and 180 degrees at the simulation's 720 degrees a
-second while jogging, a jog with a stop, a zig-zag of sharp corners, the zig-zag
-as a remote body shows it through `RemoteMovementPresenter` at 15 snapshots a
-second, a jog in jittery frame times between 1/240 and 1/20 s, a teleport, a hard
-correction of 3 m, and a turn of 180 degrees at once. `ClothMotionMeter`
-measures every frame:
+second with a stop, turns of 90 and 180 degrees at the simulation's 720 degrees
+a second while jogging, a jog with a stop, a zig-zag of sharp corners, the
+zig-zag as a remote body shows it at 15 snapshots a second, a jog in jittery
+frame times between 1/240 and 1/20 s, a teleport, a hard correction of 3 m, and
+a turn of 180 degrees at once. `ClothMotionMeter` measures every frame:
 
 - how many of the body's leg and arm vertices come through the loose cloth, and
   how far: a vertex comes through when the cloth crosses the way to it from the
@@ -899,72 +858,24 @@ measures every frame:
 - how much the chains jerk, the third difference of their particles in the frame
   of the bone they hang from, as RMS over the steady phases;
 - how far a spin flares the chains' tips out, and how long they take to settle
-  after a stop or a spin;
+  after a stop or a spin, which counts the cloth settled when its swing on the
+  target changes no faster than 10 cm/s beyond how fast the target itself moves;
 - whether the skirt's chains keep their order around the hips;
-- how far the frame of a jump moves the chains in the frame of their bone.
+- how far the frame of a jump moves the chains in the frame of their bone;
+- how often the legs push a cloak's lower half in steady motion.
 
 `MMORPG > Tools > Art Pipeline > Measure Cloth` runs every motion on both bodies
 in the robe, the cloak, and both, and steps a zig-zag at 1/30, 1/60, and 1/144 s
-and in jittery frames against the same at 1/240 s, into
-`artifacts/cloth-measurements.md`. Each run starts the clips and the chains
-again, so runs compare. The solver above measured on 2026-10-25, the worst of
-both bodies and the three outfits:
+and in jittery frames against the same at 1/240 s, playing the clips and with the
+body's pose held, into `artifacts/cloth-measurements.md`, which Git ignores.
+Each run starts the clips and the chains again, so runs compare. The Wardrobe
+shows the same measures while it plays.
 
-| Motion | Through cloth | Robe through cloak | Jerk RMS | Skirt out of order | Other |
-| --- | --- | --- | --- | --- | --- |
-| Idle | none | none | 4 m/s³ | never | |
-| Walk | 69 vertices, 61 mm | 6, 44 mm | 525 m/s³ | 1 frame | |
-| Jog | 130, 95 mm | 10, 65 mm | 1,819 m/s³ | 132 of 360 frames | |
-| Zig-zag | 150, 122 mm | 14, 65 mm | 5,093 m/s³ | 114 frames | |
-| Network 15 Hz | 184, 116 mm | 23, 129 mm | 4,811 m/s³ | 114 frames | |
-| Spin 1440 | 200, 116 mm | 143, 392 mm | 1,097 m/s³ | never | flares 72 cm, not settled after 3 s |
-| Jog stop jog | 280, 109 mm | 113, 287 mm | 1,564 m/s³ | 83 frames | not settled after 2 s |
-| Death | 217, 110 mm | 79, 820 mm | 13,425 m/s³ | 177 frames | |
-| Teleport, snap 3 m | 132, 95 mm | 8, 78 mm | 1,745 m/s³ | 89 frames | the jump moves the chains 238 mm |
-| Snap 180 | 179, 100 mm | 145, 256 mm | 1,513 m/s³ | never | the jump moves the chains 530 mm |
-
-In the zig-zag the chains' tips lay up to 119 cm, and 8 to 35 cm as RMS, from
-where they lie stepped at 1/240 s, so the cloth's course depends on the frame
-time. At rest no vertex comes through; in motion the legs come through the robe
-and the cloak by up to 12 cm, between and past the chains, and the springs
-tangle the skirt's chains. These numbers are what the redesign below is
-measured against.
-
-The target pose of the redesign's second step, measured on 2026-10-25 the same
-way; `Legs` counts only the legs and feet, whereas `Through cloth` also counts an
-arm through a cloak's edge:
-
-| Motion | Through cloth | Legs | Robe through cloak | Jerk RMS | Skirt out of order | Other |
-| --- | --- | --- | --- | --- | --- | --- |
-| Idle | none | none | none | 5 m/s³ | never | |
-| Walk | 40 vertices, 31 mm | 8 mm | 4, 27 mm | 3,545 m/s³ | never | |
-| Jog | 47, 75 mm | 17 mm | 3, 36 mm | 6,877 m/s³ | never | |
-| Zig-zag | 47, 75 mm | 17 mm | 3, 36 mm | 6,873 m/s³ | never | |
-| Network 15 Hz | 47, 75 mm | 17 mm | 3, 36 mm | 6,872 m/s³ | never | |
-| Spin 1440 | none | none | none | 4 m/s³ | never | flares 2 cm |
-| Jog stop jog | 47, 75 mm | 17 mm | 3, 36 mm | 5,620 m/s³ | never | |
-| Death | 118, 104 mm | 104 mm | 9, 17 mm | 9,603 m/s³ | 14 frames | |
-| Teleport, snap 3 m | 47, 75 mm | 17 mm | 3, 36 mm | 6,880 m/s³ | never | the jump moves the chains 52 mm |
-| Snap 180 | none | none | none | 5 m/s³ | never | the jump moves the chains 2 mm |
-
-The legs come through the robe by at most 17 mm in motion, against 95 mm before,
-and never through the cloak; `ClothStressMotionTests` holds both. The skirt's
-chains keep their order, a spin no longer throws the cloak out, and a jump moves
-the cloth only as far as the legs moved in that frame. The cloth jerks more,
-because without springs it follows every jolt of the clips: the knees and ankles
-of the `Jog` clip jerk by 5,628 m/s³ RMS against the hips themselves, its thighs
-snapping up to 15 degrees in a frame at the toe off, where the gait model's leg
-is straight; the springs of the third step smooth that. What still comes through:
-an arm through a cloak's edge at the far end of its swing, after it lifted the
-edge 8 cm; the legs through the waist of a robe in `Death`, where the skirt's
-roots follow the hips and the thighs fold up 90 degrees; and a robe through a
-cloak where a knee lifts both. The zig-zag's chains depend on the frame time only
-as much as the clips' own sampling does, since the pose has no memory.
-
-The springs of the third step, measured on 2026-10-25 the same way with the
-profiles above; `Other` gives how far a spin flares the tips out, how long the
-cloth's swing on its target takes to settle after a stop or a spin, and how far
-the frame of a jump moves the chains:
+The solver measures as follows, the worst of both bodies and the three outfits.
+`Legs` counts only the legs and feet, whereas `Through cloth` also counts an arm
+through a cloak's edge; `Other` gives how far a spin flares the tips out, how
+long the cloth's swing on its target takes to settle after a stop or a spin, and
+how far the frame of a jump moves the chains:
 
 | Motion | Through cloth | Legs | Robe through cloak | Jerk RMS | Skirt out of order | Other |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -982,25 +893,29 @@ the frame of a jump moves the chains:
 | Teleport, snap 3 m | 48, 62 mm | 18 mm | 2, 52 mm | 7,192 m/s³ | never | the jump moves the chains 57 mm |
 | Snap 180 | none | none | none | 17 m/s³ | never | the jump moves the chains 2 mm |
 
-The legs come through the cloth as far as in the target pose, since no bone of
-the springs lies nearer the body than it, and never through a cloak. The
-skirt's chains keep their order in every spin, and a spin flares the hems out by
-17 to 18 cm and lets them settle within 0.6 s of its end, where the target pose
-flared 2 cm. A jump moves the cloth no more than the jog's own legs move it in
-that frame: `ClothSpringTests` holds the jump's frame and the next within a
-centimeter of the same motion without the jump. The robe comes through a cloak
-by up to 12 cm only in a turn of 180 degrees in a quarter of a second, where the
-robe flares out below the cloak's hem. The cloth jerks less than in the target
-pose while walking, 2,375 against 3,545 m/s³, but as much while jogging and more
-while dying: where the legs push the cloth it goes with them, and the `Jog`
-clip's knee snaps straight at the toe off, as the target pose showed; the
-springs smooth everything the legs do not push. Of the steady frames of a jog,
-the legs push a cloak's lower half in about half, by up to 15 degrees, where
-the target pose had the heels kick it back by up to 71 degrees; the heel comes
-up behind nearly level in a jog and reaches a cloak to the middle of the calf
-however it hangs. `Settle` now counts the cloth settled when its swing on the
-target changes no faster than 10 cm/s beyond how fast the target itself moves,
-since springs trail a target that the clip keeps moving.
+The legs come through the cloth no farther than in the target pose alone, since
+no bone of the springs lies nearer the body than it, and never through a cloak;
+`ClothStressMotionTests` holds the legs out of a cloak and within 25 mm of a
+robe while walking and jogging. What still comes through: an arm through a
+cloak's edge at the far end of its swing, after it lifted the edge 8 cm; the
+legs through the waist of a robe in `Death`, where the skirt's roots follow the
+hips while the thighs fold up 90 degrees; and a robe through a cloak where a
+knee lifts both, by up to 12 cm only in a turn of 180 degrees in a quarter of a
+second, where the robe flares out below the cloak's hem. The skirt's chains keep
+their order in every spin, a spin flares the hems out by 17 to 18 cm, where the
+target pose alone flares them 2 cm, and the cloth settles within 0.6 s of its
+end. A jump moves the cloth no more than the jog's own legs move it in that
+frame: `ClothSpringTests` holds the jump's frame and the next within a
+centimeter of the same motion without the jump.
+
+The cloth jerks less than in the target pose alone while walking, 2,375 against
+3,545 m/s³, but as much while jogging and more while dying: where the legs push
+the cloth it goes with them, and the `Jog` clip's knee snaps straight at the toe
+off, its thighs turning up to 15 degrees in a frame where the gait model's leg
+is straight. The springs smooth everything the legs do not push. In about half
+of a jog's steady frames the legs push a cloak's lower half, by up to 15
+degrees: the heel comes up behind nearly level in a jog and reaches a cloak to
+the middle of the calf however it hangs.
 
 How far the chains' tips in a zig-zag lie from where they lie stepped at 1/240 s,
 in centimeters at most and as RMS over the frames, the worst of both bodies and
@@ -1017,63 +932,6 @@ samples the clips differently at different frame times; with the pose held, the
 springs keep their course within a centimeter as RMS at every frame time, which
 `ClothSpringTests` holds for a zig-zag and a spin.
 
-### Spring Bone Redesign
-
-On 2026-10-25 Victor rejected the cloth as jittery, with legs that come through
-the robe and the cloak, and unreliable, and accepted a redesign: spring bones on
-today's chains, as FFXIV, GW2, and many other MMOs move skirts and cloaks, with
-no cloth simulation and no stiff cloth, robust also in hectic motions such as the
-spin of an attack. Animation and the legs decide where the cloth is; the springs
-only add swing within limits.
-
-| # | Decision |
-| --- | --- |
-| T1 | Spring bones on today's chains, no cloth simulation. The rig stays: eight skirt chains of four bones, five cloak chains of five, and the hood's two, so no body, clip, cage, template, or texture is approved again. |
-| T2 | A target pose, without memory, for every visible body every frame, so no body waits for its turn; the same last collision pass at every level of detail, so no body shows a pose the Blender checks would fail. |
-| T3 | The legs collide with a surface: quads between neighbouring chains on the cloth's inner side, not only its particles, and they push it outward only, since the legs are always inside the skirt and in front of the cloak. |
-| T4 | A body in the bind pose wears its garments exactly as they were made: every collision keeps no more margin than the bind pose has, gravity counts against the bind pose, and cloth that nearly stands still sleeps on its target. |
-| T5 | The springs run in the frame of the chain's anchor bone, the hips, the upper chest, or the head, at a fixed 90 Hz, whatever the frame rate. Motion and turning in the world reach the cloth as smoothed and limited forces, 20 m/s², 540 degrees a second, and 60 rad/s²: below the limits the cloth lags, swings, and sways as with real inertia, above them it feels only the limit. |
-| T6 | Every chain bone has a cone around its target direction, and the chains a twist limit around the hips' upright axis, so they never cross in a spin. |
-| T7 | Neighbouring chains are tied by soft links between 0.6 and 1.4 of their rest distance, so the skirt hangs together and a knee tents it. |
-| T8 | A collision does not bounce: the speed into the body goes, and the cloth slides with a little friction. The cloth has a speed limit, and a broken value starts its chain again on the target. |
-| T9 | A cloak over a robe stays outside the robe's outer surface, which replaces the envelope; the cloak also collides with the arms; the hood uses the same system, stiffer. |
-| T10 | A teleport, a respawn, or a hard correction carries the cloth along rigidly for that frame instead of starting it again, and the player code says so; jumps are also found on their own. |
-| T11 | Burst and jobs on the other processor cores; remote players are created at the scene root so the transform jobs run in parallel. |
-| T12 | The cloth's constants in `Humanoid.json`, Blender laying the target pose exactly as Unity does, and a parity test in CI. |
-| T13 | The stress motions in tests and in the Wardrobe; Victor approves the motion in the Wardrobe. |
-| T14 | Springs for a budget of about 48 bodies, chosen by their size on screen with a margin against flicker between the levels, faded in and out over 0.3 s; every other visible body shows its target pose. |
-
-It is delivered in three pull requests, each measured with the stress motions:
-
-1. Done. The measuring stick and the parity, with no visible change: the stress
-   motions and `ClothMotionMeter` in tests and the Wardrobe, the cloth section of
-   `Humanoid.json`, the kinematic layer and `cloth_core.py`, the fixtures with
-   their C# and Python tests in CI, and the numbers above.
-2. Done. The new target pose on Burst: the packages, the assembly
-   `Mmorpg.Client.Cloth`, a disposable `ClothWorld` and its jobs, remote players
-   at the scene root, and the new collision with outward pushes only, the bind
-   pose's clearance, the arms, and the cloak over the robe's outer surface, in
-   C# and Python with new fixtures, for every visible body every frame; `Robe`
-   and `Cloak` were checked and rendered again. T3's surface is the samples
-   toward the neighbours rather than quads the legs collide with, since a bone
-   swings rather than its particles moving; until the third step the nearest
-   bodies also show the target pose, which is stiffer.
-3. Done. The springs and levels of detail: the springs in the jobs, the budget
-   and the fades, the jump signals, the profiles in SI units and tuned with
-   Victor in the Wardrobe, and the measurement in the game, all described under
-   [Runtime Solver](#runtime-solver) and measured under
-   [Measuring The Cloth](#measuring-the-cloth). Three things went otherwise than
-   planned. The target pose is a floor the springs never come nearer the body
-   than, because springs that lagged behind it let the legs through a cloak by 3
-   cm between its samples. The springs' own steps collide only to keep a cloak
-   out of a robe's swinging skirt, and what is shown is laid with the target
-   pose's collision, letting every sample lie as deep as in the target, because
-   collision fed back into the springs pushed the cloth on and on: the contact
-   band and an arm's lift are not idempotent. And the chains rest beyond 60 m
-   without a fade, since the target pose of every visible body costs under 1 ms.
-   The old solver's per-frame stiffness, damping, and gravity are gone from
-   `ClothProfile`.
-
 ## Hair And Headwear
 
 Hair is a garment of its own visual slot, `hair`, with a shape key
@@ -1083,26 +941,25 @@ closed helmet, `compress` for a hood or a hat, so the fringe and the neck hair
 show under it, and `show` for a circlet or a hood down. Headwear covers the scalp
 like any garment covers the body. A hood that can be up or down is two garments
 of the same item. A hairstyle is a modeled template of the `hair` slot with its
-textures, and it comes with the head region of the cage.
+textures, made on the head region of the cage.
 
-The sync fits the form under headwear to every body like the hair itself and
-checks the band in both forms. A template worn over hair is checked over the
-form the hair takes under it: the compressed form under `compress`, the hair as
-it is under `show`, and no hair under `hide`. Unity takes the blend shape in
-full when it puts a character together under headwear that compresses the hair.
+The pipeline fits the pressed form to every body like the hair itself and checks
+every template worn over hair against the form the hair takes under it. Unity
+takes the pressed form in full when it puts a character together under headwear
+that compresses the hair, so it costs nothing per frame.
 
 The first hairstyle, `ShoulderHair`, is straight and thick in stylized locks
 with a middle parting and a short fringe, covers the ears, and ends where it
 lands on the shoulders; `DarkBrownHair` paints it dark brown with lighter
-strands. The gugel `HoodUp` covers the head and the compressed hair with an
-opening for the face and a short collar over the neck and the shoulders that ends
-above the cloak's clasps, over the cloak. Victor had its short point at the back
-taken away, so it hangs on no chain and the hood chains stay unused. `HoodDown`
-is the same hood pushed back: its collar stays around the neck with its top
-rolled over into a turned band, and the hood lies folded on the upper back over
-the cloak and the hair as it is. A helmet is a modeled garment weighted to the
-head, not a rigid attachment: `NasalHelm` is a pointed spangenhelm of iron plates
-held by four riveted bands under a round cap, with a riveted brow band, a
+strands. The gugel `HoodUp` covers the head and the pressed hair with an opening
+for the face and a short collar over the neck and the shoulders that ends above
+the cloak's clasps, over the cloak. It has no point at the back, so it hangs on
+no chain and the hood chains stay unused. `HoodDown` is the same hood pushed
+back: its collar stays around the neck with its top rolled over into a turned
+band, and the hood lies folded on the upper back over the cloak and the hair as
+it is. A helmet is a modeled garment weighted to the head, not a rigid
+attachment, and so will a mask be: `NasalHelm` is a pointed spangenhelm of iron
+plates held by four riveted bands under a round cap, with a riveted brow band, a
 leather lining that shows below the iron, and a nasal riveted to the brow band
 that bends forward over the nose's root; it sits above the ears and compresses
 the hair.
@@ -1113,16 +970,14 @@ Weapons, shields, quivers, and backpacks are models on the skeleton's sockets.
 A model's root object `Grip` marks where it is held, and the socket's position
 and turn on each body type place it. A static model follows the hands and the
 back without weights; a model with moving parts of its own, such as a bow's
-limbs and string, is skinned to a skeleton of its own below `Grip`. The first
-two, the Iron Sword and the Heater Shield, were made on 2026-10-25 to test the
-hands' sockets, as Victor asked:
+limbs and string, is skinned to a skeleton of its own below `Grip`.
 
 - **The model is the socket's**: an attachment is an art asset of its own with
   its socket in `asset.json`, modeled in the socket's axes around `Grip`; see
-  [Art Pipeline](ART_PIPELINE.md#attachments). The sockets stay as the rig places
+  [Attachments](ART_PIPELINE.md#attachments). The sockets stay as the rig places
   them, since a socket that moved would change the rig every garment, the cage,
-  and the clips are fitted to; an item that needs another place carries it in its
-  own model.
+  and the clips are fitted to; an item that needs another place carries it in
+  its own model.
 - **One renderer**: the body combines an attachment into its one mesh like a
   garment, every vertex weighted fully to the socket bone, so a crowd of armed
   bodies costs no renderer more, and a corpse is baked with what it still holds.
@@ -1133,95 +988,82 @@ hands' sockets, as Victor asked:
   bounds leave room for the hand to swing with it.
 - **The hand closes**: the clip `Grip` closes the fingers around a handle of
   29 mm on the socket. `HumanLocomotion.controller` plays it on the layers
-  `MainHandGrip` and `OffHandGrip`, each masked to one hand's fingers, and the body
-  turns a layer on while that hand's socket holds an attachment, over every other
-  clip, also `Death`.
-- **One per socket**: an item shows its attachment only in the equipment slot
-  of its socket, `main_hand` on `Socket_MainHand` and `off_hand` on
+  `MainHandGrip` and `OffHandGrip`, each masked to one hand's fingers, and the
+  body turns a layer on while that hand's socket holds an attachment, over every
+  other clip, also `Death`.
+- **One per socket**: an item shows its attachment only in the equipment slot of
+  its socket, `main_hand` on `Socket_MainHand` and `off_hand` on
   `Socket_OffHand`, so a body holds one attachment per socket. A weapon in the
   main hand that the left hand holds, such as a bow, shows on `Socket_OffHand`;
   its item blocks the off hand, so no other item claims that socket.
 - **A shield lies along the forearm**: the Heater Shield hangs from a handle in
   the fist and a strap around the forearm, so it hangs outward at the side with
-  its point down in the gaits and will face forward when a later clip raises the
-  arm in guard. A round shield with a centre grip would lie flat under a hanging
-  hand until such a clip exists.
+  its point down in the gaits, and will face forward once a clip raises the arm
+  in guard (planned). A round shield with a centre grip would lie flat under a
+  hanging hand until such a clip exists.
 
-Sheathed weapons are later work. The first hold pose came with the Oak Staff,
-see [Weapon Poses And Attack Clips](#weapon-poses-and-attack-clips).
+Sheathed weapons are planned.
 
 ### Weapon Poses And Attack Clips
 
-A weapon may name how its arm holds it and what its body does when it attacks,
-as Victor decided on 2026-10-27 for the Oak Staff, the first magic weapon:
+A weapon may name how its arm holds it and what its body does when it attacks:
 
 - **A hold pose**: a staff held along the fist's axis from a hanging arm would
-  point straight ahead at hip height, so the staff names the hold clip
-  `HoldStaff` in its `asset.json`. The clip bends the right elbow so the forearm
-  points forward with the thumb up, and the staff stands upright beside the right
-  hip, its crystal leaning in toward the head and its foot out to the side, at
-  least 31 mm from the thighs in every frame of `Walk` and `Jog` on both bodies.
-  `HumanLocomotion.controller` plays it on the layer `MainHandHold`, masked to the
-  right arm, at full weight over the locomotion clips while the main hand holds
-  the weapon and the body lives and uses no tool, so the arm keeps the pose while
-  the legs walk and jog.
+  point straight ahead at hip height, so the Oak Staff names the hold clip
+  `HoldStaff`. The clip bends the right elbow so the forearm points forward with
+  the thumb up, and the staff stands upright beside the right hip, its crystal
+  leaning in toward the head and its foot out to the side, at least 31 mm from
+  the thighs in every frame of `Walk` and `Jog` on both bodies.
+  `HumanLocomotion.controller` plays a hold clip on the layer `MainHandHold`,
+  masked to the right arm, at full weight over the locomotion clips while the
+  main hand holds the weapon and the body lives and uses no tool, so the arm
+  keeps the pose while the legs walk and jog.
 - **An attack clip**: the staff names `Cast`, which the body plays once whenever
   its attack starts: a short wind-up, a thrust that tips the crystal about 30
   degrees toward the target while the open left hand points at it, and the way
-  back to the hold pose, 0.9 s in all. The layer `Action` plays it over the hold
-  pose, fading in over 0.06 s and out over 0.15 s. The fingers stay closed by
-  `MainHandGrip`.
-- **A launch point**: the staff names `launchPoint`, the crystal 70 cm along the
-  shaft in the socket's axes, where its bolt leaves when the attack releases, as
-  the thrust carries the crystal forward, and lands at the server's impact tick.
-- **Made with the scripted rig of the tools**: both clips were keyed on the male
-  body with two-bone IK from searched grip frames that keep the wrists and
-  forearms near their neutral range, and approved by Victor with the staff on
-  2026-10-27.
-
-On 2026-10-31 Victor asked for a bow with its attack, a two-handed greataxe with
-its swing, an attack for one-handed weapons, and a cut for the sword. He approved
-concept sheets, the models, and each clip, and asked that the archer and the
-one-handed attacks move the whole body, the feet too:
-
+  back to the hold pose, 0.9 s in all, striking 0.15 s in. The layer `Action`
+  plays it over the hold pose, fading in over 0.06 s and out over 0.15 s. The
+  fingers stay closed by `MainHandGrip`.
+- **A launch point**: the staff names where its bolt leaves, the crystal 70 cm
+  along the shaft in the socket's axes, as the thrust carries the crystal
+  forward, and the bolt lands at the server's impact tick.
 - **Timed to the release**: the server releases an attack when its weapon
   family's windup ends, so a blow lands, an arrow leaves, and an attack can be
   cancelled before it does; see
-  [Combat Service Features](SERVICE_FEATURES.md). Each weapon with an attack clip
-  names `attackRelease`, the seconds into the clip when its blow lands or its
-  arrow or bolt leaves, equal to its family's windup: 0.35 s for the sword,
-  0.6 s for the axe, 0.8 s for the bow, and 0.15 s for the staff. Every client
-  starts the attacker's clip from the `AttackStarted` event, so the clip comes to
-  its release as the batch of the release arrives: from its start, later for a
-  longer windup, or further in when the event comes late, but never past the
-  release. `AttackCancelled` ends the clip with its fade, and a body that starts
-  to move during the clip ends it too; a body that still moves as the clip
-  begins, such as one that just came into reach, keeps it.
+  [Target-Based Combat](SERVICE_FEATURES.md#target-based-combat). Each weapon
+  with an attack clip names `attackRelease`, the seconds into the clip when its
+  blow lands or its arrow or bolt leaves, equal to its family's windup. Every
+  client starts the attacker's clip from the `AttackStarted` event, so the clip
+  comes to its release as the batch of the release arrives: from its start,
+  later for a longer windup, or further in when the event comes late, but never
+  past the release. `AttackCancelled` ends the clip with its fade, and a body
+  that starts to move during the clip ends it too; a body that still moves as
+  the clip begins, such as one that just came into reach, keeps it.
 - **Facing the target**: the character's facing is part of its movement, which
   turns only while it walks, so a body that stands and attacks turns itself to
-  face its target, at 720 degrees per second, while its attack clip plays and for
-  1.5 s after it, so attacks in a row do not turn it back and forth; it faces its
-  character's way again once it moves. The archer aims at its mark this way, on
-  every client, from the target that `AttackStarted` names.
-- **The whole body**: the layer `Action` is masked to the root, the spine, head,
+  face its target, at 720 degrees per second, while its attack clip plays and
+  for 1.5 s after it, so attacks in a row do not turn it back and forth; it faces
+  its character's way again once it moves. The archer aims at its mark this way,
+  on every client, from the target that `AttackStarted` names.
+- **The whole body**: the archer's and the one-handed attacks move the whole
+  body, the feet too. The layer `Action` is masked to the root, the spine, head,
   both legs, and both arms without the fingers, so the clip's steps, the turn and
   shift of its hips, and its arms play together. Without the root in the mask,
   Unity takes the hips from the lower layers, and the archer's turned stance
   would aim 40 degrees off the target.
 - **The Iron Sword** names `SwordSlash`: a cock, a step in with the left foot
   into the cut, a follow-through, and the way back, 1.0 s, striking 0.35 s in.
-  It has no hold clip; the arm hangs with the sword as before.
+  It has no hold clip; the arm hangs with the sword.
 - **One-handed weapons** without a clip of their own, a melee weapon in one main
   hand, strike with `OneHandStrike`: a cock, a step into the blow, and the way
   back, 1.07 s, striking 0.4 s in.
 - **The Iron Greataxe** names `HoldGreataxe`, the haft resting on the right
-  shoulder with the edge up, and `GreataxeSwing`, a cock, a two-handed swing,
-  and a follow-through, 1.33 s, striking 0.6 s in. Its `offHandGrip` names where
-  the other hand holds the haft. Clips are keyed on the male body and
+  shoulder with the edge up, and `GreataxeSwing`, a cock, a two-handed swing
+  turning the torso, and a follow-through, 1.33 s, striking 0.6 s in. It names
+  where the other hand holds the haft. Clips are keyed on the male body and
   retargeted, so while the swing plays, the other hand takes the haft wherever
   the clip brings it within 6 cm of that point, and lets it be beyond 18 cm,
-  with the fingers of that hand closing as it takes it, by `OffHandToolGrip`
-  like a pickaxe's.
+  with the fingers of that hand closing as it takes it, like a pickaxe's.
 - **The Training Shortbow** is held in the left hand: its item is a main-hand
   weapon that blocks the off hand, and its attachment's socket is `off_hand`. It
   names `HoldBow`, the left arm holding it down and forward, which the layer
@@ -1232,82 +1074,83 @@ one-handed attacks move the whole body, the feet too:
   follow-through.
 - **The bow draws**: the bow is skinned to the `Bow` skeleton, a riser, two bones
   for each limb, a bone for each straight half of the string, and the nock. Its
-  clip `Draw` bends the limbs from brace to full draw, and its `drawLength`, 0.62
-  m, says how far behind the arrow pass the nock comes at full draw. `BowRig`
-  drives the bones after the Animator: the drawing hand takes the string where it
-  rests, the nock follows the hand's socket, the limbs bend by how far the string
-  comes back, and each half of the string turns from its tip to the nock and
-  stretches to reach it. The fingers of the drawing hand close on the string with
+  clip `Draw` bends the limbs from brace to full draw, and its draw length,
+  0.62 m, says how far behind the arrow pass the nock comes at full draw. After
+  the Animator, the drawing hand takes the string where it rests, the nock
+  follows the hand's socket, the limbs bend by how far the string comes back,
+  and each half of the string turns from its tip to the nock and stretches to
+  reach it. The fingers of the drawing hand close on the string with
   `MainHandGrip` while they hold it. On the loose the string springs back to
   brace. Clips are keyed on the male body, so the drawing arm reaches for the
   resting string and then draws it along the arrow's line, from the bow straight
   back, by the same arm solver; a body with shorter arms draws less far.
-- **The arrow is its own**: the Bronze Arrow, `art/Projectiles/BronzeArrow`, is
-  the arrow of every weapon that shoots arrows, not part of the bow.
-  `ClientConfig` names its model. While the drawing hand holds the string an
+- **The arrow is its own**: the Bronze Arrow is the arrow of every weapon that
+  shoots arrows, not part of the bow. While the drawing hand holds the string an
   arrow lies on it, its nock at the string and its point through the arrow pass,
   and when the attack releases that arrow flies on from there to the target,
-  where it lands at the server's impact tick. The archer may move while it flies.
+  where it lands at the server's impact tick. The archer may move while it
+  flies.
 - **Everyone sees it.** Every client plays the attack of the body that started
   it, from the `AttackStarted`, `AttackReleased`, and `AttackCancelled` events
   that name the attacker.
 
 ### Tools In Use
 
-A tool is shown only while its character uses it, as Victor decided on
-2026-10-26: the Mining Pickaxe and the Woodcutting Axe, the attachments of the
-Starter Pickaxe and the Woodcutting Axe in the Tool slot, are held while the
-character gathers and put away when it stops, and everyone sees it.
+A tool is shown only while its character uses it: the Mining Pickaxe and the
+Woodcutting Axe, the attachments of the Starter Pickaxe and the Woodcutting Axe
+in the Tool slot, are held while the character gathers and put away when it
+stops, and everyone sees it.
 
-- **A tool is an attachment with a use clip**: its `asset.json` names the clip
-  of its socket's animation library that the body plays meanwhile, `Mine` for
-  the pickaxe and `Chop` for the axe, and, for a tool held with both hands, the
-  point of the model where the other hand holds it, `offHandGrip`, 33 cm down the
-  haft from the right fist on the leather wrap near the butt. That hand's socket
-  is turned half around the haft from the right hand's, so both thumbs point
-  toward the head and both hands' knuckles toward the stroke.
+- **A tool is an attachment with a use clip**: it names the clip of its socket's
+  animation library that the body plays meanwhile, `Mine` for the pickaxe and
+  `Chop` for the axe, and, for a tool held with both hands, the point of the
+  model where the other hand holds it, 33 cm down the haft from the right fist
+  on the leather wrap near the butt. That hand's socket is turned half around
+  the haft from the right hand's, so both thumbs point toward the head and both
+  hands' knuckles toward the stroke.
 - **It takes both hands.** A tool in use stands in for every attachment in the
   hands, so a sword and a shield are put away while their character gathers and
   come back when it stops. Only an item of the Tool slot is a tool; the Unity
   tests hold every tool item to it.
-- **The swing.** `Mine` lifts the pickaxe over the right shoulder and strikes it
-  down in front of the body, and `Chop` lifts the axe over the right shoulder and
-  hews diagonally down to the left, each 1.5 s, so two strokes fall in each 3 s
-  gathering cycle, without matching the yield. They were made with a scripted
-  rig that animates the tool and reaches both hands to its haft with two-bone IK,
-  choosing each elbow and the tool's roll on the haft that keep both arms inside
-  the humanoid muscle ranges, from searched key poses; both clips were approved
-  by Victor on 2026-10-26. A body plays the clip while it stands and lives, and
-  walking stops the swing at once, before the server's stop arrives.
+- **The swing.** `Mine` strikes the pickaxe down in front of the body at about
+  knee height, lifts it over the right shoulder with its head behind the
+  shoulder, and strikes again, and `Chop` lifts the axe over the right shoulder
+  and hews diagonally down to the left at waist height, each 1.5 s, so two
+  strokes fall in each 3 s gathering cycle, without matching the yield. Both
+  keep every arm inside the humanoid muscle ranges and turn the torso, bend the
+  knees, and look at the stroke. A body plays the clip while it stands and
+  lives, and walking stops the swing at once, before the server's stop arrives.
 - **The other hand holds the haft on every body.** The clips are keyed on the
   male body and retargeted to the female's other proportions, which moves her
-  other hand by up to about 8 cm. After the Animator posed a body, its other hand
-  is pinned on the tool's grip point with two-bone IK, and its collar bone turns
-  forward by up to 15 degrees where the haft passes beyond the arm's reach; see
-  [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
+  other hand by up to about 8 cm. After the Animator posed a body, its other
+  hand is pinned on the tool's grip point with two-bone IK, and its collar bone
+  turns forward by up to 15 degrees where the haft passes beyond the arm's
+  reach; see [Player Bodies](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 - **Everyone sees it.** The worker marks a gathering player as using its Tool
   slot, and the player's appearance carries the definition of the item there as
-  `ToolInUse` while it does, since protocol version 25. The Tool slot stays out
-  of the visible equipment, so others see a tool only in use. The local body
-  takes the tool from its own gathering state at once.
+  `ToolInUse` while it does; see
+  [Character Appearance](REALTIME_PROTOCOL.md#character-appearance). The Tool
+  slot stays out of the visible equipment, so others see a tool only in use. The
+  local body takes the tool from its own gathering state at once.
 
 ## Items
 
-Items show their garments, as Victor decided on 2026-10-25:
+Items show their garments and attachments:
 
 - **An item names its garments** in the client's item presentation, by the
   names of their garment textures, such as `WoolCloak` on `Cloak`, which name a
   template and its texture together, with the colors of their dye channels, or
-  none for the textures' natural colors. The presentation is the client's, next to
-  the item's icon and name; the server knows only the definition ids. Every item
-  of an equipment slot that has a visual slot of its name, `head`, `body`, `legs`,
-  `hands`, `feet`, and `back`, shows garments, and no other item does; an item
-  without a garment of its own shows nothing. The Unity tests hold every item to
-  this, and every garment it names to every body.
-- **Dye colors belong to the definition**: a Blue Wool Robe and a Red Wool Robe are
-  items of their own on the same garment. Dyeing an item in the game, such as at
-  a dyer, would put colors on each item later, and the look would take them from
-  there instead.
+  none for the textures' natural colors. The presentation is the client's, next
+  to the item's icon and name; the server knows only the definition ids. Every
+  item of an equipment slot that has a visual slot of its name, `head`, `body`,
+  `legs`, `hands`, `feet`, and `back`, shows garments, and no other item does.
+  The Unity tests hold every item to this, and every garment it names to every
+  body. How the presentation is authored is in
+  [Item Catalog Authoring](../content/items/README.md#unity-editor-workflow).
+- **Dye colors belong to the definition**: a Blue Wool Robe and a Red Wool Robe
+  are items of their own on the same garment. Dyeing an item in the game, such
+  as at a dyer, would put colors on each item, and the look would take them from
+  there instead (planned).
 - **One garment per visual slot**: of two items whose garments fill one visual
   slot, the garment of the item in the equipment slot of the visual slot's name
   wins, such as a helmet in `head` over a robe's hood, and otherwise the item
@@ -1317,28 +1160,21 @@ Items show their garments, as Victor decided on 2026-10-25:
   it, such as `WoolHoodDown` for `WoolHoodUp`. The player lowers and raises the
   hood with a button in the inventory, and the server keeps the choice with the
   character's look.
-- **Hair is part of the look**, not an item: a garment of the `hair` slot or none,
-  chosen in character creation and changed in the game later, such as at a
-  barber. Every other garment comes from the equipment.
-- **An item names its attachment** in the presentation the same way, since
-  presentation format 4, by the name of its attachment asset, such as
-  `IronSword`; see [Attachments](#attachments). Every equipment slot of such an
-  item is the attachment's socket, which the Unity tests hold every item to.
+- **Hair is part of the look**, not an item: a garment of the `hair` slot or
+  none, chosen in character creation and changed in the game later, such as at
+  a barber. Every other garment comes from the equipment.
+- **An item names its attachment** in the presentation the same way, by the
+  name of its attachment asset, such as `IronSword`; see
+  [Attachments](#attachments). Every equipment slot of such an item is the
+  attachment's socket, which the Unity tests hold every item to. A Tool slot
+  item names a tool instead; see [Tools In Use](#tools-in-use).
 
-The items are the Leather Jerkin, Linen Shirt, Long-Sleeved Linen Shirt, Net
-Shirt, Wool Trousers, Leather Boots, Leather Gloves, Nasal Helm, and the Wool
-Robe, Wool Hood, and Wool Cloak, each also blue and red, with the new category
-`clothing` for the linen and wool and `armor` for the leather and iron. The
-General Store sells them, and the development package `outfits` holds them all.
-Since 2026-10-25 the Iron Sword in `main_hand`, the first melee weapon, and the
-Heater Shield in `off_hand`, `armor` without armor values yet, show their
-attachments; the General Store sells them, and the development package
-`equipment` holds them.
+The clothing and armor of the item catalog show garments this way, the wool set
+also in blue and in red, and the weapons and the shield show attachments.
 
 ### The Look On The Server
 
-Every client sees a character as the server stores it, as Victor decided on
-2026-10-25:
+Every client sees a character as the server stores it:
 
 - **Content names what a look can be.** `content/characters/appearance.json`
   lists the kinds of a look, `face`, `eyes`, `scar`, `tattoo`, `underwear`, and
@@ -1346,207 +1182,70 @@ Every client sees a character as the server stores it, as Victor decided on
   options each offers per kind and visual slot, the first of each its default,
   and the equipment slots whose items other players see. Options are named as
   the bodies' appearance catalogs name them; a Unity test holds the content to
-  both catalogs and to `AppearanceRules`.
+  both catalogs and to `AppearanceRules`. How the file is loaded and validated
+  is in [Character Appearance](../content/README.md#character-appearance).
 - **GameService stores the look with the character**: the body model, the
-  choices, and whether the headwear is lowered, in `character_appearances`,
-  owned by Characters. Character creation chooses the body model and the look
-  and checks them strictly against what the body model offers; a character
-  created without a look gets the default look of the default body model.
-  Characters that existed before the look was stored got `Human_Male` with its
-  default look. GameService refuses to start when the content no longer offers
-  what a stored look names, as the item catalog does.
-- **One look serves every body.** A stored choice that the body model lacks,
-  such as a face of the other body, is kept, and the body shows its own default
-  there, so a body change in Development keeps the rest of the look.
-- **The worker sends the look to every client.** The join ticket carries the
-  look; every `EntitySpawn` carries the player's body model, choices, the items
-  of its visible equipment slots in content order, and its headwear, and
-  `EntityAppearanceChanged` sends a new look to everyone who sees the player and
-  to the player itself, which gets its own look after the join. A change of
-  equipment, a lowered or raised headwear, the tool it starts or stops using, or
-  in Development another body model or look sends it.
-- **The player lowers and raises the hood** with `AppearanceIntent`; GameService
-  stores it, and the worker answers with `AppearanceIntentResult`. Only a
-  GameService in the Development environment changes a body model or look in the
-  game, for the Admin menu (F3); character creation chooses them otherwise.
+  choices, and whether the headwear is lowered, in the Characters module's
+  `character_appearances`; see
+  [Table Ownership](GAME_SERVICE_MODULES.md#table-ownership). Character creation
+  chooses the body model and the look and checks them strictly against what the
+  body model offers; a character created without a look gets the default look of
+  the default body model. GameService refuses to start when the content no
+  longer offers what a stored look names, as it does for the item catalog.
+- **One look serves every body.** A stored choice that the body model lacks is
+  kept, as [The Look On The Skin](#the-look-on-the-skin) says, so a body change
+  in Development keeps the rest of the look.
+- **The worker sends the look to every client**: the join ticket carries the
+  look, every spawn of a player carries its body model, choices, the items of
+  its visible equipment slots in content order, and its headwear, and a change
+  of equipment, a lowered or raised headwear, the tool it starts or stops using,
+  or in Development another body model or look sends the new look to everyone
+  who sees the player and to the player itself; see
+  [Character Appearance](REALTIME_PROTOCOL.md#character-appearance).
+- **The player lowers and raises the hood** through the worker, which asks
+  GameService to store it. Only a GameService in the Development environment
+  changes a body model or look in the game, for the Admin menu (F3); character
+  creation chooses them otherwise.
 - **Development bots** have no stored look and no items: the worker gives each a
   body model, a look, and an outfit of catalog items picked from its character id
   by a stable hash, so a crowd shows every body, face, and garment, and each bot
-  keeps its own. The outfit is only shown. Since 2026-10-25 the visible slots
-  include `main_hand` and `off_hand`, so bots hold weapons and shields too, and an
-  item stays out of a slot that an item of an earlier slot blocks, such as a
-  shield beside a two-handed bow.
+  keeps its own. The outfit is only shown. The visible slots include `main_hand`
+  and `off_hand`, so bots hold weapons and shields too, and an item stays out of
+  a slot that an item of an earlier slot blocks, such as a shield beside a
+  two-handed bow.
 - **A dying body keeps its clothes** until its character respawns, though its
   items already lie in its corpse. A player corpse shows the dead character's
-  body model and look, with its headwear, wearing the items still in the corpse's
-  equipment section, so a looted cloak leaves the corpse.
+  body model and look, with its headwear, wearing the items still in the
+  corpse's equipment section, so a looted cloak leaves the corpse.
 
 ## Putting A Character Together In Unity
 
 A character's look is its body type, its face, eyes, and paint, the garments per
 visual slot, each a template with its texture and dye colors, its hair, and its
 attachments. When the look changes, such as when equipment changes, the client
-puts the character together:
+puts the character together again, never per frame:
 
-1. The visible body faces: every face but those the worn garments cover, with
-   the masks of their textures where a texture has its own. The pull-in vertices
-   move inward.
-2. The visible garment faces: every face but those whose underlay a garment of a
-   higher layer covers, and every slot a worn garment hides is left out.
-3. Hair in its normal or compressed form, or none under headwear that hides it.
-4. One combined skinned mesh on the character's skeleton, the cloth chains with
-   it, and the attachments on their socket bones, with one submesh per material.
-   Materials are shared copies keyed by their texture, dye colors, and paint
-   layers, so characters that look alike batch.
-5. The combined mesh is cached by the look's key, so every character with the
-   same look shares one mesh, as development bots do.
+- It leaves out the body faces that the worn garments cover, with the masks of
+  their textures where a texture has its own, and moves the pull-in vertices
+  inward.
+- It leaves out the garment faces whose underlay a garment of a higher layer
+  covers, and every slot a worn garment hides.
+- It draws the hair in its normal or pressed form, or leaves it out under
+  headwear that hides it.
+- It joins the body, the garments, and the attachments into one skinned mesh on
+  the character's skeleton, with the cloth chains, and one submesh per material.
+  Materials are shared copies keyed by their texture, dye colors, and paint
+  layers, and every character with the same look shares one mesh, so characters
+  that look alike batch.
 
-Putting a character together happens on equipment changes, never per frame. If a
-crowd needs fewer draw calls than one per material, garment textures move into
-texture arrays that one garment material reads.
-
-Unity imports a model's triangles in an order of its own, so the body faces are
-found again in Unity by position: every body exports its editable mesh next to
-its model, and the appearance catalog maps every triangle of the body's parts and
-of each garment to the face it comes from when it is written, in the Editor; see
-[Art Pipeline](ART_PIPELINE.md#unity-import-rules). Hair keeps its shape key as
-a blend shape when it is imported, and the combined mesh takes it in full under
-headwear that compresses the hair, so its compressed form costs nothing per
-frame.
-
-## Art Pipeline
-
-### The Garment Cage Kind
-
-The cage is an art asset of kind `cage` below `art/Cages/<Skeleton>`, one per
-skeleton, such as `art/Cages/Humanoid`:
-
-| Field | Meaning |
-| --- | --- |
-| `bodies` | The skinned assets it is fitted to, the first one first; every template of the cage fits them. |
-| `figure` | The figure scale in meters: the size of a detail the cage still spans. |
-| `lines` | The standard lines: per line its region, its bone, and its share of the bone. |
-
-Its file holds the reference shape on its reference rig, and per body the
-body's armature and source body as reference and the cage's version on that
-body. `New-ArtAsset.ps1 -Kind cage` makes it from the first body, and
-`Sync-CageAsset.ps1` fits it to every body, keeps the corrections, checks it, and
-writes its review sheet. It has one review stage, `model`, and no export: Unity
-never needs it, and garments record its approved file.
-
-### The Garment Kind
-
-A garment template is an art asset of kind `garment` below `art/Garments/<Name>`:
-
-| Field | Meaning |
-| --- | --- |
-| `cage` | The cage it is made on; it fits every body of the cage. |
-| `slot` | The visual slot: `head`, `body`, `legs`, `hands`, `feet`, `back`, or `hair`. |
-| `layer` | 0 to 1000, the order from the inside out. |
-| `band` | `tight`, `mid`, `outer`, or `loose`. |
-| `recipe` | The regions and lines it covers, what it lies over, its loose parts, its ease, and its edges' thickness, or `modeled` for a form modeled by hand, such as a hairstyle. |
-| `hides` | Visual slots it hides, such as `["legs"]` for a floor-length robe. |
-| `covers` | `false` for a garment that hides nothing under it, such as a cloak; `true` by default. |
-| `hair` | Headwear only: `hide`, `compress`, or `show`. |
-| `cloth` | The cloth profile of its loose parts, or none. |
-| `dyes` | The number of dye channels its textures may use, 0 to 3. |
-| `triangleBudget` | The most triangles of one body type's version. |
-
-Its file holds, per body type, a collection `Export_<Label>` with the body's
-armature and the template's version on it, the version on the first body being
-the one a person shapes, and the cage's versions it is fitted on. The bodies
-themselves are in a `Reference` collection. The template's own material is a
-neutral grey, which its review sheet shows with a grid in its UVs, so the sheet
-shows how they stretch; its textures bring their own materials. Export
-writes one FBX per body type, the template skinned to that body's rig, and a
-data file with the cover mask, underlay, and pull-in, all recorded with their
-hashes, with the hash of the cage's approved file, and with the bodies'
-exports, like every export.
-
-### The Texture Kind
-
-A garment texture is an art asset of kind `texture` below
-`art/GarmentTextures/<Name>`, with the template it belongs to in `garment`. Its
-file holds the template's first version as a preview and the texture's images,
-painted by hand in Texture Paint mode or by a script, with the custom
-properties `roughness` and `metallic`. Its one review stage, `texture`, checks
-that the images fit the template's UVs, and for a texture with transparent parts
-computes its masks and runs the template's motion check with them, in the rig
-review's test poses and at every frame of the clips, so skin that its holes show
-and that comes through the cloth around them is reported before the approval.
-Export writes its images and its material `M_Garment_<Name>`, and its masks per
-body when it has transparent parts, in the data format of its template's, next
-to the template's models. In Unity, the appearance catalog lists every texture
-of a template as a garment named after the texture, with the template's model
-for the body, the texture's material, and the texture's masks or else the
-template's; a character wears a garment by the texture's name.
-
-### Making A Garment
-
-1. `New-ArtAsset.ps1 -Kind garment` creates a template from its recipe on the
-   cage: the template's version on the first body, in its band, with its ease,
-   turned edges, and UVs.
-2. A person shapes the first version in Blender where it needs more than the
-   recipe gives, such as folds or a flared hem.
-3. `Sync-GarmentAsset.ps1` fits it to the other bodies through the cage,
-   transfers the weights, computes the masks, and runs the checks.
-4. The reviewer looks at the review sheet and the template in the Wardrobe
-   preview in Unity, then approves the `model` and `rig` stages, and the export
-   makes it ready for textures.
-5. `New-ArtAsset.ps1 -Kind texture` creates a texture for the template, a person
-   or a script paints it, and the reviewer approves its `texture` stage on its
-   review sheet and in the Wardrobe; its export makes the template and the
-   texture ready for items.
-
-### Checks
-
-The sync stops on a broken rule and reports the rest:
-
-- The cage of every body has the cage's topology, no vertex or face centre
-  inside the skin, no skin that comes out through a face, and no face that
-  crosses another, and every line crosses its region on every body.
-- Every version of a template has the first version's topology and stays within
-  its triangle budget.
-- Every vertex and every face centre lies within its band from the cage on every
-  body type, so a flat face over a round shoulder cannot dip under the skin and
-  cloth cannot sink into a pit.
-- In the rig review's test poses and at every frame of `Idle`, `Walk`, `Jog`,
-  and `Death`, no visible body vertex under the garment comes through the cloth.
-  At rest none may, and no vertex of an inner template either: that stops the
-  sync. Skin that comes through at the armpits is weighed later: the base bodies'
-  armpits are to be fixed, as Victor said on 2026-10-23.
-  The report names how many do and the deepest place, and the review sheet
-  shows their faces red, for the reviewer to weigh and the template's ease,
-  shape, or weights to fix. No garment of a lower layer reaches through a higher
-  one where they overlap; the pair check tests this from the first pair of
-  templates that overlap.
-- The faces that only the cone of rays leaves visible are the garment's
-  openings, and the review sheet shows the mask with the skin kept visible at
-  the garment's edges, so a mask that is too small or too large shows there; a
-  check that the faces under opaque cloth are covered would only repeat the
-  rays.
-- Only a garment whose texture has an alpha channel is clipped.
-
-### Review
-
-The cage's review sheet shows every body from the front, the side, and the back
-with the cage over it, colored by its distance from the skin, and the standard
-lines drawn on it, and its hands and feet up close.
-
-The template's review sheet shows the template on every body type from four
-sides with its grid, the template in the test poses, and the body without it,
-the covered faces orange, the skin kept visible at the garment's edges yellow,
-the pulled-in vertices blue, and skin that comes through the garment in motion
-red. The texture's review sheet shows the template with the texture on every
-body type from four sides, and for a texture with transparent parts also the
-body without it in the colors of the template's sheet, with its own mask and
-the skin that comes through it in motion.
-
-Cloth motion is reviewed in the Wardrobe preview, a Unity Editor window that
-dresses a body in chosen garments with their textures, plays a clip or a cloth
-stress motion on a moving ground, and lays the cloth, at full speed, in
-slow motion down to a tenth, or a frame at a time, with what `ClothMotionMeter`
-measures beside it; see [Measuring The Cloth](#measuring-the-cloth).
+If a crowd needs fewer draw calls than one per material, garment textures move
+into texture arrays that one garment material reads (planned). Unity imports a
+model's triangles in an order of its own, so the body faces are found again by
+position: every body exports its editable mesh next to its model, and the
+appearance catalog maps every triangle of the body's parts and of each garment
+to the face it comes from when the catalog is written in the Editor; see
+[Unity Import Rules](ART_PIPELINE.md#unity-import-rules). How the client does
+all this is in [Player Bodies](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 
 ## Budgets
 
@@ -1560,94 +1259,15 @@ measures beside it; see [Measuring The Cloth](#measuring-the-cloth).
 | `back` | 1,500 |
 | `hair` | 2,500 |
 
-A character in a full outfit draws about 15,000 to 18,000 triangles near the
-camera, because the covered body faces are gone. Gloves with five fingers are
-made at the resolution of the body's hands, 1,520 triangles for both, and boots
-hide the body's feet, 1,328 triangles, so their budgets were raised from 800 and
-1,000 on 2026-10-24 and still leave the character lighter than without them. Levels of detail at half and a
-quarter of the triangles come with the first crowd measurement that needs them.
-
-## Delivery Plan
-
-1. This document.
-2. Cloth chains: the chains in `Humanoid.json`, the rig placing them, the bodies
-   and libraries approved again, and the runtime solver with tests on a test
-   garment made in code.
-3. The garment kind: `New-ArtAsset.ps1 -Kind garment`, `Sync-GarmentAsset.ps1`
-   with fitting, weights, masks, pull-in, bands, and the clipping report, the
-   review sheet, the export, the Unity import rules, and their tests. Done; the
-   leather jerkin is its first garment, still the shell of its paint layer.
-4. Putting a character together in Unity: masks, garment layers, pull-in, the
-   garment shader with clipping and dyes, the Wardrobe preview, and trying
-   garments on in F2. Done.
-5. The garment cage, templates, and textures, each approved by Victor:
-   - 5a. Done. The garment cage: the `cage` kind, its fitting to every body, its
-     standard lines, its checks, and its review sheet.
-   - 5b. Done. Templates and textures: the `garment` kind built from recipes on
-     the cage, with its bands, weights, and masks from the cage, ease, turned
-     edges, and UVs; the `texture` kind with its own masks; the Unity catalog,
-     the Wardrobe, and F2 wearing a texture on its template; and the leather
-     jerkin as the first template, `Jerkin`, with its old look moved to the
-     template's UVs as its first texture, `LeatherJerkin`, with its laced V
-     transparent. The first leather jerkin garment is removed.
-   - 5c. The proof set, in four steps, as Victor accepted on 2026-10-23:
-     1. Done. Shirts, trousers, and a tattoo: the templates `Shirt` and `LongShirt`
-        over `Trousers` at the waist, the textures `LinenShirt`,
-        `LinenLongShirt`, `WoolTrousers`, and `NetShirt`, a coarse net with
-        transparent meshes over the tattoo paint layer `Tattoo`, which replaces
-        the leather jerkin paint layer, `LeatherJerkin` as a texture of `Shirt`,
-        and the pair check.
-     2. Done. Boots and five-finger gloves, with the cage's regions for the
-        feet and the hands: the templates `Boots`, to the calf in the `mid`
-        band over the trousers below `LegAnkle`, and `Gloves`, to `GloveCuff`
-        over every sleeve below `SleeveLong`, with the leather textures
-        `LeatherBoots` and `LeatherGloves`.
-     3. Done. A robe with the skirt chains and a cloak with the cloak chains:
-        the templates `Robe`, a long-sleeved top with a skirt from `SkirtWaist`,
-        just below the navel, to the ankles that hides the `legs` slot, and
-        `Cloak`, a yoke over the trapezius, not the shoulders, down to
-        `CloakYoke` below the collarbones in front, with a taut sheet from the
-        nape down the back to the middle of the calves between the arms, which
-        covers nothing, as Victor reshaped them on 2026-10-25; the textures
-        `WoolRobe` and `WoolCloak`, whose front fans out like a triangle from a
-        large bronze clasp on each side; loose parts; skirt and cloak chains
-        that follow the legs; and a cage that keeps all skin inside it, so no
-        garment shows skin through it at rest.
-     4. Done. The cage's head region, a shoulder-length hairstyle with its
-        compressed form, the robe's hood up and down, and a nasal helmet that
-        Victor added: the templates `ShoulderHair`, `HoodUp`, `HoodDown`, and
-        `NasalHelm` with the textures `DarkBrownHair`, `WoolHoodUp`,
-        `WoolHoodDown`, and `IronNasalHelm`.
-   - 5d. Done. Paint layers independent of the bodies' topology, moved between
-     bodies by projection: a canvas of its own per layer, the bodies' paint UV map
-     `UVMap_Paint`, which lays the two sides of a mirrored body apart, the move
-     through the shared topology or through the cage and the rigs' landmarks, the
-     canvas moved to another body, the images cropped to their paint, the skin
-     shader reading the paint UVs, the four layers moved to their canvases, and the
-     one-sided tattoo `ForearmRunes`.
-6. Done. Items: items show their garments as templates with textures, the `back`
-   slot, dye colors on items, and the look sent to every client with the body
-   type, as Victor decided on 2026-10-25, in two parts:
-   - 6a. Done. Items show garments: the garments and dye colors of every item in
-     the item presentation, the `back` slot, the category `clothing`, the wool set
-     dyeable with its items in three colors, the General Store and a development
-     package with them, and the local player dressed by its equipment, with its
-     hair from F2.
-   - 6b. Done. The look on the server: the body model and the look stored with
-     the character and chosen at its creation, sent to every client with the
-     visible equipment and the lowered hood, development bots dressed from their
-     ids, and player corpses wearing what is left in them; see
-     [The Look On The Server](#the-look-on-the-server).
-7. With the first new race: making a body type from a human body, generalizing
-   `Sync-HumanBase.ps1` to every body of the race, and adding it to the cage.
-8. Robust spring bones, as Victor accepted on 2026-10-25, in three steps, all
-   done; see [Spring Bone Redesign](#spring-bone-redesign).
+A template's manifest may name another budget where its form needs it, such as
+the nasal helmet's 2,500. A character in a full outfit draws about 15,000 to
+18,000 triangles near the camera, because the covered body faces are gone.
+Gloves with five fingers are made at the resolution of the body's hands, 1,520
+triangles for both, and boots hide the body's feet, 1,328 triangles, so even
+their budgets leave the character lighter than without them. Levels of detail
+at half and a quarter of the triangles come with the first crowd measurement
+that needs them.
 
 ## Open Questions
 
-Both questions of step 6 were answered on 2026-10-25: the hood is an item of its
-own that the player lowers and raises in the inventory, and dye colors belong to
-the item definition; see [Items](#items).
-
-Helmets are skinned garments weighted to the head, as the first helmet,
-`NasalHelm`, shows; masks will be too.
+None at the moment. Planned work is listed under [Status](#status).

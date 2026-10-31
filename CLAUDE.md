@@ -62,9 +62,9 @@ Task Workflow. These notes override the app's defaults where they differ.
 - Focused runs: `dotnet test tests/Server/<Project> --configuration Release` for
   one test project, with `--filter "FullyQualifiedName~<Class>"` for one class,
   or with `--filter "Category!=Integration"` without containers.
-- The full gate is the command list in `README.md` under Standard Quality Checks,
-  or `tools/Test-Changes.ps1 -All` in one command. CI runs it for every pull
-  request.
+- The full gate is the command list in `docs/LOCAL_DEVELOPMENT.md` under
+  Repository Quality Checks, or `tools/Test-Changes.ps1 -All` in one command. CI
+  runs it for every pull request.
 - New tests go into the test project of the module they test. The layout,
   traits, database rules, and internal access policy are in `tests/README.md`.
 - Local stack for manual or end-to-end tests: `docker compose up -d --wait`,
@@ -73,6 +73,7 @@ Task Workflow. These notes override the app's defaults where they differ.
   processes when finished. The default worker runs Development World 2 on
   `local-shard-1`; add `--launch-profile StressArena` for a second worker that
   runs the Development World 1 stress arena on `local-shard-2` and UDP `27016`.
+  The manual checks of every feature are in `docs/MANUAL_TESTING.md`.
 
 ## Unity Editor
 
