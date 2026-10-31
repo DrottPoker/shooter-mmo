@@ -1,5 +1,7 @@
 using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
@@ -15,6 +17,7 @@ namespace Mmorpg.Client.Ui
     // Shared colors and widget builders for the temporary code-built uGUI panels.
     public static class TemporaryUiKit
     {
+        public static readonly Color BackdropColor = new Color(0.03f, 0.035f, 0.045f, 1f);
         public static readonly Color PanelColor = new Color(0.055f, 0.065f, 0.08f, 0.95f);
         public static readonly Color PanelBorderColor = new Color(0.24f, 0.28f, 0.34f, 0.9f);
         public static readonly Color HeaderColor = new Color(0.085f, 0.10f, 0.125f, 1f);
@@ -192,6 +195,74 @@ namespace Mmorpg.Client.Ui
             layout.preferredWidth = preferredWidth;
             layout.flexibleWidth = 0f;
             return input;
+        }
+
+        // A single-line text field; the placeholder shows while it is empty.
+        public static InputField CreateTextField(
+            Transform parent,
+            string value,
+            string placeholder,
+            InputField.ContentType contentType,
+            int characterLimit,
+            float height)
+        {
+            var inputObject = CreateUiObject("TextField", parent);
+            var image = inputObject.AddComponent<Image>();
+            image.color = InputColor;
+            AddOutline(image, PanelBorderColor);
+            var input = inputObject.AddComponent<InputField>();
+            input.contentType = contentType;
+            input.lineType = InputField.LineType.SingleLine;
+            input.characterLimit = characterLimit;
+            input.customCaretColor = true;
+            input.caretColor = TextPrimary;
+            input.caretWidth = 2;
+            input.selectionColor = new Color(0.30f, 0.50f, 0.80f, 0.6f);
+            var hint = AddText(
+                CreateUiObject("Placeholder", inputObject.transform),
+                placeholder,
+                15,
+                FontStyle.Italic,
+                TextAnchor.MiddleLeft,
+                TextMuted);
+            Stretch(hint.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 2f), new Vector2(-10f, -2f));
+            hint.supportRichText = false;
+            var text = AddText(
+                CreateUiObject("Text", inputObject.transform),
+                value,
+                15,
+                FontStyle.Normal,
+                TextAnchor.MiddleLeft,
+                TextPrimary);
+            Stretch(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 2f), new Vector2(-10f, -2f));
+            text.supportRichText = false;
+            input.textComponent = text;
+            input.placeholder = hint;
+            input.text = value ?? string.Empty;
+            var layout = inputObject.AddComponent<LayoutElement>();
+            layout.minHeight = height;
+            layout.preferredHeight = height;
+            layout.flexibleWidth = 1f;
+            return input;
+        }
+
+        // Every code-built panel shares one EventSystem: the first panel that needs it makes it,
+        // and it stays across scene loads, since no scene authors one.
+        public static void EnsureEventSystem()
+        {
+            if (EventSystem.current != null || UnityEngine.Object.FindAnyObjectByType<EventSystem>() != null)
+            {
+                return;
+            }
+
+            var eventSystem = new GameObject(
+                "TemporaryUiEventSystem",
+                typeof(EventSystem),
+                typeof(InputSystemUIInputModule));
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.DontDestroyOnLoad(eventSystem);
+            }
         }
 
         public static RectTransform CreateRow(Transform parent, float height, float spacing)

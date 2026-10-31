@@ -8,21 +8,32 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace Mmorpg.Client.Ui
 {
-    public sealed class CharacterSelectPanel : MonoBehaviour
+    // The temporary CharacterSelect screen: the account's characters on the left, and on the right
+    // either the chosen character with the shards and Enter World, or the creation of a new
+    // character. It loads the characters, the shards, and what creation offers one after the
+    // other, chooses the character and shard of this computer's last Enter World, and runs one
+    // operation at a time. Enter and a double click on a character enter the World. The widgets
+    // are in CharacterSelectPanel.Layout.cs.
+    public sealed partial class CharacterSelectPanel : MonoBehaviour
     {
+        public const string ScreenName = "CharacterSelect";
+
         private readonly ClientOperationState operationState = new ClientOperationState();
+        private readonly CharacterSelectState state = new CharacterSelectState();
 
         private ApiClient apiClient;
         private RealtimeSimulationClient simulationClient;
-        private string characterName = "Hero One";
-        private CharacterCreationLook creationLook;
-        private string status = "Select or create a character, then join a shard.";
-        private CharacterResponse[] characters = new CharacterResponse[0];
-        private ShardResponse[] shards = new ShardResponse[0];
-        private int selectedCharacterIndex;
-        private int selectedShardIndex;
         private bool operationStepFailed;
-        private Vector2 scrollPosition;
+
+        public CharacterSelectState State
+        {
+            get { return state; }
+        }
+
+        public bool IsBusy
+        {
+            get { return operationState.IsBusy; }
+        }
 
         // Called by the composition root before the component is activated.
         public void Initialize(RealtimeSimulationClient realtimeClient)
@@ -30,9 +41,36 @@ namespace Mmorpg.Client.Ui
             simulationClient = realtimeClient;
         }
 
-        private void OnDestroy()
+        // Loads the characters and the shards again, keeping what is chosen.
+        public void Refresh()
         {
-            apiClient?.Dispose();
+            BeginOperation(ClientOperation.LoadSelection, LoadSelectionRoutine(null, null), "Refreshing characters and shards...");
+        }
+
+        public void CreateCharacter()
+        {
+            BeginOperation(ClientOperation.CreateCharacter, CreateCharacterRoutine(), "Creating the character...");
+        }
+
+        public void LogOut()
+        {
+            BeginOperation(ClientOperation.Logout, LogoutRoutine(), "Logging out...");
+        }
+
+        // Enters the World of the chosen shard with the chosen character.
+        public void BeginJoin()
+        {
+            var blocker = AccountEntryPresentation.EnterWorldBlocker(state);
+            if (!EnsureAuthenticated() || blocker != null)
+            {
+                SetStatus(blocker, TemporaryUiKit.WarningColor);
+                return;
+            }
+
+            BeginOperation(
+                ClientOperation.JoinShard,
+                JoinSelectedShardRoutine(),
+                "Joining " + state.SelectedShard.displayName + " as " + state.SelectedCharacter.name + "...");
         }
 
         private void Awake()
@@ -47,41 +85,44 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            BeginOperation(ClientOperation.LoadSelection, LoadSelectionRoutine());
+            BuildUi();
+            state.Changed += OnStateChanged;
+            OnStateChanged();
+            BeginOperation(
+                ClientOperation.LoadSelection,
+                LoadSelectionRoutine(AccountEntryPreferences.LastCharacterId, AccountEntryPreferences.LastShardId),
+                "Loading characters and shards...");
         }
 
-        private void OnGUI()
+        private void OnDestroy()
         {
-            GUILayout.BeginArea(TemporaryPanelStyles.GetPanelRect(620f, 720f), "Character Select", GUI.skin.window);
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition);
-
-            var previousGuiState = GUI.enabled;
-            GUI.enabled = previousGuiState && !operationState.IsBusy;
-            DrawAccountSection();
-            DrawCharacterSection();
-            DrawShardSection();
-            GUI.enabled = previousGuiState;
-
-            GUILayout.Space(12f);
-            TemporaryPanelStyles.DrawStatus(operationState.IsBusy, status);
-
-            GUILayout.EndScrollView();
-            GUILayout.EndArea();
+            state.Changed -= OnStateChanged;
+            apiClient?.Dispose();
+            screen?.Destroy();
         }
 
-        private void DrawAccountSection()
+        private void Update()
         {
-            GUILayout.Label("Account");
-            GUILayout.Label(ClientSession.Auth != null
-                ? "Signed in: " + ClientSession.Auth.username
-                : "Not signed in.");
-
-            if (GUILayout.Button("Back To Login", GUILayout.Height(32f)))
+            if (screen == null || !screen.ReadKeys() || operationState.IsBusy)
             {
-                BeginOperation(ClientOperation.Logout, LogoutRoutine());
+                return;
             }
 
-            GUILayout.Space(12f);
+            if (state.IsCreating)
+            {
+                CreateCharacter();
+            }
+            else
+            {
+                BeginJoin();
+            }
+        }
+
+        private void OnStateChanged()
+        {
+            ClientSession.SelectedCharacter = state.SelectedCharacter;
+            ClientSession.SelectedShard = state.SelectedShard;
+            RefreshView();
         }
 
         private IEnumerator LogoutRoutine()
@@ -113,127 +154,31 @@ namespace Mmorpg.Client.Ui
             ClientSceneLoader.LoadLoginMenu();
         }
 
-        private void DrawCharacterSection()
+        // The preferred ids choose the character and shard; without them the chosen ones stay.
+        private IEnumerator LoadSelectionRoutine(string preferredCharacterId, string preferredShardId)
         {
-            GUILayout.Label("Characters");
-            characterName = TemporaryPanelStyles.LabeledTextField("Name", characterName);
-            DrawCreationLook();
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Create Character", GUILayout.Height(32f)))
-            {
-                BeginOperation(ClientOperation.CreateCharacter, CreateCharacterRoutine());
-            }
-
-            if (GUILayout.Button("Refresh Characters", GUILayout.Height(32f)))
-            {
-                BeginOperation(ClientOperation.RefreshCharacters, RefreshCharactersRoutine());
-            }
-            GUILayout.EndHorizontal();
-
-            if (characters.Length > 0)
-            {
-                selectedCharacterIndex = Mathf.Clamp(selectedCharacterIndex, 0, characters.Length - 1);
-                var labels = new string[characters.Length];
-                for (var index = 0; index < characters.Length; index++)
-                {
-                    labels[index] = characters[index].name
-                        + (string.IsNullOrEmpty(characters[index].bodyModel) ? string.Empty : " (" + characters[index].bodyModel + ")");
-                }
-
-                selectedCharacterIndex = GUILayout.SelectionGrid(selectedCharacterIndex, labels, 1);
-                ClientSession.SelectedCharacter = characters[selectedCharacterIndex];
-            }
-            else
-            {
-                GUILayout.Label("No characters loaded.");
-            }
-
-            GUILayout.Space(12f);
-        }
-
-        // Temporary rows that step through the body models and the options of every kind of look
-        // the body offers.
-        private void DrawCreationLook()
-        {
-            if (creationLook == null || !creationLook.IsAvailable)
-            {
-                return;
-            }
-
-            creationLook.StepBodyModel(StepRow("Body", creationLook.BodyModel));
-            for (var offer = 0; offer < creationLook.OfferCount; offer++)
-            {
-                creationLook.StepOption(offer, StepRow(creationLook.OfferLabel(offer), creationLook.OptionLabel(offer)));
-            }
-        }
-
-        // A row with a label and buttons that step back and forth: -1, 1, or 0 when neither was pressed.
-        private static int StepRow(string label, string value)
-        {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(label + ": " + value, GUILayout.Width(360f));
-            var step = GUILayout.Button("<", GUILayout.Width(40f)) ? -1 : 0;
-            step = GUILayout.Button(">", GUILayout.Width(40f)) ? 1 : step;
-            GUILayout.EndHorizontal();
-            return step;
-        }
-
-        private void DrawShardSection()
-        {
-            GUILayout.Label("Shards");
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Refresh Shards", GUILayout.Height(32f)))
-            {
-                BeginOperation(ClientOperation.RefreshShards, RefreshShardsRoutine());
-            }
-
-            if (GUILayout.Button("Join Selected Shard", GUILayout.Height(32f)))
-            {
-                BeginJoin();
-            }
-            GUILayout.EndHorizontal();
-
-            if (shards.Length > 0)
-            {
-                selectedShardIndex = Mathf.Clamp(selectedShardIndex, 0, shards.Length - 1);
-                var labels = new string[shards.Length];
-                for (var index = 0; index < shards.Length; index++)
-                {
-                    var shard = shards[index];
-                    labels[index] = shard.displayName
-                        + " (" + shard.regionCode + ", " + shard.fleetDisplayName + ") "
-                        + (shard.isOnline
-                            ? "Online " + shard.activePlayers + "/" + shard.capacity
-                            : "Offline");
-                }
-
-                selectedShardIndex = GUILayout.SelectionGrid(selectedShardIndex, labels, 1);
-                ClientSession.SelectedShard = shards[selectedShardIndex];
-            }
-            else
-            {
-                GUILayout.Label("No shards loaded.");
-            }
-        }
-
-        private IEnumerator LoadSelectionRoutine()
-        {
-            yield return RefreshCharactersRoutine();
+            yield return RefreshCharactersRoutine(preferredCharacterId);
             if (operationStepFailed || !ClientSession.IsAuthenticated)
             {
                 yield break;
             }
 
-            yield return RefreshShardsRoutine();
+            yield return RefreshShardsRoutine(preferredShardId);
             if (operationStepFailed)
             {
                 yield break;
             }
 
-            yield return LoadCreationLookRoutine();
-            status = "Character and shard data loaded.";
+            if (state.CreationLook == null || !state.CreationLook.IsAvailable)
+            {
+                yield return LoadCreationLookRoutine();
+                if (operationStepFailed)
+                {
+                    yield break;
+                }
+            }
+
+            SetStatus(AccountEntryPresentation.SelectionSummary(state), TemporaryUiKit.TextSecondary);
         }
 
         private IEnumerator CreateCharacterRoutine()
@@ -245,11 +190,16 @@ namespace Mmorpg.Client.Ui
 
             // JsonUtility writes a missing appearance as an empty one, which GameService refuses, so
             // a character is always created with the offers loaded.
-            if (creationLook == null || !creationLook.IsAvailable)
+            if (state.CreationLook == null || !state.CreationLook.IsAvailable)
             {
                 yield return LoadCreationLookRoutine();
-                if (creationLook == null || !creationLook.IsAvailable)
+                if (state.CreationLook == null || !state.CreationLook.IsAvailable)
                 {
+                    if (!operationStepFailed)
+                    {
+                        SetStatus("GameService offers no body to create a character with.", TemporaryUiKit.DangerColor);
+                    }
+
                     yield break;
                 }
             }
@@ -258,8 +208,8 @@ namespace Mmorpg.Client.Ui
             ApiError error = null;
             var request = new CreateCharacterRequest
             {
-                name = characterName,
-                appearance = creationLook.ToRequest()
+                name = CharacterNameInput,
+                appearance = state.CreationLook.ToRequest()
             };
 
             yield return apiClient.CreateCharacter(
@@ -274,11 +224,21 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            status = "Created character " + createdCharacter.name + ".";
-            yield return RefreshCharactersRoutine();
+            ClientLog.Info(
+                ClientLogCategory.Client,
+                "Created character '" + createdCharacter.name + "' (" + createdCharacter.id + ").");
+            yield return RefreshCharactersRoutine(createdCharacter.id);
+            if (operationStepFailed)
+            {
+                yield break;
+            }
+
+            ClearCharacterNameInput();
+            state.SetCreating(false);
+            SetStatus("Created " + createdCharacter.name + ". Choose a shard and enter the World.", TemporaryUiKit.SuccessColor);
         }
 
-        // What character creation offers; without it a new character gets the default look.
+        // What character creation offers; without it no character can be created.
         private IEnumerator LoadCreationLookRoutine()
         {
             CharacterAppearanceCatalogResponse result = null;
@@ -294,10 +254,10 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            creationLook = new CharacterCreationLook(result);
+            state.SetCreationLook(new CharacterCreationLook(result));
         }
 
-        private IEnumerator RefreshCharactersRoutine()
+        private IEnumerator RefreshCharactersRoutine(string preferredId)
         {
             if (!EnsureAuthenticated())
             {
@@ -317,15 +277,10 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            characters = result ?? new CharacterResponse[0];
-            selectedCharacterIndex = Mathf.Clamp(selectedCharacterIndex, 0, Mathf.Max(0, characters.Length - 1));
-            ClientSession.SelectedCharacter = characters.Length > 0
-                ? characters[selectedCharacterIndex]
-                : null;
-            status = "Loaded " + characters.Length + " characters.";
+            state.SetCharacters(result, preferredId);
         }
 
-        private IEnumerator RefreshShardsRoutine()
+        private IEnumerator RefreshShardsRoutine(string preferredId)
         {
             ShardResponse[] result = null;
             ApiError error = null;
@@ -339,51 +294,26 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            shards = result ?? new ShardResponse[0];
-            selectedShardIndex = Mathf.Clamp(selectedShardIndex, 0, Mathf.Max(0, shards.Length - 1));
-            ClientSession.SelectedShard = shards.Length > 0
-                ? shards[selectedShardIndex]
-                : null;
-            status = "Loaded " + shards.Length + " shards.";
-        }
-
-        private void BeginJoin()
-        {
-            if (!EnsureAuthenticated() || characters.Length == 0 || shards.Length == 0)
-            {
-                status = "Load a character and a shard before joining.";
-                return;
-            }
-
-            var shard = shards[selectedShardIndex];
-            if (!shard.isOnline)
-            {
-                status = shard.displayName + " is offline.";
-                return;
-            }
-
-            BeginOperation(ClientOperation.JoinShard, JoinSelectedShardRoutine());
+            state.SetShards(result, preferredId);
         }
 
         private IEnumerator JoinSelectedShardRoutine()
         {
-            var character = characters[selectedCharacterIndex];
-            var shard = shards[selectedShardIndex];
+            var character = state.SelectedCharacter;
+            var shard = state.SelectedShard;
             if (!WorldSceneCatalog.TryResolveScene(
                     shard.worldId,
                     out var worldSceneName,
                     out var worldSceneError))
             {
-                status = "Cannot join " + shard.displayName + ": " + worldSceneError;
-                ClientLog.Error(ClientLogCategory.Client, status);
+                SetJoinError("Cannot join " + shard.displayName + ": " + worldSceneError);
                 yield break;
             }
 
             if (!ClientSceneLoader.IsWorldSceneAvailable(worldSceneName))
             {
-                status = "Cannot join " + shard.displayName + ": scene '" + worldSceneName
-                    + "' is not an Addressables World scene in this client build.";
-                ClientLog.Error(ClientLogCategory.Client, status);
+                SetJoinError("Cannot join " + shard.displayName + ": scene '" + worldSceneName
+                    + "' is not an Addressables World scene in this client build.");
                 yield break;
             }
 
@@ -411,9 +341,8 @@ namespace Mmorpg.Client.Ui
 
             if (joinTicket == null || joinTicket.shard == null)
             {
-                status = "Cannot join " + shard.displayName
-                    + ": GameService returned incomplete placement data.";
-                ClientLog.Error(ClientLogCategory.Client, status);
+                SetJoinError("Cannot join " + shard.displayName
+                    + ": GameService returned incomplete placement data.");
                 yield break;
             }
 
@@ -422,16 +351,14 @@ namespace Mmorpg.Client.Ui
                     out worldSceneName,
                     out worldSceneError))
             {
-                status = "Cannot join " + shard.displayName + ": " + worldSceneError;
-                ClientLog.Error(ClientLogCategory.Client, status);
+                SetJoinError("Cannot join " + shard.displayName + ": " + worldSceneError);
                 yield break;
             }
 
             if (!ClientSceneLoader.IsWorldSceneAvailable(worldSceneName))
             {
-                status = "Cannot join " + shard.displayName + ": scene '" + worldSceneName
-                    + "' is not an Addressables World scene in this client build.";
-                ClientLog.Error(ClientLogCategory.Client, status);
+                SetJoinError("Cannot join " + shard.displayName + ": scene '" + worldSceneName
+                    + "' is not an Addressables World scene in this client build.");
                 yield break;
             }
 
@@ -467,8 +394,11 @@ namespace Mmorpg.Client.Ui
             }
 
             ClientSession.ActiveSimulationSession = activeSession;
-            status = "Joined shard " + activeSession.shardId + " as " + activeSession.characterName
-                + ". Loading " + worldSceneName + ".";
+            AccountEntryPreferences.RememberWorldEntry(character.id, shard.id);
+            SetStatus(
+                "Joined shard " + activeSession.shardId + " as " + activeSession.characterName
+                + ". Loading " + worldSceneName + ".",
+                TemporaryUiKit.SuccessColor);
 
             // A successful load replaces this scene and ends the routine. A failed load keeps
             // CharacterSelect, so the joined session is released here.
@@ -482,8 +412,7 @@ namespace Mmorpg.Client.Ui
             var loadError = sceneLoad.OperationException != null
                 ? sceneLoad.OperationException.Message
                 : "unknown error";
-            status = "Cannot enter " + worldSceneName + ": the scene failed to load (" + loadError + ").";
-            ClientLog.Error(ClientLogCategory.Client, status);
+            SetJoinError("Cannot enter " + worldSceneName + ": the scene failed to load (" + loadError + ").");
             RealtimeClientError leaveError = null;
             yield return simulationClient.Leave(
                 activeSession.simulationSessionId,
@@ -497,7 +426,7 @@ namespace Mmorpg.Client.Ui
             ClientSession.ActiveSimulationSession = null;
         }
 
-        private void BeginOperation(ClientOperation operation, IEnumerator routine)
+        private void BeginOperation(ClientOperation operation, IEnumerator routine, string progress)
         {
             if (!operationState.TryBegin(operation))
             {
@@ -505,6 +434,8 @@ namespace Mmorpg.Client.Ui
             }
 
             operationStepFailed = false;
+            SetStatus(progress, TemporaryUiKit.TextSecondary);
+            RefreshBusy();
             StartCoroutine(RunOperation(operation, routine));
         }
 
@@ -512,6 +443,7 @@ namespace Mmorpg.Client.Ui
         {
             yield return routine;
             operationState.Complete(operation);
+            RefreshBusy();
         }
 
         private bool EnsureAuthenticated()
@@ -537,7 +469,7 @@ namespace Mmorpg.Client.Ui
 
             if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error, simulationClient))
             {
-                status = "Error: " + error.ToDisplayMessage();
+                SetStatus(AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl), TemporaryUiKit.DangerColor);
                 ClientLog.Error(ClientLogCategory.Client, "API request failed: " + error.ToDisplayMessage());
             }
 
@@ -552,8 +484,15 @@ namespace Mmorpg.Client.Ui
             }
 
             operationStepFailed = true;
-            status = "Error: " + error.ToDisplayMessage();
+            SetStatus(AccountEntryPresentation.ErrorText(error), TemporaryUiKit.DangerColor);
             return true;
+        }
+
+        private void SetJoinError(string message)
+        {
+            operationStepFailed = true;
+            SetStatus(message, TemporaryUiKit.DangerColor);
+            ClientLog.Error(ClientLogCategory.Client, message);
         }
     }
 }

@@ -69,10 +69,11 @@ client, so the client, GameService, and every worker run the same commit.
 
 1. Open `src/Client` in the Unity Editor and wait for the import to finish.
 2. Open `Assets/Scenes/LoginMenu.unity` and enter Play Mode.
-3. Enter a unique `Email` and `Username` and click `Register`, or click `Login`
-   for an existing account.
-4. In CharacterSelect, enter a name, click `Create Character`, select the
-   character and `Local Shard 1`, and click `Join Selected Shard`.
+3. Open the `Create Account` tab, enter a unique `Email` and `Username`, and
+   click `Create Account`; or log in with an existing account on the `Log In`
+   tab.
+4. In CharacterSelect, enter a name, click `Create Character`, choose the
+   character and `Local Shard 1`, and click `Enter World`.
 
 Expected result: CharacterSelect reports `Joined shard local-shard-1 as <name>.
 Loading DevelopmentWorld2.`, and the character stands on the spawn pad of the
@@ -281,22 +282,39 @@ changes always go through GameService.
 
 1. Enter Play Mode from `LoginMenu`.
 
-Expected result: the `Login Menu` panel shows `Game Service:
-http://localhost:5000`, `Request Timeout: 10 seconds`, and `Realtime Timeout: 10
-seconds`, the values of `Assets/Content/Config/ClientConfig.asset`, and offers
-no field to change the endpoint.
+Expected result: a card with the `Log In` and `Create Account` tabs shows on a
+dark screen, with the caret in `Password`. The bottom of the screen shows `Game
+Service: http://localhost:5000`, `Request Timeout: 10 seconds`, and `Realtime
+Timeout: 10 seconds`, the values of `Assets/Content/Config/ClientConfig.asset`,
+and no field changes the endpoint.
+
+### Login Keys And Errors
+
+1. Enter Play Mode from `LoginMenu` while GameService is stopped, and press
+   `Enter`. Expected result: the card shows `GameService at
+   http://localhost:5000 does not answer. Is it running? [network_error]` in
+   red under the button, and the form is enabled again.
+2. Start GameService, open `Create Account`, and press `Tab` and `Shift+Tab`.
+   Expected result: the caret moves between `Email`, `Username`, and
+   `Password`, and `Tab` writes no character.
+3. On `Log In`, enter a wrong password and press `Enter`. Expected result: the
+   card shows `Login or password is incorrect. [invalid_credentials]`, and the
+   password field takes the caret with its text selected.
 
 ### Register, Create, And Join
 
-1. Change `Email` and `Username` to unique values and click `Register`.
-2. In CharacterSelect, create a character if none exists, select it, select
-   `Local Shard 1`, and click `Join Selected Shard`.
+1. Open `Create Account`, enter a unique `Email` and `Username`, and click
+   `Create Account`.
+2. In CharacterSelect, which opens the creation for a new account, enter a
+   name and press `Enter`; then choose `Local Shard 1` and click `Enter World`.
 3. Press F2 and open the Debug menu's `Network` tab.
 
 Expected result:
 
-- CharacterSelect lists each shard as `<name> (LOCAL, Local Development)` with
-  `Online <players>/<capacity>`, or `Offline`.
+- CharacterSelect lists each shard as `<name>` over `LOCAL  ·  Local
+  Development`, with `Online <players> / <capacity>` in green or a dimmed
+  `Offline` that cannot be chosen. A created character is chosen at once and
+  shows `Human Male  ·  100 gold`, or `Human Female`, under its name.
 - `DevelopmentWorld2` loads. The local player appears only after the accepted
   join, at the World's spawn.
 - The `Network` tab shows the state `Joined`, `local-shard-1 /
@@ -333,12 +351,28 @@ Expected result:
 ### Leave And Log Out
 
 1. Press F2 and click `Leave Shard`.
-2. Click `Back To Login`.
+2. Click `Log Out`.
 
 Expected result: `Leave Shard` gets the server's acknowledgement, closes UDP,
-and returns to CharacterSelect, and SimulationWorker logs the released
-simulation session. `Back To Login` revokes the GameService session before the
-client clears its local state and returns to LoginMenu.
+and returns to CharacterSelect with the same character and shard chosen, and
+SimulationWorker logs the released simulation session. `Log Out` revokes the
+GameService session before the client clears its local state and returns to
+LoginMenu, whose `Log In` tab shows the account's login name.
+
+### Remembered Choices And Shortcuts
+
+Needs an account with two characters and the stack with both workers.
+
+1. Choose the second character and `Local Stress Arena`, enter the World, and
+   exit Play Mode.
+2. Enter Play Mode from `LoginMenu` and press `Enter`.
+
+Expected result: `Log In` shows the account's login name; after the login,
+CharacterSelect chooses the second character and `Local Stress Arena`. A double
+click on a character, or `Enter`, enters the World with it. Stopping the stress
+arena worker and pressing `Refresh` chooses `Local Shard 1` instead, and with no
+worker running, `Enter World` is disabled and the line above it reads `No shard
+is online. Start a SimulationWorker, then press Refresh.`
 
 ### The Stress Arena Shard
 
@@ -353,10 +387,10 @@ the spawn pad in the middle of the walled arena.
 
 ### Busy Buttons And Lost Connections
 
-1. Double-click `Register`, `Create Character`, `Refresh Characters`, `Join
-   Selected Shard`, and `Leave Shard`. Expected result: only one operation
-   starts each time, and the controls stay disabled until it ends.
-2. Stop SimulationWorker and click `Join Selected Shard`. Expected result:
+1. Double-click `Create Account`, `Create Character`, `Refresh`, `Enter World`,
+   and `Leave Shard`. Expected result: only one operation starts each time, and
+   the controls stay disabled until it ends.
+2. Stop SimulationWorker and click `Enter World`. Expected result:
    CharacterSelect shows a structured error and loads no World scene: after a
    graceful stop GameService reports `shard_unavailable` at once, and a worker
    that ended without one yields a realtime network or timeout error after the
@@ -371,7 +405,7 @@ the spawn pad in the middle of the walled arena.
    elsewhere, for example with `POST /api/accounts/login` and the body
    `{ "login": "<username>", "password": "<password>" }`, which revokes the
    client's session. Expected result: within about five seconds, or at the next
-   `Refresh Characters`, the client clears all local state and returns to
+   `Refresh`, the client clears all local state and returns to
    LoginMenu.
 
 ### One Active Account Session
@@ -1211,13 +1245,13 @@ items.
 
 ### Character Creation
 
-1. Log in. Expected result: below the character name, CharacterSelect shows the
-   rows `Body: Human_Male`, `face: Stubble`, `eyes: Teal`, `scar: none`,
-   `tattoo: none`, `underwear (legs): Briefs`, and `hair: none`, each with `<`
-   and `>`.
-2. Press `>` next to `Body`, choose `face: Freckles`, `eyes: Hazel`, and `hair:
-   DarkBrownHair`, enter a name, and press `Create Character`. Expected result:
-   the list shows the new character with `(Human_Female)`.
+1. Log in and click `New Character`. Expected result: below `Name`, the `Body`
+   buttons `Human Male`, chosen, and `Human Female`, and the `Look` rows `Face:
+   Stubble`, `Eyes: Teal`, `Scar: None`, `Tattoo: None`, `Underwear (legs):
+   Briefs`, and `Hair: None`, each with `<` and `>`.
+2. Click `Human Female`, choose `Face: Freckles`, `Eyes: Hazel`, and `Hair: Dark
+   Brown Hair`, enter a name, and press `Create Character`. Expected result:
+   the list shows the new character, chosen, with `Human Female` under its name.
 3. Join with it. Expected result: the woman shows the freckled face, hazel
    eyes, and the dark brown hair, in her underwear, a bra and briefs.
 

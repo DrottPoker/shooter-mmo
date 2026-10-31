@@ -33,9 +33,19 @@ bindings and player-configurable rebinding are not implemented.
 
 ## Account Entry Flow
 
-- LoginMenu asks for an email and a password and offers `Register` and `Login`.
-  A successful request loads CharacterSelect. While a request runs, a second
-  click cannot send it again.
+- LoginMenu shows one card with a `Log In` and a `Create Account` tab. `Log In`
+  takes an email or a username and a password; `Create Account` takes an email,
+  a username, and a password, with the rules of each below its field, and logs
+  the new account in. The GameService address and the request and realtime
+  timeouts show at the bottom of the screen.
+- `Log In` starts with the last login name used on this computer and puts the
+  caret in the password. In the Editor and in development builds, the fields
+  start with the local development account `player_one` and its password.
+- `Tab` and `Shift+Tab` move between the fields, and `Enter` sends the open
+  tab. A successful request loads CharacterSelect. While a request runs, the
+  form is disabled, so a second click or `Enter` cannot send it again. A failed
+  request shows its reason in red under the button, with its stable error
+  code; when GameService does not answer, the message names its address.
 - Only one client session may be active for an account. A login on a second
   client replaces the first one: the first client is disconnected from its
   shard, clears its local account state, and returns to LoginMenu with an
@@ -45,18 +55,32 @@ bindings and player-configurable rebinding are not implemented.
 
 ## Character Selection
 
-CharacterSelect lists the account's characters, each with its body model, and
-the online shards, each with its region, fleet, status, players, and capacity:
+CharacterSelect has a top bar with the signed-in account, `Refresh`, and
+`Log Out`; the account's characters on the left, each with its body model and
+gold; and on the right the chosen character with the shards and `Enter World`,
+or the creation of a new character. A status line at the bottom shows the
+result of the last action.
 
-- Creating a character chooses its body model, `Human_Male` or `Human_Female`,
-  and its look with temporary rows that step through the choices with `<` and
-  `>`: face, eyes, scar, tattoo, underwear per body slot, and hair. A required
-  choice starts at its first option, and scar, tattoo, and hair start at `none`,
-  so a character may be bald. `Create Character` creates it.
-- `Refresh Characters` and `Refresh Shards` reload the lists, and
-  `Join Selected Shard` enters the World of the selected shard with the selected
-  character, as [Shard Entry And Exit](#shard-entry-and-exit) describes.
-- `Back To Login` logs the account out and returns to LoginMenu.
+- A click chooses a character or an online shard; an offline shard cannot be
+  chosen. Each shard shows its region, fleet, and `Online <players> /
+  <capacity>` or `Offline`.
+- `Enter World`, `Enter`, or a double click on the chosen character or shard
+  enters the World of the chosen shard with the chosen character, as
+  [Shard Entry And Exit](#shard-entry-and-exit) describes. Without a character
+  or an online shard, a line above the button says what is missing.
+- CharacterSelect starts with the character and shard of the last `Enter World`
+  on this computer; otherwise it chooses the first character and the first
+  online shard.
+- `New Character` opens the creation, and an account without characters starts
+  there. Creating a character takes its name, its body model, `Human Male` or
+  `Human Female`, and its look with rows that step through the choices with `<`
+  and `>`: face, eyes, scar, tattoo, underwear per body slot, and hair. A
+  required choice starts at its first option, and scar, tattoo, and hair start
+  at `None`, so a character may be bald. `Create Character` or `Enter` creates
+  it and chooses it; `Cancel` returns to the chosen character.
+- `Refresh` reloads the characters and the shards and keeps what is chosen.
+  `Log Out` logs the account out and returns to LoginMenu.
+- While an action runs, every control is disabled.
 
 The body model and the look are stored with the character, and every client
 shows them. Changing the look in the game, such as at a barber, deleting a

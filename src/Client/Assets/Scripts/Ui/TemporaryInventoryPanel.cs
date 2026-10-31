@@ -9,8 +9,6 @@ using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
@@ -392,7 +390,7 @@ namespace Mmorpg.Client.Ui
 
         private void BuildUi()
         {
-            EnsureEventSystem();
+            TemporaryUiKit.EnsureEventSystem();
             canvasObject = new GameObject(
                 "TemporaryInventoryCanvas",
                 typeof(RectTransform),
@@ -2184,20 +2182,6 @@ namespace Mmorpg.Client.Ui
                 "death_recovered_protected" => "Recovered: protected on death",
                 _ => "Recovered: " + source
             };
-        }
-
-        private static void EnsureEventSystem()
-        {
-            if (EventSystem.current != null)
-            {
-                return;
-            }
-
-            var eventSystem = new GameObject(
-                "InventoryEventSystem",
-                typeof(EventSystem),
-                typeof(InputSystemUIInputModule));
-            eventSystem.transform.SetAsFirstSibling();
         }
     }
 }

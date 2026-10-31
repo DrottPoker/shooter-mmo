@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
@@ -76,7 +74,7 @@ namespace Mmorpg.Client.Ui
             bool withFooterButtons,
             Action close)
         {
-            EnsureEventSystem();
+            TemporaryUiKit.EnsureEventSystem();
             var menu = new TemporaryMenuWindow();
             menu.canvasObject = new GameObject(
                 name + "Canvas",
@@ -440,20 +438,6 @@ namespace Mmorpg.Client.Ui
             viewport.gameObject.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.01f);
             viewport.gameObject.AddComponent<RectMask2D>();
             scroll.viewport = viewport;
-        }
-
-        private static void EnsureEventSystem()
-        {
-            if (EventSystem.current != null)
-            {
-                return;
-            }
-
-            var eventSystem = new GameObject(
-                "MenuEventSystem",
-                typeof(EventSystem),
-                typeof(InputSystemUIInputModule));
-            eventSystem.transform.SetAsFirstSibling();
         }
     }
 }

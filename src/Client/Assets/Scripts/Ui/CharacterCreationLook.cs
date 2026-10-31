@@ -4,10 +4,10 @@ using Mmorpg.Client.Api;
 
 namespace Mmorpg.Client.Ui
 {
-    // The body model and look the character creation rows choose, from the offers GameService
-    // sends: one option per kind and slot the body model offers, the first by default, and none
-    // allowed for a kind a character may go without, such as a bald head. Another body model starts
-    // from its own defaults. Temporary until the custom character creation screen.
+    // The body model and look that character creation chooses, from the offers GameService sends:
+    // one option per kind and slot the body model offers, the first by default, and none allowed
+    // for a kind a character may go without, such as a bald head. Another body model starts from
+    // its own defaults. Temporary until the custom character creation screen.
     public sealed class CharacterCreationLook
     {
         private readonly CharacterAppearanceCatalogResponse catalog;
@@ -48,16 +48,31 @@ namespace Mmorpg.Client.Ui
             get { return BodyModelCount > 0 ? catalog.bodyModels[bodyIndex].id : null; }
         }
 
+        public int BodyModelIndex
+        {
+            get { return bodyIndex; }
+        }
+
         public int OfferCount
         {
             get { return chosen.Length; }
         }
 
-        // Such as "underwear (legs)".
-        public string OfferLabel(int offer)
+        public string BodyModelAt(int index)
         {
-            var found = Offer(offer);
-            return found.kind + (string.IsNullOrEmpty(found.slot) ? string.Empty : " (" + found.slot + ")");
+            return catalog.bodyModels[index].id;
+        }
+
+        // Such as "underwear".
+        public string OfferKind(int offer)
+        {
+            return Offer(offer).kind;
+        }
+
+        // Such as "legs", or empty for a kind without slots.
+        public string OfferSlot(int offer)
+        {
+            return Offer(offer).slot ?? string.Empty;
         }
 
         // The chosen option of the offer, or "none".
@@ -74,7 +89,18 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            bodyIndex = Wrap(bodyIndex + step, BodyModelCount);
+            SelectBodyModel(Wrap(bodyIndex + step, BodyModelCount));
+        }
+
+        // Another body model starts from its own defaults.
+        public void SelectBodyModel(int index)
+        {
+            if (index < 0 || index >= BodyModelCount || index == bodyIndex)
+            {
+                return;
+            }
+
+            bodyIndex = index;
             ResetChoices();
         }
 
