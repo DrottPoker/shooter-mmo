@@ -1,0 +1,54 @@
+{
+    "schemaVersion": 1,
+    "kind": "skinned",
+    "target": "src/Client/Assets/Art/Models/Attachments/TrainingShortbow.fbx",
+    "rootObjects": [
+        "Grip"
+    ],
+    "triangleBudget": 2200,
+    "socket": "off_hand",
+    "holdClip": "HoldBow",
+    "attackClip": "BowShot",
+    "attackRelease": 0.8,
+    "launchPoint": [0.0, 0.07, 0.0],
+    "drawLength": 0.62,
+    "skeleton": "Bow",
+    "clips": ["Draw"],
+    "approvals": {
+        "model": {
+            "date": "2026-10-31",
+            "sourceSha256": "46a173da7e657d50979be8ed21448e86d2a8413a818ad7dc0ca09027710134fb"
+        },
+        "rig": {
+            "date": "2026-10-31",
+            "sourceSha256": "d08d945fbf02dfb2c96fc599586bd20f020b984959de2d2d7af5027db11f47e0"
+        },
+        "animation": {
+            "date": "2026-10-31",
+            "sourceSha256": "d08d945fbf02dfb2c96fc599586bd20f020b984959de2d2d7af5027db11f47e0"
+        }
+    },
+    "export": {
+        "sourceSha256": "d08d945fbf02dfb2c96fc599586bd20f020b984959de2d2d7af5027db11f47e0",
+        "targetSha256": "e5c47734f1edaaf091ca232a9e190269c9f9cc2725fbb69b91a7f0fc5084aacc",
+        "materials": [
+            {
+                "name": "M_TrainingShortbow",
+                "baseColor": "#FFFFFF",
+                "baseMap": "T_TrainingShortbow",
+                "metallic": 0.0,
+                "smoothness": 0.38
+            }
+        ],
+        "textures": [
+            {
+                "name": "T_TrainingShortbow",
+                "target": "src/Client/Assets/Art/Textures/Attachments/T_TrainingShortbow.png",
+                "sha256": "a69575e943a3c38b81034e296dfae10bcb8bb583fdfb7c26814cd78df396007e"
+            }
+        ],
+        "clips": [
+            { "name": "Draw", "frames": 15, "loop": false }
+        ]
+    }
+}

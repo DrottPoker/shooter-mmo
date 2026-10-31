@@ -1,0 +1,14 @@
+{
+    "schemaVersion": 1,
+    "name": "Bow",
+    "bones": [
+        { "name": "Bow_Riser", "parent": null, "deform": true },
+        { "name": "Bow_LimbUpper", "parent": "Bow_Riser", "deform": true },
+        { "name": "Bow_TipUpper", "parent": "Bow_LimbUpper", "deform": true },
+        { "name": "Bow_StringUpper", "parent": "Bow_TipUpper", "deform": true },
+        { "name": "Bow_LimbLower", "parent": "Bow_Riser", "deform": true },
+        { "name": "Bow_TipLower", "parent": "Bow_LimbLower", "deform": true },
+        { "name": "Bow_StringLower", "parent": "Bow_TipLower", "deform": true },
+        { "name": "Bow_Nock", "parent": "Bow_Riser", "deform": true }
+    ]
+}

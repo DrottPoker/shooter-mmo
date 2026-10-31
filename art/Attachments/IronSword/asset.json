@@ -7,6 +7,8 @@
     ],
     "triangleBudget": 1500,
     "socket": "main_hand",
+    "attackClip": "SwordSlash",
+    "attackRelease": 0.35,
     "approvals": {
         "model": {
             "date": "2026-10-25",

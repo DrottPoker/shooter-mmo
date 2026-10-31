@@ -19,8 +19,9 @@ OBJECT_TYPES = {"static": {"MESH", "EMPTY"}, "skinned": {"MESH", "EMPTY", "ARMAT
 RIGGED_OBJECT_TYPES = {"MESH", "ARMATURE"}
 # Kinds with an armature from their first stage on.
 ARMATURE_KINDS = {"animations"}
-# Kinds whose materials may take the Base Color from one packed image, such as a painted body.
-TEXTURED_KINDS = {"skinned"}
+# Kinds whose materials may take the Base Color from one packed image, such as a painted body or a
+# hand-painted prop.
+TEXTURED_KINDS = {"skinned", "static"}
 TOLERANCE = 1e-4
 # The one root object of an attachment, at the point of its socket where it is held.
 GRIP_ROOT = "Grip"
@@ -154,9 +155,14 @@ def validate(kind: str, roots: list[str], triangle_budget: int | None, stage: st
                           "because its origin is the actor position in the game.")
         if kind == "skinned":
             errors += bodies.part_errors(root.name)
-        # An attachment's root Grip only marks where it is held; its meshes hang below it.
-        if roots == [GRIP_ROOT] and (root.type != "EMPTY" or not root.children):
-            errors.append(f'The root object "{GRIP_ROOT}" of an attachment must be an empty with the meshes as its children.')
+        # An attachment's root Grip only marks where it is held; its meshes hang below it. From the
+        # rig stage of a skinned attachment on, Grip is the armature that moves its parts.
+        if roots == [GRIP_ROOT]:
+            if rigged:
+                if root.type != "ARMATURE":
+                    errors.append(f'The root object "{GRIP_ROOT}" of a rigged attachment must be its armature.')
+            elif root.type != "EMPTY" or not root.children:
+                errors.append(f'The root object "{GRIP_ROOT}" of an attachment must be an empty with the meshes as its children.')
 
     if rigged:
         skeleton = skeleton_definition.load(skeleton_path)
