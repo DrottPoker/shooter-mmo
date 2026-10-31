@@ -607,6 +607,11 @@ unity command editor_status
 Expected result:
 
 - `unity status` lists the project as `ready` on a loopback port such as `7800`.
+  It sends every running Editor a command that the Pipeline package does not
+  know, and the error that logs fails any Unity test running in that Editor,
+  including the [Unity CI Runner](#unity-ci-runner)'s on this machine. Use it
+  only for this setup check; afterwards ask one Editor with
+  `unity command editor_status --project-path <path>`.
 - `unity pipeline list` reports Pipeline `true`, version `0.8.0-exp.1`, and
   Server Reachable `true`.
 - `editor_status` returns `"status":"ready"`.
