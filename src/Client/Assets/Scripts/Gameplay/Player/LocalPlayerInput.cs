@@ -45,6 +45,12 @@ namespace Mmorpg.Client.Gameplay
             get { return IsConfigured && selectAction.WasPressedThisFrame(); }
         }
 
+        // Left button down: a left click that walked keeps steering the walk while it stays down.
+        public bool SelectHeld
+        {
+            get { return IsConfigured && selectAction.IsPressed(); }
+        }
+
         // Right click: open the world menu with every option for what is under the pointer.
         public bool ContextMenuPressedThisFrame
         {

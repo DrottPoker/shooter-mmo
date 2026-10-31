@@ -16,6 +16,7 @@ to check each feature by hand is in [Manual Testing](MANUAL_TESTING.md).
 | Input | Does |
 | --- | --- |
 | Left click | Runs the top option of the [World Menu](#world-menu) at once: walk, attack, talk, gather, or loot |
+| Left button, held after a click that walked | Steers the walk toward the ground under the pointer, see [Player Movement](#player-movement) |
 | Right click | Opens the world menu with every option for what is under the pointer |
 | Middle mouse button, dragged | Turns and tilts the camera |
 | Arrow keys | Left and right turn the camera, up and down tilt it |
@@ -207,6 +208,14 @@ revision, session, and availability for every request.
   more than 64 meters away walks toward it as far as the search reaches.
 - A new click replaces the current route at once, and the previous route
   continues until the new one is planned, so a long search never stalls a frame.
+- Holding the left button down after a click that walked steers the walk: the
+  destination follows the ground under the pointer, with a new route up to ten
+  times a second once the point moved 0.25 m or more, so holding the button with
+  the pointer ahead of the character keeps it walking. Hovering a target or a
+  panel while holding changes nothing, and a pointer that meets no ground keeps
+  the current route. Releasing the button lets the character walk on to the
+  last destination. A left click on a target and an option chosen from the menu
+  never steer, and a right click or death ends the steering.
 - The character walks at one speed, 5 meters per second, slowed by a heavy load
   as [Carry Weight And Encumbrance](#carry-weight-and-encumbrance) describes, and
   turns toward its direction of travel. It climbs steps up to 0.35 m and slopes

@@ -256,6 +256,52 @@ public sealed class AuthoritativePlayerMovementTests
         Assert.Equal(2u, movement.CurrentPath!.Id);
     }
 
+    // Holding the left button replans the walk about every three inputs. Each batch carries
+    // only the newest path, as when no owner snapshot confirmed it yet, and the worker still
+    // follows every steered path exactly as the client predicted it.
+    [Fact]
+    public void PathsReplacedEveryFewInputsAreFollowedExactlyAsPredicted()
+    {
+        var movement = CreateMovement();
+        var collisionWorld = CollisionTestWorldFactory.Create();
+        var predicted = PlayerMovementSimulation.CreateInitialState(Settings, collisionWorld, 0f, 0f, -1f, 0f);
+        var expected = new List<PlayerMovementState> { predicted };
+        var pathIds = new List<uint> { 0 };
+        RealtimeMovementPath wirePath = null!;
+        const uint inputs = 30;
+        for (uint sequence = 1; sequence <= inputs; sequence++)
+        {
+            if (sequence % 3 == 1)
+            {
+                // The pointer sweeps sideways while the character walks.
+                var pathId = (sequence + 2) / 3;
+                wirePath = Path(pathId, (-4f + (pathId * 0.8f), 8f));
+            }
+
+            predicted = PlayerMovementSimulation.Step(
+                predicted,
+                new PlayerMovementInput(sequence, sequence, ToSimulationPath(wirePath)),
+                Settings,
+                PlayerCarryState.Default,
+                collisionWorld);
+            expected.Add(predicted);
+            pathIds.Add(wirePath.PathId);
+
+            var first = Math.Max(1, (int)sequence - (RealtimeProtocol.MaximumInputBatchSize - 1));
+            var batch = Enumerable.Range(first, (int)sequence - first + 1)
+                .Select(index => new RealtimeMovementInput((uint)index, (uint)index, pathIds[index]))
+                .ToArray();
+            Assert.Equal(MovementInputAcceptance.Accepted, movement.AcceptInputs(Batch(wirePath, batch)));
+            movement.SimulateTick();
+
+            Assert.Equal(sequence, movement.LastProcessedInputSequence);
+            AssertState(expected[(int)sequence], movement.ConfirmedState);
+        }
+
+        Assert.Equal(inputs / 3, movement.CurrentPath!.Id);
+        Assert.True(movement.State.PositionZ > 3f);
+    }
+
     [Fact]
     public void GapLongerThanTheQueueSkipsAheadToTheReceivedInput()
     {
@@ -425,11 +471,7 @@ public sealed class AuthoritativePlayerMovementTests
     private static PlayerMovementState[] PredictedStates(RealtimeMovementPath wirePath, int count)
     {
         var collisionWorld = CollisionTestWorldFactory.Create();
-        var path = new MovementPath(
-            wirePath.PathId,
-            wirePath.Waypoints
-                .Select(waypoint => new SimulationVector3(waypoint.X, waypoint.Y, waypoint.Z))
-                .ToArray());
+        var path = ToSimulationPath(wirePath);
         var states = new PlayerMovementState[count + 1];
         states[0] = PlayerMovementSimulation.CreateInitialState(Settings, collisionWorld, 0f, 0f, -1f, 0f);
         for (var index = 1; index <= count; index++)
@@ -443,6 +485,15 @@ public sealed class AuthoritativePlayerMovementTests
         }
 
         return states;
+    }
+
+    private static MovementPath ToSimulationPath(RealtimeMovementPath wirePath)
+    {
+        return new MovementPath(
+            wirePath.PathId,
+            wirePath.Waypoints
+                .Select(waypoint => new SimulationVector3(waypoint.X, waypoint.Y, waypoint.Z))
+                .ToArray());
     }
 
     // The newest input and up to three before it, as the client sends them.

@@ -252,7 +252,9 @@ camera, and the world menu. The controls and their values are in
 
 - Movement is click to move. It is smooth and continuous, with no visible
   tiles. Routes are planned around obstacles on a fine internal grid sampled
-  from the baked collision, which the player never sees or feels.
+  from the baked collision, which the player never sees or feels. Holding the
+  button after a click on the ground steers the walk toward the pointer, so
+  the character can be guided without clicking again and again.
 - The client plans the route and moves at once. SimulationWorker follows the
   same waypoints with authoritative collision, so prediction matches the
   server. Mobs plan their routes with the same shared planner.
