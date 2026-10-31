@@ -563,7 +563,10 @@ A Mob with a creature model of its own is built by
 `-executeMethod Mmorpg.Client.Editor.CreaturePresentationBuilder.Build`. It
 builds the creature's Animator controller from the clips of its model, such as
 `Assets/Art/Animation/WolfLocomotion.controller`, and rebuilds each world actor
-prefab of the creature in place, so it keeps its GUID and Addressables entry.
+prefab of the creature in place, so it keeps its GUID and Addressables entry. It
+writes the controller and a prefab only when they differ from what it builds, so
+a build without a change rewrites nothing, which `CreaturePresentationTests`
+checks.
 The prefab is not a Prefab Variant of the model, because its root keeps the
 actor's own scale while the model may be larger: the model is a nested prefab
 instance in the child `Model`, with the controller on its Animator, no root
