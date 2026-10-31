@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Mmorpg.Client.Gameplay;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -12,8 +14,10 @@ namespace Mmorpg.Client.Editor
     // Run blended by Speed at the playback rate LocomotionRate), Attack on the Attack trigger, and
     // Death while Dead, and the world actor prefabs that show it, such as the Feral Wolf's and the
     // larger, darker Feral Alpha's. The prefabs keep their assets, so the presentation registry and
-    // Addressables keep naming them. Run MMORPG > Tools > Art Pipeline > Build Creature
-    // Presentations after an export of a creature changes its clips.
+    // Addressables keep naming them. A build writes a controller or a prefab only when it differs
+    // from what the build makes, so building again without a change rewrites nothing. Run MMORPG >
+    // Tools > Art Pipeline > Build Creature Presentations after an export of a creature changes its
+    // clips.
     public static class CreaturePresentationBuilder
     {
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Build Creature Presentations";
@@ -65,10 +69,123 @@ namespace Mmorpg.Client.Editor
             return clip;
         }
 
+        // The controller at the path, built again only when it differs from the one the model's clips
+        // make, so the prefabs keep naming the same asset.
         public static AnimatorController BuildController(string modelPath, string controllerPath, float walkSpeed, float runSpeed)
         {
+            var existing = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+            if (existing != null)
+            {
+                var wanted = new AnimatorController();
+                try
+                {
+                    wanted.AddLayer("Base Layer");
+                    Fill(wanted, modelPath, walkSpeed, runSpeed, false);
+                    if (Describe(existing) == Describe(wanted))
+                    {
+                        return existing;
+                    }
+                }
+                finally
+                {
+                    DestroyInMemory(wanted);
+                }
+            }
+
             AssetDatabase.DeleteAsset(controllerPath);
             var controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
+            Fill(controller, modelPath, walkSpeed, runSpeed, true);
+            EditorUtility.SetDirty(controller);
+            return controller;
+        }
+
+        // Everything a build sets on a controller, in a fixed order, so two controllers compare as
+        // text: the parameters, and per layer its default state, its states with their motions and
+        // speeds, and every transition with its timing and conditions.
+        public static string Describe(AnimatorController controller)
+        {
+            var text = new StringBuilder();
+            foreach (var parameter in controller.parameters)
+            {
+                text.Append("parameter ").Append(parameter.name).Append(' ').Append(parameter.type).Append(' ')
+                    .Append(parameter.defaultFloat).Append(' ').Append(parameter.defaultBool).Append(' ').Append(parameter.defaultInt).Append('\n');
+            }
+
+            foreach (var layer in controller.layers)
+            {
+                var machine = layer.stateMachine;
+                text.Append("layer ").Append(layer.name).Append(" default ").Append(machine.defaultState != null ? machine.defaultState.name : "-").Append('\n');
+                foreach (var state in machine.states.Select(child => child.state).OrderBy(state => state.name, StringComparer.Ordinal))
+                {
+                    text.Append("state ").Append(state.name).Append(' ').Append(Describe(state.motion)).Append(" speed ").Append(state.speed)
+                        .Append(' ').Append(state.speedParameterActive ? state.speedParameter : "-").Append('\n');
+                    foreach (var transition in state.transitions)
+                    {
+                        Describe(text, state.name, transition);
+                    }
+                }
+
+                foreach (var transition in machine.anyStateTransitions)
+                {
+                    Describe(text, "Any State", transition);
+                }
+            }
+
+            return text.ToString();
+        }
+
+        private static string Describe(Motion motion)
+        {
+            if (motion is BlendTree tree)
+            {
+                return "tree " + tree.blendType + " " + tree.blendParameter + " ("
+                    + string.Join(", ", tree.children.Select(child => Describe(child.motion) + " at " + child.threshold + " x" + child.timeScale)) + ")";
+            }
+
+            return motion != null ? AssetDatabase.GetAssetPath(motion) + "#" + motion.name : "-";
+        }
+
+        private static void Describe(StringBuilder text, string from, AnimatorStateTransition transition)
+        {
+            text.Append("transition ").Append(from).Append(" -> ").Append(transition.destinationState != null ? transition.destinationState.name : "-")
+                .Append(" exit ").Append(transition.hasExitTime).Append(' ').Append(transition.exitTime)
+                .Append(" fade ").Append(transition.hasFixedDuration).Append(' ').Append(transition.duration)
+                .Append(" self ").Append(transition.canTransitionToSelf)
+                .Append(" if ").Append(string.Join(" and ", transition.conditions.Select(condition => condition.mode + " " + condition.parameter + " " + condition.threshold)))
+                .Append('\n');
+        }
+
+        // Destroys a controller made only to compare, with every object of its own.
+        private static void DestroyInMemory(AnimatorController controller)
+        {
+            var owned = new List<UnityEngine.Object>();
+            foreach (var layer in controller.layers)
+            {
+                var machine = layer.stateMachine;
+                owned.Add(machine);
+                owned.AddRange(machine.anyStateTransitions);
+                foreach (var state in machine.states.Select(child => child.state))
+                {
+                    owned.Add(state);
+                    owned.AddRange(state.transitions);
+                    if (state.motion is BlendTree tree)
+                    {
+                        owned.Add(tree);
+                    }
+                }
+            }
+
+            owned.Add(controller);
+            foreach (var item in owned.Where(item => item != null))
+            {
+                UnityEngine.Object.DestroyImmediate(item);
+            }
+        }
+
+        // The parameters, states, and transitions of a creature's controller from its model's clips;
+        // a persistent controller keeps its blend tree as a sub-asset.
+        private static void Fill(AnimatorController controller, string modelPath, float walkSpeed, float runSpeed, bool persistent)
+        {
             controller.AddParameter(CreatureLocomotion.SpeedParameter, AnimatorControllerParameterType.Float);
             controller.AddParameter(CreatureLocomotion.MovingParameter, AnimatorControllerParameterType.Bool);
             controller.AddParameter(new AnimatorControllerParameter
@@ -93,7 +210,11 @@ namespace Mmorpg.Client.Editor
                 useAutomaticThresholds = false,
                 hideFlags = HideFlags.HideInHierarchy,
             };
-            AssetDatabase.AddObjectToAsset(tree, controller);
+            if (persistent)
+            {
+                AssetDatabase.AddObjectToAsset(tree, controller);
+            }
+
             tree.AddChild(Clip(modelPath, CreatureLocomotion.WalkClip), walkSpeed);
             tree.AddChild(Clip(modelPath, CreatureLocomotion.RunClip), runSpeed);
             var locomotion = machine.AddState(CreatureLocomotion.LocomotionState, new Vector3(300f, 100f));
@@ -138,8 +259,6 @@ namespace Mmorpg.Client.Editor
             var rise = death.AddTransition(idle);
             Configure(rise, 0.2f);
             rise.AddCondition(AnimatorConditionMode.IfNot, 0f, CreatureLocomotion.DeadParameter);
-            EditorUtility.SetDirty(controller);
-            return controller;
         }
 
         private static void Configure(AnimatorStateTransition transition, float seconds)
@@ -184,6 +303,11 @@ namespace Mmorpg.Client.Editor
             var root = PrefabUtility.LoadPrefabContents(prefabPath);
             try
             {
+                if (Shows(root, modelPath, controller, scale, material))
+                {
+                    return;
+                }
+
                 foreach (var component in root.GetComponents<Component>()
                              .Where(component => component is MeshFilter || component is Renderer || component is Collider))
                 {
@@ -230,6 +354,39 @@ namespace Mmorpg.Client.Editor
             {
                 PrefabUtility.UnloadPrefabContents(root);
             }
+        }
+
+        // Whether a prefab already shows the model as BuildPrefab makes it: its only child, at that
+        // scale, with the controller, in the material or else the model's own, bound to its
+        // creature, and no mesh or collider of the root's own.
+        private static bool Shows(GameObject root, string modelPath, RuntimeAnimatorController controller, float scale, Material material)
+        {
+            if (root.transform.childCount != 1
+                || root.GetComponents<Component>().Any(component => component is MeshFilter || component is Renderer || component is Collider))
+            {
+                return false;
+            }
+
+            var model = root.transform.GetChild(0);
+            var animator = model.GetComponent<Animator>();
+            var creature = root.GetComponent<CreatureAnimator>();
+            return model.name == ModelName
+                && PrefabUtility.GetCorrespondingObjectFromSource(model.gameObject) == AssetDatabase.LoadAssetAtPath<GameObject>(modelPath)
+                && model.localPosition == Vector3.zero
+                && model.localRotation == Quaternion.identity
+                && model.localScale == Vector3.one * scale
+                && animator != null
+                && animator.runtimeAnimatorController == controller
+                && !animator.applyRootMotion
+                && animator.cullingMode == AnimatorCullingMode.CullUpdateTransforms
+                && model.GetComponentsInChildren<SkinnedMeshRenderer>(true).All(renderer => renderer.sharedMaterials.SequenceEqual(
+                    material != null
+                        ? Enumerable.Repeat(material, renderer.sharedMaterials.Length)
+                        : PrefabUtility.GetCorrespondingObjectFromSource(renderer).sharedMaterials))
+                && creature != null
+                && creature.Animator == animator
+                && creature.WalkSpeed == WolfWalkSpeed
+                && creature.RunSpeed == WolfRunSpeed;
         }
     }
 }
