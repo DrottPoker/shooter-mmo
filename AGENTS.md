@@ -6,9 +6,11 @@ Follow these rules for all future work in this repository.
 - Write all code, code comments, identifiers, commit messages, and technical
   documentation in English.
 - Keep documentation updated whenever behavior, configuration, architecture, or
-  user-facing workflows change.
+  user-facing workflows change, following the documentation map and rules in
+  `docs/README.md`: every fact lives in the one document that owns it.
 - Always include how the user can manually test delivered changes, including
-  the relevant commands and expected result.
+  the relevant commands and expected result. Lasting manual checks belong in
+  `docs/MANUAL_TESTING.md`.
 - Prefer small, focused changes that match the existing project structure.
 - Verify backend changes with lint and compile checks when practical.
 - Verify frontend changes with typecheck when practical.

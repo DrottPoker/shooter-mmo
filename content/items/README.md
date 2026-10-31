@@ -12,12 +12,19 @@ This directory is the neutral source of truth for the shared item catalog:
   must equal the `id` inside the file.
 
 `tools/ItemCatalogCompiler` validates all of them and compiles them into
-`src/Shared/WorldData/Generated/Items/core.item-catalog.json`. The general
-content rules are in [../README.md](../README.md).
+`src/Shared/WorldData/Generated/Items/core.item-catalog.json`, the runtime
+catalog that GameService, SimulationWorker, and the Unity client read. The
+general content rules are in [../README.md](../README.md), and the item rules
+that this content feeds, such as Bags, policies, and vendor trades, are in
+[Inventory And Death Loot Design](../../docs/INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 
 ## Authoring Contract
 
-Catalog format version 6 contains these separate concepts:
+`formatVersion` in `catalog.json` names the catalog format. It must equal
+`ItemCatalogFormat.Version` in the WorldData runtime, and the compiler rejects
+any other version, so a format change updates the compiler, the Item Catalog
+window, this content, and the [test fixture catalog](#test-fixture-catalog)
+together. The format contains these separate concepts:
 
 - **Character settings** in `character` set the base carry capacity and the
   slot counts of the permanent inventory and the bank that every new character
@@ -39,10 +46,16 @@ Catalog format version 6 contains these separate concepts:
   equipped, so a two-handed weapon in the main hand keeps the off hand free and
   nothing can be equipped into a blocked slot. A blocked slot cannot also be a
   compatible slot.
-- **Location eligibility** records explicit Secure Container permission. The
-  hard weapon prohibition is also enforced by the pure domain rule.
-- **Default policies** are server-owned policy ids and remain separate from
-  category and tags.
+- **Location eligibility** records explicit Secure Container permission. A
+  weapon can never be Secure Container eligible; the pure domain rule enforces
+  that prohibition as well.
+- **Player destroyability** in `playerDestroyable` is required on every
+  definition and says whether the player may destroy the item. A protected
+  quest item can never be player-destroyable.
+- **Default policies** in `defaultPolicies` are server-owned policy ids,
+  separate from category and tags: `protected_on_death` and `insured`, as
+  [Item Policies](../../docs/INVENTORY_AND_DEATH_LOOT_DESIGN.md#item-policies)
+  describes. An `insured` default needs non-stackable equipment.
 - **Bag layouts** contain contiguous stable slot indices. General slots
   configure no tags. Specialized slots configure one or more accepted tag ids.
 - **Weapon families** in `weaponFamilies` name a combat style (`melee`,
@@ -64,11 +77,8 @@ Catalog format version 6 contains these separate concepts:
   `attackIntervalSeconds` between attacks, the attack `range` in metres, and the
   `manaCost` of every attack, from 1 to 1,000,000 for a weapon of a `magic`
   family and 0 for every other weapon. Every `weapon` definition has exactly
-  this block, and no other definition has it. The Oak Staff
-  (`weapon.oak_staff`, value 120) is the first magic weapon: 10 to 18 every 2.4
-  seconds at 10 m for 5 mana, held with both hands. The Iron Greataxe
-  (`weapon.iron_greataxe`, value 180, weight 180) is the first axe: 16 to 27
-  every 3.0 seconds at 2.5 m, held with both hands.
+  this block, and no other definition has it. The shipped weapons and their
+  numbers are listed in [Combat](../../docs/GAME_FEATURES.md#combat).
 - **Ammunition data** in a definition's `ammunition` block names its ammunition
   family and its `damageBonusPercent` of the weapon roll. Every `ammunition`
   definition has exactly this block, and no other definition has it.
@@ -81,13 +91,13 @@ Catalog format version 6 contains these separate concepts:
 - **Tool kinds** in `toolKinds` are identities, such as `pickaxe` and
   `woodcutting_axe`, that name what an item serves as a tool for. The list is
   required and may be empty. A resource profile in the actor catalog names the
-  tool kind it requires.
+  tool kind it requires, as
+  [Resource Nodes And Item References](../README.md#resource-nodes-and-item-references)
+  describes.
 - **Definition tool kinds** in a definition's `toolKinds` list at most 8 tool
   kinds. Only a definition compatible with the `tool` equipment slot may have
   tool kinds, because gathering requires an item with the required tool kind
-  equipped in that slot. The Starter Pickaxe provides `pickaxe`, and the
-  Woodcutting Axe (`tool.woodcutting_axe`, value 50) provides `woodcutting_axe`.
-  The Oak Log (`material.oak_log`, value 10) is what an Oak Tree yields.
+  equipped in that slot, such as the Starter Pickaxe for `pickaxe`.
 - **Vendor profiles** in `vendors/` describe what an NPC vendor sells and buys.
   They are described in [Vendor Profiles](#vendor-profiles).
 - **Secure Container tiers** have stable ids and integer slot capacities.
@@ -104,13 +114,14 @@ meaning. Every other category, tag, slot, family, tool kind, and vendor is
 content.
 
 Unit weight, carry capacity, and the Bag carry-capacity bonus use unitless,
-non-negative integer values. Physical measurement units and decimal weight
-values are not part of the contract. The balance scale is one ammunition unit
-`1`, a one-handed weapon about `100`, and base character carry capacity `2000`,
-so 1000 spare arrows use half of the base capacity. A stackable definition may only be
-compatible with equipment slots that hold more than one unit, and one equipment
-slot holds at most the smaller of its own maximum quantity and the definition's
-stack size.
+non-negative integer values in `unitWeight`, `baseCarryCapacity`, and
+`carryCapacityBonus`. Physical measurement units and decimal weight values are
+not part of the contract; do not add such fields. The balance scale is one
+ammunition unit `1`, a one-handed weapon about `100`, and base character carry
+capacity `2000`, so 1000 spare arrows use half of the base capacity. A
+stackable definition may only be compatible with equipment slots that hold more
+than one unit, and one equipment slot holds at most the smaller of its own
+maximum quantity and the definition's stack size.
 
 Catalog ids, definition ids, tag ids, category ids, equipment slot ids, tool
 kind ids, vendor ids, policy ids, and tier ids use canonical lowercase
@@ -156,20 +167,16 @@ a charged price cannot differ for the same catalog. A purchase costs
 `ceil(value * quantity * purchasePriceBasisPoints / 10000)`, and a sale pays
 `floor(value * quantity * salePriceBasisPoints / 10000)`. Both use exact decimal
 arithmetic, and a total above the maximum balance of 1,000,000,000,000 is out of
-range. A sale whose total rounds down to 0, such as two Bronze Arrows, is refused
-with `vendor_will_not_buy`, so the vendor never takes an item for nothing.
+range. A sale whose total rounds down to 0, such as two Bronze Arrows of value
+1 at `4000`, is refused with `vendor_will_not_buy`, so the vendor never takes an
+item for nothing.
 
 The shipped `vendor.city_general_store`, "General Store", is the profile of the
-Trade capability of Mira the Quartermaster (`npc.city_services`). It offers
-Bronze Arrow (value 1), Minor Healing Potion (25), Cooked Trout (10), Starter
-Pickaxe (50), Woodcutting Axe (50), and every item that shows a garment except the Leather Jerkin: the
-Linen Shirt (12), Long-Sleeved Linen Shirt (16), Net Shirt (8), Wool Trousers
-(15), Leather Boots (30), Leather Gloves (18), the Wool Robe (40), Wool Hood (12),
-and Wool Cloak (35) with their blue and red ones (60, 18, and 50), the Nasal
-Helm (60), the Iron Sword (120), and the Heater Shield (80). It sells at `10000`
-and buys every category except quest items at
-`4000`. Selling three Iron Ore of value 10 there pays 12, and selling one Wolf
-Pelt of value 15 pays 6.
+Trade capability of Mira the Quartermaster (`npc.city_services`). Its file,
+[`vendors/vendor.city_general_store.json`](vendors/vendor.city_general_store.json),
+lists its offers in display order. It sells at `10000` and buys every category
+except quest items at `4000`, so selling three Iron Ore of value 10 there pays
+12, and selling one Wolf Pelt of value 15 pays 6.
 
 ## Revisions And Structural Changes
 
@@ -178,15 +185,15 @@ not affect the result, except for equipment slots and vendor offers, whose order
 is their display order.
 
 - The complete runtime catalog has one deterministic `revision`. It covers the
-  character and economy settings, the progression limits, every identity
-  including the tool kinds, the slot quantities and order, the weapon and
-  ammunition families, every definition fingerprint, every definition's value,
-  tool kinds, combat data, and level requirement, every vendor profile including
-  its offer order, and the retired ids.
+  format version, the character and economy settings, the progression limits,
+  every identity including the tool kinds, the slot quantities and order, the
+  weapon and ammunition families, every definition fingerprint, every
+  definition's value, tool kinds, combat data, and level requirement, every
+  vendor profile including its offer order, and the retired ids.
 - Every item definition has a deterministic `structuralFingerprint` covering
-  rule-affecting fields such as category, tags, weight, stack limit, equipment
-  compatibility, blocked equipment slots, location eligibility, default
-  policies, and Bag layout.
+  rule-affecting fields: category, tags, weight, stack limit, equipment
+  compatibility, blocked equipment slots, player destroyability, location
+  eligibility, default policies, and Bag layout.
 - Every Secure Container tier has a structural fingerprint covering its stable
   id and slot capacity.
 - Display-only changes, combat data, level requirements, values, tool kinds,
@@ -195,15 +202,19 @@ is their display order.
   none of them changes custody.
 - Structural fingerprints hash their own version,
   `ItemCatalogFormat.StructuralFingerprintVersion`, instead of the catalog format
-  version. A new format that only adds non-structural fields therefore keeps
-  every persisted definition compatible. Change that version only when the
-  meaning of a structural field changes. Format 5 added values, tool kinds,
-  vendor profiles, and the economy settings with `StructuralFingerprintVersion`
-  still at 3, so it needed no item migration and no development database reset.
-  Format 6 added the weapon `manaCost` the same way.
+  version. A new format that only adds non-structural fields, such as values,
+  tool kinds, vendor profiles, the economy settings, mana costs, or family
+  windups, therefore keeps every persisted definition compatible and needs no
+  item migration or development database reset. Change that version only when
+  the meaning of a structural field changes.
+
+After a compile, inspect the `structuralFingerprint` of every changed definition
+and Secure Container tier in the diff of the runtime catalog. A display-only
+edit changes the catalog revision without changing a structural fingerprint.
 
 GameService mirrors the catalog into PostgreSQL at startup and refuses to start
-when the change would invalidate live state:
+when the change would invalidate live state. The error names the affected
+stable id:
 
 - A structural definition change is accepted only when no item instance uses the
   definition. A tier change is accepted only when no account entitlement uses
@@ -229,19 +240,57 @@ state. A change that live state depends on needs an explicit data migration. On
 a local development database the documented alternative is a database reset,
 described in
 [Local Development](../../docs/LOCAL_DEVELOPMENT.md#reset-the-local-development-database).
+GameService and SimulationWorker read the catalog from their build output, so
+rebuild and restart both after a catalog change.
 
 ## Unity Editor Workflow
 
-Open `MMORPG > Tools > Item Catalog` in the Unity project. The editor and the
-Unity client read catalog JSON through one JsonUtility shape, `ItemCatalogJson`
-in the WorldData runtime, so a new catalog field is added there once. The
-Editor-only tool provides a searchable definition list with category, tag, and problem
-filters and multi-selection, create, duplicate, and remove-draft actions, every
-gameplay field in this contract, Bag slot editing, and the separate client
-presentation mapping. Selected definitions are edited together, live validation
-marks the fields that break this contract, and every edit can be undone with
-Unity's Undo. A definition's `Value` field and its `Tool Kinds` flags, which
-list the catalog tool kinds, edit the economy fields of the definition.
+Open `MMORPG > Tools > Item Catalog` in the Unity project. The window edits the
+authoring files in `content/items` and is not a second catalog: its live checks
+call the shared compiler in `Mmorpg.WorldData`, and `Validate`, `Save`, and
+`Save And Bake` run `tools/ItemCatalogCompiler`, which stays the validation and
+structural fingerprint authority for backend development and CI. The window and
+the Unity client read catalog JSON through one JsonUtility shape,
+`ItemCatalogJson` in the WorldData runtime, so a new catalog field is added
+there once.
+
+1. Find definitions in the list by id, name, category, or tag, and narrow it with
+   the category, tag, and `Problems` filters. `New`, `Duplicate`, and
+   `Remove Draft` create, copy, and remove draft definitions. Hold Ctrl or Shift
+   to select several definitions.
+2. Edit the gameplay fields of this contract and the separate client
+   presentation fields in the same window. With several definitions selected,
+   every field applies to all of them, and a field whose values differ shows a
+   dash. Id, display name, Bag layout, combat data, and presentation are edited
+   one definition at a time. A definition's `Value` field and its `Tool Kinds`
+   flags, which list the catalog tool kinds, edit its economy fields.
+3. Fix what the live check finds. A field with a problem turns red, the list
+   marks its definition, and choosing a problem in the panel below selects the
+   definition and its field.
+4. Undo and redo with Ctrl+Z and Ctrl+Y or the Edit menu; every edit is one step
+   in `Edit > Undo History`. Unsaved edits survive script reloads, and closing
+   the window asks whether to save them.
+5. Optionally choose an icon Sprite below `Assets/Content/Items/Icons`, one
+   Sprite per file. The folder is an Addressables folder entry, so the window
+   stores the icon's address, such as `Items/Icons/<file>.png`, not the image,
+   in the presentation file. An item may stay without an icon until approved
+   client art exists.
+6. Select `Validate` to run the strict command-line compiler against temporary
+   files. It writes nothing.
+7. Select `Save` to write `catalog.json`, one file per definition, one file per
+   vendor profile, and the client presentation file, without replacing the
+   runtime gameplay catalog. The files of removed draft definitions and removed
+   vendor profiles are deleted.
+8. Select `Save And Bake` to validate and atomically write the authoring files,
+   the deterministic runtime gameplay catalog, and the client presentation
+   file. Unchanged files are not rewritten. Display-only, structural, added, and
+   removed definitions are reported against the previous runtime catalog, and
+   structural changes require explicit confirmation.
+
+Expected result: before a write the window shows which gameplay and
+presentation revisions the change produces, the status then reports `Item
+catalog saved and baked successfully.` with the compiler output, and the
+`--verify` command under [Compile And Verify](#compile-and-verify) passes.
 
 The `Definitions | Vendors` toolbar toggle switches the window to the vendor
 profiles. Vendors mode lists them with a problem filter and `New` and `Remove`
@@ -260,58 +309,54 @@ is updated in Actor Studio.
 - Definition ids already present in runtime JSON are locked and cannot be
   deleted or reused. Retired ids can never be taken by a new definition. A new
   id remains editable until its first successful bake.
-- The character and economy settings, categories, tags, tool kind identities,
-  equipment slots, tiers, and retired ids are edited in `catalog.json`. The tool
-  keeps them unchanged when it saves. To retire a released definition, move its
-  id to `retired.definitions` and delete its definition file.
-- `Validate` invokes the strict command-line compiler against temporary files
-  and writes nothing.
-- `Save` writes `catalog.json`, one file per definition, one file per vendor
-  profile, and the client presentation file, but leaves runtime gameplay JSON
-  unchanged. Definition files of removed draft definitions and files of removed
-  vendor profiles are deleted.
-- `Save And Bake` validates and atomically writes the authoring files,
-  deterministic runtime gameplay, and client presentation JSON. Unchanged files
-  are not rewritten.
-- Display-only, structural, added, and removed definitions are reported against
-  the previous runtime catalog. Structural changes require explicit
-  confirmation.
+- The character and economy settings, the progression limits, categories, tags,
+  tool kind identities, equipment slots, weapon and ammunition families, tiers,
+  and retired ids are edited by hand in `catalog.json`. The window keeps them
+  unchanged when it saves. To retire a released definition, move its id to
+  `retired.definitions` and delete its definition file.
+- The window loads only authoring files that the compiler accepts, so fix a
+  hand edit that breaks the catalog before you open it.
 
 Client presentation JSON is bundled through Addressables at
 `src/Client/Assets/Content/Items/Presentation/item-presentation-catalog.json`.
-It contains icon Addressables addresses below `Items/Icons/`, localization keys,
-fallback text, optional prefab presentation keys, and, since format 3, the
-garments an item shows on a body: `garments`, the names of their garment
-textures, such as `WoolCloak`, at most four; `loweredGarments`, those it shows
-instead while its wearer has lowered it, such as `WoolHoodDown` for the hood; and
-`dyes`, the colors of their dye channels as `#RRGGBB` with upper-case digits, at
-most three, or none for their natural colors. Lowered garments and dyes need
-garments. The Item Catalog window edits them as comma-separated lists, and
-`ItemGarmentTests` requires that every item of the `head`, `body`, `legs`,
-`hands`, `feet`, or `back` slot shows garments that every body's appearance
-catalog has, in its own slot, with no more dye colors than they have dye
-channels; see [Equipment Visuals Design](../../docs/EQUIPMENT_VISUALS_DESIGN.md#items).
-Since format 4, `attachment` names the attachment an item holds on the socket of
-its equipment slot, such as `IronSword` for the Iron Sword in `main_hand`, or is
-empty. The Item Catalog window edits it as `Attachment`, and
-`ItemAttachmentTests` requires that every body's appearance catalog has it and
-that every equipment slot of the item is its socket; see
-[Attachments](../../docs/EQUIPMENT_VISUALS_DESIGN.md#attachments). A Tool slot
-item may name a tool attachment instead, such as `MiningPickaxe` for the Starter
-Pickaxe and `WoodcuttingAxe` for the Woodcutting Axe, which the body holds only
-while its character gathers; `ToolInUseTests` requires that only items of the
-Tool slot name tools; see
-[Tools In Use](../../docs/EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
-Icon files are
-client-owned assets below `Assets/Content/Items/Icons` and use one Sprite per
-file. The catalog has a separate
-deterministic presentation revision and records the exact source gameplay
-revision. These client fields never alter gameplay structural fingerprints.
+It maps every gameplay definition id to an optional icon address below
+`Items/Icons/`, a localization key, fallback text, an optional prefab
+presentation key, and the look of the item on a body:
 
-A failed validation does not write canonical files. A failed multi-file bake
-restores previous content. Correct the reported field paths or select `Reload`,
-then use the `--verify` command below to confirm that checked-in runtime content
-still matches authoring.
+- `garments` names the garment textures the item shows when worn, such as
+  `WoolCloak`, at most four. `loweredGarments` names those it shows instead
+  while its wearer has lowered it, such as `WoolHoodDown` for the hood. `dyes`
+  holds the colors of their dye channels as `#RRGGBB` with upper-case digits,
+  at most three, or none for their natural colors. Lowered garments and dyes
+  need garments. The Item Catalog window edits them as comma-separated lists,
+  and `ItemGarmentTests` requires that every item of the `head`, `body`, `legs`,
+  `hands`, `feet`, or `back` slot shows garments that every body's appearance
+  catalog has, in its own slot, with no more dye colors than they have dye
+  channels; see [Equipment Visuals Design](../../docs/EQUIPMENT_VISUALS_DESIGN.md#items).
+- `attachment` names the attachment an item holds on the socket of its
+  equipment slot, such as `IronSword` for the Iron Sword in `main_hand`, or is
+  empty. The window edits it as `Attachment`, and `ItemAttachmentTests` requires
+  that every body's appearance catalog has it and that every equipment slot of
+  the item is its socket; see
+  [Attachments](../../docs/EQUIPMENT_VISUALS_DESIGN.md#attachments). A Tool slot
+  item may name a tool attachment instead, such as `MiningPickaxe` for the
+  Starter Pickaxe and `WoodcuttingAxe` for the Woodcutting Axe, which the body
+  holds only while its character gathers; `ToolInUseTests` requires that only
+  items of the Tool slot name tools; see
+  [Tools In Use](../../docs/EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
+
+Icon files are client-owned assets below `Assets/Content/Items/Icons` and use
+one Sprite per file. The presentation file has its own deterministic
+presentation revision and records the exact gameplay catalog revision it was
+baked against; the client checks the pair once when it loads them and caches the
+lookup. Presentation fields never alter gameplay structural fingerprints, and
+inventory responses therefore carry definition ids and instance state, never
+icons or complete definitions.
+
+A failed validation writes nothing. A failed multi-file bake restores every
+previous file. Correct the field paths that the error names, or select `Reload`
+to return to the checked-in content, then run the `--verify` command below to
+confirm that the checked-in runtime content still matches the authoring files.
 
 ## Test Fixture Catalog
 
@@ -344,9 +389,26 @@ From the repository root, compile an intentional authoring change:
 dotnet run --project tools/ItemCatalogCompiler
 ```
 
-Bake the gameplay and presentation catalogs without the window, such as after
-editing the authoring files or the presentation file by hand, with the Unity
-project closed in every Editor; structural changes are baked without asking:
+Verify that the checked-in runtime catalog matches the authoring files, as CI
+does:
+
+```powershell
+dotnet run --project tools/ItemCatalogCompiler -- --verify
+```
+
+Expected result: both commands print the catalog id `core`, its SHA-256
+revision, and the numbers of definitions and Secure Container tiers, and they
+print the same revision. `--verify` writes nothing and returns exit code 1 for
+malformed authoring, a definition file whose name does not match its id,
+invalid rules, or stale runtime JSON. Neither command needs the Unity Editor.
+
+Run the actor compiler afterwards when actor content refers to a changed item,
+as [Compile And Verify](../README.md#compile-and-verify) describes.
+
+To bake the gameplay and presentation catalogs without the window, such as after
+editing the authoring files or the presentation file by hand, close the project
+in every Unity Editor and run the batch bake; structural changes are baked
+without asking:
 
 ```powershell
 & "C:\Program Files\Unity\Hub\Editor\<version>\Editor\Unity.exe" -batchmode -nographics `
@@ -354,10 +416,6 @@ project closed in every Editor; structural changes are baked without asking:
   -quit -logFile -
 ```
 
-Verify that checked-in runtime content matches authoring:
-
-```powershell
-dotnet run --project tools/ItemCatalogCompiler -- --verify
-```
-
-Validation failure or stale runtime content returns exit code 1.
+Expected result: the log reports `Baked the item catalog`, and Unity exits with
+code 0. A validation failure logs `The item catalog was not baked` and exits
+with code 1.

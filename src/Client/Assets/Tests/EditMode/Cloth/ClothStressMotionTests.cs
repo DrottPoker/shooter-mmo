@@ -8,7 +8,7 @@ namespace Mmorpg.Client.Tests.EditMode
 {
     // The cloth stress motions keep their courses, the Wardrobe plays them as the game shows a body,
     // and ClothMotionMeter finds what it measures, as docs/EQUIPMENT_VISUALS_DESIGN.md describes
-    // under Review.
+    // under Measuring The Cloth.
     public sealed class ClothStressMotionTests
     {
         private const float Step = 1f / 60f;

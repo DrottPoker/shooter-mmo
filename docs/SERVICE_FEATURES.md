@@ -1,46 +1,34 @@
 # Service Features
 
-Last updated: 2026-10-26
+This document owns the implemented server behavior as seen from outside the
+processes: the GameService HTTP API and its authentication, the error codes,
+the timings, limits, defaults, and configuration options, persistence and
+maintenance, the implemented behavior of each server area, and what is not
+implemented yet.
 
-## Purpose
-
-This document records implemented service, networking, persistence, and
-operational behavior. Product intent that is not implemented belongs in the MVP
-specification. Player-facing behavior belongs in [Game Features](GAME_FEATURES.md).
-
-## Service Topology
-
-The implemented topology is:
-
-```text
-Global GameService and PostgreSQL
-  Fleet
-    Node
-      SimulationWorker logical id
-        Worker runtime generation
-        SimulationAssignment -> Shard
-          Shard -> World content definition
-```
-
-There are no realms. Account and character records are global. Fleets identify
-compute placement and region, while shards are the player-selectable simulation
-copies. World identifies shared content.
-
-The current runtime permits one active worker per shard and one active shard per
-worker. Zone and layer partitioning are not implemented.
+The topology and the boundaries behind this behavior are in
+[Project Architecture](PROJECT_ARCHITECTURE.md), the GameService module
+internals in [GameService Modules](GAME_SERVICE_MODULES.md), the wire format in
+[Realtime Protocol](REALTIME_PROTOCOL.md), and the meters and logs in
+[Monitoring](MONITORING.md). The game rules are in [Game Design](GAME_DESIGN.md),
+the item rules in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), the
+world actor model in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md),
+and what a player sees in [Game Features](GAME_FEATURES.md).
 
 ## GameService HTTP Surface
 
 | Route | Authority | Behavior |
 | --- | --- | --- |
-| `POST /api/accounts/register` | Public, rate limited | Create account and login session |
+| `GET /` | Public | Redirect to `/health/ready` |
+| `POST /api/accounts/register` | Public, rate limited | Create an account and its login session |
 | `POST /api/accounts/login` | Public, rate limited | Replace the active login session |
-| `GET /api/accounts/me` | Account session | Return account profile |
+| `GET /api/accounts/me` | Account session | Return the account profile |
 | `GET /api/accounts/session` | Account session | Validate the current session |
-| `POST /api/accounts/logout` | Account session | Revoke current session and dependent access |
+| `POST /api/accounts/logout` | Account session | Revoke the current session and its dependent access |
 | `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
 | `GET /api/characters` | Account session | List owned characters with their body models |
-| `POST /api/characters` | Account session | Create a character with its body model and look, checked against `content/characters/appearance.json`, or the default look of the default body model without one |
+| `POST /api/characters` | Account session | Create a character with its body model and look, checked against `content/characters/appearance.json`, or with the default look of the default body model when the request names none |
 | `GET /api/character-appearance` | Account session | Return what character creation offers: the kinds of a look with their rules and every body model with its options per kind and slot |
 | `GET /api/item-catalog` | Account session | Return the neutral current catalog with revision ETag validation |
 | `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot, including the currency balance |
@@ -53,36 +41,51 @@ worker. Zone and layer partitioning are not implemented.
 | `POST /api/items/secure-container-tier` | Offline account session | Return the account to the base Secure Container tier with every character revision. A larger tier needs a trusted entitlement source, so this route returns `403` with `item_authority_required` for it |
 | `GET /api/shards` | Public | List logical shards, status, players, and capacity |
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
-| `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew exact worker runtime |
-| `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release exact worker runtime authority |
+| `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew the exact worker runtime and return the lease and the Shard's rule set |
+| `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release the exact worker runtime's authority |
 | `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket |
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
-| `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session active-character item mutation, vendor trade, or gathering yield through the durable kernel |
+| `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel |
 | `POST /api/simulation-sessions/{id}/ammunition-consumptions` | Worker service policy | Commit one idempotent batch of shots from the exact-session character's equipped ammunition stack |
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
 | `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
+| `POST /api/simulation-workers/{workerId}/mob-corpses/durable` | Exact worker service policy | Create one durable Mob corpse for the worker's runtime and Shard, idempotent by the operation id the worker derives from the death event |
 | `POST /api/simulation-sessions/{id}/corpses/{corpseId}/open` | Worker service policy | Read one exact-session, unexpired, same-Shard corpse snapshot after worker proximity validation |
 | `POST /api/simulation-sessions/{id}/corpses/{corpseId}/item-operations` | Worker service policy | Commit bidirectional full or partial corpse transfers, whole-item loot into an equipment slot, a corpse Bag into an empty Bag slot, Loot all, and atomic ordinary, equipment, or Bag aggregate swaps through the durable kernel |
 | `POST /api/simulation-sessions/{id}/mob-loot-grants` | Worker service policy | Grant one live Mob loot entry into the slot or stack the client named, idempotent by its grant id |
 | `POST /api/simulation-sessions/{id}/mob-loot-grants/loot-all` | Worker service policy | Grant every live Mob loot entry that fits, whole, in one transaction, and name every grant that left the corpse |
 | `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
+| `POST /api/development/stack-stress/characters/{characterId}/inventory-fixture` | Account session and Development loopback secret | Seed the starting items of a stack stress inventory workload for an owned empty character when explicitly enabled |
+| `POST /api/development/stack-stress/loot-hotspot` | Account session and Development loopback secret | Create the shared loot corpse of a stack stress workload when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
 
-The public shard list never exposes a SimulationWorker host, port, or runtime id.
-That endpoint appears only in a successful short-lived placement response.
+Route parameters named `characterId`, `sessionId`, `simulationSessionId`, and
+`corpseId` must be GUIDs. The public shard list never exposes a
+SimulationWorker host, port, or runtime id. That endpoint appears only in a
+successful short-lived placement response.
 
 The development bot route is absent unless GameService runs in `Development`
-with `DevelopmentSimulationBots:Enabled=true`. It also requires loopback and a
-separate secret. Its identities, tickets, and sessions remain in memory and are
-never durable account or character data. SimulationWorker uses the same worker
-service routes for real and bot credentials; GameService routes recognized bot
-credentials to the in-memory authority and every other request to the existing
-PostgreSQL services. A new ticket request of a bot supersedes the bot's own
-unconsumed ticket, as a player's join supersedes the account's pending ticket,
-so an abandoned bot ticket neither blocks the bot nor holds a connection.
+with `DevelopmentSimulationBots:Enabled=true`. It also requires a loopback
+caller and the separate `ACTIVE_SIMULATION_BOTS_SECRET`. Bot identities,
+tickets, and sessions remain in memory and are never durable account or
+character data. SimulationWorker uses the same worker service routes for real
+and bot credentials; GameService routes recognized bot credentials to the
+in-memory authority and every other request to the PostgreSQL services. The
+guards, the ticket rules, and the connections kept for real players are
+described in
+[Architecture And Safety Boundary](ACTIVE_SIMULATION_BOTS.md#architecture-and-safety-boundary).
+
+The stack stress fixture routes are absent unless GameService runs in
+`Development` with `StackStressFixtures:Enabled=true`. They also require a
+loopback caller, the `X-Stack-Stress-Fixture-Key` header with
+`STACK_STRESS_FIXTURE_SECRET`, a loopback PostgreSQL host, and a database name
+that contains `stress` or `test`; startup fails when an enabled fixture lacks
+any of these. They grant only the item definitions that configuration names,
+through the item transaction kernel. [Stack Stress Testing](STACK_STRESS_TESTING.md)
+uses them.
 
 ## Accounts And Authentication
 
@@ -96,7 +99,8 @@ so an abandoned bot ticket neither blocks the bot nor holds a connection.
   username is taken until an email verification flow exists; its rate limit
   bounds enumeration.
 - Account tokens are opaque and only their SHA-256 hashes are stored.
-- PostgreSQL enforces one unrevoked account session per account.
+- PostgreSQL enforces one unrevoked account session per account. A session
+  lives `Auth:SessionLifetimeHours`.
 - A successful login locks the account, revokes the older session with the
   stored reason `session_replaced` and the client error code
   `account_session_replaced`, consumes its pending tickets, releases its active
@@ -105,14 +109,14 @@ so an abandoned bot ticket neither blocks the bot nor holds a connection.
   They lock the account first, like login and join, and clean up only sessions
   that belong to the caller. Revoking another account's session id succeeds
   without effect, so foreign session ids are not revealed.
-- The Unity client periodically validates its account token and handles
-  replacement as a controlled disconnect.
 
-Login and registration use independent fixed-window limits keyed by remote IP.
-Rejected requests return HTTP 429 with structured Problem Details and a
-`Retry-After` that counts down to the end of the current window. The policy is
-taken from the matched endpoint, so a different path casing such as
-`/api/accounts/LOGIN` cannot skip the distributed limit.
+Login and registration use independent fixed-window limits keyed by remote IP,
+`RateLimiting:Authentication:PermitLimit` requests per
+`RateLimiting:Authentication:WindowSeconds`. Rejected requests return HTTP 429
+with `rate_limit_exceeded` in Problem Details and a `Retry-After` that counts
+down to the end of the current window. The policy is taken from the matched
+endpoint, so a different path casing such as `/api/accounts/LOGIN` cannot skip
+the distributed limit.
 
 ## Character Access
 
@@ -128,62 +132,54 @@ at the same time.
 
 ## Character Currency
 
-- `characters.currency` is the one balance of a character, owned by the
-  Characters module. It is not an item, has no weight, and is global across
-  every Shard. A database check keeps it between `0` and `1,000,000,000,000`.
-- Every change goes through `ICharacterWallet.DebitAsync` or `CreditAsync` in the
-  caller's transaction and appends one append-only `character_currency_ledger`
-  row with source kind, source id, item operation id when there is one, signed
-  delta, and balance after. The source kinds are `starting_balance`,
-  `vendor_purchase`, `vendor_sale`, `insurance`, and `development`, and the
-  ledger migration opened each existing nonzero balance with one
-  `opening_balance` row, so a character's ledger deltas always sum to its
-  balance.
+- `characters.currency` is the one balance of a character; the currency rules
+  are in
+  [Character Currency](INVENTORY_AND_DEATH_LOOT_DESIGN.md#character-currency).
+  Every change goes through the Characters wallet in the caller's transaction
+  and writes one ledger row, as
+  [Character Wallet](GAME_SERVICE_MODULES.md#character-wallet) describes.
 - A debit that the balance does not cover is rejected with
   `currency_insufficient`, and a credit above the maximum balance with
   `currency_limit_exceeded`. Neither changes the balance.
-- New characters receive the catalog's starting balance, `100`, with a
-  `starting_balance` ledger row in the character creation transaction. Existing
-  characters keep their balance.
+- New characters receive the catalog's starting balance with a
+  `starting_balance` ledger row in the character creation transaction.
 - The item-state snapshot carries the balance from the same repeatable-read
   snapshot as the items, and every in-world currency change runs inside an item
   transaction, so it advances the item-state revision that clients refresh on.
 - A player death never reads or writes currency.
-- `--dev-items-currency <characterId> <positiveAmount>` is a process-local
-  Development command that credits an offline character through the wallet with
-  a `development` ledger row, and `--dev-items-list` reports each character's
-  balance. The Unity window `MMORPG > Tools > Inventory Item Grants` uses both.
+- `--dev-items-currency` credits an offline character for local testing, as
+  [Development Item Commands](#development-item-commands) describes.
 
 ## Topology Bootstrap
 
-`src/Server/GameService/Config/appsettings.json` owns the checked-in topology bootstrap:
-
-- World definitions.
-- Fleets with display names and region codes.
-- Nodes assigned to fleets.
-- Shards assigned to a World and Fleet with a rule set.
+`src/Server/GameService/Config/appsettings.json` owns the checked-in topology
+bootstrap in `Simulation:Topology`: Fleets with display names and region codes,
+Nodes assigned to Fleets, and Shards assigned to a Fleet with a display name
+and a rule set. World definitions come from the World manifests below
+`WorldData:WorldsPath`, not from the topology, and no Shard names a World.
 
 Startup validation rejects empty collections, invalid identifiers, duplicates,
-unknown references, invalid display names, and invalid region codes. After
-migrations, `SimulationTopologySeeder` idempotently upserts configured records.
-It does not manufacture online workers. A seeded shard remains offline until a
-valid heartbeat and active assignment exist. The checked-in topology seeds two
-shards in `local-fleet`: `local-shard-1` (`Local Shard 1`), which the default
-worker binds to Development World 2, and `local-shard-2` (`Local Stress
-Arena`), which the SimulationWorker `StressArena` launch profile binds to
-Development World 1.
+unknown references, invalid display names, invalid region codes, and missing
+rule sets. After migrations, `SimulationTopologySeeder` idempotently mirrors the
+World definitions and upserts the configured records. It does not manufacture
+online workers. A seeded shard remains offline until a valid heartbeat and
+active assignment exist. The checked-in topology seeds two shards in
+`local-fleet` with the rule set `mvp-open-risk`: `local-shard-1`
+(`Local Shard 1`), which the default worker binds to Development World 2, and
+`local-shard-2` (`Local Stress Arena`), which the SimulationWorker `StressArena`
+launch profile binds to Development World 1.
 
-A shard is rebound to another World when a worker heartbeat proposes a different
-configured `WorldId`. GameService locks the shard row and refuses the change while
-a healthy assignment, pending unexpired join ticket, active unexpired simulation
-session, or open durable corpse still references the shard. A worker that stopped heartbeating is treated as gone once the heartbeat timeout
-passes. Its pending tickets and simulation sessions are released before the
-blockers are counted, so a crashed worker cannot block a rebind until its
-leases expire. Open durable corpses always block. The
-worker must be stopped cleanly and World-local state must be drained before
-retrying. The next worker runtime must report the rebound World identity, so
-stale content cannot silently simulate the shard. A migration placeholder assignment with no worker
-runtime is not simulation authority and therefore does not block a rebind.
+A worker heartbeat binds a shard to the worker's configured `WorldId`, and a
+different `WorldId` rebinds it only under the rules in
+[Topology Model](PROJECT_ARCHITECTURE.md#topology-model). An unknown World or a
+blocked rebind is a definitive worker authority failure:
+`simulation_world_not_found` or `shard_world_rebind_blocked`. Before retrying a
+rebind, stop the worker cleanly and drain the World-local state, as
+[Rebind An Offline Shard](LOCAL_DEVELOPMENT.md#rebind-an-offline-shard-to-another-world)
+describes. The next worker runtime must report the rebound World identity, so
+stale content cannot silently simulate the shard. A migration placeholder
+assignment with no worker runtime is not simulation authority and therefore
+does not block a rebind.
 
 ## Worker Registration And Assignment
 
@@ -199,34 +195,39 @@ Each SimulationWorker has:
 
 GameService validates identifiers, topology consistency, endpoint metadata,
 capacity, revisions, and service identity. The heartbeat transaction locks the
-target shard and applies these rules:
+target shard and applies the rules in
+[Runtime Identity](PROJECT_ARCHITECTURE.md#runtime-identity-and-assignment-safety):
 
 - A different healthy assigned worker causes `shard_assignment_conflict`.
 - A timed-out or explicitly offline owner can be replaced.
 - Replacement invalidates old-runtime tickets and simulation sessions even when
   the logical worker moves to another shard.
-- A newer runtime can replace an older live runtime for the same worker id, and
-  any runtime can replace one that is offline or past the heartbeat timeout.
 - Worker secrets are matched to the exact, case-sensitive worker id.
 - The older runtime is fenced by `worker_runtime_changed`.
 - A stale process cannot mark a newer runtime offline.
 - Active assignment indexes prevent two worker or shard owners.
+
+A worker is healthy while its heartbeats arrive within
+`Simulation:WorkerHeartbeatTimeoutSeconds`. It heartbeats every
+`SimulationWorker:RegistryHeartbeatSeconds`, and a new runtime keeps retrying
+for `SimulationWorker:RegistryAcquireTimeoutSeconds` while a previous runtime's
+lease is still live.
 
 Every heartbeat response also names the rule set of the Shard. SimulationWorker
 applies the rule set with that id from its combat rules and stops with
 `shard_rule_set_unknown` when its rules do not define it.
 
 SimulationWorker stores the database-issued lease duration locally, measured
-from the moment the heartbeat request was sent. It rejects
-new UDP joins without a valid registration lease. A one-second monitor stops the
-process after lease expiry. Definitive topology, assignment, runtime, or service
-credential rejection also stops the process.
+from the moment the heartbeat request was sent. It rejects new UDP joins without
+a valid registration lease. A one-second monitor stops the process after lease
+expiry. Definitive topology, assignment, runtime, or service credential
+rejection also stops the process.
 
 ## Shard Discovery And Placement
 
 `GET /api/shards` derives status from fresh, online, actively assigned workers.
 It aggregates active players and maximum capacity. A shard is online only when
-at least one assigned worker is fresh and has free capacity. The current unique
+at least one assigned worker is fresh and has free capacity. The unique
 assignment constraint means that aggregate contains at most one worker.
 
 Join placement:
@@ -234,29 +235,31 @@ Join placement:
 1. Validates account session and character ownership.
 2. Locks the account and character.
 3. Releases expired account simulation sessions.
-4. Rejects another active character or cross-shard active session.
+4. Rejects another active character or cross-shard active session with
+   `account_character_already_active` or `character_already_active`.
 5. Invalidates older pending tickets for the account, so a retried join is not
    blocked by its own earlier ticket.
-6. Selects the assigned worker only when its heartbeat is fresh and it has room.
-   Capacity uses the greater of worker-reported connections and authoritative
-   unexpired simulation sessions, then adds pending tickets in PostgreSQL.
-   A reconnect ticket for an already counted session is not added again. In
-   Development, the in-memory sessions and pending tickets of synthetic bots
-   are joined into the same query, so players and bots never reserve the same
-   connections.
+6. Selects the assigned worker only when its heartbeat is fresh and it has room,
+   or rejects with `shard_unavailable`; a reconnect whose owning worker is
+   unavailable gets `simulation_session_worker_unavailable`. Capacity uses the
+   greater of worker-reported connections and authoritative unexpired simulation
+   sessions, then adds pending tickets in PostgreSQL. A reconnect ticket for an
+   already counted session is not added again. In Development, the in-memory
+   sessions and pending tickets of synthetic bots are joined into the same
+   query, so players and bots never reserve the same connections.
 7. Re-reads the assignment after locking the worker, so a worker that moved to
    another Shard in the meantime is never placed.
-   Rejects the join, and a reconnect to the owning worker, with `409`
+8. Rejects the join, and a reconnect to the owning worker, with `409`
    `simulation_worker_item_catalog_mismatch` when the worker's last heartbeat
    reported another item catalog revision than the one GameService mirrors.
    Combat data and Mob loot come from the worker's catalog and item custody
    from GameService's, so both must be the same catalog.
-8. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
+9. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
    account session.
-9. Computes expiry with `clock_timestamp()` after placement locks are acquired.
-   Ticket consumption and session leases use the same clock, so time spent
-   waiting for a lock never shortens or extends a ticket or lease.
-10. Returns the shard and exact endpoint metadata.
+10. Computes expiry with `clock_timestamp()` after placement locks are acquired.
+    Ticket consumption and session leases use the same clock, so time spent
+    waiting for a lock never shortens or extends a ticket or lease.
+11. Returns the shard and exact endpoint metadata.
 
 Selection serializes reservations on the target shard, then locks the selected
 worker. A waiting request recalculates session and ticket usage from a fresh
@@ -264,25 +267,29 @@ database snapshot before reserving capacity. Different shards remain parallel.
 
 ## Join Tickets And Simulation Sessions
 
-Join tickets are short lived, one use, and stored only as hashes. A worker must
-present the ticket together with its own worker id, runtime id, and shard id.
+Join tickets live `Simulation:JoinTicketLifetimeSeconds`, are used once, and are
+stored only as hashes. A worker must present the ticket together with its own
+worker id, runtime id, and shard id.
 
-Consumption locks the account, character, and character item-state row, validates
-account session status, checks exact placement binding, and creates or rotates
-the simulation-session token in one transaction. The response includes the
-fenced item-state revision, carried weight, capacity, and equipment: every
+Consumption locks the account, character, and character item-state row,
+validates account session status, checks exact placement binding, and creates or
+rotates the simulation-session token in one transaction. The response includes
+the fenced item-state revision, carried weight, capacity, and equipment: every
 occupied equipment slot with its item id, definition id, quantity, and item
-revision at that item-state revision. Heartbeat updates the lease and then reads
-the current committed carry tuple and equipment, so a worker can advance active
-movement and combat state monotonically.
+revision at that item-state revision. It also carries the character's look.
+Heartbeat updates the lease and then reads the current committed carry tuple and
+equipment, so a worker can advance active movement and combat state
+monotonically. Reconnect reads the tuple again under the admission lock.
 
 Simulation session properties:
 
 - Global account and character uniqueness.
 - Exact shard, worker, and worker runtime ownership.
 - Opaque token with only a stored hash.
-- Database-generated expiry.
-- Periodic worker heartbeat.
+- Database-generated expiry after `Simulation:SessionLeaseLifetimeSeconds`.
+- A worker heartbeat every `SimulationWorker:SimulationSessionHeartbeatSeconds`,
+  at most `SimulationSessionHeartbeatMaxConcurrency` at a time, so one worker
+  cannot create an unbounded GameService request fan-out.
 - Idempotent exact-generation release.
 - Reconnect token rotation.
 - Safe stale-token rejection after reconnect.
@@ -290,59 +297,92 @@ Simulation session properties:
   local lease is removed, preventing concurrent leaves from being misreported as
   revoked sessions.
 
-The worker also enforces cached lease expiry locally so an GameService outage
+The worker also enforces cached lease expiry locally so a GameService outage
 cannot leave a connected player active forever. The local deadline is the
 request send time plus the lease duration that GameService returns, so it does
 not depend on the database clock.
+
+SimulationWorker keeps each character's item state by exact simulation-session
+identity and applies only increasing item-state revisions. A same-revision
+conflict invalidates the local lease instead of accepting contradictory weight,
+capacity, or equipment. The worker updates the item state only from committed
+GameService results and heartbeats, and sends a newer carry tuple reliably
+before it affects movement.
 
 ## Realtime UDP Transport
 
 SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 
-- Connection key validation happens before application messages.
-- New peers must send one reliable ordered join request before the handshake
-  timeout.
+- Connection key validation happens before application messages. Without a
+  valid registration lease, or with every one of the `MaxConnections` slots
+  taken, a connection request is refused silently.
+- New peers must send one reliable ordered join request within the join
+  handshake timeout, which is also LiteNetLib's disconnect timeout.
 - Join ticket consumption is asynchronous and does not block the UDP poll loop.
 - The realtime loop runs on its own thread and sleeps until the next tick or the
   next transport poll, `NetworkPollIntervalMilliseconds`, whichever comes first.
   On Windows it waits with a high-resolution waitable timer, because ordinary
-  waits round up to the 15.6 ms timer tick and started ticks up to a whole tick
-  late; ticks now start within about a millisecond of their schedule.
-- At the end of every loop iteration the worker wakes LiteNetLib's update thread
-  so the packets it queued leave at once. Before, they waited for the
-  transport's own 15 ms update, which delayed every snapshot by a random part of
-  that period.
+  waits round up to the 15.6 ms timer tick; ticks start within about a
+  millisecond of their schedule.
+- At the end of every loop iteration the worker wakes LiteNetLib's update thread,
+  so the queued packets leave at once instead of on the transport's own 15 ms
+  update.
 - LiteNetLib's packet pool holds one packet per allowed connection plus one per
   512 bytes of the aggregate snapshot budget of one broadcast, between 1,000 and
   65,536, about 6,200 with the default settings, because one snapshot broadcast
   queues an owner packet for every connection and the remote chunks the budget
-  allows before they are sent. With the default pool of 1,000 every further
-  packet was a new allocation that survived into the older GC generations.
-- Control messages use reliable ordered delivery.
-- Movement input uses sequenced delivery.
-- Simulation snapshots use unreliable delivery.
+  allows before they are sent.
+- Control messages use reliable ordered delivery, movement input uses sequenced
+  delivery, and simulation snapshots use unreliable delivery.
 - Packet magic, version, type, bounds, lengths, and finite numeric values are
-  validated.
-- Protocol violations receive a stable error where possible and are then
-  disconnected.
+  validated. Protocol violations receive a stable error where possible and are
+  then disconnected.
 - `SimulationWorker:Admission` limits remote peers that have not joined yet: at
   most `MaxUnauthenticatedPeers` in total and `MaxUnauthenticatedPeersPerAddress`
   per address, and new connections per address are rate limited by
   `ConnectionAttemptsPerAddressPerSecond` with a `ConnectionAttemptBurstPerAddress`
   burst. Loopback peers, such as local bots and stress tools, are exempt.
+  Refused connections are counted by the
+  `simulation_worker.realtime.connections.rejected` metric.
 - A peer with more than `MaxReliableQueuedPackets` unacknowledged reliable
   control packets is disconnected, so a client that never acknowledges cannot
-  grow server memory without bound. Rejected connections are counted by the
-  `simulation_worker.realtime.connections.rejected` metric.
+  grow server memory without bound.
 
-Join acceptance carries Shard and World identity plus the initial carry tuple. Reliable ordered control messages carry later item
-state, corpse, world-actor presence, bounded actor state, correlated world
-interaction contracts, and gathering state. Ordinary actor spawn packets contain
-presentation, identity, bounds, disposition, state, and revision data, but not
-the complete
-player-specific capability summary. A standalone client must be rebuilt when
-the protocol version changes, and mismatched clients retain the explicit
-protocol rejection path.
+Join acceptance carries Shard and World identity, the Shard rules, and the
+initial carry tuple. A standalone client must be rebuilt when the protocol
+version changes, and a mismatched client receives the explicit protocol
+rejection path, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes.
+
+## UDP Resilience And Quotas
+
+Per-peer token buckets enforce `SimulationWorker:UdpQuotas` packet and byte
+rates with burst allowance. Sustained inbound abuse is rejected with
+`udp_rate_limited`. Excess unreliable snapshot output may be dropped without
+delaying reliable lifecycle messages.
+
+An additional worker-wide snapshot byte bucket bounds aggregate unreliable
+output. Snapshot admission occurs for a complete chunk batch, so a peer receives
+either all chunks for one snapshot sequence or none. The recipient start rotates
+past the admitted group after each broadcast, distributing overload gaps across
+peers instead of starving the same tail of the connection list. Reliable
+control, spawn, despawn, and leave traffic does not consume this snapshot
+budget.
+
+HTTP calls to GameService map timeout, connection, invalid-response,
+authentication, and domain failures to structured results:
+
+- `auth_service_timeout` and `auth_service_unavailable` are uncertain outcomes,
+  because GameService may have committed the operation before the response was
+  lost. Item, corpse, and live Mob loot results with those codes always ask the
+  client to refresh, and operations that the worker retries reuse their
+  operation id.
+- `worker_runtime_changed`, `simulation_session_invalid`,
+  `auth_service_authentication_failed`, and `invalid_auth_response` end the
+  player's session, and so does `wrong_simulation_worker` for an item or NPC
+  lifecycle operation. For a corpse operation `wrong_simulation_worker` means a
+  corpse of another Shard and closes only the corpse view.
+- Live Mob loot claims send the current committed item-state revision from the
+  item state store, not the revision from the time of the join.
 
 ## Entity Registry And Replication
 
@@ -352,8 +392,8 @@ protocol rejection path.
   per peer.
 - Same-character reconnect preserves the entity and movement state while
   replacing the peer binding.
-- Entity spawn and despawn use reliable ordered control messages.
-- Unity receives a reliable baseline before relying on snapshots.
+- Entity spawn and despawn use reliable ordered control messages, and Unity
+  receives a reliable baseline before relying on snapshots.
 - Each joined peer receives a dedicated fixed-rate owner snapshot for input
   acknowledgement and reconciliation.
 - Remote visible entities use MTU-safe shared packet batches. Under dense
@@ -362,18 +402,18 @@ protocol rejection path.
 - `SnapshotReplication:OverloadTargetUtilizationBasisPoints` reserves aggregate
   burst headroom. Deferred remote entity updates remain visible through the
   `simulation_worker.simulation.snapshot.entity_updates_deferred` counter.
-- Remote presentation lives under a separate Unity presentation root.
+- A moving Mob travels in the remote snapshots like a remote player, as
+  [Mob Brains](#mob-brains) describes.
 
 ## Interest Management
 
 `SimulationInterestManager` maintains a spatial hash from authoritative entity
 positions. Snapshot refreshes synchronize moving entities, while joins add one
-entity incrementally and update only existing nearby observers. A join no longer
-rebuilds and refreshes every peer visibility set. Each peer has a visibility
-set:
+entity incrementally and update only existing nearby observers. Each peer has a
+visibility set:
 
-- Enter radius adds entities.
-- A larger exit radius prevents boundary flapping.
+- The enter radius, 128 m by default, adds entities.
+- A larger exit radius, 144 m by default, prevents boundary flapping.
 - Visibility changes emit reliable spawn or despawn.
 - Snapshots contain only visible entity ids.
 - Ordered visibility remains cached until the set changes.
@@ -388,44 +428,122 @@ set:
   broadcast.
 - The maximum unreliable packet is `1023` bytes, so a remote snapshot chunk
   contains at most 24 current entity records.
-- Cell size, radii, and the refresh interval are worker-owned config values.
+- Cell size, radii, and the refresh interval are worker-owned configuration.
 
 This is process-local interest management for one complete shard. Cross-worker
 zone interest is deferred until zones exist.
 
+## Server-Authoritative Movement
+
+- Clients send input sequences and click-to-move paths, never accepted
+  positions. Each input names the followed path by id, and a batch carries the
+  waypoints of the newest input's path until the owner snapshot reports it.
+- SimulationWorker runs the shared movement code at a fixed 30 Hz by default.
+- It accepts only newer input sequences. A new path has at most 32 waypoints,
+  must keep them in the World bounds, and must stay within 256 meters from the
+  authoritative position through every waypoint; a path that breaks the limits
+  is adopted as already ended, so client and worker agree that the character
+  stands. An input that names a path the worker never received is a protocol
+  error, `unknown_movement_path`.
+- The worker steps the character exactly once per input, in sequence order, as
+  the client prediction does. Inputs wait in a short queue that absorbs uneven
+  packet timing; a tick applies the oldest one, and a second one while more than
+  one still waits.
+- When the next input is late, the tick still steps along the current path, at
+  most three times in a row, about 100 ms. The late input then takes over that
+  step, or the steps are taken again with it when it names another path. A
+  longer gap pauses the character on the worker until the inputs arrive, and the
+  queue then catches up at two steps per tick. Inputs lost from every batch are
+  filled with the path before them, up to 15; a longer gap skips to the newest
+  input.
+- A step budget keeps the average at one step per tick, with 1/64 of slack for a
+  client clock that runs slightly fast, so a client cannot move faster by
+  sending more inputs. A client may have at most 16 inputs waiting; a client
+  that floods inputs loses the oldest.
+- A path that collision blocks for half a second ends.
+- New planar control is ignored while airborne.
+- Collision, slopes, steps, ground support, and bounds are server-owned.
+- Each authoritative entity owns one reusable collision-query workspace, so
+  fixed ticks reuse broadphase list and stable-id set capacity instead of
+  allocating them again for every movement step.
+- Owner snapshots are sent at 15 Hz by default with input acknowledgement,
+  authoritative reconciliation state, and path progress. They carry the state
+  after the last processed input, without the steps taken ahead of late inputs,
+  so the client replays exactly the inputs after the acknowledged one. Remote
+  snapshots, combat, and interest use the current state.
+- Remote snapshots use the remaining fair byte budget. Their cadence degrades
+  explicitly under dense overload instead of starving owner reconciliation.
+- The carry state slows walking through the shared encumbrance multiplier, as
+  [Carry Weight And Encumbrance](INVENTORY_AND_DEATH_LOOT_DESIGN.md#carry-weight-and-encumbrance)
+  defines.
+
+## Collision Data And Streaming
+
+- Each `content/worlds/<WorldId>/collision.json` contains neutral collision
+  source for that World.
+- `tools/WorldCollisionCompiler` emits versioned binary chunks and a manifest
+  below `src/Shared/WorldData/Generated/WorldCollision/<WorldId>`.
+- Each chunk has a SHA-256 checksum, and the manifest has a deterministic
+  complete collision revision.
+- SimulationWorker validates format, World id, checksums, coordinates, and
+  revision before binding UDP. It recomputes the revision from the manifest
+  chunk list and rejects a manifest whose stored revision differs. Startup fails
+  when no collision chunk is available around the World spawn.
+- Unity validates and loads the same data, with the same revision check, before
+  prediction.
+- Collision data stays within plus or minus 1,000,000 world units, chunk sizes
+  stay between 1 and 4096, and one shape may span at most 65,536 chunks. Chunk
+  coordinates are clamped to plus or minus 2^24, so .NET and Unity map every
+  position to the same chunk, and a query wider than the loaded set scans the
+  loaded chunks instead of every cell in its range.
+- The character motor derives its substep count from the full displacement
+  length, so no substep, diagonal or not, exceeds the configured limit.
+- Static shapes are assigned to every intersected chunk and deduplicated by
+  stable id during queries. A chunk with more than 32 shapes indexes them in a
+  planar grid of about 2 m cells, so terrain chunks with thousands of triangles
+  stay cheap to query.
+- Collision loads within `CollisionStreaming:LoadRadiusChunks` chunks, 2 by
+  default, of every streaming anchor and unloads outside `UnloadRadiusChunks`,
+  3 by default, which gives streaming hysteresis. The anchors are the players,
+  the World spawn, and walking Mobs.
+- A composite collision world combines static chunks and mutable dynamic shapes.
+
+Collision format version 2 holds oriented boxes and one-sided triangles. The
+bake turns non-convex MeshColliders into triangles and TerrainColliders into
+heightfields. The shared compiler triangulates heightfields, two triangles per
+cell except for holes, so Unity and .NET produce identical chunks. A triangle
+collides only from its front, so a tunnel can run below walkable terrain. The
+compilers also add one movement-layer box per placed resource node, as
+[Collision Bounds](../content/README.md#collision-bounds) describes. Replicated
+dynamic transforms are not implemented. Collision authoring is described in
+[Development Worlds](DEVELOPMENT_WORLDS.md).
+
 ## World Actors And Interaction
 
-SimulationWorker loads the compiled item catalog from
-`SimulationWorker:ItemCatalogPath` before binding UDP, verifies it strictly,
-checks every actor item reference against it, and reports its revision in each
-worker heartbeat. The default is `WorldData/Items/core.item-catalog.json` in the
-worker output, which the build copies from the WorldData runtime catalog.
+SimulationWorker loads its World content before binding UDP:
 
-SimulationWorker loads `SimulationWorker:ActorDataPath` before binding UDP and
-rejects malformed runtime content, revision drift, wrong World identity,
-unsupported values, invalid references, or unsafe collection bounds. The
-checked-in development content contains six shared definitions, 14 spawn
-instances for `development-world-1`, and 21 spawn instances for
-`development-world-2`, among them nine Iron Vein resource nodes in the first and
-seven Iron Veins and four Oak Trees in the second. The compiler rounds every float step of a group or area
-placement to float on its own, so the Unity Editor under Mono, which keeps
-intermediates in double, places exactly what the .NET tools place.
+- The actor runtime of its World, `world-actors.json` in its output World
+  directory. It rejects malformed runtime content, revision drift, wrong World
+  identity, unsupported values, invalid references, or unsafe collection bounds,
+  and content that the realtime protocol limits cannot carry.
+- The compiled item catalog from `SimulationWorker:ItemCatalogPath`, verified
+  strictly. Every actor item reference must resolve against it, and the worker
+  reports its revision in each heartbeat.
+- The combat rules and the character appearance content, as
+  [Target-Based Combat](#target-based-combat) and
+  [Character Looks](#character-looks) describe.
 
-- Neutral actor JSON in `content/actors`, one file per actor, and each World's
-  `content/worlds/<WorldId>/actor-spawns.json` are compiled deterministically by
-  `tools/WorldActorCompiler` into one revisioned runtime manifest per World.
-- Stable definition and spawn ids never substitute for fresh worker-runtime
-  actor ids or shared nonzero network entity ids.
-- Assignment activation reconstructs ordinary actors from compiled WorldData.
-  They do not receive one PostgreSQL row per live instance.
-- NPC, Mob, and resource node are distinct actor kinds. Faction and disposition
-  remain independent, and every current NPC and resource node is
-  authoritatively invulnerable.
+Assignment activation reconstructs ordinary actors from compiled WorldData with
+fresh runtime and network entity ids. The actor model, the capability kinds, and
+the interaction rules are in
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md). The worker implements
+them as follows:
+
+- Every current NPC and resource node is authoritatively invulnerable.
 - NPCs and resource nodes are event-driven. Mobs occupy bounded central dormant
-  or active schedule buckets selected by their shared activity profile. No actor
-  owns a task, timer, thread, database session, or HTTP poller. Delayed actor
-  work, today the respawn of a depleted resource node, is scheduled in the
-  central `WorldActorTimerQueue`, a min-heap by due tick that
+  or active schedule buckets selected by their activity profile. Delayed actor
+  work, the respawn of a depleted resource node or a dead Mob, is scheduled in
+  the central `WorldActorTimerQueue`, a min-heap by due tick that
   `WorldActorRuntimeDriver` drains every tick.
 - Actor presence reuses reliable interest enter and exit messages, while actor
   state changes use bounded reliable updates. Assignment-local despawn
@@ -433,42 +551,52 @@ intermediates in double, places exactly what the .NET tools place.
   actor-specific despawn contract. Each interest pass drops a tombstone once no
   connection still has the actor in its interest set, so they stay bounded by
   current visibility.
-- One typed capability registry composes dialogue, vendor, quest, crafting,
-  insurance, trainer, bank, Recovery Storage, and gathering descriptors.
-  Insurance, quest offer, quest completion, bank, Recovery Storage, vendor, and
-  gathering have handlers; every other kind answers with an explicit deferred
-  result until its business authority exists.
-- A capability carries a `profileId`: the item catalog vendor profile for
-  `vendor`, the resource profile for `gathering`, and empty for every other
-  kind. The opened capability summary carries it to the client.
+- Insurance, quest offer, quest completion, bank, Recovery Storage, vendor, and
+  gathering have handlers; every other capability kind answers with
+  `world_interaction_capability_deferred` until its business authority exists.
+  Quest completion answers `quest_turn_in_unavailable`, because no progression
+  authority exists yet.
+- Bank, Recovery Storage, and an opened vendor only confirm the capability;
+  their item access follows the open interaction. Insurance apply or removal,
+  quest accept or abandon, and vendor purchase or sale reuse the interaction
+  session, and a started gathering activity runs in the central gathering pass
+  while the session stays open.
 - One world-interaction authority validates the exact simulation session,
   worker runtime, assignment, Shard, target identity and revision, active
-  state, closest-point bounds distance, static and dynamic line of sight,
-  player-specific capability availability and revision, rate limits, and the
-  one-active-interaction lease.
+  state, closest-point bounds distance, static and dynamic line of sight from
+  the player's eye, 1.6 m above the root, to the target's bounds center with the
+  same ray as combat, player-specific capability availability and revision,
+  rate limits, and the one-active-interaction lease.
 - Start range is `3.0` metres and maintain range is `3.5` metres. Open sessions
   are revalidated at 5 Hz and close on target invalidation, range, line of
   sight, disconnect, or assignment lifecycle changes.
-- Corpse views use the same target and lease registry while retaining the
-  complete corpse state and GameService transaction authority.
-- Mutations for the same corpse pass through one worker-local coordinator
-  before GameService, while different corpses remain parallel. Open and refresh
-  state targets only the requester. Committed deltas are encoded once and reuse
-  the same immutable packet bytes for every viewer.
+- World interaction intents share a per-peer budget of 8 per second with a burst
+  of 12; more return `world_interaction_rate_limited`.
+- Capability summaries are returned only after a successful interaction open
+  and are independently revisioned for each player. Multiple players may
+  interact with the same actor, but one player cannot overlap an actor
+  interaction and a corpse view.
 
-Capability summaries are returned only after a successful interaction open and
-are independently revisioned for each player. Multiple players may interact
-with the same actor, but one player cannot overlap an actor interaction and a
-corpse view.
+The insurance and quest actions bridge the validated interaction to the worker
+item route. Insurance applies or removes a one-death policy and charges
+`Items:NpcLifecycle:InsurancePrice` through the wallet with an `insurance`
+ledger row. Accepting the quest grants `Items:NpcLifecycle:QuestItemQuantity` of
+`QuestItemDefinitionId` with the exact quest-grant lineage
+`Items:NpcLifecycle:QuestGrantId` and suppresses a duplicate active grant.
+Abandoning removes only the active protected items of that lineage; an item held
+in Recovery Storage also loses its slot row, and an unclaimed delivery left
+without items is removed, so no empty delivery remains. Insurance removal keeps
+the item instance.
 
 ## Vendor Trades
 
-- Item values and vendor profiles are item catalog content. The shipped vendor
-  `vendor.city_general_store` ("General Store") is the profile of the `vendor`
-  capability of Mira the Quartermaster (`npc.city_services`). It sells Bronze
-  Arrow, Minor Healing Potion, Cooked Trout, Starter Pickaxe, Woodcutting Axe,
-  the clothes, armor, sword, and shield at 100 percent of value and buys every category except quest items at 40 percent. Stock is
-  unlimited and there is no buyback.
+The vendor rules are in
+[Vendor Trades](INVENTORY_AND_DEATH_LOOT_DESIGN.md#vendor-trades), and the
+vendor profiles are item catalog content, described in
+[Vendor Profiles](../content/items/README.md#vendor-profiles). The shipped
+`vendor.city_general_store` is the profile of Mira the Quartermaster's vendor
+capability.
+
 - Opening the vendor capability only confirms it, so the client can show the
   offers from its bundled catalog. A `CapabilityAction` `VendorPurchase` or
   `VendorSale` goes through the same lease, range, line of sight, and capability
@@ -477,40 +605,26 @@ corpse view.
   vendor access of the operation, never a client value, and answers
   "Purchased." or "Sold." on success.
 - GameService resolves the vendor and its offers from the active mirrored
-  catalog and prices them with the shared `VendorPricing` rule: the purchase
-  total is rounded up and the sale total down. The request carries the total
-  the client showed, and any difference is rejected with
-  `vendor_price_changed`, so a player is never charged a price they did not
-  see.
-- A purchase checks the expected character revision, the offer, and a quantity
-  within one stack, debits the wallet, and places the items through carried
-  acquisition, all in one item transaction.
-- A sale takes all or part of one stack from the permanent inventory, the
-  equipped Bag, or the Secure Container. Equipped, banked, and Recovery Storage
-  items, protected and insured items, quest items, items without value,
-  non-empty Bags, and categories the vendor does not buy are refused. A sold
-  whole stack is destroyed with an `item_destructions` row with reason
-  `vendor_sale`; a partial sale reduces the stack. The wallet is credited in the
-  same transaction.
-- Carried acquisition places items that no client slot names: it tops up
-  existing policy-free stacks in the permanent inventory and then the equipped
-  Bag, then fills empty matching specialized Bag slots, permanent inventory
-  slots, and general Bag slots, never the Secure Container. When the quantity
-  does not fit, the transaction rejects with `inventory_full` and changes
-  nothing. The 140 percent hard cap still applies.
+  catalog and prices them with the shared `VendorPricing` rule. The request
+  carries the total the client showed, and any difference is rejected with
+  `vendor_price_changed`.
+- A vendor command without the live vendor access of an active vendor is
+  rejected with `vendor_access_required`, an unknown or inactive vendor with
+  `vendor_unavailable`, an offer it does not make with
+  `vendor_offer_unavailable`, an item it does not buy, or a sale worth nothing,
+  with `vendor_will_not_buy`, and a purchase that does not fit with
+  `inventory_full`.
 - Purchases and sales are idempotent by operation id like every other item
   mutation, so a retry never charges or pays twice. Synthetic development bots
   cannot trade.
 
 ## Resource Nodes And Gathering
 
-- A resource node is a world actor of kind `resource_node` with exactly one
-  `gathering` capability whose `profileId` names a resource profile in the
-  actor catalog: required tool kind, yield definition and quantity, cycle time,
-  charges, and respawn delay. The Iron Vein yields one Iron Ore every 3 seconds
-  with a pickaxe, has 5 charges, and returns 30 seconds after it depletes. The
-  Oak Tree yields one Oak Log at the same pace with a Woodcutting Axe, the
-  `woodcutting_axe` tool kind.
+A resource node and its resource profile are actor content, described in
+[Resource Nodes And Gathering](NPC_AND_MOB_SYSTEM_DESIGN.md#resource-nodes-and-gathering)
+and [Resource Nodes And Item References](../content/README.md#resource-nodes-and-item-references).
+SimulationWorker runs gathering as follows:
+
 - Charges are live Shard state in `WorldActorStore`, shared by every gatherer.
   Each node keeps remaining and reserved charges and a generation that advances
   on every depletion, so a stale completion or respawn never touches a newer
@@ -526,22 +640,28 @@ corpse view.
   activity per player and sends `GatheringState` `Started` with the cycle time.
 - The gathering pass runs every tick after the lease revalidation. A due cycle
   reserves one charge and queues a `gather_resource` call to GameService behind
-  the player's other authority work. GameService checks that an item of the
-  required tool kind is equipped in the `tool` slot again, since the tool may
-  have been taken off since the start, otherwise `gathering_tool_required` with
-  the same message, which the worker passes on in `GatheringState` `Stopped`.
-  It places the yield through carried acquisition.
+  the player's other authority work. When every remaining charge is reserved by
+  other gatherers, the cycle waits for the next tick. GameService checks that an
+  item of the required tool kind is equipped in the `tool` slot again, since the
+  tool may have been taken off since the start, otherwise
+  `gathering_tool_required` with the same message, which the worker passes on in
+  `GatheringState` `Stopped`. It places the yield through carried acquisition.
 - A committed yield consumes the charge, applies the committed carry state, and
-  sends `GatheringState` `Yielded` with the item-state revision. The last charge
-  makes the node inactive for every viewer, stops everyone gathering there with
-  `resource_node_depleted`, and schedules its respawn in `WorldActorTimerQueue`.
-  The respawn restores the charges and makes the node active again.
+  sends `GatheringState` `Yielded` with the item-state revision. The next cycle
+  starts one cycle time later. The last charge makes the node inactive for every
+  viewer, closes its interaction leases at their next revalidation, stops
+  everyone gathering there with `resource_node_depleted`, and schedules its
+  respawn in `WorldActorTimerQueue`. The respawn restores the charges and makes
+  the node active again.
 - Moving more than 0.1 m from where gathering started stops it with
   `gathering_interrupted`, and a closed interaction with
   `world_interaction_closed`. A rejected yield releases the charge and stops
-  with the rejection code. An uncertain GameService outcome retries up to three
-  times with the same operation id, so a lost answer never grants twice, and a
-  rejection that ends the item session disconnects the player.
+  with the rejection code, such as `inventory_full`. An uncertain GameService
+  outcome retries up to three times with the same operation id, so a lost answer
+  never grants twice, and a rejection that ends the item session disconnects
+  the player.
+- While a player gathers, the worker shows the tool of its `tool` slot in its
+  look, as [Character Looks](#character-looks) describes.
 - Synthetic development bots cannot gather.
 
 ## Target-Based Combat
@@ -551,98 +671,109 @@ before binding UDP. The default is `WorldData/Combat/combat-rules.json` in the
 worker output, which the build copies from `content/combat/combat-rules.json`.
 The loader rejects unknown and duplicate properties, another format version,
 values out of range, and rule set ids that are not sorted, lowercase, and
-unique. The rules hold the player maximum health of 100 and maximum mana of
-100, the respawn delay of 5 seconds, the combat timeout of 5 seconds,
-regeneration of 1 health and 1 mana per second, the equipment lockout of 1
-second, the arrow batch interval of 5 seconds, and the Shard rule sets. Weapon values come from the item
-catalog and Mob values from the actor catalog.
+unique. The rules, described in [Combat Rules](../content/README.md#combat-rules),
+hold the player maximum health and mana, the respawn delay, the combat timeout,
+health and mana regeneration, the equipment lockout, the arrow batch interval,
+and the Shard rule sets. Weapon values, weapon family windups and projectile
+speeds, and ammunition bonuses come from the item catalog, and Mob values from
+the actor catalog. The combat model is in
+[Game Design](GAME_DESIGN.md#combat-model).
 
 - The Shard rule set `mvp-open-risk` allows attacks on other characters.
   `JoinAccepted` carries the rule as `ShardRules`.
 - A `CombatIntent` `AttackTarget` selects a target that the peer sees, that is a
   combatant, alive, and not the attacker itself, and that is a character only
   when the rule set allows it. `ClearTarget` clears the target. The target stays
-  selected until it dies or leaves, or the rule set no longer allows it.
+  selected until it dies or leaves, or the rule set no longer allows it. Combat
+  intents share a per-peer budget of 8 per second with a burst of 12; more
+  return `combat_intent_rate_limited`.
 - On every tick, a character with a target attacks on its weapon's cooldown when
   it stands still, the target's bounds are within the weapon range, the line of
   sight from eye height reaches the target's center, a weapon is equipped in
   `main_hand`, the equipped arrows belong to the weapon's ammunition family, and
   for a magic weapon the character has the weapon's mana cost. Otherwise the
   owner sees the attack status that holds the attack; `NotEnoughMana` keeps the
-  target and the attack resumes once the mana is back. Line of sight
-  costs a raycast, so it is checked when an attack is due to start or to release
-  and five times per second otherwise.
+  target and the attack resumes once the mana is back. Line of sight costs a
+  raycast, so it is checked when an attack is due to start or to release and
+  five times per second otherwise.
 - An attack starts on the cooldown with an `AttackStarted` event that names the
   tick at which it releases, and releases its blow, arrow, or bolt when the
-  windup of its weapon family ends: 0.35 s for `sword`, 0.6 s for `axe`, 0.8 s
-  for `bow`, and 0.15 s for `staff`, when the body's attack clip strikes or
-  looses. The interval runs from the start, so the windup leaves the damage per
-  second as it was. Whatever would keep a new attack from starting, such as a
-  step, a lost target, a lockout, or the target leaving sight, cancels an attack
-  in its windup with an `AttackCancelled` event: nothing is spent, and the next
-  attack may start as soon as the character stands ready again. In its windup an
-  attack keeps a target that walks on within a quarter more than the weapon's
-  range, `CombatSystem.WindupRangeLeeway`, so a patrolling wolf does not cancel a
+  windup of its weapon family ends, the family's `windupSeconds`, timed so the
+  body's attack clip strikes or looses then. The interval runs from the start,
+  so the windup leaves the damage per second as it was. Whatever would keep a
+  new attack from starting, such as a step, a lost target, a lockout, or the
+  target leaving sight, cancels an attack in its windup with an
+  `AttackCancelled` event: nothing is spent, and the next attack may start as
+  soon as the character stands ready again. In its windup an attack keeps a
+  target that walks on within a quarter more than the weapon's range,
+  `CombatSystem.WindupRangeLeeway`, so a patrolling wolf does not cancel a
   shot, and is cancelled only beyond that. A Mob's bite releases at once.
 - An attack rolls damage between the weapon's minimum and maximum and adds the
-  arrow's bonus percent, rounded half up. The Training Shortbow deals 10 to 18
-  every 2.4 seconds at up to 10 m, and a Bronze Arrow adds 5 percent. The arrow
-  flies at the weapon family's projectile speed of 30 m/s and hits at its impact
-  tick when the target is still alive. It is spent when it looses, and either way.
-  The Oak Staff of the magic family `staff` deals 10 to 18 every 2.4 seconds at up
-  to 10 m and costs 5 mana per attack, spent when the bolt leaves; its bolt flies
-  at 20 m/s. The Iron Sword deals 11 to 19 every 2.4 seconds and the Iron
-  Greataxe of the family `axe` 16 to 27 every 3.0 seconds, both at up to 2.5 m.
-  Every `AttackStarted` and `AttackReleased` event names the attack's combat
-  style, so clients draw an arrow or a bolt.
-- A different item in any equipment slot holds attacks for the lockout, and an
-  item or corpse operation that may change equipment holds them while it runs.
-  A changed arrow count keeps the same item and does not count.
+  arrow's bonus percent, rounded half up. An arrow or bolt flies at its weapon
+  family's projectile speed and hits at its impact tick, at least one tick after
+  the release, when the target is still alive. An arrow is spent when it looses,
+  and a magic attack spends the weapon's mana cost when its bolt leaves, whether
+  or not it hits. Every `AttackStarted` and `AttackReleased` event names the
+  attack's combat style, so clients draw an arrow or a bolt.
+- A different item in any equipment slot holds attacks for the equipment
+  lockout, and an item or corpse operation that may change equipment holds them
+  while it runs. A changed arrow count keeps the same item and does not count.
 - A shot counts against the committed arrow stack at once, so the owner sees the
   live count in `OwnerCombatState`. The spent arrows commit as one batch through
-  `ammunition-consumptions` 5 seconds after the first uncommitted shot, before
-  any other item or corpse operation of the character, before a leave, and
-  before a disconnected session is released, all through the character's
-  authority lane. A committed batch sends the owner `OwnerItemQuantityChanged`.
-  An uncertain batch retries with the same operation id up to 8 attempts, with a
-  backoff from 0.5 seconds that doubles up to 10 seconds; after that its arrows
-  stay with the player. A rejected batch loses its shots, and a rejection that
-  ends the item session disconnects the player. An item intent or an NPC or
-  vendor action whose expected revision only arrow batches advanced is sent with
-  the newest revision instead. Corpse operations carry no expected revision.
+  `ammunition-consumptions` once the arrow batch interval has passed since the
+  first uncommitted shot, and also before any other item or corpse operation of
+  the character, before a leave, and before a disconnected session is
+  released, all through the character's authority lane. A committed batch sends
+  the owner `OwnerItemQuantityChanged`. An uncertain batch retries with the same
+  operation id up to 8 attempts, with a backoff from 0.5 seconds that doubles up
+  to 10 seconds; after that its arrows stay with the player. A rejected batch
+  loses its shots, and a rejection that ends the item session disconnects the
+  player. An item intent or an NPC or vendor action whose expected revision only
+  arrow batches advanced is sent with the newest revision instead. Corpse
+  operations carry no expected character revision.
 - A hit that brings health to 0 kills at once, so a later arrow of the same tick
   neither hits nor takes the kill, and a character killed by an arrow does not
-  shoot in that tick any more. The killed character stops moving, its
-  world interaction and corpse view close with `combat_character_dead`, its
-  waiting operations are rejected with that code, and so are its new item,
-  corpse, world, and combat intents. The death commits through `player-deaths`
-  with a death event id that the worker creates once and retries with backoff
-  until it commits, together with the shots that are not committed yet and the
-  killer. After the respawn delay, and once the death committed, the character
-  respawns at the World spawn with full health, and every viewer receives its
-  respawn.
-- A combatant is in combat until 5 seconds after its last attack or hit. A
-  living character out of combat regains 1 health and 1 mana every second, up to
-  its maximum. Mana is owner state: only `OwnerCombatState` carries it. A joining
-  character and a respawn start with full health and mana, and the development
-  admin tool `RestoreHealth` fills both.
+  shoot in that tick any more. The killed character stops moving, its world
+  interaction and corpse view close with `combat_character_dead`, its waiting
+  operations are rejected with that code, and so are its new item, corpse,
+  world, and combat intents. The death commits through `player-deaths` with a
+  death event id that the worker creates once, together with the shots that are
+  not committed yet and the killer. It retries with the same id and a backoff
+  from 0.5 seconds that doubles up to 10 seconds until it commits, and drops the
+  uncommitted shots when the arrow stack changed underneath, so they cannot
+  block the death. After the respawn delay, and once the death committed, the
+  character respawns at the World spawn with full health and mana, and every
+  viewer receives its respawn.
+- A combatant is in combat until the combat timeout after its last attack or
+  hit. A living character out of combat regenerates health and mana every
+  second up to its maximum. Mana is owner state: only `OwnerCombatState`
+  carries it. A joining character and a respawn start with full health and mana.
 - Every damageable Mob with a combat profile is a combatant, and a Mob with a
   brain and a locomotion profile also thinks and walks, as
-  [Mob Brains](#mob-brains) describes. A dead Mob rolls its loot profile, where each
-  entry drops with its chance in basis points and a quantity between its bounds.
-  A non-empty roll becomes the Mob's corpse: a live corpse in worker memory, or
-  for a boss a durable corpse in GameService that retries with the same death
-  event id until it commits. The Mob then leaves every view, a Mob without a
-  corpse at the end of its death tick, after its death reached the viewers, and
-  its spawn
-  instance returns after its respawn profile's delay, 30 seconds for the Feral
-  Wolf and 300 seconds for the Feral Alpha, with a new runtime and entity id. An
-  empty roll leaves no corpse.
+  [Mob Brains](#mob-brains) describes. At 0 health a Mob can no longer be
+  targeted, and every attacker's target on it clears. Its death event id is
+  `ScopedGuid("mob-death", runtimeActorId)`; each Mob life has its own runtime
+  id, so the id is stable for retries and unique per death. The Mob rolls its
+  loot profile in entry order, where each entry drops with its chance in basis
+  points and a quantity between its bounds. A non-empty roll becomes the Mob's
+  corpse: a live corpse in worker memory, or for a Mob whose content selects
+  durable custody a durable corpse in GameService, which retries with the same
+  death event id and a backoff from 0.5 seconds that doubles up to 10 seconds
+  until it commits. When GameService answers that the corpse can never be
+  created, the Mob leaves without one. The Mob then leaves every view with the
+  despawn reason `died`, a Mob without a corpse at the end of its death tick,
+  after its death reached the viewers, and its spawn instance returns after its
+  respawn profile's delay with a new runtime and entity id. Respawn timers reset
+  on a worker restart.
 - A disconnect does not cancel combat work. The session stays until the death
   and the last arrow batch committed and is released afterwards, and a leave
   waits for the same work. A worker that stops commits the uncommitted shots it
   can still name exactly, as a best effort, including the shots behind a batch
-  whose answer arrived while it stopped.
+  whose answer arrived while it stopped; a batch without a committed answer is
+  left alone, and its arrows stay with the player. A worker crash loses at most
+  the uncommitted shots of one batch interval, which stay with the player, and a
+  death between the lethal hit and its commit, after which the character keeps
+  its items.
 - `CombatantState` follows every spawn of a combatant, and every changed
   combatant reaches its viewers once at the end of the tick. Combat events reach
   every peer that sees the source or the target, and `OwnerCombatState` reaches
@@ -654,15 +785,17 @@ catalog and Mob values from the actor catalog.
 ## Mob Brains
 
 A Mob with a brain profile and a locomotion profile runs a brain in
-SimulationWorker. Nothing gets its own task, timer, or thread:
+SimulationWorker, in the Mob phase of every tick before combat. Nothing gets its
+own task, timer, or thread. The values below are those of the shipped profiles
+in `content/actors/catalog.json`:
 
 - The activity tiers decide who works. A dormant Mob neither thinks nor moves; a
-  coarse check on the activity profile's dormant rate makes it active when a
-  player comes within the activation range, 48 m for `mob.standard`, and dormant
-  again when none is within the dormancy range, 64 m. A Mob that fights, walks
-  home, or died stays active whoever is near. One grid of player positions per
-  tick answers these checks and detection, instead of comparing every Mob with
-  every player.
+  coarse check at the activity profile's dormant rate, every 2 seconds for
+  `mob.standard`, makes it active when a player comes within the activation
+  range, 48 m, and dormant again when none is within the dormancy range, 64 m. A
+  Mob that fights, walks home, or died stays active whoever is near. One grid of
+  player positions per tick answers these checks and detection, instead of
+  comparing every Mob with every player.
 - An active Mob thinks at the activity profile's active rate, 10 per second,
   staggered by entity id, and a moving Mob steps every tick with the player motor
   and collision at its locomotion profile's capsule: at its patrol speed while
@@ -679,67 +812,54 @@ SimulationWorker. Nothing gets its own task, timer, or thread:
   then the nearest detected player, and evades otherwise.
 - A chasing Mob walks to half its attack range from the target and plans again
   when the target moved more than 1.5 m from the planned goal. In range with
-  line of sight it stands, faces the target, and combat lets it bite: the bite
-  lands at once, rolls the combat profile's damage, and may kill the character
-  with the Mob as the recorded killer.
+  line of sight from its eye, at 80 percent of its capsule height, it stands,
+  faces the target, and combat lets it bite: the bite lands at once, rolls the
+  combat profile's damage, and may kill the character with the Mob as the
+  recorded killer.
 - The leash and the give-up time end a fight. A Mob that is farther than its
-  leash range, 30 m, from where the fight started, or that neither bit nor was
-  hit for its give-up time, 10 seconds, evades: it clears its target, cannot be
-  damaged, walks back, and on arrival has full health and returns to its
-  routine. A Mob that cannot walk home after three routes is placed there.
+  leash range, 30 m, from where the fight started, the spawn of an idle Mob or
+  the patrol position of a patrolling one, or that neither bit nor was hit for
+  its give-up time, 10 seconds, evades: it clears its target, cannot be damaged,
+  walks back, and on arrival has full health and returns to its routine. A Mob
+  that cannot walk home after three routes is placed there.
 - Routes come from the shared `MovementPathPlanner`, one planner per locomotion
-  profile, through one queue that plans at most 8 routes per tick. A Mob has at
-  most one waiting request. Spawn points and patrol points are projected onto
-  the ground under them, and a Mob starts to move only once the collision under
-  it is loaded; walking Mobs keep their collision loaded like players.
+  profile, through one queue that plans at most 8 routes per tick; each route
+  expands at most 4,096 grid cells and ends at the closest reachable point when
+  the goal cannot be reached. A Mob has at most one waiting request. Spawn
+  points and patrol points are projected onto the ground under them, searched
+  20 m above and below their authored height, and a Mob starts to move only once
+  the collision under it is loaded; walking Mobs keep their collision loaded
+  like players.
 - A moving Mob travels in the unreliable `SimulationSnapshot` like a remote
   player, and the snapshots change neither the state nor the interaction
   revision. The first tick it stands still sends one reliable `WorldActorState`
   with its rest pose, which advances the state revision but never the
   interaction revision.
 
-## Server-Authoritative Movement
+## Character Looks
 
-- Clients send input sequences and click-to-move paths, never accepted
-  positions. Each input names the followed path by id, and a batch carries the
-  waypoints of the newest input's path until the owner snapshot reports it.
-- SimulationWorker runs the shared movement code at a fixed 30 Hz by default.
-- It accepts only newer input sequences. A new path must keep its waypoints in
-  the World bounds and stay within 256 meters from the authoritative position
-  through every waypoint; a path that breaks the limits is adopted as already
-  ended, so client and worker agree that the character stands. An input that
-  names a path the worker never received is a protocol error.
-- The worker steps the character exactly once per input, in sequence order, as
-  the client prediction does. Inputs wait in a short queue that absorbs uneven
-  packet timing; a tick applies the oldest one, and a second one while more than
-  one still waits. Stepping once per tick with the newest input instead made
-  the worker take more or fewer steps than the client whenever packets arrived
-  unevenly, and the local player was corrected back and forth by whole steps.
-- When the next input is late, the tick still steps along the current path, at
-  most three times in a row, about 100 ms. The late input then takes over that
-  step, or the steps are taken again with it when it names another path. A
-  longer gap pauses the character on the worker until the inputs arrive, and the
-  queue then catches up at two steps per tick. Inputs lost from every batch are
-  filled with the path before them, up to 15; a longer gap skips to the newest
-  input.
-- A step budget keeps the average at one step per tick, with 1/64 of slack for a
-  client clock that runs slightly fast, so a client cannot move faster by
-  sending more inputs. A client may have at most 16 inputs waiting.
-- A path that collision blocks for half a second ends.
-- New planar control is ignored while airborne.
-- Collision, slopes, steps, ground support, and bounds are server-owned.
-- Each authoritative entity owns one reusable collision-query workspace, so
-  fixed ticks reuse broadphase list and stable-id set capacity instead of
-  allocating them again for every movement step.
-- Owner snapshots are sent at 15 Hz by default with input acknowledgement,
-  authoritative reconciliation state, and path progress. They carry the state
-  after the last processed input, without the steps taken ahead of late inputs,
-  so the client replays exactly the inputs after the acknowledged one. Remote
-  snapshots, combat, and interest use the current state.
-- Remote snapshots use the remaining fair byte budget. Their cadence degrades
-  explicitly under dense overload instead of starving owner reconciliation.
-- Unity predicts with the same source, reconciles only from owner snapshots,
-  and interpolates remote state at its delivered cadence.
+How looks work is in
+[The Look On The Server](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server).
+The servers implement it as follows:
+
+- GameService stores each character's body model, look choices, and lowered
+  headwear in `character_appearances` and checks every stored look against
+  `content/characters/appearance.json`. Character creation rejects a look that
+  the body model does not offer with `invalid_character_appearance`.
+- SimulationWorker loads the same appearance content from
+  `SimulationWorker:CharacterAppearancePath` and sends each player's look, the
+  items of its visible equipment slots, its headwear, and the tool it uses while
+  it gathers, as [Character Appearance](REALTIME_PROTOCOL.md#character-appearance)
+  describes. Development bots get a look and an outfit that the worker picks
+  from their character id.
+- An `AppearanceIntent` lowers or raises the headwear, or in the Development
+  environment stores another body model and look. The worker forwards it to the
+  appearance route, which refuses a malformed change with
+  `invalid_appearance_change`, a development look outside the Development
+  environment with `development_look_disabled`, and a look that the appearance
+  content does not offer with `invalid_character_appearance`. One change per
+  peer runs at a time, and a second one while it runs is answered with
+  `appearance_change_in_flight`. A development bot cannot change its look.
 
 ## Development Admin Tools
 
@@ -760,402 +880,117 @@ startup outside the Development environment, is on in the worker's
     substep budget, and the step budget still allows one step per input.
   - `Teleport` moves a living character onto walkable ground at a point inside
     the World bounds, standing still, and despawns and spawns it again for
-    everyone who sees it, as a respawn does. It loads the collision chunks
-    around the destination first. A dead character gets `admin_character_dead`,
-    a point outside the World `admin_teleport_outside_world`, and a point with no
-    walkable ground near it `admin_teleport_no_ground`.
-  - `RestoreHealth` fills a living character's health.
+    everyone who sees it, as a respawn does, with the despawn reason
+    `teleported`. It loads the collision chunks around the destination first. A
+    dead character gets `admin_character_dead`, a point outside the World
+    `admin_teleport_outside_world`, and a point with no walkable ground near it
+    `admin_teleport_no_ground`.
+  - `RestoreHealth` fills a living character's health and mana.
   - `SetInvulnerable` makes hits leave the character's health as it is, as an
-    evading Mob's are.
+    evading Mob's are. Without combat it answers `admin_combat_unavailable`.
 - The walk speed and invulnerability belong to the character's entity, so they
   last until the session ends, and a reconnect of the same session keeps them.
   Nothing is stored in PostgreSQL.
 
-## Collision Data And Streaming
+## Items And Corpses
 
-- Each `content/worlds/<WorldId>/collision.json` contains neutral collision
-  source for that World.
-- `tools/WorldCollisionCompiler` emits versioned binary chunks and a manifest
-  below `src/Shared/WorldData/Generated/WorldCollision/<WorldId>`.
-- Each chunk has a SHA-256 checksum.
-- The manifest has a deterministic complete collision revision.
-- SimulationWorker validates format, World id, checksums, coordinates, and
-  revision before binding UDP. It recomputes the revision from the manifest
-  chunk list and rejects a manifest whose stored revision differs.
-- Unity validates and loads the same data, with the same revision check, before
-  prediction.
-- Collision data stays within plus or minus 1,000,000 world units, chunk sizes
-  stay between 1 and 4096, and one shape may span at most 65,536 chunks. Chunk
-  coordinates are clamped to plus or minus 2^24, so .NET and Unity map every
-  position to the same chunk, and a query wider than the loaded set scans the
-  loaded chunks instead of every cell in its range.
-- The character motor derives its substep count from the full displacement
-  length, so no substep, diagonal or not, exceeds the configured limit.
-- Shared simulation math wraps every float intermediate in an explicit
-  `(float)` cast. Unity's Mono runtime keeps float intermediates in double
-  precision and rounds only stored values, while .NET rounds every operation,
-  so without the casts Unity prediction drifted from the worker. Movement is
-  now bit-identical in both runtimes. Sine, cosine, and arctangent come from the
-  platform C runtime in double precision and are rounded to float, so a libm
-  difference between platforms only matters in the rare case where it crosses
-  a float rounding boundary.
-- Static shapes are assigned to every intersected chunk and deduplicated by
-  stable id during queries. A chunk with more than 32 shapes indexes them in a
-  planar grid of about 2 m cells, so terrain chunks with thousands of triangles
-  stay cheap to query.
-- Position-driven load and larger unload radii provide streaming hysteresis.
-- A composite collision world combines static chunks and mutable dynamic shapes.
+The item rules are in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), the
+durable item boundary in
+[Durable Item Boundary](PROJECT_ARCHITECTURE.md#durable-item-boundary), and the
+kernel and its operation kinds in
+[Items Transaction Kernel](GAME_SERVICE_MODULES.md#items-transaction-kernel).
+This section describes the implemented behavior around them.
 
-Collision format version 2 holds oriented boxes and one-sided triangles. The
-bake turns non-convex MeshColliders into triangles and TerrainColliders into
-heightfields. The shared compiler triangulates heightfields, two triangles per
-cell except for holes, so Unity and .NET produce identical chunks. A triangle
-collides only from its front, so a tunnel can run below walkable terrain.
-Development World 1 uses only boxes. Development World 2 adds the terrain and
-tunnel of its highlands. Replicated dynamic transforms are not
-implemented.
+### Item Catalog
 
-## Item Catalog, Persistence, Account APIs, And Live Mutation
+- GameService bundles the checked-in runtime gameplay catalog from
+  `Items:CatalogPath`, revalidates its revision and structural fingerprints, and
+  mirrors the full relational definition structure in one advisory-locked
+  PostgreSQL transaction before accepting traffic. It refuses to start when the
+  new catalog would invalidate live state, as
+  [Revisions And Structural Changes](../content/items/README.md#revisions-and-structural-changes)
+  describes; such a change needs an explicit data migration.
+- `GET /api/item-catalog` returns the current relational catalog graph from a
+  read-only repeatable-read transaction. Definitions are present exactly once in
+  that response. The response uses the catalog revision as a strong ETag, is
+  revalidated by clients, and returns `304 Not Modified` when unchanged.
+- SimulationWorker runs on the same compiled catalog, and placement refuses a
+  worker whose catalog revision differs, as
+  [Shard Discovery And Placement](#shard-discovery-and-placement) describes.
+- Server snapshots must match the client's bundled gameplay revision, or the
+  Unity client reports `item_catalog_update_required` and refuses stale item
+  state.
 
-The item foundation is implemented. Offline account mutations, shared live encumbrance, and the authoritative in-world mutation
-boundary plus persistent Unity inventory state and temporary presentation are
-available together with durable player-death partition, corpse restoration,
-concurrent inspection, and authoritative looting:
+### Item State Reads
 
-- `content/items` is the strict neutral authoring source: `catalog.json` for the
-  catalog vocabulary, tool kinds, and economy settings, one
-  `definitions/<definition-id>.json` file per item, named after its id, and one
-  `vendors/<vendor-id>.json` file per vendor profile.
-- `tools/ItemCatalogCompiler` rejects unknown or duplicate JSON properties,
-  missing values, invalid identifiers and references, duplicate ids and Bag
-  slots, negative or decimal weights, invalid stack limits, and impossible Bag,
-  equipment, policy, or Secure Container combinations.
-- The compiler emits sorted deterministic runtime content under
-  `src/Shared/WorldData/Generated/Items`, including one catalog revision and structural
-  fingerprints for every item definition and Secure Container tier.
-- The checked-in catalog has 31 fantasy definitions, fourteen equipment
-  slots including a stack-holding ammunition slot, the potion, food, material,
-  and ammunition tags, the `pickaxe` and `woodcutting_axe` tool kinds, one Bag layout with general and
-  specialized slots, the four-slot base Secure Container tier shown as Warded
-  Pouch, one vendor profile, and the economy settings: the currency display name
-  Gold and a starting balance of 100.
-- Every definition has a `value` in whole currency units, where 0 means no
-  vendor trades it, and optional tool kinds, which only items for the `tool`
-  equipment slot may have. A vendor profile lists at most 32 ordered offers, its
-  purchase and sale prices in basis points of value, and the categories it buys.
-  The compiler rejects offers without value, with default policies, or of quest
-  items, and rejects vendor content whose sale rate is not below every purchase
-  rate, so buying and selling back never creates currency. Values, tool kinds,
-  and vendors are not structural, so changing them needs no item migration.
-- Framework-neutral pure rules cover stack compatibility, specialized slot tag
-  acceptance, equipment compatibility, Secure Container eligibility, empty and
-  non-empty Bag destinations, Bag containment-cycle rejection, unitless integer
-  stack weight, exact 140 percent admission, and the fixed-point linear
-  encumbrance multiplier. The base character capacity, `2000`, is catalog
-  content.
-- `MMORPG > Tools > Item Catalog` edits definitions through an Editor-only
-  assembly, invokes the strict shared compiler, shows display-only and structural
-  changes, locks baked ids, and writes authoring plus deterministic bake output
-  transactionally.
-- `MMORPG > Tools > Inventory Item Grants` lists initialized local
-  characters with their balance and active definitions, grants individual
-  stacks, gives currency through the character wallet, and applies
-  deterministic inventory, equipment, stack, encumbrance, Secure Container, and
-  Recovery packages. It can also seed an empty offline character and submit the
-  normal system-death adapter to create a durable five-minute corpse at a chosen
-  local Shard position. Its short-lived Development commands are loopback-only,
-  require offline targets, use authoritative transaction services, and add no
-  gameplay HTTP surface.
-- The client presentation catalog is bundled through Unity Addressables. It maps
-  stable definition ids to optional icons, localization keys, fallback text,
-  and optional prefab presentation keys with its own deterministic revision
-  tied to the exact gameplay catalog revision.
-- GameService bundles the checked-in runtime gameplay catalog, revalidates its
-  revision and structural fingerprints, then mirrors the full relational
-  definition structure in one advisory-locked PostgreSQL transaction before
-  accepting traffic.
-- The item persistence migration adds typed containers, stable slots, an exact
-  container-or-equipment location union, character item state, item policies,
-  recovery deliveries, idempotent operations, and relational audit foundations
-  with explicit CHECK, foreign-key, unique, partial unique, and revision rules.
-- The player-corpse migration adds durable corpses, three section-container
-  bindings, presentation-only snapshots, and unique death events. Player expiry
-  is constrained to database creation time plus exactly five minutes. Corpse
-  transforms require a bounded position and normalized quaternion. Snapshot
-  rows contain no item-instance identity.
-- A companion migration removes the obsolete row-level 140 percent
-  check from `character_item_states`. The transaction kernel remains the only
-  hard-cap authority so an authoritative death can persist retained Secure
-  Container weight after its equipped Bag capacity bonus is removed.
-- Startup idempotently backfills every active character with the catalog's
-  character settings, today base carry capacity `2000`, 20 permanent inventory
-  slots, and 40 bank slots, plus the account-entitled Secure Container slots and
-  one unbounded Recovery Storage identity.
-- New character creation calls the same PostgreSQL bootstrap function before
-  committing its existing transaction, so a character cannot commit through
-  the service without its required item state.
-- Startup permits display-only catalog revisions but rejects structural
-  definition changes with live item instances and tier changes with live
-  entitlements until an explicit data migration resolves them.
-- Character deletion cascades live character item custody and recovery rows.
-  Account deletion also removes the account Secure Container entitlement.
-  Operation and change audit rows remain with deleted actor or item references
-  set to null.
-- `ItemCatalogQueryService` returns the current relational catalog graph in a
-  read-only repeatable-read transaction. Definitions are present exactly once
-  in that response. The HTTP response uses the catalog revision as a strong ETag,
-  is revalidated by clients, and returns `304 Not Modified` when unchanged.
-- `ItemQueryService` first verifies exact account and active-character
-  ownership, then reads permanent inventory, equipment, equipped Bag contents,
-  bank, Secure Container, Recovery deliveries, revisions, encumbrance state, and
-  the currency balance from one repeatable-read snapshot.
+- The item-state, bank, and Recovery routes first verify exact account and
+  active-character ownership, then read permanent inventory, equipment, equipped
+  Bag contents, bank, Secure Container, Recovery deliveries, revisions,
+  encumbrance state, and the currency balance from one repeatable-read
+  snapshot. An owning account may inspect its bank and Recovery Storage from
+  anywhere; that read authorizes no mutation.
+- Recovery reads return only unclaimed deliveries.
 - Item instance DTOs contain only instance id, stable definition id, quantity,
   revision, and active policy kind and status. Policy sources, recovery source
   event ids, operation payloads, structural fingerprints, credentials, icons,
   and other client presentation data are excluded.
 - Weight and capacity remain unitless integers. Load ratio and movement
   multiplier are returned as deterministic basis points.
-- `ItemTransactionService` is the only durable item mutation kernel. Typed
-  internal commands cover grant, relocation, equip, unequip, stack split and
-  merge, atomic ordinary container-slot swap, quantity consumption, allowed
-  destruction, empty Bag storage, complete Bag aggregate swap, Recovery delivery
-  add and claim, Secure Container tier change, policy application and removal,
-  quest-grant abandonment cleanup, player-death partition, corpse expiry, vendor
-  purchase and sale, and gathering yields.
-- Equip moves a whole stack only when it fits the equipment slot limit, which is
-  the smaller of the slot maximum quantity and the definition stack size. Merge
-  accepts an equipped target up to that limit and an equipped source, and split
-  accepts an equipped source, so arrows top up and partly leave the ammunition
-  slot. Equip onto an occupied slot is a swap in the same transaction: it locks
-  both items, checks the new item as for an empty slot apart from the occupant it
-  replaces, and moves the occupant into the new item's source slot under the
-  unequip placement rules, with deferred unique constraints for the exchange.
-  The expected character revision makes sure the swap replaces the occupant the
-  client saw. Equipping into a slot that an equipped item blocks, or with an
-  item that would block an occupied slot, is rejected with
-  `equipment_slot_blocked`. A corpse equipment slot keeps the same quantity
-  limit. `loot_corpse_item_to_equipment` loots a whole corpse item into an
-  equipment slot under the same checks: the occupant the worker names must still
-  hold the slot, an equipped stack of the same stackable definition only takes a
-  top-up and is rejected when the stacks cannot merge, so a full equipped stack
-  never lands in the corpse, and any other occupant swaps into the corpse slot the loot left
-  under the deposit placement and policy rules. `grant_mob_loot` grants into an
-  empty container slot or, with an equipment slot instead, an empty equipment
-  slot under a derived item id, or tops up the stack the worker names in that slot
-  when the two merge within the slot limit. It never swaps, because the worker
-  cannot take live Mob loot back, so a named stack of another item is rejected
-  with `item_slot_occupied` or `equipment_slot_occupied`.
-- Every path into a character's equipment slot, including corpse Bag swaps and
-  cross-character Bag aggregate swaps, compares the definition's mirrored
-  `required_character_level` with `characters.level` and rejects a lower level
-  with `equipment_level_requirement_not_met`.
-- Cross-character Bag aggregate swaps lock and evaluate the Bag roots and every
-  child. A protected or insured Bag or child rejects the complete swap without
-  changing custody, quantity, or revisions.
-- Every command uses exactly one Npgsql connection and one `READ COMMITTED`
-  transaction. It claims a global operation id, hashes a canonical request,
-  acquires character, Bag, container, item, policy, and delivery locks in stable
-  order, validates current ownership and expected revisions, and stores one
-  replayable committed or rejected result.
-- Domain rejection uses a savepoint so no partial item, custody, quantity,
-  policy, delivery, entitlement, carried-state, revision, or audit mutation can
-  survive. Replaying the same operation id and canonical payload returns the
-  stored result. A different payload returns `item_operation_conflict`.
-- A retry of a committed SimulationWorker operation replays its stored result
-  even when the live session has ended since, so a lost response never turns a
-  committed change into a reported failure.
-- Committed operations recompute carried weight with indexed lookups of the
-  character's carried containers and equipped Bag, and the death partition
-  selects its source items the same way. A partial index on
-  `item_instances(equipped_character_id, equipment_slot_id)` supports both.
-- GameService startup bootstraps only characters that have no item state, each
-  in its own short transaction, and then recomputes carry state in batches of
-  500 rows that it locks first, so a concurrent item transaction can never be
-  overwritten with a stale weight and startup scales with the number of
-  accounts.
-- Two kinds of rejection are returned without being stored, so the same id can
-  run again: `item_transaction_timeout`, which also covers lock timeouts,
-  statement timeouts, deadlocks, and serialization failures, and every
-  rejection of a retried system operation. The retried system operations are
-  player death, persistent Mob corpse creation, live Mob loot grants, corpse
-  expiry, and Recovery expiry. A live Mob loot grant therefore stays claimable
-  after a rejected attempt until one claim commits.
+- Character-specific reads and writes return `Cache-Control: no-store` and
+  `Pragma: no-cache`. GameService never returns icon bytes, Unity references, or
+  client presentation entries.
+
+### Item Transactions
+
+Every durable item mutation commits or rejects as a whole through the kernel.
+Seen from outside:
+
+- Every mutation carries an operation id. Replaying the same id and canonical
+  payload returns the stored result; reusing it with another payload returns
+  `item_operation_conflict`. A retry of a committed SimulationWorker operation
+  replays its stored result even when the live session has ended since, so a
+  lost response never turns a committed change into a reported failure.
 - Player-chosen operation ids, from account routes and from SimulationWorker
   requests other than the retried system operations, must be random version 4
   UUIDs or the command returns `item_operation_id_invalid` without claiming the
   id. Every derived system id is a version 5 UUID, so a player cannot claim an
   id that a system operation needs.
-- Successful commands recompute unitless carried weight and equipped Bag
-  capacity from authoritative custody, advance touched character, container,
-  Bag, and item revisions, and append before and after audit rows. Voluntary
-  mutations enforce the exact 140 percent hard cap. Authoritative death may
-  create an involuntary over-cap state when retained Secure Container weight
-  outlives a removed Bag bonus; remediation may neither increase weight nor
-  worsen the exact load ratio. Equipment-slot item roots have zero carried
-  weight. Equipped Bag contents still count and the equipped Bag bonus still
-  increases capacity. Startup reconciliation corrects older stored tuples only
-  when they differ.
-- Bag content containers are closed while an empty Bag is ordinary storage and
-  active only while equipped. Bag and child commands share one aggregate-root
-  lock, and aggregate swaps validate both Bag item and content-container
-  revisions before exchanging complete Bags.
-- Recovery Storage remains system-write-only. Internal delivery creation and
-  complete claims to permanent inventory or bank preserve item identity,
-  quantity, and policy lineage. Recovery custody remains excluded from weight.
-  Player reads return only unclaimed deliveries. A claimed delivery is kept as
-  history for the audit retention period and then removed by maintenance.
-- Secure Container tier changes update every active character on the account.
-  An account actor may only select the catalog base tier. A larger tier is
-  granted only by a trusted entitlement or purchase source with system
-  authority.
-  Removed slots are drained in descending order to deterministic
-  `secure_capacity_reduction` Recovery deliveries before the slots are removed.
-  Character bootstrap and tier changes share one account-entitlement advisory
-  key so a concurrently created character receives a coherent tier.
-- `ItemPolicyRules` independently evaluates trade, auction, vendor sale, player
-  destruction, death disposition, insurance eligibility, and stacking
-  capability. Protected and insured items block every transfer capability.
-- Policy and quest commands run only through the NPC capability path or as a
-  system actor. Insurance removal changes policy lifecycle without
-  replacing the item. Quest abandon removes only active protected items with the
-  exact quest-grant source id, and reaccept suppresses duplicate active grants.
-  Abandoning an item held in Recovery Storage also removes its slot row and any
-  unclaimed delivery left without items, so no empty delivery remains.
-- Account mutation requests derive authority from the authenticated principal
-  and use an offline-required actor. Character and item-state rows are locked
-  before checking active simulation sessions, using the same character lock as
-  simulation admission. Active ownership returns
-  `item_offline_access_required` without partial mutation.
-- Character-specific reads and writes return `Cache-Control: no-store` and
-  `Pragma: no-cache`. Domain failures use RFC Problem Details with stable `code`
-  values. GameService never returns icon bytes, Unity references, or client
-  presentation entries.
-- Admission returns one item-state-row-fenced carry tuple with the accepted
-  session lease. Heartbeat returns the current committed tuple with the renewed
-  lease. Reconnect reads the tuple again under the admission lock.
-- SimulationWorker stores carry state by exact simulation-session identity and
-  applies only increasing item-state revisions. Same-revision conflicts
-  invalidate the local lease instead of accepting contradictory weight or
-  capacity.
-- GameSimulation, at revision `movement-simulation-v5` and with carry state
-  since `v3`, owns the immutable carry state and deterministic encumbrance
-  calculation used by worker movement and Unity prediction. Walking keeps full
-  speed through exactly 100 percent load, then the movement multiplier falls
-  linearly to `0.20` at the exact 140 percent hard cap.
-- The realtime protocol retains carry state on join, later committed
-  carry updates, and bounded item-operation intents and results on the reliable
-  ordered control path. Supported operations are relocate, equip, unequip,
-  split stack, merge stacks, atomic ordinary container-slot swap, allowed
-  destruction, complete Recovery Storage claim, typed NPC insurance and quest
-  item-lifecycle actions, and vendor purchase and sale with offer, quantity, and
-  expected price. `GatheringState` reports gathering start, each yield, and the
-  stop reason. The corpse contract carries
-  chunked corpse presence and view state, accepted destination slot tags, open,
-  close, refresh, full and partial loot or deposit, atomic ordinary slot and Bag
-  aggregate swaps, operation result, delta, and view-closure messages.
-  Packet builders measure encoded UTF-8 size and preserve the existing `1200`
-  byte limit.
-- SimulationWorker accepts item intents only from an exact joined player on
-  channel 0, processes at most one per peer at a time, and bounds each pending
-  queue to eight operations. Synthetic development bots cannot mutate durable
-  items.
-- Bank and Recovery Storage custody require the matching access flag. The worker
-  sets it when the operation starts while the player has an open interaction
-  with a world actor whose `bank` or `recovery_storage` capability is available.
-  The interaction closes when the player leaves its range or loses line of
-  sight, which ends the access. Opening either capability only confirms it, so
-  the client can present the storage. Secure Container custody has no city
-  requirement. Insurance and quest lifecycle actions pass their flags only
-  through their own NPC capability, and vendor trades pass the vendor profile
-  of the validated `vendor` capability, which must name an active vendor of the
-  mirrored catalog. A vendor command without that live vendor access is
-  rejected with `vendor_access_required`.
-- The worker service-authenticated endpoint carries the exact account,
-  character, simulation session token, worker id, runtime id, and Shard. The
-  authenticated worker id must match the body. GameService locks and validates
-  the character, item state, active simulation session, active account session,
-  online worker runtime, and current assignment inside the same transaction
-  that calls `ItemTransactionService`.
-- Worker and account APIs cannot both own carried mutation authority. Offline
-  account routes and live worker routes coordinate through the character lock,
-  and operation ids remain globally idempotent through the existing kernel.
-- Death-event ids add a second idempotency fence above the operation journal. A
-  replay with the same authoritative character, Shard, transform, and
-  presentation data returns the original corpse, absolute expiry, Recovery
-  deliveries, and committed character revision without repartitioning. Reusing
-  the event id with different data returns `death_event_conflict`. The event
-  row is removed together with its closed corpse after the closed-corpse
-  retention period. Every death request carries the expected character
-  revision and the partition always advances it, so a replay that outlives the
-  event row is rejected as a revision conflict instead of partitioning twice.
-- One death transaction leaves currency and its ledger, bank, existing Recovery
-  Storage, and Secure Container contents unchanged. Protected items and otherwise-lootable
-  active insured items move to source-correlated Recovery deliveries. Insurance
-  is consumed only in the latter case, so protected priority preserves an active
-  insurance policy.
-- Remaining permanent inventory, equipment, Bag root, and Bag children move to
-  general, equipment, and Bag corpse sections. Protected or insured Bag roots
-  move after every child and therefore reach Recovery empty. Normal children use
-  the detached corpse Bag section, while protected and insured children receive
-  their own policy result.
-- Every corpse has a non-interactive Secure tier snapshot. Effective insured
-  equipment and protected or insured Bags add definition-level presentation
-  snapshots, but no protected item placeholder or real protected instance id is
-  exposed.
-- `CorpseExpiryHostedService` scans database-time deadlines in bounded batches.
-  Each corpse owns one durable expiry operation id. Cleanup locks the corpse,
-  records one `item_destructions` and item-operation audit entry per remaining
-  instance, deletes children before Bag roots, closes remaining section
-  containers, and marks the corpse expired. Empty player corpses are not closed
-  early.
-- After obtaining a current registration lease, SimulationWorker restores only
-  open, unexpired corpses for its exact runtime and Shard assignment. GameService
-  returns database time with the snapshot. The worker advances that time with a
-  monotonic clock and retains the generic loot-crate presentation key without
-  owning or copying item custody.
-- SimulationWorker exposes corpse presence only within configured interest
-  range. One player can inspect one corpse at a time, while any number of
-  players may inspect the same corpse. The worker revalidates its authoritative
-  three-dimensional position and cached absolute lifetime before every open,
-  refresh, or mutation. GameService repeats exact-session, Shard, and lifetime
-  authority inside the transaction boundary.
-- Corpse reads use short read-only snapshots. Full and partial transfers,
-  internal corpse moves, ordinary occupied-slot swaps, and atomic Bag aggregate
-  swaps reuse `ItemTransactionService` with targeted item, container, and
-  Bag-root revisions. Internal moves can split, merge, or swap across the three
-  corpse sections without advancing character item-state or carry. The corpse
-  Bag owns the corpse Bag section, so it never leaves its equipment slot through
-  an internal move or swap, even when empty. It leaves the corpse through an
-  atomic Bag aggregate swap, a loot into the looter's empty Bag slot with
-  everything in it, or, once empty, a loot into an empty carried slot; each gives
-  the corpse a new empty Bag section. Any other corpse Bag is empty and loots
-  like an ordinary item into an empty slot. Corpse equipment destinations carry canonical equipment-slot ids
-  and validate definition compatibility. Loot all (`loot_all_corpse_items`) locks
-  the looter, the corpse at the revision the client saw, and every corpse and
-  carried item, plans the steps with `CorpseLootAllPlanner` from the locked state,
-  and commits each step under the checks of the single loot it stands for. Live
-  Mob Loot all (`grant_mob_loot_all`) plans the worker's entries the same way with
-  whole items only, and every live grant, single or Loot all, records its grant id
-  in `live_mob_loot_grants`, so a grant committed once is never committed again;
-  a single loot of a recorded grant is rejected as `item_already_looted`, and the
-  worker then takes the entry out of the corpse. Unrelated corpse changes may commit concurrently,
-  competing custody has one stable winner, and no PostgreSQL transaction remains
-  open across a client network wait.
-- The worker broadcasts each committed targeted delta or replacement to every
-  current viewer. An open or refresh always gives its requester a complete
-  snapshot, while the other viewers receive the delta from the newer revision.
-  Its runtime store accepts only monotonic corpse revisions. A completion that
-  arrives after its peer disconnected never releases the corpse reservation of
-  a new peer that reuses the LiteNetLib peer id; disconnect cleanup releases
-  every reservation of the old peer first.
-  Expiry, invalidation, and missing-corpse results close affected views with
-  stable codes, while stale item or quantity conflicts trigger refresh. Taking
-  the last item of a live Mob corpse closes every view with `corpse_emptied`
-  instead of `corpse_invalidated`, also when the presence broadcast notices the
-  emptied corpse first. The emptied corpse stays inactive in worker memory until
-  its deadline, so a replayed creation cannot restore its loot.
-  [Corpse View Closures](REALTIME_PROTOCOL.md#corpse-view-closures) lists the
-  codes.
+- Two kinds of rejection are returned without being stored, so the same id can
+  run again: `item_transaction_timeout`, which also covers lock timeouts,
+  statement timeouts, deadlocks, and serialization failures, and every
+  rejection of a retried system operation: player death, durable Mob corpse
+  creation, single live Mob loot grants, corpse expiry, and Recovery expiry. A
+  live Mob loot grant therefore stays claimable after a rejected attempt until
+  one claim commits.
+- A canonical command above `Items:Operations:MaximumCommandPayloadBytes` is
+  rejected with `item_command_payload_too_large` before any database access,
+  and an HTTP body above `MaximumHttpRequestBodyBytes` never reaches it.
+  Statements and lock waits are bounded by `TransactionTimeoutMilliseconds` and
+  `LockTimeoutMilliseconds`.
+- Player mutations carry the expected character item-state revision, and
+  targeted item, Bag, and corpse mutations carry the revisions of the rows they
+  target, so an unrelated change in the same container does not reject a
+  targeted loot request. A stale revision returns `item_state_conflict`,
+  `item_quantity_changed`, `bag_state_changed`, or `corpse_state_changed`.
+- Voluntary mutations enforce the exact 140 percent hard cap with
+  `carry_weight_limit_exceeded`. The kernel is the only hard-cap authority; no
+  row-level check exists, so an authoritative death can persist retained Secure
+  Container weight above the cap, after which only non-worsening remediation
+  commits.
+- Equipping into a slot that an equipped item blocks, or with an item that would
+  block an occupied slot, is rejected with `equipment_slot_blocked`, and below
+  the item's required character level with
+  `equipment_level_requirement_not_met`, on every path into an equipment slot,
+  including corpse Bag swaps. An equip request for a stack of the equipped
+  definition is rejected with `equipment_slot_occupied`, because it tops up the
+  equipped stack through a merge instead.
+- `grant_mob_loot` grants into an empty container slot or, with an equipment
+  slot instead, an empty equipment slot under a derived item id, or tops up the
+  stack the worker names in that slot when the two merge within the slot limit.
+  It never swaps, because the worker cannot take live Mob loot back, so a named
+  stack of another item is rejected with `item_slot_occupied` or
+  `equipment_slot_occupied`.
 - Every worker mutation response, from item operations, ammunition batches,
   corpse operations, live Mob loot grants, and player deaths, carries
   `characterState`: the acting character's item-state revision, carry tuple,
@@ -1164,242 +999,230 @@ concurrent inspection, and authoritative looting:
   rejects a response whose state is older, belongs to another character, or has
   a duplicate equipment slot or item. Stored operation results stay unchanged,
   so a replay returns the same result with the current state.
-- SimulationWorker counts arrows against the equipped ammunition stack and
-  commits them in batches through `ammunition-consumptions`. The batch id is a
-  random version 4 operation id, so a retry replays the stored result. The batch
-  carries the expected character and item revisions and the quantity, and the
-  stack must be ammunition that the character has equipped, otherwise the batch
-  returns `422` `ammunition_not_equipped`. A batch that spends the whole stack
-  deletes it and empties the ammunition slot.
-- A player-death request may carry `ammunitionConsumption`, the shots that were
-  not committed yet, which the death transaction consumes before it partitions
-  the remaining stack into the corpse, and `killer`, either `mob` with an actor
-  definition id or `character` with a character id. `death_events` stores the
-  killer, with a character id in canonical form. Both fields are optional, and
-  a death without them keeps its previous request fingerprint.
-- SimulationWorker updates its carry-state store only from committed GameService
-  results. A newer tuple is sent reliably before it affects movement. Conflicting
-  same-revision data or stale live authority causes a targeted refresh response
-  or safe disconnect.
-- Unity keeps one persistent definition-id catalog index, presentation and icon
-  cache, complete and focused snapshot state, monotonic observed revisions,
-  structured errors, and one operation journal. It correlates operation
-  results and refreshes authoritative HTTP state to at least the committed revision
-  without optimistically changing item custody or quantity.
-- Unity also owns immutable corpse presence and view state, complete chunk
-  assembly, monotonic delta application, one pending corpse operation, and
-  refresh-on-stale behavior. A worker closure that arrives before the result of
-  the pending operation ends the view but keeps the operation correlated, so the
-  late result settles it without a disconnect and never reopens the closed view.
-  A player corpse shows the body lying in the last pose of `Death` and a Mob
-  corpse a replaceable generic capsule, both at the server identity and
-  transform. A click on a corpse walks into range and opens
-  it, and the
-  same typed drag layer submits bidirectional full or partial transfers,
-  corpse-internal moves, compatible stack merges, ordinary occupied-slot swaps,
-  and Bag swaps. Corpse equipment buttons display the canonical slot label and
-  id instead of an untyped number.
-- The runtime uGUI panel is replaceable presentation over that state. It exposes
-  Permanent inventory, equipment, equipped Bag, Secure Container, Bank, and
-  Recovery Storage plus every current live mutation. Typed reusable drag sources
-  and targets submit relocation, equipment, split, merge, atomic ordinary swap,
-  and atomic Recovery claim operations only after drop validation. `B` shows
-  character storage, `C` shows equipment plus character storage, and `I` shows
-  the complete Development view with contextual Bank, Recovery, and an active
-  corpse. Item clicks
-  select only the split and allowed-destruction controls. Bank and Recovery
-  reads are globally inspectable by the owning account.
-- SimulationWorker normally derives Bank and Recovery Storage access from the
-  open NPC interaction. Its environment-specific Development configuration can
-  explicitly grant global Bank and Recovery access for local item testing.
-  Enabling that option outside Development is rejected at startup, and insurance
-  access always requires the insurance NPC capability. Every mutation still requires the joined worker path and GameService's
-  exact session, runtime, assignment, transaction, item-rule, and capacity
-  validation.
-- Gameplay and presentation catalogs load once and must share a source revision.
-  Server snapshots must match the same bundled gameplay revision or the client
-  reports `item_catalog_update_required` and refuses stale item state.
-- `--dev-items-package <characterId> <packageId>` is a process-local Development
-  command, not an HTTP route. It applies one package from
-  `content/development/item-packages.json` through `ItemTransactionService`,
-  requires a new empty offline character, restricts PostgreSQL to loopback and a
-  non-production-like database name, refuses replay after the first item or
-  Recovery delivery exists, and rejects a package that misses its exact expected
-  load.
-- `--dev-items-corpse <characterId> <shardId> <x> <y> <z>` is the matching
-  process-local corpse fixture. It applies the corpse seed package to an empty
-  source when necessary, then uses the normal durable death transaction. The
-  source must be offline and the resulting corpse keeps its database deadline
-  across worker restart.
-- `--dev-items-currency <characterId> <positiveAmount>` is the matching
-  process-local currency grant described in
-  [Character Currency](#character-currency).
 
-The shared pure rules have no HTTP, PostgreSQL, UnityEngine, or SimulationWorker
-runtime dependency. The Editor assembly is isolated from runtime WorldData
-assemblies.
-GameService exposes authenticated owned-character reads, offline account item
-write routes, and one service-authenticated active-session item route. It exposes
-no development grant route. The development item packages are applied by a
-guarded local process command rather than a remotely callable service. SimulationWorker has no
-inventory database access and holds no item collection. Unity is not an item-rule
-authority.
+### Offline Account Item Routes
 
-## Item And Interaction Error Codes
+- Account mutation requests derive authority from the authenticated principal
+  and use an offline-required actor. Character and item-state rows are locked
+  before checking active simulation sessions, using the same character lock as
+  simulation admission. An active simulation session returns
+  `item_offline_access_required` without partial mutation.
+- Bank and Recovery Storage sources and destinations are never reachable
+  offline, so Recovery deliveries are claimed only in the world.
+- The Secure Container tier route lets an account actor select only the catalog
+  base tier. A larger tier is granted only by a trusted entitlement or purchase
+  source with system authority, which does not exist yet.
+
+### Live Item Operations
+
+- SimulationWorker accepts item intents only from an exact joined player on the
+  control channel, runs at most one per peer at a time in the character's
+  authority lane, and bounds each pending queue to eight operations; more return
+  `item_operation_queue_full`. Synthetic development bots cannot mutate durable
+  items.
+- Bank and Recovery Storage custody require the matching access flag. The worker
+  sets it when the operation starts while the player has an open interaction
+  with a world actor whose `bank` or `recovery_storage` capability is available;
+  otherwise GameService rejects with `bank_access_required` or
+  `recovery_access_required`. The interaction closes when the player leaves its
+  range or loses line of sight, which ends the access. Secure Container custody
+  has no city requirement. Insurance and quest actions pass their flags only
+  through their own NPC capability, and vendor trades pass the vendor profile of
+  the validated `vendor` capability.
+- In the Development environment, `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess`
+  grants Bank and Recovery access from any position for local item testing; the
+  worker's `appsettings.Development.json` turns it on. Startup rejects it in
+  every other environment, and it never includes insurance access.
+- The worker service-authenticated endpoint carries the exact account,
+  character, simulation session token, worker id, runtime id, and Shard. The
+  authenticated worker id must match the body, or the route answers
+  `wrong_simulation_worker`. GameService locks and validates the character, item
+  state, active simulation session, active account session, online worker
+  runtime, and current assignment inside the same transaction that runs the
+  command.
+- A committed operation returns its item changes, which the worker sends to the
+  owner as `OwnerItemStateChanged` when one packet can describe them, as
+  [Owner Item State Changes](REALTIME_PROTOCOL.md#owner-item-state-changes)
+  describes; the client refreshes its inventory otherwise. A committed result
+  without committed character state, or whose revisions contradict the active
+  simulation state, ends the session with `item_state_diverged`.
+
+### Player Death And Durable Corpses
+
+- A player-death request carries the expected character revision, the
+  transform, and the presentation key `corpse.remains`. It may carry
+  `ammunitionConsumption`, the shots that were not committed yet, which the
+  death transaction consumes before it partitions the remaining stack into the
+  corpse, and `killer`, either `mob` with an actor definition id or `character`
+  with a character id. `death_events` stores the killer, with a character id in
+  canonical form. Both fields are optional, and a death without them keeps the
+  request fingerprint it had without them.
+- Death-event ids add a second idempotency fence above the operation journal. A
+  replay with the same authoritative character, Shard, transform, and
+  presentation data returns the original corpse, absolute expiry, Recovery
+  deliveries, and committed character revision without repartitioning. Reusing
+  the event id with different data returns `death_event_conflict`. The event row
+  is removed together with its closed corpse after the closed-corpse retention
+  period. The partition always advances the character revision, so a replay
+  that outlives the event row is rejected as a revision conflict instead of
+  partitioning twice.
+- The database constrains a player corpse's expiry to its database creation time
+  plus exactly five minutes, and its transform to a bounded position and a
+  normalized quaternion. Snapshot rows contain no item-instance identity.
+  Durable Mob corpses use the lifetime their content selects.
+- `CorpseExpiryHostedService` scans database-time deadlines in bounded batches.
+  Each corpse owns one durable expiry operation id. Cleanup locks the corpse,
+  records one `item_destructions` and item-operation audit entry per remaining
+  instance, deletes children before Bag roots, closes remaining section
+  containers, and marks the corpse expired. Empty player corpses are not closed
+  early. A request that arrives after expiry receives `corpse_expired`.
+- After obtaining a current registration lease, SimulationWorker restores only
+  open, unexpired corpses for its exact runtime and Shard assignment, and checks
+  again every `ItemInteraction:DurableCorpseRefreshSeconds`. GameService returns
+  database time with the snapshot. The worker advances that time with a
+  monotonic clock and keeps the presentation state without owning or copying
+  item custody. A worker restart restores each corpse at its persisted
+  transform with the unchanged deadline.
+
+### Corpse Interaction
+
+- SimulationWorker exposes corpse presence within
+  `ItemInteraction:CorpseDiscoveryRadius` of the player, twice per second. One
+  player can inspect one corpse at a time, within
+  `ItemInteraction:CorpseInteractionRadius`, while any number of players may
+  inspect the same corpse. The worker revalidates its authoritative
+  three-dimensional position and cached absolute lifetime before every open,
+  refresh, or mutation, and rejects with `corpse_out_of_range`,
+  `corpse_view_not_open`, or `corpse_interaction_active`. GameService repeats
+  exact-session, Shard, and lifetime authority inside the transaction boundary.
+- Corpse reads use short read-only snapshots. Full and partial transfers,
+  internal corpse moves, ordinary occupied-slot swaps, and atomic Bag aggregate
+  swaps reuse the kernel with targeted item, container, and Bag-root revisions.
+  Internal moves can split, merge, or swap across the three corpse sections
+  without advancing character item-state or carry. Unrelated corpse changes may
+  commit concurrently, competing custody has one stable winner, and no
+  PostgreSQL transaction remains open across a client network wait.
+- Loot all locks the looter, the corpse at the revision the client saw, and
+  every corpse and carried item, plans the steps with `CorpseLootAllPlanner`
+  from the locked state, and commits each step under the checks of the single
+  loot it stands for. A corpse that changed answers `item_state_conflict`, and a
+  Loot all that takes nothing answers `inventory_full`. A live Mob Loot all
+  plans the worker's entries the same way with whole items only.
+- Every live Mob grant, single or Loot all, records its grant id in
+  `live_mob_loot_grants`, so a grant committed once is never committed again. A
+  single loot of a recorded grant is rejected as `item_already_looted`, and the
+  worker then takes the entry out of the corpse.
+- The worker broadcasts each committed targeted delta or replacement to every
+  current viewer. An open or refresh always gives its requester a complete
+  snapshot, while the other viewers receive the delta from the newer revision.
+  Its runtime store accepts only monotonic corpse revisions. A completion that
+  arrives after its peer disconnected never releases the corpse reservation of
+  a new peer that reuses the LiteNetLib peer id; disconnect cleanup releases
+  every reservation of the old peer first.
+- Expiry, invalidation, and missing-corpse results close affected views with
+  stable codes, while stale item or quantity conflicts trigger a refresh. Taking
+  the last item of a live Mob corpse closes every view with `corpse_emptied`
+  instead of `corpse_invalidated`, also when the presence broadcast notices the
+  emptied corpse first. The emptied corpse stays inactive in worker memory until
+  its deadline, so a replayed creation cannot restore its loot. The closure
+  codes are listed in [Realtime Codes](#realtime-codes).
+- GameService accepts `corpse.remains` as the presentation key of a player
+  death, and only `corpse.mob` and the keys below it for a durable Mob corpse,
+  as [Corpse Presence Facing](REALTIME_PROTOCOL.md#corpse-presence-facing)
+  describes. Every Mob corpse gives whole items only.
+
+### Development Item Commands
+
+The Development item tool is a set of process-local GameService commands, not
+HTTP routes, so no development grant route exists. Each runs in the Development
+environment only, against a loopback PostgreSQL host whose database name does
+not contain `prod`, applies every change through the item transaction kernel,
+and requires an offline target character. The Unity window
+`MMORPG > Tools > Inventory Item Grants` drives them, and
+[Development Item Commands](MANUAL_TESTING.md#development-item-commands) shows
+how to run them.
+
+| Command | Behavior |
+| --- | --- |
+| `--dev-items-list` | Report every local character with its balance, the active definitions, and the development packages |
+| `--dev-items-grant <characterId> <definitionId> <quantity> <permanent\|bank\|secure>` | Grant one stack into the permanent inventory, the bank, or the Secure Container |
+| `--dev-items-package <characterId> <packageId>` | Apply one package from `content/development/item-packages.json` to a new empty character. It refuses a replay once an item or Recovery delivery exists, and rejects a package that misses its exact expected load |
+| `--dev-items-corpse <characterId> <shardId> <x> <y> <z>` | Apply the corpse seed package to an empty source when necessary, then run the normal durable death transaction at that Shard position. The corpse keeps its database deadline across a worker restart |
+| `--dev-items-level <characterId> <level>` | Set the character's level, because no experience exists yet |
+| `--dev-items-currency <characterId> <amount>` | Credit a positive whole amount through the wallet with a `development` ledger row |
+
+## Error Codes
 
 Error codes are stable contracts for programs; messages are for people and may
-change. GameService returns the item codes, SimulationWorker adds the realtime
-and interaction codes, and Unity adds `item_catalog_update_required`.
+change. GameService returns its codes in RFC Problem Details as the `code`
+extension, SimulationWorker returns realtime codes in the `Error` of protocol
+results and closures, and Unity adds `item_catalog_update_required`.
+
+### HTTP Error Responses
+
+- A malformed request body returns `400` with `invalid_request`, a transient
+  PostgreSQL connection failure returns `503` with `database_unavailable`, and
+  any other unhandled failure returns `500` with `internal_server_error`. A
+  request that the client aborted is logged at debug level and answered with
+  `499`, not reported as a server error.
+- Item rejections map to statuses by class on the account, worker item, and
+  corpse routes: `401` for an invalid simulation session, `403` for missing
+  authority or service access, such as `item_authority_required`,
+  `wrong_simulation_worker`, `bank_access_required`, `recovery_access_required`,
+  and `vendor_access_required`, `404` for a missing item, policy, Recovery
+  delivery, or corpse, `409` for stale state and races, such as
+  `item_state_conflict`, `item_operation_conflict`, `item_transaction_timeout`,
+  `item_slot_occupied`, `equipment_slot_occupied`, `item_quantity_changed`,
+  `bag_state_changed`, `worker_runtime_changed`, `vendor_price_changed`,
+  `inventory_full`, the corpse lifecycle codes, and on account routes
+  `item_offline_access_required`, and `422` for every other domain rejection.
+  An incomplete request returns `400` with `item_operation_id_required`,
+  `item_secure_tier_request_invalid`, or `item_simulation_operation_invalid`.
+
+### GameService Codes
 
 | Area | Codes |
 | --- | --- |
-| Authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `worker_runtime_changed`, `simulation_session_invalid` |
-| Operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large`, `item_operation_queue_full`, `item_state_diverged` |
+| Requests and platform | `invalid_request`, `internal_server_error`, `database_unavailable`, `rate_limit_exceeded`, `session_cache_invalidation_unavailable` |
+| Accounts and sessions | `invalid_email`, `invalid_username`, `invalid_password`, `invalid_login`, `invalid_credentials`, `email_already_used`, `username_already_used`, `account_already_exists`, `account_not_found`, `invalid_session_token`, `account_session_replaced` |
+| Characters | `invalid_character_name`, `character_name_taken`, `character_limit_reached`, `invalid_character_appearance`, `character_not_found` |
+| Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
+| Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
+| Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_appearance_change`, `development_look_disabled` |
+| Item reads and requests | `item_catalog_not_found`, `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required`, `item_secure_tier_request_invalid` |
+| Item authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `simulation_session_invalid` |
+| Item operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large` |
 | Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |
-| Placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `equipment_level_requirement_not_met`, `secure_container_item_forbidden`, `bag_not_empty`, `carry_weight_limit_exceeded` |
-| Stacks | `item_stack_incompatible`, `item_stack_limit_exceeded` |
+| Item placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `equipment_level_requirement_not_met`, `secure_container_item_forbidden`, `bag_not_empty`, `carry_weight_limit_exceeded` |
+| Stacks and ammunition | `item_stack_incompatible`, `item_stack_limit_exceeded`, `ammunition_not_equipped` |
 | Policy, quest, and currency | `item_policy_restricted`, `item_policy_not_found`, `item_destroy_forbidden`, `quest_grant_invalid`, `currency_insufficient`, `currency_limit_exceeded` |
 | Vendors and acquisition | `vendor_access_required`, `vendor_unavailable`, `vendor_offer_unavailable`, `vendor_price_changed`, `vendor_will_not_buy`, `inventory_full` |
-| Gathering | `gathering_tool_required`, `gathering_yield_invalid`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_interrupted`, `gathering_failed`, `resource_node_depleted`, `world_interaction_closed` |
+| Gathering | `gathering_tool_required`, `gathering_yield_invalid` |
 | Bank and Recovery | `bank_access_required`, `recovery_access_required`, `recovery_delivery_not_found`, `recovery_delivery_not_expired` |
-| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `item_already_looted`, `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active` |
-| World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `npc_lifecycle_action_invalid`, `quest_turn_in_unavailable` |
+| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `item_already_looted` |
+| Development tools | `development_simulation_bots_disabled`, `development_bot_loopback_required`, `invalid_development_bot_authority`, `invalid_development_bot_index`, `invalid_development_bot_instance_id`, `development_bot_already_active`, `development_bot_identity_changed`, `development_bot_placement_unavailable`, `development_bot_worker_capacity_reached`, `invalid_shard_id`, `invalid_join_ticket`, `invalid_stack_stress_fixture_authority`, `stack_stress_fixture_loopback_required`, `stack_stress_fixture_invalid`, `stack_stress_fixture_not_empty` |
+
+### Realtime Codes
+
+| Area | Codes |
+| --- | --- |
+| Packets and dispatch | `invalid_packet`, `udp_rate_limited`, `join_required`, `unexpected_message`, `internal_error`, and per family an `invalid_*_delivery` code for a message on the wrong channel or delivery and an `invalid_*` code for a malformed intent, such as `invalid_join_request`, `invalid_movement_input`, `invalid_item_operation`, and `invalid_world_interaction` |
+| Join and session | `missing_join_ticket`, `join_timeout`, `join_failed`, `leave_failed`, `invalid_leave_request`, `worker_registry_lease_unavailable`, `session_missing`, `session_expired`, `session_revoked`, `session_reconnected`, `account_session_replaced`, `simulation_session_changed`, `wrong_simulation_assignment`, `character_already_active`, `carry_state_conflict`, `carry_state_missing` |
+| GameService calls | `auth_service_timeout`, `auth_service_unavailable`, `auth_service_rejected`, `auth_service_authentication_failed`, `invalid_auth_response` |
+| Movement | `movement_unavailable`, `unknown_movement_path` |
+| Items | `item_operation_queue_full`, `item_operation_failed`, `item_operation_unavailable`, `item_state_diverged` |
+| Corpses | `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active`, `corpse_interaction_invalid`, `corpse_interaction_unavailable`, `corpse_operation_failed`, `live_mob_corpse_operation_unsupported` |
+| Corpse view closures | `corpse_view_closed` when the viewer closed the view, `corpse_emptied` when the last item of a live Mob corpse was taken, `corpse_expired` at the deadline, `corpse_invalidated` when the corpse disappeared or its state can no longer be trusted, and `corpse_not_found` when the worker or GameService no longer knows it; a view also closes with `combat_character_dead` when its viewer dies, and with the code of a rejection that ends it, such as `wrong_simulation_worker` |
+| World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `world_interaction_closed`, `world_interaction_failed`, `world_interaction_unavailable`, `world_interaction_queue_full`, `world_interaction_rate_limited`, `npc_lifecycle_action_invalid`, `npc_lifecycle_unavailable`, `quest_turn_in_unavailable` |
+| Gathering | `resource_node_depleted`, `gathering_interrupted`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_failed`, and the GameService rejection of a yield, such as `gathering_tool_required` |
+| Combat | `combat_target_not_found`, `combat_target_not_attackable`, `combat_target_dead`, `combat_target_self`, `combat_player_versus_player_disabled`, `combat_character_dead`, `combat_intent_invalid`, `combat_intent_rate_limited`, `combat_unavailable` |
+| Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent` |
+| Looks | `appearance_unavailable`, `appearance_change_in_flight`, `appearance_change_failed`, `invalid_appearance_intent` |
 | Unity client | `item_catalog_update_required` |
 
-## UDP Resilience And Quotas
-
-Per-peer token buckets enforce configured packet and byte rates with burst
-allowance. Sustained inbound abuse is rejected. Excess unreliable snapshot
-output may be dropped without delaying reliable lifecycle messages.
-
-An additional worker-wide snapshot byte bucket bounds aggregate unreliable
-output. The checked-in local limit is 38 MiB per second with a 4 MiB burst.
-Snapshot admission occurs for a complete chunk batch, so a peer receives either
-all chunks for one snapshot sequence or none. The recipient start rotates past
-the admitted group after each broadcast, distributing overload gaps across
-peers instead of starving the same tail of the connection list. Reliable
-control, spawn, despawn, and leave traffic does not consume this snapshot
-budget.
-
-Session heartbeats use bounded concurrency so one worker cannot create an
-unbounded GameService request fan-out. HTTP calls map timeout, connection,
-invalid-response, authentication, and domain failures to structured results.
-`auth_service_timeout` and `auth_service_unavailable` are unknown outcomes,
-because GameService may have committed the operation before the response was
-lost, so item, corpse, and live Mob loot results with those codes always ask the
-client to refresh. Live Mob loot claims send the current committed item-state
-revision from the carry store, not the revision from the time of the join.
-
-## Metrics And Logs
-
-Both server processes export metrics, logs, and traces through OpenTelemetry
-over OTLP when `Telemetry:OtlpEndpoint` is set. The local Collector, Prometheus,
-Loki, Tempo, and Grafana stack, the dashboards, the alert rules, the
-configuration, and the playtest workflow are described in
-[Monitoring](MONITORING.md). Without the setting nothing leaves the process and
-the meters below only feed the periodic status logs.
-
-The meter `Mmorpg.SimulationWorker.Realtime` exposes:
-
-- Active peers and entities.
-- Joined real players, joined synthetic bots, and unauthenticated peers as
-  separate gauges.
-- Sent and received packets and bytes, and the snapshot payload bytes among the
-  sent bytes.
-- Quota rejections, total dropped snapshots, and the subset dropped by
-  aggregate snapshot backpressure.
-- Accepted and rejected joins.
-- Spawn and despawn packet counts.
-- Snapshot entity record counts.
-
-The meter `Mmorpg.SimulationWorker.WorldActors` exposes low-cardinality NPC,
-Mob, and resource node population, event-driven, dormant, and active tier
-population, active interaction count, accepted and rejected interaction totals,
-interaction latency, depleted resource nodes, active gatherers, and gathering
-cycles by the `outcome` `yielded`, `rejected`, or `retried`. It does not label
-actor, spawn, player, character, session, or entity identities.
-
-The meter `Mmorpg.SimulationWorker.Combat` exposes attacks, hits, and deaths by
-the `kind` `player` or `mob`, arrow batches by the `outcome` `committed`,
-`retried`, `rejected`, or `session_ended`, dropped shots, player death
-partitions by the `outcome` `committed`, `retried`, `rejected`, or
-`session_ended`, the combat phase duration, active combatants, shots that are
-not committed yet, the Mob phase duration, engaged and moving Mobs, Mob routes
-by the `outcome` `reached`, `closest`, or `no_path`, and routes that wait for
-the planning budget.
-
-The meter `Mmorpg.GameService.Items` exposes low-cardinality transaction
-latency and outcome, lock wait, conflict, stale revision, timeout, death
-partition, policy action, cleanup, corpse count, and Recovery backlog
-measurements under `game_service.items.*`. The transaction counter and duration
-carry the outcome `committed`, `rejected`, `failed` for a transaction that threw,
-or `cancelled` when the caller cancelled it; the periodic totals count only
-committed and rejected transactions. Their operation kind label includes
-`vendor_purchase`, `vendor_sale`, and `gather_resource`. The meter
-`Mmorpg.GameService.Redis` exposes session cache, Redis failure, and distributed
-rate-limit counters under `game_service.redis.*`. The meter
-`Mmorpg.GameService.Placement` reports, per Shard and labeled only by
-`shard.id`, whether the Shard is online and its active
-players and capacity, refreshed every `Simulation:MetricsIntervalSeconds` from
-the same query as the public shard list. A failed refresh drops the values
-instead of keeping stale ones. The meter `Mmorpg.SimulationWorker.Corpses`
-separates active live and durable counts by the fixed `persistence` dimension.
-None of these meters uses item, account, character, operation, corpse, session,
-actor, or runtime ids as labels.
-
-Every GameService request has one correlation id: the caller's valid
-`X-Correlation-ID`, otherwise the W3C trace id of the request. The response
-header carries it, every log entry written during the request carries it as the
-`CorrelationId` scope value, and the request span carries it as
-`mmorpg.correlation_id`. SimulationWorker sends the trace id of its operation as
-`X-Correlation-ID` together with the W3C `traceparent` header, so one worker
-operation, its GameService request, and that request's PostgreSQL commands form
-one trace. Item transaction logs include correlation and operation ids, classify
-expected contention below warning, promote significant lifecycle commits, and
-exclude credentials, tokens, and command bodies. Periodic GameService summaries
-report cumulative transaction, contention, lifecycle, corpse, Recovery, and
-cleanup counts.
-
-Periodic structured logs expose the same totals. A worker status line also
-reports real players, synthetic bots, unauthenticated peers, process CPU
-normalized to total logical-core capacity, single-core-equivalent CPU, working
-set, packet and payload rates including the snapshot payload rate, snapshot
-drops, quota rejections, and the sample window. Metrics deliberately avoid
-account, character, session, entity, and peer identifiers as labels.
-
-The performance meter `Mmorpg.SimulationWorker.Performance` records network
-poll, completed-operation, join-queue-delay, join-finalization, simulation-tick,
-tick-lag, collision-streaming, movement, interest, and snapshot-broadcast
-durations plus fixed-tick resynchronizations and overruns, which count ticks
-that took longer than the tick interval. It also publishes the current
-completed-operation backlog as a gauge. The periodic metrics log reports
-interval averages, approximate p95 and p99 upper bounds, and maximum durations.
-It also reports the current and interval-maximum completed-operation backlog so
-admission congestion is distinguishable from UDP loss. Snapshot broadcast is
-the complete snapshot pipeline and includes the separately reported interest
-phase. The same interval log reports process allocation, GC collection counts,
-managed heap size and fragmentation, live managed memory, distinct visibility
-groups, encoded snapshot packet count, sent snapshot packet count, and tick
-overruns. Recording any of these measurements on the realtime loop does not
-allocate, with or without the OpenTelemetry exporter attached.
-
-These operational values remain server-side. They are not added to the realtime
-gameplay protocol and are not broadcast to Unity clients. The Unity Debug menu
-(F2) derives its values only from local rendering, prediction, and received
-traffic.
-
-SimulationWorker filters routine successful `GameServiceClient` HTTP pipeline
-messages below `Warning`. Domain failures and HTTP warnings remain visible, but
-high-frequency bot heartbeat and release requests do not drown out worker
-status, performance, lifecycle, or error logs.
-
-Routine UDP connect and disconnect events plus successful synthetic bot joins
-and leaves are logged at `Debug`. Successful real-player lifecycle events remain
-at `Information`, and all admission failures remain visible. Synthetic bot
-population is reported by the aggregate worker status line.
-
-Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
-`[SIMULATION]` in the Unity console.
+Conditions that change every tick, such as being out of range or out of mana,
+are attack statuses in `OwnerCombatState`, not error codes. How a code travels
+on the wire is in [Realtime Protocol](REALTIME_PROTOCOL.md).
 
 ## HTTP Security And Error Handling
 
@@ -1409,258 +1232,194 @@ Auth, client, and simulation logs use the categories `[AUTH]`, `[CLIENT]`, and
   `X-Simulation-Worker-Secret`.
 - Local shared-secret mode authenticates any valid worker identifier and leaves
   topology authorization to the registry. When a per-worker credential map is
-  configured, it becomes an exact allowlist and shared fallback is disabled.
-- Secrets are compared in fixed time.
+  configured in `ServiceAuthentication:SimulationWorkers`, it becomes an exact
+  allowlist and shared fallback is disabled.
+- Secrets are compared in fixed time. Every worker secret must have at least 32
+  characters, and startup rejects the `replace-with-` placeholders of
+  `.env.example`.
 - Central middleware converts unhandled failures into RFC Problem Details.
-- Responses carry `X-Correlation-ID`, including error responses produced by
-  the exception handler. A request the client aborted is logged at debug level
-  and is not reported as a server error.
+- Responses carry `X-Correlation-ID`, error responses too, as
+  [Correlation Ids](MONITORING.md#correlation-ids) describes.
 - Token-bearing responses use `Cache-Control: no-store` and `Pragma: no-cache`.
 - No debug HTTP endpoint is registered in the current service surface.
 
-### Redis Account-session Acceleration
+### Redis Account-Session Acceleration
 
 GameService uses Redis as a bounded cache-aside accelerator for successful
 account-session validation. Token hashes, never bearer tokens, identify cache
-entries. Every entry expires no later than both the configured cache TTL and the
-durable PostgreSQL session expiry. A cache miss, corrupt value, tombstone, or
-Redis read failure falls back to PostgreSQL.
+entries below the `RedisAcceleration:KeyPrefix`. Every entry expires no later
+than both `SessionCacheTtlSeconds` and the durable PostgreSQL session expiry. A
+cache miss, corrupt value, tombstone, or Redis read failure falls back to
+PostgreSQL. `RedisAcceleration:SessionCacheEnabled=false` measures the
+PostgreSQL validation path without disabling the distributed rate limit, and
+`RedisAcceleration:Enabled=false` stops every Redis use except the readiness
+check.
 
 Logout, manual revocation, and login replacement write a session-id tombstone
 before committing the PostgreSQL revocation, then delete the cached token key.
-The tombstone lives at least as long as any token cache entry. If GameService
-cannot store the required tombstone, it returns
-`503 session_cache_invalidation_unavailable` and does not commit the durable
-revocation. This prevents a successfully revoked session from remaining usable
-through stale cache state.
+The tombstone lives `SessionRevocationTombstoneSeconds`, at least as long as any
+token cache entry. If GameService cannot store the required tombstone, it
+returns `503 session_cache_invalidation_unavailable` and does not commit the
+durable revocation. This prevents a successfully revoked session from remaining
+usable through stale cache state.
 
 Login and registration also use a Redis fixed-window rate limit keyed by a hash
-of the remote address and policy name. The existing process-local ASP.NET rate
-limit remains active as a fallback if Redis is unavailable. Disconnected Redis
-commands fail fast instead of accumulating in a client backlog, and repeated
-warning logs are throttled per operation. Cumulative cache, fallback,
-invalidation, Redis-failure, and distributed-rate-limit counters are logged at
-the configured metrics interval.
+of the remote address and policy name. The process-local ASP.NET rate limit
+remains active as a fallback if Redis is unavailable. Disconnected Redis
+commands fail fast instead of accumulating in a client backlog. The Redis
+counters and logs are in [Monitoring](MONITORING.md#gameservice).
 
-## Health And Configuration
+## Configuration Defaults
 
-GameService liveness confirms the process loop. Readiness runs PostgreSQL
-`select 1` and Redis `PING` within configured timeouts and returns HTTP 503 if an
-obligatory dependency fails.
+Checked-in non-secret defaults live in each service's `Config` folder, and the
+ignored root `.env` holds local credentials and connection strings, not worker
+topology or World selection. Every setting fails fast at startup; the
+precedence and reload rules are in
+[Configuration Ownership](PROJECT_ARCHITECTURE.md#configuration-ownership). The
+telemetry settings are in [Monitoring](MONITORING.md#configuration).
 
-SimulationWorker `--health-check-only` checks GameService readiness, Redis, and
-UDP port availability and exits 0 only when all checks pass.
+### GameService
 
-All application settings fail fast. Checked-in non-secret defaults live in each
-service's `Config` folder. The ignored root `.env` contains local credentials
-and connection strings, not worker topology or World selection. Explicit
-environment variables and command-line options have higher precedence.
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `ConnectionStrings:Postgres`, `ConnectionStrings:Redis` | from `.env` | Required. The PostgreSQL connection must name host, database, username, and password; GameService connects with the application name `Mmorpg.GameService` |
+| `Database:RunMigrationsOnStartup` | `true` | Apply the migrations, the seeds, and the topology at startup |
+| `Database:MaximumPoolSize` | `64` | Npgsql pool size of one process, at most 1,000 |
+| `HealthChecks:TimeoutMilliseconds` | `1000` | Timeout of each readiness probe |
+| `Auth:SessionLifetimeHours` | `24` | Account session lifetime, 1 to 720 hours |
+| `RateLimiting:Authentication:PermitLimit`, `WindowSeconds` | `5`, `60` | Login and registration requests per remote address and window, each limited separately |
+| `RedisAcceleration:Enabled`, `SessionCacheEnabled`, `AuthenticationRateLimitingEnabled` | `true` | Redis session cache and distributed rate limit |
+| `RedisAcceleration:KeyPrefix` | `shooter-mmo` | Prefix of every Redis key, 1 to 64 letters, digits, `-`, `_`, or `.` |
+| `RedisAcceleration:SessionCacheTtlSeconds` | `60` | Lifetime of a cached session, 1 to 300 seconds |
+| `RedisAcceleration:SessionRevocationTombstoneSeconds` | `120` | Lifetime of a revocation tombstone, at least the cache lifetime and at most 3,600 seconds |
+| `RedisAcceleration:MetricsIntervalSeconds` | `30` | Interval of the Redis counter log |
+| `SIMULATION_WORKER_SERVICE_SECRET` or `ServiceAuthentication:SimulationWorkers:<workerId>` | from `.env` | The shared worker secret, or one secret per worker id |
+| `Game:MaxCharactersPerAccount` | `5` | Characters an account may own |
+| `Characters:AppearancePath` | `WorldData/Characters/appearance.json` in the output | The character appearance content |
+| `Simulation:JoinTicketLifetimeSeconds` | `30` | Join ticket lifetime |
+| `Simulation:SessionLeaseLifetimeSeconds` | `30` | Simulation session lease that each heartbeat renews |
+| `Simulation:WorkerHeartbeatTimeoutSeconds` | `30` | Time after the last heartbeat until a worker counts as gone |
+| `Simulation:MetricsIntervalSeconds` | `15` | Refresh interval of the Shard gauges, 1 to 3,600 seconds |
+| `Simulation:Topology` | `local-fleet`, `local-node-1`, `local-shard-1`, `local-shard-2` | Fleets, Nodes, and Shards, as [Topology Bootstrap](#topology-bootstrap) describes |
+| `WorldData:WorldsPath` | `WorldData/Worlds` | The World manifests that seed the World definitions |
+| `Items:CatalogPath` | `WorldData/Items/core.item-catalog.json` | The compiled item catalog that GameService mirrors |
+| `Items:Operations:TransactionTimeoutMilliseconds` | `10000` | Statement timeout of an item transaction, 100 to 120,000 |
+| `Items:Operations:LockTimeoutMilliseconds` | `2000` | Lock timeout of an item transaction, 10 to 120,000 and at most the transaction timeout |
+| `Items:Operations:MaximumCommandPayloadBytes` | `65536` | Largest canonical command, 1,024 to 1,048,576 |
+| `Items:Operations:MaximumHttpRequestBodyBytes` | `262144` | Kestrel request body limit, 4,096 to 4,194,304 |
+| `Items:Operations:MetricsIntervalSeconds`, `MaintenanceIntervalSeconds` | `30`, `60` | Item summary log and maintenance intervals, 1 to 3,600 seconds |
+| `Items:Operations:CleanupBatchSize` | `64` | Rows per maintenance batch, 1 to 1,000 |
+| `Items:Operations:AuditRetentionDays`, `ClosedCorpseRetentionDays` | `30`, `30` | Retention of completed operations and of closed corpses, 1 to 3,650 days; the corpse retention cannot be shorter than the audit retention |
+| `Items:NpcLifecycle:InsurancePrice` | `100` | Server-owned insurance price |
+| `Items:NpcLifecycle:QuestGrantId`, `QuestItemDefinitionId`, `QuestItemQuantity` | `quest.local.sealed_letter`, `quest_item.sealed_letter`, `1` | The quest grant of the quest offer capability |
+| `Items:Development:ItemPackagesPath` | `Content/Development/item-packages.json` in the output | The Development item packages |
+| `DevelopmentSimulationBots:*` and `ACTIVE_SIMULATION_BOTS_SECRET` | off | Development only: `Enabled`, ticket and lease lifetimes of `30` seconds, the `CharacterNamePrefix` `Active Bot`, and `ReservedPlayerConnections` `8` |
+| `StackStressFixtures:*` and `STACK_STRESS_FIXTURE_SECRET` | off | Development only: `Enabled` and the inventory and loot definitions that the fixtures grant |
 
-SimulationWorker requires one valid `WorldData/Worlds/<WorldId>/world.json` in its
-output folder for its configured `WorldId`, built from
-`content/worlds/<WorldId>/world.json`. The manifest supplies the client scene, movement
-bounds, and authoritative spawn. Actor and collision data resolve below the same World directory. This
-prevents a shard restart on another World from silently retaining coordinates
-from the previous map. Missing manifests, invalid bounds, out-of-bounds spawns,
-or invalid runtime content fail before UDP admission.
+### SimulationWorker
 
-GameService seeds World definitions from those manifests but does not select a
-World for a shard. The worker proposes its desired `WorldId` in the heartbeat.
-GameService validates that the World exists and atomically persists a first
-binding or safe offline rebind while preserving assignment, ticket, session,
-corpse, Fleet, and runtime-fencing boundaries. Unknown Worlds and blocked
-rebinds are definitive worker authority failures.
+The worker settings live in the `SimulationWorker` section. Environment
+variables such as `SIMULATION_WORKER_ID`, `SIMULATION_SHARD_ID`,
+`SIMULATION_WORLD_ID`, and `SIMULATION_WORKER_UDP_PORT` override the identity
+and endpoint settings, as the `StressArena` launch profile does.
 
-`Items:Operations` bounds item statement and lock timeouts, canonical command
-and HTTP request sizes, metrics and maintenance intervals, cleanup batch size,
-and audit plus closed-corpse retention. Lock timeout cannot exceed transaction
-timeout, and closed-corpse retention cannot be shorter than operation audit
-retention. Invalid values stop GameService at startup.
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `SimulationWorkerId`, `FleetId`, `NodeId`, `ShardId`, `WorldId` | `local-simulation-worker-1`, `local-fleet`, `local-node-1`, `local-shard-1`, `development-world-2` | Worker identity and desired World |
+| `WorldDataPath` | `WorldData/Worlds` | The World directories in the output |
+| `UdpPort`, `AdvertisedHost`, `AdvertisedUdpPort` | `27015`, `127.0.0.1`, `27015` | UDP endpoint and the endpoint that placement hands out |
+| `MaxConnections` | `1000` | Connection slots, at most 10,000 |
+| `JoinHandshakeTimeoutSeconds` | `10` | Time for a new peer to send its join request; also LiteNetLib's disconnect timeout |
+| `NetworkPollIntervalMilliseconds` | `15` | Longest wait between transport polls, at most 1,000 |
+| `GameServiceBaseUrl`, `GameServiceTimeoutSeconds` | `http://localhost:5000`, `5` | GameService address and HTTP timeout |
+| `GameServiceSecret` | from `SIMULATION_WORKER_SERVICE_SECRET` | Worker service secret, at least 32 characters |
+| `SimulationSessionHeartbeatSeconds`, `SimulationSessionHeartbeatMaxConcurrency` | `10`, `8` | Session heartbeat interval and parallel heartbeats, at most 128 |
+| `RegistryHeartbeatSeconds` | `10` | Worker heartbeat interval |
+| `RegistryAcquireTimeoutSeconds` | `120` | How long a new runtime waits for a previous runtime's lease, longer than the heartbeat interval and at most 3,600 seconds |
+| `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |
+| `UdpQuotas:InboundPacketsPerSecond`, `InboundPacketBurst` | `120`, `240` | Inbound packets per peer |
+| `UdpQuotas:InboundBytesPerSecond`, `InboundByteBurst` | 128 KiB, 256 KiB | Inbound bytes per peer |
+| `UdpQuotas:SnapshotBytesPerSecond`, `SnapshotByteBurst` | 256 KiB, 512 KiB | Unreliable snapshot bytes per peer |
+| `UdpQuotas:AggregateSnapshotBytesPerSecond`, `AggregateSnapshotByteBurst` | 38 MiB, 4 MiB | Unreliable snapshot bytes of the whole worker, with fair recipient rotation |
+| `Admission:MaxUnauthenticatedPeers`, `MaxUnauthenticatedPeersPerAddress` | `256`, `8` | Remote peers that have not joined yet |
+| `Admission:ConnectionAttemptsPerAddressPerSecond`, `ConnectionAttemptBurstPerAddress` | `5`, `20` | New connections per remote address |
+| `Admission:MaxReliableQueuedPackets` | `1024` | Unacknowledged reliable packets before a disconnect |
+| `InterestManagement:CellSize`, `EnterRadius`, `ExitRadius` | `64`, `128`, `144` m | Spatial hash and visibility hysteresis; at most 64 cells per axis direction |
+| `InterestManagement:RefreshIntervalSnapshots` | `3` | Snapshots between two refreshes of one connection's visibility, at most one second of snapshots |
+| `SnapshotReplication:OverloadTargetUtilizationBasisPoints` | `9500` | Share of the aggregate snapshot budget that dense remote state may use before it degrades |
+| `CollisionStreaming:LoadRadiusChunks`, `UnloadRadiusChunks` | `2`, `3` | Collision streaming radii around each anchor, the unload radius at most 16 |
+| `ItemInteraction:CorpseInteractionRadius` | `3` m | Range for opening and using a corpse, at most 20 m |
+| `ItemInteraction:CorpseDiscoveryRadius` | `32` m | Range of corpse presence, at least the interaction radius and at most 1,000 m |
+| `ItemInteraction:DurableCorpseRefreshSeconds` | `30` | Interval of durable corpse reconciliation, at most 300 seconds |
+| `Movement:TickRateHz`, `SnapshotRateHz` | `30`, `15` | Fixed tick and snapshot rates; the snapshot rate must divide the tick rate |
+| `Movement:WalkSpeed`, `RotationSpeedDegrees` | `5` m/s, `720` | Walk speed and turn rate |
+| `Movement:Gravity`, `MaximumFallSpeed`, `GroundedVerticalVelocity` | `-24`, `55`, `-2` | Falling |
+| `Movement:CharacterRadius`, `CharacterHeight`, `StepHeight`, `MaximumSlopeDegrees`, `GroundSnapDistance` | `0.35`, `2`, `0.35`, `45`, `0.4` | Character capsule and ground handling |
+| `Movement:MaximumSubstepDistance`, `MaximumPenetrationIterations` | `0.1`, `6` | Motor substep length and collision resolution |
+| `ItemCatalogPath`, `CombatRulesPath`, `CharacterAppearancePath` | `WorldData/Items/core.item-catalog.json`, `WorldData/Combat/combat-rules.json`, `WorldData/Characters/appearance.json` | Content files in the output; the actor runtime and collision come from the World directory |
+| `ConnectionStrings:Redis`, `HealthChecks:TimeoutMilliseconds` | `127.0.0.1:6379`, `1000` | Redis for the health check and its timeout |
+| `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess` | `true` in `appsettings.Development.json` | Development only: Bank and Recovery access from anywhere |
+| `DevelopmentAdmin:Enabled` | `true` in `appsettings.Development.json` | Development only: the admin tools |
 
-## Persistence And Migrations
+SimulationWorker requires one valid `WorldData/Worlds/<WorldId>/world.json` in
+its output folder for its configured `WorldId`, built from
+`content/worlds/<WorldId>/world.json`. The manifest supplies the client scene,
+movement bounds, ground height, and authoritative spawn, and the actor and
+collision data resolve below the same World directory. This prevents a shard
+restart on another World from silently retaining coordinates from the previous
+map. Missing manifests, invalid bounds, out-of-bounds spawns, or invalid runtime
+content fail before UDP admission.
 
-Migrations run under a PostgreSQL advisory transaction lock. Each migration id
-is inserted only after its SQL succeeds. The topology migration preserves older
-data while separating World content from Shard and SimulationWorker runtime
-metadata. A later migration enforces one active simulation session per account.
-Previously shipped migration ids and their source-schema references retain their
-historical names because changing an applied migration would break upgrade
-compatibility. The resulting current schema uses only the canonical topology
-names listed above.
+## Persistence And Maintenance
 
-The development World identity migration replaces the legacy
-`local-world-1` content identifier with `development-world-1` without changing
-the shard id or runtime ownership. It is an identity upgrade for the same map,
-not a live World rebind.
-
-Partial indexes support completed operation retention, closed-corpse
-retention, and unclaimed Recovery expiry. A bounded hosted maintenance service
-uses deterministic system-authority operations to destroy expired Recovery
-items with durable audit, removes empty closed corpses only after retention,
-removes claimed Recovery deliveries after the audit retention period, and
-deletes old operation rows only when no destruction or death record references
-them. Every database unit uses statement and lock limits plus `skip locked`
-batch selection where concurrent maintenance is permitted.
-
-Integration tests reset only a database whose name contains `test`. Never point
-the test connection variable at development or production data.
-
-## Quality Coverage
-
-- Configuration validation tests.
-- Authentication, token, and session replacement tests.
-- Protocol codec and invalid-packet tests.
-- Entity lifecycle, interest, quota, metrics, and movement tests.
-- Runtime heartbeat and exact-runtime fencing tests.
-- Isolated PostgreSQL tests for migrations, placement, reconnect, global
-  session constraints, worker failover, and transactional races.
-- Unity EditMode tests for contracts, state, input, movement, and authored assets.
-- Unity PlayMode bootstrap smoke tests.
-- Socket-level realtime and load-test coverage.
-- External headless stress authority and bot coverage for real UDP admission,
-  movement, snapshots, graceful leave, process resources, and phase timing.
-- Item catalog determinism, malformed and duplicate content rejection,
-  structural fingerprint detection, pure rule behavior, and exact integer
-  encumbrance boundaries.
-- Catalog tags and equipment slot ids are limited to 64 characters and Bag
-  slots to 16 accepted tags, the realtime protocol limits. A test keeps the
-  `ItemCatalogFormat` limits within `RealtimeProtocolLimits`.
-- A movement determinism golden test runs one shared scenario in .NET and in
-  Unity EditMode and pins `GameSimulationCompatibility.Revision` together with
-  the same fingerprint in both, so a movement change without a revision bump,
-  or a runtime that diverges, fails. A coverage test keeps the click paths
-  blocked by a wall until the path ends, sliding along it, climbing and dropping
-  off a rotated ramp, blocked by a rotated pillar, and stepping up while
-  encumbered. A second fingerprint pins the route planner in both runtimes, and
-  the motor follows every planned route to its end.
-- Committed collision manifests are checked against their recomputed
-  revision.
-- Isolated PostgreSQL item tests for concurrent migration initialization,
-  complete and idempotent character backfill, catalog reconciliation and
-  compatibility fencing, exact custody constraints, delete behavior, and
-  atomic character bootstrap.
-- Isolated PostgreSQL read-model tests for cross-account denial, complete and
-  ordered empty state, every owned snapshot section, definition and policy
-  resolution, catalog metadata deduplication, secret exclusion, and read-only
-  behavior.
-- Isolated PostgreSQL transaction tests for every internal command, authorization
-  and policy lineage, atomic hard-cap rejection, canonical operation replay,
-  competing item and slot mutations, stack quantity races, shared Bag locks,
-  failed aggregate swaps, Recovery claims, and account-wide Secure Container
-  reduction without item loss.
-- Isolated policy and HTTP tests for insurance removal, exact quest-grant cleanup
-  and reaccept, ETag `304`, no-store responses, owner scoping, stable Problem
-  Details, offline session fencing, offline bank and Recovery rejection, system
-  delivery, successful kernel claims, and hard-cap claim rollback.
-- Shared carry and movement tests for exact custody contribution, base and Bag
-  capacity, lower-capacity Bag rejection,
-  fixed-point movement reference points, monotonic active-session propagation,
-  protocol validation, and reconnect restoration.
-- In-world mutation protocol, HTTP client, worker socket, configuration, and isolated
-  PostgreSQL tests for bounded intent decoding, committed results, every exact
-  identity mismatch, stale assignment, duplicate intent replay, account-versus-
-  worker races, bank and Recovery access, Secure Container carry changes, and
-  reconnect restoration.
-- Development item package tests cover package file validation, one real
-  PostgreSQL package flow and readback, one-shot rejection, stale expected
-  loads, that the checked-in packages fit the compiled catalog, and the
-  Recovery delivery revision
-  exposed to Unity. Unity EditMode tests cover catalog cache reuse, revision
-  mismatch, snapshot validation and coherence, operation correlation,
-  specialized and Secure Container targets, non-empty Bag rules, split weight,
-  and the hard cap. PlayMode tests cover persistent controller and uGUI creation.
-- Death partition tests cover migration idempotency and constraints, exact live service
-  authentication, death-event replay, total item custody conservation, currency
-  and Secure retention, protected and insurance precedence, insured equipment
-  snapshots, Bag-root and child ordering, involuntary capacity-loss overflow and
-  hard-cap remediation, cross-Shard restart restoration, database-timed
-  empty-corpse lifetime, idempotent audited expiry, and a custody-versus-expiry
-  race. Worker unit tests cover death and restoration response validation plus
-  monotonic database-time expiry in the runtime store.
-- Corpse transfer PostgreSQL races cover unrelated concurrent loot, same-item winners,
-  partial stack conservation, Bag-versus-child and Bag-versus-Bag locking, the
-  exact 140 percent hard cap, and equal competition by the dead character.
-  HTTP, worker, protocol, and Unity coverage verifies exact authority, no idle
-  transaction after mutation, viewer deltas, stable close errors, dynamic MTU
-  packing, monotonic corpse state, fixture creation, typed drag payloads, and
-  persistent presentation bootstrap.
-- World actor coverage verifies deterministic actor compilation, strict malformed
-  runtime rejection, identity scope separation, assignment reconstruction,
-  interest presence without capability leakage, central Mob scheduling,
-  composed capabilities and typed deferred dispatch, exact range and line of
-  sight authority, rate and session rejection, per-player summaries, lease
-  exclusion with corpses, closure causes, protocol round trips and bounds, Unity
-  monotonic state and targeting, and Editor import, export, preview, compile,
-  and verify through the shared compiler.
-- NPC lifecycle coverage verifies exact-session insurance and quest lifecycle
-  dispatch, atomic pricing, policy removal, protected grant lineage,
-  abandonment, reacceptance, and safe source labels.
-- Mob corpse coverage verifies content-controlled normal and boss corpse settings,
-  worker-memory restart loss and expiry, deterministic grant replay with one
-  persistent player item, durable boss restoration with unchanged custody and
-  deadline, shared expiry, realtime presence integration, and Unity Actor Studio
-  round trips.
-- Operations coverage verifies bounded configuration, identity-free metric
-  dimensions, pre-database payload rejection, stable lock timeout mapping,
-  audited Recovery expiry and retention, `4,000` centrally scheduled actors,
-  `128` concurrent NPC leases, eight simultaneous corpse claims, forty repeated
-  Bag swaps, and a clean `100` bot Release network baseline.
-- Vendor and gathering coverage verifies the catalog values, vendor profiles,
-  and the arbitrage rule, pricing rounding and overflow, resource profiles and
-  their item references, wallet credits and debits with ledger conservation,
-  the starting balance, purchases, partial and whole stack sales, every
-  rejection, concurrent sales of one stack, carried acquisition order and
-  `inventory_full`, gathering with and without the tool and at the hard cap,
-  the Development currency command, golden traces of purchase, sale, partial
-  sale, and gathering, the worker's resource node charges, gathering cycles,
-  depletion, respawn, movement and closed-interaction stops, uncertain retries,
-  and one full-stack flow that buys a pickaxe, mines ore, sells it, and buys a
-  potion.
-- Combat coverage verifies the combat rules loader, damage rounding, tick
-  conversion, loadout resolution, target bounds, loot rolls, the Shard rule set
-  from the heartbeat, a wolf that dies, leaves a corpse, and respawns, the attack
-  statuses for range and line of sight, the Shard rule for attacks on
-  characters, arrow batches and the owner's arrow count, a player death that
-  commits once and respawns at the spawn, shots that commit before a leave and
-  after a disconnect, the shots behind a batch that finished while the worker
-  stopped, the equipment lockout including the first weapon, arrows restocked
-  by an item operation, a dead character's rejected operations, revision
-  rebasing of item intents and vendor actions after arrow batches, the last
-  arrow, the lethal arrow that alone takes the kill, a wolf without a corpse
-  that despawns after its death reached the viewer, and bots that are no
-  targets.
-- Mob brain coverage verifies the player grid, the activity tiers with busy
-  Mobs, the planning budget, and over real UDP a wolf that detects, chases, and
-  bites a player while it travels in movement snapshots and comes to rest, a
-  wolf that kills a player as the recorded killer, the leash and the evade home
-  with full health, a defensive wolf that fights only back, and a crowd of 60
-  wolves that all reach their target through the shared planning budget.
+- Startup bootstraps only characters that have no item state, each in its own
+  short transaction, with the catalog's character settings: base carry
+  capacity, permanent inventory and bank slot counts, plus the account-entitled
+  Secure Container slots and one unbounded Recovery Storage identity. It then
+  recomputes carry state in batches of 500 rows that it locks first, so a
+  concurrent item transaction is never overwritten with a stale weight, and it
+  advances a character's item-state revision only when the weight or capacity
+  changed. Startup scales with the number of accounts.
+- New character creation calls the same PostgreSQL bootstrap function before
+  committing, so a character cannot commit through the service without its
+  required item state.
+- Partial indexes support completed operation retention, closed-corpse
+  retention, and unclaimed Recovery expiry. A bounded hosted maintenance service
+  runs every `Items:Operations:MaintenanceIntervalSeconds` and uses
+  deterministic system-authority operations to destroy expired Recovery items
+  with durable audit. It removes empty closed corpses only after their
+  retention, removes claimed Recovery deliveries after the audit retention
+  period, and deletes old operation rows only when no destruction or death
+  record references them.
+- Every database unit uses statement and lock limits plus `skip locked` batch
+  selection where concurrent maintenance is permitted.
+- The item metrics and logs are in [Monitoring](MONITORING.md#logs).
 
 ## Not Yet Implemented
 
 - HTTP item grant routes. Development grants use the guarded process-local
-  command, and gameplay grants come only from NPC quest, Mob loot, vendor
+  commands, and gameplay grants come only from NPC quest, Mob loot, vendor
   purchase, and gathering paths.
+- Consume and use intents for potions, food, and other consumables.
+- A trusted entitlement or purchase source for larger Secure Container tiers.
 - Profession experience and levels, gathering success chances, other
   professions, durable resource node state, limited vendor stock, dynamic
   prices, buyback, and player trading.
-- Consume and use intents.
-- Final inventory visual design, drag-and-drop polish, accessibility, and policy
-  detail presentation. The current uGUI is temporary presentation only.
-- Final combat and corpse visuals, a threat table, Mob abilities beyond one
-  attack, and Mob groups that assist each other. Unity shows combat with
-  temporary presentation.
+- Quest progression and quest completion, and the dialogue, crafting, and
+  trainer capability business operations.
+- A threat table, Mob abilities beyond one attack, Mob groups that assist each
+  other, armor, defense, resistances, and the combat triangle.
+- Durable unique actor state.
 - Zones, cross-zone handoff, or layers.
 - Multiple workers cooperating on one shard.
-- Production scheduler or fleet autoscaler.
+- A production scheduler or fleet autoscaler.
 - Alert notifications to a chat or paging service, and a shared or staging
   deployment of the monitoring stack.
-- Durable unique actor state, the dialogue, crafting, and trainer capability
-  business operations.
 - Rigid-body collision and replicated dynamic collision transforms.
 
-The item rules, including the planned and open ones, are documented in
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
-The implemented actor and interaction foundation and its deferred boundaries
-are documented in
-[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md).
+The planned and open item rules are in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md#planned),
+the deferred actor work in
+[Deferred Work](NPC_AND_MOB_SYSTEM_DESIGN.md#deferred-work),
+and the deferred game features in
+[Deferred Features](GAME_DESIGN.md#deferred-features).

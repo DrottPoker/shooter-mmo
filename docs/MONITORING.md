@@ -1,11 +1,10 @@
 # Monitoring
 
-Last updated: 2026-10-18
-
-This document describes how GameService and SimulationWorker report what they do,
-the local monitoring stack that collects it, the starting dashboards and alerts,
-and what to watch during a playtest. The commands to start the stack are also
-listed in [Local Development](LOCAL_DEVELOPMENT.md#monitoring-stack).
+This document owns how GameService and SimulationWorker report what they do: the
+telemetry configuration, the catalog of meters, metrics, log categories, and
+traces, the local monitoring stack that collects them, the dashboards and
+alerts, what to watch during a playtest, the cost on the realtime loop, and
+security.
 
 ## Overview
 
@@ -20,9 +19,10 @@ SimulationWorker -/                       \--> Tempo (traces)
 - Both processes use the OpenTelemetry .NET SDK through the shared project
   `src/Server/Telemetry` (`Mmorpg.Server.Telemetry`). They push metrics, traces,
   and logs over OTLP gRPC to one OpenTelemetry Collector.
-- The collector is the only receiver. It forwards metrics to Prometheus through
-  Prometheus' native OTLP endpoint, traces to Tempo, and logs to Loki. A staging
-  or production environment can replace any backend by changing only
+- The collector is the only receiver, so the services never depend on a storage
+  backend. It forwards metrics to Prometheus through Prometheus' native OTLP
+  endpoint, traces to Tempo, and logs to Loki. A staging or production
+  environment can replace any backend by changing only
   `observability/otel-collector/config.yaml`.
 - Grafana reads all three stores and loads the dashboards in
   `observability/grafana/dashboards` from the repository.
@@ -31,11 +31,14 @@ SimulationWorker -/                       \--> Tempo (traces)
   queries and panels 30 seconds after its last export instead of five minutes.
 - Prometheus evaluates the alert rules in `observability/prometheus/rules`.
   Firing alerts show in Grafana under Alerting and on both dashboards. They are
-  not routed to a notifier yet; routing comes with the staging environment.
+  not routed to a notifier yet.
 
 Export is off until `Telemetry:OtlpEndpoint` is set. Without it nothing leaves
 the processes: the meters still feed the periodic status logs on the console,
-and tests and ordinary runs are unaffected.
+and tests and ordinary runs are unaffected. These operational values stay
+server-side: they are not part of the realtime gameplay protocol, and the Unity
+Debug menu (F2) derives its values only from local rendering, prediction, and
+received traffic.
 
 ## Configuration
 
@@ -48,8 +51,8 @@ development.
 | `Telemetry:OtlpEndpoint` | empty | OTLP gRPC endpoint of the collector, such as `http://127.0.0.1:4317`. Empty disables export. Only scheme, host, and port are accepted. |
 | `Telemetry:MetricExportIntervalSeconds` | `10` | Metric export interval, 1 to 300 seconds. The local Prometheus forgets a series 30 seconds after its last sample, so keep this at 15 seconds or less with the local stack. |
 | `Telemetry:TraceSampleRatio` | `1.0` | Share of new traces that are kept, 0 to 1. A trace started by a sampled caller is always kept, so a worker operation and the GameService request and database commands it causes stay together. |
-| `Telemetry:ServiceInstanceId` | host name or worker id | Overrides the Prometheus `instance` label. GameService defaults to the lowercase host name and SimulationWorker to its `SimulationWorkerId`, so a restarted process continues its series. Two GameService replicas on one host must set different values. |
-| `Simulation:MetricsIntervalSeconds` | `15` | GameService only: how often the shard gauges re-read the shard list, 1 to 3600 seconds. |
+| `Telemetry:ServiceInstanceId` | host name or worker id | Overrides the Prometheus `instance` label, 1 to 128 letters, digits, `-`, `_`, `.`, or `:`. GameService defaults to the lowercase host name and SimulationWorker to its `SimulationWorkerId`, so a restarted process continues its series. Two GameService replicas on one host must set different values. |
+| `Simulation:MetricsIntervalSeconds` | `15` | GameService only: how often the Shard gauges re-read the shard list, 1 to 3600 seconds. |
 
 The OpenTelemetry resource of each process carries `service.namespace=mmorpg`,
 `service.name` (`game-service` or `simulation-worker`), `service.version`,
@@ -61,34 +64,161 @@ into the `job` label (`mmorpg/game-service`, `mmorpg/simulation-worker`),
 `service.instance.id` into `instance`, and promotes the environment, fleet,
 node, Shard, and World attributes to labels.
 
+## Run The Monitoring Stack
+
+Start the stack next to PostgreSQL and Redis:
+
+```powershell
+docker compose -f docker-compose.observability.yml up -d --wait
+```
+
+Expected result: five containers of the project `shooter-mmo-observability` run,
+and Grafana answers on `http://127.0.0.1:3000` without a login. The stack
+publishes only loopback ports:
+
+| Port | Service |
+| --- | --- |
+| `127.0.0.1:4317` | OpenTelemetry Collector, OTLP gRPC |
+| `127.0.0.1:4318` | OpenTelemetry Collector, OTLP HTTP |
+| `127.0.0.1:9090` | Prometheus, including its alert list under `/alerts` |
+| `127.0.0.1:3000` | Grafana |
+
+Enable export in the services. `.env.example` already contains the line; add it
+to an older `.env` if it is missing:
+
+```text
+Telemetry__OtlpEndpoint=http://127.0.0.1:4317
+```
+
+Then start GameService and SimulationWorker as
+[Local Development](LOCAL_DEVELOPMENT.md#backend-services) describes.
+
+Expected result: both processes log `Exporting metrics, traces, and logs over
+OTLP to http://127.0.0.1:4317/.` at startup. Without the setting they log
+`Telemetry export is disabled. Set Telemetry:OtlpEndpoint to export metrics,
+traces, and logs.` and nothing leaves the process.
+
+Manual check:
+
+1. Open `http://127.0.0.1:3000`. The home page is the **MMORPG Playtest**
+   dashboard. Within about 20 seconds `Shards online` shows `1` and the tick
+   panels show values far below the dashed 33.3 ms budget line.
+2. Start population, for example with
+   [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) or the Unity client. The
+   `Players` or `Bots` stat, bandwidth, and packets rise within one refresh.
+3. Register an account, as
+   [Backend API Smoke Test](MANUAL_TESTING.md#backend-api-smoke-test) does,
+   and copy the `X-Correlation-ID` response header. In Grafana Explore, choose
+   Loki and run
+   `{service_name="game-service"} | CorrelationId="<header value>"`. The account
+   log entry appears; open it and follow **View trace** to the request with its
+   PostgreSQL commands in Tempo.
+4. Stop SimulationWorker. Within about three minutes `Shards online` drops to
+   `0`, and `ShardOffline` and then `SimulationWorkerDown` appear in the
+   **Firing alerts** table and under Alerting in Grafana. Start the worker again
+   and both alerts resolve within about a minute.
+
+Expected result: every step behaves as described.
+
+Validate the stack configuration and run the alert rule tests without starting
+anything:
+
+```powershell
+& ./tools/Verify-Observability.ps1
+```
+
+Expected result: `Observability verification passed: collector, Prometheus,
+alert tests, and 2 dashboards.`
+
+Stop the stack and keep its data, or remove the data too:
+
+```powershell
+docker compose -f docker-compose.observability.yml down
+docker compose -f docker-compose.observability.yml down -v
+```
+
+Expected result: the containers stop; the second command also deletes the
+stored metrics, logs, traces, and Grafana state.
+
+Dashboards are provisioned read-only from `observability/grafana/dashboards`.
+Edit the JSON there and run
+`docker compose -f docker-compose.observability.yml restart grafana` to load a
+change at once.
+
 ## Metrics
 
-Metrics names below are the instrument names. Prometheus replaces dots with
+Metric names below are the instrument names. Prometheus replaces dots with
 underscores and adds `_milliseconds` for millisecond units, `_total` for
 counters, and `_bucket`, `_sum`, and `_count` for histograms, so
 `simulation_worker.simulation.tick.duration` is queried as
-`simulation_worker_simulation_tick_duration_milliseconds_bucket`.
+`simulation_worker_simulation_tick_duration_milliseconds_bucket`. No instrument
+uses an item, account, character, operation, corpse, session, actor, spawn,
+entity, peer, or runtime id as a label.
 
 ### SimulationWorker
 
+`SimulationWorkerTelemetry.MeterNames` lists the worker's meters:
+
 | Meter | What it measures |
 | --- | --- |
-| `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of each tick phase and of network polling and completion processing, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, and snapshot visibility groups, encoded and sent packets, and deferred entity updates. |
 | `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
+| `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of each tick phase and of network polling and completion processing, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, and snapshot visibility groups, encoded and sent packets, and deferred entity updates. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
 | `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat and Mob phase durations, active combatants, shots that are not committed yet, engaged and moving Mobs, and Mob routes by outcome and in the planning queue. |
 
-The resource node and gathering instruments of `Mmorpg.SimulationWorker.WorldActors`:
+`RealtimeMetricNamesTests` pins every instrument name of these meters.
+
+The instruments of `Mmorpg.SimulationWorker.Realtime`:
 
 | Instrument | Type | Meaning |
 | --- | --- | --- |
-| `simulation_worker.world_actors.resource_node` | gauge | Resource nodes in the worker's World, available or depleted. |
+| `simulation_worker.realtime.peers` | gauge | Connected peers. |
+| `simulation_worker.realtime.entities` | gauge | Simulated player entities. |
+| `simulation_worker.realtime.players.real` | gauge | Joined real players. |
+| `simulation_worker.realtime.players.synthetic` | gauge | Joined synthetic development bots. |
+| `simulation_worker.realtime.peers.unauthenticated` | gauge | Peers that have not joined yet. |
+| `simulation_worker.realtime.received.packets`, `.received.bytes` | counter | Received packets and bytes. |
+| `simulation_worker.realtime.sent.packets`, `.sent.bytes` | counter | Sent packets and bytes. |
+| `simulation_worker.realtime.snapshot.bytes` | counter | Snapshot payload bytes among the sent bytes. |
+| `simulation_worker.realtime.quota_rejected.packets` | counter | Packets rejected by a per-peer quota. |
+| `simulation_worker.realtime.connections.rejected` | counter | Connection requests that the admission guard refused. |
+| `simulation_worker.realtime.snapshot_dropped.packets` | counter | Dropped snapshot packets. |
+| `simulation_worker.realtime.snapshot_backpressure_dropped.packets` | counter | The snapshot packets among them that the aggregate snapshot budget dropped. |
+| `simulation_worker.realtime.joins.accepted`, `.joins.rejected` | counter | Accepted and rejected joins. |
+| `simulation_worker.realtime.spawn.packets`, `.despawn.packets` | counter | Spawn and despawn packets. |
+| `simulation_worker.realtime.snapshot.entity_records` | counter | Entity records in remote snapshots. |
+
+The instruments of `Mmorpg.SimulationWorker.Performance`:
+
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `simulation_worker.simulation.tick.duration` | histogram, ms | Duration of one fixed tick. |
+| `simulation_worker.simulation.tick.lag` | histogram, ms | How late a tick started against its schedule. |
+| `simulation_worker.simulation.tick.overruns` | counter | Ticks that took longer than the tick interval. |
+| `simulation_worker.simulation.tick.resynchronizations` | counter | Times the clock skipped time after five catch-up ticks. |
+| `simulation_worker.simulation.collision_streaming.duration`, `.movement.duration`, `.interest.duration`, `.snapshot_broadcast.duration` | histogram, ms | Tick phases. The snapshot broadcast is the complete snapshot pipeline and includes the separately reported interest phase. |
+| `simulation_worker.loop.network_poll.duration`, `.completed_operations.duration` | histogram, ms | Transport polling and completion processing of one loop iteration. |
+| `simulation_worker.loop.completed_operations.backlog` | gauge | Completed authority operations that wait for the loop. |
+| `simulation_worker.join.queue_delay.duration`, `.finalization.duration` | histogram, ms | How long a join waited and how long its finalization took. |
+| `simulation_worker.corpse.mutation.backlog`, `.active_aggregates` | gauge | Corpse mutations waiting in the per-corpse coordinator, and the corpses with a mutation in flight. |
+| `simulation_worker.simulation.snapshot.visibility_groups`, `.packets_encoded`, `.packets_sent` | counter | Distinct visibility groups per broadcast, encoded snapshot packets, and sent snapshot packets. |
+| `simulation_worker.simulation.snapshot.entity_updates_deferred` | counter | Remote entity updates that the fair budget deferred to a later snapshot. |
+
+The instruments of `Mmorpg.SimulationWorker.WorldActors` and
+`Mmorpg.SimulationWorker.Corpses`:
+
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `simulation_worker.world_actors.npc`, `.mob`, `.resource_node` | gauge | Actors of each kind in the worker's World; resource nodes available or depleted. |
+| `simulation_worker.world_actors.event_driven`, `.dormant`, `.active` | gauge | Actors in each activity tier. |
+| `simulation_worker.world_interactions.active` | gauge | Open interaction leases. |
+| `simulation_worker.world_interactions.accepted`, `.rejected` | counter | Accepted and rejected interaction requests. |
+| `simulation_worker.world_interactions.duration` | histogram, ms | Interaction latency. |
 | `simulation_worker.resource_nodes.depleted` | gauge | Resource nodes that are depleted and wait for their respawn. |
 | `simulation_worker.gathering.active` | gauge | Players with a running gathering activity. |
 | `simulation_worker.gathering.cycles` | counter | Finished gathering cycles, labeled `outcome`: `yielded` when GameService committed the yield, `retried` when its outcome was uncertain and the cycle repeats with the same operation id, and `rejected` otherwise. |
-
-`RealtimeMetricNamesTests` pins every instrument name of the world actor meter.
+| `simulation_worker.corpses.active` | gauge | Corpses the worker holds, labeled `persistence`: `live` or `durable`. |
 
 The instruments of `Mmorpg.SimulationWorker.Combat`:
 
@@ -109,9 +239,10 @@ The instruments of `Mmorpg.SimulationWorker.Combat`:
 | `simulation_worker.combat.mob_path_plans` | counter | Planned Mob routes, labeled `outcome`: `reached`, `closest` when the goal cannot be reached and the route ends at the closest point, or `no_path`. |
 | `simulation_worker.combat.mob_path_queue` | gauge | Mob routes that wait for the planning budget of 8 routes per tick. |
 
-`RealtimeMetricNamesTests` pins every combat instrument name.
-
 ### GameService
+
+A GameService module declares every meter it creates in
+`IGameServiceModule.MeterNames`:
 
 | Meter | What it measures |
 | --- | --- |
@@ -119,11 +250,26 @@ The instruments of `Mmorpg.SimulationWorker.Combat`:
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, retention cleanup, open and closed corpses, and the Recovery backlog. |
 | `Mmorpg.GameService.Redis` | Session cache results, Redis failures, and distributed authentication rate-limit decisions. |
 
-The operation kind label of the item transaction instruments includes the
-vendor and gathering kinds `vendor_purchase`, `vendor_sale`, and
-`gather_resource`, so trades and gathering yields show by kind and outcome like
-every other item operation. GameService has no separate currency or economy
-instrument yet.
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `game_service.placement.shard.online`, `.shard.players`, `.shard.capacity` | gauge | Per Shard, labeled `shard.id`, refreshed every `Simulation:MetricsIntervalSeconds` from the same query as the public shard list. A failed refresh drops the values instead of keeping stale ones. Shard ids are labels because Shards are a small configured set. |
+| `game_service.items.transactions` | counter | Item transactions, labeled `operation.kind` with the persisted operation kind from [Operation Kinds](GAME_SERVICE_MODULES.md#operation-kinds) and `outcome`: `committed`, `rejected`, `failed` for a transaction that threw, or `cancelled` when the caller cancelled it. |
+| `game_service.items.transactions.duration` | histogram, ms | Transaction duration with the same labels. |
+| `game_service.items.locks.wait.duration` | histogram, ms | Lock waits, labeled `scope`: `operation_claim`, `character_state`, `character_event`, `mutation_scope`, or `other`. |
+| `game_service.items.conflicts` | counter | Rejections by `kind`: `operation` for a reused operation id, `stale_revision`, or `timeout`. |
+| `game_service.items.death_partitions` | counter | Committed player death partitions. |
+| `game_service.items.policy_actions` | counter | Policy, quest, and death operations, labeled `action` and `outcome`. |
+| `game_service.items.cleanup` | counter | Maintenance removals, labeled `target`: `recovery_delivery`, `closed_corpse`, `audit_operation`, or `claimed_recovery_delivery`. |
+| `game_service.items.corpses` | gauge | Durable corpses, labeled `state`: `open` or `closed`. |
+| `game_service.items.recovery.backlog` | gauge | Unclaimed Recovery deliveries. |
+| `game_service.redis.session_cache.operations` | counter | Session cache results, labeled `result`: `hit`, `miss`, `tombstone_bypass`, `database_fallback`, `store`, or `invalidation`. |
+| `game_service.redis.failures` | counter | Failed Redis operations, labeled `operation`. |
+| `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
+
+The periodic item summary log counts only committed and rejected transactions.
+Vendor trades and gathering yields show in the transaction instruments by their
+operation kinds `vendor_purchase`, `vendor_sale`, and `gather_resource`.
+GameService has no separate currency or economy instrument yet.
 
 ### Built-in .NET Metrics
 
@@ -141,8 +287,8 @@ instrument yet.
 ### Rules For New Metrics
 
 - Labels stay low-cardinality. Account, character, session, entity, peer,
-  operation, item, corpse, and actor ids are never labels. Shard ids are, because
-  Shards are a small configured set.
+  operation, item, corpse, and actor ids are never labels. Shard ids are,
+  because Shards are a small configured set.
 - A GameService module declares every meter it creates in
   `IGameServiceModule.MeterNames`; the worker lists its meters in
   `SimulationWorkerTelemetry.MeterNames`. A guard test in each process fails
@@ -159,7 +305,8 @@ instrument yet.
 - The dashboards and alert rules may only use instruments that exist: the tests
   `DashboardsAndAlertsReferenceOnlyPublished*Metrics` read every
   `simulation_worker_*` and `game_service_*` name in `observability/` and fail on
-  an unknown one.
+  an unknown one, and `MeterInstrumentNamesTests` pins every `game_service.*`
+  instrument that they read.
 
 ## Logs
 
@@ -167,12 +314,6 @@ instrument yet.
   values, the formatted message, its logger category (`scope_name`), severity,
   and the trace and span id of the current operation. Console logging is
   unchanged.
-- Every GameService request runs inside a `CorrelationId` log scope, so every
-  entry written during the request carries it, whichever module writes it.
-- The correlation id is the caller's valid `X-Correlation-ID` header, otherwise the
-  W3C trace id of the request. SimulationWorker sends its operation's trace id
-  as `X-Correlation-ID`. In practice the response header, the log entries of both
-  processes, and the trace share one id.
 - Loki stream labels are `service_name`, `service_namespace`,
   `service_instance_id`, and `deployment_environment_name`. Everything else,
   including `CorrelationId`, `trace_id`, `severity_text`, `severity_number`, and
@@ -186,6 +327,67 @@ Useful queries in Grafana Explore with the Loki data source:
 {service_name="simulation-worker"} |= "Worker status"
 ```
 
+### Correlation Ids
+
+Every GameService request has one correlation id: the caller's valid
+`X-Correlation-ID`, otherwise the W3C trace id of the request. The response
+header carries it, also on error responses, every log entry written during the
+request carries it as the `CorrelationId` scope value, whichever module writes
+it, and the request span carries it as `mmorpg.correlation_id`. SimulationWorker
+sends the trace id of its operation as `X-Correlation-ID` together with the W3C
+`traceparent` header, so one worker operation, its GameService request, and that
+request's PostgreSQL commands form one trace, and the response header, the log
+entries of both processes, and the trace share one id.
+
+### Log Categories
+
+- GameService components log under their namespaces, such as
+  `Mmorpg.GameService.Accounts`, `Mmorpg.GameService.Accounts.Redis`,
+  `Mmorpg.GameService.Placement`, `Mmorpg.GameService.Items`, and
+  `Mmorpg.GameService.Platform.Database`. The logout entry uses the explicit
+  category `Mmorpg.GameService.Auth`. No configuration filters on these
+  categories.
+- The realtime components of SimulationWorker log through
+  `Mmorpg.SimulationWorker.Realtime.RealtimeSimulationService`, so their
+  category and templates stay stable; other worker services log under their own
+  types.
+- Some server messages start with a prefix that names their area, `[AUTH]` in
+  GameService and `[SIMULATION]` in SimulationWorker. The Unity client's console
+  categories are described in
+  [Client Diagnostics](UNITY_CLIENT_ARCHITECTURE.md#client-diagnostics).
+
+### Periodic And Routine Logs
+
+- SimulationWorker writes three lines every `NetworkMetricsLogSeconds`. The
+  network line reports the realtime meter's totals. The status line reports real
+  players, synthetic bots, unauthenticated peers, connected peers, entities,
+  process CPU normalized to total logical-core capacity, single-core-equivalent
+  CPU, working set, packet and payload rates including the snapshot payload
+  rate, snapshot drops, quota rejections, and the sample window. The
+  performance line reports, for the interval, averages, approximate p95 and p99
+  upper bounds, and maximum durations of every performance histogram, the
+  current and interval-maximum completed-operation and corpse-mutation backlogs,
+  so admission congestion is distinguishable from UDP loss, process allocation,
+  GC collection counts, managed heap size and fragmentation, live managed
+  memory, distinct visibility groups, encoded and sent snapshot packets, and
+  tick overruns.
+- GameService logs a cumulative item summary of transaction, contention,
+  lifecycle, corpse, Recovery, and cleanup counts every
+  `Items:Operations:MetricsIntervalSeconds`, and the Redis counters every
+  `RedisAcceleration:MetricsIntervalSeconds`. Item transaction logs include the
+  correlation and operation ids, classify expected contention below warning,
+  promote significant lifecycle commits, and exclude credentials, tokens, and
+  command bodies.
+- SimulationWorker filters routine successful `GameServiceClient` HTTP pipeline
+  messages below `Warning`. Domain failures and HTTP warnings remain visible,
+  but high-frequency bot heartbeat and release requests do not drown out worker
+  status, performance, lifecycle, or error logs.
+- Routine UDP connect and disconnect events and successful synthetic bot joins
+  and leaves are logged at `Debug`. Successful real-player lifecycle events stay
+  at `Information`, and every admission failure stays visible. The synthetic bot
+  population appears in the status line.
+- GameService throttles repeated Redis warning logs per operation.
+
 ## Traces
 
 Spans exist where a request crosses a process or reaches the database:
@@ -194,9 +396,10 @@ Spans exist where a request crosses a process or reaches the database:
   Npgsql command spans of that request below it. Npgsql only creates spans
   inside a traced request or operation, so background polling and maintenance
   do not create root traces.
-- SimulationWorker: one span per GameService call, named after the operation,
-  such as `GameService.ConsumeJoinTicket` or `GameService.MutateSimulationItems`,
-  with the HTTP client span and the GameService request below it. A failed call
+- SimulationWorker: the activity source `Mmorpg.SimulationWorker` starts one
+  span per GameService call, named after the operation, such as
+  `GameService.ConsumeJoinTicket` or `GameService.MutateSimulationItems`, with
+  the HTTP client span and the GameService request below it. A failed call
   carries `mmorpg.error.code` and an error status. `simulation.join` groups the
   ticket consumption and any release of a rejected join, and
   `simulation.session.heartbeat_cycle` groups one heartbeat round of all active
@@ -222,10 +425,9 @@ to reload the files.
   actors, interactions, corpses, gathering (active gatherers, depleted nodes,
   and gathering cycles per minute by outcome), combat (combatants, engaged and
   moving Mobs, attacks, hits, and deaths per minute by kind, and Mob routes per
-  minute by outcome), arrows and deaths (pending shots, arrow
-  batches and player death partitions per minute by outcome, and dropped shots),
-  worker CPU, memory, allocation rate, GC, and recent warnings and errors of
-  both services.
+  minute by outcome), arrows and deaths (pending shots, arrow batches and player
+  death partitions per minute by outcome, and dropped shots), worker CPU,
+  memory, allocation rate, GC, and recent warnings and errors of both services.
 - **MMORPG GameService** (`/d/mmorpg-game-service`): Shards online, players,
   request rate, 5xx share, request and database p95 at the top. Below them:
   players and capacity per Shard, requests, p95 latency and errors by route,
@@ -262,36 +464,39 @@ look before it becomes critical.
 tests for the availability, tick, error-rate, and pool rules.
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
-images. CI runs it on every push and pull request in the `Observability
-configuration` job.
+images. CI runs it in the `Observability configuration` job on every pull
+request and on every push to `development` and `main`.
 
 ## During A Playtest
 
 1. Start the stack and both services with export enabled, as in
-   [Local Development](LOCAL_DEVELOPMENT.md#monitoring-stack).
+   [Run The Monitoring Stack](#run-the-monitoring-stack).
 2. Keep **MMORPG Playtest** open. The top row answers whether players can play:
    Shards online must be at least 1, tick p99 well below 33.3 ms, overruns 0,
    GameService 5xx at 0 percent, and no firing alert.
 3. When players report a hitch, check tick duration, tick phases, and GC for the
    same minute. A phase that grows with the player count points at the system to
    profile; a GC spike points at allocations.
-4. When players report failed actions, open **MMORPG GameService**, find the route
-   with errors or latency, and open its warnings in the log panel. Follow the
-   trace id from a log entry to the trace to see the worker call, the GameService
-   request, and the database commands with their durations.
+4. When players report failed actions, open **MMORPG GameService**, find the
+   route with errors or latency, and open its warnings in the log panel. Follow
+   the trace id from a log entry to the trace to see the worker call, the
+   GameService request, and the database commands with their durations.
 5. When a single player reports a problem with a correlation id or the time it
    happened, search the logs for that id or time window in Explore.
+
+Expected result: the dashboards, logs, and traces lead from a reported symptom
+to the system, request, or database command that caused it.
 
 ## Cost On The Realtime Loop
 
 - Counters on the hot path are `Interlocked` fields read by observable
-  instruments, so the export thread reads them every 10 seconds and the loop
-  pays nothing extra.
+  instruments, so the export thread reads them every export interval and the
+  loop pays nothing extra.
 - Histograms record through `System.Diagnostics.Metrics` without tags. With the
   OpenTelemetry SDK attached that is a lock-free bucket update without
-  allocation, which `RealtimeMetricsAllocationTests` enforces. Adding the export
-  also removed an existing per-sample allocation in the interval percentile
-  accumulator.
+  allocation, which `RealtimeMetricsAllocationTests` enforces. The interval
+  percentile accumulator of the periodic performance log does not allocate per
+  sample either.
 - The SDK collects, batches, and exports on its own threads. Spans and log
   export never run inside the fixed tick.
 
@@ -301,8 +506,8 @@ configuration` job.
   anonymous admin access and no login form, which is only acceptable on a
   developer machine. A shared or staging deployment needs authentication, TLS,
   and network restrictions first.
-- Traces and logs never contain tokens, passwords, or request bodies. Npgsql spans
-  contain SQL text with parameter placeholders, not parameter values. The
+- Traces and logs never contain tokens, passwords, or request bodies. Npgsql
+  spans contain SQL text with parameter placeholders, not parameter values. The
   connection pool is labeled `postgres` instead of the connection string.
 
 ## Not Yet Implemented
@@ -311,3 +516,6 @@ configuration` job.
 - A staging or production deployment of the stack, with authentication,
   retention, and backups.
 - Unity client telemetry; client diagnostics stay in the Debug menu (F2).
+- (planned) GameService economy instruments: currency created and destroyed by
+  source kind and direction, to watch inflation, vendor transactions by
+  outcome, and gathered quantities by resource profile.

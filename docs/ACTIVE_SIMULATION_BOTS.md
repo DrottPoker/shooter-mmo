@@ -1,26 +1,25 @@
 # Active Simulation Bots
 
-Last updated: 2026-10-25
-
 ## Purpose
 
 `tools/ActiveSimulationBots` is a long-running local development population
 driver. It keeps configurable headless bots connected to the real GameService
-and SimulationWorker while a Unity player can use the same shard. The bots use
-the normal LiteNetLib UDP connection, one-time join ticket, server-provided
+and SimulationWorker while a Unity player uses the same Shard. The bots use the
+normal LiteNetLib UDP connection, one-time join ticket, server-provided
 simulation tick rate, sequenced movement input, entity lifecycle, snapshots,
 session heartbeat, and graceful leave flow.
 
-Use this tool to inspect a populated World, remote interpolation, reliable
-spawn and despawn, interest behavior, collision, movement, and connection churn.
-By default the bots join `local-shard-2`, the stress arena in Development
-World 1, where every bot stays inside one interest radius.
+Use it to inspect a populated World, remote interpolation, reliable spawn and
+despawn, interest behavior, collision, movement, connection churn, and how the
+client copes with a crowd. By default the bots join `local-shard-2`, the stress
+arena in Development World 1, where every bot stays inside one interest radius.
 The bots behave like Unity clients on the wire: each one sends one movement
-input per simulation tick, plans its walks with the same planner and collision as
-the client, and decodes every message a client receives.
-Bots are not combatants, because they have no durable character that could die,
-so a Unity player cannot attack them.
-It is not a capacity benchmark. Use
+input per simulation tick, plans its walks with the same planner and collision
+as the client, and decodes every message a client receives. Bots are not
+combatants, because they have no durable character that could die, so a Unity
+player cannot attack them.
+
+The tool is not a capacity benchmark. Use
 [Stack Stress Testing](STACK_STRESS_TESTING.md) for repeatable worker-only or
 full-stack ramp, soak, resource, and latency measurements.
 
@@ -61,24 +60,26 @@ PostgreSQL: topology and real players only
 Development bot identities, tickets, and sessions: GameService memory only
 ```
 
-The login bypass ends at the development ticket endpoint. A bot never bypasses
+The login bypass ends at the development ticket endpoint,
+`POST /api/development/simulation-bots/join-tickets`. A bot never bypasses
 SimulationWorker admission or UDP session validation. GameService generates an
 in-memory account id, character id, and name such as `Active Bot 1`, binds a
-short-lived one-time ticket to the exact Shard, worker, and runtime, and validates
-the in-memory session token for every worker heartbeat and release.
+short-lived one-time ticket to the exact Shard, worker, and runtime, and
+validates the in-memory session token for every worker heartbeat and release.
 
 The development ticket endpoint has four independent guards:
 
 - GameService must run in the `Development` environment.
 - `DevelopmentSimulationBots:Enabled` must be explicitly true.
 - The request must originate over loopback.
-- The request must carry the separate `ACTIVE_SIMULATION_BOTS_SECRET`, which
-  must contain at least 32 characters and cannot be the checked-in placeholder.
+- The request must carry the separate `ACTIVE_SIMULATION_BOTS_SECRET` in the
+  `X-Active-Simulation-Bots-Key` header. The secret must contain at least 32
+  characters and cannot be the checked-in placeholder.
 
 The endpoint is not mapped when the feature is disabled. GameService refuses to
-start if it is enabled outside `Development` or if its secret is too short.
-Bot identities, tickets, and sessions are never inserted into PostgreSQL and
-disappear when GameService stops.
+start if it is enabled outside `Development` or if its secret is too short or a
+placeholder. Bot identities, tickets, and sessions are never inserted into
+PostgreSQL and disappear when GameService stops.
 
 GameService counts the worker's reported connections, durable active sessions,
 durable pending tickets, in-memory bot sessions, and in-memory pending bot
@@ -99,47 +100,43 @@ expires. A bot whose session is still active gets
 
 ## Configuration
 
-Authority controls live in
+The authority settings live in the `DevelopmentSimulationBots` section of
 `src/Server/GameService/Config/appsettings.Development.json`:
 
-| Setting | Default | Behavior |
-| --- | ---: | --- |
-| `Enabled` | `false` | Maps the loopback development ticket endpoint |
-| `JoinTicketLifetimeSeconds` | `30` | Lifetime of an unconsumed one-time bot ticket |
-| `SessionLeaseLifetimeSeconds` | `30` | Worker-renewed in-memory bot session lease |
-| `CharacterNamePrefix` | `Active Bot` | Server-owned visible bot name prefix |
-| `ReservedPlayerConnections` | `8` | Worker connections bots never use, so real local players can still join |
+| Setting | Default | Allowed | Behavior |
+| --- | ---: | --- | --- |
+| `Enabled` | `false` | | Maps the loopback development ticket endpoint |
+| `JoinTicketLifetimeSeconds` | `30` | 5 to 300 | Lifetime of an unconsumed one-time bot ticket |
+| `SessionLeaseLifetimeSeconds` | `30` | 10 to 300 | Worker-renewed in-memory bot session lease |
+| `CharacterNamePrefix` | `Active Bot` | 1 to 32 characters | Server-owned visible bot name prefix |
+| `ReservedPlayerConnections` | `8` | 0 to 1000 | Worker connections bots never use, so real local players can still join |
 
-Population and behavior controls live in
-`tools/ActiveSimulationBots/appsettings.json`:
+The population and behavior settings live in the `ActiveSimulationBots` section
+of `tools/ActiveSimulationBots/appsettings.json`:
 
-| Setting | Default | Behavior |
-| --- | ---: | --- |
-| `AuthorityUrl` | `http://127.0.0.1:5000` | Real local GameService URL, loopback only |
-| `AuthoritySecret` | empty | Optional local override; prefer the ignored `.env` value |
-| `ShardId` | `local-shard-2` | Shard requested for every bot: the stress arena. Use `local-shard-1` for a population spread over Development World 2 |
-| `MinimumActiveBots` | `300` | Lower bound for randomly selected population targets |
-| `MaximumActiveBots` | `400` | Upper bound and number of stable bot slots |
-| `StartupBotsPerSecond` | `20` | Maximum ticket and connection ramp rate; every request that is due starts in the same poll, so rates above one per poll hold |
-| `PopulationChangeIntervalSeconds` | `30` | Interval between random target changes |
-| `MinimumOnlineSeconds`, `MaximumOnlineSeconds` | `120`, `240` | Random joined lifetime before graceful logout |
-| `MinimumOfflineSeconds`, `MaximumOfflineSeconds` | `5`, `25` | Random rest before the same slot may log in again |
-| `MinimumBehaviorSeconds`, `MaximumBehaviorSeconds` | `2`, `6` | Random behavior duration; a walk heads for a destination about that many seconds of walking away |
-| `IdleChance` | `0.15` | Chance that a new behavior interval is idle |
-| `JoinAndLeaveTimeoutSeconds` | `10` | UDP handshake and graceful leave deadline |
-| `MinimumRetrySeconds`, `MaximumRetrySeconds` | `2`, `30` | Exponential reconnect range with jitter; only a clean logout resets it, so a bot that fails right after every join backs off |
-| `ShutdownTimeoutSeconds` | `15` | Ctrl+C graceful leave deadline |
-| `StatusIntervalSeconds` | `5` | Console population and traffic report interval |
-| `Seed` | `1337` | Repeatable population and movement random source; the same seed gives every bot the same walks in every run |
+| Setting | Default | Allowed | Behavior |
+| --- | ---: | --- | --- |
+| `AuthorityUrl` | `http://127.0.0.1:5000` | Loopback HTTP URL | Real local GameService URL |
+| `AuthoritySecret` | empty | At least 32 characters | Optional local override; prefer the ignored `.env` value of `ACTIVE_SIMULATION_BOTS_SECRET` |
+| `ShardId` | `local-shard-2` | Shard id | Shard requested for every bot: the stress arena. Use `local-shard-1` for a population spread over Development World 2 |
+| `MinimumActiveBots` | `300` | 0 to 10,000 | Lower bound for randomly selected population targets |
+| `MaximumActiveBots` | `400` | 1 to 10,000 | Upper bound and number of stable bot slots |
+| `StartupBotsPerSecond` | `20` | 0.1 to 1000 | Maximum ticket and connection ramp rate; every request that is due starts in the same poll, so rates above one per poll hold |
+| `PopulationChangeIntervalSeconds` | `30` | 1 to 3600 | Interval between random target changes |
+| `MinimumOnlineSeconds`, `MaximumOnlineSeconds` | `120`, `240` | 1 to 86,400 | Random joined lifetime before graceful logout |
+| `MinimumOfflineSeconds`, `MaximumOfflineSeconds` | `5`, `25` | 0 to 86,400 | Random rest before the same slot may log in again |
+| `MinimumBehaviorSeconds`, `MaximumBehaviorSeconds` | `2`, `6` | 1 to 3600 | Random behavior duration; a walk heads for a destination about that many seconds of walking away |
+| `IdleChance` | `0.15` | 0 to 1 | Chance that a new behavior interval is idle |
+| `JoinAndLeaveTimeoutSeconds` | `10` | 1 to 300 | UDP handshake and graceful leave deadline |
+| `MinimumRetrySeconds`, `MaximumRetrySeconds` | `2`, `30` | 1 to 3600 | Exponential reconnect range with jitter; only a clean logout resets it, so a bot that fails right after every join backs off |
+| `ShutdownTimeoutSeconds` | `15` | 1 to 300 | Ctrl+C graceful leave deadline |
+| `StatusIntervalSeconds` | `5` | 1 to 3600 | Console population and traffic report interval |
+| `Seed` | `1337` | Any integer | Repeatable population and movement random source; the same seed gives every bot the same walks in every run |
 
-The tool validates all ranges before opening a connection. Real environment
-variables and command-line configuration keys override the checked-in JSON.
-Keep the tool's `MaximumActiveBots` at or below SimulationWorker
-`MaxConnections`, allowing room for any real players you want to join during the
-test. The tool setting controls the requested population and is not a separate
-server-side admission limit. Higher targets are rejected safely by worker
-capacity admission but cannot be reached.
-For example:
+Each minimum must not exceed its maximum. The tool validates every setting
+before it opens a connection and exits with code 2 when one is invalid. `.env`
+overrides the checked-in JSON, real environment variables override `.env`, and
+command-line keys override both, for example:
 
 ```powershell
 dotnet run --project tools/ActiveSimulationBots -- `
@@ -147,39 +144,30 @@ dotnet run --project tools/ActiveSimulationBots -- `
   --ActiveSimulationBots:MaximumActiveBots 25
 ```
 
+Keep `MaximumActiveBots` at or below SimulationWorker `MaxConnections`, with
+room for the real players you want to join. The tool setting controls the
+requested population and is not a separate server-side admission limit: worker
+capacity admission rejects higher targets safely, so they cannot be reached.
+
 ## Run The Local Population
 
-Create `.env` from `.env.example` and set these entries to local values:
+Set these entries in `.env`, as
+[Local Environment File](LOCAL_DEVELOPMENT.md#local-environment-file) describes,
+and never commit a real secret. GameService and ActiveSimulationBots both read
+the same ignored `.env`.
 
 ```dotenv
 DevelopmentSimulationBots__Enabled=true
 ACTIVE_SIMULATION_BOTS_SECRET=replace-with-a-separate-secret-of-at-least-32-characters
 ```
 
-Do not commit a real secret. The same ignored `.env` is discovered by
-GameService and ActiveSimulationBots.
-
-Start the normal local stack in separate PowerShell terminals:
-
-```powershell
-docker compose up -d --wait
-```
-
-```powershell
-dotnet run --project src/Server/GameService
-```
-
-```powershell
-dotnet run --project src/Server/SimulationWorker --launch-profile StressArena
-```
-
-The `StressArena` launch profile runs the stress arena worker for
-`local-shard-2` on UDP port `27016`, as described in
-[Run The Stress Arena Shard](LOCAL_DEVELOPMENT.md#run-the-stress-arena-shard).
-Start the default worker as well, with `dotnet run --project
-src/Server/SimulationWorker`, to keep `local-shard-1` online beside it.
-
-Then start the active population:
+Start the local infrastructure, GameService, and the stress arena worker with
+the `StressArena` launch profile, as
+[Local Infrastructure](LOCAL_DEVELOPMENT.md#local-infrastructure),
+[Backend Services](LOCAL_DEVELOPMENT.md#backend-services), and
+[Run The Stress Arena Shard](LOCAL_DEVELOPMENT.md#run-the-stress-arena-shard)
+describe. Start the default worker as well to keep `local-shard-1` online beside
+it. Then start the population:
 
 ```powershell
 dotnet run --project tools/ActiveSimulationBots --configuration Release
@@ -199,14 +187,12 @@ Expected result:
 - The performance line reports join queue delay, join-finalization latency, and
   the current and maximum completed-operation backlog. Queue delay separates
   time waiting for the simulation loop from finalization work. A healthy ramp
-  returns the backlog to zero instead of allowing joins to wait behind growing
+  returns the backlog to zero instead of letting joins wait behind growing
   lifecycle work.
 - Bots send one movement input per tick at the tick rate returned by
   SimulationWorker. The tool polls every bot every 3 ms with a high-resolution
   timer, and a bot sends a due input in the same poll, so inputs reach the
-  worker about as evenly as from a Unity client. `Task.Delay` used to wait a
-  whole 15.6 ms Windows timer tick, and the input left only on the next poll, so
-  bots sent their inputs in bursts.
+  worker about as evenly as from a Unity client.
 - A walking bot heads for a random destination inside the World bounds, about
   one behavior interval of walking and at most 60 meters away. The tool loads
   the World's compiled collision, which the build copies to its output below
@@ -255,35 +241,37 @@ required.
 3. Enter Play Mode from `Assets/Scenes/LoginMenu.unity`.
 4. Log in with a normal account, select a character, and join
    `Local Stress Arena` (`local-shard-2`).
-5. Move around the arena while bots log in, move, and log out. Walk to the wolf
-   pen opening to fight wolves inside the crowd.
-6. Press F2 to open the Debug menu and verify the client-observed frame,
-   prediction, snapshot, and payload metrics on its tabs while the crowd moves.
+5. Move around the arena while bots log in, move, and log out. Walk to the
+   opening of the wolf pen to fight wolves inside the crowd.
+6. Press F2 to open the Debug menu, check the client-observed frame,
+   prediction, snapshot, and payload metrics on its tabs while the crowd moves,
+   and turn on `Tint bodies: you purple, players orange, bots blue` on its
+   `Overview` tab.
 7. Keep the Unity Console visible for protocol, collision revision, or
    disconnect errors.
 
-Expected result: the local player uses the normal authenticated flow, and every
-character shows the male human body, which walks and jogs with its speed.
-SimulationWorker spawns every bot with the presentation archetype
-`player.development_bot`. With `Tint bodies` on in the Debug menu (F2), the local player
-is tinted purple, remote `Active Bot N` instances blue, and a second Unity
-client's character orange. Bots appear only after reliable
-spawn messages, movement is
-interpolated from SimulationWorker snapshots, and graceful bot logout removes
-the matching remote instance through a reliable despawn. The 64 m stress arena
+Expected result: the local player uses the normal authenticated flow. Every bot
+shows a body model, look, and outfit that SimulationWorker picks from its
+character id, so the crowd shows both bodies and varied faces, hair, and
+clothes, and each bot keeps its look while it stays. Every body walks and jogs
+with its speed. With `Tint bodies` on, the local player is tinted purple, every
+`Active Bot N` blue, because SimulationWorker spawns bots with the presentation
+archetype `player.development_bot`, and a second Unity client's character
+orange. Bots appear only after reliable spawn messages, movement is
+interpolated from SimulationWorker snapshots, and a graceful bot logout removes
+the matching remote instance through a reliable despawn. Bots that come into
+interest at once, as at a join, get their bodies over a few frames, the nearest
+first, so the frame rate does not drop while they appear. The 64 m stress arena
 keeps every client, bot, and actor within the same interest area, so it is a
 dense visual crowd test.
 
-Bots that come into interest at once, as at a join, get their bodies over a few
-frames, the nearest first, so the frame rate does not drop while they appear.
-For the crowd as Victor plays it, run the population in Development World 2 with
-`--ActiveSimulationBots:ShardId local-shard-1` and join `Local Shard 1`. With
-400 bots, about 170 of them in interest and most of them dressed, the Editor
-showed about 80 FPS in the F2 panel on 2026-10-25, where it showed 24 before; see
-[Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance).
+For a crowd spread over a large World, run the population with
+`--ActiveSimulationBots:ShardId local-shard-1` and join `Local Shard 1` in
+Development World 2. That is the crowd that
+[Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance) measures.
 
 The Debug menu intentionally does not reveal the server-wide real-player count,
-bot count, CPU, memory, or internal tick timing. Verify those values in the
+bot count, CPU, memory, or internal tick timing. Read those values in the
 SimulationWorker terminal status and performance lines.
 
 ## Scope Boundary

@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // The Wardrobe preview dresses the bodies, plays their clips on a moving ground, and runs the
-    // cloth solver, as docs/EQUIPMENT_VISUALS_DESIGN.md describes under Review.
+    // cloth solver, as docs/ART_PIPELINE.md describes under The Wardrobe.
     public sealed class WardrobePreviewTests
     {
         private const string Jerkin = "LeatherJerkin";

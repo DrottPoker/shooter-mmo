@@ -12,7 +12,7 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // Items show their garments as the item presentation names them, in their dye colors, as
-    // docs/EQUIPMENT_VISUALS_DESIGN.md describes for delivery step 6.
+    // docs/EQUIPMENT_VISUALS_DESIGN.md describes under Items.
     public sealed class ItemGarmentTests
     {
         private static readonly string[] BodyCatalogPaths =

@@ -425,25 +425,25 @@ Write-Host "Open it in Blender: & `$env:BLENDER_PATH $relative/$name.blend"
 switch ($Kind) {
     "static" {
         if (-not [string]::IsNullOrEmpty($Socket)) {
-            Write-Host "Model below Grip in the Export collection, held at the origin in the socket's axes (docs/ART_PIPELINE.md, Attachments), then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make An Attachment."
+            Write-Host "Model below Grip in the Export collection, held at the origin in the socket's axes (docs/ART_PIPELINE.md, Attachments), then review, approve, and export it as docs/ART_PIPELINE.md describes under Make An Attachment."
         }
         else {
-            Write-Host "Model below the roots $($Roots -join ', ') in the Export collection, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Add A New Asset."
+            Write-Host "Model below the roots $($Roots -join ', ') in the Export collection, then review, approve, and export it as docs/ART_PIPELINE.md describes under Add A New Asset."
         }
     }
     "animations" {
-        Write-Host "Make the clips on $($manifest.RootObjects[0]) and add their names to clips in asset.json, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Clip."
+        Write-Host "Make the clips on $($manifest.RootObjects[0]) and add their names to clips in asset.json, then review, approve, and export it as docs/ART_PIPELINE.md describes under Make A Clip."
     }
     "paint" {
-        Write-Host "Paint T_Paint_$name on Canvas, run tools/art/Sync-PaintAsset.ps1 again, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Paint Layer."
+        Write-Host "Paint T_Paint_$name on Canvas, run tools/art/Sync-PaintAsset.ps1 again, then review, approve, and export it as docs/ART_PIPELINE.md describes under Make A Paint Layer."
     }
     "garment" {
-        Write-Host "Shape ${name}_$($manifest.RootObjects[0]) on the first body where it needs more than its recipe, run tools/art/Sync-GarmentAsset.ps1, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment."
+        Write-Host "Shape ${name}_$($manifest.RootObjects[0]) on the first body where it needs more than its recipe, run tools/art/Sync-GarmentAsset.ps1, then review, approve, and export it as docs/ART_PIPELINE.md describes under Make A Garment."
     }
     "texture" {
-        Write-Host "Paint T_Garment_$name on Preview in Texture Paint mode, run tools/art/Sync-TextureAsset.ps1, then review, approve, and export it as docs/LOCAL_DEVELOPMENT.md describes under Make A Garment Texture."
+        Write-Host "Paint T_Garment_$name on Preview in Texture Paint mode, run tools/art/Sync-TextureAsset.ps1, then review, approve, and export it as docs/ART_PIPELINE.md describes under Make A Garment Texture."
     }
     "cage" {
-        Write-Host "Run tools/art/Sync-CageAsset.ps1 for its review sheet and checks, then review and approve it as docs/LOCAL_DEVELOPMENT.md describes under Fit The Garment Cage."
+        Write-Host "Run tools/art/Sync-CageAsset.ps1 for its review sheet and checks, then review and approve it as docs/ART_PIPELINE.md describes under Fit The Garment Cage."
     }
 }

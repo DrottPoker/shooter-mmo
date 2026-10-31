@@ -22,7 +22,8 @@ env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
 
-# The backend gate runs as parallel jobs that together cover the README quality checks:
+# The backend gate runs as parallel jobs that together cover the repository quality checks in
+# docs/LOCAL_DEVELOPMENT.md:
 # one job verifies, builds, and runs every test outside Category=Integration, and the
 # integration matrix runs the PostgreSQL and Redis tests, with the Items tests on their
 # own runner. Each job fails when any of its tests did not run or pass. A separate job

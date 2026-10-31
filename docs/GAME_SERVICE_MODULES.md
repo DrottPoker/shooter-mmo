@@ -1,33 +1,20 @@
 # GameService Modules
 
-Last updated: 2026-10-25
+GameService is one ASP.NET Core process and one deployable whose code is a
+compiler-enforced modular monolith: a host and five module projects. This
+document owns the module projects, their public surface and composition, table
+ownership, the access rules, the contracts between modules, the items
+transaction kernel, the lock order, the migrations, the module configuration,
+the cross-module statements, and the guard tests.
 
-## Status
+The process boundary is in
+[Project Architecture](PROJECT_ARCHITECTURE.md#gameservice), the durable data
+model in [Durable Data Model](PROJECT_ARCHITECTURE.md#durable-data-model), the
+HTTP routes and their behavior in [Service Features](SERVICE_FEATURES.md), and
+the item rules that the kernel enforces in
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md).
 
-Accepted and implemented. GameService is a compiler-enforced modular monolith:
-one process and one deployable whose code is split into a host and five module
-projects. Each module was first untangled inside the original project and then
-extracted into its own project, in dependency order, with every test green at
-every step.
-
-## Context
-
-GameService is one ASP.NET Core process that owns accounts, characters, Shard
-placement, and durable items. Its code grew as one project of about 26,000
-lines. Folders looked like modules, but nothing stopped one folder from reading,
-writing, or locking another folder's tables, and several folders depended on
-each other in cycles:
-
-| Id | Cycle | Fix |
-| --- | --- | --- |
-| C1 | Auth and Redis use each other | Both joined the Accounts module. Only the Redis connection moved to Platform. |
-| C2 | Characters and Items | Characters publishes a character-created SPI that Items implements. |
-| C3 | Placement and Items | Placement publishes session-start carry-state and World-rebind SPIs that Items implements. Items consumes Placement authority contracts. |
-| C4 | Accounts and Placement | Accounts publishes a session lifecycle SPI that Placement implements. |
-| C5 | Database initialization calls Items seeding | The migration runner moved to Platform. Seeding goes through `IDatabaseSeeder`. The host decides the order. |
-| C6 | One shared configuration object | Each module validates and owns its own options. The host aggregates them. |
-
-## Decision
+## Modules
 
 GameService keeps its process and assembly name `Mmorpg.GameService`. Its code
 is split into six projects whose references enforce one dependency order:
@@ -40,9 +27,9 @@ Platform <- Accounts <- Characters <- Placement <- Items <- host
 | --- | --- | --- | --- |
 | `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, and `IGameServiceModule`. No domain model. |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
-| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, and character level |
-| `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, and Development simulation bots. It decides where a character plays right now. |
-| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, item transactions including vendor trades and gathering yields, corpses, death partition, Recovery, policies, item operations maintenance, and the Development item tools |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, character level, and character looks |
+| `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
+| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, item transactions including vendor trades, gathering yields, and ammunition batches, corpses, the death partition, Recovery, policies, item operations maintenance, the stack stress fixtures, and the Development item tools |
 | `Mmorpg.GameService` (host) | `src/Server/GameService` | every module | `Program.cs`, the configuration loader, database startup, the frozen baseline migrations, health routes, and the shipped configuration and content files |
 
 "Placement" avoids collisions with World content (`Mmorpg.WorldData`) and with
@@ -58,11 +45,8 @@ gives the host.
 A module publishes only its module class, its options with their nested option
 records, and its `Contracts` namespace. Items also publishes `ItemsCommandLine`
 for the Development item commands. Everything else is internal. Test projects
-reach internals through `InternalsVisibleTo` along the dependency direction: a
-module grants its own test project, the test projects of the modules that build
-on it, the GameService test kit, `Mmorpg.GameService.Tests`, and
-`Mmorpg.Integration.Tests`, as listed in
-[Backend Tests](../tests/README.md#internal-access). A module never grants
+reach internals through `InternalsVisibleTo` along the dependency direction, as
+[Backend Tests](../tests/README.md#internal-access) lists. A module never grants
 another module or any production assembly access to its internals.
 
 | Module | Public types outside `Contracts` |
@@ -81,24 +65,36 @@ the meters it creates, its service registrations, and its routes. The host
 exports exactly the declared meters when telemetry export is enabled, as
 described in [Monitoring](MONITORING.md). `GameServiceComposition` in the host
 builds the modules in dependency order and is shared by `Program.cs` and the
-tests. Startup runs in this order:
+tests, so services register, hosted services start, and routes map in module
+order. Startup runs in this order:
 
 1. Load configuration sources, then validate every option set
-   (`GameServiceConfiguration.Load`).
+   (`GameServiceConfiguration.Load`), and configure telemetry export.
 2. Set the Kestrel request body limit from the item operations options.
 3. Register Platform, the host services, and each module, then check that every
-   SPI has exactly one implementation.
+   single-implementation SPI has exactly one implementation.
 4. Build the pipeline: the API pipeline (correlation id, exception handler,
    status pages, no-store responses), the distributed authentication rate
    limiter, the in-process rate limiter, authentication, and authorization.
-   Routing stays implicit, so it runs first.
+   Routing stays implicit, so it runs first and the endpoint is known to the
+   rate limiter and the sensitive response middleware.
 5. When `Database:RunMigrationsOnStartup` is true, apply the merged migration
-   history, run every `IDatabaseSeeder` (the item catalog, then the item state
-   backfill), and seed the topology through `PlacementModule.SeedTopologyAsync`.
-6. Run a `--dev-items-*` command through
-   `ItemsCommandLine` and exit, if one is given. Hosted services never start in
-   that mode.
+   history, run every `IDatabaseSeeder` in module order, and seed the topology
+   through `PlacementModule.SeedTopologyAsync`. Characters' seeder,
+   `CharacterAppearanceVerifier`, refuses to start when
+   `content/characters/appearance.json` no longer offers what a stored look
+   names, so such a content change needs a data migration first. Items' seeder
+   mirrors the item catalog and then back-fills character item state.
+6. Run a `--dev-items-*` command through `ItemsCommandLine` and exit, if one is
+   given. Hosted services never start in that mode.
 7. Map the health routes, then each module's routes, and run.
+
+`GameServiceTestComposition` in the GameService test kit,
+`tests/Testing/Mmorpg.GameService.Testing`, builds the same production service
+graph for tests with a test-owned data source, Redis acceleration disabled, and
+no module background services. Integration tests, the API test hosts, and unit
+tests that need a real service instance use it, so constructor changes stay
+inside the modules.
 
 ## Table Ownership
 
@@ -108,7 +104,7 @@ tests. Startup runs in this order:
 | Accounts | `accounts`, `account_sessions` |
 | Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, and `character_appearances` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
-| Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, the catalog advisory lock `7104202607151230`, and the per-account Secure Container entitlement advisory lock |
+| Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, and `live_mob_loot_grants`; the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, the catalog advisory lock `7104202607151230`, and the per-account Secure Container entitlement advisory lock |
 
 Foreign keys between modules follow the dependency order only: Characters to
 Accounts, Placement to Accounts and Characters, and Items to Accounts,
@@ -165,11 +161,14 @@ caller keeps its own check order, error codes, and messages.
 | `ISimulationCharacterStateProvider` | Placement (SPI) | implemented by Items | Lock or read a character's carry state and equipment for its simulation session |
 | `IItemCatalogRevisionProvider` | Placement (SPI) | implemented by Items | Read the mirrored item catalog revision that a placed worker must run |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
-| `IDatabaseSeeder` | Platform | implemented by Items | Seed the item catalog and back-fill character item state after migrations |
+| `IDatabaseSeeder` | Platform | implemented by Characters and Items | Verify or seed module data after the migrations: Characters checks the stored looks against the appearance content, and Items mirrors the item catalog and back-fills character item state |
 
-Every SPI and contract has exactly one implementation, registered as a
-stateless singleton. The host composition fails at startup when an SPI has no
-implementation or more than one.
+Every contract and every SPI except `IDatabaseSeeder` has exactly one
+implementation, registered as a stateless singleton, from the module that owns
+the data. The host composition fails at startup when one of the
+single-implementation SPIs has no implementation or more than one, because a
+missing one would silently skip required work. `IDatabaseSeeder` has one
+implementation per module that verifies or seeds data.
 
 No module publishes asynchronous events. Every flow above needs synchronous
 atomicity: a revoked session must lose its simulation access in the same
@@ -189,12 +188,12 @@ transaction. A change that would take the balance below zero or above
 `CurrencyChange` and leaves the balance unchanged; the caller chooses its error
 code. The source kinds in `CurrencySourceKinds` are `starting_balance`,
 `vendor_purchase`, `vendor_sale`, `insurance`, and `development`. The ledger
-also accepts `opening_balance`, which only the ledger migration writes for each
-balance that existed before the ledger. A database check keeps the balance and
-every `balance_after` within the same range, so each character's ledger deltas
-sum to its balance. `CharactersSql.CurrencyOf` lets Items read the balance in
-its own statements, such as the item-state snapshot and the Development item
-tool's character list.
+also accepts `opening_balance`, which only the ledger migration wrote, once for
+each balance that existed before the ledger. A database check keeps the balance
+and every `balance_after` within the same range, so each character's ledger
+deltas sum to its balance. `CharactersSql.CurrencyOf` lets Items read the
+balance in its own statements, such as the item-state snapshot and the
+Development item tool's character list.
 
 `CharacterItemStateLifecycleHandler`, the Items implementation of
 `ICharacterLifecycleHandler`, bootstraps the new character's item state and
@@ -212,15 +211,18 @@ Every durable item mutation runs through one item transaction kernel in
 | `Transactions/` | `Mmorpg.GameService.Items` | `ItemTransactionService`, the facade with one `ExecuteAsync` overload per command; the command, actor, and result contracts; the error codes and `ItemTransactionRejection` |
 | `Kernel/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionKernel`, `IItemCommandHandler<TCommand>`, admission, the canonical request, the operation ledger, outcomes, telemetry, and the persisted JSON options |
 | `Context/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionContext` with its session and facets, the kernel-owned finalizer, the simulation authority, and the lock types |
-| `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, transform and Mob loot rules, new item instances, quantity consumption, and carried acquisition |
+| `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, the Loot all state, transform and Mob loot rules and writes, new item instances, quantity consumption, and carried acquisition |
 | `Handlers/` | `Mmorpg.GameService.Items.Transactions.Handlers` | One stateless handler class per command family; `PlayerDeath/` holds the death handler with its corpse layout writer, custody transfers, and partition models |
 
 `Context/CarryStateCalculator` is the one carried-weight rule, shared with the
-startup recompute in `CharacterItemStateBootstrapper`, and
+startup recompute in `CharacterItemStateBootstrapper`. It finds the character's
+carried containers and equipped Bag with indexed lookups, as the death
+partition does for its source items; a partial index on
+`item_instances(equipped_character_id, equipment_slot_id)` supports both.
 `Context/ItemOwnershipSql` is the one definition of the character that owns an
-item. Outside the kernel, `Development/` holds the process-local Development item
-tool and its packages, and `StackStress/` holds the stack stress fixtures, which
-register only when `StackStressFixtures:Enabled` is true.
+item. Outside the kernel, `Development/` holds the process-local Development
+item tool and its packages, and `StackStress/` holds the stack stress fixtures,
+which register only when `StackStressFixtures:Enabled` is true.
 
 Each overload routes its command with the persisted operation kind and the
 actor character id to the kernel and one handler. The facade composes the
@@ -252,6 +254,14 @@ propagates with its original error.
 | `Placement` | `ItemSlotPlacement` | Container slot and equipment slot rules |
 | `Journal` | `ItemChangeJournal` | Audit changes, touched characters and containers, result items, and Recovery deliveries |
 
+The context resolves current definitions and slot data from the mirrored
+catalog but delegates stack, equipment, Bag, Secure Container, policy
+capability, and integer-weight decisions to the shared WorldData rules. The
+kernel does not depend on HTTP, Unity, or SimulationWorker runtime state.
+Account, system, and simulation-worker actors are explicit command inputs, and
+offline access and exact live-session access are actor requirements that the
+kernel enforces while the durable character lock is held.
+
 `ItemTransactionFinalizer` turns the journal into container revisions, carry
 weight with the hard cap, character revisions with each touched character's
 balance, result item revisions, item changes, and audit rows. The item changes
@@ -260,13 +270,14 @@ quantity, revision, container slot or equipment slot, and active policies with
 their protection source, or `Removed` for an item that no longer exists. A Bag
 in the Bag slot also names its contents container and revision, and every item
 inside it is reported too, so the client sees the contents of a Bag it just
-equipped. A transaction that changed more than 32 items reports none. The worker turns them
-into `OwnerItemStateChanged`, described in
-[Realtime Protocol](REALTIME_PROTOCOL.md#owner-item-state-changes), so the client
-patches its inventory instead of reloading it. Every item write must therefore
-record an audit change, which `ItemTransactionChangeReportIntegrationTests`
-checks against the inventory snapshot for every move. Results stored before
-item changes existed have none and no balance, and the worker then sends no
+equipped. A transaction that changed more than 32 items reports none. The
+worker turns the item changes into `OwnerItemStateChanged`, described in
+[Realtime Protocol](REALTIME_PROTOCOL.md#owner-item-state-changes), so the
+client patches its inventory instead of reloading it. Every item write must
+therefore record an audit change, which
+`ItemTransactionChangeReportIntegrationTests` checks against the inventory
+snapshot for every move. A stored result without item changes, as older stored
+results are, carries no change and no balance, and the worker then sends no
 change. Handlers never commit, roll back, or open a connection, and they reject
 only through `ItemTransactionContext.Reject`.
 
@@ -279,16 +290,49 @@ uses HTTP API error codes; and only the types named in
 [Cross-Module Statements](#cross-module-statements) use another module's
 contracts or SQL fragments.
 
-### Vendor And Gathering Commands
+### Operation Kinds
 
-Three operation kinds run only on the worker route
-`POST /api/simulation-sessions/{id}/item-operations`:
+Every command persists its operation kind in `item_operations`, and the item
+metrics label transactions with it, as [Monitoring](MONITORING.md#gameservice)
+describes. The callers are the routes in
+[GameService HTTP Surface](SERVICE_FEATURES.md#gameservice-http-surface) and the
+system services.
 
-| Operation kind | Command | Handler | Behavior |
+| Operation kind | Command | Handler | Caller |
 | --- | --- | --- | --- |
-| `vendor_purchase` | `PurchaseFromVendorCommand` | `VendorCommandHandler` | Checks the expected character revision, the vendor offer, a quantity within one stack, and the expected total price, debits the wallet with a `vendor_purchase` ledger row, and places the items through carried acquisition |
-| `vendor_sale` | `SellToVendorCommand` | `VendorCommandHandler` | Sells all or part of one carried, unequipped stack from the permanent inventory, the equipped Bag, or the Secure Container. Protected, insured, and quest items, items without value, non-empty Bags, and categories the vendor does not buy are refused. A whole stack is deleted with an `item_destructions` row with reason `vendor_sale`; part of a stack reduces its quantity. The wallet is credited with a `vendor_sale` ledger row when the price is positive |
-| `gather_resource` | `GatherResourceCommand` | `GatherResourceCommandHandler` | Requires the SimulationWorker actor, checks that an item with the required active tool kind is equipped in the `tool` slot, refuses a Bag or quest item as yield, and places the yield through carried acquisition |
+| `grant` | `GrantItemCommand` | `ItemGrantCommandHandler` | Quest grants on the worker route, the Development item tool and its packages, and the stack stress fixtures |
+| `relocate` | `RelocateItemCommand` | `ItemRelocationCommandHandler` | Account and worker routes |
+| `swap_container_items` | `SwapContainerItemsCommand` | `ItemRelocationCommandHandler` | Worker route |
+| `equip`, `unequip` | `EquipItemCommand`, `UnequipItemCommand` | `ItemEquipmentCommandHandler` | Worker route; Development item packages also equip |
+| `split_stack`, `merge_stacks` | `SplitItemStackCommand`, `MergeItemStacksCommand` | `ItemStackCommandHandler` | Account and worker routes |
+| `consume_quantity` | `ConsumeItemQuantityCommand` | `ItemStackCommandHandler` | No caller outside tests yet |
+| `consume_equipped_ammunition` | `ConsumeEquippedAmmunitionCommand` | `AmmunitionConsumptionCommandHandler` | Worker ammunition route |
+| `destroy` | `DestroyItemCommand` | `ItemDestructionCommandHandler` | Account and worker routes |
+| `swap_bag_aggregates` | `SwapBagAggregatesCommand` | `BagAggregateCommandHandler` | No caller outside tests yet; it swaps complete Bag aggregates, also between characters |
+| `add_recovery_delivery`, `claim_recovery_delivery` | `AddRecoveryDeliveryCommand`, `ClaimRecoveryDeliveryCommand` | `RecoveryDeliveryCommandHandler` | Development item packages add deliveries; the worker route claims them |
+| `change_secure_container_tier` | `ChangeSecureContainerTierCommand` | `SecureContainerTierCommandHandler` | Account route |
+| `apply_item_policy`, `remove_insurance_policy` | `ApplyItemPolicyCommand`, `RemoveInsurancePolicyCommand` | `ItemPolicyCommandHandler` | Worker route, for the insurance capability |
+| `abandon_quest_items` | `AbandonQuestItemsCommand` | `QuestItemCommandHandler` | Worker route, for the quest capability |
+| `process_player_death` | `ProcessPlayerDeathCommand` | `PlayerDeathCommandHandler` | Worker player death route and the Development corpse fixture |
+| `expire_corpse` | `ExpireCorpseCommand` | `CorpseExpiryCommandHandler` | `CorpseExpiryHostedService` |
+| `loot_corpse_item`, `loot_corpse_partial_stack`, `loot_corpse_item_to_equipment` | `LootCorpseItemCommand`, `LootCorpsePartialStackCommand`, `LootCorpseItemToEquipmentCommand` | `CorpseLootCommandHandler` | Worker corpse route |
+| `deposit_corpse_item`, `deposit_corpse_partial_stack` | `DepositCorpseItemCommand`, `DepositCorpsePartialStackCommand` | `CorpseDepositCommandHandler` | Worker corpse route |
+| `move_corpse_item`, `move_corpse_partial_stack` | `MoveCorpseItemCommand`, `MoveCorpsePartialStackCommand` | `CorpseInternalMoveCommandHandler` | Worker corpse route |
+| `swap_corpse_bag` | `SwapCorpseBagCommand` | `CorpseBagSwapCommandHandler` | Worker corpse route |
+| `loot_all_corpse_items` | `LootAllCorpseItemsCommand` | `CorpseLootAllCommandHandler` | Worker corpse route |
+| `create_persistent_mob_corpse` | `CreatePersistentMobCorpseCommand` | `MobCorpseCommandHandler` | Worker durable Mob corpse route and the stack stress loot fixture |
+| `grant_mob_loot`, `grant_mob_loot_all` | `GrantMobLootCommand`, `GrantMobLootAllCommand` | `MobLootGrantCommandHandler`, `MobLootAllGrantCommandHandler` | Worker live Mob loot routes |
+| `expire_recovery_delivery` | `ExpireRecoveryDeliveryCommand` | `RecoveryExpiryCommandHandler` | Item operations maintenance |
+| `vendor_purchase`, `vendor_sale` | `PurchaseFromVendorCommand`, `SellToVendorCommand` | `VendorCommandHandler` | Worker route, for the vendor capability |
+| `gather_resource` | `GatherResourceCommand` | `GatherResourceCommandHandler` | Worker route, for a resource node |
+
+`ItemOperationKinds.IsRetriedSystemOperation` names the retried system
+operations, whose rejections roll back completely instead of being stored, and
+`ItemOperationAdmission` checks the operation id rule and the payload limit
+before any database access. [Item Transactions](SERVICE_FEATURES.md#item-transactions)
+describes both rules as clients see them.
+
+### Vendor, Gathering, And Ammunition Commands
 
 Both vendor commands require the vendor access of the live session:
 `ItemTransactionLiveAccess.VendorProfileId` must equal the command's vendor. The
@@ -296,19 +340,35 @@ worker sets it from the vendor capability it validated, never from a client
 value, and GameService loads that profile with its offers and sale categories
 from the active mirrored catalog. `VendorPricing` from `Mmorpg.WorldData`
 computes the total, rounded up for a purchase and down for a sale, so GameService
-and Unity charge and show the same price. Gathering takes no expected character
-revision, because it must not fail when the player moves an item meanwhile; the
-live session fence and the worker's operation id, which it reuses when it
-retries an uncertain outcome, replace it.
+and Unity charge and show the same price.
 
-`CarriedAcquisition` in `Domain/` places a quantity of one definition without a
-client-chosen slot in one all-or-nothing pass. It first tops up policy-free
-stacks with room, in the permanent inventory and then in the equipped Bag, and
-then fills empty slots in this order: matching specialized Bag slots, the
-permanent inventory, and general Bag slots. It never fills the Secure Container
-and refuses definitions with default policies. When the rest does not fit it
-rejects with `inventory_full`, and the finalizer still enforces the 140 percent
-hard cap.
+- `PurchaseFromVendorCommand` checks the expected character revision, the
+  vendor offer, a quantity within one stack, and the expected total price,
+  debits the wallet with a `vendor_purchase` ledger row, and places the items
+  through carried acquisition.
+- `SellToVendorCommand` checks the expected character and item revisions, takes
+  all or part of one carried, unequipped stack, deletes a whole stack with an
+  `item_destructions` row with reason `vendor_sale` or reduces a partial one,
+  and credits the wallet with a `vendor_sale` ledger row when the price is
+  positive.
+- `GatherResourceCommand` requires the SimulationWorker actor, checks that an
+  item with the required active tool kind is equipped in the `tool` slot,
+  refuses a Bag or quest item as yield, and places the yield through carried
+  acquisition. It takes no expected character revision, because gathering must
+  not fail when the player moves an item meanwhile; the live session fence and
+  the worker's operation id, which it reuses when it retries an uncertain
+  outcome, replace it.
+- `ConsumeEquippedAmmunitionCommand` checks the expected item revision, and for
+  a batch the expected character revision, that the item is ammunition in the
+  character's `ammunition` slot, and that it holds at least the quantity, and
+  deletes the stack when the batch spends all of it. `ProcessPlayerDeathCommand`
+  accepts the same consumption for the shots that were not committed yet and
+  applies it before it partitions the items.
+
+`CarriedAcquisition` in `Domain/` implements the carried acquisition rule of
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md#carried-acquisition)
+in one all-or-nothing pass and rejects with `inventory_full` when the rest does
+not fit; the finalizer still enforces the 140 percent hard cap.
 
 The audit journal records `vendor_purchase` and `vendor_sale` with the vendor,
 definition, quantity, price, and balance before and after, and
@@ -316,57 +376,9 @@ definition, quantity, price, and balance before and after, and
 definition, and quantity. Acquired items are recorded as
 `vendor_purchase_stack_increased`, `vendor_purchase_item_created`,
 `resource_gathered_stack_increased`, and `resource_gathered_item_created`, and
-sold items as `item_sold_to_vendor` or `item_quantity_sold_to_vendor`.
-
-The error codes of these commands are `currency_insufficient`,
-`currency_limit_exceeded`, `vendor_access_required`, `vendor_unavailable`,
-`vendor_offer_unavailable`, `vendor_price_changed`, `vendor_will_not_buy`,
-`inventory_full`, `gathering_tool_required`, and `gathering_yield_invalid`. The
-worker route returns `403` for `vendor_access_required`, `409` for
-`vendor_price_changed` and `inventory_full`, and `422` for the others.
-
-The Development item tool command
-`--dev-items-currency <characterId> <positiveAmount>` credits an offline
-character through `ICharacterWallet.CreditAsync` in its own transaction with a
-`development` ledger row, and `--dev-items-list` reports each character's
-balance through `CharactersSql.CurrencyOf`.
-
-## Items Tables
-
-| Table | Responsibility |
-| --- | --- |
-| `item_catalog_revisions` | Applied deterministic catalog revisions and the current one |
-| `item_system_settings` | Base carry capacity and the inventory and bank slot counts from the catalog's character settings, and the currency display name and starting balance from its economy settings |
-| `item_categories`, `item_tags`, `equipment_slots` | Catalog vocabulary with display order, slot maximum quantity, and active state |
-| `item_tool_kinds` | Tool kind vocabulary, such as `pickaxe`, with active state |
-| `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, required character level, value in whole currency units, structural fingerprint, and active state |
-| `item_definition_tags`, `item_definition_default_policies`, `item_definition_tool_kinds` | Many-to-many definition tags, default policies, and tool kinds |
-| `item_definition_equipment_slots`, `item_definition_blocked_equipment_slots` | Compatible equipment slots and the slots an equipped definition blocks |
-| `item_definition_location_rules` | Secure Container and other explicit location eligibility |
-| `bag_definitions`, `bag_definition_slots`, `bag_definition_slot_tags` | Bag carry bonus and its stable general and specialized slots |
-| `secure_container_tiers`, `account_secure_container_entitlements` | Secure Container tiers and the account's selected tier |
-| `vendor_profiles`, `vendor_offers`, `vendor_sale_categories` | Vendor profiles with purchase and sale price basis points and active state, their ordered offers, and the categories each vendor buys. A vendor that leaves the catalog stays with `is_active = false` |
-| `character_item_states` | Aggregate revision, carried weight, carry capacity, and the owned top-level container ids |
-| `item_containers`, `item_container_slots`, `item_container_slot_tags` | Typed containers with owner binding, slot kinds, accepted tags, revision, and lifecycle |
-| `item_instances` | Durable identity, definition, quantity, revision, and exactly one location: a container slot or an equipment slot |
-| `item_instance_policies` | Protected-on-death and one-death insurance lifecycle records |
-| `recovery_deliveries`, `recovery_delivery_items` | System deliveries with source, availability, expiry, and their items |
-| `item_operations`, `item_operation_changes`, `item_destructions` | Operation ids with canonical request hash and replayable result, the append-only audit, and destruction records |
-| `corpses`, `corpse_sections`, `corpse_snapshots`, `death_events` | Durable player and persistent Mob corpses, their three sections, non-interactive presentation snapshots, and idempotent death events |
-| `live_mob_loot_grants` | Every committed live Mob loot grant by its grant id, with the operation, character, and source corpse, so a grant commits once |
-
-CHECK constraints enforce the location union of `item_instances`, and partial
-unique indexes allow one item per container slot and per equipment slot. A
-retired catalog row stays with `is_active = false`, so audit records and old
-corpses keep their references. Normal non-persistent Mob corpses stay
-SimulationWorker state.
-
-Every mutation carries an operation id. Replaying the same id and canonical
-payload returns the stored result; reusing it with another payload is a stable
-conflict. Player mutations also carry the expected character item-state
-revision, and targeted item, Bag, and corpse mutations carry the revisions of
-the rows they target. An unrelated change in the same container does not reject
-a targeted loot request.
+sold items as `item_sold_to_vendor` or `item_quantity_sold_to_vendor`. The error
+codes and their HTTP statuses are in
+[Error Codes](SERVICE_FEATURES.md#error-codes).
 
 ## Lock Order
 
@@ -383,27 +395,32 @@ Ticket consume locks `character_item_states` before
 character `FOR UPDATE`, which conflicts with the `FOR NO KEY UPDATE` lock that
 every item transaction takes on the same character.
 
-An item mutation locks all its characters in ascending id order first and then
-their item states in ascending order. Before the split it locked each character
-together with its item state. Both orders take the first character first, and
-the only transaction that locks item states without characters is the startup
-backfill, which never waits on a character lock, so the change cannot deadlock,
-even while old and new versions run side by side.
+An item mutation locks all its characters in ascending id order first, through
+`ICharacterLocks`, and then their item states in ascending order. The only
+transaction that locks item states without characters is the startup backfill,
+which never waits on a character lock, so this order cannot deadlock. Item
+states of deleted characters are never locked.
 
 Inside Items, a handler takes its locks in this order: the advisory key (the
 account's Secure Container entitlement key, or the death event or Mob corpse
 key), then its characters and their item states in ascending id order, then the
 corpse row for corpse interactions, then the mutation scope. The mutation scope
 locks Bag aggregate roots, then containers, then ordinary items and Bag
-children, then item policies, each in ascending id order.
+children, then item policies, each in ascending id order. Every operation that
+touches a Bag or one of its children therefore takes the Bag aggregate root
+lock first.
 
 ## Migrations
 
 Migration ids, SQL text, the `schema_migrations` table, and the migration
 advisory lock never change. Each migration runs in its own transaction under the
-advisory lock and records its id. The runner stores no checksum, so
-`MigrationHistoryTests` pins the id, order, and SHA-256 of every historic
-migration's SQL.
+advisory lock and records its id only after its SQL succeeded. The runner
+stores no checksum, so `MigrationHistoryTests` pins the id, order, and SHA-256 of
+every historic migration's SQL. Shipped migration ids and the identifiers
+inside their SQL keep their historical names, such as `auth` and `world` for
+what are now GameService and Shard concepts, because changing an applied
+migration would break upgrades; the current schema uses only the canonical
+topology names.
 
 | # | Id | Owner |
 | --- | --- | --- |
@@ -434,67 +451,61 @@ migration's SQL.
 | 25 | `202610251200_character_appearance` | Characters |
 | 26 | `202610261800_live_mob_loot_grants` | Items |
 
-Migration #23 adds the balance range check on `characters.currency`, creates
-`character_currency_ledger`, and opens the ledger with one `opening_balance` row
-for every existing nonzero balance. Migration #24 adds `item_definitions.value`,
-the tool kind tables, the currency settings in `item_system_settings`, and the
-vendor tables. Migration #25 creates `character_appearances`, one row per
-character with its body model, its choices as JSONB, and whether its headwear is
-lowered, deleted with its character, and gives every existing character
-`Human_Male` with its default look. `CharacterAppearanceVerifier`, a database
-seeder, refuses to start when `content/characters/appearance.json` no longer
-offers what a stored look names. Migration #26 creates `live_mob_loot_grants`,
-the ledger of committed live Mob loot grants by grant id.
-
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
 Each module lists its own migrations in `IGameServiceModule.Migrations`, from
 its `CharactersSchemaMigrations`, `PlacementSchemaMigrations`, or
-`ItemsSchemaMigrations` list.
-`GameServiceSchema` merges the host list with every module's list, sorted by
-ordinal id, which reproduces the original application order exactly. Startup
-fails when an id repeats or when the merged list does not start with the shipped
-history, so every new migration must sort after
-`202610181250_item_economy`. A new migration also appends its id
-to `GameServiceSchema.FrozenHistory` and its id and SQL hash to
+`ItemsSchemaMigrations` list. `GameServiceSchema` merges the host list with
+every module's list, sorted by ordinal id. Startup fails when an id repeats or
+when the merged list does not start with the shipped history, so every new
+migration must sort after the last shipped one. A new migration also appends
+its id to `GameServiceSchema.FrozenHistory` and its id and SQL hash to
 `MigrationHistoryTests`.
+
+The migrations create every object in the `public` schema, and
+`bootstrap_character_item_state` pins its `search_path` to `public`. A
+GameService database therefore needs a database of its own rather than a
+schema, which is why every PostgreSQL test gets its own database, as
+[Backend Tests](../tests/README.md#databases-and-redis) describes.
 
 ## Configuration
 
-Configuration keys did not change. Each module validates and owns the keys it
-reads, and services receive immutable validated option records instead of
-reading `IConfiguration`:
+Each module validates and owns the keys it reads, and services receive
+immutable validated option records instead of reading `IConfiguration`:
 
 | Keys | Owner |
 | --- | --- |
 | `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds` | `PlatformOptions` |
 | `Auth:SessionLifetimeHours`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
-| `Game:MaxCharactersPerAccount` | `CharactersModuleOptions` |
+| `Game:MaxCharactersPerAccount`, `Characters:AppearancePath` | `CharactersModuleOptions` |
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
 | `Items:*`, `StackStressFixtures:*`, `STACK_STRESS_FIXTURE_SECRET` | `ItemsModuleOptions` |
+| `Telemetry:*` | The host, through `TelemetryOptions` of `Mmorpg.Server.Telemetry` |
 
 The host loader `GameServiceConfiguration.Load` first validates the required
 keys of every module together and throws one `GameService configuration is
 invalid:` error that lists every problem. It then reads the self-contained
-option sets in their original order, each with its own error message: the World
+option sets in a fixed order, each with its own error message: the World
 catalog, Development simulation bots, stack stress fixtures, NPC item
-lifecycle, item operations, and Redis acceleration. Worker credentials keep the
+lifecycle, item operations, Redis acceleration, the item catalog source,
+telemetry, and the Development item packages. Worker credentials keep the
 original key casing, so only an exact worker id matches, and the shared worker
 secret applies only when no per-worker secret exists. Items reads the worker
-heartbeat timeout through Placement's `SimulationWorkerLeasePolicy` and still
-writes it into the persisted Mob corpse command, so idempotent replays are
-unchanged.
+heartbeat timeout through Placement's `SimulationWorkerLeasePolicy` and writes
+it into the persisted durable Mob corpse command, so it is part of that
+command's idempotency payload. The keys and their defaults are in
+[Configuration Defaults](SERVICE_FEATURES.md#configuration-defaults).
 
 ## Cross-Module Statements
 
-These are every SQL statement that crossed a module boundary when the split
-started, and how each one crosses now, followed by the statements added since
-then from S41 on. Acc is Accounts, Chr is Characters, Plc is Placement, and Itm
-is Items. R is read, W is write, and L is lock.
+These are the SQL statements and contract calls that cross a module boundary,
+and how each one crosses. Acc is Accounts, Chr is Characters, Plc is Placement,
+and Itm is Items. R is read, W is write, and L is lock. Code comments refer to
+the statement ids.
 
-| # | Statement | Foreign access | Now |
+| # | Statement | Foreign access | How it crosses |
 | --- | --- | --- | --- |
-| S1 | Login session replacement releases simulation sessions | Plc W | `IAccountSessionLifecycleHandler.OnSessionsReplacedAsync`, same SQL and position |
+| S1 | Login session replacement releases simulation sessions | Plc W | `IAccountSessionLifecycleHandler.OnSessionsReplacedAsync` |
 | S2 | Login session replacement consumes join tickets | Plc W | same handler, after S1 |
 | S3 | Session revoke releases simulation sessions | Plc W | `IAccountSessionLifecycleHandler.OnSessionRevokedAsync` |
 | S4 | Session revoke consumes join tickets | Plc W | same handler, after S3 |
@@ -545,10 +556,26 @@ is Items. R is read, W is write, and L is lock.
 | S49 | The Development item tool grants currency | Chr L, W | `ICharacterWallet.CreditAsync` in `DevelopmentItemToolService` |
 | S50 | The Development item tool lists each character's balance | Chr R | `CharactersSql.CurrencyOf` in `DevelopmentItemToolService` |
 | S51 | A committed item transaction reports each touched character's balance | Chr R | `CharactersSql.CurrencyOf` in `ItemTransactionFinalizer` |
+| S52 | Ticket consume reads the character's look | Chr R | `ICharacterAppearances.ReadAsync` in `ShardService` |
+| S53 | The worker appearance route lowers or raises the headwear, or stores a development look | Chr L, W | `ICharacterAppearances.SetHeadwearLoweredAsync` and `SetDevelopmentLookAsync` in `SimulationAppearanceService` |
+| S54 | Durable corpse responses read the looks of their source characters, deleted ones too | Chr R | `ICharacterAppearances.ReadManyAsync` in `CorpseService` |
 
-The wallet's `FOR NO KEY UPDATE` lock in S30, S45, and S46 falls on a character
-row that the item transaction already locked through `ICharacterLocks`, so it
-adds no lock and keeps the lock order.
+Notes on specific statements:
+
+- The wallet's `FOR NO KEY UPDATE` lock in S30, S45, and S46 falls on a character
+  row that the item transaction already locked through `ICharacterLocks`, so it
+  adds no lock and keeps the lock order.
+- S12 and S14 read the carry state through `ISimulationCharacterStateProvider`
+  on the same connection right after the lease update commits, so the worker may
+  see an item revision that committed in between, which is newer, never older. A
+  missing item state still returns `401` and the lease update still commits.
+- S15 counts open durable corpses in a second statement in the same transaction
+  as Placement's own blocker count. The transaction holds the Shard row lock,
+  which blocks the foreign key lock that a new corpse needs, so the count stays
+  exact.
+- S18 builds the Secure Container entitlement advisory key from the account id
+  that character creation or the backfill supplies. A character's account never
+  changes, so the key is the same as one read from `characters`.
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,
 and `update` on owned tables and fails on any foreign table outside the frozen
@@ -557,7 +584,8 @@ migrations.
 ## Guard Tests
 
 The guard tests live in `tests/Server/Mmorpg.GameService.Tests/Architecture`,
-except `ItemTransactionKernelBoundaryTests`, which lives with the kernel tests in
+except `GameServiceTelemetryTests` in the root of that project and
+`ItemTransactionKernelBoundaryTests`, which lives with the kernel tests in
 `tests/Server/Mmorpg.GameService.Items.Tests/ItemTransactions`.
 
 | Test | What it protects |
@@ -566,107 +594,16 @@ except `ItemTransactionKernelBoundaryTests`, which lives with the kernel tests i
 | `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, and `Mmorpg.GameService.Placement` meters and every `game_service.*` instrument that the dashboards and alerts read |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
 | `NamespaceBoundaryTests` | A module references other modules only through lower modules' `Contracts` namespaces and Platform |
-| `RouteTableSnapshotTests` | Every route with its methods, authorization policy, rate-limit policy, and no-store metadata |
+| `RouteTableSnapshotTests` | Every route with its methods, authorization policy, rate-limit policy, and no-store metadata. ASP.NET Core matches routes by template precedence and HTTP method, never by registration order, so the snapshot is the routing contract |
 | `ModuleDependencyGraphTests` | The compiled references between the GameService assemblies and the host assembly name |
 | `ModulePublicSurfaceTests` | Each module's exported types and Platform's internal middleware |
-| `ModuleCompositionTests` | Exactly one implementation of every SPI and contract, from its owner module, and startup failure for a missing or duplicate SPI |
-| `GameServiceTelemetryTests` | Every class that owns a `Meter` publishes `MeterName` and is declared by its module's `MeterNames`, and the dashboards and alert rules reference only published `game_service_*` metrics. It lives in the test project root. |
+| `ModuleCompositionTests` | Exactly one implementation of every single-implementation SPI and contract, from its owner module, and startup failure for a missing or duplicate SPI |
+| `GameServiceTelemetryTests` | Every class that owns a `Meter` publishes `MeterName` and is declared by its module's `MeterNames`, and the dashboards and alert rules reference only published `game_service_*` metrics |
 | `ItemTransactionKernelBoundaryTests` | The item transaction kernel boundary described in [Items Transaction Kernel](#items-transaction-kernel) |
 
-## Accepted Behavior Changes
-
-The split keeps routes, request and response shapes, error codes and messages,
-policies, transaction boundaries, isolation levels, statement order inside
-transactions, and every persisted or observable identifier: database, table,
-and column names, migration ids and SQL, advisory lock ids, the Redis key
-prefix and client name, meter and instrument names, `ApplicationName`, the
-`Mmorpg.GameService` assembly and process name, configuration keys, and the
-idempotency payloads of item operations. These are the only intended
-differences:
-
-- **Character and item state locks are two statements (S26, S28).** An item
-  mutation used to lock each character and its item state in one joined
-  statement. It now locks the active characters in ascending id order through
-  `ICharacterLocks`, then their item states in ascending order. The lock order
-  changes from character 1, state 1, character 2, state 2 to character 1,
-  character 2, state 1, state 2. Both orders take character 1 first, and the
-  only transaction that locks item states without characters is the startup
-  backfill, which never waits on a character lock, so no deadlock is possible,
-  including during a rolling deploy with both versions. Item states of deleted
-  characters are never locked, as before. The lock-wait metric still covers
-  both statements. This adds one round trip per item transaction.
-- **Session heartbeat and release read carry state separately (S12, S14).** The
-  lease update no longer joins `character_item_states`. Placement reads the
-  carry state through `ISimulationCharacterStateProvider` on the same
-  connection right after the lease update commits, so the worker may see an
-  item revision that committed in between, which is newer, never older. A
-  missing item state still returns the same `401` and the lease update still
-  commits, as before. This adds one round trip per heartbeat and release.
-- **A World rebind counts open corpses separately (S15).** Placement counts its
-  own blockers in one statement and open durable corpses through
-  `IShardWorldLocalStateProbe` in a second statement in the same transaction.
-  The transaction holds the Shard row lock, which blocks the foreign key lock
-  that a new corpse needs, so the count stays exact. The conflict message is
-  unchanged. This adds one round trip, only when a worker changes a Shard's
-  World.
-- **Item state bootstrap takes the account from its caller (S18).** The Secure
-  Container entitlement advisory lock key is built from the account id that
-  character creation or the backfill supplies, instead of reading
-  `characters`. The key text is identical, because a character's account
-  never changes.
-- **Corpse snapshots read the entitlement through the locked account (S34).**
-  The account id comes from the locked character instead of a join on
-  `characters`; the row is locked and its account never changes.
-- **Foreign reads use owner fragments (R3).** Statements that read another
-  module's table now embed the owner's fragment, for example the active
-  character derived table or an `exists` check, instead of naming the table.
-  The results are identical; PostgreSQL flattens the derived table.
-- **Logger categories follow the new namespaces.** `ILogger<T>` categories move
-  from `Mmorpg.GameService.Auth`, `.Redis`, `.Simulation`, and `.Database` to
-  `Mmorpg.GameService.Accounts`, `.Accounts.Redis`, `.Placement`, and
-  `.Platform.Database`. No configuration filters on them. The explicit
-  `Mmorpg.GameService.Auth` logout category is unchanged.
-- **Hosted service start order.** Modules register in dependency order, so the
-  Redis acceleration metrics reporter now starts before the corpse expiry, item
-  metrics, and item maintenance services instead of third of four. None of them
-  depends on another.
-- **Endpoint registration order.** Routes are registered module by module, with
-  the health routes first. ASP.NET Core matches routes by template precedence
-  and HTTP method, never by registration order, so routing is unchanged.
-  `RouteTableSnapshotTests` pins the complete table.
-- **New startup checks.** Startup now fails when an SPI has no implementation or
-  more than one, and when the merged migration list does not start with the
-  shipped history or repeats an id. A correctly built GameService never hits
-  either check.
-
-## Testing And Next Steps
-
-`GameServiceTestComposition` in the GameService test kit,
-`tests/Testing/Mmorpg.GameService.Testing`, builds the production service graph
-for tests with a test-owned data source, Redis acceleration disabled, and no
-module background services. Integration tests, the API test hosts, and unit
-tests that need a real service instance use it, so constructor changes stay
-inside the modules.
-
-Each module has its own test project under `tests/Server`, the host and the
-guard tests live in `Mmorpg.GameService.Tests`, and flows that span modules or
-processes live in `tests/Integration/Mmorpg.Integration.Tests`. Every
-PostgreSQL test gets its own database, which `PostgresTestDatabase` copies from a
-template database next to the configured base database; the templates are built
-once per test run and named after the test project, `<base>_<project>_*`.
-Separate schemas would not work, because the migrations create everything in
-the `public` schema and `bootstrap_character_item_state` pins `search_path` to
-`public`. Separate databases also keep the migration and catalog advisory locks
-of tests that run in parallel apart. See [Backend Tests](../tests/README.md).
-
-The item transaction kernel has golden tests in
-`tests/Server/Mmorpg.GameService.Items.Tests/Golden/ItemTransactions`. Each golden file holds the
-statements and transaction boundaries that Npgsql logs for one command or kernel
-path, the result, the stored operation, and its audit journal.
-`ItemTransactionTraceGoldenTests` compares them byte for byte, so any change to
-item transaction SQL, its order, or its journal shows up as a reviewed golden
-diff. Run the tests with `MMORPG_UPDATE_GOLDENS=1` to rewrite the files after an
-intended change.
-
-Measure the extra round trips of the item state lock split and the session
-heartbeat with the full-stack stack stress run before raising load targets.
+The item transaction kernel also has golden tests:
+`ItemTransactionTraceGoldenTests` compares, byte for byte, the statements and
+transaction boundaries that Npgsql logs for one command or kernel path, the
+result, the stored operation, and its audit journal. Any change to item
+transaction SQL, its order, or its journal therefore shows up as a reviewed
+golden diff, as [Golden Files](../tests/README.md#golden-files) describes.

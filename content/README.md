@@ -10,7 +10,7 @@ tools. Compiled data is generated from it and never edited directly.
 content/
   items/
     catalog.json                    character and economy settings, categories, tags, tool kinds,
-                                    equipment slots, tiers, retired ids
+                                    equipment slots, families, tiers, retired ids
     definitions/<definition-id>.json one item definition per file
     vendors/<vendor-id>.json        one vendor profile per file
   combat/
@@ -25,36 +25,44 @@ content/
                                     brain, locomotion, loot, and resource profiles
     definitions/<actor-id>.json     one NPC, Mob, or resource node definition per file
   worlds/<world-id>/
-    world.json                      World manifest read by both services
+    world.json                      World manifest read by both services: id, display name,
+                                    client scene, ground height, playable bounds, and spawn
     actor-spawns.json               spawn points, groups, areas, and patrol paths
     collision.json                  collision source baked from the World scene
 ```
 
 One file per definition keeps reviews small and lets several people add or
-change different definitions without merge conflicts in one large file.
+change different definitions without merge conflicts in one large file. The
+development Worlds themselves, their scenes, and their layouts are described in
+[Development Worlds](../docs/DEVELOPMENT_WORLDS.md).
 
 ## Rules
 
 - A definition file is named after its id: `definitions/weapon.training_shortbow.json`
-  must contain `"id": "weapon.training_shortbow"`. Ids use lowercase letters,
-  digits, `.`, `_`, and `-`, start and end with a letter or digit, and never use
-  a Windows device name such as `con` or `nul` before the first dot.
+  must contain `"id": "weapon.training_shortbow"`. Ids have at most 128
+  characters, use lowercase letters, digits, `.`, `_`, and `-`, start and end
+  with a letter or digit, and never use a Windows device name such as `con` or
+  `nul` before the first dot.
 - A definitions directory contains only `<id>.json` files. Hidden files are
   ignored; any other file or subdirectory fails compilation. `items/vendors`
   follows the same rules: `vendors/vendor.city_general_store.json` must contain
   `"id": "vendor.city_general_store"`. A catalog without vendor profiles may
   omit the directory.
-- Item content uses catalog format version 5, set by `formatVersion` in
-  `items/catalog.json`. The actor catalog and every `actor-spawns.json` use
-  format version 4. The compilers reject any other version.
+- Every content file carries a format version, and its reader accepts only the
+  version it implements. The item catalog format is described in
+  [Item Catalog Authoring](items/README.md#authoring-contract). The actor
+  catalog and every `actor-spawns.json` share one format, whose version is
+  `WorldActorDataFormat.Version` in the WorldData runtime.
 - Every directory below `worlds/` except hidden ones is a World and must contain
   `world.json`, `actor-spawns.json`, and `collision.json`. Both World compilers
   fail on an incomplete World instead of skipping it, because the
   SimulationWorker cannot start a World without all three.
 - `actor-spawns.json` must declare the `worldId` of its directory, and the World
   directory name must equal the manifest `worldId`.
-- Every compiler parses strictly: unknown properties, duplicate properties,
-  comments, trailing commas, and missing required values fail.
+- The item and actor compilers, and the services that load `combat-rules.json`
+  and `appearance.json`, parse strictly: unknown properties, duplicate
+  properties, comments, trailing commas, and missing required values fail.
+  `collision.json` is written only by the Unity collision bake.
 - Files are written in the canonical format of the Unity content tools, so a save
   without changes produces no diff. Item files, including vendor profiles, use
   ordered DataContract JSON with two-space indentation. Actor and spawn files use
@@ -70,13 +78,13 @@ change different definitions without merge conflicts in one large file.
   package fails a test.
 
 The item authoring contract is described in [items/README.md](items/README.md).
-The actor and spawn contract is described in
-[../docs/NPC_AND_MOB_SYSTEM_DESIGN.md](../docs/NPC_AND_MOB_SYSTEM_DESIGN.md).
+The actor and spawn model is described in
+[NPC And Mob System Design](../docs/NPC_AND_MOB_SYSTEM_DESIGN.md).
 
 ## Examine Text And Menu Options
 
-Actor format version 4 added the player-facing text of the right-click world
-menu, described in [Game Features](../docs/GAME_FEATURES.md#world-menu):
+Every actor carries the player-facing text of the right-click world menu,
+described in [Game Features](../docs/GAME_FEATURES.md#world-menu):
 
 - Every actor has an `examineText`, one trimmed line of 1 to 200 characters
   without control characters, which Examine shows, such as "A lean, hungry
@@ -92,10 +100,9 @@ Both limits fit the realtime protocol limits that `WorldActorSpawn` carries.
 
 ## Collision Bounds
 
-Actor format version 5 added `collisionBounds` to every actor definition, the
-box that blocks character movement, with the same fields as `interactionBounds`:
-a center offset from the actor's position and a size, aligned to the World axes
-whatever the spawn's yaw.
+Every actor definition has `collisionBounds`, the box that blocks character
+movement, with the same fields as `interactionBounds`: a center offset from the
+actor's position and a size, aligned to the World axes whatever the spawn's yaw.
 
 - A resource node has a box of positive size up to 16 m on each axis. Resource
   nodes never move, and a depleted node keeps its footprint, such as a stump or
@@ -167,12 +174,11 @@ compiled item catalog:
 `combat/combat-rules.json` holds the combat values that belong to no item or
 actor. It has no compiler: the SimulationWorker build copies it to
 `WorldData/Combat/combat-rules.json` in its output, and the worker validates it
-strictly at startup, with the same parser rules as the compilers. Edit it by
-hand and restart the worker.
+strictly at startup. Edit it by hand and restart the worker.
 
 | Field | Shipped value | Allowed |
 | --- | --- | --- |
-| `formatVersion` | 2 | 2 |
+| `formatVersion` | The current format | `CombatRulesFormat.Version` in the WorldData runtime |
 | `player.maximumHealth` | 100 | 1 to 1,000,000 |
 | `player.maximumMana` | 100, the mana that magic attacks spend; 0 leaves characters without magic | 0 to 1,000,000 |
 | `player.respawnDelaySeconds` | 5 | 0 to 300 |
@@ -184,8 +190,8 @@ hand and restart the worker.
 | `ruleSets` | `mvp-open-risk` with `playerVersusPlayer` `true` | 1 to 64 rule sets with unique, lowercase, sorted ids |
 
 Every Shard in the GameService topology names a rule set, and the worker stops
-when its Shard names one that this file does not define.
-`EveryConfiguredShardRuleSetIsDefined` keeps the checked-in topology and
+with `shard_rule_set_unknown` when its Shard names one that this file does not
+define. `EveryConfiguredShardRuleSetIsDefined` keeps the checked-in topology and
 this file in step.
 
 ## Character Appearance
@@ -194,16 +200,16 @@ this file in step.
 [Equipment Visuals Design](../docs/EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server)
 describes. It has no compiler: the GameService and SimulationWorker builds copy it
 to `WorldData/Characters/appearance.json` in their output, and both validate it
-strictly at startup, with the same parser rules as the compilers. GameService
-checks every look it stores against it and refuses to start when a stored look
-names an option the file no longer offers; remove an option only after a data
-migration moved the looks that use it.
+strictly at startup. GameService checks every look it stores against it and
+refuses to start when a stored look names an option the file no longer offers;
+remove an option only after a data migration moved the looks that use it.
+SimulationWorker also picks the looks and outfits of development bots from it.
 
 | Field | Meaning |
 | --- | --- |
-| `formatVersion` | 1 |
+| `formatVersion` | `CharacterAppearanceFormat.Version` in the WorldData runtime |
 | `kinds` | Each kind once, one of `face`, `eyes`, `scar`, `tattoo`, `underwear`, and `hair`, with `required`, exactly one per offered slot instead of at most one, and `changesInGame`, changed in the game after creation |
-| `bodyModels` | 1 to 16 body models, the default first, each with its `offers`: a listed kind, a visual slot for a kind worn per slot such as `legs` for underwear or empty, and 1 to 32 options, the first the default |
+| `bodyModels` | 1 to 16 body models, the default first, each with at most 16 `offers`: a listed kind, a visual slot for a kind worn per slot such as `legs` for underwear or empty, and 1 to 32 options, the first the default |
 | `visibleEquipmentSlots` | At most 8 equipment slot ids, each once, whose items other players see, in the order the worker sends them |
 
 Body model ids and options are named as the body models and their appearance
@@ -220,26 +226,34 @@ at `src/Shared/WorldData/Generated/`:
 | --- | --- | --- |
 | `Items/core.item-catalog.json` | `items/` | `tools/ItemCatalogCompiler` |
 | `Worlds/<world-id>/world-actors.json` | `actors/` and the World's `actor-spawns.json`, with loot, vendor capabilities, and resource profiles checked against `Items/core.item-catalog.json` | `tools/WorldActorCompiler` |
-| `WorldCollision/<world-id>/` | the World's `collision.json` | `tools/WorldCollisionCompiler` |
+| `WorldCollision/<world-id>/` | the World's `collision.json` and the boxes of its placed resource nodes from `world-actors.json` | `tools/WorldCollisionCompiler` |
 
 Generated data is committed, so the services and the client run without a
 content build step, and CI verifies that it matches its sources. The client
 loads collision through Addressables at `WorldCollision/<world-id>/manifest.json`
 and `WorldCollision/<world-id>/<chunk>.bytes`; the generated folder is one
 Addressables folder entry.
-GameService and SimulationWorker copy `world.json` and the generated files into
-their output `WorldData` folders at build time.
+
+The builds copy what each process reads into its output `WorldData` folder:
+GameService gets the item catalog, `appearance.json`, and every `world.json`,
+and SimulationWorker additionally gets `combat-rules.json` and every World's
+`world-actors.json` and collision chunks. GameService also copies
+`development/item-packages.json`, and ActiveSimulationBots copies the collision
+chunks to plan its walks.
 
 Every World's `world-actors.json` embeds the shared actor catalog, so an actor
 change recompiles every World. The Unity Actor Studio does this on save.
 
 ## Compile And Verify
 
-Each compiler works on every World at once. Run the item catalog compiler
-before the actor compiler, because actor content refers to item content: the
-actor compiler reads `Items/core.item-catalog.json` from the generated root and
-checks Mob loot, vendor capabilities, and resource profiles against it. From the
-repository root:
+The actor and collision compilers work on every World at once. Every compiler
+finds the repository root from the current directory, so it runs from any
+directory of the repository. Run the item catalog compiler before the actor
+compiler, because actor content refers to item content: the actor compiler reads
+`Items/core.item-catalog.json` from the generated root and checks Mob loot,
+vendor capabilities, and resource profiles against it. Run the collision
+compiler last, because it reads the compiled World actors. From the repository
+root:
 
 ```powershell
 dotnet run --project tools/ItemCatalogCompiler
@@ -248,10 +262,17 @@ dotnet run --project tools/WorldCollisionCompiler
 ```
 
 Add `-- --verify` to check that the committed generated data matches the
-content without writing anything; this is what CI runs. A stale or missing
-generated file, or generated data for content that no longer exists, returns
-exit code 1. Compile mode deletes such orphaned generated data together with its
-Unity `.meta` file.
+content without writing anything; this is what CI runs. Verify mode fails when
+authoring, runtime JSON, references, bounds, transforms, fingerprints, ordering,
+or a revision diverge, when a World directory lacks one of its three files, or
+when generated data exists for content that no longer exists. A failure returns
+exit code 1 and reports what is stale or invalid. Compile mode deletes orphaned
+generated data together with its Unity `.meta` file.
+
+Expected result: the item compiler prints the catalog revision with its numbers
+of definitions and Secure Container tiers, the actor compiler prints every World
+with its revision and its numbers of definitions and runtime instances, and the
+collision compiler prints every World with its revision and chunk count.
 
 `--content-root <directory>` and `--generated-root <directory>` point a compiler
 at other directories. The Unity content tools use them to validate candidate
@@ -263,10 +284,149 @@ content in a temporary directory before anything is written.
 `MMORPG > Tools > Content > Spawn Authoring` load these files, validate every
 change with the same command-line compilers that CI runs, and write all affected
 source and generated files in one transaction that is rolled back on failure.
-The Item Catalog window edits item definitions and vendor profiles, and Actor
-Studio edits NPCs, Mobs, and resource nodes. The economy settings, the tool kind
-identities, and the resource profiles are edited by hand in their `catalog.json`
-files.
+The tools need `dotnet` on the path, because they run the compilers with
+`dotnet run`. The Item Catalog window edits item definitions and vendor profiles,
+as [Item Catalog Authoring](items/README.md#unity-editor-workflow) describes.
+Actor Studio edits NPCs, Mobs, and resource nodes, and Spawn Authoring places
+them in a World.
+
+Everything else is edited by hand in its `catalog.json`: the item catalog
+settings and identities, and the actor catalog's factions, presentation
+archetypes, and profiles. The one exception is a respawn profile's population
+limit and respawn delay, which Spawn Authoring edits.
+
 `MMORPG > Tools > World Collision > Bake Open Scene` bakes collision from the
 open World scene into `worlds/<world-id>/collision.json` and the generated
-chunks.
+chunks, and `Bake World Scenes` bakes every World scene, as
+[Rebuild And Bake Workflow](../docs/DEVELOPMENT_WORLDS.md#rebuild-and-bake-workflow)
+describes.
+
+The saved files are the only source: SimulationWorker never reads a scene, and
+the command-line compilers rebuild every compiled actor and spawn without Unity.
+
+Both actor tools share these behaviors:
+
+- A searchable list with filters and a `Problems` filter. Hold Ctrl or Shift to
+  select several entries; one editor then edits all of them, a field whose
+  values differ shows a mixed value, a field applies only to the selected
+  entries that have it, and a vector edit changes only the edited axis of each
+  entry.
+- Referenced profiles, presentation archetypes, actors, and patrol paths are
+  chosen from dropdowns of the existing entries. A reference to a removed entry
+  stays visible, marked as unknown, and fails validation.
+- Live validation with the shared compiler. A field with a problem turns red,
+  the list marks its entry, and the problems panel below names the field path,
+  such as `interactionBounds.sizeY`; clicking a problem selects the entry and
+  focuses the field. A clean workspace shows `No problems found.`.
+- Undo and redo with Ctrl+Z and Ctrl+Y while no text field has keyboard focus;
+  every edit, such as a whole drag in the Scene view, is one step. Unsaved
+  edits survive script reloads, `Reload` discards them after a confirmation, and
+  closing the window asks whether to save them.
+- `Preview Changes` compiles with the content compiler and lists every canonical
+  file, with changed files in bold, or reports `No canonical changes detected.`.
+  `Save + Compile` lists the runtime changes for confirmation with
+  `Write files`, writes the actor catalog, one file per actor, the spawn file,
+  and the runtime JSON of every World in one transaction, deletes the definition
+  file of a removed actor, and then recompiles the World collision. When that
+  last step fails, the status says so, and the collision stays stale until
+  `tools/WorldCollisionCompiler` runs. `Verify Canonical` runs the actor
+  compiler's verify mode. A save without changes leaves every file byte for byte
+  the same.
+
+### Actor Studio
+
+Actor Studio edits the shared actor catalog that every World compiles against.
+Its list filters by actor kind, faction, capability, tag, and problems. With
+several actors selected, kind, faction, disposition, presentation, tags, Mob
+lifecycle settings, and interaction and collision bounds edit every selected
+actor at once; id, display name, examine text, and capabilities are edited one
+actor at a time. A capability's `Profile` dropdown lists the vendor profiles of
+the compiled item catalog for a `vendor` capability and the resource profiles
+for a `gathering` capability.
+
+1. Open `MMORPG > Tools > Content > Actor Studio`. Create an actor from a
+   template with `New NPC`, `New Mob`, or `New Resource Node`, or select actors
+   and click `Duplicate`, which copies each with a new unique stable id, such as
+   `npc.city_services.copy`.
+2. Fill in the `Actor Definition` section: kind, faction, disposition,
+   `Stable Actor Id`, `Display Name`, and `Examine Text`. Choose the
+   `Presentation Archetype` and add tags with `Add Tag`.
+3. For a Mob, choose the profiles under `Combat And Lifecycle`: damage policy,
+   activity, respawn, combat, brain, locomotion, and loot profile, corpse
+   persistence (`Live` or `Durable`), and corpse lifetime. NPCs and resource
+   nodes show a note instead, because they are always invulnerable.
+4. Set the `Authoritative Interaction Bounds`, `Local Center` and `Size`, which
+   a front-view preview draws. For a resource node also set `Collision Center`
+   and `Collision Size`, the box that blocks walking; for NPCs and Mobs both stay
+   zero and cannot be edited.
+5. Under `Composable Capabilities`, use `Add Capability`, then set each
+   capability's `Stable Capability Id`, `Kind`, `Display Name`, `Menu Option`,
+   and, for a vendor or gathering capability, its `Profile`. `Move Up`,
+   `Move Down`, and `Remove` change the list, whose order is the menu order.
+6. Click `Preview Changes`, then `Save + Compile`, then `Verify Canonical`.
+
+Expected result: the problems panel shows `No problems found.`, the preview
+marks the changed files, the save writes them, and verification reports the
+same revisions as the save.
+
+Renaming and deleting protect the spawns. A changed `Stable Actor Id` of an
+actor that only the edited World places renames the actor and its spawns in one
+undo step; an actor that another World places keeps its id, and the status
+names that World. `Delete` removes only actors that no spawn places and
+otherwise lists the spawns that place them.
+
+Each presentation archetype maps to a prefab in
+`Assets/Content/WorldActors/WorldActorPresentationRegistry.asset`. Assign a
+prefab in the archetype's `Replaceable Prefab` field; it must be stored below
+`Assets/Prefabs/WorldActors`, an Addressables folder entry, and the field
+rejects any other prefab. The registry stores it as an Addressables reference
+and changes presentation only. An archetype without a prefab shows a tinted
+fallback, with one warning, until one is assigned. `Create Presentation
+Registry` appears only when the registry asset is missing. How the client shows
+actors is described in
+[Unity Client Architecture](../docs/UNITY_CLIENT_ARCHITECTURE.md).
+
+### Spawn Authoring
+
+Spawn Authoring edits the spawn points, groups, areas, and patrol paths of
+`development-world-1`, the World the actor tools open, in one list that filters
+by type, actor, and problems. With several entries selected, actor, patrol path,
+position, yaw, group layout, area settings, and Mob lifecycle settings edit
+every selected entry that has them. A new entry gets a generated stable id, such
+as `development_world_1.new_point`. Edit the `actor-spawns.json` of another
+World by hand, then run the actor and collision compilers as
+[Compile And Verify](#compile-and-verify) shows. Keep every position and patrol
+point on clear, flat ground; the
+[Layout Tests](../docs/DEVELOPMENT_WORLDS.md#layout-tests) check it.
+
+1. Open `Assets/Scenes/DevelopmentWorld1.unity`, a Scene view, and
+   `MMORPG > Tools > Content > Spawn Authoring`. With `Scene Preview` on, the
+   Scene view draws every entry and the handles of the selected ones.
+2. Create an entry with `New Point`, `New Group`, `New Area`, or
+   `New Patrol Path`, which places it at the Scene view pivot, or select one in
+   the list or by clicking its marker in the Scene view; Ctrl-click adds to the
+   selection. `Duplicate` copies the selection one unit along X, and `Frame`
+   frames it in the Scene view.
+3. Set the `Stable Id`, the `Actor`, and for a Mob spawn the `Patrol Path`. Move
+   the selection with its handle in the Scene view or set `Position` and
+   `Yaw Degrees`, and click `Ground Snap` to put it onto the scene collision
+   below it. A group has `Rows`, `Columns`, and `Spacing`; an area has
+   `Minimum XZ`, `Maximum XZ`, `Count`, and `Seed`; a patrol path has patrol
+   points with `Wait Seconds`, edited with `Add Patrol Point`, `Move Up`,
+   `Move Down`, and `Remove`.
+4. Check `Mob Lifecycle` when the entry places a Mob. Its activity and respawn
+   profile and the respawn profile's `Population Limit` and
+   `Respawn Delay Seconds` belong to the Mob definition and its respawn profile,
+   so a change applies wherever that Mob spawns. `Presentation Preview` shows the
+   prefab mapped to the placed actor.
+5. Click `Preview Changes`, then `Save + Compile`, then `Verify Canonical`.
+
+Expected result: the preview shows the exact neutral JSON of the spawn file,
+the save writes it with the runtime JSON of every World and recompiles the
+collision, and verification reports the same revisions. `Ground Snap` reports
+when no collider lies below an entry.
+
+Renaming a patrol path updates the spawns that follow it in the same undo step.
+`Delete` keeps a patrol path that a remaining spawn still follows and says so.
+How to check the result in the running game is in
+[Manual Testing](../docs/MANUAL_TESTING.md).
