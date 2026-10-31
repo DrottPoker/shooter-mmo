@@ -96,9 +96,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
                 else if (manifest.HasSkeleton)
                 {
-                    // A body without clips of its own plays the clips of animation libraries.
+                    // A body without clips of its own plays the clips of animation libraries. A
+                    // skeleton outside the Humanoid avatar, such as Quadruped, imports as Generic.
+                    var humanoid = ArtAssetManifests.LoadSkeleton(manifest.skeleton).IsHumanoid;
                     Assert.That(importer.importAnimation, Is.EqualTo(manifest.clips.Length > 0), path);
-                    Assert.That(importer.animationType, Is.EqualTo(ModelImporterAnimationType.Human), path);
+                    Assert.That(importer.animationType,
+                        Is.EqualTo(humanoid ? ModelImporterAnimationType.Human : ModelImporterAnimationType.Generic), path);
                     Assert.That(importer.avatarSetup, Is.EqualTo(ModelImporterAvatarSetup.CreateFromThisModel), path);
                     Assert.That(importer.optimizeGameObjects, Is.False, path);
                 }
@@ -113,7 +116,9 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EverySkinnedModelHasAHumanoidAvatarFromItsSkeleton()
         {
-            var skinned = ExportedManifests().Where(manifest => manifest.HasSkeleton).ToArray();
+            var skinned = ExportedManifests()
+                .Where(manifest => manifest.HasSkeleton && ArtAssetManifests.LoadSkeleton(manifest.skeleton).IsHumanoid)
+                .ToArray();
             Assert.That(skinned.Where(manifest => manifest.IsSkinned), Is.Not.Empty);
             Assert.That(skinned.Where(manifest => manifest.IsAnimationLibrary), Is.Not.Empty);
             foreach (var manifest in skinned)
@@ -147,6 +152,51 @@ namespace Mmorpg.Client.Tests.EditMode
                     if (!string.IsNullOrEmpty(bone.parent))
                     {
                         Assert.That(found[0].parent.name, Is.EqualTo(bone.parent), path + " " + bone.name);
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void EveryCreatureOutsideTheHumanoidAvatarHasAGenericAvatarAndItsOwnClips()
+        {
+            var creatures = ExportedManifests()
+                .Where(manifest => manifest.IsSkinned && !ArtAssetManifests.LoadSkeleton(manifest.skeleton).IsHumanoid)
+                .ToArray();
+            Assert.That(creatures, Is.Not.Empty);
+            foreach (var manifest in creatures)
+            {
+                var path = manifest.UnityTargetPath;
+                var importer = (ModelImporter)AssetImporter.GetAtPath(path);
+                Assert.That(importer.avatarSetup, Is.EqualTo(ModelImporterAvatarSetup.CreateFromThisModel), path);
+                // The game moves the creature, so no clip moves it.
+                Assert.That(importer.motionNodeName, Is.Empty, path);
+                var avatar = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Avatar>().Single();
+                Assert.That(avatar.isValid, Is.True, path);
+                Assert.That(avatar.isHuman, Is.False, path);
+
+                // Every clip of its export, with its length and loop, and every bone a transform
+                // under its parent.
+                var clips = AssetDatabase.LoadAllAssetsAtPath(path).OfType<AnimationClip>()
+                    .Where(clip => !clip.name.StartsWith("__preview__", StringComparison.Ordinal))
+                    .ToDictionary(clip => clip.name);
+                foreach (var record in manifest.export.clips)
+                {
+                    Assert.That(clips.TryGetValue(record.name, out var clip), Is.True, path + " " + record.name);
+                    Assert.That(clip.length, Is.EqualTo(record.frames / ArtModelImportRules.ClipFrameRate).Within(1e-3f), path + " " + record.name);
+                    Assert.That(clip.isLooping, Is.EqualTo(record.loop), path + " " + record.name);
+                }
+
+                // The model's own root takes the file's name, which may be the armature's.
+                var transforms = AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponentsInChildren<Transform>(true)
+                    .Where(transform => transform.parent != null)
+                    .ToDictionary(transform => transform.name);
+                foreach (var bone in ArtAssetManifests.LoadSkeleton(manifest.skeleton).bones)
+                {
+                    Assert.That(transforms.TryGetValue(bone.name, out var found), Is.True, path + " " + bone.name);
+                    if (!string.IsNullOrEmpty(bone.parent))
+                    {
+                        Assert.That(found.parent.name, Is.EqualTo(bone.parent), path + " " + bone.name);
                     }
                 }
             }
@@ -265,11 +315,14 @@ namespace Mmorpg.Client.Tests.EditMode
                     .Where(clip => !clip.name.StartsWith("__preview", StringComparison.Ordinal))
                     .ToDictionary(clip => clip.name);
                 Assert.That(clips.Keys, Is.EquivalentTo(manifest.clips), path);
+                // A Humanoid clip is human motion; a creature's own skeleton, such as the
+                // Quadruped, moves its transforms.
+                var humanoid = ArtAssetManifests.LoadSkeleton(manifest.skeleton).IsHumanoid;
                 foreach (var record in manifest.export.clips)
                 {
                     var clip = clips[record.name];
                     var where = path + " " + record.name;
-                    Assert.That(clip.isHumanMotion, Is.True, where);
+                    Assert.That(clip.isHumanMotion, Is.EqualTo(humanoid), where);
                     Assert.That(clip.isLooping, Is.EqualTo(record.loop), where);
                     Assert.That(clip.length, Is.EqualTo(record.frames / ArtModelImportRules.ClipFrameRate).Within(0.001f), where);
                 }

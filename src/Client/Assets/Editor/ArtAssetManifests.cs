@@ -495,6 +495,10 @@ namespace Mmorpg.Client.Editor
         // The constants of the cloth on its chains, which ClothChainSolver, ClothPose, and the art
         // pipeline's cloth_core.py share.
         public ArtSkeletonCloth cloth = new ArtSkeletonCloth();
+
+        // A skeleton with bones of the Unity Humanoid avatar, such as Humanoid; one without, such as
+        // Quadruped, imports with a Generic avatar.
+        public bool IsHumanoid => bones.Any(bone => !string.IsNullOrEmpty(bone.human));
     }
 
     [Serializable]

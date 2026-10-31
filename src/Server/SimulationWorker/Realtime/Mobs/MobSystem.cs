@@ -561,10 +561,11 @@ internal sealed class MobSystem
             return;
         }
 
+        // A patrolling Mob walks; a Mob in a fight or on its way home runs.
         var next = PlayerMovementSimulation.Step(
             agent.Movement,
             new PlayerMovementInput(0, serverTick, path),
-            agent.Locomotion.Settings,
+            agent.State == MobBrainState.Patrol ? agent.Locomotion.PatrolSettings : agent.Locomotion.Settings,
             PlayerCarryState.Default,
             collisionWorld,
             queryBuffer);

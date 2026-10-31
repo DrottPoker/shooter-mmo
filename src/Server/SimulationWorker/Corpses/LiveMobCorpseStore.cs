@@ -22,6 +22,7 @@ public sealed record LiveMobCorpseState(
     double PositionX,
     double PositionY,
     double PositionZ,
+    float YawDegrees,
     string PresentationKey,
     Guid GeneralContainerId,
     Guid EquipmentContainerId,
@@ -32,9 +33,6 @@ public sealed record LiveMobCorpseState(
     IReadOnlyList<LiveMobCorpseLootEntry> Loot) : ICorpseRuntimePresence
 {
     public bool IsEmpty => Loot.Count == 0;
-
-    // Mob corpses have no model that faces anywhere yet.
-    public float YawDegrees => 0f;
 
     // A Mob corpse has no character look.
     public CorpseLook? Look => null;
@@ -329,6 +327,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             || string.IsNullOrWhiteSpace(corpse.SourceActorDefinitionId)
             || string.IsNullOrWhiteSpace(corpse.SourceDisplayName)
             || string.IsNullOrWhiteSpace(corpse.ShardId)
+            || !float.IsFinite(corpse.YawDegrees)
             || string.IsNullOrWhiteSpace(corpse.PresentationKey)
             || corpse.GeneralContainerId == Guid.Empty
             || corpse.EquipmentContainerId == Guid.Empty
@@ -369,6 +368,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             corpse.PositionX.ToString("R", CultureInfo.InvariantCulture),
             corpse.PositionY.ToString("R", CultureInfo.InvariantCulture),
             corpse.PositionZ.ToString("R", CultureInfo.InvariantCulture),
+            corpse.YawDegrees.ToString("R", CultureInfo.InvariantCulture),
             corpse.PresentationKey,
             corpse.GeneralContainerId.ToString("N"),
             corpse.EquipmentContainerId.ToString("N"),

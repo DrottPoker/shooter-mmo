@@ -1,6 +1,6 @@
 # Art Pipeline
 
-Last updated: 2026-10-26
+Last updated: 2026-10-30
 
 This document describes how 3D models travel from Blender to the Unity client:
 where the files live, the review stages an asset passes before it may reach the
@@ -38,7 +38,8 @@ starting points that a person then edits, such as the gait model's clips in an
 
 ## What To Do
 
-Every kind of art has one short recipe in
+Every model is built by the [modeling rules](#modeling-rules), and every kind of
+art has one short recipe in
 [Local Development](LOCAL_DEVELOPMENT.md#art-pipeline-with-blender). After an
 export, Unity creates the project materials an export lacks and updates the
 appearance catalogs by itself when it gets focus, so no menu command stands
@@ -335,6 +336,15 @@ over, what it collides with, the bone its frame is, and its chains with their
 angles around the hips. `ClothPoseTests` checks the client's constants against
 it, and `cloth_core.py` reads it; see [Cloth Parity](#cloth-parity).
 
+`Quadruped` is the skeleton of four-legged creatures, such as the wolf: 30
+deforming bones outside any Unity avatar, so its assets import with a Generic
+rig and their own clips. `Hips` is the root, with `Spine`, `Chest`, `Neck`, and
+`Head` along the back, `Jaw` and the ears `Ear_L` and `Ear_R` on the head, and
+the tail `Tail1` to `Tail4` behind the hips. Each front leg runs from `Chest`
+through `Shoulder`, `UpperArm`, `Forearm`, and `FrontFoot` to `FrontToes`, and
+each hind leg from `Hips` through `Thigh`, `Shin`, and `HindFoot` to
+`HindToes`. It has no sockets yet.
+
 The character faces +Y and its right is +X, so the `_R` bones sit at +X. Limbs
 bend about their bone X axis, arms rise about Z, and every bone twists about Y.
 
@@ -399,7 +409,10 @@ A skinned model also gets:
 
 - A Unity Humanoid avatar created from the model, with every bone of its
   skeleton definition that names a human bone mapped explicitly, and Unity's
-  default muscle limits, twist, and stretch.
+  default muscle limits, twist, and stretch, when its skeleton maps human bones,
+  such as `Humanoid`. A creature's own skeleton without human bones, such as
+  `Quadruped`, gets a Generic avatar created from the model instead, without a
+  root motion node, so its clips turn its bones and the game moves the creature.
 - `Optimize Game Objects` off, so every bone and socket stays a transform that
   equipment can attach to, and readable meshes, because the game combines the
   visible body parts into one mesh.
@@ -489,7 +502,8 @@ a record names a material the model does not use, or a Unity material's
 `_BaseColor`, `_Metallic`, `_Smoothness`, or `_BaseMap` texture differs from the
 approved Blender material recorded at export, so the game shows the colors and
 the painted textures the reviewer approved. For a skinned model and an animation
-library it fails when the avatar is not a valid Humanoid, a human bone maps to another bone than the
+library it fails when the avatar is not a valid Humanoid, or a valid Generic
+avatar for a creature's own skeleton, a human bone maps to another bone than the
 skeleton definition says, a bone or socket is missing or has another parent, or
 a clip is missing, has another length, or loops differently than recorded. For
 an animation library it also fails when its avatar is not made on the pose of
@@ -530,6 +544,27 @@ prefab puts in the body of its model when it spawns; see
 body model is a new Prefab Variant with the same components and an entry in
 that list. `PlayerBodyAssetTests` checks both variants, the controller, the
 models, and both player prefabs.
+
+A Mob with a creature model of its own is built by
+`MMORPG > Tools > Art Pipeline > Build Creature Presentations`, which
+`CreaturePresentationBuilder` also runs in batch mode with
+`-executeMethod Mmorpg.Client.Editor.CreaturePresentationBuilder.Build`. It
+builds the creature's Animator controller from the clips of its model, such as
+`Assets/Art/Animation/WolfLocomotion.controller`, and rebuilds each world actor
+prefab of the creature in place, so it keeps its GUID and Addressables entry.
+The prefab is not a Prefab Variant of the model, because its root keeps the
+actor's own scale while the model may be larger: the model is a nested prefab
+instance in the child `Model`, with the controller on its Animator, no root
+motion, and transforms culled off screen, and a `CreatureAnimator` on the root
+drives it; see
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#creature-animation).
+`Mob_FeralWolf.prefab` shows the wolf at its size in `M_Wolf`, and
+`Mob_FeralAlpha.prefab` at 1.3 times in `M_Mob_FeralAlpha` below
+`Assets/Art/Materials/WorldActors`, `M_Wolf`'s texture with a darker
+`_BaseColor`, the one material override a creature prefab may have. Run the
+command again after an export changes a creature's clips. `CreaturePresentationTests`
+checks the controller, both prefabs, the darker coat, and that the clips' speeds
+are the wolves' patrol and chase speeds.
 
 ## Animation Libraries
 
@@ -1388,6 +1423,86 @@ The add-on runs any Python code it receives, without a sandbox, so it listens on
 localhost only. The pipeline never depends on it: approval and export always run
 Blender in the background from the scripts.
 
+## Modeling Rules
+
+Every model follows these rules, whoever or whatever builds it, a person in
+Blender, Claude Code through the Blender MCP server, or a script. They come from
+the reviewer's feedback on the human base characters and the first wolf, and they
+hold until the reviewer changes them here.
+
+- **A reference mesh and a designed cage.** Unless the reviewer says otherwise,
+  every model is built the way the [human base characters](#human-base-characters)
+  were:
+  1. The reference the reviewer gives: pictures of how the model should look,
+     such as a concept in a front and a side view, or a reference mesh, such as
+     the realistic bodies of Blender Studio's Human Base Meshes. Only when the
+     reviewer gives no reference is a reference mesh looked for, from a source
+     the reviewer approves; a download needs the reviewer's approval first.
+  2. A coarse cage of quads designed for the model, its topology decided once:
+     rings of a fixed number of sides around the trunk, the neck, and each limb,
+     joined at the coarse level, with parts such as the hands, the paws, and the
+     head fitted on their own.
+  3. The cage fitted to the reference, subdivided once first where the budget
+     allows: matched to the outlines of the reference pictures view by view, or
+     cast onto a reference mesh from points inside it, such as the joints; one
+     half built and mirrored to the other; and then relaxed along the surface.
+  4. When the whole model is built: unwrapped along its part borders and
+     hand-painted on its UVs.
+
+  Only player characters and NPCs get eyeballs of their own, with eyelids; a
+  Mob's eyes are part of its mesh and its colors.
+- **Agree on the method first.** How a model is built is agreed with the
+  reviewer before the work starts. Changing the method needs the reviewer's
+  approval. When a method gives a poor result, fix the result within the method
+  or ask; never switch to another method on your own.
+- **One part at a time.** Build and finish one part of the model, such as the
+  head, the legs with the paws, or the trunk, and show it to the reviewer before
+  starting the next. Never change several parts in one round, and leave a part
+  the reviewer accepted as it is while working on the next.
+- **Follow the reference closely.** When the reviewer gives a reference, such as
+  a concept picture or a reference mesh, put it into the `.blend` file at the
+  model's scale: pictures as reference images in the views they show, such as the
+  front and the side, and meshes in the `Reference` collection. Match the model
+  to it view by view, first the silhouette, then the planes, then the colors,
+  and compare the two side by side in the same views before showing a part.
+- **Polygon modeling only.** Build the model polygon by polygon, by hand in
+  Blender or with a script that places every vertex and face on purpose: quads
+  and triangles that follow the form, with edge loops around the joints so they
+  bend cleanly. Never sculpt, never generate the form from volumes, metaballs, or
+  distance fields, and never remesh or decimate a model automatically.
+- **Clean polygons on the form.** Use about the model's triangle budget from
+  [Art Direction](#art-direction-for-models-and-textures), never far below it,
+  and spend it on the form: more rings and loops where they round the silhouette
+  and show the planes of the reference, never ones that only add triangles to a
+  flat area. Keep every polygon as clean and regular as possible, so the model
+  reads well from the game camera.
+- **Easy to split, clean UVs.** Design the cage so the model splits easily into
+  its parts, such as the head, the neck, the trunk, each leg, the paws, the tail,
+  and the ears: an edge loop runs along every border between two parts, and every
+  face belongs to one part. The UV seams follow those loops and lines the camera
+  rarely sees, such as the middle of the belly, the inside of the legs, and under
+  the tail, and hands and paws open like gloves, in a back and a palm half with
+  strips for the digits. Each part unwraps into clean islands without stretching,
+  folds, or slivers; never with an automatic projection such as Smart UV Project.
+- **Hand-painted on the UVs, last.** Color a model with a texture hand-painted
+  on its UVs, never face by face: no color per face or per material, so the
+  color borders follow the design and not the polygons. Hand-painted means
+  painted stroke by stroke, by a person in Texture Paint mode or by a script
+  that places every stroke on purpose, never filled from rules over the faces.
+  Paint only when the whole model is built, so the painting is done once, over
+  the final UVs: the model is still built one part at a time, each part
+  accepted before the next, and painted when the last part is accepted.
+- **Even density.** Spread the polygons evenly over the whole model, with only as
+  many more as a detail needs where it matters, such as the face, the paws, or
+  the joints.
+- **Exact mirror symmetry.** Model one half and mirror it, so both sides are
+  identical. A model is only asymmetric where its design asks for it.
+- **Look before showing.** Look at every render critically, up close and from
+  every side, before sending it for review: wrong shapes, gaps, faces poking
+  through, stray colors, and anything that differs from the reference.
+- **Fix, do not restart.** When the reviewer points out flaws in a part that is
+  otherwise accepted, fix exactly those, without rebuilding the part.
+
 ## Art Direction For Models And Textures
 
 The setting asks for stylized low to mid poly art with exaggerated proportions,
@@ -1407,13 +1522,24 @@ For models and their textures this means:
   follows the rule.
 - What identifies an actor, such as the ore of a vein, is visible from every
   side and large enough to read at the default camera distance.
-- Flat-shaded facets and flat material colors, with a few materials per asset.
-  Characters are the exception: smooth shading with the form painted into their
-  textures, as on the human base characters.
+- Flat-shaded facets with hard edges, also on Mobs and other creatures, with
+  their colors hand-painted into a texture on their UVs (see Hand-painted on the
+  UVs, last, in [Modeling Rules](#modeling-rules)). Playable characters are the
+  exception: smooth shading with the form painted into their textures, as on
+  the human base characters. Props approved before 2026-10-30 keep their flat
+  material colors, and new props get their textures when the pipeline supports
+  textures on `static` assets; until then only `skinned` assets can have them.
 - The model fills the actor's `interactionBounds` from the content catalog, so
   the click area matches what the player sees.
-- A world prop stays within about 1,500 triangles. A playable character stays
-  within 10,000 triangles with its eyeballs, teeth, and tongue.
+- Triangle budgets, about what a model uses: about 2,000 for a prop, such as a
+  resource node or an attachment; about 6,000 for a Mob or another creature;
+  about 14,000 for a playable character with its eyeballs, teeth, and tongue.
+  The budget is a target, not a ceiling to stay far below: a new model ends
+  within about 10 % of it, above or below, and spends the triangles on the form,
+  the silhouette, and the details of the reference. Each asset's
+  `triangleBudget`, the most its export may have, allows the upper end, such as
+  6,600 for a Mob. Models approved before 2026-10-30 keep their triangles until
+  the reviewer asks for more.
 
 ## Human Base Characters
 
@@ -1485,8 +1611,9 @@ Blender process per step:
    hold, and the weights are mirror symmetric.
 3. `check-mesh`, `check-seams`, and `check-parts`: no open or over-shared edges,
    tiny faces, slivers, or loose pieces on the source bodies, exact mirror
-   symmetry, identical topology of both bodies and of every part, at most 10,000
-   triangles per character, matching cuts and normals between the parts, no texel
+   symmetry, identical topology of both bodies and of every part, at most 15,400
+   triangles per character, the upper end of its budget of about 14,000,
+   matching cuts and normals between the parts, no texel
    of `UVMap_Paint` that both sides of a body share, and a report of the color
    difference across the UV seams.
 4. `compare`: the content of each updated character against the committed file
@@ -1559,6 +1686,7 @@ weights.
 | `art/Paint/ForearmRunes` | `paint` | none | A one-sided `tattoo` over `M_Body`, layer 210, painted by a script on a canvas of the male and moved to the female: the runes of the fuþark, f u þ a r k, in a column down the outside of the left forearm between two thin lines, 30 mm apart, in the ink of `Tattoo`. Roughness 0.6. |
 | `art/Paint/Scar` | `paint` | none | A `scar` over `M_Face`, layer 100, on a canvas of the male, moved to the female, lifted out of the former male face `Scarred`: a pale scar with a darker outline over the brow, the outer corner of the right eye, and down the cheek. Roughness 0.5. |
 | `art/Paint/Tattoo` | `paint` | none | A `tattoo` over `M_Body`, layer 200, painted on a canvas of the male and moved to the female: a Nordic armband of two thin rings with interlocking chevrons and dots around each upper arm, and a round rune emblem of eight spokes, rings, and ticks on the upper breastbone, in dark blue-black, slightly faded ink. |
+| `art/Creatures/Wolf` | `skinned` | `Wolf` | The wolf of the Feral Wolf and the Feral Alpha Mobs, after the reviewer's concept picture, which the file holds as its front and side reference images: a grey low poly wolf with a charcoal saddle, mane, and tail top, a cream mask, chest, belly, and legs, blue eyes, a large mane, a long bushy tail, and dark paws with four toes each, 6,044 triangles, 1.78 m from the nose to the tail's tip and 1.13 m to the tips of the ears. Built by the [modeling rules](#modeling-rules) part by part, each a cage of quads subdivided once and fitted to the concept, the parts meeting at shared cage points without a seam: the head with modeled eyes, a dark lid around a domed eyeball, and an opening mouth, the legs with their paws, the trunk with the neck and the mane, and the tail. Hand-painted after the concept on one shared UV layout, 1024 px, `M_Wolf` with `T_Wolf`, the eyeballs at six times the texel density for the iris, the pupil, and the highlight. Rigged on the `Quadruped` skeleton as one mesh, `Wolf_Mesh`, its jaw, ears, and tail turning on their own bones. Its clips are its own, keyed by hand with the legs placed by their paws: `Idle` (120 frames, breathing, looking about, an ear flick, and a tail sway), `Walk` (16 frames, a lateral walk at 1.4 m/s, the Mobs' patrol speed), `Run` (12 frames, a rotary gallop at 4.5 m/s, their chase speed, with the spine flexing), `Attack` (30 frames, a lunge with the bite at frame 8), and `Death` (60 frames, a fall onto its side that lies on the ground). Model, rig, and clips approved 2026-10-30, exported, and shown in the game by `Mob_FeralWolf.prefab` and, 1.3 times larger and darker, `Mob_FeralAlpha.prefab`. |
 | `art/Characters/Human_Female` | `skinned` | `Female` | The female human base body, 1.70 m, with its source body, ten body parts, eyeballs, teeth, and tongue, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Blush` and `Freckles`. Model and rig approved 2026-10-24. The game shows it for the local player who chooses it in the Admin menu (F3) and for about half of the development bots. |
 | `art/Characters/Human_Male` | `skinned` | `Male` | The male human base body, 1.79 m, with the same topology as the female, its source body, 9,202 triangles, and the `Humanoid` rig. Its skin is plain under the underwear, which is paint of its own, painted again from the mesh with its baked occlusion; the faces `Stubble` and `Clean`. Model and rig approved 2026-10-24. The game shows it for every player until a body model is chosen, and for every corpse. |
 | `art/WorldActors/Resource_IronVein` | `static` | `Available`, `Depleted` | Three faceted rocks with chunky rust-orange iron ore in two crossing veins, 684 triangles; the depleted state keeps the rocks with broken flat tops and loose rubble, without ore, 194 triangles. The available state is about 1.5 m wide, 1.25 m deep, and 1.0 m high, inside the vein's 1.6 by 1.2 by 1.6 m interaction bounds; the depleted rubble spreads to about 1.9 by 1.7 m. Approved 2026-10-20. |

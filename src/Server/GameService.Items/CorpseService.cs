@@ -916,10 +916,7 @@ internal sealed partial class CorpseService(
             && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
             && !string.IsNullOrWhiteSpace(request.SourceDisplayName)
             && request.SourceDisplayName.Length <= 128
-            && string.Equals(
-                request.PresentationKey,
-                CorpseTransformRules.MobCorpsePresentationKey,
-                StringComparison.Ordinal)
+            && CorpseTransformRules.IsMobCorpsePresentationKey(request.PresentationKey)
             && request.LifetimeSeconds
                 is >= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MinimumLifetimeSeconds
                 and <= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MaximumLifetimeSeconds

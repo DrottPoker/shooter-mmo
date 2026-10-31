@@ -2,7 +2,7 @@
   "formatVersion": 5,
   "catalogId": "core",
   "worldId": "development-world-1",
-  "revision": "386d1921d797ac9a487902c5bb067aea1b0a22f6ec9e465432b2649883075efc",
+  "revision": "6de4a523f9c6189cd2e4d01a9ed71e0971fbf758c8a218516178e7e331ed422b",
   "factions": [
     {
       "id": "city",
@@ -153,16 +153,18 @@
     {
       "id": "mob.large_quadruped",
       "walkSpeed": 4.5,
+      "patrolSpeed": 1.4,
       "collisionRadius": 0.6,
       "collisionHeight": 1.6,
-      "structuralFingerprint": "73a343a32420fc4436d2474eefa7f6c6f02281c408a642e5a8ebe82bd2dcab31"
+      "structuralFingerprint": "653e3535266f8bc8bcf6801944743a1ff3c0cc9a55dc89002edbc621ec57bc86"
     },
     {
       "id": "mob.quadruped",
       "walkSpeed": 4.5,
+      "patrolSpeed": 1.4,
       "collisionRadius": 0.4,
       "collisionHeight": 1.1,
-      "structuralFingerprint": "178d689415f584e66d07a58ff948c4c280e2f9986022418b097243d8f82f226b"
+      "structuralFingerprint": "88065a89a504b42fe6cb1e9b4882d97d712f31cd0d595b4ccb7963fd7c17b441"
     }
   ],
   "lootProfiles": [

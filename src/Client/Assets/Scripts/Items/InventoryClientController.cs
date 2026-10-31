@@ -43,6 +43,9 @@ namespace Mmorpg.Client.Items
         // Set before the routine starts: its first step raises Changed synchronously, and a
         // listener that asks for state again must queue instead of starting a second routine.
         private bool refreshInProgress;
+        // Advanced when the account or character changes, so a refresh that still waits for a
+        // response of the previous session ends there without touching the next one's state.
+        private int refreshGeneration;
         private InventoryRefreshScope? queuedRefreshScope;
         private long queuedMinimumRevision = -1;
         private bool queuedOperationRefresh;
@@ -742,7 +745,7 @@ namespace Mmorpg.Client.Items
 
             refreshInProgress = true;
             var routine = StartCoroutine(
-                RefreshRoutine(scope, operationRefresh, minimumRevision));
+                RefreshRoutine(scope, operationRefresh, minimumRevision, refreshGeneration));
             // A routine that finished without yielding has already cleared the flag, and a
             // queued refresh it started has stored its own handle.
             if (refreshInProgress && refreshCoroutine == null)
@@ -754,7 +757,8 @@ namespace Mmorpg.Client.Items
         private IEnumerator RefreshRoutine(
             InventoryRefreshScope scope,
             bool operationRefresh,
-            long minimumRevision)
+            long minimumRevision,
+            int generation)
         {
             State.BeginLoading(operationRefresh);
             var succeeded = false;
@@ -780,6 +784,11 @@ namespace Mmorpg.Client.Items
                         characterId.ToString(),
                         value => response = value,
                         value => apiError = value);
+                    if (generation != refreshGeneration)
+                    {
+                        yield break;
+                    }
+
                     if (apiError == null
                         && TryMapBank(response, out var snapshot, out mapError))
                     {
@@ -807,6 +816,11 @@ namespace Mmorpg.Client.Items
                         characterId.ToString(),
                         value => response = value,
                         value => apiError = value);
+                    if (generation != refreshGeneration)
+                    {
+                        yield break;
+                    }
+
                     if (apiError == null
                         && TryMapRecovery(response, out var snapshot, out mapError))
                     {
@@ -834,6 +848,11 @@ namespace Mmorpg.Client.Items
                         characterId.ToString(),
                         value => response = value,
                         value => apiError = value);
+                    if (generation != refreshGeneration)
+                    {
+                        yield break;
+                    }
+
                     if (apiError == null
                         && TryMapFull(response, out var snapshot, out mapError))
                     {
@@ -900,6 +919,10 @@ namespace Mmorpg.Client.Items
                 if (attempt + 1 < MaximumRefreshAttempts)
                 {
                     yield return new WaitForSecondsRealtime(RefreshRetryDelaySeconds);
+                    if (generation != refreshGeneration)
+                    {
+                        yield break;
+                    }
                 }
             }
 
@@ -994,6 +1017,7 @@ namespace Mmorpg.Client.Items
 
             observedAccountId = accountId;
             observedCharacterId = characterId;
+            AbandonRefresh();
             sentOperationId = Guid.Empty;
             lastCompletedOperationId = Guid.Empty;
             serverRevisionFollower.Reset();
@@ -1015,6 +1039,18 @@ namespace Mmorpg.Client.Items
                     ClientSession.SelectedCharacter?.id,
                     out characterId)
                 && characterId != Guid.Empty;
+        }
+
+        // A refresh of the previous account or character, and the refresh queued after it, never
+        // reach the next one: the routine ends at its next response, and nothing waits for it.
+        private void AbandonRefresh()
+        {
+            refreshGeneration++;
+            refreshCoroutine = null;
+            refreshInProgress = false;
+            queuedRefreshScope = null;
+            queuedOperationRefresh = false;
+            queuedMinimumRevision = -1;
         }
 
         private void QueueRefresh(

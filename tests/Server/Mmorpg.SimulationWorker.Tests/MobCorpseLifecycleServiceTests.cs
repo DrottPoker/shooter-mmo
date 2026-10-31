@@ -31,6 +31,8 @@ public sealed class MobCorpseLifecycleServiceTests
             "local-shard-1",
             identity.RuntimeId);
         var wolf = actors.First(actor => actor.Definition.Id == "mob.feral_wolf");
+        // The wolf dies facing away from its spawn yaw.
+        wolf.SetPose(wolf.PositionX, wolf.PositionY, wolf.PositionZ, 137f);
         var now = new DateTimeOffset(2026, 7, 18, 12, 0, 0, TimeSpan.Zero);
         var timeProvider = new FixedTimeProvider(now);
         var liveStore = new LiveMobCorpseStore(timeProvider);
@@ -65,6 +67,9 @@ public sealed class MobCorpseLifecycleServiceTests
             Assert.Single(first.LiveCorpse.Loot).GrantId,
             Assert.Single(replay.LiveCorpse.Loot).GrantId);
         Assert.Equal(first.LiveCorpse, Assert.Single(liveStore.ListActive()));
+        // The corpse lies as the wolf fell: its own model, turned as it died.
+        Assert.Equal("corpse." + wolf.Definition.PresentationArchetypeId, first.LiveCorpse.PresentationKey);
+        Assert.Equal(137f, first.LiveCorpse.YawDegrees);
     }
 
     private static SimulationWorkerConfig LoadConfig()

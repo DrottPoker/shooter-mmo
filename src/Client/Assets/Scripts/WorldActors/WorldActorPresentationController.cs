@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
@@ -24,6 +25,8 @@ namespace Mmorpg.Client.WorldActors
             new Dictionary<string, AsyncOperationHandle<GameObject>>(StringComparer.Ordinal);
         private readonly HashSet<string> reportedArchetypes =
             new HashSet<string>(StringComparer.Ordinal);
+        // Mobs that left while falling dead, so the corpse that replaces each can play on the fall.
+        private readonly List<CreatureFall> falls = new List<CreatureFall>();
         private MaterialPropertyBlock materialProperties;
         private WorldActorClientController actorController;
         private RealtimeSimulationClient simulationClient;
@@ -39,6 +42,108 @@ namespace Mmorpg.Client.WorldActors
             Ready,
             Loading,
             Fallback
+        }
+
+        // A Mob that left the world while its creature fell dead: where and when, and how far into
+        // Death it was.
+        private readonly struct CreatureFall
+        {
+            public CreatureFall(string presentationArchetypeId, Vector3 position, float time, float secondsIntoDeath)
+            {
+                PresentationArchetypeId = presentationArchetypeId;
+                Position = position;
+                Time = time;
+                SecondsIntoDeath = secondsIntoDeath;
+            }
+
+            public string PresentationArchetypeId { get; }
+
+            public Vector3 Position { get; }
+
+            public float Time { get; }
+
+            public float SecondsIntoDeath { get; }
+        }
+
+        // A corpse takes over the fall of a Mob that left this long ago at most, this near it.
+        public const float FallHandoverSeconds = 3f;
+        public const float FallHandoverDistance = 1.5f;
+
+        // The views of every presented actor, such as the Mobs whose creatures show their life state.
+        public Dictionary<ulong, WorldActorView>.ValueCollection Views
+        {
+            get { return presentations.Values; }
+        }
+
+        // The loaded prefab of an archetype for another presentation of it, such as a Mob's corpse:
+        // true with the prefab once it is loaded; false while it loads, with loading true, or when
+        // the archetype has none. A load it starts presents the actors waiting for it when done.
+        // Until the registry itself has loaded every archetype counts as loading, so a corpse that
+        // arrives first still gets its model.
+        public bool TryGetArchetypePrefab(string presentationArchetypeId, out GameObject prefab, out bool loading)
+        {
+            if (!registryResolved)
+            {
+                prefab = null;
+                loading = true;
+                return false;
+            }
+
+            var state = ResolvePrefab(presentationArchetypeId, out prefab);
+            loading = state == PrefabState.Loading;
+            return state == PrefabState.Ready && prefab != null;
+        }
+
+        // Whether a Mob of the archetype still falls dead near the position. The worker sends a
+        // Mob's corpse before the Mob leaves, so the corpse waits for it and plays on its fall.
+        public bool IsFallingNear(string presentationArchetypeId, Vector3 position)
+        {
+            foreach (var view in presentations.Values)
+            {
+                if (view == null
+                    || !view.isActiveAndEnabled
+                    || !string.Equals(view.PresentationArchetypeId, presentationArchetypeId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var creature = view.GetComponent<CreatureAnimator>();
+                var offset = view.transform.position - position;
+                offset.y = 0f;
+                if (creature != null
+                    && creature.IsDead
+                    && offset.sqrMagnitude <= FallHandoverDistance * FallHandoverDistance)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // How far into Death the corpse of a Mob of the archetype should start, at the position:
+        // where a Mob of that archetype just left while falling, the rest of its fall; otherwise
+        // false, and the corpse lies in the last pose. Each fall hands over to one corpse.
+        public bool TryTakeFall(string presentationArchetypeId, Vector3 position, out float secondsIntoDeath)
+        {
+            secondsIntoDeath = -1f;
+            var now = Time.time;
+            falls.RemoveAll(fall => now - fall.Time > FallHandoverSeconds);
+            for (var index = 0; index < falls.Count; index++)
+            {
+                var fall = falls[index];
+                var offset = fall.Position - position;
+                offset.y = 0f;
+                if (string.Equals(fall.PresentationArchetypeId, presentationArchetypeId, StringComparison.Ordinal)
+                    && offset.sqrMagnitude <= FallHandoverDistance * FallHandoverDistance)
+                {
+                    secondsIntoDeath = fall.SecondsIntoDeath + (now - fall.Time);
+                    falls.RemoveAt(index);
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // Called by the composition root before the component is activated.
@@ -380,6 +485,16 @@ namespace Mmorpg.Client.WorldActors
             if (!presentations.Remove(entityId, out var view) || view == null)
             {
                 return;
+            }
+
+            var creature = view.GetComponent<CreatureAnimator>();
+            if (creature != null && creature.IsDead)
+            {
+                falls.Add(new CreatureFall(
+                    view.PresentationArchetypeId,
+                    view.transform.position,
+                    Time.time,
+                    creature.SecondsIntoDeath));
             }
 
             if (Application.isPlaying)

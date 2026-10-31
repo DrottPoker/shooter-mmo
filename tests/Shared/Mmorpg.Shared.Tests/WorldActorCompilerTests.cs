@@ -235,6 +235,7 @@ public sealed class WorldActorCompilerTests
     [InlineData("brain-leash", "brainProfiles[0].leashRange")]
     [InlineData("brain-give-up", "brainProfiles[0].giveUpSeconds")]
     [InlineData("locomotion-speed", "locomotionProfiles[0].walkSpeed")]
+    [InlineData("locomotion-patrol", "locomotionProfiles[0].patrolSpeed")]
     [InlineData("locomotion-height", "locomotionProfiles[0].collisionHeight")]
     [InlineData("loot-empty", "lootProfiles[0].entries must contain")]
     [InlineData("loot-chance", "lootProfiles[0].entries[0].chanceBasisPoints")]
@@ -287,6 +288,9 @@ public sealed class WorldActorCompilerTests
                 break;
             case "locomotion-speed":
                 locomotion.WalkSpeed = float.NaN;
+                break;
+            case "locomotion-patrol":
+                locomotion.PatrolSpeed = locomotion.WalkSpeed + 0.5f;
                 break;
             case "locomotion-height":
                 locomotion.CollisionHeight = locomotion.CollisionRadius * 2f;

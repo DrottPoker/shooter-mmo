@@ -385,13 +385,17 @@ namespace Mmorpg.Client.App
                     combatController,
                     worldMenu,
                     bodyLook));
-            AddSceneComponentIfMissing<CorpsePresentationController>(
-                presentation => presentation.Initialize(corpseController, runtimePrimitiveMaterial, sceneContext));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(
                     worldActorController,
                     simulationClient,
                     runtimePrimitiveMaterial));
+            AddSceneComponentIfMissing<CorpsePresentationController>(
+                presentation => presentation.Initialize(
+                    corpseController,
+                    runtimePrimitiveMaterial,
+                    sceneContext,
+                    actorPresentation));
             AddSceneComponentIfMissing<WorldInteractionTargetingController>(
                 targeting => targeting.Initialize(
                     worldInteractionController,

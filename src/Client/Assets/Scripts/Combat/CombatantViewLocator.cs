@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
@@ -93,6 +94,12 @@ namespace Mmorpg.Client.Combat
         public Dictionary<ulong, RemotePlayerView>.ValueCollection RemotePlayers
         {
             get { return sceneContext != null ? sceneContext.RemotePlayers : NoRemotePlayers.Values; }
+        }
+
+        // The presentations of the world actors in view, such as the Mobs.
+        public IEnumerable<WorldActorView> WorldActors
+        {
+            get { return actorPresentation != null ? actorPresentation.Views : (IEnumerable<WorldActorView>)Array.Empty<WorldActorView>(); }
         }
 
         // A visible presentation of the combatant, or false when it has none right now,

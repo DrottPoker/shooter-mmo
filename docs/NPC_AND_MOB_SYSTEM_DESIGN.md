@@ -257,7 +257,7 @@ and may reference a loot profile:
 | --- | --- | --- |
 | Combat | maximum health, attack style, attack damage type, damage roll, attack interval, attack range | The styles and damage types are the closed sets of [Combat And Setting Design](COMBAT_AND_SETTING_DESIGN.md) |
 | Brain | aggression (`aggressive` or `defensive`), detection range, leash range, give-up time | An aggressive brain needs a detection range, and the leash range exceeds it |
-| Locomotion | walk speed, collision radius and height | The capsule height exceeds twice its radius |
+| Locomotion | walk speed, patrol speed, collision radius and height | The patrol speed is above 0 and at most the walk speed, and the capsule height exceeds twice its radius |
 | Loot | ordered entries of item definition, quantity range, and chance in basis points | Every entry names a non-quest item definition whose stack holds the largest quantity |
 
 A Mob without a loot profile drops nothing. Loot rolls follow the authored entry

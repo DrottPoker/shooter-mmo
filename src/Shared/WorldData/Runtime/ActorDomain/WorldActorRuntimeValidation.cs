@@ -511,6 +511,7 @@ namespace Mmorpg.WorldData.Actors
                 AddRuntimeProblem(
                     LocomotionProfileProblem(
                         value.WalkSpeed,
+                        value.PatrolSpeed,
                         value.CollisionRadius,
                         value.CollisionHeight),
                     path,

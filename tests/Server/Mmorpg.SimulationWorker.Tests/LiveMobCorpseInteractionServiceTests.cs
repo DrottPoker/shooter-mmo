@@ -225,6 +225,7 @@ public sealed class LiveMobCorpseInteractionServiceTests
             0d,
             0d,
             0d,
+            0f,
             MobCorpseLifecycleService.DefaultPresentationKey,
             Guid.NewGuid(),
             Guid.NewGuid(),

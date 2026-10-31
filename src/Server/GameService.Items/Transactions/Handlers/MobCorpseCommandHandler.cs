@@ -193,10 +193,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             || !Identifiers.IsContentIdentifier(command.SourceActorDefinitionId)
             || string.IsNullOrWhiteSpace(command.SourceDisplayName)
             || command.SourceDisplayName.Length > 128
-            || !string.Equals(
-                command.PresentationKey,
-                CorpseTransformRules.MobCorpsePresentationKey,
-                StringComparison.Ordinal)
+            || !CorpseTransformRules.IsMobCorpsePresentationKey(command.PresentationKey)
             || !double.IsFinite(command.LifetimeSeconds)
             || command.LifetimeSeconds
                 is < WorldActorCorpseRules.MinimumLifetimeSeconds
