@@ -1,0 +1,33 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [
+    "off_hand"
+  ],
+  "category": "weapon",
+  "defaultPolicies": [ ],
+  "displayName": "Iron Greataxe",
+  "equipmentSlots": [
+    "main_hand"
+  ],
+  "id": "weapon.iron_greataxe",
+  "locationEligibility": {
+    "secureContainer": false
+  },
+  "maximumStackSize": 1,
+  "playerDestroyable": true,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 180,
+  "value": 180,
+  "weapon": {
+    "attackIntervalSeconds": 3,
+    "damageType": "normal",
+    "manaCost": 0,
+    "maximumDamage": 27,
+    "minimumDamage": 16,
+    "range": 2.5,
+    "weaponFamily": "axe"
+  }
+}

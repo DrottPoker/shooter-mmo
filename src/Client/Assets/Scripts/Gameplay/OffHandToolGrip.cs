@@ -7,7 +7,8 @@ namespace Mmorpg.Client.Gameplay
     // point along the haft, and the arm bends to reach it with the elbow on the side the clip bends
     // it to. Clips are keyed on one body and retargeted to every other, so without it the off hand
     // of a body with other proportions would miss the haft. Runs after the Animator posed the body,
-    // blended by how much of the pose comes from the tool's clip.
+    // blended by how much of the pose comes from the tool's clip. Place moves any arm this way, such
+    // as the hand that draws a bow's string onto the arrow's line.
     public static class OffHandToolGrip
     {
         // The off hand's socket is turned half around the forward axis of the main hand's socket.
@@ -17,11 +18,26 @@ namespace Mmorpg.Client.Gameplay
         // turns, a humanoid's shoulder muscle range.
         public const float MaximumShoulderDegrees = 15f;
 
+        // A weapon whose attack takes both hands, such as a greataxe, comes into the other hand only
+        // where its attack clip brings that hand to the haft: fully within the near distance of the
+        // grip point and not at all beyond the far one.
+        public const float NearMeters = 0.06f;
+        public const float FarMeters = 0.18f;
+
         // Where the off hand's socket goes: the grip point of the tool in the main hand's socket space.
         public static void Target(Transform mainSocket, Vector3 offHandGrip, out Vector3 position, out Quaternion rotation)
         {
             position = mainSocket.TransformPoint(offHandGrip);
             rotation = mainSocket.rotation * OffHandTurn;
+        }
+
+        // How firmly the off hand takes the haft where the clip puts it, from 1 near the grip point
+        // to 0 far from it.
+        public static float NearWeight(Transform mainSocket, Vector3 offHandGrip, Transform offSocket)
+        {
+            Target(mainSocket, offHandGrip, out var position, out _);
+            var distance = Vector3.Distance(offSocket.position, position);
+            return 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(NearMeters, FarMeters, distance));
         }
 
         public static void Pin(
@@ -40,8 +56,28 @@ namespace Mmorpg.Client.Gameplay
             }
 
             Target(mainSocket, offHandGrip, out var targetPosition, out var targetRotation);
-            var handRotation = targetRotation * Quaternion.Inverse(offSocket.localRotation);
-            var wrist = targetPosition - handRotation * Vector3.Scale(hand.lossyScale, offSocket.localPosition);
+            Place(shoulder, upper, lower, hand, offSocket, targetPosition, targetRotation * Quaternion.Inverse(offSocket.localRotation), weight);
+        }
+
+        // An arm reaches so the socket of its hand comes to a position with the hand turned to a
+        // rotation, the collar bone, if there is one, helping for a position just out of reach,
+        // blended with the pose the Animator gave it by weight.
+        public static void Place(
+            Transform shoulder,
+            Transform upper,
+            Transform lower,
+            Transform hand,
+            Transform socket,
+            Vector3 targetPosition,
+            Quaternion handRotation,
+            float weight)
+        {
+            if (weight <= 0f || upper == null || lower == null || hand == null || socket == null)
+            {
+                return;
+            }
+
+            var wrist = targetPosition - handRotation * Vector3.Scale(hand.lossyScale, socket.localPosition);
             var shoulderFrom = shoulder != null ? shoulder.rotation : Quaternion.identity;
             var upperFrom = upper.rotation;
             var lowerFrom = lower.rotation;

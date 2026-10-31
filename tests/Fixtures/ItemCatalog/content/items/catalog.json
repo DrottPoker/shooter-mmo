@@ -101,7 +101,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 6,
+  "formatVersion": 7,
   "progression": {
     "maximumCharacterLevel": 200
   },
@@ -149,14 +149,16 @@
       "combatStyle": "melee",
       "displayName": "Blade",
       "id": "blade",
-      "projectileSpeed": 0
+      "projectileSpeed": 0,
+      "windupSeconds": 0.35
     },
     {
       "ammunitionFamily": "arrow",
       "combatStyle": "ranged",
       "displayName": "Bow",
       "id": "bow",
-      "projectileSpeed": 30
+      "projectileSpeed": 30,
+      "windupSeconds": 0.8
     }
   ]
 }

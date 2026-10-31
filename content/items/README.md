@@ -50,7 +50,11 @@ Catalog format version 6 contains these separate concepts:
   `projectileSpeed` of its attacks in metres per second. A `ranged` family needs
   an ammunition family and a positive speed. A `melee` family has neither and
   hits at once. A `magic` family has no ammunition family, and its attacks cost
-  mana instead; the `staff` family's bolts fly at 20 m/s.
+  mana instead; the `staff` family's bolts fly at 20 m/s. Every family also
+  names its `windupSeconds`, from 0 to 5: an attack starts at once and releases
+  its blow, arrow, or bolt that much later, when the body's attack clip strikes
+  or looses, so a weapon's `attackIntervalSeconds` must be longer. The families
+  are `sword` (0.35 s), `axe` (0.6 s), `bow` (0.8 s), and `staff` (0.15 s).
 - **Ammunition families** in `ammunitionFamilies` group ammunition. Any
   ammunition of a weapon family's ammunition family works with every weapon of
   that family.
@@ -62,7 +66,9 @@ Catalog format version 6 contains these separate concepts:
   family and 0 for every other weapon. Every `weapon` definition has exactly
   this block, and no other definition has it. The Oak Staff
   (`weapon.oak_staff`, value 120) is the first magic weapon: 10 to 18 every 2.4
-  seconds at 10 m for 5 mana, held with both hands.
+  seconds at 10 m for 5 mana, held with both hands. The Iron Greataxe
+  (`weapon.iron_greataxe`, value 180, weight 180) is the first axe: 16 to 27
+  every 3.0 seconds at 2.5 m, held with both hands.
 - **Ammunition data** in a definition's `ammunition` block names its ammunition
   family and its `damageBonusPercent` of the weapon roll. Every `ammunition`
   definition has exactly this block, and no other definition has it.

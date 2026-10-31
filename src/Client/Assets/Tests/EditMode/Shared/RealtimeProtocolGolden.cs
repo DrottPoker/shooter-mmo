@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 28;
+        public const ushort PinnedVersion = 29;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -339,12 +339,12 @@ namespace Mmorpg.SharedTests
                 "Idle=1 Attacking=2 Moving=3 OutOfRange=4 LineOfSightBlocked=5 EquipmentLockout=6 WeaponMissing=7 "
                 + "AmmunitionMissing=8 AmmunitionIncompatible=9 Dead=10 NotEnoughMana=11");
             ExpectEnum<RealtimeCombatAttackStyle>(failures, "Melee=1 Ranged=2 Magic=3");
-            ExpectEnum<RealtimeCombatEventKind>(failures, "AttackReleased=1 Hit=2 Died=3");
+            ExpectEnum<RealtimeCombatEventKind>(failures, "AttackReleased=1 Hit=2 Died=3 AttackStarted=4 AttackCancelled=5");
             ExpectEnum<RealtimeCombatDamageType>(failures, "Normal=1 Fire=2 Cold=3 Nature=4 Shadow=5");
             ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 1c 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 1d 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);

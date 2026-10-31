@@ -1,7 +1,7 @@
 {
     "formatVersion": 4,
-    "sourceCatalogRevision": "16222231c56c20040c127b19090dcac13fd1f8c4ae2b117b1fda82f71276e5d8",
-    "presentationRevision": "a12fc433024f36930224db7fc157ed1637013064427cd17d743a6fa91dc4e8ce",
+    "sourceCatalogRevision": "eea2033ed0385c4860af469c5626771602671bd587d06bbd5ca65a90e65e4cee",
+    "presentationRevision": "64dbc723ce3ff7af77cc6e90f086735f59c151a3d11590f79abf11458f5e1430",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
@@ -375,6 +375,17 @@
             "attachment": "WoodcuttingAxe"
         },
         {
+            "definitionId": "weapon.iron_greataxe",
+            "iconAddress": "",
+            "localizationKey": "items.weapon.iron_greataxe.name",
+            "fallbackDisplayName": "Iron Greataxe",
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": [],
+            "attachment": "IronGreataxe"
+        },
+        {
             "definitionId": "weapon.iron_sword",
             "iconAddress": "",
             "localizationKey": "items.weapon.iron_sword.name",
@@ -405,7 +416,7 @@
             "garments": [],
             "loweredGarments": [],
             "dyes": [],
-            "attachment": ""
+            "attachment": "TrainingShortbow"
         }
     ]
 }

@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 28,
+    "version": 29,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -430,14 +430,20 @@
     {
       "name": "CombatAttackStyle",
       "family": "Combat",
-      "description": "The combat style of a released attack, which selects how it is presented, such as an arrow or a magic bolt.",
+      "description": "The combat style of a started or released attack, which selects how it is presented, such as an arrow or a magic bolt.",
       "values": [ { "name": "Melee", "value": 1 }, { "name": "Ranged", "value": 2 }, { "name": "Magic", "value": 3 } ]
     },
     {
       "name": "CombatEventKind",
       "family": "Combat",
       "description": "The kind of a combat event.",
-      "values": [ { "name": "AttackReleased", "value": 1 }, { "name": "Hit", "value": 2 }, { "name": "Died", "value": 3 } ]
+      "values": [
+        { "name": "AttackReleased", "value": 1 },
+        { "name": "Hit", "value": 2 },
+        { "name": "Died", "value": 3 },
+        { "name": "AttackStarted", "value": 4 },
+        { "name": "AttackCancelled", "value": 5 }
+      ]
     },
     {
       "name": "CombatDamageType",
@@ -1091,9 +1097,9 @@
         },
         { "name": "TargetEntityId", "type": "u64", "minimum": 1, "description": "The combatant the event is about." },
         {
-          "name": "ImpactTick",
+          "name": "Tick",
           "type": "u32",
-          "description": "For a released attack, the server tick at which it hits."
+          "description": "For a started attack, the server tick at which it releases; for a released attack, the server tick at which it hits."
         },
         { "name": "Damage", "type": "i32", "minimum": 0, "description": "For a hit, the damage dealt." },
         { "name": "DamageType", "type": "CombatDamageType", "description": "For a hit, the damage type; Normal otherwise." },
@@ -1101,7 +1107,7 @@
         {
           "name": "AttackStyle",
           "type": "CombatAttackStyle",
-          "description": "For a released attack, the combat style of the attack; Melee otherwise."
+          "description": "For a started, released, or cancelled attack, the combat style of the attack; Melee otherwise."
         }
       ]
     }

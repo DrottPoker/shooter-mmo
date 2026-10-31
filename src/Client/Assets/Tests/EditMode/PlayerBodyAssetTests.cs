@@ -115,14 +115,14 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 controller.parameters.Single(parameter => parameter.name == HumanLocomotion.RateParameter).defaultFloat,
                 Is.EqualTo(1f));
-            // The locomotion, a grip layer for each hand, the main hand's weapon pose, and the
-            // attack clips over the upper body.
+            // The locomotion, a grip layer for each hand, each hand's weapon pose, and the attack
+            // clips over the body.
             Assert.That(
                 controller.layers.Select(layer => layer.name),
                 Is.EqualTo(new[]
                 {
                     "Base Layer", HumanLocomotion.MainHandGripLayer, HumanLocomotion.OffHandGripLayer,
-                    HumanLocomotion.MainHandHoldLayer, HumanLocomotion.ActionLayer,
+                    HumanLocomotion.MainHandHoldLayer, HumanLocomotion.OffHandHoldLayer, HumanLocomotion.ActionLayer,
                 }));
 
             var machine = controller.layers[0].stateMachine;

@@ -1,7 +1,7 @@
 {
-  "formatVersion": 6,
+  "formatVersion": 7,
   "catalogId": "core",
-  "revision": "16222231c56c20040c127b19090dcac13fd1f8c4ae2b117b1fda82f71276e5d8",
+  "revision": "eea2033ed0385c4860af469c5626771602671bd587d06bbd5ca65a90e65e4cee",
   "baseSecureContainerTierId": "secure_container.base",
   "character": {
     "baseCarryCapacity": 2000,
@@ -163,25 +163,36 @@
   ],
   "weaponFamilies": [
     {
+      "id": "axe",
+      "displayName": "Axe",
+      "combatStyle": "melee",
+      "ammunitionFamily": "",
+      "projectileSpeed": 0,
+      "windupSeconds": 0.6
+    },
+    {
       "id": "bow",
       "displayName": "Bow",
       "combatStyle": "ranged",
       "ammunitionFamily": "arrow",
-      "projectileSpeed": 30
+      "projectileSpeed": 30,
+      "windupSeconds": 0.8
     },
     {
       "id": "staff",
       "displayName": "Staff",
       "combatStyle": "magic",
       "ammunitionFamily": "",
-      "projectileSpeed": 20
+      "projectileSpeed": 20,
+      "windupSeconds": 0.15
     },
     {
       "id": "sword",
       "displayName": "Sword",
       "combatStyle": "melee",
       "ammunitionFamily": "",
-      "projectileSpeed": 0
+      "projectileSpeed": 0,
+      "windupSeconds": 0.35
     }
   ],
   "ammunitionFamilies": [
@@ -859,6 +870,38 @@
       "structuralFingerprint": "63e4c4b7fcc297287a9ce7a3198f46c93c17aad865b0b3632fdf7f292b11fa3e"
     },
     {
+      "id": "weapon.iron_greataxe",
+      "displayName": "Iron Greataxe",
+      "category": "weapon",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 180,
+      "value": 180,
+      "maximumStackSize": 1,
+      "equipmentSlots": [
+        "main_hand"
+      ],
+      "blockedEquipmentSlots": [
+        "off_hand"
+      ],
+      "playerDestroyable": true,
+      "locationEligibility": {
+        "secureContainer": false
+      },
+      "defaultPolicies": [],
+      "requiredCharacterLevel": 1,
+      "weapon": {
+        "weaponFamily": "axe",
+        "damageType": "normal",
+        "minimumDamage": 16,
+        "maximumDamage": 27,
+        "attackIntervalSeconds": 3,
+        "range": 2.5,
+        "manaCost": 0
+      },
+      "structuralFingerprint": "440d6affe93e42d8ed9a33598cd4d538ce5627665b19552aedaf0c8af3f5688d"
+    },
+    {
       "id": "weapon.iron_sword",
       "displayName": "Iron Sword",
       "category": "weapon",
@@ -1034,6 +1077,9 @@
         },
         {
           "definitionId": "weapon.oak_staff"
+        },
+        {
+          "definitionId": "weapon.iron_greataxe"
         },
         {
           "definitionId": "armor.heater_shield"

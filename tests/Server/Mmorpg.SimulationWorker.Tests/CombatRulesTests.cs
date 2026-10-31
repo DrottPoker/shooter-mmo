@@ -210,9 +210,25 @@ public sealed class CombatLoadoutTests
         Assert.Equal(10f, attack.Range);
         Assert.Equal(30f, attack.ProjectileSpeed);
         Assert.Equal("arrow", attack.AmmunitionFamily);
+        // The arrow looses 0.8 s after the shot starts, when BowShot looses it.
+        Assert.Equal(24u, attack.WindupTicks);
         Assert.Equal(arrows.ItemInstanceId, loadout.Ammunition!.ItemInstanceId);
         Assert.Equal(5, loadout.Ammunition.DamageBonusPercent);
         Assert.Equal(120, loadout.Ammunition.Quantity);
+    }
+
+    // Every weapon family releases when its attack clip strikes or looses.
+    [Theory]
+    [InlineData("weapon.iron_sword", 10u)]
+    [InlineData("weapon.iron_greataxe", 18u)]
+    [InlineData("weapon.oak_staff", 5u)]
+    public void EachWeaponReleasesWhenItsWindupEnds(string definitionId, uint windupTicks)
+    {
+        var loadout = Catalog.Resolve(State(Equipped("main_hand", definitionId, 1)));
+
+        Assert.Equal(CombatLoadoutStatus.Ready, loadout.Status);
+        Assert.Equal(windupTicks, loadout.Attack!.WindupTicks);
+        Assert.True(loadout.Attack.WindupTicks < loadout.Attack.IntervalTicks);
     }
 
     [Fact]

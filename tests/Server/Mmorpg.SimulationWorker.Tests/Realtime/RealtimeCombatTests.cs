@@ -48,7 +48,7 @@ public sealed class RealtimeCombatTests
         var released = Events(client).First(value => value.Kind == RealtimeCombatEventKind.AttackReleased);
         var hit = Events(client).First(value => value.Kind == RealtimeCombatEventKind.Hit);
         Assert.Equal(client.JoinAccepted!.ControlledEntityId, released.SourceEntityId);
-        Assert.True(released.ImpactTick > 0);
+        Assert.True(released.Tick > 0);
         Assert.Equal(wolf.EntityId, hit.TargetEntityId);
         Assert.Equal(0, hit.HealthAfter);
 
@@ -780,7 +780,7 @@ public sealed class RealtimeCombatTests
         var released = Events(casterClient).Where(value => value.Kind == RealtimeCombatEventKind.AttackReleased).ToArray();
         Assert.Equal(2, released.Length);
         Assert.All(released, value => Assert.Equal(RealtimeCombatAttackStyle.Magic, value.AttackStyle));
-        Assert.All(released, value => Assert.True(value.ImpactTick > 0));
+        Assert.All(released, value => Assert.True(value.Tick > 0));
         var owner = OwnerStates(casterClient)[^1];
         Assert.Equal((2, 12), (owner.Mana, owner.MaximumMana));
         Assert.Equal(targetEntityId, owner.TargetEntityId);
@@ -834,6 +834,145 @@ public sealed class RealtimeCombatTests
         Assert.True(lowest <= 97);
     }
 
+    // An arrow leaves when the bow's windup ends: the attack starts at once and names its
+    // release tick, so every client can play the shot to loose then, and the arrow is spent
+    // only when it looses.
+    [Fact]
+    public async Task AnArrowLeavesWhenItsWindupEnds()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = TestCatalog(minimumDamage: 1, maximumDamage: 1, attackIntervalSeconds: 2f, bowWindupSeconds: 0.8f),
+            CombatRules = TestRules(),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var archer = harness.AddCharacter("Steady Archer") with { Equipment = ArcherEquipment(50) };
+        harness.GameService.AddCharacter(archer);
+        var target = harness.AddCharacter("Windup Target");
+        await harness.StartAsync();
+        var archerClient = await harness.JoinAsync(archer);
+        var targetClient = await harness.JoinAsync(target);
+        var targetEntityId = targetClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => States(archerClient).Any(value => value.EntityId == targetEntityId),
+            "the target to appear");
+
+        archerClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId));
+
+        await harness.PollUntilAsync(
+            () => Events(archerClient).Any(value => value.Kind == RealtimeCombatEventKind.Hit),
+            "the arrow to hit");
+        var batches = EventBatches(archerClient);
+        var startBatch = batches.First(batch => batch.Events.Any(value => value.Kind == RealtimeCombatEventKind.AttackStarted));
+        var started = startBatch.Events.First(value => value.Kind == RealtimeCombatEventKind.AttackStarted);
+        var releaseBatch = batches.First(batch => batch.Events.Any(value => value.Kind == RealtimeCombatEventKind.AttackReleased));
+        var released = releaseBatch.Events.First(value => value.Kind == RealtimeCombatEventKind.AttackReleased);
+        var windupTicks = CombatTicks.FromSeconds(0.8f, harness.Config.MovementSimulation.TickRateHz);
+        Assert.Equal(startBatch.ServerTick + windupTicks, started.Tick);
+        Assert.Equal(started.Tick, releaseBatch.ServerTick);
+        Assert.Equal((targetEntityId, targetEntityId), (started.TargetEntityId, released.TargetEntityId));
+        Assert.Equal(
+            (RealtimeCombatAttackStyle.Ranged, RealtimeCombatAttackStyle.Ranged),
+            (started.AttackStyle, released.AttackStyle));
+        Assert.True(released.Tick > releaseBatch.ServerTick);
+        Assert.All(
+            OwnerStates(archerClient).Where(value => value.ServerTick < started.Tick && value.AmmunitionQuantity > 0),
+            value => Assert.Equal(50, value.AmmunitionQuantity));
+        Assert.Contains(
+            OwnerStates(archerClient),
+            value => value.ServerTick >= started.Tick && value.AmmunitionQuantity == 49);
+    }
+
+    // A step in the windup cancels the attack: no arrow leaves or is spent, and the next attack
+    // may start as soon as the archer stands ready again.
+    [Fact]
+    public async Task AStepInTheWindupCancelsTheAttack()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = TestCatalog(minimumDamage: 1, maximumDamage: 1, attackIntervalSeconds: 3f, bowWindupSeconds: 2f),
+            CombatRules = TestRules(),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var archer = harness.AddCharacter("Restless Archer") with { Equipment = ArcherEquipment(50) };
+        harness.GameService.AddCharacter(archer);
+        var target = harness.AddCharacter("Lucky Target");
+        await harness.StartAsync();
+        var archerClient = await harness.JoinAsync(archer);
+        var targetClient = await harness.JoinAsync(target);
+        var targetEntityId = targetClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => States(archerClient).Any(value => value.EntityId == targetEntityId),
+            "the target to appear");
+        archerClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId));
+        await harness.PollUntilAsync(
+            () => Events(archerClient).Any(value => value.Kind == RealtimeCombatEventKind.AttackStarted),
+            "the attack to start");
+
+        archerClient.SendMoveTo(1, 0f, 12f);
+
+        await harness.PollUntilAsync(
+            () => Events(archerClient).Any(value => value.Kind == RealtimeCombatEventKind.AttackCancelled),
+            "the attack to be cancelled");
+        var startTick = EventBatches(archerClient)
+            .First(batch => batch.Events.Any(value => value.Kind == RealtimeCombatEventKind.AttackStarted))
+            .ServerTick;
+        var cancelled = Events(archerClient).First(value => value.Kind == RealtimeCombatEventKind.AttackCancelled);
+        Assert.Equal(
+            (archerClient.JoinAccepted!.ControlledEntityId, targetEntityId, 0u, RealtimeCombatAttackStyle.Ranged),
+            (cancelled.SourceEntityId, cancelled.TargetEntityId, cancelled.Tick, cancelled.AttackStyle));
+        Assert.DoesNotContain(
+            Events(archerClient),
+            value => value.Kind is RealtimeCombatEventKind.AttackReleased or RealtimeCombatEventKind.Hit);
+        Assert.DoesNotContain(OwnerStates(archerClient), value => value.AmmunitionQuantity is > 0 and < 50);
+        Assert.Equal(startTick, OwnerStates(archerClient)[^1].NextAttackTick);
+    }
+
+    // A target that walks on a little in the windup is still hit, within a quarter more than the
+    // weapon's range; one that walks farther cancels the attack. Both start at the spawn, z -1,
+    // and the windup lasts until the target has arrived.
+    [Theory]
+    [InlineData(2.6f, false)]
+    [InlineData(7f, true)]
+    public async Task ATargetThatWalksOnInTheWindupIsHitWithinTheLeeway(float walkTo, bool cancelled)
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = TestCatalog(minimumDamage: 1, maximumDamage: 1, range: 3f, attackIntervalSeconds: 6f, bowWindupSeconds: 4.5f),
+            CombatRules = TestRules(),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var archer = harness.AddCharacter("Patient Archer") with { Equipment = ArcherEquipment(50) };
+        harness.GameService.AddCharacter(archer);
+        var target = harness.AddCharacter("Walking Target");
+        await harness.StartAsync();
+        var archerClient = await harness.JoinAsync(archer);
+        var targetClient = await harness.JoinAsync(target);
+        var targetEntityId = targetClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => States(archerClient).Any(value => value.EntityId == targetEntityId),
+            "the target to appear");
+        archerClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId));
+        await harness.PollUntilAsync(
+            () => Events(archerClient).Any(value => value.Kind == RealtimeCombatEventKind.AttackStarted),
+            "the attack to start");
+
+        // The worker moves a character one step per input, so the target sends one every tick.
+        bool Ended() => Events(archerClient).Any(value => value.Kind is RealtimeCombatEventKind.AttackCancelled or RealtimeCombatEventKind.Hit);
+        for (uint sequence = 1; sequence <= 400 && !Ended(); sequence++)
+        {
+            targetClient.SendMoveTo(sequence, 0f, walkTo);
+            await harness.PollForAsync(TimeSpan.FromMilliseconds(30));
+        }
+
+        await harness.PollUntilAsync(Ended, "the attack to end");
+        Assert.Equal(cancelled, Events(archerClient).Any(value => value.Kind == RealtimeCombatEventKind.AttackCancelled));
+        Assert.Equal(!cancelled, Events(archerClient).Any(value => value.Kind == RealtimeCombatEventKind.AttackReleased));
+    }
+
     internal static async Task<RealtimeWorldActorSpawn> WaitForWolfAsync(
         RealtimeServerHarness harness,
         RealtimeRecordingClient client)
@@ -862,6 +1001,11 @@ public sealed class RealtimeCombatTests
         return client.Decode<RealtimeOwnerCombatState>(RealtimeMessageType.OwnerCombatState, RealtimeProtocol.TryDecodeOwnerCombatState);
     }
 
+    internal static IReadOnlyList<RealtimeCombatEventBatch> EventBatches(RealtimeRecordingClient client)
+    {
+        return client.Decode<RealtimeCombatEventBatch>(RealtimeMessageType.CombatEventBatch, RealtimeProtocol.TryDecodeCombatEventBatch);
+    }
+
     internal static IReadOnlyList<RealtimeCombatEvent> Events(RealtimeRecordingClient client)
     {
         return client.Decode<RealtimeCombatEventBatch>(RealtimeMessageType.CombatEventBatch, RealtimeProtocol.TryDecodeCombatEventBatch)
@@ -887,12 +1031,15 @@ public sealed class RealtimeCombatTests
         return [new SimulationEquippedItem("main_hand", StaffItemId, Staff, 1, 1)];
     }
 
-    // The fastest bow and staff content allows: an attack every 0.5 s.
+    // The fastest bow and staff content allows: an attack every 0.5 s, released at once unless
+    // the bow is given a windup.
     internal static ItemCatalogRuntimeDocument TestCatalog(
         int minimumDamage = 10,
         int maximumDamage = 18,
         float range = 10f,
-        int manaCost = 5)
+        int manaCost = 5,
+        float attackIntervalSeconds = 0.5f,
+        float bowWindupSeconds = 0f)
     {
         return new ItemCatalogRuntimeDocument
         {
@@ -903,14 +1050,16 @@ public sealed class RealtimeCombatTests
                     Id = "bow",
                     CombatStyle = CombatStyleIds.Ranged,
                     AmmunitionFamily = "arrow",
-                    ProjectileSpeed = 30f
+                    ProjectileSpeed = 30f,
+                    WindupSeconds = bowWindupSeconds
                 },
                 new ItemWeaponFamilyEntry
                 {
                     Id = "staff",
                     CombatStyle = CombatStyleIds.Magic,
                     AmmunitionFamily = string.Empty,
-                    ProjectileSpeed = 20f
+                    ProjectileSpeed = 20f,
+                    WindupSeconds = 0f
                 }
             ],
             Definitions =
@@ -925,7 +1074,7 @@ public sealed class RealtimeCombatTests
                         DamageType = DamageTypeIds.Normal,
                         MinimumDamage = minimumDamage,
                         MaximumDamage = maximumDamage,
-                        AttackIntervalSeconds = 0.5f,
+                        AttackIntervalSeconds = attackIntervalSeconds,
                         Range = range,
                         ManaCost = 0
                     }

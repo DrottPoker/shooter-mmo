@@ -69,6 +69,16 @@ namespace Mmorpg.SharedTests
                         DiedModel()
                     })));
             r.Vector(
+                "Combat/CombatEventBatch/start and cancel",
+                events,
+                () => RealtimeProtocol.EncodeCombatEventBatch(new RealtimeCombatEventBatch(
+                    0x01020304,
+                    new[]
+                    {
+                        AttackModel(RealtimeCombatEventKind.AttackStarted, 0x01020310),
+                        AttackModel(RealtimeCombatEventKind.AttackCancelled, 0)
+                    })));
+            r.Vector(
                 "Combat/CombatEventBatch/full",
                 events,
                 () => RealtimeProtocol.EncodeCombatEventBatch(new RealtimeCombatEventBatch(
@@ -174,14 +184,20 @@ namespace Mmorpg.SharedTests
                 "Combat/CombatEventBatch/33 events",
                 CombatEventBatchWire(Enumerable.Range(0, 33).Select(_ => HitWire()).ToArray()));
             r.Rejects("Combat/CombatEventBatch/kind 0", CombatEventBatchWire(CombatEventWire(0)));
-            r.Rejects("Combat/CombatEventBatch/kind 4", CombatEventBatchWire(CombatEventWire(4)));
+            r.Rejects("Combat/CombatEventBatch/kind 6", CombatEventBatchWire(CombatEventWire(6)));
+            r.Accepts("Combat/CombatEventBatch/attack started", CombatEventBatchWire(AttackStartedWire()));
+            r.Accepts("Combat/CombatEventBatch/attack cancelled", CombatEventBatchWire(AttackCancelledWire()));
+            r.Rejects("Combat/CombatEventBatch/cancel with a tick", CombatEventBatchWire(AttackCancelledWire(tick: 1)));
+            r.Rejects("Combat/CombatEventBatch/start without attacker", CombatEventBatchWire(AttackStartedWire(source: 0)));
+            r.Rejects("Combat/CombatEventBatch/start with damage", CombatEventBatchWire(AttackStartedWire(damage: 3)));
+            r.Rejects("Combat/CombatEventBatch/cancel at itself", CombatEventBatchWire(AttackCancelledWire(source: CombatTargetEntityId)));
             r.Rejects("Combat/CombatEventBatch/target 0", CombatEventBatchWire(HitWire(target: 0)));
             r.Rejects("Combat/CombatEventBatch/negative damage", CombatEventBatchWire(HitWire(damage: -1)));
             r.Rejects("Combat/CombatEventBatch/negative health after", CombatEventBatchWire(HitWire(healthAfter: -1)));
             r.Rejects("Combat/CombatEventBatch/damage type 0", CombatEventBatchWire(HitWire(damageType: 0)));
             r.Rejects("Combat/CombatEventBatch/damage type 6", CombatEventBatchWire(HitWire(damageType: 6)));
             r.Accepts("Combat/CombatEventBatch/shadow hit", CombatEventBatchWire(HitWire(damageType: 5)));
-            r.Rejects("Combat/CombatEventBatch/hit with an impact tick", CombatEventBatchWire(HitWire(impactTick: 1)));
+            r.Rejects("Combat/CombatEventBatch/hit with a tick", CombatEventBatchWire(HitWire(tick: 1)));
             r.Accepts("Combat/CombatEventBatch/arrow release", CombatEventBatchWire(AttackReleasedWire(attackStyle: 2)));
             r.Accepts("Combat/CombatEventBatch/melee release", CombatEventBatchWire(AttackReleasedWire(attackStyle: 1)));
             r.Rejects("Combat/CombatEventBatch/attack style 0", CombatEventBatchWire(AttackReleasedWire(attackStyle: 0)));
@@ -194,7 +210,7 @@ namespace Mmorpg.SharedTests
                 CombatEventBatchWire(AttackReleasedWire(source: CombatTargetEntityId)));
             r.Rejects("Combat/CombatEventBatch/release with damage", CombatEventBatchWire(AttackReleasedWire(damage: 3)));
             r.Rejects("Combat/CombatEventBatch/death with damage", CombatEventBatchWire(DiedWire(damage: 3)));
-            r.Rejects("Combat/CombatEventBatch/death with an impact tick", CombatEventBatchWire(DiedWire(impactTick: 1)));
+            r.Rejects("Combat/CombatEventBatch/death with a tick", CombatEventBatchWire(DiedWire(tick: 1)));
             r.RejectsEncode(
                 "Combat/CombatEventBatch/no events",
                 () => RealtimeProtocol.EncodeCombatEventBatch(new RealtimeCombatEventBatch(1, new RealtimeCombatEvent[0])));
@@ -314,6 +330,19 @@ namespace Mmorpg.SharedTests
                 RealtimeCombatAttackStyle.Magic);
         }
 
+        private static RealtimeCombatEvent AttackModel(RealtimeCombatEventKind kind, uint tick)
+        {
+            return new RealtimeCombatEvent(
+                kind,
+                CombatAttackerEntityId,
+                CombatTargetEntityId,
+                tick,
+                0,
+                RealtimeCombatDamageType.Normal,
+                0,
+                RealtimeCombatAttackStyle.Ranged);
+        }
+
         private static RealtimeCombatEvent HitModel()
         {
             return new RealtimeCombatEvent(
@@ -429,7 +458,7 @@ namespace Mmorpg.SharedTests
             byte kind,
             ulong source = CombatAttackerEntityId,
             ulong target = CombatTargetEntityId,
-            uint impactTick = 0,
+            uint tick = 0,
             int damage = 0,
             byte damageType = 1,
             int healthAfter = 0,
@@ -439,7 +468,7 @@ namespace Mmorpg.SharedTests
                 .U8(kind)
                 .U64(source)
                 .U64(target)
-                .U32(impactTick)
+                .U32(tick)
                 .I32(damage)
                 .U8(damageType)
                 .I32(healthAfter)
@@ -448,24 +477,34 @@ namespace Mmorpg.SharedTests
 
         private static Wire AttackReleasedWire(ulong source = CombatAttackerEntityId, int damage = 0, byte attackStyle = 3)
         {
-            return CombatEventWire(1, source: source, impactTick: 0x01020310, damage: damage, attackStyle: attackStyle);
+            return CombatEventWire(1, source: source, tick: 0x01020310, damage: damage, attackStyle: attackStyle);
+        }
+
+        private static Wire AttackStartedWire(ulong source = CombatAttackerEntityId, int damage = 0)
+        {
+            return CombatEventWire(4, source: source, tick: 0x01020310, damage: damage, attackStyle: 2);
+        }
+
+        private static Wire AttackCancelledWire(ulong source = CombatAttackerEntityId, uint tick = 0)
+        {
+            return CombatEventWire(5, source: source, tick: tick, attackStyle: 2);
         }
 
         private static Wire HitWire(
             ulong source = CombatAttackerEntityId,
             ulong target = CombatTargetEntityId,
-            uint impactTick = 0,
+            uint tick = 0,
             int damage = 17,
             byte damageType = 2,
             int healthAfter = 33,
             byte attackStyle = 1)
         {
-            return CombatEventWire(2, source, target, impactTick, damage, damageType, healthAfter, attackStyle);
+            return CombatEventWire(2, source, target, tick, damage, damageType, healthAfter, attackStyle);
         }
 
-        private static Wire DiedWire(ulong source = CombatAttackerEntityId, int damage = 0, uint impactTick = 0, byte attackStyle = 1)
+        private static Wire DiedWire(ulong source = CombatAttackerEntityId, int damage = 0, uint tick = 0, byte attackStyle = 1)
         {
-            return CombatEventWire(3, source: source, impactTick: impactTick, damage: damage, attackStyle: attackStyle);
+            return CombatEventWire(3, source: source, tick: tick, damage: damage, attackStyle: attackStyle);
         }
 
         private static Wire OwnerCombatStateWire(

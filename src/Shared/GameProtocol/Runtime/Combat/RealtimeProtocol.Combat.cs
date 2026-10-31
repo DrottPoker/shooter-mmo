@@ -4,22 +4,26 @@ namespace Mmorpg.GameProtocol
     // messages, and the generator writes their models and codecs.
     public static partial class RealtimeProtocol
     {
-        // Each event kind carries only its own fields.
+        // Each event kind carries only its own fields. A cancelled attack ended before its release
+        // and names no tick.
         private static bool SatisfiesRules(RealtimeCombatEvent value)
         {
             switch (value.Kind)
             {
+                case RealtimeCombatEventKind.AttackStarted:
                 case RealtimeCombatEventKind.AttackReleased:
+                case RealtimeCombatEventKind.AttackCancelled:
                     return value.SourceEntityId != 0
                         && value.SourceEntityId != value.TargetEntityId
+                        && (value.Kind != RealtimeCombatEventKind.AttackCancelled || value.Tick == 0)
                         && value.Damage == 0
                         && value.DamageType == RealtimeCombatDamageType.Normal
                         && value.HealthAfter == 0;
                 case RealtimeCombatEventKind.Hit:
-                    return value.ImpactTick == 0
+                    return value.Tick == 0
                         && value.AttackStyle == RealtimeCombatAttackStyle.Melee;
                 case RealtimeCombatEventKind.Died:
-                    return value.ImpactTick == 0
+                    return value.Tick == 0
                         && value.Damage == 0
                         && value.DamageType == RealtimeCombatDamageType.Normal
                         && value.HealthAfter == 0

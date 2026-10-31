@@ -572,15 +572,29 @@ catalog and Mob values from the actor catalog.
   target and the attack resumes once the mana is back. Line of sight
   costs a raycast, so it is checked when an attack is due and five times per
   second otherwise.
+- An attack starts on the cooldown with an `AttackStarted` event that names the
+  tick at which it releases, and releases its blow, arrow, or bolt when the
+  windup of its weapon family ends: 0.35 s for `sword`, 0.6 s for `axe`, 0.8 s
+  for `bow`, and 0.15 s for `staff`, when the body's attack clip strikes or
+  looses. The interval runs from the start, so the windup leaves the damage per
+  second as it was. Whatever would keep a new attack from starting, such as a
+  step, a lost target, a lockout, or the target leaving sight, cancels an attack
+  in its windup with an `AttackCancelled` event: nothing is spent, and the next
+  attack may start as soon as the character stands ready again. In its windup an
+  attack keeps a target that walks on within a quarter more than the weapon's
+  range, `CombatSystem.WindupRangeLeeway`, so a patrolling wolf does not cancel a
+  shot, and is cancelled only beyond that. A Mob's bite releases at once.
 - An attack rolls damage between the weapon's minimum and maximum and adds the
   arrow's bonus percent, rounded half up. The Training Shortbow deals 10 to 18
   every 2.4 seconds at up to 10 m, and a Bronze Arrow adds 5 percent. The arrow
   flies at the weapon family's projectile speed of 30 m/s and hits at its impact
-  tick when the target is still alive. It is spent either way. The Oak Staff of
-  the magic family `staff` deals 10 to 18 every 2.4 seconds at up to 10 m and
-  costs 5 mana per attack, spent when the bolt leaves; its bolt flies at 20 m/s.
-  Every `AttackReleased` event names the attack's combat style, so clients draw
-  an arrow or a bolt.
+  tick when the target is still alive. It is spent when it looses, and either way.
+  The Oak Staff of the magic family `staff` deals 10 to 18 every 2.4 seconds at up
+  to 10 m and costs 5 mana per attack, spent when the bolt leaves; its bolt flies
+  at 20 m/s. The Iron Sword deals 11 to 19 every 2.4 seconds and the Iron
+  Greataxe of the family `axe` 16 to 27 every 3.0 seconds, both at up to 2.5 m.
+  Every `AttackStarted` and `AttackReleased` event names the attack's combat
+  style, so clients draw an arrow or a bolt.
 - A different item in any equipment slot holds attacks for the lockout, and an
   item or corpse operation that may change equipment holds them while it runs.
   A changed arrow count keeps the same item and does not count.

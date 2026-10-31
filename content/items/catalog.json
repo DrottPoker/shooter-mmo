@@ -134,7 +134,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 6,
+  "formatVersion": 7,
   "progression": {
     "maximumCharacterLevel": 200
   },
@@ -198,25 +198,36 @@
   ],
   "weaponFamilies": [
     {
+      "ammunitionFamily": "",
+      "combatStyle": "melee",
+      "displayName": "Axe",
+      "id": "axe",
+      "projectileSpeed": 0,
+      "windupSeconds": 0.6
+    },
+    {
       "ammunitionFamily": "arrow",
       "combatStyle": "ranged",
       "displayName": "Bow",
       "id": "bow",
-      "projectileSpeed": 30
+      "projectileSpeed": 30,
+      "windupSeconds": 0.8
     },
     {
       "ammunitionFamily": "",
       "combatStyle": "magic",
       "displayName": "Staff",
       "id": "staff",
-      "projectileSpeed": 20
+      "projectileSpeed": 20,
+      "windupSeconds": 0.15
     },
     {
       "ammunitionFamily": "",
       "combatStyle": "melee",
       "displayName": "Sword",
       "id": "sword",
-      "projectileSpeed": 0
+      "projectileSpeed": 0,
+      "windupSeconds": 0.35
     }
   ]
 }

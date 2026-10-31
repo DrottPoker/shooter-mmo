@@ -96,9 +96,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var dressed = EquipmentGarments.Dress(own, catalog, equipment, bundled.Presentation, false);
 
             // The hair and the face stay, a garment the look named but no item shows is taken off,
-            // and items without garments add none.
+            // items without garments add none, and the bow is held in the left hand.
             Assert.That(dressed.Key, Is.EqualTo(
-                "Face=Clean;Garment=DarkBrownHair+LeatherBoots+WoolCloak@742519+WoolHoodUp@3A5A85+WoolRobe;Paint=Tattoo"));
+                "Attachment=TrainingShortbow;Face=Clean;Garment=DarkBrownHair+LeatherBoots+WoolCloak@742519+WoolHoodUp@3A5A85+WoolRobe;Paint=Tattoo"));
             Assert.That(dressed.DyesFor("WoolHoodUp").Single(), Is.EqualTo(Rgb(0x3A, 0x5A, 0x85)));
             Assert.That(dressed.DyesFor("WoolRobe"), Is.Empty);
 

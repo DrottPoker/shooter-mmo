@@ -445,8 +445,27 @@ MonoBehaviour:
     offHandGrip: {x: 0, y: 0, z: 0}
     holdClip: 
     attackClip: 
+    attackRelease: 0
     hasLaunchPoint: 0
     launchPoint: {x: 0, y: 0, z: 0}
+    skeleton: 
+    clips: []
+    drawLength: 0
+  - name: IronGreataxe
+    socket: main_hand
+    bone: Socket_MainHand
+    model: {fileID: 919132149155446097, guid: 45efbce1197e3604cbcc829c61aeb61b, type: 3}
+    useClip: 
+    holdsWithBothHands: 1
+    offHandGrip: {x: 0, y: 0, z: -0.28}
+    holdClip: HoldGreataxe
+    attackClip: GreataxeSwing
+    attackRelease: 0.6
+    hasLaunchPoint: 0
+    launchPoint: {x: 0, y: 0, z: 0}
+    skeleton: 
+    clips: []
+    drawLength: 0
   - name: IronSword
     socket: main_hand
     bone: Socket_MainHand
@@ -455,9 +474,13 @@ MonoBehaviour:
     holdsWithBothHands: 0
     offHandGrip: {x: 0, y: 0, z: 0}
     holdClip: 
-    attackClip: 
+    attackClip: SwordSlash
+    attackRelease: 0.35
     hasLaunchPoint: 0
     launchPoint: {x: 0, y: 0, z: 0}
+    skeleton: 
+    clips: []
+    drawLength: 0
   - name: MiningPickaxe
     socket: main_hand
     bone: Socket_MainHand
@@ -467,8 +490,12 @@ MonoBehaviour:
     offHandGrip: {x: 0, y: 0, z: -0.33}
     holdClip: 
     attackClip: 
+    attackRelease: 0
     hasLaunchPoint: 0
     launchPoint: {x: 0, y: 0, z: 0}
+    skeleton: 
+    clips: []
+    drawLength: 0
   - name: OakStaff
     socket: main_hand
     bone: Socket_MainHand
@@ -478,8 +505,28 @@ MonoBehaviour:
     offHandGrip: {x: 0, y: 0, z: 0}
     holdClip: HoldStaff
     attackClip: Cast
+    attackRelease: 0.15
     hasLaunchPoint: 1
     launchPoint: {x: 0, y: 0, z: 0.7}
+    skeleton: 
+    clips: []
+    drawLength: 0
+  - name: TrainingShortbow
+    socket: off_hand
+    bone: Socket_OffHand
+    model: {fileID: 919132149155446097, guid: 145b4eb81e1c17744b1d84c997b5db5a, type: 3}
+    useClip: 
+    holdsWithBothHands: 0
+    offHandGrip: {x: 0, y: 0, z: 0}
+    holdClip: HoldBow
+    attackClip: BowShot
+    attackRelease: 0.8
+    hasLaunchPoint: 1
+    launchPoint: {x: 0, y: 0, z: 0.07}
+    skeleton: Bow
+    clips:
+    - {fileID: 465769213163361915, guid: 145b4eb81e1c17744b1d84c997b5db5a, type: 3}
+    drawLength: 0.62
   - name: WoodcuttingAxe
     socket: main_hand
     bone: Socket_MainHand
@@ -489,5 +536,9 @@ MonoBehaviour:
     offHandGrip: {x: 0, y: 0, z: -0.33}
     holdClip: 
     attackClip: 
+    attackRelease: 0
     hasLaunchPoint: 0
     launchPoint: {x: 0, y: 0, z: 0}
+    skeleton: 
+    clips: []
+    drawLength: 0

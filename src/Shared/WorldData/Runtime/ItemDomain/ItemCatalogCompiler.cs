@@ -106,7 +106,8 @@ namespace Mmorpg.WorldData.Items
                         DisplayName = family.DisplayName,
                         CombatStyle = family.CombatStyle,
                         AmmunitionFamily = family.AmmunitionFamily,
-                        ProjectileSpeed = family.ProjectileSpeed
+                        ProjectileSpeed = family.ProjectileSpeed,
+                        WindupSeconds = family.WindupSeconds
                     })
                     .OrderBy(family => family.Id, StringComparer.Ordinal)
                     .ToArray(),
@@ -197,6 +198,7 @@ namespace Mmorpg.WorldData.Items
                 new CombatReferences(
                     weaponFamilyIds,
                     MagicWeaponFamilyIds(authoring.WeaponFamilies),
+                    WindupSecondsByFamily(authoring.WeaponFamilies),
                     ammunitionFamilyIds,
                     maximumCharacterLevel),
                 errors);
@@ -353,6 +355,13 @@ namespace Mmorpg.WorldData.Items
                 }
 
                 ValidateProjectileSpeed(family, path, errors);
+                var windup = family.WindupSeconds;
+                if (!CombatContentRules.IsFinite(windup) || windup < 0f || windup > CombatContentRules.MaximumWindupSeconds)
+                {
+                    errors.Add(
+                        path + ".windupSeconds must be between 0 and "
+                        + CombatContentRules.MaximumWindupSeconds.ToString(CultureInfo.InvariantCulture) + ".");
+                }
             }
 
             return ids;
@@ -750,6 +759,14 @@ namespace Mmorpg.WorldData.Items
                     + " and "
                     + CombatContentRules.MaximumAttackIntervalSeconds.ToString(CultureInfo.InvariantCulture)
                     + ".");
+            }
+            else if (combat.WindupSecondsByFamily.TryGetValue(weapon.WeaponFamily ?? string.Empty, out var windup)
+                && weapon.AttackIntervalSeconds <= windup)
+            {
+                // An attack releases before the next one may start.
+                errors.Add(
+                    path + ".weapon.attackIntervalSeconds must be longer than the windup of its weapon family, "
+                    + windup.ToString(CultureInfo.InvariantCulture) + " s.");
             }
 
             if (!CombatContentRules.IsValidAttackRange(weapon.Range))
@@ -1625,6 +1642,7 @@ namespace Mmorpg.WorldData.Items
                     writer.Write(family.CombatStyle);
                     writer.Write(family.AmmunitionFamily);
                     writer.Write(family.ProjectileSpeed);
+                    writer.Write(family.WindupSeconds);
                 }
 
                 WriteIdentities(writer, catalog.AmmunitionFamilies);
@@ -1755,16 +1773,37 @@ namespace Mmorpg.WorldData.Items
                 StringComparer.Ordinal);
         }
 
+        // The windup of every family whose windup is valid, which a weapon's interval must exceed.
+        private static Dictionary<string, float> WindupSecondsByFamily(ItemWeaponFamilyEntry[] families)
+        {
+            var windups = new Dictionary<string, float>(StringComparer.Ordinal);
+            foreach (var family in families ?? Array.Empty<ItemWeaponFamilyEntry>())
+            {
+                if (family != null
+                    && family.Id != null
+                    && CombatContentRules.IsFinite(family.WindupSeconds)
+                    && family.WindupSeconds >= 0f
+                    && family.WindupSeconds <= CombatContentRules.MaximumWindupSeconds)
+                {
+                    windups[family.Id] = family.WindupSeconds;
+                }
+            }
+
+            return windups;
+        }
+
         private readonly struct CombatReferences
         {
             public CombatReferences(
                 ISet<string> weaponFamilyIds,
                 ISet<string> magicWeaponFamilyIds,
+                IReadOnlyDictionary<string, float> windupSecondsByFamily,
                 ISet<string> ammunitionFamilyIds,
                 int maximumCharacterLevel)
             {
                 WeaponFamilyIds = weaponFamilyIds;
                 MagicWeaponFamilyIds = magicWeaponFamilyIds;
+                WindupSecondsByFamily = windupSecondsByFamily;
                 AmmunitionFamilyIds = ammunitionFamilyIds;
                 MaximumCharacterLevel = maximumCharacterLevel;
             }
@@ -1772,6 +1811,8 @@ namespace Mmorpg.WorldData.Items
             public ISet<string> WeaponFamilyIds { get; }
 
             public ISet<string> MagicWeaponFamilyIds { get; }
+
+            public IReadOnlyDictionary<string, float> WindupSecondsByFamily { get; }
 
             public ISet<string> AmmunitionFamilyIds { get; }
 
