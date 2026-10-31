@@ -1,7 +1,7 @@
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.Server.Common.Identity;
 
-namespace Mmorpg.GameService.Placement;
+namespace Mmorpg.GameService.Placement.Development;
 
 internal sealed class DevelopmentSimulationBotTicketService(
     DevelopmentSimulationBotPlacementService placementService,

@@ -2,7 +2,7 @@ using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Mmorpg.Server.Common.Identity;
 
-namespace Mmorpg.GameService.Placement;
+namespace Mmorpg.GameService.Placement.Development;
 
 internal sealed class DevelopmentSimulationBotAuthority(
     DevelopmentSimulationBotOptions options,

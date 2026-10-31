@@ -24,7 +24,7 @@ public sealed class ModulePublicSurfaceTests
             ],
             ["Mmorpg.GameService.Placement"] =
             [
-                "Mmorpg.GameService.Placement.DevelopmentSimulationBotOptions",
+                "Mmorpg.GameService.Placement.Development.DevelopmentSimulationBotOptions",
                 "Mmorpg.GameService.Placement.FleetBootstrapConfig",
                 "Mmorpg.GameService.Placement.PlacementModule",
                 "Mmorpg.GameService.Placement.PlacementModuleOptions",

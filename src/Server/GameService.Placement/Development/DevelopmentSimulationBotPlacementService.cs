@@ -1,7 +1,7 @@
 using Dapper;
 using Npgsql;
 
-namespace Mmorpg.GameService.Placement;
+namespace Mmorpg.GameService.Placement.Development;
 
 internal sealed class DevelopmentSimulationBotPlacementService(
     NpgsqlDataSource dataSource,

@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Placement;
+namespace Mmorpg.GameService.Placement.Development;
 
 public sealed record DevelopmentSimulationBotOptions(
     bool Enabled,

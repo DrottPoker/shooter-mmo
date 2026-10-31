@@ -2,6 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Placement.Development;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;

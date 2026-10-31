@@ -1,4 +1,4 @@
-namespace Mmorpg.GameService.Placement;
+namespace Mmorpg.GameService.Placement.Development;
 
 internal sealed record DevelopmentSimulationBotTicketRequest(
     Guid BotInstanceId,

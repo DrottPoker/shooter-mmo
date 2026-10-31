@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Placement.Development;
 
 namespace Mmorpg.GameService.Placement.Tests;
 
