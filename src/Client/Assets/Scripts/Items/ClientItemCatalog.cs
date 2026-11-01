@@ -178,11 +178,15 @@ namespace Mmorpg.Client.Items
                 : string.Empty;
         }
 
+        // An item without an icon of its own, or whose icon is missing, shows the placeholder.
         public Sprite LoadIcon(string definitionId)
         {
-            return Presentation.TryGet(definitionId ?? string.Empty, out var entry)
+            var icon = Presentation.TryGet(definitionId ?? string.Empty, out var entry)
                 ? ItemPresentationCatalogLoader.LoadIcon(entry.iconAddress)
                 : null;
+            return icon != null
+                ? icon
+                : ItemPresentationCatalogLoader.LoadIcon(ItemPresentationCatalogLoader.PlaceholderIconAddress);
         }
     }
 

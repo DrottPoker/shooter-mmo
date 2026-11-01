@@ -54,6 +54,32 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(bundled.LoadIcon(definition.Id), Is.SameAs(bundled.LoadIcon(definition.Id)));
         }
 
+        // Every item has an icon to draw: its own, or the placeholder until approved art exists.
+        [Test]
+        public void EveryItemWithoutItsOwnIconShowsThePlaceholder()
+        {
+            Assert.That(
+                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out var bundled, out var error),
+                Is.True,
+                error);
+            var placeholder = ItemPresentationCatalogLoader.LoadIcon(
+                ItemPresentationCatalogLoader.PlaceholderIconAddress);
+            Assert.That(placeholder, Is.Not.Null);
+
+            foreach (var definition in bundled.Definitions)
+            {
+                Assert.That(bundled.Presentation.TryGet(definition.Id, out var entry), Is.True, definition.Id);
+                var icon = bundled.LoadIcon(definition.Id);
+                Assert.That(icon, Is.Not.Null, definition.Id);
+                if (string.IsNullOrEmpty(entry.iconAddress))
+                {
+                    Assert.That(icon, Is.SameAs(placeholder), definition.Id);
+                }
+            }
+
+            Assert.That(bundled.LoadIcon("unknown_definition"), Is.SameAs(placeholder));
+        }
+
         [Test]
         public void MapperRejectsCatalogMismatchAndInvalidDeliveryRevision()
         {

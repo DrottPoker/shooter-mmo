@@ -12,6 +12,10 @@ namespace Mmorpg.Client.Items
     // revision, and keeps every icon it resolves loaded for the lifetime of the process.
     public static class ItemPresentationCatalogLoader
     {
+        // The icon of every item that has no approved icon of its own yet.
+        public const string PlaceholderIconAddress =
+            ItemPresentationCatalogFormat.IconAddressPrefix + "placeholder.png";
+
         private static readonly Dictionary<string, AsyncOperationHandle<Sprite>> IconLoads =
             new Dictionary<string, AsyncOperationHandle<Sprite>>(StringComparer.Ordinal);
         private static readonly HashSet<string> MissingIcons =

@@ -32,9 +32,8 @@ namespace Mmorpg.Client.Ui
         public const int CanvasSortingOrder = 100;
 
         private const int StorageColumns = 5;
-        private const float SlotHeight = 64f;
-        private const float MinimumSlotWidth = 72f;
-        private const float MaximumSlotWidth = 120f;
+        private const float MinimumSlotSize = 56f;
+        private const float MaximumSlotSize = 80f;
         private const float SlotSpacing = 6f;
         private const float PaperDollSpacing = 10f;
         private const float ContentPadding = 4f;
@@ -68,7 +67,7 @@ namespace Mmorpg.Client.Ui
         private TextMeshProUGUI characterHeaderDetail;
         private InventoryDragCoordinator dragCoordinator;
         private InventoryTooltipView tooltip;
-        private Vector2 slotSize = new Vector2(MaximumSlotWidth, SlotHeight);
+        private Vector2 slotSize = new Vector2(MaximumSlotSize, MaximumSlotSize);
         private bool isOpen;
         private InventoryPanelMode mode = InventoryPanelMode.Complete;
         private InventoryContextKind context = InventoryContextKind.None;
@@ -421,7 +420,7 @@ namespace Mmorpg.Client.Ui
             // columns around it.
             equipmentContent = CreateModule(
                 EquipmentModuleName,
-                new Vector2(0.012f, 0.47f),
+                new Vector2(0.012f, 0.40f),
                 new Vector2(0.292f, 0.96f),
                 false,
                 out equipmentPanel,
@@ -601,8 +600,7 @@ namespace Mmorpg.Client.Ui
                 equipmentContent,
                 EquipmentPaperDollLayout.ColumnCount,
                 rows * EquipmentPaperDollLayout.ColumnCount,
-                PaperDollSpacing,
-                TextAnchor.UpperCenter);
+                PaperDollSpacing);
             for (var index = 0; index < rows * EquipmentPaperDollLayout.ColumnCount; index++)
             {
                 if (cellsByIndex.TryGetValue(index, out var cell))
@@ -756,8 +754,7 @@ namespace Mmorpg.Client.Ui
                 parent,
                 StorageColumns,
                 container.Slots.Count,
-                SlotSpacing,
-                TextAnchor.UpperLeft);
+                SlotSpacing);
             foreach (var slot in container.Slots)
             {
                 DrawContainerSlot(grid, state, container, slot, keyPrefix);
@@ -921,8 +918,7 @@ namespace Mmorpg.Client.Ui
                     parent,
                     StorageColumns,
                     delivery.Items.Count,
-                    SlotSpacing,
-                    TextAnchor.UpperLeft);
+                    SlotSpacing);
                 foreach (var deliveryItem in delivery.Items)
                 {
                     var item = deliveryItem.Item;
@@ -1051,8 +1047,7 @@ namespace Mmorpg.Client.Ui
                     parent,
                     StorageColumns,
                     section.Slots.Count,
-                    SlotSpacing,
-                    TextAnchor.UpperLeft);
+                    SlotSpacing);
                 foreach (var slot in section.Slots)
                 {
                     DrawCorpseSlot(grid, inventoryState, view, section, slot);

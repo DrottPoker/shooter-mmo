@@ -777,13 +777,15 @@ development worker opens the Bank and Recovery Storage everywhere.
    views, and Escape closes any view, while the cursor stays free. Hidden
    modules leave no background or header behind, and the right column keeps its
    position and size in all three views.
-5. Look at the slots and hover items. Expected result: every slot has the same
-   size. Occupied slots show the item name, a colored top strip for the item
-   category, and the stack quantity in the lower-right corner; empty slots are
-   darker. The specialized Traveler's Pack slots show `Food/Potion`,
-   `Material`, and `Ammunition`. A tooltip shows the item's name, category,
-   quantity, weight, equipment slots, and policies. The carry meter is green
-   with `Weight 1040 / 2500    Load 41.6%    Speed 100%`.
+5. Look at the slots and hover items. Expected result: every slot is a square
+   of the same size, and the grids sit in the middle of their columns. Occupied
+   slots show the placeholder icon, a grey cube, a colored top strip for the
+   item category, and the stack quantity in the lower-right corner; empty slots
+   are darker. The empty specialized Traveler's Pack slots show `Food/Potion`,
+   `Material`, or `Ammunition`. A tooltip shows the item's name, category,
+   quantity, weight, equipment slots, policies, and slot, for an occupied
+   specialized slot also its accepted types. The carry meter is green with
+   `Weight 1040 / 2500    Load 41.6%    Speed 100%`.
 6. With each view open, left-click the ground beside the windows, right-click
    it, and scroll there, then do the same on a window. Expected result: the
    world is not dimmed. Beside the windows the character walks, keeps steering
@@ -796,8 +798,9 @@ development worker opens the Bank and Recovery Storage everywhere.
 1. Drag the Training Shortbow, the Leather Jerkin, the Starter Pickaxe, or the
    Copper Ring from Permanent Inventory onto a compatible empty equipment slot,
    then back onto an empty Permanent slot. Expected result: valid targets
-   highlight green and invalid ones red, the dragged label trails beside the
-   pointer without covering the target, and the item lands where you drop it.
+   highlight green and invalid ones red, the dragged icon with its quantity
+   trails beside the pointer without covering the target, the slot it came from
+   fades while you drag, and the item lands where you drop it.
    The carry meter drops by the item's weight when it is equipped and regains
    it when the item returns to carried storage.
 2. Drag a second compatible item onto an occupied equipment slot. Expected
@@ -920,10 +923,11 @@ for 40 percent of the value, rounded down on the total, without buyback.
    vendor panel reports `Purchased.`, the pickaxe appears in carried storage at
    once, and the balance shows `50 Gold`.
 4. Mine five Iron Ore as [Mining](#mining) describes, return to Mira, choose
-   `Trade`, and drag the ore stack onto the `Sell` slot. Expected result: a
-   quantity field shows the whole stack, and the button reads `Sell 5 Iron Ore
-   for 20 Gold`. Enter a smaller quantity to sell part of the stack, or click
-   `Cancel` to discard the sale.
+   `Trade`, and drag the ore stack onto the `Sell` slot. Expected result: the
+   slot shows the ore's icon, and its tooltip names `Iron Ore` and `Offered to
+   General Store`; a quantity field shows the whole stack, and the button reads
+   `Sell 5 Iron Ore for 20 Gold`. Enter a smaller quantity to sell part of the stack, or
+   click `Cancel` to discard the sale.
 5. Click the sell button. Expected result: the panel reports `Sold.`, the stack
    shrinks by the sold quantity, and the balance rises by 4 Gold per ore,
    rounded down on the total.

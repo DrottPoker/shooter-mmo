@@ -274,7 +274,8 @@ there once.
    Sprite per file. The folder is an Addressables folder entry, so the window
    stores the icon's address, such as `Items/Icons/<file>.png`, not the image,
    in the presentation file. An item may stay without an icon until approved
-   client art exists.
+   client art exists; the inventory then shows the shared placeholder icon
+   `Items/Icons/placeholder.png`.
 6. Select `Validate` to run the strict command-line compiler against temporary
    files. It writes nothing.
 7. Select `Save` to write `catalog.json`, one file per definition, one file per
@@ -346,7 +347,10 @@ presentation key, and the look of the item on a body:
   [Tools In Use](../../docs/EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
 
 Icon files are client-owned assets below `Assets/Content/Items/Icons` and use
-one Sprite per file. The presentation file has its own deterministic
+one Sprite per file. Save an icon as a square PNG of 256 by 256 pixels; the
+client's icon import rules make every image in that folder a UI Sprite, as
+[Unity Client Architecture](../../docs/UNITY_CLIENT_ARCHITECTURE.md#item-operations-and-catalog)
+describes. The presentation file has its own deterministic
 presentation revision and records the exact gameplay catalog revision it was
 baked against; the client checks the pair once when it loads them and caches the
 lookup. Presentation fields never alter gameplay structural fingerprints, and

@@ -77,7 +77,7 @@ largest, is split by area:
 
 | Folder | Holds |
 | --- | --- |
-| `Editor` | `ClientAddressablesLayout` and `WorldCollisionBaker` |
+| `Editor` | `ClientAddressablesLayout`, `ItemIconImportRules`, and `WorldCollisionBaker` |
 | `Editor/Art` | The import side of the art pipeline: model import rules, appearance catalogs, project materials, topology maps, manifests, and `CreaturePresentationBuilder` |
 | `Editor/Cloth` | Cloth measurement, the stress motions, and the cloth fixtures for the art pipeline's checks |
 | `Editor/Wardrobe` | The Wardrobe window and its preview |
@@ -1105,7 +1105,12 @@ of accepting stale definitions. Icons, localization keys, fallback labels, and
 optional prefab presentation keys resolve locally. An icon is a Sprite whose
 Addressables address is stored in the catalog's `iconAddress` field, below
 `Items/Icons/`; the client loads each icon once and keeps it for the process
-lifetime. HTTP responses carry only stable definition ids and instance state.
+lifetime. An item without an icon of its own, or whose icon is missing, shows
+the shared placeholder `ItemPresentationCatalogLoader.PlaceholderIconAddress`,
+`Items/Icons/placeholder.png`, so every item has an icon to draw.
+`ItemIconImportRules` in the Editor assembly imports every image below
+`Assets/Content/Items/Icons` as one UI Sprite: mipmapped and trilinear, clamped,
+at most 256 texels a side, and compressed in high quality. HTTP responses carry only stable definition ids and instance state.
 
 Durable item-instance revisions are non-negative, and a newly granted or split
 item begins at revision `0`. Unity `JsonUtility` can materialize an exact
@@ -1300,11 +1305,13 @@ them.
 
 `EquipmentPaperDollLayout` owns the positions of the equipment slots and appends
 any slot it does not know, such as one added to the catalog later, in extra rows.
-Every slot in every module shares one size, fitted to five columns in the
-character column. `InventorySlotPresentation` builds slot labels, badges, and
-tooltip text as pure functions, and the panel draws them through
-`InventorySlotView` and `InventoryTooltipView`; tooltips never show during a
-drag. Bank and Recovery may be inspected through global owning-account reads,
+Every slot in every module is a square of one size, fitted to five columns in
+the character column, and every grid centers a full row in its module. An
+occupied slot draws the item's icon from `ClientItemCatalog.LoadIcon`; only an
+item whose icon cannot load falls back to its name as text.
+`InventorySlotPresentation` builds slot labels, badges, and tooltip text as pure
+functions, and the panel draws them through `InventorySlotView` and
+`InventoryTooltipView`; tooltips never show during a drag. Bank and Recovery may be inspected through global owning-account reads,
 and the context header names the NPC whose open interaction offers the shown
 storage or trade. Every mutation still travels through the joined
 SimulationWorker and is committed through GameService authority.
