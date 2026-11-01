@@ -248,7 +248,7 @@ namespace Mmorpg.Client.Ui
                 pendingItem = null;
             }
 
-            var grid = CreateGrid(parent, StorageColumns, 1, SlotSpacing, TextAnchor.UpperLeft);
+            var grid = CreateGrid(parent, StorageColumns, 1, SlotSpacing);
             CreateSlot(grid, new SlotSpec
             {
                 Key = "vendor:sell",
@@ -259,8 +259,13 @@ namespace Mmorpg.Client.Ui
                 DropValidator = (InventoryDragPayload candidate, out string reason) =>
                     CanDropOnVendor(state, vendor, candidate, out reason),
                 OnDrop = OnVendorDrop,
-                Tooltip = "<b>Sell</b>\nDrop a carried item here to see what "
-                    + vendor.DisplayName + " pays for it."
+                Tooltip = pendingItem != null
+                    ? InventorySlotPresentation.BuildItemTooltip(
+                        state.Catalog,
+                        pendingItem,
+                        "Offered to " + vendor.DisplayName)
+                    : "<b>Sell</b>\nDrop a carried item here to see what "
+                        + vendor.DisplayName + " pays for it."
             });
 
             if (pendingItem == null)

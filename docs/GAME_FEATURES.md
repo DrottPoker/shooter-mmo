@@ -366,16 +366,18 @@ The panel has three columns that never move each other:
   shown with its tier name, such as Warded Pouch. Its header shows the balance
   and the item-state revision, such as `1,250 Gold    Revision 12`.
 
-Every slot has the same size. An occupied slot shows the item name, a category
-color strip in place of item art, the stack quantity in its lower-right corner, a
-`P` or `I` badge for protection on death or insurance, and the equipment slot or
-accepted item types in its upper-left corner. An empty slot is darker and shows
-only its equipment slot name or accepted types. An empty equipment slot that an
-equipped item blocks, such as the off hand next to the two-handed Training
-Shortbow, is red and marked Blocked. Hovering a slot shows a tooltip with the item
-name, category, quantity and stack limit, weight, equipment slots and blocked
-slots, active policies with their source, such as `Insurance NPC`, `Quest grant`,
-or `Catalog rule`, destruction and Secure Container restrictions, and the slot
+Every slot is a square of the same size, and the slot grids sit in the middle of
+their columns. An occupied slot shows the item's icon, a category color strip
+along its top edge, the stack quantity in its lower-right corner, and a `P` or
+`I` badge for protection on death or insurance. Until approved item art exists,
+every item shows the same placeholder icon, a grey cube, so the category strip
+and the tooltip tell items apart. An empty slot is darker and shows only its
+equipment slot name or accepted types. An empty equipment slot that an equipped
+item blocks, such as the off hand next to the two-handed Training Shortbow, is
+red and marked Blocked. Hovering a slot shows a tooltip with the item name,
+category, quantity and stack limit, weight, equipment slots and blocked slots,
+active policies with their source, such as `Insurance NPC`, `Quest grant`, or
+`Catalog rule`, destruction and Secure Container restrictions, and the slot
 location; tooltips never show during a drag.
 
 The carry meter spans zero to the 140 percent hard cap with a marker at full
@@ -388,8 +390,9 @@ line, so they work in every view.
 Items move by drag and drop:
 
 - Drop an item on a valid container or equipment slot. Valid targets light up
-  green and invalid ones red. The dragged item trails below and to the right of
-  the pointer, so it never hides the target.
+  green and invalid ones red. The dragged item's icon, with its quantity, trails
+  below and to the right of the pointer, so it never hides the target, and the
+  slot it came from fades until the drag ends.
 - Dropping onto an occupied slot merges compatible stacks and otherwise swaps
   the two items when each fits the other's slot. On an occupied equipment slot, a
   stack of the equipped item tops it up, and another item equips and sends the

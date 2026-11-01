@@ -83,13 +83,25 @@ namespace Mmorpg.Client.Tests.PlayMode
                         Is.EqualTo(InventorySlotVisualState.Blocked));
                 }
 
-                // Every slot in every module shares one size.
+                // Every slot in every module is a square of one size.
                 var sizes = views
                     .Select(view => ((RectTransform)view.transform).rect.size)
                     .Distinct()
                     .ToArray();
                 Assert.That(sizes.Length, Is.EqualTo(1), string.Join(", ", sizes));
                 Assert.That(sizes[0].x, Is.GreaterThan(0f));
+                Assert.That(sizes[0].y, Is.EqualTo(sizes[0].x));
+
+                // An occupied slot shows the item's icon instead of its name, which the
+                // tooltip shows.
+                var occupied = View(views, "inventory:0");
+                var icon = occupied.transform.Find("Icon");
+                Assert.That(icon, Is.Not.Null);
+                Assert.That(
+                    icon.GetComponent<Image>().sprite,
+                    Is.SameAs(catalog.LoadIcon(occupied.ItemDefinitionId)));
+                Assert.That(occupied.transform.Find("Name"), Is.Null);
+                Assert.That(View(views, "inventory:1").transform.Find("Icon"), Is.Null);
 
                 var fill = panel.GetComponentsInChildren<RectTransform>()
                     .Single(rect => rect.name == "Fill" && rect.parent.name == "Track");

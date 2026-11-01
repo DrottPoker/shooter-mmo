@@ -1,6 +1,7 @@
 using System;
 using Mmorpg.Client.Ui;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -24,6 +25,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     payload,
                     "Iron Ore x20",
                     null,
+                    "20",
                     true);
                 var target = fixture.Target.AddComponent<InventoryDropTarget>();
                 target.Configure(
@@ -77,6 +79,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     payload,
                     "Recovery delivery",
                     null,
+                    string.Empty,
                     true);
                 var target = fixture.Target.AddComponent<InventoryDropTarget>();
                 target.Configure(
@@ -98,6 +101,82 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(operationInvoked, Is.False);
                 Assert.That(rejection, Does.Contain("Permanent Inventory or Bank"));
                 Assert.That(fixture.Coordinator.IsDragging, Is.False);
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
+        // The picked-up item moves as its icon with its quantity, and its slot fades until the
+        // drag ends.
+        [Test]
+        public void IconDragMovesTheIconAndFadesItsSlot()
+        {
+            var fixture = CreateFixture();
+            var texture = new Texture2D(4, 4);
+            var icon = Sprite.Create(texture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f));
+            try
+            {
+                var source = fixture.Source.AddComponent<InventoryDragSource>();
+                source.Configure(
+                    fixture.Coordinator,
+                    InventoryDragPayload.ForItem(Guid.NewGuid()),
+                    "Iron Ore  x20",
+                    icon,
+                    "20",
+                    true);
+                var group = fixture.Source.GetComponent<CanvasGroup>();
+                Assert.That(group.alpha, Is.EqualTo(1f));
+
+                source.OnBeginDrag(new PointerEventData(fixture.EventSystem) { position = new Vector2(25f, 25f) });
+
+                var ghost = fixture.Coordinator.transform.Find(InventoryDragCoordinator.GhostName);
+                Assert.That(ghost, Is.Not.Null);
+                Assert.That(ghost.GetComponent<Image>().sprite, Is.SameAs(icon));
+                Assert.That(ghost.Find("Quantity").GetComponent<TMP_Text>().text, Is.EqualTo("20"));
+                Assert.That(ghost.Find("Label"), Is.Null);
+                Assert.That(group.alpha, Is.EqualTo(InventoryDragSource.DraggedAlpha));
+                Assert.That(group.blocksRaycasts, Is.False);
+
+                source.OnEndDrag(new PointerEventData(fixture.EventSystem));
+
+                Assert.That(fixture.Coordinator.IsDragging, Is.False);
+                Assert.That(fixture.Coordinator.transform.Find(InventoryDragCoordinator.GhostName), Is.Null);
+                Assert.That(group.alpha, Is.EqualTo(1f));
+                Assert.That(group.blocksRaycasts, Is.True);
+            }
+            finally
+            {
+                fixture.Dispose();
+                UnityEngine.Object.DestroyImmediate(icon);
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        // Without an icon the item moves as its name.
+        [Test]
+        public void DragWithoutIconMovesTheLabel()
+        {
+            var fixture = CreateFixture();
+            try
+            {
+                var source = fixture.Source.AddComponent<InventoryDragSource>();
+                source.Configure(
+                    fixture.Coordinator,
+                    InventoryDragPayload.ForItem(Guid.NewGuid()),
+                    "Iron Ore  x20",
+                    null,
+                    "20",
+                    true);
+
+                source.OnBeginDrag(new PointerEventData(fixture.EventSystem));
+
+                var ghost = fixture.Coordinator.transform.Find(InventoryDragCoordinator.GhostName);
+                Assert.That(ghost, Is.Not.Null);
+                Assert.That(ghost.Find("Label").GetComponent<TMP_Text>().text, Is.EqualTo("Iron Ore  x20"));
+                Assert.That(ghost.Find("Quantity"), Is.Null);
+                source.OnEndDrag(new PointerEventData(fixture.EventSystem));
             }
             finally
             {

@@ -93,9 +93,12 @@ namespace Mmorpg.Client.Ui
     [DisallowMultipleComponent]
     public sealed class InventoryDragCoordinator : MonoBehaviour
     {
+        public const string GhostName = "InventoryDragGhost";
+
         // The ghost trails below and right of the pointer so the hovered slot's green or
         // red highlight stays visible.
         private static readonly Vector2 GhostPointerOffset = new Vector2(16f, -16f);
+        private const float GhostIconSize = 64f;
 
         private RectTransform visualRoot;
         private TMP_FontAsset font;
@@ -111,10 +114,12 @@ namespace Mmorpg.Client.Ui
             font = dragFont;
         }
 
+        // The ghost is the item's icon with its quantity, or its label without an icon.
         public bool TryBegin(
             InventoryDragPayload payload,
             string label,
             Sprite icon,
+            string quantity,
             PointerEventData eventData)
         {
             if (payload == null || eventData == null || IsDragging)
@@ -124,7 +129,15 @@ namespace Mmorpg.Client.Ui
 
             ActivePayload = payload;
             IsDragging = true;
-            CreateGhost(label, icon);
+            if (icon != null)
+            {
+                CreateIconGhost(icon, quantity);
+            }
+            else
+            {
+                CreateLabelGhost(label);
+            }
+
             Move(eventData);
             return true;
         }
@@ -174,15 +187,47 @@ namespace Mmorpg.Client.Ui
             Cancel();
         }
 
-        private void CreateGhost(string label, Sprite icon)
+        private void CreateIconGhost(Sprite icon, string quantity)
         {
-            if (visualRoot == null)
+            var image = CreateGhost(new Vector2(GhostIconSize, GhostIconSize));
+            if (image == null)
             {
                 return;
             }
 
+            image.sprite = icon;
+            image.preserveAspect = true;
+            if (!string.IsNullOrEmpty(quantity))
+            {
+                var text = CreateGhostText("Quantity", quantity, TextAlignmentOptions.BottomRight, TemporaryUiKit.QuantityColor);
+                text.rectTransform.offsetMin = new Vector2(4f, 2f);
+                text.rectTransform.offsetMax = new Vector2(-6f, -2f);
+            }
+        }
+
+        private void CreateLabelGhost(string label)
+        {
+            var image = CreateGhost(new Vector2(200f, 40f));
+            if (image == null)
+            {
+                return;
+            }
+
+            image.color = new Color(0.16f, 0.32f, 0.48f, 0.98f);
+            var text = CreateGhostText("Label", label, TextAlignmentOptions.Left, Color.white);
+            text.rectTransform.offsetMin = new Vector2(8f, 4f);
+            text.rectTransform.offsetMax = new Vector2(-8f, -4f);
+        }
+
+        private Image CreateGhost(Vector2 size)
+        {
+            if (visualRoot == null)
+            {
+                return null;
+            }
+
             var ghostObject = new GameObject(
-                "InventoryDragGhost",
+                GhostName,
                 typeof(RectTransform),
                 typeof(CanvasGroup),
                 typeof(Image));
@@ -191,51 +236,38 @@ namespace Mmorpg.Client.Ui
             dragGhost.anchorMin = new Vector2(0.5f, 0.5f);
             dragGhost.anchorMax = new Vector2(0.5f, 0.5f);
             dragGhost.pivot = new Vector2(0f, 1f);
-            dragGhost.sizeDelta = new Vector2(200f, 40f);
+            dragGhost.sizeDelta = size;
             ghostObject.GetComponent<CanvasGroup>().blocksRaycasts = false;
             ghostObject.GetComponent<CanvasGroup>().alpha = 0.9f;
-            ghostObject.GetComponent<Image>().color = new Color(0.16f, 0.32f, 0.48f, 0.98f);
             ghostObject.transform.SetAsLastSibling();
+            var image = ghostObject.GetComponent<Image>();
+            image.raycastTarget = false;
+            return image;
+        }
 
-            var textOffset = 8f;
-            if (icon != null)
-            {
-                var iconObject = new GameObject(
-                    "Icon",
-                    typeof(RectTransform),
-                    typeof(Image));
-                var iconRect = iconObject.GetComponent<RectTransform>();
-                iconRect.SetParent(dragGhost, false);
-                iconRect.anchorMin = new Vector2(0f, 0.5f);
-                iconRect.anchorMax = new Vector2(0f, 0.5f);
-                iconRect.pivot = new Vector2(0f, 0.5f);
-                iconRect.anchoredPosition = new Vector2(5f, 0f);
-                iconRect.sizeDelta = new Vector2(32f, 32f);
-                var iconImage = iconObject.GetComponent<Image>();
-                iconImage.sprite = icon;
-                iconImage.preserveAspect = true;
-                iconImage.raycastTarget = false;
-                textOffset = 42f;
-            }
-
+        private TextMeshProUGUI CreateGhostText(
+            string objectName,
+            string value,
+            TextAlignmentOptions alignment,
+            Color color)
+        {
             var textObject = new GameObject(
-                "Label",
+                objectName,
                 typeof(RectTransform),
                 typeof(TextMeshProUGUI));
             var textRect = textObject.GetComponent<RectTransform>();
             textRect.SetParent(dragGhost, false);
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(textOffset, 4f);
-            textRect.offsetMax = new Vector2(-8f, -4f);
             var text = textObject.GetComponent<TextMeshProUGUI>();
             text.font = font;
-            text.text = label ?? string.Empty;
+            text.text = value ?? string.Empty;
             text.fontSize = 14;
             text.fontStyle = FontStyles.Bold;
-            text.alignment = TextAlignmentOptions.Left;
-            text.color = Color.white;
+            text.alignment = alignment;
+            text.color = color;
             text.raycastTarget = false;
+            return text;
         }
     }
 
@@ -245,11 +277,15 @@ namespace Mmorpg.Client.Ui
         IDragHandler,
         IEndDragHandler
     {
+        // The slot fades while its item is picked up, so the ghost reads as the moved item.
+        public const float DraggedAlpha = 0.4f;
+
         private InventoryDragCoordinator coordinator;
         private InventoryDragPayload payload;
         private CanvasGroup canvasGroup;
         private string label;
         private Sprite icon;
+        private string quantity;
         private bool canDrag;
         private bool ownsActiveDrag;
 
@@ -260,14 +296,21 @@ namespace Mmorpg.Client.Ui
             InventoryDragPayload dragPayload,
             string dragLabel,
             Sprite dragIcon,
+            string dragQuantity,
             bool enabled)
         {
             coordinator = dragCoordinator;
             payload = dragPayload;
             label = dragLabel ?? string.Empty;
             icon = dragIcon;
+            quantity = dragQuantity ?? string.Empty;
             canDrag = enabled;
-            canvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+            // The Editor's GetComponent returns a fake null object instead of null, which ??
+            // treats as a component.
+            if (!TryGetComponent(out canvasGroup))
+            {
+                canvasGroup = gameObject.AddComponent<CanvasGroup>();
+            }
         }
 
         // Only the left button drags; a right press is a right-click move.
@@ -278,10 +321,11 @@ namespace Mmorpg.Client.Ui
                 && eventData.button == PointerEventData.InputButton.Left
                 && coordinator != null
                 && payload != null
-                && coordinator.TryBegin(payload, label, icon, eventData);
+                && coordinator.TryBegin(payload, label, icon, quantity, eventData);
             if (ownsActiveDrag && canvasGroup != null)
             {
                 canvasGroup.blocksRaycasts = false;
+                canvasGroup.alpha = DraggedAlpha;
             }
         }
 
@@ -308,6 +352,7 @@ namespace Mmorpg.Client.Ui
             if (canvasGroup != null)
             {
                 canvasGroup.blocksRaycasts = true;
+                canvasGroup.alpha = 1f;
             }
 
             if (ownsActiveDrag && coordinator != null && coordinator.IsDragging)

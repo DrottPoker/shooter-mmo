@@ -35,6 +35,7 @@ namespace Mmorpg.Client.Ui
         public static readonly Color ButtonDangerColor = new Color(0.47f, 0.17f, 0.16f, 1f);
         public static readonly Color ButtonQuietColor = new Color(0.10f, 0.115f, 0.14f, 1f);
         public static readonly Color InputColor = new Color(0.025f, 0.03f, 0.04f, 1f);
+        public static readonly Color QuantityColor = new Color(1f, 0.90f, 0.62f, 1f);
 
         // The text inside a field or button keeps this far from its edges.
         private static readonly Vector2 FieldPadding = new Vector2(10f, 2f);

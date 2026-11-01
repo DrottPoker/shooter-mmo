@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Editor;
+using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameSimulation;
 using Mmorpg.WorldData.Content;
@@ -86,6 +87,34 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 Assert.That(addresses.TryGetValue(entry.iconAddress, out var path), Is.True, entry.definitionId);
                 Assert.That(AssetDatabase.LoadAssetAtPath<Sprite>(path), Is.Not.Null, entry.definitionId);
+            }
+        }
+
+        // The placeholder that items without an icon show is addressable, and every icon file
+        // imports as one UI Sprite with the settings of the import rules.
+        [Test]
+        public void EveryItemIconIsAUiSpriteAndThePlaceholderIsAddressable()
+        {
+            var addresses = GatherAddresses();
+            Assert.That(
+                addresses.TryGetValue(ItemPresentationCatalogLoader.PlaceholderIconAddress, out var placeholderPath),
+                Is.True);
+            Assert.That(AssetDatabase.LoadAssetAtPath<Sprite>(placeholderPath), Is.Not.Null);
+
+            var iconPaths = AssetDatabase
+                .FindAssets("t:Texture2D", new[] { ItemIconImportRules.IconPathPrefix.TrimEnd('/') })
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .ToArray();
+            Assert.That(iconPaths, Does.Contain(placeholderPath));
+            foreach (var path in iconPaths)
+            {
+                var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+                Assert.That(importer.textureType, Is.EqualTo(TextureImporterType.Sprite), path);
+                Assert.That(importer.spriteImportMode, Is.EqualTo(SpriteImportMode.Single), path);
+                Assert.That(importer.maxTextureSize, Is.EqualTo(ItemIconImportRules.MaximumIconSize), path);
+                Assert.That(importer.mipmapEnabled, Is.True, path);
+                Assert.That(importer.alphaIsTransparency, Is.True, path);
+                Assert.That(importer.wrapMode, Is.EqualTo(TextureWrapMode.Clamp), path);
             }
         }
 

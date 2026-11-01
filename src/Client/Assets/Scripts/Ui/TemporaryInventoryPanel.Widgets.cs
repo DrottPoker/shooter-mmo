@@ -16,8 +16,12 @@ namespace Mmorpg.Client.Ui
         private static readonly Color SlotBlockedColor = new Color(0.22f, 0.075f, 0.075f, 1f);
         private static readonly Color SlotBorderColor = new Color(0.25f, 0.29f, 0.35f, 1f);
         private static readonly Color SlotEmptyBorderColor = new Color(0.20f, 0.225f, 0.27f, 1f);
-        private static readonly Color QuantityColor = new Color(1f, 0.90f, 0.62f, 1f);
         private const string QuantityLabelName = "Quantity";
+        private const string IconName = "Icon";
+
+        // The slot border that stays visible around an icon, so a selected slot or a drop
+        // highlight still shows.
+        private const float IconInset = 5f;
 
         private void DrawCarryMeter(Transform parent, CarryLoadPresentation load)
         {
@@ -86,7 +90,7 @@ namespace Mmorpg.Client.Ui
             };
         }
 
-        // A color per item category stands in for icons until item art exists.
+        // A color per item category tells items apart while they share the placeholder icon.
         private static Color CategoryColor(string categoryId)
         {
             return categoryId switch
@@ -232,36 +236,46 @@ namespace Mmorpg.Client.Ui
                 FooterMargin + (height > 0f ? height + 8f : 0f));
         }
 
-        // Slots share one size, fitted to five columns in the character module.
+        // Slots are squares of one size, fitted to five columns in the character module.
         private Vector2 ResolveSlotSize()
         {
             var width = characterContent != null ? characterContent.rect.width : 0f;
             if (width <= 0f)
             {
-                return new Vector2(MaximumSlotWidth, SlotHeight);
+                return new Vector2(MaximumSlotSize, MaximumSlotSize);
             }
 
             var available = width - 2f * ContentPadding - SlotSpacing * (StorageColumns - 1);
-            return new Vector2(
-                Mathf.Clamp(Mathf.Floor(available / StorageColumns), MinimumSlotWidth, MaximumSlotWidth),
-                SlotHeight);
+            var side = Mathf.Clamp(Mathf.Floor(available / StorageColumns), MinimumSlotSize, MaximumSlotSize);
+            return new Vector2(side, side);
         }
 
+        // A full row sits in the middle of its module, and a shorter row starts where a full
+        // row starts, so every grid of a module lines up.
         private RectTransform CreateGrid(
             Transform parent,
             int columns,
             int cellCount,
-            float spacing,
-            TextAnchor alignment)
+            float spacing)
         {
+            columns = Mathf.Max(1, columns);
             var gridObject = CreateUiObject("SlotGrid", parent);
             var grid = gridObject.AddComponent<GridLayoutGroup>();
             grid.cellSize = slotSize;
             grid.spacing = new Vector2(spacing, spacing);
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = Mathf.Max(1, columns);
-            grid.childAlignment = alignment;
-            var rows = Mathf.Max(1, Mathf.CeilToInt(cellCount / (float)Mathf.Max(1, columns)));
+            grid.constraintCount = columns;
+            grid.childAlignment = TextAnchor.UpperLeft;
+            var rowWidth = columns * slotSize.x + (columns - 1) * spacing;
+            var gridWidth = parent is RectTransform parentRect
+                ? parentRect.rect.width - 2f * ContentPadding
+                : 0f;
+            grid.padding = new RectOffset(
+                Mathf.Max(0, Mathf.FloorToInt((gridWidth - rowWidth) / 2f)),
+                0,
+                0,
+                0);
+            var rows = Mathf.Max(1, Mathf.CeilToInt(cellCount / (float)columns));
             gridObject.AddComponent<LayoutElement>().preferredHeight =
                 rows * slotSize.y + (rows - 1) * spacing;
             return gridObject.GetComponent<RectTransform>();
@@ -312,6 +326,7 @@ namespace Mmorpg.Client.Ui
 
             Sprite icon = null;
             var dragLabel = string.Empty;
+            var dragQuantity = string.Empty;
             if (item != null)
             {
                 var displayName = catalog != null
@@ -319,41 +334,56 @@ namespace Mmorpg.Client.Ui
                     : item.DefinitionId;
                 var quantity = spec.QuantityText ?? InventorySlotPresentation.QuantityText(item.Quantity);
                 dragLabel = displayName + (quantity.Length > 0 ? "  x" + quantity : string.Empty);
+                dragQuantity = quantity;
                 var strip = CreateUiObject("Category", slotObject.transform).AddComponent<Image>();
                 strip.color = CategoryColor(InventorySlotPresentation.CategoryId(catalog, item.DefinitionId));
                 strip.raycastTarget = false;
                 Stretch(strip.rectTransform, new Vector2(0f, 1f), Vector2.one, new Vector2(0f, -3f), Vector2.zero);
 
-                var nameLeft = 6f;
+                // The icon stands for the item and the tooltip names it. Only an item whose
+                // icon cannot load shows its name and slot label as text.
                 icon = catalog?.LoadIcon(item.DefinitionId);
                 if (icon != null)
                 {
-                    var iconImage = CreateUiObject("Icon", slotObject.transform).AddComponent<Image>();
+                    var iconImage = CreateUiObject(IconName, slotObject.transform).AddComponent<Image>();
                     iconImage.sprite = icon;
                     iconImage.preserveAspect = true;
                     iconImage.raycastTarget = false;
-                    var iconRect = iconImage.rectTransform;
-                    iconRect.anchorMin = new Vector2(0f, 0.5f);
-                    iconRect.anchorMax = new Vector2(0f, 0.5f);
-                    iconRect.pivot = new Vector2(0f, 0.5f);
-                    iconRect.anchoredPosition = new Vector2(5f, 0f);
-                    iconRect.sizeDelta = new Vector2(slotSize.y - 22f, slotSize.y - 22f);
-                    nameLeft = slotSize.y - 12f;
+                    Stretch(
+                        iconImage.rectTransform,
+                        Vector2.zero,
+                        Vector2.one,
+                        new Vector2(IconInset, IconInset),
+                        new Vector2(-IconInset, -IconInset));
+                }
+                else
+                {
+                    var nameText = TemporaryUiKit.AddText(
+                        CreateUiObject("Name", slotObject.transform),
+                        displayName,
+                        14,
+                        FontStyles.Normal,
+                        TextAlignmentOptions.Center,
+                        TemporaryUiKit.TextPrimary);
+                    nameText.textWrappingMode = TextWrappingModes.Normal;
+                    nameText.overflowMode = TextOverflowModes.Truncate;
+                    nameText.enableAutoSizing = true;
+                    nameText.fontSizeMin = 10;
+                    nameText.fontSizeMax = 14;
+                    Stretch(nameText.rectTransform, Vector2.zero, Vector2.one, new Vector2(6f, 15f), new Vector2(-6f, -15f));
+                    if (!string.IsNullOrEmpty(spec.CornerLabel))
+                    {
+                        var cornerText = TemporaryUiKit.AddText(
+                            CreateUiObject("SlotLabel", slotObject.transform),
+                            spec.CornerLabel,
+                            11,
+                            FontStyles.Normal,
+                            TextAlignmentOptions.TopLeft,
+                            TemporaryUiKit.TextMuted);
+                        Stretch(cornerText.rectTransform, Vector2.zero, Vector2.one, new Vector2(6f, 4f), new Vector2(-18f, -5f));
+                    }
                 }
 
-                var nameText = TemporaryUiKit.AddText(
-                    CreateUiObject("Name", slotObject.transform),
-                    displayName,
-                    14,
-                    FontStyles.Normal,
-                    TextAlignmentOptions.Center,
-                    TemporaryUiKit.TextPrimary);
-                nameText.textWrappingMode = TextWrappingModes.Normal;
-                nameText.overflowMode = TextOverflowModes.Truncate;
-                nameText.enableAutoSizing = true;
-                nameText.fontSizeMin = 10;
-                nameText.fontSizeMax = 14;
-                Stretch(nameText.rectTransform, Vector2.zero, Vector2.one, new Vector2(nameLeft, 15f), new Vector2(-6f, -15f));
                 // A replaced quantity, such as a live count, keeps its label to update.
                 if (quantity.Length > 0 || spec.QuantityText != null)
                 {
@@ -363,7 +393,7 @@ namespace Mmorpg.Client.Ui
                         14,
                         FontStyles.Bold,
                         TextAlignmentOptions.BottomRight,
-                        QuantityColor);
+                        TemporaryUiKit.QuantityColor);
                     Stretch(quantityText.rectTransform, Vector2.zero, Vector2.one, new Vector2(4f, 2f), new Vector2(-6f, -2f));
                 }
 
@@ -378,18 +408,6 @@ namespace Mmorpg.Client.Ui
                         TextAlignmentOptions.TopRight,
                         TemporaryUiKit.SuccessColor);
                     Stretch(badgeText.rectTransform, Vector2.zero, Vector2.one, new Vector2(4f, 4f), new Vector2(-6f, -5f));
-                }
-
-                if (!string.IsNullOrEmpty(spec.CornerLabel))
-                {
-                    var cornerText = TemporaryUiKit.AddText(
-                        CreateUiObject("SlotLabel", slotObject.transform),
-                        spec.CornerLabel,
-                        11,
-                        FontStyles.Normal,
-                        TextAlignmentOptions.TopLeft,
-                        TemporaryUiKit.TextMuted);
-                    Stretch(cornerText.rectTransform, Vector2.zero, Vector2.one, new Vector2(6f, 4f), new Vector2(-18f, -5f));
                 }
             }
             else if (!string.IsNullOrEmpty(spec.EmptyLabel) || spec.Blocked)
@@ -412,6 +430,7 @@ namespace Mmorpg.Client.Ui
                     spec.DragPayload,
                     dragLabel,
                     icon,
+                    dragQuantity,
                     spec.CanDrag);
             }
 
