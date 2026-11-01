@@ -163,6 +163,17 @@ the namespace rule. It reads the asmdef files because Unity adds
 `UnityEngine.UI` to every compiled assembly. A new dependency is a deliberate
 change: add the asmdef reference, keep it pointing down, and update the test.
 
+Every project assembly, the client, Editor, and test assemblies as well as the
+shared packages, has a `csc.rsp` with `-warnaserror+` next to its asmdef. Unity
+applies a response file only to the assembly whose asmdef sits beside it, so a
+compiler warning in project code fails compilation in the Editor, in
+`tools/Run-UnityEditorTests.ps1`, and in the CI Unity gate, as
+`TreatWarningsAsErrors` in `Directory.Build.props` fails the .NET build, while
+package code keeps its warnings. A new asmdef needs the same file, and every
+script must live in an asmdef, because the predefined `Assembly-CSharp`
+assemblies have no response file; `ClientAssemblyArchitectureTests` fails
+otherwise.
+
 ## Packages And Rendering
 
 `Packages/manifest.json` pins every package to an exact version, and the package

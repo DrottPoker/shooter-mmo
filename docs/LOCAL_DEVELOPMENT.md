@@ -714,9 +714,11 @@ project, the CI runner, and the documentation. Upgrade it in a focused branch:
    and the import settings and assets whose serialized format changed. Commit
    these files as Unity wrote them.
 3. Read the log for `error CS`, `warning`, and import errors such as
-   `Rig Error`. The build stays at zero warnings, so fix every new warning in
-   the same branch. Never print the head of a Unity log: its command line holds
-   the Hub access token.
+   `Rig Error`. Project code compiles with warnings as errors, as
+   [Assemblies](UNITY_CLIENT_ARCHITECTURE.md#assemblies) describes, so an API
+   that the new version deprecates fails as `error CS0618`; fix every one in the
+   same branch. Never print the head of a Unity log: its command line holds the
+   Hub access token.
 4. Open the worktree with `unity open <worktree>\src\Client` and run both suites
    with `tools/Run-UnityEditorTests.ps1`.
 5. Replace the old version everywhere it is written. `git grep -n

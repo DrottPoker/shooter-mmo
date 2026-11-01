@@ -1554,22 +1554,29 @@ Pick each body in turn in `Body`.
 
 1. Open `src/Client` and wait for the import. Expected result: the Console
    shows no compiler error, and each top-level folder below `Assets/Scripts`
-   holds one assembly definition.
-2. Open `Window > Asset Management > Addressables > Groups`. Expected result:
+   holds one assembly definition, with a `csc.rsp` beside it.
+2. Add the line `#warning probe` inside any class below
+   `src/Client/Assets/Scripts` or `src/Shared/GameSimulation/Runtime`, then run
+   `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter ClientAssemblyArchitectureTests`.
+   Expected result: the Console shows `error CS1030: #warning: 'probe'`, and the
+   script prints only that line under `Compile errors:` and ends with exit code
+   2, because project code compiles with warnings as errors. Remove the line and
+   run the script again. Expected result: the scripts compile and the tests pass.
+3. Open `Window > Asset Management > Addressables > Groups`. Expected result:
    the groups `Client Content`, `Item Icons`, `World Actor Prefabs`, `World
    Collision`, and `World Scenes` exist, and `World Scenes` holds
    `DevelopmentWorld1` and `DevelopmentWorld2`.
-3. Open `File > Build Profiles`. Expected result: the scene list holds only
+4. Open `File > Build Profiles`. Expected result: the scene list holds only
    `LoginMenu` and `CharacterSelect`.
-4. Join `Local Shard 1` from LoginMenu. Expected result: CharacterSelect shows
+5. Join `Local Shard 1` from LoginMenu. Expected result: CharacterSelect shows
    `Loading DevelopmentWorld2.` briefly, the World scene opens with the local
    player and the authored NPC, Mob, and resource node prefabs, the Console has
    no warning or error, and `Leave Shard` in the Debug menu returns to
    CharacterSelect.
-5. To check built content, build the Addressables content and switch the Play
+6. To check built content, build the Addressables content and switch the Play
    Mode Script to `Use Existing Build`, as
    [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#content-loading-with-addressables)
-   describes, and repeat step 4. Expected result: the same as in step 4. Switch
+   describes, and repeat step 5. Expected result: the same as in step 5. Switch
    back to `Use Asset Database` afterwards.
 
 ## Two Clients

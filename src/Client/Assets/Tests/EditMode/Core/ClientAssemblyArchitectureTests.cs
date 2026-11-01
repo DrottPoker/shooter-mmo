@@ -17,6 +17,7 @@ namespace Mmorpg.Client.Tests.EditMode
     public sealed class ClientAssemblyArchitectureTests
     {
         private const string ClientPrefix = "Mmorpg.Client.";
+        private const string ProjectPrefix = "Mmorpg.";
 
         // Runtime areas from the bottom up. A client assembly may only reference areas that
         // come before it, so the graph has no cycles, Ui is the top feature area, and only the
@@ -230,6 +231,37 @@ namespace Mmorpg.Client.Tests.EditMode
                     .Select(type => type.FullName)
                     .ToArray();
                 Assert.That(misplaced, Is.Empty, expected);
+            }
+        }
+
+        // Unity compiles each assembly with the csc.rsp next to its asmdef, so a warning fails the
+        // Editor and the CI Unity gate as TreatWarningsAsErrors fails the .NET build. Every script
+        // lives in an asmdef, because the predefined Assembly-CSharp assemblies have no csc.rsp.
+        [Test]
+        public void EveryProjectAssemblyTreatsWarningsAsErrors()
+        {
+            var assemblies = CompilationPipeline.GetAssemblies(AssembliesType.Editor);
+            Assert.That(
+                assemblies.Select(assembly => assembly.name)
+                    .Where(name => name.StartsWith("Assembly-CSharp", StringComparison.Ordinal)),
+                Is.Empty);
+
+            var project = assemblies
+                .Where(assembly => assembly.name.StartsWith(ProjectPrefix, StringComparison.Ordinal))
+                .ToArray();
+            Assert.That(project, Is.Not.Empty);
+            foreach (var assembly in project)
+            {
+                var definition = CompilationPipeline.GetAssemblyDefinitionFilePathFromAssemblyName(assembly.name);
+                Assert.That(definition, Is.Not.Null.And.Not.Empty, assembly.name);
+                var responseFile = Path.Combine(
+                    Path.GetDirectoryName(FileUtil.GetPhysicalPath(definition)),
+                    "csc.rsp");
+                Assert.That(File.Exists(responseFile), Is.True, assembly.name + " has no " + responseFile);
+                Assert.That(
+                    File.ReadAllLines(responseFile).Select(line => line.Trim()),
+                    Does.Contain("-warnaserror+"),
+                    responseFile);
             }
         }
 

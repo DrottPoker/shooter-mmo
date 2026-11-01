@@ -122,6 +122,7 @@ function Wait-EditorIdle([string]$Activity) {
 # Imports changed files and compiles the scripts. An Editor in the background does not refresh by
 # itself, and the request may drop when the refresh reloads the domain, so idle state decides.
 function Update-EditorScripts {
+    $refreshStarted = [DateTime]::UtcNow
     $null = Invoke-EditorCommand "eval" @("--code", "UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport); return 0;")
     Wait-EditorIdle "after the asset refresh"
     $check = Invoke-EditorCommand "eval" @("--code", "return UnityEditor.EditorUtility.scriptCompilationFailed;")
@@ -129,14 +130,36 @@ function Update-EditorScripts {
         Stop-Run 4 "the Editor could not report its compile state: $("$($check.Text)".Trim())"
     }
     if ($check.Json.result -eq $true) {
-        $console = Invoke-EditorCommand "console" @("--level", "error", "--tail", "20")
-        $messages = @($console.Json.entries | Where-Object { $_ } | ForEach-Object {
-                if ($_.message) { $_.message } elseif ($_.Message) { $_.Message } else { "$_" }
-            })
-        Write-Host "Compile errors:"
-        $messages | Select-Object -Unique | ForEach-Object { Write-Host "  $_" }
+        Write-CompileErrors $refreshStarted
         Stop-Run 2 "the scripts do not compile; fix the errors above, then run the tests again"
     }
+}
+
+function Get-EntryMessage($Entry) {
+    if ($Entry.message) { "$($Entry.message)" } elseif ($Entry.Message) { "$($Entry.Message)" } else { "$Entry" }
+}
+
+function Get-EntryTimeUtc($Entry) {
+    $value = $Entry.timestampUtc
+    if ($value -is [DateTime]) { return $value.ToUniversalTime() }
+    $parsed = [DateTime]::MinValue
+    $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+    if ([DateTime]::TryParse("$value", [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) { return $parsed }
+    [DateTime]::MinValue
+}
+
+# Prints the compiler errors that the refresh logged. The console also keeps runtime errors and the
+# errors of earlier compilations, which would hide the cause, so those show only when the refresh
+# compiled nothing, as when the scripts already failed before it and nothing changed.
+function Write-CompileErrors([DateTime]$Since) {
+    $console = Invoke-EditorCommand "console" @("--level", "error", "--tail", "200")
+    $entries = @($console.Json.entries | Where-Object { $_ })
+    $compiler = @($entries | Where-Object { (Get-EntryMessage $_) -match "error CS\d+" })
+    $shown = @($compiler | Where-Object { (Get-EntryTimeUtc $_) -ge $Since })
+    if ($shown.Count -eq 0) { $shown = @($compiler | Select-Object -Last 20) }
+    if ($shown.Count -eq 0) { $shown = @($entries | Select-Object -Last 20) }
+    Write-Host "Compile errors:"
+    $shown | ForEach-Object { Get-EntryMessage $_ } | Select-Object -Unique | ForEach-Object { Write-Host "  $_" }
 }
 
 function Write-NotPassed($results) {
