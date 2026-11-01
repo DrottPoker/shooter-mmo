@@ -2,6 +2,7 @@ using System.Collections;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Worlds;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -28,12 +29,12 @@ namespace Mmorpg.Client.Ui
         private Button registerTab;
         private RectTransform logInPage;
         private RectTransform registerPage;
-        private InputField loginField;
-        private InputField logInPasswordField;
-        private InputField emailField;
-        private InputField usernameField;
-        private InputField registerPasswordField;
-        private Text status;
+        private TMP_InputField loginField;
+        private TMP_InputField logInPasswordField;
+        private TMP_InputField emailField;
+        private TMP_InputField usernameField;
+        private TMP_InputField registerPasswordField;
+        private TextMeshProUGUI status;
 
         public bool IsRegistering { get; private set; }
 
@@ -124,7 +125,7 @@ namespace Mmorpg.Client.Ui
                 "Email or username",
                 lastLogin.Length > 0 ? lastLogin : (debugBuild ? DevelopmentLogin : string.Empty),
                 "player_one",
-                InputField.ContentType.Standard,
+                TMP_InputField.ContentType.Standard,
                 AccountEntryPresentation.EmailLimit,
                 null);
             logInPasswordField = screen.AddField(
@@ -132,7 +133,7 @@ namespace Mmorpg.Client.Ui
                 "Password",
                 debugBuild ? DevelopmentPassword : string.Empty,
                 "Password",
-                InputField.ContentType.Password,
+                TMP_InputField.ContentType.Password,
                 AccountEntryPresentation.PasswordLimit,
                 null);
             TemporaryEntryScreen.AddSpace(logInPage, 6f, false);
@@ -144,7 +145,7 @@ namespace Mmorpg.Client.Ui
                 "Email",
                 string.Empty,
                 "you@example.com",
-                InputField.ContentType.EmailAddress,
+                TMP_InputField.ContentType.EmailAddress,
                 AccountEntryPresentation.EmailLimit,
                 null);
             usernameField = screen.AddField(
@@ -152,7 +153,7 @@ namespace Mmorpg.Client.Ui
                 "Username",
                 string.Empty,
                 "player_one",
-                InputField.ContentType.Standard,
+                TMP_InputField.ContentType.Standard,
                 AccountEntryPresentation.UsernameLimit,
                 AccountEntryPresentation.UsernameHint);
             registerPasswordField = screen.AddField(
@@ -160,7 +161,7 @@ namespace Mmorpg.Client.Ui
                 "Password",
                 debugBuild ? DevelopmentPassword : string.Empty,
                 "Password",
-                InputField.ContentType.Password,
+                TMP_InputField.ContentType.Password,
                 AccountEntryPresentation.PasswordLimit,
                 AccountEntryPresentation.PasswordHint);
             TemporaryEntryScreen.AddSpace(registerPage, 6f, false);
@@ -175,8 +176,8 @@ namespace Mmorpg.Client.Ui
                     ClientSession.RequestTimeoutSeconds,
                     ClientSession.RealtimeTimeoutSeconds),
                 13,
-                FontStyle.Normal,
-                TextAnchor.MiddleCenter,
+                FontStyles.Normal,
+                TextAlignmentOptions.Center,
                 TemporaryUiKit.TextMuted);
             TemporaryUiKit.Stretch(connection.rectTransform, Vector2.zero, new Vector2(1f, 0f), new Vector2(16f, 16f), new Vector2(-16f, 48f));
         }
@@ -269,7 +270,7 @@ namespace Mmorpg.Client.Ui
             ClientSceneLoader.LoadCharacterSelect();
         }
 
-        private void SetError(string operation, ApiError error, InputField retryField)
+        private void SetError(string operation, ApiError error, TMP_InputField retryField)
         {
             SetStatus(AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl), TemporaryUiKit.DangerColor);
             ClientLog.Error(ClientLogCategory.Auth, operation + " failed: " + error.ToDisplayMessage());
@@ -277,7 +278,7 @@ namespace Mmorpg.Client.Ui
             StartCoroutine(FocusWhenIdle(retryField));
         }
 
-        private IEnumerator FocusWhenIdle(InputField field)
+        private IEnumerator FocusWhenIdle(TMP_InputField field)
         {
             while (operationState.IsBusy)
             {

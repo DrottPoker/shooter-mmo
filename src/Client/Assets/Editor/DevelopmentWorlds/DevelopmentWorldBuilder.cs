@@ -4,11 +4,11 @@ using Mmorpg.Client.Worlds;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Worlds;
+using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 namespace Mmorpg.Client.Editor
 {
@@ -29,12 +29,10 @@ namespace Mmorpg.Client.Editor
         private const float RampBurialDepth = 0.1f;
         private const float DecalHeight = 0.01f;
 
-        // Label canvases use 4 mm units, which keeps dynamic font glyphs sharp up close without
-        // huge glyphs in the font atlas. A text line is about 1.15 times its font size tall.
+        // Label canvases use 4 mm units. A TextMesh Pro line of the UI font is about 1.15 times
+        // its font size tall.
         private const float LabelMetersPerUnit = 0.004f;
         private const float LabelLineSpacing = 1.15f;
-
-        private static Font labelFont;
 
         private DevelopmentWorldBuilder(
             Scene scene,
@@ -320,8 +318,9 @@ namespace Mmorpg.Client.Editor
                 new Color(0.95f, 0.95f, 0.9f));
         }
 
-        // A world-space canvas with one text. World-space UI is depth tested, so labels hide
-        // behind walls, and it has no raycaster, so it never takes pointer input.
+        // A world-space canvas with one TextMesh Pro text in the UI font, sharp at any distance.
+        // World-space UI is depth tested, so labels hide behind walls, and it has no raycaster,
+        // so it never takes pointer input.
         private static void Label(
             Transform parent,
             string name,
@@ -332,11 +331,6 @@ namespace Mmorpg.Client.Editor
             float lineHeight,
             Color color)
         {
-            if (labelFont == null)
-            {
-                labelFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            }
-
             var label = new GameObject(name, typeof(RectTransform))
             {
                 isStatic = true
@@ -359,12 +353,13 @@ namespace Mmorpg.Client.Editor
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
             textRect.sizeDelta = Vector2.zero;
-            var uiText = textObject.AddComponent<Text>();
-            uiText.font = labelFont;
-            uiText.fontSize = Mathf.RoundToInt(lineHeight / LabelMetersPerUnit / LabelLineSpacing);
-            uiText.alignment = TextAnchor.MiddleCenter;
-            uiText.horizontalOverflow = HorizontalWrapMode.Overflow;
-            uiText.verticalOverflow = VerticalWrapMode.Overflow;
+            var uiText = textObject.AddComponent<TextMeshProUGUI>();
+            uiText.font = TMP_Settings.defaultFontAsset;
+            uiText.fontSize = lineHeight / LabelMetersPerUnit / LabelLineSpacing;
+            uiText.alignment = TextAlignmentOptions.Center;
+            uiText.textWrappingMode = TextWrappingModes.NoWrap;
+            uiText.overflowMode = TextOverflowModes.Overflow;
+            uiText.richText = false;
             uiText.color = color;
             uiText.raycastTarget = false;
             uiText.text = text;

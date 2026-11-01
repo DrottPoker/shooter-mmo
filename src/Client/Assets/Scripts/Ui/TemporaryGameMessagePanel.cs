@@ -1,4 +1,5 @@
 using Mmorpg.Client.Gameplay;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -17,7 +18,7 @@ namespace Mmorpg.Client.Ui
 
         private const int VisibleMessages = 5;
 
-        private readonly Text[] lines = new Text[VisibleMessages];
+        private readonly TextMeshProUGUI[] lines = new TextMeshProUGUI[VisibleMessages];
         private GameMessageLog messages;
         private RectTransform panel;
         private bool dirty = true;
@@ -125,7 +126,7 @@ namespace Mmorpg.Client.Ui
             dirty = false;
         }
 
-        private static void SetActive(Text line, bool active)
+        private static void SetActive(TextMeshProUGUI line, bool active)
         {
             if (line.gameObject.activeSelf != active)
             {
@@ -169,10 +170,10 @@ namespace Mmorpg.Client.Ui
                     panel,
                     string.Empty,
                     16,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextPrimary,
                     22f);
-                line.supportRichText = false;
+                line.richText = false;
                 var shadow = line.gameObject.AddComponent<Shadow>();
                 shadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
                 shadow.effectDistance = new Vector2(1.5f, -1.5f);

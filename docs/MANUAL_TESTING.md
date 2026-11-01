@@ -385,6 +385,17 @@ the spawn pad in the middle of the walled arena.
 
 ## Client Stability
 
+### Sharp Text
+
+1. Open the Game view at a small size, such as 1280 by 720, and at full HD, and
+   go through LoginMenu, CharacterSelect, the World with the inventory (I), a
+   vendor, the world menu (right-click Mira), the Debug menu (F2), the Admin
+   menu (F3), and a death. Expected result: every text is sharp at both sizes,
+   text fields show their placeholder, caret, and selection inside their box,
+   the world menu box fits its longest row, and the death overlay, the combat
+   message, and the world menu's hover text have a black outline. The signs and
+   floor labels of the World are sharp up close and from afar.
+
 ### Busy Buttons And Lost Connections
 
 1. Double-click `Create Account`, `Create Character`, `Refresh`, `Enter World`,

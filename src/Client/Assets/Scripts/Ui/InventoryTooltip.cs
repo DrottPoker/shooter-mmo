@@ -1,4 +1,5 @@
 using UnityEngine;
+using TMPro;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
@@ -43,7 +44,7 @@ namespace Mmorpg.Client.Ui
 
         private RectTransform rect;
         private RectTransform bounds;
-        private Text label;
+        private TextMeshProUGUI label;
         private LayoutElement labelLayout;
         private InventoryDragCoordinator dragCoordinator;
         private object owner;
@@ -88,11 +89,11 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Text", tooltipObject.transform),
                 string.Empty,
                 14,
-                FontStyle.Normal,
-                TextAnchor.UpperLeft,
+                FontStyles.Normal,
+                TextAlignmentOptions.TopLeft,
                 TemporaryUiKit.TextPrimary);
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.textWrappingMode = TextWrappingModes.Normal;
+            text.overflowMode = TextOverflowModes.Overflow;
 
             var view = tooltipObject.AddComponent<InventoryTooltipView>();
             view.rect = tooltipRect;

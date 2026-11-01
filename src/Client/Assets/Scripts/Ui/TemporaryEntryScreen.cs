@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -19,7 +20,7 @@ namespace Mmorpg.Client.Ui
         private const float FieldHeight = 36f;
         private const float MainButtonHeight = 44f;
 
-        private readonly List<InputField> fields = new List<InputField>();
+        private readonly List<TMP_InputField> fields = new List<TMP_InputField>();
         private GameObject canvasObject;
 
         private TemporaryEntryScreen()
@@ -67,7 +68,7 @@ namespace Mmorpg.Client.Ui
         {
             var eventSystem = EventSystem.current;
             var selected = eventSystem != null ? eventSystem.currentSelectedGameObject : null;
-            if (selected != null && selected.GetComponent<InputField>() == null)
+            if (selected != null && selected.GetComponent<TMP_InputField>() == null)
             {
                 eventSystem.SetSelectedGameObject(null);
             }
@@ -87,7 +88,7 @@ namespace Mmorpg.Client.Ui
         }
 
         // Puts the caret in a field and selects its text, so typing replaces it.
-        public static void Focus(InputField field)
+        public static void Focus(TMP_InputField field)
         {
             if (field == null || !field.isActiveAndEnabled || !field.IsInteractable())
             {
@@ -147,37 +148,37 @@ namespace Mmorpg.Client.Ui
             layout.flexibleHeight = flexible ? 1f : 0f;
         }
 
-        public static Text AddHeading(RectTransform parent, string text, int fontSize)
+        public static TextMeshProUGUI AddHeading(RectTransform parent, string text, int fontSize)
         {
             return TemporaryUiKit.CreateLabel(
                 parent,
                 text,
                 fontSize,
-                FontStyle.Bold,
+                FontStyles.Bold,
                 TemporaryUiKit.TextPrimary,
                 fontSize + 10f);
         }
 
         // A wrapping line of secondary or quiet text.
-        public static Text AddText(RectTransform parent, string text, int fontSize, Color color)
+        public static TextMeshProUGUI AddText(RectTransform parent, string text, int fontSize, Color color)
         {
-            return TemporaryUiKit.CreateLabel(parent, text, fontSize, FontStyle.Normal, color, fontSize + 6f);
+            return TemporaryUiKit.CreateLabel(parent, text, fontSize, FontStyles.Normal, color, fontSize + 6f);
         }
 
         // A labeled text field with an optional quiet hint below it; Tab reaches it in the order
         // the fields were added.
-        public InputField AddField(
+        public TMP_InputField AddField(
             RectTransform parent,
             string label,
             string value,
             string placeholder,
-            InputField.ContentType contentType,
+            TMP_InputField.ContentType contentType,
             int characterLimit,
             string hint)
         {
             var group = TemporaryUiKit.CreateUiObject(label + "Field", parent);
             AddStackLayout(group, 4f);
-            TemporaryUiKit.CreateLabel(group.transform, label, 13, FontStyle.Bold, TemporaryUiKit.TextSecondary, 18f);
+            TemporaryUiKit.CreateLabel(group.transform, label, 13, FontStyles.Bold, TemporaryUiKit.TextSecondary, 18f);
             var field = TemporaryUiKit.CreateTextField(
                 group.transform,
                 value,
@@ -187,7 +188,7 @@ namespace Mmorpg.Client.Ui
                 FieldHeight);
             if (!string.IsNullOrEmpty(hint))
             {
-                TemporaryUiKit.CreateLabel(group.transform, hint, 13, FontStyle.Normal, TemporaryUiKit.TextMuted, 17f);
+                TemporaryUiKit.CreateLabel(group.transform, hint, 13, FontStyles.Normal, TemporaryUiKit.TextMuted, 17f);
             }
 
             fields.Add(field);
@@ -201,7 +202,7 @@ namespace Mmorpg.Client.Ui
             var layout = button.GetComponent<LayoutElement>();
             layout.minHeight = MainButtonHeight;
             layout.preferredHeight = MainButtonHeight;
-            button.GetComponentInChildren<Text>().fontSize = 17;
+            button.GetComponentInChildren<TextMeshProUGUI>().fontSize = 17;
             return button;
         }
 
@@ -276,8 +277,8 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Title", button.transform),
                 title,
                 16,
-                FontStyle.Bold,
-                TextAnchor.LowerLeft,
+                FontStyles.Bold,
+                TextAlignmentOptions.BottomLeft,
                 TemporaryUiKit.TextPrimary);
             TemporaryUiKit.Stretch(
                 titleText.rectTransform,
@@ -289,8 +290,8 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Detail", button.transform),
                 detail,
                 13,
-                FontStyle.Normal,
-                TextAnchor.UpperLeft,
+                FontStyles.Normal,
+                TextAlignmentOptions.TopLeft,
                 TemporaryUiKit.TextSecondary);
             TemporaryUiKit.Stretch(
                 detailText.rectTransform,
@@ -304,8 +305,8 @@ namespace Mmorpg.Client.Ui
                     TemporaryUiKit.CreateUiObject("Note", button.transform),
                     note,
                     13,
-                    FontStyle.Bold,
-                    TextAnchor.MiddleRight,
+                    FontStyles.Bold,
+                    TextAlignmentOptions.Right,
                     noteColor);
                 TemporaryUiKit.Stretch(
                     noteText.rectTransform,
@@ -320,17 +321,17 @@ namespace Mmorpg.Client.Ui
 
         // A status line for the result of the last action, as tall as two lines so the card does
         // not move when a message wraps.
-        public static Text AddStatus(RectTransform parent)
+        public static TextMeshProUGUI AddStatus(RectTransform parent)
         {
-            var status = TemporaryUiKit.CreateLabel(parent, string.Empty, 14, FontStyle.Normal, TemporaryUiKit.TextSecondary, 40f);
-            status.alignment = TextAnchor.UpperLeft;
+            var status = TemporaryUiKit.CreateLabel(parent, string.Empty, 14, FontStyles.Normal, TemporaryUiKit.TextSecondary, 40f);
+            status.alignment = TextAlignmentOptions.TopLeft;
             status.gameObject.name = "Status";
             return status;
         }
 
         private void FocusNext(int step)
         {
-            var visible = new List<InputField>(fields.Count);
+            var visible = new List<TMP_InputField>(fields.Count);
             foreach (var field in fields)
             {
                 if (field != null && field.isActiveAndEnabled && field.IsInteractable())

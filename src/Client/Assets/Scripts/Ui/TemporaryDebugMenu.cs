@@ -6,6 +6,7 @@ using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.UI;
@@ -41,54 +42,54 @@ namespace Mmorpg.Client.Ui
         private bool hasPointerPoint;
         private Vector3 pointerPoint;
 
-        private Text playerPosition;
-        private Text playerFacing;
-        private Text playerChunk;
-        private Text pointerPosition;
-        private Text glanceFrame;
-        private Text glancePing;
-        private Text glanceSnapshots;
-        private Text glanceConnection;
+        private TextMeshProUGUI playerPosition;
+        private TextMeshProUGUI playerFacing;
+        private TextMeshProUGUI playerChunk;
+        private TextMeshProUGUI pointerPosition;
+        private TextMeshProUGUI glanceFrame;
+        private TextMeshProUGUI glancePing;
+        private TextMeshProUGUI glanceSnapshots;
+        private TextMeshProUGUI glanceConnection;
         private Toggle collisionToggle;
         private Toggle pathToggle;
         private Toggle tintToggle;
-        private Text collisionShapes;
+        private TextMeshProUGUI collisionShapes;
 
-        private Text renderingFps;
-        private Text renderingFrame;
-        private Text renderingResolution;
-        private Text renderingVsync;
-        private Text renderingMemory;
-        private Text renderingHeap;
+        private TextMeshProUGUI renderingFps;
+        private TextMeshProUGUI renderingFrame;
+        private TextMeshProUGUI renderingResolution;
+        private TextMeshProUGUI renderingVsync;
+        private TextMeshProUGUI renderingMemory;
+        private TextMeshProUGUI renderingHeap;
 
-        private Text connectionState;
-        private Text connectionCharacter;
-        private Text connectionWorld;
-        private Text connectionWorker;
-        private Text connectionEndpoint;
-        private Text connectionTick;
-        private Text networkPing;
-        private Text networkSnapshotAge;
-        private Text networkSnapshotRate;
-        private Text networkSnapshotPackets;
-        private Text networkPackets;
-        private Text networkPayload;
-        private Text networkLoss;
-        private Text networkTotals;
-        private Text networkEntities;
-        private Text networkWindow;
+        private TextMeshProUGUI connectionState;
+        private TextMeshProUGUI connectionCharacter;
+        private TextMeshProUGUI connectionWorld;
+        private TextMeshProUGUI connectionWorker;
+        private TextMeshProUGUI connectionEndpoint;
+        private TextMeshProUGUI connectionTick;
+        private TextMeshProUGUI networkPing;
+        private TextMeshProUGUI networkSnapshotAge;
+        private TextMeshProUGUI networkSnapshotRate;
+        private TextMeshProUGUI networkSnapshotPackets;
+        private TextMeshProUGUI networkPackets;
+        private TextMeshProUGUI networkPayload;
+        private TextMeshProUGUI networkLoss;
+        private TextMeshProUGUI networkTotals;
+        private TextMeshProUGUI networkEntities;
+        private TextMeshProUGUI networkWindow;
 
-        private Text movementAuthority;
-        private Text movementRates;
-        private Text movementSpeed;
-        private Text movementCarry;
-        private Text movementRevision;
-        private Text movementTick;
-        private Text movementPending;
-        private Text movementReconciliations;
-        private Text movementCorrection;
-        private Text movementPath;
-        private Text movementPlan;
+        private TextMeshProUGUI movementAuthority;
+        private TextMeshProUGUI movementRates;
+        private TextMeshProUGUI movementSpeed;
+        private TextMeshProUGUI movementCarry;
+        private TextMeshProUGUI movementRevision;
+        private TextMeshProUGUI movementTick;
+        private TextMeshProUGUI movementPending;
+        private TextMeshProUGUI movementReconciliations;
+        private TextMeshProUGUI movementCorrection;
+        private TextMeshProUGUI movementPath;
+        private TextMeshProUGUI movementPlan;
 
         public bool IsOpen
         {
@@ -676,7 +677,7 @@ namespace Mmorpg.Client.Ui
             window?.SetStatus(text, color);
         }
 
-        private static void Set(Text text, string value, WorldDebugHealth health = WorldDebugHealth.Neutral)
+        private static void Set(TextMeshProUGUI text, string value, WorldDebugHealth health = WorldDebugHealth.Neutral)
         {
             if (text == null)
             {

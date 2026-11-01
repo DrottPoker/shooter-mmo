@@ -5,6 +5,7 @@ using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -156,7 +157,7 @@ namespace Mmorpg.Client.Ui
                     + TemporaryUiKit.ColorTag(TemporaryUiKit.TextMuted) + ">"
                     + VendorClientRules.FormatAmount(state.Catalog, offer.UnitPrice) + " each</color>",
                 14,
-                FontStyle.Normal,
+                FontStyles.Normal,
                 TemporaryUiKit.TextPrimary,
                 36f);
             label.GetComponent<LayoutElement>().flexibleWidth = 1f;
@@ -168,7 +169,7 @@ namespace Mmorpg.Client.Ui
                 idle,
                 TemporaryButtonTone.Normal,
                 170f);
-            var buttonText = button.GetComponentInChildren<Text>();
+            var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
             // The button names the total the purchase will carry, so it follows the field
             // without a rebuild that would interrupt typing.
             input.onValueChanged.AddListener(value =>
@@ -279,7 +280,7 @@ namespace Mmorpg.Client.Ui
                 () => SellPending(capability, vendor),
                 idle,
                 TemporaryButtonTone.Active);
-            var confirmText = confirm.GetComponentInChildren<Text>();
+            var confirmText = confirm.GetComponentInChildren<TextMeshProUGUI>();
             var item = pendingItem;
             var location = pendingLocation;
             input.onValueChanged.AddListener(value =>

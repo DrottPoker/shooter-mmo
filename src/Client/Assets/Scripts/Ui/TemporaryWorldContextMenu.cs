@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Mmorpg.Client.WorldActors;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -30,7 +31,7 @@ namespace Mmorpg.Client.Ui
         private WorldMenuController menu;
         private RectTransform canvasRect;
         private RectTransform hoverRect;
-        private Text hoverText;
+        private TextMeshProUGUI hoverText;
         private RectTransform panel;
         private int shownCount;
         private WorldMenuOption shownTop;
@@ -53,7 +54,7 @@ namespace Mmorpg.Client.Ui
             var labels = new string[rows.Length];
             for (var index = 0; index < rows.Length; index++)
             {
-                labels[index] = StripColorTags(rows[index].GetComponentInChildren<Text>().text);
+                labels[index] = StripColorTags(rows[index].GetComponentInChildren<TextMeshProUGUI>().text);
             }
 
             return labels;
@@ -210,12 +211,15 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            // TextMesh Pro measures a text only once it is active, so the rows are built on the
+            // active panel and sized from their own texts.
+            panel.gameObject.SetActive(true);
             var header = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("Header", panel),
                 "Choose Option",
                 14,
-                FontStyle.Bold,
-                TextAnchor.MiddleLeft,
+                FontStyles.Bold,
+                TextAlignmentOptions.Left,
                 TemporaryUiKit.TextSecondary);
             header.gameObject.AddComponent<LayoutElement>().preferredHeight = 22f;
             var options = menu.MenuOptions;
@@ -226,7 +230,6 @@ namespace Mmorpg.Client.Ui
             }
 
             AddRow("Cancel", menu.CloseMenu);
-            panel.gameObject.SetActive(true);
             LayoutRebuilder.ForceRebuildLayoutImmediate(panel);
             PlacePanel(menu.MenuScreenPosition);
         }
@@ -251,10 +254,10 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Label", row.transform),
                 label,
                 16,
-                FontStyle.Normal,
-                TextAnchor.MiddleLeft,
+                FontStyles.Normal,
+                TextAlignmentOptions.Left,
                 TemporaryUiKit.TextPrimary);
-            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
             TemporaryUiKit.Stretch(
                 text.rectTransform,
                 Vector2.zero,
@@ -333,13 +336,12 @@ namespace Mmorpg.Client.Ui
                 hoverObject,
                 string.Empty,
                 19,
-                FontStyle.Bold,
-                TextAnchor.MiddleLeft,
+                FontStyles.Bold,
+                TextAlignmentOptions.Left,
                 TemporaryUiKit.TextPrimary);
-            hoverText.horizontalOverflow = HorizontalWrapMode.Overflow;
-            var hoverShadow = hoverObject.AddComponent<Shadow>();
-            hoverShadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
-            hoverShadow.effectDistance = new Vector2(1.5f, -1.5f);
+            hoverText.textWrappingMode = TextWrappingModes.NoWrap;
+            // The hover text floats over the world, so it has the world labels' black outline.
+            hoverText.fontSharedMaterial = WorldLabels.OutlinedMaterial;
             hoverObject.SetActive(false);
 
             var panelObject = TemporaryUiKit.CreateUiObject("WorldMenu", canvasObject.transform);

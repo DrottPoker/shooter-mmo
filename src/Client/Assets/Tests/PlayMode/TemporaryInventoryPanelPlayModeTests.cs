@@ -10,6 +10,7 @@ using Mmorpg.Client.Ui;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -173,7 +174,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                 yield return null;
 
                 Assert.That(
-                    panel.GetComponentsInChildren<Text>().Any(text =>
+                    panel.GetComponentsInChildren<TMP_Text>().Any(text =>
                         text.text.Contains("active simulation session")),
                     Is.True,
                     "The status line names why the right-click move was not sent.");
@@ -264,7 +265,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             var slot = View(panel.GetComponentsInChildren<InventorySlotView>(), "equipment:" + AmmunitionSlotId);
             var label = slot.transform.Find("Quantity");
             Assert.That(label, Is.Not.Null);
-            return label.GetComponent<Text>().text;
+            return label.GetComponent<TMP_Text>().text;
         }
 
         private static CharacterInventorySnapshot WithEquipped(

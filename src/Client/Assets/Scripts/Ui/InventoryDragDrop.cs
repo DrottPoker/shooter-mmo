@@ -1,5 +1,6 @@
 using System;
 using Mmorpg.Client.Items;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -97,14 +98,14 @@ namespace Mmorpg.Client.Ui
         private static readonly Vector2 GhostPointerOffset = new Vector2(16f, -16f);
 
         private RectTransform visualRoot;
-        private Font font;
+        private TMP_FontAsset font;
         private RectTransform dragGhost;
 
         public bool IsDragging { get; private set; }
 
         public InventoryDragPayload ActivePayload { get; private set; }
 
-        public void Configure(RectTransform root, Font dragFont)
+        public void Configure(RectTransform root, TMP_FontAsset dragFont)
         {
             visualRoot = root;
             font = dragFont;
@@ -220,19 +221,19 @@ namespace Mmorpg.Client.Ui
             var textObject = new GameObject(
                 "Label",
                 typeof(RectTransform),
-                typeof(Text));
+                typeof(TextMeshProUGUI));
             var textRect = textObject.GetComponent<RectTransform>();
             textRect.SetParent(dragGhost, false);
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
             textRect.offsetMin = new Vector2(textOffset, 4f);
             textRect.offsetMax = new Vector2(-8f, -4f);
-            var text = textObject.GetComponent<Text>();
+            var text = textObject.GetComponent<TextMeshProUGUI>();
             text.font = font;
             text.text = label ?? string.Empty;
             text.fontSize = 14;
-            text.fontStyle = FontStyle.Bold;
-            text.alignment = TextAnchor.MiddleLeft;
+            text.fontStyle = FontStyles.Bold;
+            text.alignment = TextAlignmentOptions.Left;
             text.color = Color.white;
             text.raycastTarget = false;
         }

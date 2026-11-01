@@ -6,6 +6,7 @@ using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -197,17 +198,17 @@ namespace Mmorpg.Client.Ui
                 AddText(
                     "Walking to " + approaching.TargetDisplayName + "...",
                     16,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextSecondary);
             }
 
             if (active != null)
             {
-                AddText(active.DisplayName, 22, FontStyle.Bold, TemporaryUiKit.TextPrimary);
+                AddText(active.DisplayName, 22, FontStyles.Bold, TemporaryUiKit.TextPrimary);
                 AddText(
                     "Capabilities revision " + active.CapabilitySummaryRevision,
                     13,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextMuted);
                 for (var index = 0; index < active.Capabilities.Length; index++)
                 {
@@ -251,7 +252,7 @@ namespace Mmorpg.Client.Ui
             }
             else if (state.PendingOperationId != Guid.Empty)
             {
-                AddText("Opening interaction...", 18, FontStyle.Normal, TemporaryUiKit.TextSecondary);
+                AddText("Opening interaction...", 18, FontStyles.Normal, TemporaryUiKit.TextSecondary);
             }
 
             if (!string.IsNullOrWhiteSpace(state.LastMessage))
@@ -259,7 +260,7 @@ namespace Mmorpg.Client.Ui
                 AddText(
                     state.LastMessage,
                     14,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     string.IsNullOrEmpty(state.LastErrorCode)
                         ? TemporaryUiKit.TextSecondary
                         : TemporaryUiKit.DangerColor);
@@ -281,7 +282,7 @@ namespace Mmorpg.Client.Ui
                         ? "Authoritative inventory state is loading."
                         : "Insurance is currently unavailable.",
                     14,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextSecondary);
                 return;
             }
@@ -297,7 +298,7 @@ namespace Mmorpg.Client.Ui
                 AddText(
                     "No insurance-eligible owned items.",
                     14,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextSecondary);
                 return;
             }
@@ -340,12 +341,12 @@ namespace Mmorpg.Client.Ui
                     ? "  Gathered " + gathering.YieldedQuantity + " "
                         + DisplayName(gathering.YieldDefinitionId) + "."
                     : string.Empty;
-                AddText(capability.DisplayName + "..." + yielded, 16, FontStyle.Bold, TemporaryUiKit.TextPrimary);
+                AddText(capability.DisplayName + "..." + yielded, 16, FontStyles.Bold, TemporaryUiKit.TextPrimary);
                 AddProgressBar();
                 AddText(
                     "Moving or closing the interaction stops gathering.",
                     13,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextMuted);
                 return;
             }
@@ -355,7 +356,7 @@ namespace Mmorpg.Client.Ui
                 AddText(
                     StoppedText(gathering),
                     14,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextSecondary);
             }
 
@@ -430,7 +431,7 @@ namespace Mmorpg.Client.Ui
                         ? "Authoritative inventory state is loading."
                         : "Quest lifecycle is currently unavailable.",
                     14,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextSecondary);
                 return;
             }
@@ -546,7 +547,7 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        private void AddText(string value, int size, FontStyle style, Color color)
+        private void AddText(string value, int size, FontStyles style, Color color)
         {
             TemporaryUiKit.CreateLabel(content, value, size, style, color, size + 10f);
         }
@@ -557,10 +558,10 @@ namespace Mmorpg.Client.Ui
                 content,
                 value,
                 16,
-                FontStyle.Bold,
+                FontStyles.Bold,
                 TemporaryUiKit.TextPrimary,
                 28f);
-            title.alignment = TextAnchor.LowerLeft;
+            title.alignment = TextAlignmentOptions.BottomLeft;
         }
 
         private void AddButton(
