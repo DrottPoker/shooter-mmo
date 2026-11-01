@@ -708,27 +708,38 @@ Combat is target based and server authoritative:
   `No line of sight`, `Equipment changed`, `No weapon equipped`,
   `No ammunition`, `Wrong ammunition`, `Not enough mana`, or `Dead`.
 - The target frame at the top center shows the target's name, health, and
-  `In combat` or `Returning home`. Every damaged living combatant in
-  view within 60 m has a health bar, green, amber below half, and red below a
-  quarter. Every hit shows a white damage number that rises and fades over 1.1
-  seconds, and arrows and bolts fly to their target.
+  `In combat` or `Returning home`. Every living Mob within 40 m of the character
+  has a nameplate, also at full health: its name over a health bar with the
+  health as numbers in it, such as `32/50`, and its level to the right of the
+  bar. The bar is red for an aggressive Mob and yellow for a defensive one. When
+  the health changes, the bar and its numbers slide to the new value in 0.3
+  seconds. The nameplate disappears when the Mob dies or walks out of range, and
+  the nearest nameplate draws over farther ones. The character and every other
+  damaged living character in view within 60 m have a small health bar, green,
+  amber below half, and red below a quarter. Every hit shows a white damage
+  number that rises and fades over 1.1 seconds, above the nameplate on a Mob, and
+  arrows and bolts fly to their target.
 - A character is in combat until 5 seconds after its last attack or hit. Out of
   combat it regains 1 health and 1 mana every second. A respawn and a login start
   with full health and mana. A character has 100 health.
 - Dying is described in [Death](#death).
-- Wolves are aggressive: a Feral Wolf notices a living character within 8 m that
-  it can see, runs to it at 4.5 m/s, and bites for 4 to 9 every 1.8 seconds. A
-  wolf hit by a character always fights back. A wolf that is lured more than 30 m
+- Feral Wolves are aggressive: a Feral Wolf notices a living character within
+  8 m that it can see, runs to it at 4.5 m/s, and bites for 4 to 9 every 1.8
+  seconds. A wolf hit by a character always fights back. A wolf that is lured more than 30 m
   from where the fight started, or that neither bites nor is hit for 10 seconds,
   turns back home, cannot be damaged on the way, and arrives with full health.
   Wolves walk their patrol path between fights.
-- A Feral Wolf has 50 health, drops a Wolf Pelt and sometimes Bronze Arrows, and
-  returns after 30 seconds. The Feral Alpha boss has 240 health, notices
-  characters within 10 m, bites for 7 to 12 every 2.4 seconds, drops three Wolf
-  Pelts and sometimes a Copper Ring in a durable corpse, and returns after 300
-  seconds. In Development World 2 five wolves live in the wolf woods southwest of
-  the town, and the Feral Alpha stands in its lair; in Development World 1 four
-  wolves patrol a pen west of the spawn.
+- A Feral Wolf is level 2, has 50 health, drops a Wolf Pelt and sometimes Bronze
+  Arrows, and returns after 30 seconds. The Feral Alpha boss is level 5, has 240
+  health, notices characters within 10 m, bites for 7 to 12 every 2.4 seconds,
+  drops three Wolf Pelts and sometimes a Copper Ring in a durable corpse, and
+  returns after 300 seconds. In Development World 2 five wolves live in the wolf
+  woods southwest of the town, and the Feral Alpha stands in its lair; in
+  Development World 1 four wolves patrol a pen west of the spawn.
+- The Grey Wolf is a defensive level 1 wolf with the Feral Wolf's model, health,
+  bite, and loot. It never attacks first, but a Grey Wolf hit by a character
+  fights back like a Feral Wolf. Three Grey Wolves stand in the meadow south of
+  the town in Development World 2.
 
 The rules behind combat are in [Target-Based Combat](SERVICE_FEATURES.md#target-based-combat)
 and [Mob Brains](SERVICE_FEATURES.md#mob-brains).

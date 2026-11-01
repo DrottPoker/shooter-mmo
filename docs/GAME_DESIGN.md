@@ -686,8 +686,8 @@ with drinking for mana, no style gets free recovery during a fight.
 
 ## Mobs And Encounters
 
-Implemented: the Feral Wolf and the Feral Alpha boss with the Mob rules below,
-one attack each, and no abilities. How a Mob is defined, scheduled, and
+Implemented: the Feral Wolf, the Feral Alpha boss, and the defensive Grey Wolf
+with the Mob rules below, one attack each, and no abilities. How a Mob is defined, scheduled, and
 respawned is in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md), and
 the wolves' behavior in [Combat](GAME_FEATURES.md#combat).
 
@@ -698,6 +698,13 @@ the wolves' behavior in [Combat](GAME_FEATURES.md#combat).
 - An aggressive Mob, such as a wolf, attacks a living player it can see within
   its detection range. A defensive Mob fights only once it is damaged. Damage
   always starts a fight.
+- Every Mob has a level. For now the level only tells players how strong a Mob
+  is meant to be; it changes no combat value.
+- A nameplate over every living Mob near the player shows its name, its level,
+  and its health as a bar with the numbers in it. The bar is red for an
+  aggressive Mob and yellow for a defensive one, so players see which Mobs
+  attack on sight. The bar slides to a new value quickly instead of jumping, so
+  a hit reads as a hit.
 - A Mob gives up and walks home when it is farther than its leash range from
   where the fight started, or when it neither hit nor was hit for a while. It
   cannot be damaged on the way and arrives with full health, so it cannot be

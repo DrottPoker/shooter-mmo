@@ -1823,6 +1823,8 @@ namespace Mmorpg.Client.Networking
                 && first.Kind == second.Kind
                 && string.Equals(first.FactionId, second.FactionId, StringComparison.Ordinal)
                 && first.Disposition == second.Disposition
+                && first.Level == second.Level
+                && first.Aggression == second.Aggression
                 && string.Equals(
                     first.PresentationArchetypeId,
                     second.PresentationArchetypeId,

@@ -659,6 +659,12 @@ namespace Mmorpg.WorldData.Actors
                         errors.Add("runtime actor " + value.Id
                             + " has an invalid corpse lifetime.");
                     }
+
+                    if (value.Level < WorldActorCombatRules.MinimumLevel
+                        || value.Level > WorldActorCombatRules.MaximumLevel)
+                    {
+                        errors.Add("runtime actor " + value.Id + " has an invalid level.");
+                    }
                 }
                 else
                 {
@@ -694,6 +700,11 @@ namespace Mmorpg.WorldData.Actors
                     {
                         errors.Add("runtime actor " + value.Id
                             + " must not define a corpse lifetime.");
+                    }
+
+                    if (value.Level != 0)
+                    {
+                        errors.Add("runtime actor " + value.Id + " must not define a level.");
                     }
                 }
 

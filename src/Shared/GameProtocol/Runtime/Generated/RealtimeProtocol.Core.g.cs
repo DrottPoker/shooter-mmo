@@ -306,6 +306,11 @@ namespace Mmorpg.GameProtocol
         public const int MaximumWorldActorExamineTextLength = 200;
 
         /// <summary>
+        /// The highest level of a world actor.
+        /// </summary>
+        public const int MaximumWorldActorLevel = 10000;
+
+        /// <summary>
         /// Characters in the right-click menu option of a world actor capability.
         /// </summary>
         public const int MaximumWorldActorMenuOptionLength = 32;
@@ -372,7 +377,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 29;
+        public const ushort Version = 30;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -428,6 +433,7 @@ namespace Mmorpg.GameProtocol
         private const int MaximumDefinitionIdLength = RealtimeProtocolLimits.MaximumDefinitionIdLength;
         private const int MaximumMovementPathWaypoints = RealtimeProtocolLimits.MaximumMovementPathWaypoints;
         private const int MaximumWorldActorExamineTextLength = RealtimeProtocolLimits.MaximumWorldActorExamineTextLength;
+        private const int MaximumWorldActorLevel = RealtimeProtocolLimits.MaximumWorldActorLevel;
         private const int MaximumWorldActorMenuOptionLength = RealtimeProtocolLimits.MaximumWorldActorMenuOptionLength;
         private const int MaximumAppearanceKindLength = RealtimeProtocolLimits.MaximumAppearanceKindLength;
         private const int MaximumAppearanceSlotLength = RealtimeProtocolLimits.MaximumAppearanceSlotLength;

@@ -80,6 +80,13 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(combatHud, Is.Not.Null);
             Assert.That(combatHud.GetComponentInChildren<Canvas>(true), Is.Not.Null);
 
+            // Nameplates draw below the combat HUD, so damage numbers and frames stay on top.
+            var nameplates = Object.FindAnyObjectByType<WorldNameplates>();
+            Assert.That(nameplates, Is.Not.Null);
+            var nameplateCanvas = nameplates.GetComponentInChildren<Canvas>(true);
+            Assert.That(nameplateCanvas, Is.Not.Null);
+            Assert.That(nameplateCanvas.sortingOrder, Is.LessThan(combatHud.GetComponentInChildren<Canvas>(true).sortingOrder));
+
             // The death overlay sorts above every panel, so an open inventory or corpse view
             // never hides a death and its countdown.
             var deathOverlayCanvas = combatHud
@@ -101,11 +108,14 @@ namespace Mmorpg.Client.Tests.PlayMode
                 panelCanvases.Select(canvas => canvas.sortingOrder),
                 Has.All.LessThan(deathOverlayCanvas.sortingOrder));
 
-            // Without a joined session the HUD shows nothing and never takes a raycast.
+            // Without a joined session the HUD and the nameplates show nothing and never take a
+            // raycast.
             Assert.That(combatHud.IsOwnerFrameVisible, Is.False);
             Assert.That(combatHud.IsDeathOverlayVisible, Is.False);
+            Assert.That(nameplates.VisibleCount, Is.Zero);
             Assert.That(
                 combatHud.GetComponentsInChildren<UnityEngine.UI.Graphic>(true)
+                    .Concat(nameplates.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
                     .Where(graphic => graphic.raycastTarget)
                     .Select(graphic => graphic.name),
                 Is.Empty);

@@ -296,6 +296,9 @@ namespace Mmorpg.WorldData.Editor.Actors
         public string respawnProfileId;
         public string corpsePersistenceMode;
         public float corpseLifetimeSeconds;
+
+        // The level a Mob's nameplate shows; NPCs and resource nodes leave it at zero.
+        public int level;
         public string combatProfileId;
         public string brainProfileId;
         public string locomotionProfileId;
@@ -323,6 +326,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 RespawnProfileId = respawnProfileId,
                 CorpsePersistenceMode = corpsePersistenceMode,
                 CorpseLifetimeSeconds = corpseLifetimeSeconds,
+                Level = level,
                 CombatProfileId = combatProfileId,
                 BrainProfileId = brainProfileId,
                 LocomotionProfileId = locomotionProfileId,

@@ -374,6 +374,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 RealtimeWorldActorKind.Npc,
                 "city",
                 RealtimeWorldActorDisposition.Friendly,
+                0,
+                RealtimeWorldActorAggression.None,
                 "npc.city_services",
                 1,
                 1,

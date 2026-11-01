@@ -567,9 +567,9 @@ The world actor messages keep actor visibility apart from interaction state:
 
 - `WorldActorSpawn` (20), `WorldActorState` (21), and `WorldActorDespawn` (22)
   carry the actor's runtime and network identity, its definition and spawn ids,
-  display name, kind, faction, disposition, presentation archetype, state and
-  interaction revisions, active flag, position, facing, activity tier, and
-  interaction bounds. A state update goes out only when replicated state
+  display name, kind, faction, disposition, level, aggression, presentation
+  archetype, state and interaction revisions, active flag, position, facing,
+  activity tier, and interaction bounds. A state update goes out only when replicated state
   changes, and a resource node's available or depleted state reuses `IsActive`.
 - `WorldInteractionIntent` (23) opens, closes, or acts on an interaction. Every
   intent carries an operation id, the simulation session, the interaction
@@ -601,6 +601,17 @@ structs with distinct `CapabilityId` values. Each option names a capability, its
 capability order. The spawn carries no availability, revision, or profile: those
 stay in the player-specific capability summary of `WorldInteractionOpened`. Both
 text limits are public, and `WorldActorTextRules` in WorldData must fit them.
+
+### World Actor Level And Aggression
+
+`WorldActorSpawn` carries what a Mob's nameplate shows besides its name and
+health. `Level` is a `u16` of at most `MaximumWorldActorLevel` (10,000), the
+Mob's authored level, and 0 for an NPC or resource node.
+`WorldActorAggression` is `Aggressive` for a Mob that attacks the players it
+detects, `Defensive` for one that fights only once damaged, and `None` for an
+actor without a brain. Both are static for the actor's lifetime, so a changed
+value without a despawn is an identity conflict. The level limit is public, and
+`WorldActorCombatRules.MaximumLevel` in WorldData must fit it.
 
 ### Capability Actions
 

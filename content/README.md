@@ -351,10 +351,11 @@ for a `gathering` capability.
 2. Fill in the `Actor Definition` section: kind, faction, disposition,
    `Stable Actor Id`, `Display Name`, and `Examine Text`. Choose the
    `Presentation Archetype` and add tags with `Add Tag`.
-3. For a Mob, choose the profiles under `Combat And Lifecycle`: damage policy,
-   activity, respawn, combat, brain, locomotion, and loot profile, corpse
-   persistence (`Live` or `Durable`), and corpse lifetime. NPCs and resource
-   nodes show a note instead, because they are always invulnerable.
+3. For a Mob, set its `Level`, which its nameplate shows, and choose the
+   profiles under `Combat And Lifecycle`: damage policy, activity, respawn,
+   combat, brain, locomotion, and loot profile, corpse persistence (`Live` or
+   `Durable`), and corpse lifetime. NPCs and resource nodes show a note instead,
+   because they are always invulnerable.
 4. Set the `Authoritative Interaction Bounds`, `Local Center` and `Size`, which
    a front-view preview draws. For a resource node also set `Collision Center`
    and `Collision Size`, the box that blocks walking; for NPCs and Mobs both stay

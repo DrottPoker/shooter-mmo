@@ -354,6 +354,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 RealtimeWorldActorKind.ResourceNode,
                 "world",
                 RealtimeWorldActorDisposition.Neutral,
+                0,
+                RealtimeWorldActorAggression.None,
                 "resource.iron_vein",
                 1,
                 1,

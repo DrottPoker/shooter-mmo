@@ -27,6 +27,16 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
+    /// Whether a Mob attacks the players it detects or fights only once damaged; None for an actor without a brain.
+    /// </summary>
+    public enum RealtimeWorldActorAggression : byte
+    {
+        None = 0,
+        Aggressive = 1,
+        Defensive = 2
+    }
+
+    /// <summary>
     /// How often the worker updates a world actor.
     /// </summary>
     public enum RealtimeWorldActorActivityTier : byte
@@ -194,6 +204,8 @@ namespace Mmorpg.GameProtocol
             RealtimeWorldActorKind kind,
             string factionId,
             RealtimeWorldActorDisposition disposition,
+            ushort level,
+            RealtimeWorldActorAggression aggression,
             string presentationArchetypeId,
             long stateRevision,
             long interactionRevision,
@@ -220,6 +232,8 @@ namespace Mmorpg.GameProtocol
             Kind = kind;
             FactionId = factionId;
             Disposition = disposition;
+            Level = level;
+            Aggression = aggression;
             PresentationArchetypeId = presentationArchetypeId;
             StateRevision = stateRevision;
             InteractionRevision = interactionRevision;
@@ -278,6 +292,16 @@ namespace Mmorpg.GameProtocol
         /// How the actor treats players.
         /// </summary>
         public RealtimeWorldActorDisposition Disposition { get; }
+
+        /// <summary>
+        /// The level of a Mob, or 0 for an NPC or resource node.
+        /// </summary>
+        public ushort Level { get; }
+
+        /// <summary>
+        /// Whether a Mob attacks on sight.
+        /// </summary>
+        public RealtimeWorldActorAggression Aggression { get; }
 
         /// <summary>
         /// The presentation archetype the client renders.
@@ -1106,6 +1130,8 @@ namespace Mmorpg.GameProtocol
             writer.WriteByte((byte)value.Kind);
             writer.WriteString(value.FactionId);
             writer.WriteByte((byte)value.Disposition);
+            writer.WriteUInt16(value.Level);
+            writer.WriteByte((byte)value.Aggression);
             writer.WriteString(value.PresentationArchetypeId);
             writer.WriteInt64(value.StateRevision);
             writer.WriteInt64(value.InteractionRevision);
@@ -1131,7 +1157,7 @@ namespace Mmorpg.GameProtocol
 
         private static int SizeOfWorldActorSpawn(RealtimeWorldActorSpawn value)
         {
-            var size = 84;
+            var size = 87;
             size += StringSize(value.ActorDefinitionId);
             size += StringSize(value.SpawnDefinitionId);
             size += StringSize(value.DisplayName);
@@ -1193,6 +1219,18 @@ namespace Mmorpg.GameProtocol
             }
 
             var disposition = (RealtimeWorldActorDisposition)dispositionByte;
+
+            if (!reader.TryReadUInt16(out var level, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var aggressionByte, out error))
+            {
+                return false;
+            }
+
+            var aggression = (RealtimeWorldActorAggression)aggressionByte;
 
             if (!reader.TryReadString(MaximumIdentifierLength, out var presentationArchetypeId, out error))
             {
@@ -1298,7 +1336,7 @@ namespace Mmorpg.GameProtocol
                 menuOptions[index] = element;
             }
 
-            value = new RealtimeWorldActorSpawn(entityId, runtimeActorId, actorDefinitionId, spawnDefinitionId, displayName, kind, factionId, disposition, presentationArchetypeId, stateRevision, interactionRevision, isActive, positionX, positionY, positionZ, yawDegrees, activityTier, boundsCenterX, boundsCenterY, boundsCenterZ, boundsSizeX, boundsSizeY, boundsSizeZ, examineText, menuOptions);
+            value = new RealtimeWorldActorSpawn(entityId, runtimeActorId, actorDefinitionId, spawnDefinitionId, displayName, kind, factionId, disposition, level, aggression, presentationArchetypeId, stateRevision, interactionRevision, isActive, positionX, positionY, positionZ, yawDegrees, activityTier, boundsCenterX, boundsCenterY, boundsCenterZ, boundsSizeX, boundsSizeY, boundsSizeZ, examineText, menuOptions);
             return true;
         }
 
@@ -1317,6 +1355,8 @@ namespace Mmorpg.GameProtocol
                 || string.IsNullOrWhiteSpace(value.FactionId)
                 || value.FactionId.Length > MaximumIdentifierLength
                 || !IsDefined(value.Disposition)
+                || value.Level > MaximumWorldActorLevel
+                || !IsDefined(value.Aggression)
                 || string.IsNullOrWhiteSpace(value.PresentationArchetypeId)
                 || value.PresentationArchetypeId.Length > MaximumIdentifierLength
                 || value.StateRevision < 1
@@ -2707,6 +2747,11 @@ namespace Mmorpg.GameProtocol
         private static bool IsDefined(RealtimeWorldActorDisposition value)
         {
             return (byte)value >= 1 && (byte)value <= 3;
+        }
+
+        private static bool IsDefined(RealtimeWorldActorAggression value)
+        {
+            return (byte)value >= 0 && (byte)value <= 2;
         }
 
         private static bool IsDefined(RealtimeWorldActorActivityTier value)

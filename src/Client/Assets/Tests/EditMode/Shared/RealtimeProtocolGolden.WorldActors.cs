@@ -26,10 +26,22 @@ namespace Mmorpg.SharedTests
                 () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(
                     kind: RealtimeWorldActorKind.Mob,
                     disposition: RealtimeWorldActorDisposition.Hostile,
+                    level: 10_000,
+                    aggression: RealtimeWorldActorAggression.Aggressive,
                     stateRevision: long.MaxValue,
                     isActive: false,
                     activityTier: RealtimeWorldActorActivityTier.Active,
                     examineText: "Ylar.",
+                    menuOptions: new RealtimeWorldActorMenuOption[0])));
+            r.Vector(
+                "WorldActors/WorldActorSpawn/defensive mob",
+                spawn,
+                () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(
+                    kind: RealtimeWorldActorKind.Mob,
+                    disposition: RealtimeWorldActorDisposition.Neutral,
+                    level: 1,
+                    aggression: RealtimeWorldActorAggression.Defensive,
+                    examineText: "Skygg.",
                     menuOptions: new RealtimeWorldActorMenuOption[0])));
             r.Vector(
                 "WorldActors/WorldActorState/typical",
@@ -354,6 +366,11 @@ namespace Mmorpg.SharedTests
             r.Rejects("WorldActors/WorldActorSpawn/whitespace faction", WorldActorSpawnWire(factionId: " "));
             r.Rejects("WorldActors/WorldActorSpawn/disposition 0", WorldActorSpawnWire(disposition: 0));
             r.Rejects("WorldActors/WorldActorSpawn/disposition 4", WorldActorSpawnWire(disposition: 4));
+            r.Accepts("WorldActors/WorldActorSpawn/level 10000", WorldActorSpawnWire(level: 10_000));
+            r.Rejects("WorldActors/WorldActorSpawn/level 10001", WorldActorSpawnWire(level: 10_001));
+            r.Accepts("WorldActors/WorldActorSpawn/aggressive", WorldActorSpawnWire(aggression: 1));
+            r.Accepts("WorldActors/WorldActorSpawn/defensive", WorldActorSpawnWire(aggression: 2));
+            r.Rejects("WorldActors/WorldActorSpawn/aggression 3", WorldActorSpawnWire(aggression: 3));
             r.Rejects("WorldActors/WorldActorSpawn/whitespace presentation", WorldActorSpawnWire(presentationArchetypeId: " "));
             r.Rejects("WorldActors/WorldActorSpawn/state revision 0", WorldActorSpawnWire(payload: ActorStatePayloadWire(stateRevision: 0)));
             r.Rejects(
@@ -957,6 +974,8 @@ namespace Mmorpg.SharedTests
             string displayName = "Smeden Åke",
             RealtimeWorldActorKind kind = RealtimeWorldActorKind.Npc,
             RealtimeWorldActorDisposition disposition = RealtimeWorldActorDisposition.Friendly,
+            ushort level = 0,
+            RealtimeWorldActorAggression aggression = RealtimeWorldActorAggression.None,
             float positionX = 10.5f,
             long stateRevision = 3,
             bool isActive = true,
@@ -974,6 +993,8 @@ namespace Mmorpg.SharedTests
                 kind: kind,
                 factionId: "faction.town",
                 disposition: disposition,
+                level: level,
+                aggression: aggression,
                 presentationArchetypeId: "presentation.blacksmith",
                 positionX: positionX,
                 positionY: 0.25f,
@@ -1057,6 +1078,8 @@ namespace Mmorpg.SharedTests
             byte kind = 1,
             WireText factionId = null,
             byte disposition = 1,
+            ushort level = 0,
+            byte aggression = 0,
             WireText presentationArchetypeId = null,
             Wire payload = null,
             float boundsCenterX = 10.5f,
@@ -1081,6 +1104,8 @@ namespace Mmorpg.SharedTests
                 .U8(kind)
                 .Text(factionId ?? "faction.town")
                 .U8(disposition)
+                .U16(level)
+                .U8(aggression)
                 .Text(presentationArchetypeId ?? "presentation.blacksmith")
                 .Append(payload ?? ActorStatePayloadWire())
                 .F32Or(boundsCenterX, boundsCenterXBits)

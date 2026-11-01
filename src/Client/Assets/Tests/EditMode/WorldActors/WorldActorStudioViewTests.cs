@@ -66,6 +66,36 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A Mob's level is edited in the Combat And Lifecycle section and checked live.
+        [Test]
+        public void MobLevelIsEditableAndOutOfBoundsLevelsAreFindings()
+        {
+            var view = CreateView();
+            try
+            {
+                view.Load(false);
+                var wolf = view.Workspace.Catalog.actors.Single(actor => actor.id == "mob.feral_wolf");
+                Assert.That(wolf.level, Is.EqualTo(2));
+                view.List.Select(new[] { WorldActorStudioView.Key(wolf) });
+
+                Assert.That(view.Form.TrySetValue("level", 7), Is.True);
+                wolf = view.Workspace.Catalog.actors.Single(actor => actor.id == "mob.feral_wolf");
+                Assert.That(wolf.level, Is.EqualTo(7));
+                Assert.That(WorldActorEditorIssues.Collect(view.Workspace), Is.Empty);
+
+                Assert.That(view.Form.TrySetValue("level", 0), Is.True);
+                Assert.That(
+                    WorldActorEditorIssues.Collect(view.Workspace)
+                        .Where(issue => issue.Field == "level")
+                        .Select(issue => issue.EntityKey),
+                    Is.EquivalentTo(new[] { WorldActorStudioView.Key(wolf) }));
+            }
+            finally
+            {
+                view.Dispose();
+            }
+        }
+
         [Test]
         public void ChangingKindKeepsTheActorValidAndReportsSpawnsItBreaks()
         {
@@ -82,6 +112,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(wolf.damagePolicy, Is.EqualTo(WorldActorDamagePolicyIds.Invulnerable));
                 Assert.That(wolf.activityProfileId, Is.Empty);
                 Assert.That(wolf.corpseLifetimeSeconds, Is.Zero);
+                Assert.That(wolf.level, Is.Zero);
                 var presentation = view.Workspace.Catalog.presentationArchetypes.Single(value => value.id == wolf.presentationArchetypeId);
                 Assert.That(presentation.actorKind, Is.EqualTo(WorldActorKindIds.Npc));
 

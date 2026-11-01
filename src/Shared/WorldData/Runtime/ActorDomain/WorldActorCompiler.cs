@@ -1030,6 +1030,16 @@ namespace Mmorpg.WorldData.Actors
                             + WorldActorCorpseRules.MaximumLifetimeSeconds
                             + ".");
                     }
+
+                    if (actor.Level < WorldActorCombatRules.MinimumLevel
+                        || actor.Level > WorldActorCombatRules.MaximumLevel)
+                    {
+                        errors.Add(path + ".level must be between "
+                            + WorldActorCombatRules.MinimumLevel.ToString(CultureInfo.InvariantCulture)
+                            + " and "
+                            + WorldActorCombatRules.MaximumLevel.ToString(CultureInfo.InvariantCulture)
+                            + " for a Mob.");
+                    }
                 }
                 else
                 {
@@ -1049,6 +1059,11 @@ namespace Mmorpg.WorldData.Actors
                     if (actor.CorpseLifetimeSeconds != 0f)
                     {
                         errors.Add(path + ".corpseLifetimeSeconds must be zero for an NPC or resource node.");
+                    }
+
+                    if (actor.Level != 0)
+                    {
+                        errors.Add(path + ".level must be zero for an NPC or resource node.");
                     }
                 }
 
@@ -1679,6 +1694,7 @@ namespace Mmorpg.WorldData.Actors
                 RespawnProfileId = value.RespawnProfileId ?? string.Empty,
                 CorpsePersistenceMode = value.CorpsePersistenceMode ?? string.Empty,
                 CorpseLifetimeSeconds = value.CorpseLifetimeSeconds,
+                Level = value.Level,
                 CombatProfileId = value.CombatProfileId ?? string.Empty,
                 BrainProfileId = value.BrainProfileId ?? string.Empty,
                 LocomotionProfileId = value.LocomotionProfileId ?? string.Empty,
@@ -1735,6 +1751,7 @@ namespace Mmorpg.WorldData.Actors
                 value.RespawnProfileId,
                 value.CorpsePersistenceMode,
                 Float(value.CorpseLifetimeSeconds),
+                value.Level.ToString(CultureInfo.InvariantCulture),
                 string.Join(",", capabilityFingerprints),
                 value.CombatProfileId,
                 value.BrainProfileId,

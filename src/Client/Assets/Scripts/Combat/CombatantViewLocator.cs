@@ -102,6 +102,27 @@ namespace Mmorpg.Client.Combat
             get { return actorPresentation != null ? actorPresentation.Views : (IEnumerable<WorldActorView>)Array.Empty<WorldActorView>(); }
         }
 
+        // Whether the combatant is a Mob, visible or not.
+        public bool IsMob(ulong entityId)
+        {
+            return actorPresentation != null
+                && actorPresentation.TryGetView(entityId, out var actor)
+                && actor is MobView;
+        }
+
+        // The visible view of a Mob, or false for a player, another actor kind, or a hidden Mob.
+        public bool TryGetMob(ulong entityId, out MobView mob)
+        {
+            mob = null;
+            if (actorPresentation == null || !actorPresentation.TryGetView(entityId, out var actor))
+            {
+                return false;
+            }
+
+            mob = actor as MobView;
+            return mob != null && mob.gameObject.activeInHierarchy;
+        }
+
         // A visible presentation of the combatant, or false when it has none right now,
         // such as a hidden dead Mob or an actor whose prefab still loads.
         public bool TryGetView(ulong entityId, out CombatantView view)

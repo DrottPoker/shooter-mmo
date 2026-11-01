@@ -12,8 +12,9 @@ namespace Mmorpg.Client.Ui
 {
     // Replaceable runtime uGUI combat presentation: the owner's health, live arrow count,
     // and attack status, a frame for the attack target, health bars over damaged
-    // combatants in view, floating damage numbers, and a death overlay with the respawn
-    // countdown. It reads the combat state and never decides range, damage, or death.
+    // players in view, floating damage numbers, and a death overlay with the respawn
+    // countdown. Mobs show their health on their nameplates instead, see WorldNameplates.
+    // It reads the combat state and never decides range, damage, or death.
     // Nothing on it takes a raycast, so it never blocks a world click. It places health bars
     // and damage numbers after the camera moved, so they stay on the heads they belong to.
     [DisallowMultipleComponent]
@@ -257,6 +258,7 @@ namespace Mmorpg.Client.Ui
                 {
                     var entityId = damagedCombatants[index];
                     if (entityId != ownerId
+                        && !views.IsMob(entityId)
                         && combatController.State.TryGetCombatant(entityId, out var state)
                         && CombatHudPresentation.ShowsHealthBar(state.Health, state.MaximumHealth, state.LifeState))
                     {
@@ -291,6 +293,7 @@ namespace Mmorpg.Client.Ui
             return used + 1;
         }
 
+        // A Mob's damage numbers rise from above its nameplate, so they never cover its health.
         private void UpdateDamageNumbers()
         {
             var playerCamera = views.PlayerCamera;
@@ -311,15 +314,20 @@ namespace Mmorpg.Client.Ui
                     damageNumbers[index] = number;
                 }
 
-                if (playerCamera == null || !TryProject(playerCamera, number.Anchor, out var local))
+                var overNameplate = views.IsMob(number.TargetEntityId);
+                var anchor = overNameplate
+                    ? number.Anchor + (Vector3.up * WorldNameplates.AnchorLift)
+                    : number.Anchor;
+                if (playerCamera == null || !TryProject(playerCamera, anchor, out var local))
                 {
                     number.Text.gameObject.SetActive(false);
                     continue;
                 }
 
                 var progress = age / DamageNumberSeconds;
+                var start = overNameplate ? WorldNameplates.Height : 0f;
                 number.Text.gameObject.SetActive(true);
-                number.Text.rectTransform.anchoredPosition = local + new Vector2(0f, DamageNumberRise * progress);
+                number.Text.rectTransform.anchoredPosition = local + new Vector2(0f, start + (DamageNumberRise * progress));
                 var color = number.Color;
                 color.a = 1f - (progress * progress);
                 number.Text.color = color;

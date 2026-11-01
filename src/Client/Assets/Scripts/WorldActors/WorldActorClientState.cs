@@ -30,6 +30,8 @@ namespace Mmorpg.Client.WorldActors
             Kind = spawn.Kind;
             FactionId = spawn.FactionId;
             Disposition = spawn.Disposition;
+            Level = spawn.Level;
+            Aggression = spawn.Aggression;
             PresentationArchetypeId = spawn.PresentationArchetypeId;
             BoundsCenterX = spawn.BoundsCenterX;
             BoundsCenterY = spawn.BoundsCenterY;
@@ -58,6 +60,10 @@ namespace Mmorpg.Client.WorldActors
         public RealtimeWorldActorKind Kind { get; }
         public string FactionId { get; }
         public RealtimeWorldActorDisposition Disposition { get; }
+
+        // A Mob's level and whether it attacks on sight; 0 and None for other actors.
+        public int Level { get; }
+        public RealtimeWorldActorAggression Aggression { get; }
         public string PresentationArchetypeId { get; }
         public float BoundsCenterX { get; }
         public float BoundsCenterY { get; }
@@ -221,6 +227,8 @@ namespace Mmorpg.Client.WorldActors
                         spawn.FactionId,
                         StringComparison.Ordinal)
                     || existing.Disposition != spawn.Disposition
+                    || existing.Level != spawn.Level
+                    || existing.Aggression != spawn.Aggression
                     || !string.Equals(
                         existing.PresentationArchetypeId,
                         spawn.PresentationArchetypeId,

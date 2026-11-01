@@ -298,6 +298,8 @@ public sealed class RealtimeWorldActorProtocolTests
             RealtimeWorldActorKind.Npc,
             "city",
             RealtimeWorldActorDisposition.Friendly,
+            0,
+            RealtimeWorldActorAggression.None,
             "npc.city_services",
             1,
             1,

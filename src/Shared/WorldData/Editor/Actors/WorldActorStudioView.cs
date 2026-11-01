@@ -649,6 +649,9 @@ namespace Mmorpg.WorldData.Editor.Actors
             section.Add(form.Choice("Damage Policy", "damagePolicy", () => DamagePolicies, actor => actor.damagePolicy, (actor, value) => actor.damagePolicy = value, isMob));
             section.Add(form.Choice("Activity Profile", "activityProfileId", ActivityProfileOptions, actor => actor.activityProfileId, (actor, value) => actor.activityProfileId = value, isMob));
             section.Add(form.Choice("Respawn Profile", "respawnProfileId", RespawnProfileOptions, actor => actor.respawnProfileId, (actor, value) => actor.respawnProfileId = value, isMob));
+            var level = form.Integer("Level", "level", actor => actor.level, (actor, value) => actor.level = value, isMob);
+            level.tooltip = "Shown on the Mob's nameplate. Between " + WorldActorCombatRules.MinimumLevel + " and " + WorldActorCombatRules.MaximumLevel + ".";
+            section.Add(level);
             section.Add(form.Choice("Combat Profile", "combatProfileId", CombatProfileOptions, actor => actor.combatProfileId, (actor, value) => actor.combatProfileId = value, isMob));
             section.Add(form.Choice("Brain Profile", "brainProfileId", BrainProfileOptions, actor => actor.brainProfileId, (actor, value) => actor.brainProfileId = value, isMob));
             section.Add(form.Choice("Locomotion Profile", "locomotionProfileId", LocomotionProfileOptions, actor => actor.locomotionProfileId, (actor, value) => actor.locomotionProfileId = value, isMob));
@@ -879,6 +882,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 actor.respawnProfileId = string.Empty;
                 actor.corpsePersistenceMode = string.Empty;
                 actor.corpseLifetimeSeconds = 0f;
+                actor.level = 0;
                 actor.combatProfileId = string.Empty;
                 actor.brainProfileId = string.Empty;
                 actor.locomotionProfileId = string.Empty;
@@ -909,6 +913,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 actor.corpseLifetimeSeconds = actor.corpseLifetimeSeconds > 0f
                     ? actor.corpseLifetimeSeconds
                     : WorldActorCorpseRules.DefaultLiveLifetimeSeconds;
+                actor.level = actor.level > 0 ? actor.level : WorldActorCombatRules.MinimumLevel;
                 actor.combatProfileId = string.IsNullOrEmpty(actor.combatProfileId)
                     ? workspace.Catalog.combatProfiles?.FirstOrDefault()?.id ?? string.Empty
                     : actor.combatProfileId;
@@ -1011,6 +1016,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 respawnProfileId = npc ? string.Empty : workspace.Catalog.respawnProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 corpsePersistenceMode = npc ? string.Empty : WorldActorCorpsePersistenceModeIds.Live,
                 corpseLifetimeSeconds = npc ? 0f : WorldActorCorpseRules.DefaultLiveLifetimeSeconds,
+                level = npc ? 0 : WorldActorCombatRules.MinimumLevel,
                 combatProfileId = npc ? string.Empty : workspace.Catalog.combatProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 brainProfileId = npc ? string.Empty : workspace.Catalog.brainProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 locomotionProfileId = npc ? string.Empty : workspace.Catalog.locomotionProfiles?.FirstOrDefault()?.id ?? string.Empty,
@@ -1047,6 +1053,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 respawnProfileId = string.Empty,
                 corpsePersistenceMode = string.Empty,
                 corpseLifetimeSeconds = 0f,
+                level = 0,
                 combatProfileId = string.Empty,
                 brainProfileId = string.Empty,
                 locomotionProfileId = string.Empty,

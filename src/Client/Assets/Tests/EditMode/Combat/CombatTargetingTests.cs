@@ -634,6 +634,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 kind,
                 mob ? "wild" : "city",
                 mob ? RealtimeWorldActorDisposition.Hostile : RealtimeWorldActorDisposition.Friendly,
+                (ushort)(mob ? 2 : 0),
+                mob ? RealtimeWorldActorAggression.Aggressive : RealtimeWorldActorAggression.None,
                 mob ? "mob.feral_wolf" : "npc.city_services",
                 1,
                 1,

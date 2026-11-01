@@ -28,7 +28,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 spawns.ToDomain());
 
             Assert.That(compiled.Revision, Is.EqualTo(workspace.CurrentRuntime.revision));
-            Assert.That(compiled.Actors, Has.Length.EqualTo(6));
+            Assert.That(compiled.Actors, Has.Length.EqualTo(7));
             Assert.That(compiled.SpawnInstances, Is.Not.Empty);
             Assert.That(
                 Array.Find(compiled.Actors, actor => actor.Id == "npc.city_services")

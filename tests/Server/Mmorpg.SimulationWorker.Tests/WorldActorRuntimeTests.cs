@@ -303,6 +303,40 @@ public sealed class WorldActorRuntimeTests
         WorldActorProtocolCompatibility.Validate(actors);
     }
 
+    // A Mob's nameplate shows its level and whether it attacks on sight, so the spawn carries
+    // both; a respawned Mob keeps them.
+    [Fact]
+    public void ActorSpawnCarriesTheMobLevelAndAggression()
+    {
+        var store = new WorldActorStore(
+            WorldActorTestData.CompileWorld("development-world-2"),
+            new SimulationEntityRegistry());
+        var actors = store.ActivateAssignment(
+            "development-world-2",
+            "local-shard-1",
+            "test-runtime");
+
+        RealtimeWorldActorSpawn SpawnOf(string actorId) =>
+            WorldActorProtocolMapper.ToSpawn(actors.First(value => value.Definition.Id == actorId));
+
+        var feralWolf = SpawnOf("mob.feral_wolf");
+        var alpha = SpawnOf("mob.feral_alpha");
+        var greyWolf = SpawnOf("mob.grey_wolf");
+        var mira = SpawnOf("npc.city_services");
+        var vein = SpawnOf("resource.iron_vein");
+        Assert.Equal((2, RealtimeWorldActorAggression.Aggressive), (feralWolf.Level, feralWolf.Aggression));
+        Assert.Equal((5, RealtimeWorldActorAggression.Aggressive), (alpha.Level, alpha.Aggression));
+        Assert.Equal((1, RealtimeWorldActorAggression.Defensive), (greyWolf.Level, greyWolf.Aggression));
+        Assert.Equal((0, RealtimeWorldActorAggression.None), (mira.Level, mira.Aggression));
+        Assert.Equal((0, RealtimeWorldActorAggression.None), (vein.Level, vein.Aggression));
+
+        var dead = actors.First(value => value.Definition.Id == "mob.grey_wolf");
+        Assert.True(store.TryDespawn(dead.NetworkEntityId, out _));
+        var respawned = WorldActorProtocolMapper.ToSpawn(store.Respawn(dead));
+        Assert.Equal((1, RealtimeWorldActorAggression.Defensive), (respawned.Level, respawned.Aggression));
+        WorldActorProtocolCompatibility.Validate(actors);
+    }
+
     [Fact]
     public void OnePeerCannotOverlapNpcAndCorpseButPeersCanShareNpc()
     {

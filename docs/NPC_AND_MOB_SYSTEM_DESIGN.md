@@ -161,9 +161,10 @@ Every actor definition contains at least:
 - Interaction bounds and targeting anchor, and collision bounds.
 - Capability descriptors for an NPC or resource node. Mobs have no
   capabilities.
-- For a Mob: its activity, respawn, combat, brain, locomotion, and loot profile
-  references, and its corpse persistence and lifetime. NPCs and resource nodes
-  leave every Mob field empty.
+- For a Mob: its level, from 1 to the highest character level, its activity,
+  respawn, combat, brain, locomotion, and loot profile references, and its
+  corpse persistence and lifetime. NPCs and resource nodes leave every Mob field
+  empty and the level at 0.
 - Content tags used by authoring, queries, and future rule systems.
 
 The text and bounds limits are in
@@ -188,6 +189,10 @@ Every Mob references a combat, brain, and locomotion profile in
 
 A Mob without a loot profile drops nothing. Loot rolls follow the authored entry
 order, which also orders the corpse slots.
+
+The actor spawn carries a Mob's level and its brain's aggression, so the client
+shows them on the Mob's nameplate before any fight. The level changes no combat
+value yet.
 
 ### Resource Node Definitions
 
