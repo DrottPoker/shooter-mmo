@@ -13,7 +13,8 @@ public sealed class WorldActorRuntimeState
         string workerRuntimeId,
         WorldActorDefinition definition,
         WorldActorSpawnInstanceDefinition spawn,
-        WorldActorResourceProfileDefinition? resourceProfile = null)
+        WorldActorResourceProfileDefinition? resourceProfile = null,
+        WorldActorBrainProfileDefinition? brainProfile = null)
     {
         NetworkEntityId = networkEntityId;
         RuntimeActorId = runtimeActorId;
@@ -37,6 +38,7 @@ public sealed class WorldActorRuntimeState
             : WorldActorActivityTierIds.EventDriven;
         ResourceProfile = resourceProfile;
         RemainingResourceCharges = resourceProfile?.Charges ?? 0;
+        BrainProfile = brainProfile;
     }
 
     public ulong NetworkEntityId { get; }
@@ -58,6 +60,10 @@ public sealed class WorldActorRuntimeState
     // A resource node's profile and charges. The charges are live Shard state: every
     // gatherer shares them, and a worker restart restores every node to full.
     public WorldActorResourceProfileDefinition? ResourceProfile { get; }
+
+    // A Mob's brain profile, which tells players whether it attacks on sight. Null for
+    // every other actor kind.
+    public WorldActorBrainProfileDefinition? BrainProfile { get; }
 
     public int RemainingResourceCharges { get; private set; }
 
@@ -254,6 +260,9 @@ public sealed class WorldActorStore
         var resourceProfiles = (document.ResourceProfiles
                 ?? Array.Empty<WorldActorResourceProfileDefinition>())
             .ToDictionary(profile => profile.Id, StringComparer.Ordinal);
+        var brainProfiles = (document.BrainProfiles
+                ?? Array.Empty<WorldActorBrainProfileDefinition>())
+            .ToDictionary(profile => profile.Id, StringComparer.Ordinal);
         lock (syncRoot)
         {
             actorsByEntityId.Clear();
@@ -279,7 +288,8 @@ public sealed class WorldActorStore
                     workerRuntimeId,
                     definition,
                     spawn,
-                    ResolveResourceProfile(definition, resourceProfiles));
+                    ResolveResourceProfile(definition, resourceProfiles),
+                    ResolveBrainProfile(definition, brainProfiles));
                 actorsByEntityId.Add(actor.NetworkEntityId, actor);
                 actorsByRuntimeId.Add(actor.RuntimeActorId, actor);
             }
@@ -359,7 +369,8 @@ public sealed class WorldActorStore
                 previous.WorkerRuntimeId,
                 previous.Definition,
                 previous.Spawn,
-                previous.ResourceProfile);
+                previous.ResourceProfile,
+                previous.BrainProfile);
             actorsByEntityId.Add(actor.NetworkEntityId, actor);
             actorsByRuntimeId.Add(actor.RuntimeActorId, actor);
             Interlocked.Increment(ref populationRevision);
@@ -452,5 +463,21 @@ public sealed class WorldActorStore
             ? profile
             : throw new InvalidOperationException(
                 "Resource node " + definition.Id + " references a missing resource profile.");
+    }
+
+    // Every Mob references a brain profile; validated data never misses one.
+    private static WorldActorBrainProfileDefinition? ResolveBrainProfile(
+        WorldActorDefinition definition,
+        IReadOnlyDictionary<string, WorldActorBrainProfileDefinition> brainProfiles)
+    {
+        if (!string.Equals(definition.Kind, WorldActorKindIds.Mob, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return brainProfiles.TryGetValue(definition.BrainProfileId, out var profile)
+            ? profile
+            : throw new InvalidOperationException(
+                "Mob " + definition.Id + " references a missing brain profile.");
     }
 }

@@ -19,6 +19,8 @@ internal static class WorldActorProtocolMapper
             ToKind(actor.Definition.Kind),
             actor.Definition.FactionId,
             ToDisposition(actor.Definition.Disposition),
+            checked((ushort)actor.Definition.Level),
+            ToAggression(actor.BrainProfile),
             actor.Definition.PresentationArchetypeId,
             actor.StateRevision,
             actor.InteractionRevision,
@@ -106,6 +108,18 @@ internal static class WorldActorProtocolMapper
             WorldActorDispositionIds.Friendly => RealtimeWorldActorDisposition.Friendly,
             WorldActorDispositionIds.Neutral => RealtimeWorldActorDisposition.Neutral,
             _ => RealtimeWorldActorDisposition.Hostile
+        };
+    }
+
+    private static RealtimeWorldActorAggression ToAggression(WorldActorBrainProfileDefinition? brain)
+    {
+        return brain?.Aggression switch
+        {
+            null => RealtimeWorldActorAggression.None,
+            WorldActorAggressionIds.Aggressive => RealtimeWorldActorAggression.Aggressive,
+            WorldActorAggressionIds.Defensive => RealtimeWorldActorAggression.Defensive,
+            _ => throw new InvalidOperationException(
+                "Compiled Mob aggression is unsupported: " + brain.Aggression)
         };
     }
 

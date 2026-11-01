@@ -31,6 +31,11 @@ namespace Mmorpg.Client.WorldActors
         public string TargetDisplayName { get; private set; } = string.Empty;
         public string PresentationArchetypeId { get; private set; } = string.Empty;
 
+        // A Mob's level and whether it attacks on sight, which its nameplate shows; 0 and None
+        // for every other actor kind.
+        public int Level { get; private set; }
+        public RealtimeWorldActorAggression Aggression { get; private set; }
+
         // The top of the interaction bounds above the root, where a health bar can sit.
         public float TargetHeight { get; private set; }
 
@@ -54,6 +59,8 @@ namespace Mmorpg.Client.WorldActors
             TargetRuntimeId = actor.RuntimeActorId;
             TargetDisplayName = actor.DisplayName;
             PresentationArchetypeId = actor.PresentationArchetypeId;
+            Level = actor.Level;
+            Aggression = actor.Aggression;
             var boundsTransform = transform.Find("InteractionTargetBounds");
             if (boundsTransform == null)
             {

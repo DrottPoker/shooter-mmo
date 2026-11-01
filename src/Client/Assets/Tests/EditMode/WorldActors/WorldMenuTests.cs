@@ -439,6 +439,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 kind,
                 "faction",
                 RealtimeWorldActorDisposition.Neutral,
+                (ushort)(kind == RealtimeWorldActorKind.Mob ? 1 : 0),
+                kind == RealtimeWorldActorKind.Mob ? RealtimeWorldActorAggression.Defensive : RealtimeWorldActorAggression.None,
                 "presentation." + entityId,
                 1,
                 1,

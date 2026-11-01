@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 5;
+        public const int Version = 6;
     }
 
     // Collision bounds block character movement. Only resource nodes have them: they never move,
@@ -57,9 +57,12 @@ namespace Mmorpg.WorldData.Actors
         public const string Defensive = "defensive";
     }
 
-    // Bounds for Mob combat, brain, locomotion, and loot profiles.
+    // Bounds for Mob levels and combat, brain, locomotion, and loot profiles.
     public static class WorldActorCombatRules
     {
+        // A Mob's level shares the bound of a character's level and fits the realtime actor spawn.
+        public const int MinimumLevel = 1;
+        public const int MaximumLevel = Combat.CombatContentRules.MaximumCharacterLevel;
         public const float MaximumDetectionRange = 64f;
         public const float MaximumLeashRange = 256f;
         public const float MinimumGiveUpSeconds = 1f;
@@ -357,6 +360,7 @@ namespace Mmorpg.WorldData.Actors
         public string RespawnProfileId;
         public string CorpsePersistenceMode;
         public float CorpseLifetimeSeconds;
+        public int Level;
         public string CombatProfileId;
         public string BrainProfileId;
         public string LocomotionProfileId;
@@ -592,6 +596,7 @@ namespace Mmorpg.WorldData.Actors
         public string RespawnProfileId;
         public string CorpsePersistenceMode;
         public float CorpseLifetimeSeconds;
+        public int Level;
         public string CombatProfileId;
         public string BrainProfileId;
         public string LocomotionProfileId;

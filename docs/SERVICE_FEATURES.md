@@ -806,8 +806,10 @@ in `content/actors/catalog.json`:
   stands still and bites on the combat profile's cooldown, `Evade` walks home,
   and `Dead` waits for the corpse and despawn.
 - An aggressive brain detects the nearest living player within its detection
-  range, 8 m for the wolves and 10 m for the Feral Alpha, with line of sight.
-  Damage starts a fight for every brain. When the target dies or becomes
+  range, 8 m for the Feral Wolves and 10 m for the Feral Alpha, with line of
+  sight. The defensive brain `mob.defensive` of the Grey Wolf detects no one.
+  Damage starts a fight for every brain. Every spawn of a Mob carries its
+  brain's aggression, so clients can color its nameplate. When the target dies or becomes
   invalid, the Mob takes the attacker with the most damage that is still alive,
   then the nearest detected player, and evades otherwise.
 - A chasing Mob walks to half its attack range from the target and plans again

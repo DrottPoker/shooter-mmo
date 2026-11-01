@@ -439,6 +439,8 @@ namespace Mmorpg.Client.App
                     arrowModel));
             AddSceneComponentIfMissing<CombatDeathPresentation>(
                 presentation => presentation.Initialize(combatController, combatantViews));
+            AddSceneComponentIfMissing<WorldNameplates>(
+                nameplates => nameplates.Initialize(combatController, combatantViews));
             AddSceneComponentIfMissing<TemporaryCombatHud>(
                 hud => hud.Initialize(
                     combatController,

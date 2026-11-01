@@ -1,5 +1,5 @@
 {
-    "formatVersion": 5,
+    "formatVersion": 6,
     "catalogId": "core",
     "factions": [
         {
@@ -105,6 +105,13 @@
             "id": "mob.aggressive_boss",
             "aggression": "aggressive",
             "detectionRange": 10.0,
+            "leashRange": 30.0,
+            "giveUpSeconds": 10.0
+        },
+        {
+            "id": "mob.defensive",
+            "aggression": "defensive",
+            "detectionRange": 0.0,
             "leashRange": 30.0,
             "giveUpSeconds": 10.0
         }

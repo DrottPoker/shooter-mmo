@@ -32,6 +32,7 @@
     "respawnProfileId": "mob.normal",
     "corpsePersistenceMode": "live",
     "corpseLifetimeSeconds": 120.0,
+    "level": 2,
     "combatProfileId": "mob.feral_wolf",
     "brainProfileId": "mob.aggressive",
     "locomotionProfileId": "mob.quadruped",

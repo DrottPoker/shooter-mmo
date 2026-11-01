@@ -19,7 +19,7 @@ public sealed class WorldActorCompilerTests
         Assert.Equal("core", runtime.CatalogId);
         Assert.Equal(WorldActorTestData.FixtureWorldId, runtime.WorldId);
         Assert.Equal(64, runtime.Revision.Length);
-        Assert.Equal(6, runtime.Actors.Length);
+        Assert.Equal(7, runtime.Actors.Length);
         Assert.Equal(6, runtime.SpawnInstances.Length);
     }
 
@@ -41,9 +41,10 @@ public sealed class WorldActorCompilerTests
     {
         var runtime = WorldActorTestData.CompileWorld("development-world-2");
 
-        Assert.Equal(6, runtime.Actors.Length);
-        Assert.Equal(21, runtime.SpawnInstances.Length);
+        Assert.Equal(7, runtime.Actors.Length);
+        Assert.Equal(24, runtime.SpawnInstances.Length);
         Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "mob.feral_alpha");
+        Assert.Equal(3, runtime.SpawnInstances.Count(value => value.ActorId == "mob.grey_wolf"));
         Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "resource.iron_vein");
         Assert.Equal(4, runtime.SpawnInstances.Count(value => value.ActorId == "resource.oak_tree"));
     }
@@ -194,6 +195,56 @@ public sealed class WorldActorCompilerTests
         Assert.Equal(120f, normalMob.CorpseLifetimeSeconds);
         Assert.Equal(WorldActorCorpsePersistenceModeIds.Durable, bossMob.CorpsePersistenceMode);
         Assert.Equal(600f, bossMob.CorpseLifetimeSeconds);
+    }
+
+    [Fact]
+    public void MobLevelsAndAggressionAreContentControlledPerDefinition()
+    {
+        var runtime = WorldActorTestData.Compile();
+        var brains = runtime.BrainProfiles.ToDictionary(value => value.Id, StringComparer.Ordinal);
+
+        Assert.Equal(2, runtime.Actors.Single(value => value.Id == "mob.feral_wolf").Level);
+        Assert.Equal(5, runtime.Actors.Single(value => value.Id == "mob.feral_alpha").Level);
+        var greyWolf = runtime.Actors.Single(value => value.Id == "mob.grey_wolf");
+        Assert.Equal(1, greyWolf.Level);
+        Assert.Equal(WorldActorAggressionIds.Defensive, brains[greyWolf.BrainProfileId].Aggression);
+        Assert.All(
+            runtime.Actors.Where(value => value.Kind != WorldActorKindIds.Mob),
+            value => Assert.Equal(0, value.Level));
+    }
+
+    [Fact]
+    public void MobLevelOutsideItsBoundsAndNpcLevelFailValidation()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        actors.Actors.Single(value => value.Id == "mob.feral_wolf").Level = 0;
+        actors.Actors.Single(value => value.Id == "mob.feral_alpha").Level =
+            WorldActorCombatRules.MaximumLevel + 1;
+        actors.Actors.Single(value => value.Id == "npc.city_guard").Level = 1;
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns()));
+
+        Assert.Equal(
+            2,
+            exception.Errors.Count(value => value.Contains(".level must be between", StringComparison.Ordinal)));
+        Assert.Contains(
+            exception.Errors,
+            value => value.Contains(".level must be zero for an NPC", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RuntimeValidationRejectsATamperedMobLevel()
+    {
+        var runtime = WorldActorTestData.Compile();
+        runtime.Actors.Single(value => value.Id == "mob.feral_wolf").Level = 0;
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.ValidateRuntime(runtime));
+
+        Assert.Contains(
+            exception.Errors,
+            value => value.Contains("has an invalid level", StringComparison.Ordinal));
     }
 
     [Fact]

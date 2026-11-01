@@ -1,8 +1,8 @@
 {
-  "formatVersion": 5,
+  "formatVersion": 6,
   "catalogId": "core",
   "worldId": "development-world-2",
-  "revision": "700baf6f227dda84836099d6b94825ea87a59e020fcd6c55bdefe2d6cbe63991",
+  "revision": "ffc87fb76498ae7bd57e505f84aac93c5208da9c6f20d633c742b45a8c6caba6",
   "factions": [
     {
       "id": "city",
@@ -147,6 +147,14 @@
       "leashRange": 30,
       "giveUpSeconds": 10,
       "structuralFingerprint": "5b8562ac7bcb47dc8688167020fa1114709282f10ac058b1d87316134eb0463a"
+    },
+    {
+      "id": "mob.defensive",
+      "aggression": "defensive",
+      "detectionRange": 0,
+      "leashRange": 30,
+      "giveUpSeconds": 10,
+      "structuralFingerprint": "0e263392e4ba6b17c940cb10a5df525c5539d6d682a66634b2371c628d9e19f7"
     }
   ],
   "locomotionProfiles": [
@@ -241,11 +249,12 @@
       "respawnProfileId": "mob.boss",
       "corpsePersistenceMode": "durable",
       "corpseLifetimeSeconds": 600,
+      "level": 5,
       "combatProfileId": "mob.feral_alpha",
       "brainProfileId": "mob.aggressive_boss",
       "locomotionProfileId": "mob.large_quadruped",
       "lootProfileId": "mob.feral_alpha",
-      "structuralFingerprint": "8c0155172d30fb41570db9760104e6c50dc2dc7297e604a9f8227e41dfdaca31"
+      "structuralFingerprint": "457b8e733360dd7a3695566daaa7e919f7d076164f5147640690655b8b72aad5"
     },
     {
       "id": "mob.feral_wolf",
@@ -281,11 +290,53 @@
       "respawnProfileId": "mob.normal",
       "corpsePersistenceMode": "live",
       "corpseLifetimeSeconds": 120,
+      "level": 2,
       "combatProfileId": "mob.feral_wolf",
       "brainProfileId": "mob.aggressive",
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
-      "structuralFingerprint": "b849df225cd70e9822e5afbd813f49efd48872bf39a3f7da6bc4afcef05aa5c3"
+      "structuralFingerprint": "e64f2e1b5bb740c6031305ac5d7e6a10be58f42e25aa27e93c67e17545da3812"
+    },
+    {
+      "id": "mob.grey_wolf",
+      "displayName": "Grey Wolf",
+      "examineText": "A shy grey wolf. It keeps its distance unless provoked.",
+      "kind": "mob",
+      "factionId": "wild",
+      "disposition": "neutral",
+      "presentationArchetypeId": "mob.feral_wolf",
+      "damagePolicy": "damageable",
+      "tags": [
+        "creature",
+        "wild"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 0.55,
+        "centerZ": 0,
+        "sizeX": 1.2,
+        "sizeY": 1.1,
+        "sizeZ": 1.8
+      },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 0,
+        "centerZ": 0,
+        "sizeX": 0,
+        "sizeY": 0,
+        "sizeZ": 0
+      },
+      "capabilities": [],
+      "activityProfileId": "mob.standard",
+      "respawnProfileId": "mob.normal",
+      "corpsePersistenceMode": "live",
+      "corpseLifetimeSeconds": 120,
+      "level": 1,
+      "combatProfileId": "mob.feral_wolf",
+      "brainProfileId": "mob.defensive",
+      "locomotionProfileId": "mob.quadruped",
+      "lootProfileId": "mob.feral_wolf",
+      "structuralFingerprint": "f62794d1b71ccfb48a7c9b176ddf0a5769c673a2959a4473dfd75d0be70ae034"
     },
     {
       "id": "npc.city_guard",
@@ -338,11 +389,12 @@
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
+      "level": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "26c76920308524a1ae3bc7d1294d33cb42c5ad705c50b2eeb1f3d06903460210"
+      "structuralFingerprint": "c1b497fbeec69d7566220d7076f3b8fe17d52548df8c79aad69fe28579573383"
     },
     {
       "id": "npc.city_services",
@@ -443,11 +495,12 @@
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
+      "level": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "071a860fb3258179dfd73a6dacc06ba6bf40fcfbbd03ed0c59b5fe311ed742bb"
+      "structuralFingerprint": "1df8c9a6ea03c76b2179ac5af3bb912c163ff243280f5b507f48a9e6ee6ec763"
     },
     {
       "id": "resource.iron_vein",
@@ -492,11 +545,12 @@
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
+      "level": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "21a7b5f5b741ceefc5a37ff247c96524e1da901fca068a18bfbc651c6306dffa"
+      "structuralFingerprint": "38c01fcc01c97f23523960feb5bf0353f7587d097ab7c145ff171ebe6cc18c2e"
     },
     {
       "id": "resource.oak_tree",
@@ -541,11 +595,12 @@
       "respawnProfileId": "",
       "corpsePersistenceMode": "",
       "corpseLifetimeSeconds": 0,
+      "level": 0,
       "combatProfileId": "",
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "f2b43b230bda0722e1ddd6acaea2c7162ef48bcd6dcca546194b5a69e7f103b0"
+      "structuralFingerprint": "8007e6f2d8d10c1c6e70c0a0f08ca816d4004ae9b5d3529984c9bf0868b96140"
     }
   ],
   "spawnSources": [
@@ -588,6 +643,26 @@
       "spacing": 0,
       "seed": 2201,
       "structuralFingerprint": "c2fd26bfa61307eac3e81e95f259e476bab066dd57df0e3d331bab48fcfe7d29"
+    },
+    {
+      "id": "development_world_2.grey_wolves",
+      "kind": "area",
+      "actorId": "mob.grey_wolf",
+      "instanceCount": 3,
+      "patrolPathId": "",
+      "originX": -12,
+      "originY": 0,
+      "originZ": -92,
+      "minimumX": -20,
+      "minimumZ": -100,
+      "maximumX": -4,
+      "maximumZ": -84,
+      "yawDegrees": 90,
+      "rows": 0,
+      "columns": 0,
+      "spacing": 0,
+      "seed": 2202,
+      "structuralFingerprint": "d50553fddff91afc3e747a191fd89bc6a98230ac79fb1b3262baa20bca4ba84e"
     },
     {
       "id": "development_world_2.grove_oak_east",
@@ -876,6 +951,39 @@
       "yawDegrees": 45,
       "patrolPathId": "development_world_2.wolf_patrol",
       "structuralFingerprint": "d95843c872f7f0fdf7d648a9fd7441ce0136be9ace791a8bf31cc0420b6d9c8b"
+    },
+    {
+      "id": "development_world_2.grey_wolves:0000",
+      "spawnDefinitionId": "development_world_2.grey_wolves",
+      "actorId": "mob.grey_wolf",
+      "x": -16.905968,
+      "y": 0,
+      "z": -88.04406,
+      "yawDegrees": 90,
+      "patrolPathId": "",
+      "structuralFingerprint": "4c11c164e61a7639c006bca46a495c15410ff324280adbf09e57263ea2e37556"
+    },
+    {
+      "id": "development_world_2.grey_wolves:0001",
+      "spawnDefinitionId": "development_world_2.grey_wolves",
+      "actorId": "mob.grey_wolf",
+      "x": -8.733186,
+      "y": 0,
+      "z": -93.06399,
+      "yawDegrees": 90,
+      "patrolPathId": "",
+      "structuralFingerprint": "9c5d58c599c71cdbb956615d050d282da43833e35939de98691d7bab5fecfd0e"
+    },
+    {
+      "id": "development_world_2.grey_wolves:0002",
+      "spawnDefinitionId": "development_world_2.grey_wolves",
+      "actorId": "mob.grey_wolf",
+      "x": -19.97069,
+      "y": 0,
+      "z": -88.88418,
+      "yawDegrees": 90,
+      "patrolPathId": "",
+      "structuralFingerprint": "74c3162201667ddcbf25611b16c0b72019361a5ef88e5264b6804bc27275b40e"
     },
     {
       "id": "development_world_2.grove_oak_east:0000",

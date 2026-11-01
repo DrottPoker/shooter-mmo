@@ -995,8 +995,9 @@ Give the character the Equipment Test Pack.
 ## Combat
 
 Wolves are the combat targets in Development World 2: five Feral Wolves patrol
-the wolf woods southwest of the town, and the Feral Alpha stands in its lair at
-`(-160, 0, -160)`. Give the character the Equipment Test Pack.
+the wolf woods southwest of the town, the Feral Alpha stands in its lair at
+`(-160, 0, -160)`, and three defensive Grey Wolves stand in the meadow south of
+the town, around `(-12, 0, -92)`. Give the character the Equipment Test Pack.
 
 ### Bow Combat Loop
 
@@ -1014,8 +1015,8 @@ the wolf woods southwest of the town, and the Feral Alpha stands in its lair at
 4. Left-click a wolf from more than 10 m away. Expected result: the target frame
    shows `Feral Wolf` with `50 / 50`, the character walks to about 9 m and
    stops, the status reads `Attacking`, arrows fly, white damage numbers rise
-   from the wolf, the wolf gets a health bar, and the arrow count drops by one
-   per shot in the frame and in the inventory's `Ammunition` slot.
+   above the wolf's nameplate, its health bar slides down, and the arrow count
+   drops by one per shot in the frame and in the inventory's `Ammunition` slot.
 5. Click the ground or press Escape while it fights. Expected result: the target
    frame closes, the status reads `No target`, the shooting stops, and the
    arrow count stays.
@@ -1083,13 +1084,33 @@ the wolf woods southwest of the town, and the Feral Alpha stands in its lair at
 
 1. Walk to within about 8 m of a wolf and stand still. Expected result: the
    wolf notices the character, runs to it, and bites, the health in the frame
-   drops, and the wolf's health bar shows it in combat.
+   drops, and the character gets a small health bar over its head.
 2. Walk away about 35 m. Expected result: the wolf turns back, the target frame
    shows `Returning home`, arrows do no damage while it runs, and it arrives at
    its place with full health.
 
 The wolves of Development World 2 share one patrol path and move as a pack, so
 three or four of them kill a lone archer in about 10 seconds.
+
+### Mob Nameplates
+
+1. Walk south out of the town gate into the meadow, toward the three Grey
+   Wolves. Expected result: once a wolf is within 40 m, a nameplate appears
+   over it, also at full health: `Grey Wolf` over a yellow bar with `50/50` in
+   it and `1` to the right of the bar. The wolves do not come for the character.
+2. Walk to the wolf woods southwest of the town. Expected result: every Feral
+   Wolf within 40 m has a red bar with `50/50` and level `2`, and a nearer
+   nameplate draws over a farther one. At the lair the Feral Alpha has a red bar
+   with `240/240` and level `5`. A wolf farther than 40 m has no nameplate.
+3. With the shortbow, attack a Grey Wolf. Expected result: each hit slides the
+   bar and its numbers down to the new health in about 0.3 seconds, for example
+   from `50/50` through the numbers in between to `32/50`, instead of jumping;
+   the damage number rises above the nameplate, the target frame shows the new
+   health at once, and the Grey Wolf now bites back.
+4. Kill it. Expected result: its nameplate disappears with it, and the wolf
+   that returns 30 seconds later shows `50/50` at once.
+5. Walk away from a wolf until it is more than 40 m away. Expected result: its
+   nameplate disappears, and it comes back when the character walks closer.
 
 ### Death And Respawn
 

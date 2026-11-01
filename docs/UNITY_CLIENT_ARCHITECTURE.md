@@ -262,6 +262,7 @@ World scene
       +-- CombatTargetingController, CombatProjectilePresentation,
       |   CombatDeathPresentation
       +-- MovementDestinationMarker
+      +-- WorldNameplates (runtime uGUI)
       +-- temporary uGUI: TemporaryInventoryPanel, TemporaryWorldInteractionPanel,
           TemporaryWorldContextMenu, TemporaryGameMessagePanel, TemporaryCombatHud,
           TemporaryDebugMenu, TemporaryAdminMenu
@@ -315,6 +316,9 @@ Combat (World scene, created at runtime by ClientBootstrap)
   |   +-- CombatLoadoutRules (weapon range from the bundled item catalog)
   +-- CombatProjectilePresentation (replaceable arrows and bolts)
   +-- CombatDeathPresentation
+  +-- WorldNameplates (runtime uGUI nameplates over Mobs)
+  |   +-- NameplatePresentation (pure rules, colors, and texts)
+  |   +-- NameplateHealthSlide (the shown health and its slide)
   +-- TemporaryCombatHud (replaceable runtime uGUI)
       +-- CombatHudPresentation (pure labels and values)
 ```
@@ -691,6 +695,7 @@ The canvases sort from the bottom up:
 
 | Sorting order | Canvas |
 | ---: | --- |
+| 10 | `WorldNameplates` |
 | 20 | `TemporaryCombatHud` |
 | 35 | `TemporaryGameMessagePanel` |
 | 40 | `TemporaryWorldInteractionPanel` |
@@ -989,7 +994,7 @@ Characters move in `Update`. Then, in this order:
 | 60 | `Projectiles` | `CombatProjectilePresentation` places arrows and bolts in `LateUpdate`, after the bodies posed their hands and drew their strings |
 | 100 | `Camera` | `OrbitCameraController` follows the player |
 | 110 | `Cloth` | `ClothChainScheduler` lays the cloth of the bodies the camera now sees |
-| 200 | `ScreenAnchoredInterface` | `TemporaryCombatHud` places health bars and damage numbers |
+| 200 | `ScreenAnchoredInterface` | `WorldNameplates` places the Mob nameplates, and `TemporaryCombatHud` places health bars and damage numbers |
 
 Without a fixed order Unity could place screen-anchored interface with the
 previous frame's camera, and a bar would trail the head it belongs to and jitter
@@ -2399,9 +2404,10 @@ the spawn. The worker clears the target on death.
 id: the local player from `WorldSceneContext.LocalPlayer`, another player from
 `WorldSceneContext.TryGetRemotePlayer`, and a world actor from
 `WorldActorPresentationController.TryGetView`, with the height for health bars.
-Approach, arrows, health bars, and damage numbers use it and read the presented
-position every frame, so they follow a moving Mob; the worker never sees these
-positions.
+`IsMob` and `TryGetMob` tell a Mob from a player and give its `MobView`, which
+holds the level and aggression of its spawn. Approach, arrows, health bars,
+nameplates, and damage numbers use it and read the presented position every
+frame, so they follow a moving Mob; the worker never sees these positions.
 
 `CombatServerClock` is the client's best estimate of the worker's current tick
 for presentation: the tick of the newest owner snapshot,
@@ -2429,11 +2435,13 @@ blocks a world click. It draws:
   seconds.
 - The target frame for the target of `CombatTargetingController`, from its
   combatant state.
-- Health bars over every damaged living combatant in view within 60 metres: the
-  local player from its owner state, other players and Mobs from their combatant
-  states.
+- Health bars over every damaged living player in view within 60 metres: the
+  local player from its owner state, other players from their combatant states.
+  Mobs show their health on their nameplates instead.
 - A floating damage number at the hit target for every `Hit` event, rising and
-  fading over 1.1 seconds.
+  fading over 1.1 seconds. On a Mob it starts above the nameplate, at
+  `WorldNameplates.AnchorLift` over the head plus `WorldNameplates.Height`, so it
+  never covers the health numbers.
 - The death overlay while the owner state says dead, with a countdown from
   `RespawnTick` and `CombatServerClock` that rounds up to whole seconds. The
   overlay is a nested canvas that overrides the sorting order with
@@ -2469,6 +2477,36 @@ equipped stack, and the committed quantity otherwise, through
 the committed quantity always shows, even 0 or 1, and the tooltip says how many
 are left. The drawn slot updates in place when that count changes, so a shot
 never redraws the panel or cancels a drag.
+
+### Mob Nameplates
+
+`WorldNameplates` in `Mmorpg.Client.Ui` draws a nameplate over every living Mob
+within `NameplatePresentation.MobRangeMetres` (40) of the local character: the
+display name over a health bar, the health as `current/maximum` in the bar, and
+the level to the right of it. It is not temporary: its rules are the foundation
+for every world label, and only its look waits for the final interface art.
+
+- Data: it keeps the entity ids of the combatants in view, read from
+  `CombatClientState.Combatants` on `Changed` instead of every frame, and each
+  frame reads the combatant state by id. `CombatantViewLocator.TryGetMob` gives
+  the Mob's view, whose `Level` and `Aggression` come from the
+  `WorldActorSpawn` through `WorldActorClientEntry`. A Mob without a combatant
+  state, a hidden Mob, and a dead one show nothing.
+- Color: `NameplatePresentation.MobHealthColor` is red for `Aggressive` and
+  yellow for `Defensive`; an unknown aggression shows red.
+- Slide: every nameplate owns a `NameplateHealthSlide` that slides the shown
+  health to each new value over `NameplatePresentation.HealthSlideSeconds`
+  (0.3), easing out, and on from where the bar is when a value arrives mid-slide.
+  The first value and a new maximum show at once. Texts change only when the
+  shown whole number does, so a frame allocates no strings.
+- Pooling: nameplates belong to an entity while it shows and go back to a pool
+  when it dies, despawns, or leaves the range, so a Mob that returns shows its
+  health at once.
+- Placement: the bottom of the nameplate sits `AnchorLift` (0.35 m) above the
+  top of the Mob's interaction bounds, projected after the camera moved. The
+  nearest nameplate is the last sibling, so it draws over farther ones.
+- Canvas: its own screen-space canvas at sorting order 10, below the combat HUD,
+  so damage numbers and frames draw over it. Nothing on it takes a raycast.
 
 ## Test Architecture
 

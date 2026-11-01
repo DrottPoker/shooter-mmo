@@ -53,6 +53,7 @@ public sealed class ContentPipelineTests
             [
                 "mob.feral_alpha",
                 "mob.feral_wolf",
+                "mob.grey_wolf",
                 "npc.city_guard",
                 "npc.city_services",
                 "resource.iron_vein",

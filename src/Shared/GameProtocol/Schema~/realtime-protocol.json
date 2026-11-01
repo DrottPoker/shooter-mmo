@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 29,
+    "version": 30,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -158,6 +158,12 @@
       "value": 200,
       "visibility": "public",
       "description": "Characters in the examine text of a world actor."
+    },
+    {
+      "name": "MaximumWorldActorLevel",
+      "value": 10000,
+      "visibility": "public",
+      "description": "The highest level of a world actor."
     },
     {
       "name": "MaximumWorldActorMenuOptionLength",
@@ -326,6 +332,12 @@
       "family": "WorldActors",
       "description": "How a world actor treats players.",
       "values": [ { "name": "Friendly", "value": 1 }, { "name": "Neutral", "value": 2 }, { "name": "Hostile", "value": 3 } ]
+    },
+    {
+      "name": "WorldActorAggression",
+      "family": "WorldActors",
+      "description": "Whether a Mob attacks the players it detects or fights only once damaged; None for an actor without a brain.",
+      "values": [ { "name": "None", "value": 0 }, { "name": "Aggressive", "value": 1 }, { "name": "Defensive", "value": 2 } ]
     },
     {
       "name": "WorldActorActivityTier",
@@ -2035,6 +2047,13 @@
           "description": "The faction of the actor."
         },
         { "name": "Disposition", "type": "WorldActorDisposition", "description": "How the actor treats players." },
+        {
+          "name": "Level",
+          "type": "u16",
+          "maximum": "MaximumWorldActorLevel",
+          "description": "The level of a Mob, or 0 for an NPC or resource node."
+        },
+        { "name": "Aggression", "type": "WorldActorAggression", "description": "Whether a Mob attacks on sight." },
         {
           "name": "PresentationArchetypeId",
           "type": "string",

@@ -110,7 +110,7 @@ each direction, 30 to 110 m from the town, so every zone is a short walk away.
 | 172 m away       | guards, houses   | range lane       |
 +------------------+------------------+------------------+
 | Wolf woods       | Meadow           | Quarry           |
-| wolves and the   | open ground,     | seven Iron Veins |
+| wolves and the   | Grey Wolves,     | seven Iron Veins |
 | alpha lair       | oak grove        |                  |
 +------------------+------------------+------------------+
 ```
@@ -215,7 +215,9 @@ the south and east sides.
 ### Meadow And Sandbox
 
 The meadow south of the town is open ground with six greybox trees, for crowds of
-bots and players. East of them, toward the quarry, the oak grove holds four Oak
+bots and players. Three Grey Wolves, defensive Mobs that only fight back, stand
+in its spawn area X `-20` to `-4`, Z `-100` to `-84`, so a yellow nameplate can
+be seen and a Mob can be fought without being attacked first. East of them, toward the quarry, the oak grove holds four Oak
 Trees, the resource nodes that a Woodcutting Axe chops down, at `(38, 0, -80)`,
 `(48, 0, -88)`, `(32, 0, -92)`, and `(42, 0, -100)`, with an `OAK GROVE` sign at
 `(28, 0, -74)`. The sandbox is a 100 by 100 m teal pad centered at
