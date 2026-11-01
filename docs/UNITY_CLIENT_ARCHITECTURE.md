@@ -140,7 +140,9 @@ The client assemblies also reference the shared runtime packages they use:
 `Mmorpg.WorldData.Client` so a body reads the garments of the items it wears
 without the inventory's assembly. Cloth references the packages `Unity.Burst`,
 `Unity.Collections`, and `Unity.Mathematics`; Gameplay references Cloth,
-`Unity.Mathematics`, and `Unity.Collections`.
+`Unity.Mathematics`, and `Unity.Collections`. Ui references `Unity.TextMeshPro`,
+because every new text is TextMesh Pro, as [Text And Fonts](#text-and-fonts)
+describes.
 
 Ui is the top feature area; only the App composition root, which creates the
 panels, sits above it. Ui and App reference Combat, because the combat HUD and
@@ -547,8 +549,10 @@ rebuild after such a change is in [Unity Client](LOCAL_DEVELOPMENT.md#unity-clie
 
 ## Content Loading With Addressables
 
-The client uses Addressables for all runtime content; there is no `Resources`
-folder and no `Resources.Load` call. Every content folder that runtime code loads
+The client uses Addressables for all runtime content; no client code calls
+`Resources.Load`. The only `Resources` folder is TextMesh Pro's own,
+`Assets/TextMesh Pro/Resources`, because TextMesh Pro loads its settings from
+there itself; see [Text And Fonts](#text-and-fonts). Every content folder that runtime code loads
 by address is one Addressables folder entry whose address is its path below
 `Assets/Content`, so an asset's address is its path below that root including the
 file extension, and a new file in such a folder needs no settings change.
@@ -580,8 +584,8 @@ to the committed settings in `Assets/AddressableAssetsData` needs no Editor step
 entries, World scene entries, and the Build Profiles scene list in code.
 `MMORPG > Tools > Addressables > Apply Client Layout` reapplies it, and
 `ClientAddressablesTests` fails on any difference, on a runtime address without
-an entry, and on any `Resources` folder or call in the client and shared
-packages.
+an entry, on any `Resources` folder other than TextMesh Pro's, and on any
+`Resources` call in the client and shared packages.
 
 ### Working Rules For New Content
 
@@ -2438,10 +2442,11 @@ blocks a world click. It draws:
 - Health bars over every damaged living player in view within 60 metres: the
   local player from its owner state, other players from their combatant states.
   Mobs show their health on their nameplates instead.
-- A floating damage number at the hit target for every `Hit` event, rising and
-  fading over 1.1 seconds. On a Mob it starts above the nameplate, at
-  `WorldNameplates.AnchorLift` over the head plus `WorldNameplates.Height`, so it
-  never covers the health numbers.
+- A floating damage number at the hit target for every `Hit` event, a
+  `WorldLabels` text rising and fading over 1.1 seconds. On a Mob it starts above
+  the nameplate, at `WorldNameplates.AnchorLift` over the head plus
+  `WorldNameplates.Height` at the nameplate's scale, so it never covers the
+  health numbers.
 - The death overlay while the owner state says dead, with a countdown from
   `RespawnTick` and `CombatServerClock` that rounds up to whole seconds. The
   overlay is a nested canvas that overrides the sorting order with
@@ -2478,13 +2483,52 @@ the committed quantity always shows, even 0 or 1, and the tooltip says how many
 are left. The drawn slot updates in place when that count changes, so a shot
 never redraws the panel or cancels a drag.
 
+### Text And Fonts
+
+Every new text is TextMesh Pro. The legacy uGUI `Text` of the temporary panels
+renders a bitmap font that blurs when the canvas scales; the panels still use it
+until they are replaced.
+
+- TextMesh Pro's Essential Resources are in `Assets/TextMesh Pro`: the shaders,
+  the LiberationSans font file, and `Resources` with `TMP Settings`, its default
+  font, sprite and style sheets, and line breaking rules. TextMesh Pro loads
+  `TMP Settings` from that folder itself, so it is the client's only `Resources`
+  folder.
+- The default font in `TMP Settings` is the project's UI font,
+  `Assets/Art/Fonts/LiberationSans UI SDF.asset`: LiberationSans sampled at 48
+  points with a padding of 10 in a 1024 by 1024 SDFAA atlas, static, with the
+  printable ASCII and Latin-1 characters, so `å`, `ä`, and `ö` are in it, and
+  TextMesh Pro's dynamic `LiberationSans SDF - Fallback` for every other
+  character. Its distance field is about twice as wide for its size as that of
+  TextMesh Pro's own `LiberationSans SDF`, so a 12 to 14 pixel label still gets
+  an outline of about a pixel. A static atlas never changes while the game runs,
+  so Play Mode leaves the asset as it is. To make it again, use `Window >
+  TextMeshPro > Font Asset Creator` with Source Font File `LiberationSans`,
+  Sampling Point Size 48, Padding 10, Packing Method Optimum, Atlas Resolution
+  1024 by 1024, Character Set Unicode Range (Hex) `20-7E,A0-FF`, and Render Mode
+  SDFAA, then set the asset's Atlas Population Mode to Static and its fallback to
+  `LiberationSans SDF - Fallback`.
+- `WorldLabels` creates every text drawn over the world, such as nameplates and
+  damage numbers: TextMesh Pro's default font, no wrapping, no raycast, no rich
+  text, and one shared material, the font's own with a black outline of 0.3 and
+  a face dilation of 0.15. Outline and dilation together stay within the font's
+  distance field, or every letter shows a dark box. The outline is a shader
+  feature of the mobile SDF shader; TextMesh Pro's own outline preset in its
+  `Resources` folder keeps that variant in every build.
+  `WorldLabels.FontSizeForCapHeight` gives the font size whose capitals and
+  digits have a given height.
+- `WorldLabelTests` pins the default font, its settings and characters, the
+  outlined material, the build variant, and the digit height of a label.
+
 ### Mob Nameplates
 
 `WorldNameplates` in `Mmorpg.Client.Ui` draws a nameplate over every living Mob
 within `NameplatePresentation.MobRangeMetres` (40) of the local character: the
-display name over a health bar, the health as `current/maximum` in the bar, and
-the level to the right of it. It is not temporary: its rules are the foundation
-for every world label, and only its look waits for the final interface art.
+display name over a 13 pixel health bar, the health as `current/maximum` in the
+bar, and the level to the right of it, its digits as tall as the bar. Its texts
+are `WorldLabels`, centered on the bar by their geometry. It is not temporary:
+its rules are the foundation for every world label, and only its look waits for
+the final interface art.
 
 - Data: it keeps the entity ids of the combatants in view, read from
   `CombatClientState.Combatants` on `Changed` instead of every frame, and each
@@ -2505,6 +2549,9 @@ for every world label, and only its look waits for the final interface art.
 - Placement: the bottom of the nameplate sits `AnchorLift` (0.35 m) above the
   top of the Mob's interaction bounds, projected after the camera moved. The
   nearest nameplate is the last sibling, so it draws over farther ones.
+- Size: `NameplatePresentation.MobNameplateScale` scales a nameplate around its
+  bottom edge with the distance from the local character, from `FarScale` (0.55)
+  at the edge of the range to full size within `FullSizeDistanceMetres` (10).
 - Canvas: its own screen-space canvas at sorting order 10, below the combat HUD,
   so damage numbers and frames draw over it. Nothing on it takes a raycast.
 
@@ -2559,8 +2606,8 @@ namespace rule are in [Folder Layout](#folder-layout).
   compares the committed Addressables settings with `ClientAddressablesLayout`,
   resolves every fixed address, every generated collision manifest and chunk,
   every presentation icon, and every registry prefab, loads content through
-  `ClientAssets`, and fails on any `Resources` folder or call in the client and
-  shared packages. `RuntimePresentationTests` keeps runtime primitives on the
+  `ClientAssets`, and fails on any `Resources` folder other than TextMesh Pro's
+  and on any `Resources` call in the client and shared packages. `RuntimePresentationTests` keeps runtime primitives on the
   configured material, and a test lists the types with static state that must
   reset on play mode entry, see [Extension Rules](#extension-rules).
 - **Built bundles.** The PlayMode tests run against the Asset Database by default
@@ -2581,6 +2628,9 @@ How to run the suites, in the Editor or headless, is in
   [Working Rules For New Content](#working-rules-for-new-content): refer to fixed
   addresses through `ClientAddresses`, release every handle you own, and never
   add a `Resources` folder.
+- Draw every new text with TextMesh Pro, never with the legacy uGUI `Text`, and
+  every text over the world through `WorldLabels`, as
+  [Text And Fonts](#text-and-fonts) describes.
 - Change scenes only through `ClientSceneLoader`. A new World scene needs its
   catalog entry and `MMORPG > Tools > Addressables > Apply Client Layout`.
 - Create runtime primitives only through `RuntimePrimitives` with the configured

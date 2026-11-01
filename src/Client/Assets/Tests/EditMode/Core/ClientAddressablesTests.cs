@@ -26,6 +26,10 @@ namespace Mmorpg.Client.Tests.EditMode
             @"\bResources\s*\.\s*(Load|LoadAll|LoadAsync|UnloadAsset)\b",
             RegexOptions.Compiled);
 
+        // TextMesh Pro loads its settings, default font, and line breaking rules from this
+        // folder itself and cannot be configured otherwise. It is the only Resources folder.
+        private const string TextMeshProResources = "src/Client/Assets/TextMesh Pro/Resources";
+
         [Test]
         public void AddressablesSettingsMatchTheClientLayout()
         {
@@ -120,6 +124,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(missingError, Does.Contain("Missing/address.json"));
         }
 
+        // Only TextMesh Pro's own folder may be a Resources folder, and no client code loads
+        // from Resources.
         [Test]
         public void ClientCodeAndContentNeverUseUnityResources()
         {
@@ -133,7 +139,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 var resourceFolders = Directory
                     .GetDirectories(root, "Resources", SearchOption.AllDirectories)
-                    .Where(path => !IsBuildOutput(path))
+                    .Where(path => !IsBuildOutput(path) && !IsTextMeshProResources(repositoryRoot, path))
                     .ToArray();
                 Assert.That(resourceFolders, Is.Empty, root);
 
@@ -162,6 +168,12 @@ namespace Mmorpg.Client.Tests.EditMode
             }
 
             return addresses;
+        }
+
+        private static bool IsTextMeshProResources(string repositoryRoot, string path)
+        {
+            var relative = Path.GetRelativePath(repositoryRoot, path).Replace('\\', '/');
+            return string.Equals(relative, TextMeshProResources, StringComparison.Ordinal);
         }
 
         private static bool IsBuildOutput(string path)

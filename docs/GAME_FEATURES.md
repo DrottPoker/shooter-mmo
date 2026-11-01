@@ -709,12 +709,14 @@ Combat is target based and server authoritative:
   `No ammunition`, `Wrong ammunition`, `Not enough mana`, or `Dead`.
 - The target frame at the top center shows the target's name, health, and
   `In combat` or `Returning home`. Every living Mob within 40 m of the character
-  has a nameplate, also at full health: its name over a health bar with the
+  has a nameplate, also at full health: its name over a thin health bar with the
   health as numbers in it, such as `32/50`, and its level to the right of the
-  bar. The bar is red for an aggressive Mob and yellow for a defensive one. When
-  the health changes, the bar and its numbers slide to the new value in 0.3
-  seconds. The nameplate disappears when the Mob dies or walks out of range, and
-  the nearest nameplate draws over farther ones. The character and every other
+  bar, as tall as the bar. The bar is red for an aggressive Mob and yellow for a
+  defensive one. When the health changes, the bar and its numbers slide to the
+  new value in 0.3 seconds. A nameplate is full size within 10 m and shrinks to
+  a little over half size at 40 m. It disappears when the Mob dies or walks out
+  of range, and the nearest nameplate draws over farther ones. Nameplates and
+  damage numbers are sharp white text with a black outline. The character and every other
   damaged living character in view within 60 m have a small health bar, green,
   amber below half, and red below a quarter. Every hit shows a white damage
   number that rises and fades over 1.1 seconds, above the nameplate on a Mob, and

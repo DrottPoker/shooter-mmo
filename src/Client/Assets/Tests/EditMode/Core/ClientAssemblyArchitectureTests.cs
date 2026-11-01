@@ -130,6 +130,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Combat",
                     "Unity.InputSystem",
                     "UnityEngine.UI",
+                    "Unity.TextMeshPro",
                     "Mmorpg.GameProtocol",
                     "Mmorpg.GameSimulation",
                     "Mmorpg.WorldData",

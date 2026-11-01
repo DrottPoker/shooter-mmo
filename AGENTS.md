@@ -14,6 +14,8 @@ Follow these rules for all future work in this repository.
 - Prefer small, focused changes that match the existing project structure.
 - Verify backend changes with lint and compile checks when practical.
 - Verify frontend changes with typecheck when practical.
+- Draw all Unity UI text with TextMesh Pro, never with the legacy uGUI `Text`,
+  which blurs when the canvas scales.
 - Only UI may use explicitly temporary implementations while the custom UI is
   being designed. Architecture, networking, state management, gameplay systems,
   service code, and tooling must be implemented as maintainable foundations from

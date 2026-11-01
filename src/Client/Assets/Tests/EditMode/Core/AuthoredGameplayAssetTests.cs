@@ -9,6 +9,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Editor.Actors;
 using NUnit.Framework;
+using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -612,8 +613,9 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // URP Lit everywhere, except the body materials that paint layers paint over, which use
-        // the skin shader, URP Lit with paint layers, and the Debug menu's line material, which
-        // is URP Unlit so its lines keep their colors in any light.
+        // the skin shader, URP Lit with paint layers, the Debug menu's line material, which is
+        // URP Unlit so its lines keep their colors in any light, and the materials inside
+        // TextMesh Pro font assets, which use its shaders.
         [Test]
         public void EveryProjectMaterialUsesTheUrpShaderOfItsKind()
         {
@@ -634,6 +636,19 @@ namespace Mmorpg.Client.Tests.EditMode
                 if (path == debugLines)
                 {
                     Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Unlit"), path);
+                    continue;
+                }
+
+                // TextMesh Pro's own Essential Resources, including the font file's built-in
+                // material, are not project art.
+                if (path.StartsWith("Assets/TextMesh Pro/", System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (AssetDatabase.LoadMainAssetAtPath(path) is TMP_FontAsset)
+                {
+                    Assert.That(material.shader.name, Does.StartWith("TextMeshPro/"), path);
                     continue;
                 }
 

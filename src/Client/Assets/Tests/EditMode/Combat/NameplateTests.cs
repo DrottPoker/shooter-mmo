@@ -5,8 +5,8 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
-    // The rules of the Mob nameplates: which Mobs show one, the bar color and texts, and how the
-    // health slides to a new value.
+    // The rules of the Mob nameplates: which Mobs show one, their size, the bar color and texts,
+    // and how the health slides to a new value.
     public sealed class NameplateTests
     {
         private const float Slide = NameplatePresentation.HealthSlideSeconds;
@@ -54,6 +54,29 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(NameplatePresentation.ShowsMobNameplate(40.1f * 40.1f, RealtimeCombatLifeState.Alive), Is.False);
             Assert.That(NameplatePresentation.ShowsMobNameplate(100f, RealtimeCombatLifeState.Evading), Is.True);
             Assert.That(NameplatePresentation.ShowsMobNameplate(100f, RealtimeCombatLifeState.Dead), Is.False);
+        }
+
+        [Test]
+        public void ANameplateGrowsFromSmallAtTheRangeToFullSizeUpClose()
+        {
+            Assert.That(NameplatePresentation.FullSizeDistanceMetres, Is.EqualTo(10f));
+            Assert.That(NameplatePresentation.MobNameplateScale(40f), Is.EqualTo(NameplatePresentation.FarScale));
+            Assert.That(NameplatePresentation.MobNameplateScale(60f), Is.EqualTo(NameplatePresentation.FarScale));
+            Assert.That(NameplatePresentation.MobNameplateScale(10f), Is.EqualTo(1f));
+            Assert.That(NameplatePresentation.MobNameplateScale(2f), Is.EqualTo(1f));
+            Assert.That(NameplatePresentation.FarScale, Is.GreaterThan(0.4f).And.LessThan(0.8f));
+
+            var previous = 1f;
+            for (var distance = 10f; distance <= 40f; distance += 2.5f)
+            {
+                var scale = NameplatePresentation.MobNameplateScale(distance);
+                Assert.That(scale, Is.LessThanOrEqualTo(previous));
+                previous = scale;
+            }
+
+            Assert.That(
+                NameplatePresentation.MobNameplateScale(25f),
+                Is.EqualTo((1f + NameplatePresentation.FarScale) * 0.5f).Within(0.0001f));
         }
 
         [Test]
