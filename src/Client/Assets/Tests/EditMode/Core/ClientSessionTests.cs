@@ -4,6 +4,7 @@ using System.Reflection;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
+using Mmorpg.Client.Ui;
 using Mmorpg.Client.Worlds;
 using Mmorpg.WorldData.Items.Presentation;
 using NUnit.Framework;
@@ -66,7 +67,8 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 typeof(ClientSession),
                 typeof(WorldSceneCatalog),
-                typeof(ItemPresentationCatalogLoader)
+                typeof(ItemPresentationCatalogLoader),
+                typeof(WorldLabels)
             };
             foreach (var type in types)
             {

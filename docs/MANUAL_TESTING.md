@@ -1096,20 +1096,25 @@ three or four of them kill a lone archer in about 10 seconds.
 
 1. Walk south out of the town gate into the meadow, toward the three Grey
    Wolves. Expected result: once a wolf is within 40 m, a nameplate appears
-   over it, also at full health: `Grey Wolf` over a yellow bar with `50/50` in
-   it and `1` to the right of the bar. The wolves do not come for the character.
-2. Walk to the wolf woods southwest of the town. Expected result: every Feral
+   over it, also at full health: `Grey Wolf` over a thin yellow bar with `50/50`
+   in it and `1` to the right of the bar, as tall as the bar. All text is sharp
+   and white with a black outline, also with the Game view zoomed in. The wolves
+   do not come for the character.
+2. Walk toward a Grey Wolf from 40 m away. Expected result: its nameplate starts
+   at a little over half size and grows until it is full size at about 10 m,
+   always resting just above the wolf.
+3. Walk to the wolf woods southwest of the town. Expected result: every Feral
    Wolf within 40 m has a red bar with `50/50` and level `2`, and a nearer
    nameplate draws over a farther one. At the lair the Feral Alpha has a red bar
    with `240/240` and level `5`. A wolf farther than 40 m has no nameplate.
-3. With the shortbow, attack a Grey Wolf. Expected result: each hit slides the
+4. With the shortbow, attack a Grey Wolf. Expected result: each hit slides the
    bar and its numbers down to the new health in about 0.3 seconds, for example
    from `50/50` through the numbers in between to `32/50`, instead of jumping;
    the damage number rises above the nameplate, the target frame shows the new
    health at once, and the Grey Wolf now bites back.
-4. Kill it. Expected result: its nameplate disappears with it, and the wolf
+5. Kill it. Expected result: its nameplate disappears with it, and the wolf
    that returns 30 seconds later shows `50/50` at once.
-5. Walk away from a wolf until it is more than 40 m away. Expected result: its
+6. Walk away from a wolf until it is more than 40 m away. Expected result: its
    nameplate disappears, and it comes back when the character walks closer.
 
 ### Death And Respawn

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Mmorpg.Client.Combat;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.GameProtocol;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,8 +10,9 @@ namespace Mmorpg.Client.Ui
 {
     // The nameplates over the Mobs near the local character: the Mob's name over a health bar,
     // red for an aggressive Mob and yellow for a defensive one, with its health as numbers in
-    // the bar and its level to the right of it. The bar and the numbers slide to every new
-    // health value. It reads the combat state and the actor views and decides nothing.
+    // the bar and its level, as tall as the bar, to the right of it. The bar and the numbers
+    // slide to every new health value, and a farther nameplate is smaller. It reads the combat
+    // state and the actor views and decides nothing. Its texts are TextMesh Pro world labels.
     // Nameplates have a canvas of their own below the combat HUD, so damage numbers and frames
     // draw over them, and nothing on it takes a raycast. Nearer nameplates draw over farther
     // ones, and they are placed after the camera moved, so they stay on the heads they belong to.
@@ -20,20 +22,24 @@ namespace Mmorpg.Client.Ui
     {
         public const int CanvasSortingOrder = TemporaryCombatHud.CanvasSortingOrder - 10;
 
-        // A nameplate's bottom edge sits this far above the top of the Mob, and the nameplate is
-        // this high on the 1080 pixel reference screen. Damage numbers rise from above it.
+        // A nameplate's bottom edge sits this far above the top of the Mob, and at full size the
+        // nameplate is this high on the 1080 pixel reference screen. Damage numbers rise from
+        // above it.
         public const float AnchorLift = 0.35f;
         public const float Height = BarHeight + NameGap + NameHeight;
 
+        // The bar, and the height of the digits of the health in it and of the level beside it.
+        public const float BarHeight = 13f;
+        public const float HealthCapHeight = 7.5f;
+
         private const float BarWidth = 120f;
-        private const float BarHeight = 18f;
-        private const float NameHeight = 20f;
+        private const float NameHeight = 18f;
+        private const float NameFontSize = 14f;
         private const float NameGap = 1f;
-        private const float LevelGap = 5f;
+        private const float LevelGap = 4f;
         private const float LevelWidth = 48f;
         private static readonly Color TrackColor = new Color(0f, 0f, 0f, 0.72f);
         private static readonly Color TrackBorderColor = new Color(0f, 0f, 0f, 0.9f);
-        private static readonly Color TextOutlineColor = Color.black;
         private static readonly NearestLast DrawOrder = new NearestLast();
 
         private readonly List<ulong> combatantIds = new List<ulong>();
@@ -74,7 +80,8 @@ namespace Mmorpg.Client.Ui
                 nameplate.Level.text,
                 nameplate.Fill.color,
                 nameplate.Fill.rectTransform.anchorMax.x,
-                nameplate.Root.anchoredPosition);
+                nameplate.Root.anchoredPosition,
+                nameplate.Root.localScale.x);
             return true;
         }
 
@@ -176,6 +183,7 @@ namespace Mmorpg.Client.Ui
 
             nameplate.Root.gameObject.SetActive(true);
             nameplate.Root.anchoredPosition = local;
+            nameplate.Scale(NameplatePresentation.MobNameplateScale(Mathf.Sqrt(sqrDistance)));
             nameplate.Show(state.Health, state.MaximumHealth, now);
             nameplate.SqrDistance = sqrDistance;
             nameplate.ShownThisFrame = true;
@@ -256,14 +264,32 @@ namespace Mmorpg.Client.Ui
             fill.raycastTarget = false;
             TemporaryUiKit.Stretch(fill.rectTransform, Vector2.zero, Vector2.one, new Vector2(1f, 1f), new Vector2(-1f, -1f));
 
-            var health = CreateText(track, "Health", 14, TextAnchor.MiddleCenter);
+            // Geometry alignment centers the digits themselves on the bar.
+            var health = WorldLabels.Create(
+                track,
+                "Health",
+                WorldLabels.FontSizeForCapHeight(HealthCapHeight),
+                HorizontalAlignmentOptions.Center,
+                VerticalAlignmentOptions.Geometry,
+                TemporaryUiKit.TextPrimary);
             TemporaryUiKit.Stretch(health.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
-            var name = CreateText(root, "Name", 15, TextAnchor.LowerCenter);
-            name.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var name = WorldLabels.Create(
+                root,
+                "Name",
+                NameFontSize,
+                HorizontalAlignmentOptions.Center,
+                VerticalAlignmentOptions.Bottom,
+                TemporaryUiKit.TextPrimary);
             Layout(name.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, BarHeight + NameGap), new Vector2(BarWidth * 2f, NameHeight));
 
-            var level = CreateText(root, "Level", 14, TextAnchor.MiddleLeft);
+            var level = WorldLabels.Create(
+                root,
+                "Level",
+                WorldLabels.FontSizeForCapHeight(BarHeight),
+                HorizontalAlignmentOptions.Left,
+                VerticalAlignmentOptions.Geometry,
+                TemporaryUiKit.TextPrimary);
             Layout(
                 level.rectTransform,
                 new Vector2(0f, 0f),
@@ -283,22 +309,6 @@ namespace Mmorpg.Client.Ui
             rect.sizeDelta = size;
         }
 
-        private static Text CreateText(Transform parent, string name, int fontSize, TextAnchor alignment)
-        {
-            var text = TemporaryUiKit.AddText(
-                TemporaryUiKit.CreateUiObject(name, parent),
-                string.Empty,
-                fontSize,
-                FontStyle.Bold,
-                alignment,
-                TemporaryUiKit.TextPrimary);
-            text.supportRichText = false;
-            var outline = text.gameObject.AddComponent<Outline>();
-            outline.effectColor = TextOutlineColor;
-            outline.effectDistance = new Vector2(1f, -1f);
-            return text;
-        }
-
         // One nameplate and the slide of the health it shows. Texts change only when their
         // values do, so a frame allocates no strings.
         private sealed class Nameplate
@@ -308,8 +318,14 @@ namespace Mmorpg.Client.Ui
             private int shownHealth = -1;
             private int shownMaximum = -1;
             private float shownFraction = -1f;
+            private float shownScale = -1f;
 
-            public Nameplate(RectTransform root, Image fill, Text health, Text name, Text level)
+            public Nameplate(
+                RectTransform root,
+                Image fill,
+                TextMeshProUGUI health,
+                TextMeshProUGUI name,
+                TextMeshProUGUI level)
             {
                 Root = root;
                 Fill = fill;
@@ -322,11 +338,11 @@ namespace Mmorpg.Client.Ui
 
             public Image Fill { get; }
 
-            public Text Health { get; }
+            public TextMeshProUGUI Health { get; }
 
-            public Text Name { get; }
+            public TextMeshProUGUI Name { get; }
 
-            public Text Level { get; }
+            public TextMeshProUGUI Level { get; }
 
             public float SqrDistance { get; set; }
 
@@ -342,6 +358,17 @@ namespace Mmorpg.Client.Ui
                 shownHealth = -1;
                 shownMaximum = -1;
                 shownFraction = -1f;
+                shownScale = -1f;
+            }
+
+            // The scale changes only when it does, so a resting nameplate dirties nothing.
+            public void Scale(float scale)
+            {
+                if (!Mathf.Approximately(scale, shownScale))
+                {
+                    shownScale = scale;
+                    Root.localScale = new Vector3(scale, scale, 1f);
+                }
             }
 
             public void Show(int health, int maximumHealth, float now)
@@ -383,7 +410,8 @@ namespace Mmorpg.Client.Ui
             string level,
             Color barColor,
             float barFraction,
-            Vector2 position)
+            Vector2 position,
+            float scale)
         {
             Name = name;
             Health = health;
@@ -391,6 +419,7 @@ namespace Mmorpg.Client.Ui
             BarColor = barColor;
             BarFraction = barFraction;
             Position = position;
+            Scale = scale;
         }
 
         public string Name { get; }
@@ -404,5 +433,7 @@ namespace Mmorpg.Client.Ui
         public float BarFraction { get; }
 
         public Vector2 Position { get; }
+
+        public float Scale { get; }
     }
 }

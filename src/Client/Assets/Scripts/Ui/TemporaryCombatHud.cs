@@ -5,6 +5,7 @@ using Mmorpg.Client.Combat;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -45,7 +46,7 @@ namespace Mmorpg.Client.Ui
         private readonly List<ulong> damagedCombatants = new List<ulong>();
         private readonly List<HealthBar> healthBars = new List<HealthBar>();
         private readonly List<DamageNumber> damageNumbers = new List<DamageNumber>();
-        private readonly Stack<Text> idleDamageTexts = new Stack<Text>();
+        private readonly Stack<TextMeshProUGUI> idleDamageTexts = new Stack<TextMeshProUGUI>();
         private CombatClientController combatController;
         private CombatTargetingController targetingController;
         private RealtimeSimulationClient realtimeClient;
@@ -293,10 +294,12 @@ namespace Mmorpg.Client.Ui
             return used + 1;
         }
 
-        // A Mob's damage numbers rise from above its nameplate, so they never cover its health.
+        // A Mob's damage numbers rise from above its nameplate, at the nameplate's size, so they
+        // never cover its health.
         private void UpdateDamageNumbers()
         {
             var playerCamera = views.PlayerCamera;
+            var player = views.LocalPlayer;
             for (var index = damageNumbers.Count - 1; index >= 0; index--)
             {
                 var number = damageNumbers[index];
@@ -311,6 +314,10 @@ namespace Mmorpg.Client.Ui
                 if (views.TryGetView(number.TargetEntityId, out var view))
                 {
                     number.Anchor = view.Top;
+                    number.NameplateScale = player != null
+                        ? NameplatePresentation.MobNameplateScale(
+                            Vector3.Distance(view.Position, player.transform.position))
+                        : 1f;
                     damageNumbers[index] = number;
                 }
 
@@ -325,7 +332,7 @@ namespace Mmorpg.Client.Ui
                 }
 
                 var progress = age / DamageNumberSeconds;
-                var start = overNameplate ? WorldNameplates.Height : 0f;
+                var start = overNameplate ? WorldNameplates.Height * number.NameplateScale : 0f;
                 number.Text.gameObject.SetActive(true);
                 number.Text.rectTransform.anchoredPosition = local + new Vector2(0f, start + (DamageNumberRise * progress));
                 var color = number.Color;
@@ -398,7 +405,7 @@ namespace Mmorpg.Client.Ui
                 ReleaseDamageText(oldest.Text);
             }
 
-            Text text = null;
+            TextMeshProUGUI text = null;
             while (text == null && idleDamageTexts.Count > 0)
             {
                 text = idleDamageTexts.Pop();
@@ -415,7 +422,7 @@ namespace Mmorpg.Client.Ui
             damageNumbers.Add(new DamageNumber(text, targetEntityId, anchor, color, Time.unscaledTime));
         }
 
-        private void ReleaseDamageText(Text text)
+        private void ReleaseDamageText(TextMeshProUGUI text)
         {
             if (text == null)
             {
@@ -631,23 +638,21 @@ namespace Mmorpg.Client.Ui
             return new HealthBar(root, CreateBarFill(root));
         }
 
-        private Text CreateDamageText()
+        // A damage number is a TextMesh Pro world label, like the nameplates.
+        private TextMeshProUGUI CreateDamageText()
         {
-            var text = TemporaryUiKit.AddText(
-                TemporaryUiKit.CreateUiObject("DamageNumber", worldLayer),
-                string.Empty,
-                26,
-                FontStyle.Bold,
-                TextAnchor.MiddleCenter,
+            var text = WorldLabels.Create(
+                worldLayer,
+                "DamageNumber",
+                26f,
+                HorizontalAlignmentOptions.Center,
+                VerticalAlignmentOptions.Middle,
                 CombatHudPresentation.NormalDamageColor);
             var rect = text.rectTransform;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0f);
             rect.sizeDelta = new Vector2(120f, 34f);
-            var outline = text.gameObject.AddComponent<Outline>();
-            outline.effectColor = new Color(0f, 0f, 0f, 0.9f);
-            outline.effectDistance = new Vector2(1.5f, -1.5f);
             text.gameObject.SetActive(false);
             return text;
         }
@@ -770,20 +775,29 @@ namespace Mmorpg.Client.Ui
 
         private struct DamageNumber
         {
-            public DamageNumber(Text text, ulong targetEntityId, Vector3 anchor, Color color, float startedAt)
+            public DamageNumber(
+                TextMeshProUGUI text,
+                ulong targetEntityId,
+                Vector3 anchor,
+                Color color,
+                float startedAt)
             {
                 Text = text;
                 TargetEntityId = targetEntityId;
                 Anchor = anchor;
                 Color = color;
                 StartedAt = startedAt;
+                NameplateScale = 1f;
             }
 
-            public Text Text { get; }
+            public TextMeshProUGUI Text { get; }
 
             public ulong TargetEntityId { get; }
 
             public Vector3 Anchor { get; set; }
+
+            // The size of the target's nameplate, which the number rises from.
+            public float NameplateScale { get; set; }
 
             public Color Color { get; }
 

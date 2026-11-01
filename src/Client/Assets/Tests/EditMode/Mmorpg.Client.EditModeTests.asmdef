@@ -15,6 +15,7 @@
     "Mmorpg.Client.Combat",
     "Mmorpg.Client.Ui",
     "Unity.InputSystem",
+    "Unity.TextMeshPro",
     "Mmorpg.GameSimulation",
     "Mmorpg.GameProtocol",
     "Mmorpg.WorldData",
