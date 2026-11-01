@@ -437,7 +437,6 @@ namespace Mmorpg.Client.Items
                 patchedEquipment,
                 confirmedSnapshot.EquippedBag,
                 ConfirmedBank,
-                confirmedSnapshot.SecureContainer,
                 ConfirmedRecoveryStorage,
                 carry.CarriedWeight,
                 carry.CarryCapacity,
@@ -618,7 +617,6 @@ namespace Mmorpg.Client.Items
                     {
                         confirmedSnapshot.PermanentInventory,
                         confirmedSnapshot.EquippedBag?.Contents,
-                        confirmedSnapshot.SecureContainer?.Contents,
                         ConfirmedBank
                     }
                     .FirstOrDefault(candidate => candidate != null && candidate.ContainerId == containerId);
@@ -668,8 +666,7 @@ namespace Mmorpg.Client.Items
             var containers = new List<InventoryContainer>
             {
                 snapshot.PermanentInventory,
-                bank,
-                snapshot.SecureContainer.Contents
+                bank
             };
             if (snapshot.EquippedBag != null)
             {
@@ -809,7 +806,6 @@ namespace Mmorpg.Client.Items
                 snapshot.Equipment.ToArray(),
                 snapshot.EquippedBag,
                 ConfirmedBank,
-                snapshot.SecureContainer,
                 ConfirmedRecoveryStorage,
                 snapshot.CarriedWeight,
                 snapshot.CarryCapacity,

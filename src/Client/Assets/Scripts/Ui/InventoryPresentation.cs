@@ -36,17 +36,18 @@ namespace Mmorpg.Client.Ui
                 ["tool"] = (0, 0),
                 ["head"] = (0, 1),
                 ["bag"] = (0, 2),
-                ["ammunition"] = (1, 0),
+                ["shoulders"] = (1, 0),
                 ["neck"] = (1, 1),
-                ["hands"] = (1, 2),
+                ["back"] = (1, 2),
                 ["main_hand"] = (2, 0),
                 ["body"] = (2, 1),
                 ["off_hand"] = (2, 2),
-                ["ring_1"] = (3, 0),
+                ["hands"] = (3, 0),
                 ["legs"] = (3, 1),
-                ["ring_2"] = (3, 2),
-                ["back"] = (4, 0),
-                ["feet"] = (4, 1)
+                ["ammunition"] = (3, 2),
+                ["ring_1"] = (4, 0),
+                ["feet"] = (4, 1),
+                ["ring_2"] = (4, 2)
             };
 
         public static IReadOnlyList<PaperDollCell> Arrange(
@@ -241,8 +242,6 @@ namespace Mmorpg.Client.Ui
     // Labels and tooltips for item slots. Everything here reads committed state only.
     public static class InventorySlotPresentation
     {
-        public const string SecureContainerFallbackTitle = "Secure Container";
-
         public static string QuantityText(int quantity)
         {
             return quantity > 1
@@ -303,16 +302,6 @@ namespace Mmorpg.Client.Ui
             return string.Join(
                 "/",
                 acceptedTags.Select(tag => IdentityName(catalog?.Gameplay?.Tags, tag)));
-        }
-
-        public static string SecureContainerTitle(ClientItemCatalog catalog, string tierId)
-        {
-            var tier = catalog?.Gameplay?.SecureContainerTiers?.FirstOrDefault(candidate =>
-                candidate != null
-                && string.Equals(candidate.Id, tierId, StringComparison.Ordinal));
-            return tier != null && !string.IsNullOrWhiteSpace(tier.DisplayName)
-                ? tier.DisplayName
-                : SecureContainerFallbackTitle;
         }
 
         public static string EquipmentSlotName(ClientItemCatalog catalog, string slotId)
@@ -454,14 +443,6 @@ namespace Mmorpg.Client.Ui
             if (!definition.PlayerDestroyable)
             {
                 AppendLine(text, "Cannot be destroyed");
-            }
-
-            if (definition.LocationEligibility != null && !definition.LocationEligibility.SecureContainer)
-            {
-                AppendLine(
-                    text,
-                    "Not allowed in the "
-                        + SecureContainerTitle(catalog, catalog.Gameplay?.BaseSecureContainerTierId));
             }
 
             AppendSlot(text, slotDescription);

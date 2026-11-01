@@ -17,7 +17,7 @@ does after joining:
 | Workload | Supported mode | Durable item traffic | Movement pattern | Primary use |
 | --- | --- | :---: | --- | --- |
 | `lifecycle` | `worker-only`, `full-stack` | No | Square walking loop | Preserve the comparable admission and realtime baseline |
-| `inventory` | `full-stack` | Yes | Square walking loop | Relocate one item between Permanent Inventory and Secure Container |
+| `inventory` | `full-stack` | Yes | Square walking loop | Relocate one item between Permanent Inventory slots |
 | `loot-hotspot` | `full-stack` | Yes | Stand at the shared corpse | Contend on one durable Mob corpse with deposit and partial loot |
 | `mixed-gameplay` | `full-stack` | Yes | Step back and forth beside the corpse | Combine movement, inventory relocation, corpse deposit, and corpse loot |
 

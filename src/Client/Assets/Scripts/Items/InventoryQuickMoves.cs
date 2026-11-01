@@ -115,8 +115,8 @@ namespace Mmorpg.Client.Items
     // claimed into Permanent Inventory. A corpse item takes a free compatible equipment slot,
     // never replacing anything, or else carried storage. Carried storage fills as a purchase
     // does: stacks first, then matching specialized Bag slots, Permanent Inventory, and general
-    // Bag slots, never the Secure Container. Every move is checked against the prediction its
-    // operation would make, so the client never sends a move it knows the server refuses.
+    // Bag slots. Every move is checked against the prediction its operation would make, so the
+    // client never sends a move it knows the server refuses.
     public static class InventoryQuickMoves
     {
         public static InventoryQuickMove ForItem(InventoryClientState state, InventoryItem item, bool bankOpen)

@@ -108,37 +108,6 @@ internal sealed class AccountItemMutationService(ItemTransactionService transact
             cancellationToken));
     }
 
-    public Task<ServiceResult<ItemTransactionResult>> ChangeSecureContainerTierAsync(
-        Guid accountId,
-        ChangeAccountSecureContainerTierRequest request,
-        CancellationToken cancellationToken)
-    {
-        var invalidOperation = ValidateOperationId(request.OperationId);
-        if (invalidOperation is not null)
-        {
-            return Task.FromResult(invalidOperation);
-        }
-
-        if (string.IsNullOrWhiteSpace(request.TierId)
-            || request.CharacterRevisions is null)
-        {
-            return Task.FromResult(ServiceResult<ItemTransactionResult>.BadRequest(
-                ItemApiErrorCodes.SecureTierRequestInvalid,
-                "A Secure Container tier and all character revisions are required."));
-        }
-
-        return MapResultAsync(transactionService.ExecuteAsync(
-            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
-                request.OperationId,
-                ItemTransactionActor.ForOfflineAccount(accountId),
-                new ChangeSecureContainerTierCommand(
-                    accountId,
-                    request.ExpectedEntitlementRevision,
-                    request.TierId.Trim(),
-                    request.CharacterRevisions)),
-            cancellationToken));
-    }
-
     private static ServiceResult<ItemTransactionResult>? ValidateOperationId(Guid operationId)
     {
         return operationId == Guid.Empty

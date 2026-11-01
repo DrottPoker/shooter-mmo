@@ -20,13 +20,11 @@ try
         options.VerifyOnly,
         "Compiled item catalog");
     Console.WriteLine(
-        "Item catalog {0} for catalog {1} at revision {2} with {3} definitions and {4} Secure Container {5}.",
+        "Item catalog {0} for catalog {1} at revision {2} with {3} definitions.",
         options.VerifyOnly ? "verified" : "compiled",
         catalog.CatalogId,
         catalog.Revision,
-        catalog.Definitions.Length,
-        catalog.SecureContainerTiers.Length,
-        catalog.SecureContainerTiers.Length == 1 ? "tier" : "tiers");
+        catalog.Definitions.Length);
     return 0;
 }
 catch (Exception exception)

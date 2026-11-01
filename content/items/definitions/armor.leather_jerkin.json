@@ -9,9 +9,6 @@
     "body"
   ],
   "id": "armor.leather_jerkin",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

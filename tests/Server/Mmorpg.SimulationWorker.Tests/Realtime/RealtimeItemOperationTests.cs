@@ -139,8 +139,7 @@ public sealed class RealtimeItemOperationTests
                 ],
                 [],
                 [],
-                [],
-                null)));
+                [])));
         await harness.StartAsync();
         var client = await harness.JoinAsync(character);
 
@@ -194,7 +193,6 @@ public sealed class RealtimeItemOperationTests
                 [new SimulationItemContainerRevision(containerId, 4)],
                 [],
                 [],
-                null,
                 CharacterStateTestData.Create(request.CharacterId, 1, 40, 200),
                 [
                     new SimulationItemChange(

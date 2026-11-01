@@ -7,9 +7,6 @@
   "displayName": "Fixture Potion",
   "equipmentSlots": [ ],
   "id": "fixture.potion",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 10,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

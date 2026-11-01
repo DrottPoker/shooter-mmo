@@ -10,31 +10,27 @@ internal sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource
 {
     private const int RecomputeBatchSize = 500;
 
-    // Startup work runs in short batches. One transaction over every account took one
-    // advisory lock per account and failed with "out of shared memory" at scale.
+    // Startup work runs in short batches, so no transaction holds locks on every character.
     public async Task BackfillActiveCharactersAsync(CancellationToken cancellationToken)
     {
         await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
         {
-            var missingCharacters = (await connection.QueryAsync<MissingCharacterRow>(
+            var missingCharacters = (await connection.QueryAsync<Guid>(
                 new CommandDefinition(
                     $"""
-                    select
-                        character.id as "CharacterId",
-                        character.account_id as "AccountId"
+                    select character.id
                     from {CharactersSql.ActiveCharacters} character
                     left join character_item_states state on state.character_id = character.id
                     where state.character_id is null
                     order by character.id;
                     """,
                     cancellationToken: cancellationToken))).ToArray();
-            foreach (var missing in missingCharacters)
+            foreach (var characterId in missingCharacters)
             {
                 await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
                 await BootstrapAsync(
                     new PostgresTransactionScope(connection, transaction),
-                    missing.CharacterId,
-                    missing.AccountId,
+                    characterId,
                     cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
             }
@@ -72,26 +68,16 @@ internal sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource
         }
     }
 
-    // The account's Secure Container entitlement lock is taken first, in the same order
-    // as every other entitlement change. The caller supplies the character's account.
     public Task BootstrapAsync(
         PostgresTransactionScope scope,
         Guid characterId,
-        Guid accountId,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
 
         return scope.Connection.ExecuteAsync(new CommandDefinition(
-            """
-            select pg_advisory_xact_lock(
-                hashtextextended(
-                    'item-secure-entitlement:' || cast(@AccountId as text),
-                    0));
-
-            select bootstrap_character_item_state(@CharacterId);
-            """,
-            new { CharacterId = characterId, AccountId = accountId },
+            "select bootstrap_character_item_state(@CharacterId);",
+            new { CharacterId = characterId },
             scope.Transaction,
             cancellationToken: cancellationToken));
     }
@@ -132,6 +118,4 @@ internal sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource
             transaction,
             cancellationToken: cancellationToken));
     }
-
-    private sealed record MissingCharacterRow(Guid CharacterId, Guid AccountId);
 }

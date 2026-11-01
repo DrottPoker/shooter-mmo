@@ -333,7 +333,7 @@ public sealed class ItemTransactionTraceGoldenTests
     }
 
     [PostgresIntegrationFact]
-    public async Task BagRecoveryAndSecureTierCommandsMatchTheirGoldenTraces()
+    public async Task BagAndRecoveryCommandsMatchTheirGoldenTraces()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
@@ -436,45 +436,6 @@ public sealed class ItemTransactionTraceGoldenTests
                 expireDeliveryId,
                 ItemTransactionActor.ForSystem(),
                 new ExpireRecoveryDeliveryCommand(expiringDeliveryId)),
-            CancellationToken.None)));
-
-        await world.AddSecureTierAsync("secure_container.golden_six", 6);
-        state = await world.LoadStateAsync(characterId);
-        var expandId = Guid.NewGuid();
-        AssertCommitted(await traced.AssertGoldenAsync("change_secure_container_tier.expand", expandId, service => service.ExecuteAsync(
-            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
-                expandId,
-                ItemTransactionActor.ForSystem(),
-                new ChangeSecureContainerTierCommand(
-                    first.Registration.AccountId,
-                    0,
-                    "secure_container.golden_six",
-                    [new CharacterRevisionExpectation(characterId, state.Revision)])),
-            CancellationToken.None)));
-
-        await world.GrantAsync(characterId, Ore, 1, state.SecureContainerId, 5);
-        var reduceId = Guid.NewGuid();
-        AssertCommitted(await traced.AssertGoldenAsync("change_secure_container_tier.reduce_with_overflow", reduceId, service => service.ExecuteAsync(
-            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
-                reduceId,
-                ItemTransactionActor.ForSystem(),
-                new ChangeSecureContainerTierCommand(
-                    first.Registration.AccountId,
-                    1,
-                    "secure_container.base",
-                    [])),
-            CancellationToken.None)));
-
-        var unchangedId = Guid.NewGuid();
-        AssertCommitted(await traced.AssertGoldenAsync("change_secure_container_tier.unchanged", unchangedId, service => service.ExecuteAsync(
-            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
-                unchangedId,
-                ItemTransactionActor.ForSystem(),
-                new ChangeSecureContainerTierCommand(
-                    first.Registration.AccountId,
-                    2,
-                    "secure_container.base",
-                    [])),
             CancellationToken.None)));
     }
 

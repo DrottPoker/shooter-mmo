@@ -484,8 +484,7 @@ scene authoring imports and exports that content but does not replace it as the
 source consumed by SimulationWorker.
 
 The pure item rules cover stack compatibility, Bag slot tag acceptance,
-equipment compatibility, Secure Container eligibility, empty and non-empty Bag
-locations, Bag containment-cycle rejection, item policy capabilities, unitless
+equipment compatibility, empty and non-empty Bag locations, Bag containment-cycle rejection, item policy capabilities, unitless
 integer weight arithmetic, the 140 percent hard cap, the linear fixed-point
 encumbrance multiplier, vendor pricing (`VendorPricing`), and the Loot all plan
 (`CorpseLootAllPlanner`). GameService and the Unity client run the same rule
@@ -572,8 +571,7 @@ documents are [Stack Stress Testing](STACK_STRESS_TESTING.md) and
 ### Durable Item Boundary
 
 GameService owns the durable item schema, mirrored definitions, character item
-states, top-level container identities, account Secure Container entitlements,
-corpse custody, and every durable item transaction. PostgreSQL is the custody
+states, top-level container identities, corpse custody, and every durable item transaction. PostgreSQL is the custody
 authority. All durable commands enter one item transaction kernel,
 `ItemTransactionService`, whose internals, operation kinds, and lock order are
 in [GameService Modules](GAME_SERVICE_MODULES.md#items-transaction-kernel). The
@@ -618,8 +616,7 @@ commands run as a system actor through the same kernel:
 The worker asserts only service access that an open interaction already
 validated, and evaluates it when the operation starts. Bank and Recovery
 Storage need an open interaction with a world actor whose `bank` or
-`recovery_storage` capability is available. Secure Container operations need no
-city service. Insurance, quest item-lifecycle, and vendor actions need their own
+`recovery_storage` capability is available. Insurance, quest item-lifecycle, and vendor actions need their own
 capability, and a vendor trade carries the vendor profile of the validated
 capability, never a client value. A gathering yield needs an open interaction
 with a resource node. GameService uses server-owned insurance prices, quest
@@ -752,10 +749,8 @@ transaction protocol stay authoritative for corpse contents.
 | `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, required character level, value in whole currency units, structural fingerprint, and active state |
 | `item_definition_tags`, `item_definition_default_policies`, `item_definition_tool_kinds` | A definition's tags, default policies, and tool kinds |
 | `item_definition_equipment_slots`, `item_definition_blocked_equipment_slots` | Compatible equipment slots and the slots an equipped definition blocks |
-| `item_definition_location_rules` | Secure Container and other explicit location eligibility |
 | `bag_definitions`, `bag_definition_slots`, `bag_definition_slot_tags` | Bag carry bonus and its stable general and specialized slots |
 | `vendor_profiles`, `vendor_offers`, `vendor_sale_categories` | Vendor profiles with purchase and sale price basis points and active state, their ordered offers, and the categories each vendor buys |
-| `secure_container_tiers`, `account_secure_container_entitlements` | Secure Container tiers and the one tier each account has selected |
 | `character_item_states` | Character aggregate revision, carried weight, carry capacity, and the owned top-level container ids |
 | `item_containers`, `item_container_slots`, `item_container_slot_tags` | Typed containers with owner binding, revision, and lifecycle, and their stable general or specialized slots |
 | `item_instances` | Durable identity, definition, quantity, revision, and exactly one location: a container slot or an equipment slot |
@@ -765,7 +760,7 @@ transaction protocol stay authoritative for corpse contents.
 | `item_operation_changes`, `item_destructions` | The append-only change audit and the destruction records |
 | `corpses` | Durable player and persistent Mob corpses: source snapshot, Shard transform, presentation key, revision, absolute expiry, and close lifecycle |
 | `corpse_sections` | Bindings of the general inventory, equipment, and Bag sections to real item containers |
-| `corpse_snapshots` | Non-interactive Secure tier, insured equipment, and protected or insured Bag presentation metadata |
+| `corpse_snapshots` | Non-interactive insured equipment and protected or insured Bag presentation metadata |
 | `death_events` | One row per authoritative death event with its original operation, canonical request hash, corpse, result correlation, and the optional killer kind and id |
 | `live_mob_loot_grants` | Every committed live Mob loot grant by its grant id, with the operation, character, and source corpse, so a grant commits once |
 
@@ -780,7 +775,7 @@ running multiple characters simultaneously, even if the token is copied to a
 second client.
 
 Every service-created character has exactly one active permanent inventory,
-bank, Secure Container, and Recovery Storage container, and the character
+bank, and Recovery Storage container, and the character
 item-state row references those exact owned container types. CHECK constraints
 make an item instance point to one existing container slot or one character
 equipment slot, never both, and deferrable partial unique indexes allow only
@@ -791,8 +786,7 @@ keep their references.
 No delete path exists for accounts or characters today, but the foreign keys
 define what a future delete flow removes. Deleting a character cascades its item
 state, owned containers, contained and equipped items, policies, and recovery
-deliveries. The account-level Secure Container entitlement remains until the
-account is deleted. Item operations and change audit remain, while deleted actor
+deliveries. Item operations and change audit remain, while deleted actor
 and item references become null. Such a flow must go through the owning
 modules' contracts.
 
@@ -1070,9 +1064,8 @@ The implemented combat rules, timings, and failure handling are in
 4. The transaction partitions the items as
    [Player Death Partition](INVENTORY_AND_DEATH_LOOT_DESIGN.md#player-death-partition)
    defines and commits every affected revision, carry state, policy
-   consumption, snapshot, and audit together. If removing the equipped Bag bonus
-   leaves retained Secure Container weight above the hard cap, death still
-   commits.
+   consumption, snapshot, and audit together. Death never fails on carry
+   weight.
 5. Each corpse stores database creation time plus its absolute deadline.
    GameService cleanup locks the corpse first, destroys each remaining item once
    with audit, and closes even an already-empty corpse only at that deadline.

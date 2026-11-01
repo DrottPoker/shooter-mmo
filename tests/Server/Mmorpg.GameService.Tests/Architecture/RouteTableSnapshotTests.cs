@@ -43,7 +43,6 @@ public sealed class RouteTableSnapshotTests
         "POST /api/development/simulation-bots/join-tickets auth=- rate=- sensitive=yes",
         "POST /api/development/stack-stress/characters/{characterId:guid}/inventory-fixture auth=AccountSession rate=- sensitive=yes",
         "POST /api/development/stack-stress/loot-hotspot auth=AccountSession rate=- sensitive=yes",
-        "POST /api/items/secure-container-tier auth=AccountSession rate=- sensitive=yes",
         "POST /api/shards/{shardId}/join auth=AccountSession rate=- sensitive=yes",
         "POST /api/simulation-join-tickets/consume auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/ammunition-consumptions auth=SimulationWorker rate=- sensitive=yes",

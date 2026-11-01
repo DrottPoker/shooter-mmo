@@ -188,12 +188,8 @@ internal sealed class ItemStateReader(
                 definition.player_destroyable as "PlayerDestroyable",
                 definition.required_character_level as "RequiredCharacterLevel",
                 definition.structural_fingerprint as "StructuralFingerprint",
-                coalesce(location.is_allowed, false) as "SecureContainerEligible",
                 bag.carry_capacity_bonus as "BagCarryCapacityBonus"
             from item_definitions definition
-            left join item_definition_location_rules location
-              on location.definition_id = definition.id
-             and location.location_kind = 'secure_container'
             left join bag_definitions bag on bag.definition_id = definition.id
             where definition.id = @DefinitionId
               and definition.is_active;
@@ -251,10 +247,6 @@ internal sealed class ItemStateReader(
             EquipmentSlots = equipmentSlots,
             BlockedEquipmentSlots = blockedEquipmentSlots,
             PlayerDestroyable = row.PlayerDestroyable,
-            LocationEligibility = new ItemLocationEligibility
-            {
-                SecureContainer = row.SecureContainerEligible
-            },
             DefaultPolicies = defaultPolicies,
             RequiredCharacterLevel = row.RequiredCharacterLevel,
             StructuralFingerprint = row.StructuralFingerprint
@@ -410,8 +402,6 @@ internal sealed class ItemStateReader(
         public int RequiredCharacterLevel { get; set; }
 
         public string StructuralFingerprint { get; set; } = string.Empty;
-
-        public bool SecureContainerEligible { get; set; }
 
         public long? BagCarryCapacityBonus { get; set; }
     }

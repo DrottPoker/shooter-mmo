@@ -37,7 +37,7 @@ namespace Mmorpg.Client.Items
 
             if (!IsCarriedLootDestination(state.FullSnapshot, destination))
             {
-                reason = "Corpse loot can enter only Permanent Inventory, the equipped Bag, or the Secure Container.";
+                reason = "Corpse loot can enter only Permanent Inventory or the equipped Bag.";
                 return false;
             }
 
@@ -530,7 +530,6 @@ namespace Mmorpg.Client.Items
             InventoryContainer container)
         {
             return snapshot.PermanentInventory.ContainerId == container.ContainerId
-                || snapshot.SecureContainer.Contents.ContainerId == container.ContainerId
                 || snapshot.EquippedBag?.Contents.ContainerId == container.ContainerId;
         }
 

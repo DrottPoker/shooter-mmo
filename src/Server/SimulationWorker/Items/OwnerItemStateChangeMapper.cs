@@ -18,13 +18,12 @@ internal static class OwnerItemStateChangeMapper
     {
         ArgumentNullException.ThrowIfNull(transaction);
         // A claim takes its deliveries out of Recovery Storage; deliveries another transaction
-        // adds and Secure Container tiers are state the change cannot describe.
+        // adds are state the change cannot describe.
         var claim = string.Equals(transaction.OperationKind, ClaimRecoveryDeliveryKind, StringComparison.Ordinal);
         if (!transaction.Succeeded
             || transaction.ItemChanges is null
             || transaction.RecoveryDeliveryIds is null
             || (transaction.RecoveryDeliveryIds.Count > 0 && !claim)
-            || transaction.SecureContainerEntitlementRevision is not null
             || transaction.ContainerRevisions is null
             || transaction.CharacterRevisions is not { Count: 1 }
             || transaction.CharacterRevisions[0].CharacterId != characterId

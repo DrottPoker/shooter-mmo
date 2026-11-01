@@ -72,16 +72,6 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (string.Equals(
-                    destination.ContainerType,
-                    ItemContainerTypeIds.SecureContainer,
-                    StringComparison.Ordinal)
-                && !SecureContainerRules.IsEligible(definition))
-            {
-                reason = "This definition is not eligible for the Secure Container.";
-                return false;
-            }
-
             if (definition.Bag != null
                 && !CanPlaceBag(state, item, destination, destinationSlot, out reason))
             {
@@ -690,9 +680,7 @@ namespace Mmorpg.Client.Items
                 Kind = slot.SlotKind,
                 AcceptedTags = slot.AcceptedTags.ToArray()
             };
-            return ItemSlotRules.Accepts(definition, slotDefinition)
-                && (!string.Equals(container.ContainerType, ItemContainerTypeIds.SecureContainer, StringComparison.Ordinal)
-                    || SecureContainerRules.IsEligible(definition));
+            return ItemSlotRules.Accepts(definition, slotDefinition);
         }
 
         private static bool CanPlaceBag(
@@ -818,16 +806,6 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (string.Equals(
-                    destination.ContainerType,
-                    ItemContainerTypeIds.SecureContainer,
-                    StringComparison.Ordinal)
-                && !SecureContainerRules.IsEligible(definition))
-            {
-                reason = "An item is not eligible for the opposite Secure Container slot.";
-                return false;
-            }
-
             if (definition.Bag != null
                 && !CanPlaceBag(state, item, destination, destinationSlot, out reason))
             {
@@ -877,7 +855,6 @@ namespace Mmorpg.Client.Items
             {
                 state.FullSnapshot.PermanentInventory,
                 state.FullSnapshot.EquippedBag?.Contents,
-                state.FullSnapshot.SecureContainer.Contents,
                 state.Bank
             };
             container = containers.FirstOrDefault(candidate =>

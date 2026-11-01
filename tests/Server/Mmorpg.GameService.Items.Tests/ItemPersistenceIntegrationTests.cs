@@ -59,10 +59,6 @@ public sealed class ItemPersistenceIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_definition_blocked_equipment_slots;"));
         Assert.Equal(
-            catalog.Definitions.Length,
-            await connection.ExecuteScalarAsync<int>(
-                "select count(*) from item_definition_location_rules;"));
-        Assert.Equal(
             catalog.Definitions.Sum(definition => definition.DefaultPolicies.Length),
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_definition_default_policies;"));
@@ -77,10 +73,6 @@ public sealed class ItemPersistenceIntegrationTests
                 definition.Bag?.Slots.Sum(slot => slot.AcceptedTags.Length) ?? 0),
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from bag_definition_slot_tags;"));
-        Assert.Equal(
-            catalog.SecureContainerTiers.Length,
-            await connection.ExecuteScalarAsync<int>(
-                "select count(*) from secure_container_tiers;"));
 
         await connection.ExecuteAsync(
             """
@@ -144,13 +136,10 @@ public sealed class ItemPersistenceIntegrationTests
         Assert.Equal(200, first.CarryCapacity);
         Assert.Equal(20, first.PermanentInventoryCapacity);
         Assert.Equal(40, first.BankCapacity);
-        Assert.Equal(4, first.SecureContainerCapacity);
         Assert.Null(first.RecoveryStorageCapacity);
         Assert.Equal(20, first.PermanentInventorySlots);
         Assert.Equal(40, first.BankSlots);
-        Assert.Equal(4, first.SecureContainerSlots);
         Assert.Equal(0, first.RecoveryStorageSlots);
-        Assert.Equal("secure_container.base", first.SecureContainerTierId);
 
         await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
         var second = await LoadBootstrapSnapshotAsync(context, characterId);
@@ -159,7 +148,7 @@ public sealed class ItemPersistenceIntegrationTests
 
         await using var verificationConnection = await context.DataSource.OpenConnectionAsync();
         Assert.Equal(
-            4,
+            3,
             await verificationConnection.ExecuteScalarAsync<int>(
                 """
                 select count(*)
@@ -169,7 +158,6 @@ public sealed class ItemPersistenceIntegrationTests
                   and container_type in (
                       'permanent_inventory',
                       'bank',
-                      'secure_container',
                       'recovery_storage');
                 """,
                 new { CharacterId = characterId }));
@@ -271,7 +259,6 @@ public sealed class ItemPersistenceIntegrationTests
         Assert.Equal(200, snapshot.CarryCapacity);
         Assert.Equal(20, snapshot.PermanentInventorySlots);
         Assert.Equal(40, snapshot.BankSlots);
-        Assert.Equal(4, snapshot.SecureContainerSlots);
         Assert.Equal(0, snapshot.RecoveryStorageSlots);
     }
 
@@ -957,15 +944,6 @@ public sealed class ItemPersistenceIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from recovery_deliveries where id = @DeliveryId;",
                 new { DeliveryId = deliveryId }));
-        Assert.Equal(
-            1,
-            await connection.ExecuteScalarAsync<int>(
-                """
-                select count(*)
-                from account_secure_container_entitlements
-                where account_id = @AccountId;
-                """,
-                new { AccountId = player.Registration.AccountId }));
 
         var afterCharacterDelete = await connection.QuerySingleAsync<OperationActorRow>(
             """
@@ -995,15 +973,6 @@ public sealed class ItemPersistenceIntegrationTests
             "delete from accounts where id = @AccountId;",
             new { AccountId = player.Registration.AccountId });
 
-        Assert.Equal(
-            0,
-            await connection.ExecuteScalarAsync<int>(
-                """
-                select count(*)
-                from account_secure_container_entitlements
-                where account_id = @AccountId;
-                """,
-                new { AccountId = player.Registration.AccountId }));
         var afterAccountDelete = await connection.QuerySingleAsync<OperationActorRow>(
             """
             select
@@ -1113,29 +1082,20 @@ public sealed class ItemPersistenceIntegrationTests
                 state.carry_capacity as "CarryCapacity",
                 inventory.id as "PermanentInventoryId",
                 bank.id as "BankId",
-                secure.id as "SecureContainerId",
                 recovery.id as "RecoveryStorageId",
                 inventory.slot_capacity as "PermanentInventoryCapacity",
                 bank.slot_capacity as "BankCapacity",
-                secure.slot_capacity as "SecureContainerCapacity",
                 recovery.slot_capacity as "RecoveryStorageCapacity",
                 (select count(*) from item_container_slots where container_id = inventory.id)
                     as "PermanentInventorySlots",
                 (select count(*) from item_container_slots where container_id = bank.id)
                     as "BankSlots",
-                (select count(*) from item_container_slots where container_id = secure.id)
-                    as "SecureContainerSlots",
                 (select count(*) from item_container_slots where container_id = recovery.id)
-                    as "RecoveryStorageSlots",
-                entitlement.tier_id as "SecureContainerTierId"
+                    as "RecoveryStorageSlots"
             from character_item_states state
-            join characters character on character.id = state.character_id
-            join account_secure_container_entitlements entitlement
-              on entitlement.account_id = character.account_id
             join item_containers inventory
               on inventory.id = state.permanent_inventory_container_id
             join item_containers bank on bank.id = state.bank_container_id
-            join item_containers secure on secure.id = state.secure_container_id
             join item_containers recovery on recovery.id = state.recovery_storage_container_id
             where state.character_id = @CharacterId;
             """,
@@ -1181,15 +1141,11 @@ public sealed class ItemPersistenceIntegrationTests
 
         public Guid BankId { get; init; }
 
-        public Guid SecureContainerId { get; init; }
-
         public Guid RecoveryStorageId { get; init; }
 
         public int PermanentInventoryCapacity { get; init; }
 
         public int BankCapacity { get; init; }
-
-        public int SecureContainerCapacity { get; init; }
 
         public int? RecoveryStorageCapacity { get; init; }
 
@@ -1197,11 +1153,7 @@ public sealed class ItemPersistenceIntegrationTests
 
         public long BankSlots { get; init; }
 
-        public long SecureContainerSlots { get; init; }
-
         public long RecoveryStorageSlots { get; init; }
-
-        public string SecureContainerTierId { get; init; } = string.Empty;
     }
 
     private sealed record CharacterContainerIds(

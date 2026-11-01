@@ -104,7 +104,7 @@ inside the modules.
 | Accounts | `accounts`, `account_sessions` |
 | Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, and `character_appearances` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
-| Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, and `live_mob_loot_grants`; the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, the catalog advisory lock `7104202607151230`, and the per-account Secure Container entitlement advisory lock |
+| Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, and `live_mob_loot_grants`; the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, and the catalog advisory lock `7104202607151230` |
 
 Foreign keys between modules follow the dependency order only: Characters to
 Accounts, Placement to Accounts and Characters, and Items to Accounts,
@@ -255,8 +255,8 @@ propagates with its original error.
 | `Journal` | `ItemChangeJournal` | Audit changes, touched characters and containers, result items, and Recovery deliveries |
 
 The context resolves current definitions and slot data from the mirrored
-catalog but delegates stack, equipment, Bag, Secure Container, policy
-capability, and integer-weight decisions to the shared WorldData rules. The
+catalog but delegates stack, equipment, Bag, policy capability, and
+integer-weight decisions to the shared WorldData rules. The
 kernel does not depend on HTTP, Unity, or SimulationWorker runtime state.
 Account, system, and simulation-worker actors are explicit command inputs, and
 offline access and exact live-session access are actor requirements that the
@@ -310,7 +310,6 @@ system services.
 | `destroy` | `DestroyItemCommand` | `ItemDestructionCommandHandler` | Account and worker routes |
 | `swap_bag_aggregates` | `SwapBagAggregatesCommand` | `BagAggregateCommandHandler` | No caller outside tests yet; it swaps complete Bag aggregates, also between characters |
 | `add_recovery_delivery`, `claim_recovery_delivery` | `AddRecoveryDeliveryCommand`, `ClaimRecoveryDeliveryCommand` | `RecoveryDeliveryCommandHandler` | Development item packages add deliveries; the worker route claims them |
-| `change_secure_container_tier` | `ChangeSecureContainerTierCommand` | `SecureContainerTierCommandHandler` | Account route |
 | `apply_item_policy`, `remove_insurance_policy` | `ApplyItemPolicyCommand`, `RemoveInsurancePolicyCommand` | `ItemPolicyCommandHandler` | Worker route, for the insurance capability |
 | `abandon_quest_items` | `AbandonQuestItemsCommand` | `QuestItemCommandHandler` | Worker route, for the quest capability |
 | `process_player_death` | `ProcessPlayerDeathCommand` | `PlayerDeathCommandHandler` | Worker player death route and the Development corpse fixture |
@@ -402,8 +401,7 @@ which never waits on a character lock, so this order cannot deadlock. Item
 states of deleted characters are never locked.
 
 Inside Items, a handler takes its locks in this order: the advisory key (the
-account's Secure Container entitlement key, or the death event or Mob corpse
-key), then its characters and their item states in ascending id order, then the
+death event or Mob corpse key), then its characters and their item states in ascending id order, then the
 corpse row for corpse interactions, then the mutation scope. The mutation scope
 locks Bag aggregate roots, then containers, then ordinary items and Bag
 children, then item policies, each in ascending id order. Every operation that
@@ -450,6 +448,7 @@ topology names.
 | 24 | `202610181250_item_economy` | Items |
 | 25 | `202610251200_character_appearance` | Characters |
 | 26 | `202610261800_live_mob_loot_grants` | Items |
+| 27 | `202611011200_remove_secure_container` | Items |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -522,7 +521,6 @@ the statement ids.
 | S15 | World rebind counts open corpses | Itm R | `IShardWorldLocalStateProbe` |
 | S16 | Item state backfill lists active characters | Chr R | `CharactersSql.ActiveCharacters` |
 | S17 | Carry recompute batch filters active characters | Chr R | `CharactersSql.ActiveCharacters` |
-| S18 | Item state bootstrap reads the account for its advisory lock | Chr R | account id from `CharacterCreated` or the backfill row |
 | S19 | `bootstrap_character_item_state` reads `characters` | Chr R | R4, frozen |
 | S20 | Corpse restoration checks the worker lease | Plc R | `ISimulationWorkerAuthority.GetShardLeaseAsync` |
 | S21 | Corpse view checks session, worker, and assignment | Plc R, Acc R | `ISimulationSessionAuthority.GetReadAuthorityAsync` |
@@ -535,10 +533,8 @@ the statement ids.
 | S28 | Death and corpse loot lock one character with its item state | Chr L | as S26, in `CharacterItemStateLocks` |
 | S29 | Mob corpse creation locks the worker lease and assignment | Plc L | `ISimulationWorkerAuthority.LockLeaseAsync`, then `LockAssignmentAsync`, in `ItemSimulationAuthority` |
 | S30 | Insurance charges character currency | Chr L, W | `ICharacterWallet.DebitAsync` with an `insurance` ledger row in `ItemPolicyCommandHandler` |
-| S31 | Secure Container tier change lists account characters | Chr R | `CharactersSql.ActiveCharacters` in `SecureContainerTierCommandHandler` |
 | S32 | Operation claims reference the actor account and character | Acc R, Chr R | `AccountsSql.ExistingIdOrNull`, `CharactersSql.ExistingIdOrNull` in `ItemOperationLedger` |
 | S33 | Death reads the character name and Shard | Chr R, Plc R | `CharactersSql.ActiveCharacters` and `PlacementSql.ShardExists` in `PlayerDeathCommandHandler` |
-| S34 | Corpse snapshot reads the account entitlement through the character | Chr R | the locked item state's account id in `PlayerCorpseLayoutWriter` |
 | S35 | Recovery expiry scan skips deleted characters | Chr R | `CharactersSql.ActiveCharacters` |
 | S36 | Inventory reads check character ownership | Chr R | `CharactersSql.ActiveCharacters` |
 | S37 | Development item tool lists characters | Chr R, Acc R, Plc R | `CharactersSql.ActiveCharacters`, `AccountsSql.UsernameOf`, `PlacementSql.HasActiveSimulationSession` |
@@ -573,9 +569,6 @@ Notes on specific statements:
   as Placement's own blocker count. The transaction holds the Shard row lock,
   which blocks the foreign key lock that a new corpse needs, so the count stays
   exact.
-- S18 builds the Secure Container entitlement advisory key from the account id
-  that character creation or the backfill supplies. A character's account never
-  changes, so the key is the same as one read from `characters`.
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,
 and `update` on owned tables and fails on any foreign table outside the frozen

@@ -47,10 +47,6 @@ internal sealed class CarryStateCalculator(ItemTransactionSession session)
                 from character_item_states state
                 where state.character_id = any(@CharacterIds)
                 union
-                select state.character_id, state.secure_container_id
-                from character_item_states state
-                where state.character_id = any(@CharacterIds)
-                union
                 select bag.equipped_character_id, container.id
                 from item_instances bag
                 join item_containers container

@@ -194,8 +194,7 @@ public sealed class ItemOperationsHardeningTests
             [],
             [],
             [],
-            [],
-            null);
+            []);
     }
 
     private static ItemTransactionResult Rejected(string operationKind, string errorCode)
@@ -208,7 +207,6 @@ public sealed class ItemOperationsHardeningTests
             [],
             [],
             [],
-            [],
-            null);
+            []);
     }
 }

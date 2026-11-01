@@ -85,8 +85,8 @@ public sealed class ItemConcurrencyIntegrationTests
             characterId,
             "fixture.potion",
             2,
-            state.SecureContainerId,
-            0);
+            bagContainer.ContainerId,
+            4);
         await GrantAsync(
             context,
             accountId,
@@ -385,7 +385,7 @@ public sealed class ItemConcurrencyIntegrationTests
     }
 
     [PostgresIntegrationFact]
-    public async Task SlotEligibilitySecureRulesAndHardCapRejectWithoutPartialMutation()
+    public async Task SlotEligibilityAndHardCapRejectWithoutPartialMutation()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync();
@@ -451,20 +451,6 @@ public sealed class ItemConcurrencyIntegrationTests
             CancellationToken.None);
         AssertRejected(invalidSpecialized, ItemTransactionErrorCodes.ItemSlotIncompatible);
 
-        var secureForbidden = await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<GrantItemCommand>(
-                Guid.NewGuid(),
-                actor,
-                new GrantItemCommand(
-                    player.Character.Id,
-                    state.Revision,
-                    "fixture.sword",
-                    1,
-                    state.SecureContainerId,
-                    0)),
-            CancellationToken.None);
-        AssertRejected(secureForbidden, ItemTransactionErrorCodes.SecureContainerItemForbidden);
-
         var nearCap = await context.ItemTransactionService.ExecuteAsync(
             new ItemTransactionRequest<GrantItemCommand>(
                 Guid.NewGuid(),
@@ -511,7 +497,7 @@ public sealed class ItemConcurrencyIntegrationTests
                 """,
                 new { ContainerId = state.PermanentInventoryContainerId }));
         Assert.Equal(
-            3,
+            2,
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_operations where status = 'rejected';"));
     }
@@ -593,171 +579,6 @@ public sealed class ItemConcurrencyIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_container_slots where container_id = @ContainerId;",
                 new { ContainerId = state.RecoveryStorageContainerId }));
-    }
-
-    [PostgresIntegrationFact]
-    public async Task SecureTierReductionMovesDescendingSlotsForEveryAccountCharacterWithoutLoss()
-    {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-        var player = await context.RegisterPlayerAsync();
-        var secondCharacterResult = await context.CharacterService.CreateAsync(
-            player.Registration.AccountId,
-            new CreateCharacterRequest("Second Hero"),
-            CancellationToken.None);
-        Assert.True(secondCharacterResult.Succeeded, secondCharacterResult.Error?.Message);
-        var secondCharacter = secondCharacterResult.Value!;
-        await AddTestSecureTierAsync(context, "secure_container.test_six", 6);
-
-        var firstInitialState = await LoadStateAsync(context, player.Character.Id);
-        var secondInitialState = await LoadStateAsync(context, secondCharacter.Id);
-        // A player cannot grant itself a larger tier; only a trusted entitlement source can.
-        var selfGrant = await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
-                Guid.NewGuid(),
-                ItemTransactionActor.ForAccount(player.Registration.AccountId),
-                new ChangeSecureContainerTierCommand(
-                    player.Registration.AccountId,
-                    0,
-                    "secure_container.test_six",
-                    [
-                        new CharacterRevisionExpectation(
-                            secondCharacter.Id,
-                            secondInitialState.Revision),
-                        new CharacterRevisionExpectation(
-                            player.Character.Id,
-                            firstInitialState.Revision)
-                    ])),
-            CancellationToken.None);
-        AssertRejected(selfGrant, ItemTransactionErrorCodes.AuthorityRequired);
-
-        var expandOperationId = Guid.NewGuid();
-        var expand = await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
-                expandOperationId,
-                ItemTransactionActor.ForSystem(),
-                new ChangeSecureContainerTierCommand(
-                    player.Registration.AccountId,
-                    0,
-                    "secure_container.test_six",
-                    [
-                        new CharacterRevisionExpectation(
-                            secondCharacter.Id,
-                            secondInitialState.Revision),
-                        new CharacterRevisionExpectation(
-                            player.Character.Id,
-                            firstInitialState.Revision)
-                    ])),
-            CancellationToken.None);
-        AssertSucceeded(expand);
-        Assert.Equal(1, expand.SecureContainerEntitlementRevision);
-        Assert.Equal(2, expand.CharacterRevisions.Count);
-        var replayedExpand = await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
-                expandOperationId,
-                ItemTransactionActor.ForSystem(),
-                new ChangeSecureContainerTierCommand(
-                    player.Registration.AccountId,
-                    0,
-                    "secure_container.test_six",
-                    [
-                        new CharacterRevisionExpectation(
-                            player.Character.Id,
-                            firstInitialState.Revision),
-                        new CharacterRevisionExpectation(
-                            secondCharacter.Id,
-                            secondInitialState.Revision)
-                    ])),
-            CancellationToken.None);
-        AssertSucceeded(replayedExpand);
-        Assert.Equal(expand.SecureContainerEntitlementRevision, replayedExpand.SecureContainerEntitlementRevision);
-
-        var firstState = await LoadStateAsync(context, player.Character.Id);
-        var secondState = await LoadStateAsync(context, secondCharacter.Id);
-        Assert.Equal(6, await LoadContainerCapacityAsync(context, firstState.SecureContainerId));
-        Assert.Equal(6, await LoadContainerCapacityAsync(context, secondState.SecureContainerId));
-
-        var firstSlot3 = await GrantAsync(
-            context,
-            player.Registration.AccountId,
-            player.Character.Id,
-            "fixture.ore",
-            1,
-            firstState.SecureContainerId,
-            3);
-        var firstSlot4 = await GrantAsync(
-            context,
-            player.Registration.AccountId,
-            player.Character.Id,
-            "fixture.ore",
-            2,
-            firstState.SecureContainerId,
-            4);
-        var firstSlot5 = await GrantAsync(
-            context,
-            player.Registration.AccountId,
-            player.Character.Id,
-            "fixture.ore",
-            3,
-            firstState.SecureContainerId,
-            5);
-        var secondSlot5 = await GrantAsync(
-            context,
-            player.Registration.AccountId,
-            secondCharacter.Id,
-            "fixture.ore",
-            4,
-            secondState.SecureContainerId,
-            5);
-
-        var reduce = await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<ChangeSecureContainerTierCommand>(
-                Guid.NewGuid(),
-                ItemTransactionActor.ForSystem(),
-                new ChangeSecureContainerTierCommand(
-                    player.Registration.AccountId,
-                    1,
-                    "secure_container.base",
-                    [])),
-            CancellationToken.None);
-        AssertSucceeded(reduce);
-        Assert.Equal(2, reduce.SecureContainerEntitlementRevision);
-        Assert.Equal(2, reduce.RecoveryDeliveryIds.Count);
-
-        firstState = await LoadStateAsync(context, player.Character.Id);
-        secondState = await LoadStateAsync(context, secondCharacter.Id);
-        Assert.Equal(4, await LoadContainerCapacityAsync(context, firstState.SecureContainerId));
-        Assert.Equal(4, await LoadContainerCapacityAsync(context, secondState.SecureContainerId));
-        Assert.Equal(firstState.SecureContainerId, (await LoadItemAsync(context, firstSlot3)).ContainerId);
-        Assert.Equal(firstState.RecoveryStorageContainerId, (await LoadItemAsync(context, firstSlot4)).ContainerId);
-        Assert.Equal(firstState.RecoveryStorageContainerId, (await LoadItemAsync(context, firstSlot5)).ContainerId);
-        Assert.Equal(secondState.RecoveryStorageContainerId, (await LoadItemAsync(context, secondSlot5)).ContainerId);
-        Assert.Equal(6, firstState.CarriedWeight);
-        Assert.Equal(0, secondState.CarriedWeight);
-
-        await using var connection = await context.DataSource.OpenConnectionAsync();
-        var firstDeliveryOrder = (await connection.QueryAsync<DeliveryOrderRow>(
-            """
-            select
-                link.item_instance_id as "ItemInstanceId",
-                link.item_order as "ItemOrder"
-            from recovery_deliveries delivery
-            join recovery_delivery_items link on link.recovery_delivery_id = delivery.id
-            where delivery.character_id = @CharacterId
-              and delivery.source_kind = 'secure_capacity_reduction'
-            order by link.item_order;
-            """,
-            new { CharacterId = player.Character.Id })).ToArray();
-        Assert.Equal([firstSlot5, firstSlot4], firstDeliveryOrder.Select(row => row.ItemInstanceId));
-        Assert.Equal([0, 1], firstDeliveryOrder.Select(row => row.ItemOrder));
-        Assert.Equal(
-            4,
-            await connection.ExecuteScalarAsync<int>(
-                """
-                select count(*)
-                from item_instances
-                where id = any(@ItemIds);
-                """,
-                new { ItemIds = new[] { firstSlot3, firstSlot4, firstSlot5, secondSlot5 } }));
     }
 
     [PostgresIntegrationFact]
@@ -1718,9 +1539,6 @@ public sealed class ItemConcurrencyIntegrationTests
             insert into item_definition_equipment_slots (definition_id, equipment_slot_id)
             values (@DefinitionId, 'bag');
 
-            insert into item_definition_location_rules (definition_id, location_kind, is_allowed)
-            values (@DefinitionId, 'secure_container', false);
-
             insert into bag_definitions (definition_id, carry_capacity_bonus)
             values (@DefinitionId, @CarryCapacityBonus);
 
@@ -1737,34 +1555,6 @@ public sealed class ItemConcurrencyIntegrationTests
             new { DefinitionId = definitionId, CarryCapacityBonus = carryCapacityBonus });
     }
 
-    private static async Task AddTestSecureTierAsync(
-        PostgresIntegrationTestContext context,
-        string tierId,
-        int slotCapacity)
-    {
-        await using var connection = await context.DataSource.OpenConnectionAsync();
-        await connection.ExecuteAsync(
-            """
-            insert into secure_container_tiers (
-                id,
-                catalog_id,
-                catalog_revision,
-                display_name,
-                slot_capacity,
-                structural_fingerprint)
-            select
-                @TierId,
-                catalog_id,
-                revision,
-                'Integration Test Secure Container',
-                @SlotCapacity,
-                repeat('b', 64)
-            from item_catalog_revisions
-            where is_current;
-            """,
-            new { TierId = tierId, SlotCapacity = slotCapacity });
-    }
-
     private static async Task<CharacterItemStateRow> LoadStateAsync(
         PostgresIntegrationTestContext context,
         Guid characterId)
@@ -1779,7 +1569,6 @@ public sealed class ItemConcurrencyIntegrationTests
                 carry_capacity as "CarryCapacity",
                 permanent_inventory_container_id as "PermanentInventoryContainerId",
                 bank_container_id as "BankContainerId",
-                secure_container_id as "SecureContainerId",
                 recovery_storage_container_id as "RecoveryStorageContainerId"
             from character_item_states
             where character_id = @CharacterId;
@@ -1834,16 +1623,6 @@ public sealed class ItemConcurrencyIntegrationTests
             new { BagItemInstanceId = bagItemInstanceId });
     }
 
-    private static async Task<int> LoadContainerCapacityAsync(
-        PostgresIntegrationTestContext context,
-        Guid containerId)
-    {
-        await using var connection = await context.DataSource.OpenConnectionAsync();
-        return await connection.QuerySingleAsync<int>(
-            "select slot_capacity from item_containers where id = @ContainerId;",
-            new { ContainerId = containerId });
-    }
-
     private static void AssertSucceeded(ItemTransactionResult result)
     {
         Assert.True(result.Succeeded, result.Error?.Message);
@@ -1869,8 +1648,6 @@ public sealed class ItemConcurrencyIntegrationTests
         public Guid PermanentInventoryContainerId { get; init; }
 
         public Guid BankContainerId { get; init; }
-
-        public Guid SecureContainerId { get; init; }
 
         public Guid RecoveryStorageContainerId { get; init; }
     }

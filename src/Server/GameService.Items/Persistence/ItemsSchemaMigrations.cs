@@ -19,6 +19,7 @@ internal static class ItemsSchemaMigrations
         new(ItemLevelRequirementMigration.Id, ItemLevelRequirementMigration.Sql),
         new(DeathEventKillerMigration.Id, DeathEventKillerMigration.Sql),
         new(ItemEconomyMigration.Id, ItemEconomyMigration.Sql),
-        new(LiveMobLootGrantMigration.Id, LiveMobLootGrantMigration.Sql)
+        new(LiveMobLootGrantMigration.Id, LiveMobLootGrantMigration.Sql),
+        new(SecureContainerRemovalMigration.Id, SecureContainerRemovalMigration.Sql)
     ];
 }

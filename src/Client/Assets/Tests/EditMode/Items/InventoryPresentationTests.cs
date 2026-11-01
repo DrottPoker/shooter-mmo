@@ -10,8 +10,8 @@ namespace Mmorpg.Client.Tests.EditMode
     {
         private static readonly string[] DesignSlotIds =
         {
-            "head", "neck", "back", "body", "legs", "hands", "feet", "main_hand", "off_hand",
-            "ammunition", "ring_1", "ring_2", "tool", "bag"
+            "head", "neck", "shoulders", "back", "body", "legs", "hands", "feet", "main_hand",
+            "off_hand", "ammunition", "ring_1", "ring_2", "tool", "bag"
         };
 
         private ClientItemCatalog catalog;
@@ -39,6 +39,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 cells.Select(cell => cell.Row * EquipmentPaperDollLayout.ColumnCount + cell.Column).Distinct().Count(),
                 Is.EqualTo(DesignSlotIds.Length));
+            Assert.That(DesignSlotIds.Length, Is.EqualTo(rows * EquipmentPaperDollLayout.ColumnCount));
             Assert.That(cells.All(cell => cell.Column >= 0 && cell.Column < 3), Is.True);
             var head = Cell(cells, "head");
             var body = Cell(cells, "body");
@@ -52,9 +53,13 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(offHand.Row, Is.EqualTo(body.Row));
             Assert.That(mainHand.Column, Is.LessThan(body.Column));
             Assert.That(offHand.Column, Is.GreaterThan(body.Column));
-            // The cloak's slot sits beside the feet, below the silhouette's left column.
-            Assert.That(Cell(cells, "back").Row, Is.EqualTo(feet.Row));
-            Assert.That(Cell(cells, "back").Column, Is.EqualTo(0));
+            // Shoulders, neck, and the cloak's back slot form the row under the head.
+            Assert.That(Cell(cells, "shoulders").Row, Is.EqualTo(head.Row + 1));
+            Assert.That(Cell(cells, "shoulders").Column, Is.EqualTo(0));
+            Assert.That(Cell(cells, "neck").Row, Is.EqualTo(head.Row + 1));
+            Assert.That(Cell(cells, "neck").Column, Is.EqualTo(head.Column));
+            Assert.That(Cell(cells, "back").Row, Is.EqualTo(head.Row + 1));
+            Assert.That(Cell(cells, "back").Column, Is.EqualTo(2));
         }
 
         [Test]
@@ -169,12 +174,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 InventorySlotPresentation.AcceptedTagsLabel(catalog, Array.Empty<string>()),
                 Is.Empty);
             Assert.That(
-                InventorySlotPresentation.SecureContainerTitle(catalog, "secure_container.base"),
-                Is.EqualTo("Fixture Pouch"));
-            Assert.That(
-                InventorySlotPresentation.SecureContainerTitle(catalog, "secure_container.unknown"),
-                Is.EqualTo(InventorySlotPresentation.SecureContainerFallbackTitle));
-            Assert.That(
                 InventorySlotPresentation.EquipmentSlotName(catalog, "main_hand"),
                 Is.EqualTo("Main Hand"));
             Assert.That(
@@ -204,7 +203,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 CreateItem("fixture.bow", 1),
                 string.Empty);
             Assert.That(bow, Does.Contain("Equips to Main Hand, blocks Off Hand"));
-            Assert.That(bow, Does.Contain("Not allowed in the Fixture Pouch"));
+            Assert.That(bow, Does.Not.Contain("Not allowed"));
             Assert.That(bow, Does.Contain("Weight 25"));
             Assert.That(bow, Does.Not.Contain("each"));
 

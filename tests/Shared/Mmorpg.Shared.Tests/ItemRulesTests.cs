@@ -56,25 +56,6 @@ public sealed class ItemRulesTests
         Assert.True(ItemEquipmentRules.IsCompatible(ring, "ring_2"));
     }
 
-    [Fact]
-    public void WeaponsAreRejectedFromSecureContainerEvenIfContentIsMalformed()
-    {
-        var weapon = Definition("fixture.sword");
-        var malformedWeapon = new ItemDefinition
-        {
-            Id = weapon.Id,
-            Category = ItemCategoryIds.Weapon,
-            LocationEligibility = new ItemLocationEligibility
-            {
-                SecureContainer = true
-            }
-        };
-
-        Assert.False(SecureContainerRules.IsEligible(weapon));
-        Assert.False(SecureContainerRules.IsEligible(malformedWeapon));
-        Assert.True(SecureContainerRules.IsEligible(Definition("fixture.potion")));
-    }
-
     [Theory]
     [InlineData(ItemPolicyIds.ProtectedOnDeath)]
     [InlineData(ItemPolicyIds.Insured)]

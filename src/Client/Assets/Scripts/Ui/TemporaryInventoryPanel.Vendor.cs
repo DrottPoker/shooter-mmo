@@ -272,7 +272,7 @@ namespace Mmorpg.Client.Ui
             {
                 CreateMessage(
                     parent,
-                    "Drag an item from your inventory, Bag, or Secure Container here to sell it.",
+                    "Drag an item from your inventory or Bag here to sell it.",
                     TemporaryUiKit.TextMuted);
                 return;
             }

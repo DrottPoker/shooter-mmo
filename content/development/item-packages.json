@@ -5,7 +5,7 @@
     {
       "id": "full_inventory",
       "displayName": "Full Inventory Test Pack",
-      "description": "An equipped Bag with filled specialized slots, equipment candidates in Permanent Inventory, a Secure Container item, Bank stacks, and one Recovery delivery.",
+      "description": "An equipped Bag with filled specialized slots, equipment candidates in Permanent Inventory, Bank stacks, and one Recovery delivery.",
       "expectedLoadPercent": null,
       "grants": [
         { "definitionId": "bag.travelers_pack", "quantity": 1, "destination": "equipment", "slotIndex": null, "equipmentSlotId": "bag" },
@@ -18,7 +18,7 @@
         { "definitionId": "tool.starter_pickaxe", "quantity": 1, "destination": "inventory", "slotIndex": 4, "equipmentSlotId": null },
         { "definitionId": "jewelry.copper_ring", "quantity": 1, "destination": "inventory", "slotIndex": 5, "equipmentSlotId": null },
         { "definitionId": "food.cooked_trout", "quantity": 2, "destination": "inventory", "slotIndex": 6, "equipmentSlotId": null },
-        { "definitionId": "quest_item.sealed_letter", "quantity": 1, "destination": "secure_container", "slotIndex": 0, "equipmentSlotId": null },
+        { "definitionId": "quest_item.sealed_letter", "quantity": 1, "destination": "inventory", "slotIndex": 7, "equipmentSlotId": null },
         { "definitionId": "material.iron_ore", "quantity": 20, "destination": "bank", "slotIndex": 0, "equipmentSlotId": null },
         { "definitionId": "material.iron_ore", "quantity": 19, "destination": "bank", "slotIndex": 1, "equipmentSlotId": null },
         { "definitionId": "potion.minor_healing", "quantity": 1, "destination": "bank", "slotIndex": 2, "equipmentSlotId": null },
@@ -80,18 +80,6 @@
       "grants": [
         { "definitionId": "material.iron_ore", "quantity": 46, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
         { "definitionId": "potion.minor_healing", "quantity": 2, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null }
-      ]
-    },
-    {
-      "id": "secure_container",
-      "displayName": "Secure Container Pack",
-      "description": "Four eligible stacks that fill the base Secure Container.",
-      "expectedLoadPercent": null,
-      "grants": [
-        { "definitionId": "quest_item.sealed_letter", "quantity": 1, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
-        { "definitionId": "ammunition.bronze_arrow", "quantity": 10, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
-        { "definitionId": "potion.minor_healing", "quantity": 2, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
-        { "definitionId": "material.iron_ore", "quantity": 1, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null }
       ]
     },
     {

@@ -116,7 +116,7 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.VendorWillNotBuy,
-                "Only items in the inventory, the equipped Bag, or the Secure Container can be sold.");
+                "Only items in the inventory or the equipped Bag can be sold.");
         }
 
         var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
@@ -287,8 +287,10 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
     {
         return item.ContainerId is not null
             && item.EquipmentSlotId is null
-            && (item.SourceContainerType is ItemContainerTypeIds.PermanentInventory
-                    or ItemContainerTypeIds.SecureContainer
+            && (string.Equals(
+                    item.SourceContainerType,
+                    ItemContainerTypeIds.PermanentInventory,
+                    StringComparison.Ordinal)
                 || (string.Equals(
                         item.SourceContainerType,
                         ItemContainerTypeIds.BagContents,

@@ -27,7 +27,6 @@ namespace Mmorpg.Client.Items
                 || !TryMapEquipment(response.equipment, catalog, out var equipment, out error)
                 || !TryMapEquippedBag(response.equippedBag, catalog, out var bag, out error)
                 || !TryMapContainer(response.bank, catalog, out var bank, out error)
-                || !TryMapSecure(response.secureContainer, catalog, out var secure, out error)
                 || !TryMapRecovery(response.recoveryStorage, catalog, out var recovery, out error))
             {
                 return false;
@@ -72,7 +71,6 @@ namespace Mmorpg.Client.Items
                 equipment,
                 bag,
                 bank,
-                secure,
                 recovery,
                 response.carriedWeight,
                 response.carryCapacity,
@@ -271,34 +269,6 @@ namespace Mmorpg.Client.Items
             }
 
             bag = new EquippedBagInventory(item, contents);
-            return true;
-        }
-
-        private static bool TryMapSecure(
-            SecureContainerSnapshotResponse response,
-            ClientItemCatalog catalog,
-            out SecureContainerInventory secure,
-            out string error)
-        {
-            secure = null;
-            error = string.Empty;
-            if (response == null
-                || string.IsNullOrWhiteSpace(response.tierId)
-                || response.entitlementRevision < 0
-                || !TryMapContainer(response.contents, catalog, out var contents, out error))
-            {
-                if (string.IsNullOrWhiteSpace(error))
-                {
-                    error = "The inventory snapshot contains an invalid Secure Container.";
-                }
-
-                return false;
-            }
-
-            secure = new SecureContainerInventory(
-                response.tierId,
-                response.entitlementRevision,
-                contents);
             return true;
         }
 

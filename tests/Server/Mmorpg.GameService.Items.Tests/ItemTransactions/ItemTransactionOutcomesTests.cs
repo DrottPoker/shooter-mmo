@@ -22,7 +22,6 @@ public sealed class ItemTransactionOutcomesTests
     [InlineData("23503", "fk_item_containers_bound_bag", ItemTransactionErrorCodes.ItemStateConflict, "The item state changed before the operation committed.")]
     [InlineData("23503", "fk_character_item_states_inventory_container", ItemTransactionErrorCodes.ItemStateConflict, "The item state changed before the operation committed.")]
     [InlineData("23503", "fk_character_item_states_bank_container", ItemTransactionErrorCodes.ItemStateConflict, "The item state changed before the operation committed.")]
-    [InlineData("23503", "fk_character_item_states_secure_container", ItemTransactionErrorCodes.ItemStateConflict, "The item state changed before the operation committed.")]
     [InlineData("23503", "fk_character_item_states_recovery_container", ItemTransactionErrorCodes.ItemStateConflict, "The item state changed before the operation committed.")]
     public void MappedDatabaseErrorsBecomeStableRejections(
         string sqlState,
@@ -66,7 +65,6 @@ public sealed class ItemTransactionOutcomesTests
         Assert.Empty(result.ContainerRevisions);
         Assert.Empty(result.ItemRevisions);
         Assert.Empty(result.RecoveryDeliveryIds);
-        Assert.Null(result.SecureContainerEntitlementRevision);
     }
 
     internal static PostgresException CreateException(string sqlState, string? constraintName)

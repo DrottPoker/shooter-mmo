@@ -9,9 +9,6 @@
     "head"
   ],
   "id": "fixture.helm",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 3,

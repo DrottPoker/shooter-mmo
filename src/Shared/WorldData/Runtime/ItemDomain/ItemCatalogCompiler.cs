@@ -72,7 +72,6 @@ namespace Mmorpg.WorldData.Items
                 FormatVersion = ItemCatalogFormat.Version,
                 CatalogId = authoring.CatalogId,
                 Revision = string.Empty,
-                BaseSecureContainerTierId = authoring.BaseSecureContainerTierId,
                 Character = new ItemCharacterSettingsEntry
                 {
                     BaseCarryCapacity = authoring.Character.BaseCarryCapacity,
@@ -116,10 +115,6 @@ namespace Mmorpg.WorldData.Items
                     .Select(CompileDefinition)
                     .OrderBy(definition => definition.Id, StringComparer.Ordinal)
                     .ToArray(),
-                SecureContainerTiers = authoring.SecureContainerTiers
-                    .Select(CompileSecureContainerTier)
-                    .OrderBy(tier => tier.Id, StringComparer.Ordinal)
-                    .ToArray(),
                 Vendors = authoring.Vendors
                     .Select(CompileVendor)
                     .OrderBy(vendor => vendor.Id, StringComparer.Ordinal)
@@ -129,8 +124,7 @@ namespace Mmorpg.WorldData.Items
                     Categories = SortStrings(authoring.Retired.Categories),
                     Tags = SortStrings(authoring.Retired.Tags),
                     EquipmentSlots = SortStrings(authoring.Retired.EquipmentSlots),
-                    Definitions = SortStrings(authoring.Retired.Definitions),
-                    SecureContainerTiers = SortStrings(authoring.Retired.SecureContainerTiers)
+                    Definitions = SortStrings(authoring.Retired.Definitions)
                 }
             };
             catalog.Revision = ComputeCatalogRevision(catalog);
@@ -146,10 +140,6 @@ namespace Mmorpg.WorldData.Items
             }
 
             ValidateIdentifier(authoring.CatalogId, "catalogId", errors);
-            ValidateIdentifier(
-                authoring.BaseSecureContainerTierId,
-                "baseSecureContainerTierId",
-                errors);
             ValidateCharacterSettings(authoring.Character, errors);
             ValidateEconomySettings(authoring.Economy, errors);
             var maximumCharacterLevel = ValidateProgression(authoring.Progression, errors);
@@ -203,17 +193,12 @@ namespace Mmorpg.WorldData.Items
                     maximumCharacterLevel),
                 errors);
             ValidateVendors(authoring.Vendors, authoring.Definitions, categoryIds, errors);
-            var tierIds = ValidateSecureContainerTiers(
-                authoring.SecureContainerTiers,
-                authoring.BaseSecureContainerTierId,
-                errors);
             ValidateRetiredIds(
                 authoring.Retired,
                 categoryIds,
                 tagIds,
                 new HashSet<string>(equipmentSlots.Keys, StringComparer.Ordinal),
                 definitionIds,
-                tierIds,
                 errors);
 
             if (errors.Count > 0)
@@ -626,23 +611,6 @@ namespace Mmorpg.WorldData.Items
                         + ".maximumStackSize must be between 1 and "
                         + ItemCatalogFormat.MaximumQuantity.ToString(CultureInfo.InvariantCulture)
                         + ".");
-                }
-
-                if (definition.LocationEligibility == null)
-                {
-                    errors.Add(path + ".locationEligibility is required.");
-                }
-                else if (!definition.LocationEligibility.SecureContainer.HasValue)
-                {
-                    errors.Add(path + ".locationEligibility.secureContainer is required.");
-                }
-                else if (string.Equals(
-                        definition.Category,
-                        ItemCategoryIds.Weapon,
-                        StringComparison.Ordinal)
-                    && definition.LocationEligibility.SecureContainer.Value)
-                {
-                    errors.Add(path + " cannot allow a weapon in Secure Container.");
                 }
 
                 if (!definition.PlayerDestroyable.HasValue)
@@ -1210,62 +1178,12 @@ namespace Mmorpg.WorldData.Items
             }
         }
 
-        private static HashSet<string> ValidateSecureContainerTiers(
-            SecureContainerTierAuthoringEntry[] tiers,
-            string baseTierId,
-            ICollection<string> errors)
-        {
-            var tierIds = new HashSet<string>(StringComparer.Ordinal);
-            if (tiers == null || tiers.Length == 0)
-            {
-                errors.Add("secureContainerTiers must contain at least one entry.");
-                return tierIds;
-            }
-
-            for (var index = 0; index < tiers.Length; index++)
-            {
-                var tier = tiers[index];
-                var path = "secureContainerTiers[" + index + "]";
-                if (tier == null)
-                {
-                    errors.Add(path + " must not be null.");
-                    continue;
-                }
-
-                ValidateIdentifier(tier.Id, path + ".id", errors);
-                ValidateDisplayName(tier.DisplayName, path + ".displayName", errors);
-                if (!string.IsNullOrWhiteSpace(tier.Id) && !tierIds.Add(tier.Id))
-                {
-                    errors.Add(
-                        "secureContainerTiers contains duplicate id '" + tier.Id + "'.");
-                }
-
-                if (tier.SlotCapacity <= 0
-                    || tier.SlotCapacity > MaximumContainerSlotCapacity)
-                {
-                    errors.Add(
-                        path
-                        + ".slotCapacity must be between 1 and "
-                        + MaximumContainerSlotCapacity
-                        + ".");
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(baseTierId) && !tierIds.Contains(baseTierId))
-            {
-                errors.Add("baseSecureContainerTierId references an unknown tier.");
-            }
-
-            return tierIds;
-        }
-
         private static void ValidateRetiredIds(
             ItemCatalogRetiredIdsEntry retired,
             ISet<string> categoryIds,
             ISet<string> tagIds,
             ISet<string> equipmentSlotIds,
             ISet<string> definitionIds,
-            ISet<string> tierIds,
             ICollection<string> errors)
         {
             if (retired == null)
@@ -1282,11 +1200,6 @@ namespace Mmorpg.WorldData.Items
                 "retired.equipmentSlots",
                 errors);
             ValidateRetiredList(retired.Definitions, definitionIds, "retired.definitions", errors);
-            ValidateRetiredList(
-                retired.SecureContainerTiers,
-                tierIds,
-                "retired.secureContainerTiers",
-                errors);
         }
 
         private static void ValidateRetiredList(
@@ -1480,10 +1393,6 @@ namespace Mmorpg.WorldData.Items
                 EquipmentSlots = SortStrings(authoring.EquipmentSlots),
                 BlockedEquipmentSlots = SortStrings(authoring.BlockedEquipmentSlots),
                 PlayerDestroyable = authoring.PlayerDestroyable.Value,
-                LocationEligibility = new ItemLocationEligibility
-                {
-                    SecureContainer = authoring.LocationEligibility.SecureContainer.Value
-                },
                 DefaultPolicies = SortStrings(authoring.DefaultPolicies),
                 Bag = CompileBagDefinition(authoring.Bag),
                 RequiredCharacterLevel = authoring.RequiredCharacterLevel,
@@ -1534,20 +1443,6 @@ namespace Mmorpg.WorldData.Items
             };
         }
 
-        private static SecureContainerTierDefinition CompileSecureContainerTier(
-            SecureContainerTierAuthoringEntry authoring)
-        {
-            var tier = new SecureContainerTierDefinition
-            {
-                Id = authoring.Id,
-                DisplayName = authoring.DisplayName,
-                SlotCapacity = authoring.SlotCapacity,
-                StructuralFingerprint = string.Empty
-            };
-            tier.StructuralFingerprint = ComputeSecureTierStructuralFingerprint(tier);
-            return tier;
-        }
-
         private static VendorProfileDefinition CompileVendor(VendorProfileAuthoringEntry authoring)
         {
             return new VendorProfileDefinition
@@ -1582,7 +1477,6 @@ namespace Mmorpg.WorldData.Items
                 WriteStrings(writer, definition.EquipmentSlots);
                 WriteStrings(writer, definition.BlockedEquipmentSlots);
                 writer.Write(definition.PlayerDestroyable);
-                writer.Write(definition.LocationEligibility.SecureContainer);
                 WriteStrings(writer, definition.DefaultPolicies);
                 writer.Write(definition.Bag != null);
                 if (definition.Bag != null)
@@ -1599,24 +1493,12 @@ namespace Mmorpg.WorldData.Items
             });
         }
 
-        private static string ComputeSecureTierStructuralFingerprint(
-            SecureContainerTierDefinition tier)
-        {
-            return ComputeHash(writer =>
-            {
-                writer.Write(ItemCatalogFormat.StructuralFingerprintVersion);
-                writer.Write(tier.Id);
-                writer.Write(tier.SlotCapacity);
-            });
-        }
-
         private static string ComputeCatalogRevision(ItemCatalogRuntimeDocument catalog)
         {
             return ComputeHash(writer =>
             {
                 writer.Write(catalog.FormatVersion);
                 writer.Write(catalog.CatalogId);
-                writer.Write(catalog.BaseSecureContainerTierId);
                 writer.Write(catalog.Character.BaseCarryCapacity);
                 writer.Write(catalog.Character.InventorySlotCount);
                 writer.Write(catalog.Character.BankSlotCount);
@@ -1657,14 +1539,6 @@ namespace Mmorpg.WorldData.Items
                     WriteCombatData(writer, definition);
                 }
 
-                writer.Write(catalog.SecureContainerTiers.Length);
-                foreach (var tier in catalog.SecureContainerTiers)
-                {
-                    writer.Write(tier.Id);
-                    writer.Write(tier.DisplayName);
-                    writer.Write(tier.StructuralFingerprint);
-                }
-
                 writer.Write(catalog.Vendors.Length);
                 foreach (var vendor in catalog.Vendors)
                 {
@@ -1685,7 +1559,6 @@ namespace Mmorpg.WorldData.Items
                 WriteStrings(writer, catalog.Retired.Tags);
                 WriteStrings(writer, catalog.Retired.EquipmentSlots);
                 WriteStrings(writer, catalog.Retired.Definitions);
-                WriteStrings(writer, catalog.Retired.SecureContainerTiers);
             });
         }
 

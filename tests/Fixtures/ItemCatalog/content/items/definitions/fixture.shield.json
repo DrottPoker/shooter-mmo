@@ -9,9 +9,6 @@
     "off_hand"
   ],
   "id": "fixture.shield",
-  "locationEligibility": {
-    "secureContainer": false
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

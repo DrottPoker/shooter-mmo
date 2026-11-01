@@ -7,9 +7,6 @@
   "displayName": "Minor Healing Potion",
   "equipmentSlots": [ ],
   "id": "potion.minor_healing",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 10,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

@@ -716,15 +716,6 @@ namespace Mmorpg.Client.Ui
                     state.Catalog.GetDisplayName(snapshot.EquippedBag.Item.DefinitionId),
                     "bag");
             }
-
-            DrawContainer(
-                characterContent,
-                state,
-                snapshot.SecureContainer.Contents,
-                InventorySlotPresentation.SecureContainerTitle(
-                    state.Catalog,
-                    snapshot.SecureContainer.TierId),
-                "secure");
         }
 
         private void DrawContainer(
@@ -1381,7 +1372,6 @@ namespace Mmorpg.Client.Ui
                     {
                         snapshot.PermanentInventory,
                         snapshot.EquippedBag?.Contents,
-                        snapshot.SecureContainer?.Contents,
                         state.Bank
                     }
                     .FirstOrDefault(candidate =>
@@ -2161,9 +2151,6 @@ namespace Mmorpg.Client.Ui
                 ItemContainerTypeIds.BagContents => state.FullSnapshot?.EquippedBag != null
                     ? state.Catalog.GetDisplayName(state.FullSnapshot.EquippedBag.Item.DefinitionId)
                     : "Bag",
-                ItemContainerTypeIds.SecureContainer => InventorySlotPresentation.SecureContainerTitle(
-                    state.Catalog,
-                    state.FullSnapshot?.SecureContainer?.TierId),
                 ItemContainerTypeIds.Bank => "Bank",
                 _ => containerType
             };

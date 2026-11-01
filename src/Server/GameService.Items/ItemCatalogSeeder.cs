@@ -52,7 +52,6 @@ internal sealed class ItemCatalogSeeder(
             await mirror.WriteRevisionAsync();
             await mirror.WriteVocabularyAsync(existing);
             await mirror.WriteDefinitionsAsync();
-            await mirror.WriteSecureContainerTiersAsync();
             await mirror.WriteVendorsAsync();
             await mirror.RetireAsync(existing);
             await mirror.WriteCharacterSettingsAsync();
@@ -94,8 +93,6 @@ internal sealed class ItemCatalogSeeder(
 
         public required IReadOnlyDictionary<string, CompatibilityRow> Definitions { get; init; }
 
-        public required IReadOnlyDictionary<string, CompatibilityRow> SecureContainerTiers { get; init; }
-
         public void EnsureCompatibleIdentities(ItemCatalogRuntimeDocument canonical)
         {
             EnsureCompatibleIdentity(
@@ -118,11 +115,6 @@ internal sealed class ItemCatalogSeeder(
                 Definitions.ToDictionary(pair => pair.Key, pair => pair.Value.IsActive),
                 canonical.Definitions.Select(definition => definition.Id),
                 canonical.Retired.Definitions);
-            EnsureCompatibleIdentity(
-                "Secure Container tier",
-                SecureContainerTiers.ToDictionary(pair => pair.Key, pair => pair.Value.IsActive),
-                canonical.SecureContainerTiers.Select(tier => tier.Id),
-                canonical.Retired.SecureContainerTiers);
         }
 
         private static void EnsureCompatibleIdentity(
@@ -196,25 +188,13 @@ internal sealed class ItemCatalogSeeder(
                     """,
                     new { canonical.CatalogId })))
                 .ToDictionary(row => row.Id, StringComparer.Ordinal);
-            var tiers = (await connection.QueryAsync<CompatibilityRow>(Command(
-                    """
-                    select
-                        id as "Id",
-                        structural_fingerprint as "StructuralFingerprint",
-                        is_active as "IsActive"
-                    from secure_container_tiers
-                    where catalog_id = @CatalogId;
-                    """,
-                    new { canonical.CatalogId })))
-                .ToDictionary(row => row.Id, StringComparer.Ordinal);
             return new ExistingCatalog
             {
                 CurrentRevision = currentRevision,
                 Categories = categories,
                 Tags = tags,
                 EquipmentSlots = equipmentSlots,
-                Definitions = definitions,
-                SecureContainerTiers = tiers
+                Definitions = definitions
             };
         }
 
@@ -234,28 +214,6 @@ internal sealed class ItemCatalogSeeder(
                 {
                     throw new ItemCatalogCompatibilityException(
                         $"Item definition '{definition.Id}' has live instances and changed "
-                        + "structurally. " + MigrationAdvice);
-                }
-            }
-
-            foreach (var tier in canonical.SecureContainerTiers)
-            {
-                if (existing.SecureContainerTiers.TryGetValue(tier.Id, out var row)
-                    && !string.Equals(
-                        row.StructuralFingerprint,
-                        tier.StructuralFingerprint,
-                        StringComparison.Ordinal)
-                    && await ExistsAsync(
-                        """
-                        select exists (
-                            select 1
-                            from account_secure_container_entitlements
-                            where tier_id = @Id);
-                        """,
-                        tier.Id))
-                {
-                    throw new ItemCatalogCompatibilityException(
-                        $"Secure Container tier '{tier.Id}' has live entitlements and changed "
                         + "structurally. " + MigrationAdvice);
                 }
             }
@@ -320,13 +278,11 @@ internal sealed class ItemCatalogSeeder(
                     catalog_id,
                     revision,
                     format_version,
-                    base_secure_container_tier_id,
                     is_current)
                 values (
                     @CatalogId,
                     @Revision,
                     @FormatVersion,
-                    @BaseSecureContainerTierId,
                     false)
                 on conflict (catalog_id, revision) do nothing;
                 """,
@@ -334,25 +290,18 @@ internal sealed class ItemCatalogSeeder(
                 {
                     canonical.CatalogId,
                     canonical.Revision,
-                    canonical.FormatVersion,
-                    canonical.BaseSecureContainerTierId
+                    canonical.FormatVersion
                 }));
 
-            var stored = await connection.QuerySingleAsync<CatalogRevisionMetadataRow>(Command(
+            var storedFormatVersion = await connection.QuerySingleAsync<int>(Command(
                 """
-                select
-                    format_version as "FormatVersion",
-                    base_secure_container_tier_id as "BaseSecureContainerTierId"
+                select format_version
                 from item_catalog_revisions
                 where catalog_id = @CatalogId
                   and revision = @Revision;
                 """,
                 new { canonical.CatalogId, canonical.Revision }));
-            if (stored.FormatVersion != canonical.FormatVersion
-                || !string.Equals(
-                    stored.BaseSecureContainerTierId,
-                    canonical.BaseSecureContainerTierId,
-                    StringComparison.Ordinal))
+            if (storedFormatVersion != canonical.FormatVersion)
             {
                 throw new ItemCatalogCompatibilityException(
                     $"Catalog revision '{canonical.Revision}' conflicts with stored metadata.");
@@ -572,55 +521,6 @@ internal sealed class ItemCatalogSeeder(
             }
         }
 
-        public async Task WriteSecureContainerTiersAsync()
-        {
-            foreach (var tier in canonical.SecureContainerTiers)
-            {
-                await connection.ExecuteAsync(Command(
-                    """
-                    insert into secure_container_tiers (
-                        id,
-                        catalog_id,
-                        catalog_revision,
-                        display_name,
-                        slot_capacity,
-                        structural_fingerprint,
-                        is_active)
-                    values (
-                        @Id,
-                        @CatalogId,
-                        @Revision,
-                        @DisplayName,
-                        @SlotCapacity,
-                        @StructuralFingerprint,
-                        true)
-                    on conflict (id) do update
-                    set catalog_id = excluded.catalog_id,
-                        catalog_revision = excluded.catalog_revision,
-                        display_name = excluded.display_name,
-                        slot_capacity = excluded.slot_capacity,
-                        structural_fingerprint = excluded.structural_fingerprint,
-                        is_active = true,
-                        updated_at = now()
-                    where secure_container_tiers.catalog_id is distinct from excluded.catalog_id
-                       or secure_container_tiers.catalog_revision is distinct from excluded.catalog_revision
-                       or secure_container_tiers.display_name is distinct from excluded.display_name
-                       or secure_container_tiers.slot_capacity is distinct from excluded.slot_capacity
-                       or secure_container_tiers.structural_fingerprint is distinct from excluded.structural_fingerprint
-                       or not secure_container_tiers.is_active;
-                    """,
-                    new
-                    {
-                        tier.Id,
-                        canonical.CatalogId,
-                        canonical.Revision,
-                        tier.DisplayName,
-                        tier.SlotCapacity,
-                        tier.StructuralFingerprint
-                    }));
-            }
-        }
-
         // Vendor offers and sale categories are rewritten with each vendor. A vendor that left
         // the catalog turns inactive, so no purchase or sale can use it again.
         public async Task WriteVendorsAsync()
@@ -749,27 +649,6 @@ internal sealed class ItemCatalogSeeder(
             }
 
             foreach (var id in ActiveExisting(
-                canonical.Retired.SecureContainerTiers,
-                id => existing.SecureContainerTiers.TryGetValue(id, out var row) && row.IsActive))
-            {
-                if (await ExistsAsync(
-                        """
-                        select exists (
-                            select 1
-                            from account_secure_container_entitlements
-                            where tier_id = @Id);
-                        """,
-                        id))
-                {
-                    throw new ItemCatalogCompatibilityException(
-                        $"Retired Secure Container tier '{id}' still has account entitlements. "
-                        + MigrationAdvice);
-                }
-
-                await RetireRowAsync("secure_container_tiers", id);
-            }
-
-            foreach (var id in ActiveExisting(
                 canonical.Retired.Categories,
                 id => existing.Categories.TryGetValue(id, out var active) && active))
             {
@@ -856,7 +735,6 @@ internal sealed class ItemCatalogSeeder(
                 delete from item_definition_tool_kinds where definition_id = @DefinitionId;
                 delete from item_definition_equipment_slots where definition_id = @DefinitionId;
                 delete from item_definition_blocked_equipment_slots where definition_id = @DefinitionId;
-                delete from item_definition_location_rules where definition_id = @DefinitionId;
                 delete from item_definition_default_policies where definition_id = @DefinitionId;
                 delete from bag_definitions where definition_id = @DefinitionId;
                 """,
@@ -903,20 +781,6 @@ internal sealed class ItemCatalogSeeder(
                     """,
                     new { DefinitionId = definition.Id, EquipmentSlotId = blockedSlot }));
             }
-
-            await connection.ExecuteAsync(Command(
-                """
-                insert into item_definition_location_rules (
-                    definition_id,
-                    location_kind,
-                    is_allowed)
-                values (@DefinitionId, 'secure_container', @IsAllowed);
-                """,
-                new
-                {
-                    DefinitionId = definition.Id,
-                    IsAllowed = definition.LocationEligibility.SecureContainer
-                }));
 
             foreach (var policy in definition.DefaultPolicies)
             {
@@ -1002,10 +866,6 @@ internal sealed class ItemCatalogSeeder(
             return retiredIds.Where(isActive);
         }
     }
-
-    private sealed record CatalogRevisionMetadataRow(
-        int FormatVersion,
-        string BaseSecureContainerTierId);
 
     private sealed record ActivityRow(string Id, bool IsActive);
 

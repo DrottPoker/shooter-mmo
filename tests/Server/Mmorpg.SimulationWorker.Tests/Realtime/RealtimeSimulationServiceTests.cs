@@ -815,7 +815,6 @@ public sealed class RealtimeSimulationServiceTests
                     [],
                     [],
                     [],
-                    null,
                     CharacterStateTestData.Create(CharacterId, 1)));
             }
 

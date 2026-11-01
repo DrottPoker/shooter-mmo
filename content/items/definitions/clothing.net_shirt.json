@@ -9,9 +9,6 @@
     "body"
   ],
   "id": "clothing.net_shirt",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

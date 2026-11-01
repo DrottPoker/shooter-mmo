@@ -15,17 +15,13 @@ public sealed class StressInventoryState
 
     public Guid PermanentInventoryId { get; private set; }
 
-    public Guid SecureContainerId { get; private set; }
-
     public void Apply(FullStackCharacterInventoryResponse snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         CharacterRevision = snapshot.ItemStateRevision;
         PermanentInventoryId = snapshot.PermanentInventory.ContainerId;
-        SecureContainerId = snapshot.SecureContainer.Contents.ContainerId;
         containers.Clear();
         Add(snapshot.PermanentInventory);
-        Add(snapshot.SecureContainer.Contents);
         if (snapshot.EquippedBag is not null)
         {
             Add(snapshot.EquippedBag.Contents);

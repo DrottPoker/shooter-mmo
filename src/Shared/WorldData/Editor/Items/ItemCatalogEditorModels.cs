@@ -55,7 +55,6 @@ namespace Mmorpg.WorldData.Editor.Items
     {
         public int formatVersion;
         public string catalogId;
-        public string baseSecureContainerTierId;
         public ItemCatalogJsonCharacter character;
         public ItemCatalogJsonEconomy economy;
         public ItemCatalogJsonProgression progression;
@@ -65,7 +64,6 @@ namespace Mmorpg.WorldData.Editor.Items
         public ItemCatalogJsonEquipmentSlot[] equipmentSlots;
         public ItemCatalogJsonWeaponFamily[] weaponFamilies;
         public ItemCatalogJsonIdentity[] ammunitionFamilies;
-        public ItemCatalogJsonSecureContainerTier[] secureContainerTiers;
         public ItemCatalogJsonRetired retired;
     }
 
@@ -160,9 +158,6 @@ namespace Mmorpg.WorldData.Editor.Items
             document.retired.tags = SortStrings(document.retired.tags);
             document.retired.equipmentSlots = SortStrings(document.retired.equipmentSlots);
             document.retired.definitions = SortStrings(document.retired.definitions);
-            document.retired.secureContainerTiers = SortStrings(document.retired.secureContainerTiers);
-            document.secureContainerTiers = document.secureContainerTiers
-                ?? Array.Empty<ItemCatalogJsonSecureContainerTier>();
             document.definitions = (document.definitions
                     ?? Array.Empty<ItemCatalogJsonDefinition>())
                 .OrderBy(definition => definition.id, StringComparer.Ordinal)
@@ -174,11 +169,6 @@ namespace Mmorpg.WorldData.Editor.Items
                 definition.equipmentSlots = SortStrings(definition.equipmentSlots);
                 definition.blockedEquipmentSlots = SortStrings(definition.blockedEquipmentSlots);
                 definition.defaultPolicies = SortStrings(definition.defaultPolicies);
-                if (definition.locationEligibility == null)
-                {
-                    definition.locationEligibility = new ItemCatalogJsonLocationEligibility();
-                }
-
                 if (definition.bag == null)
                 {
                     continue;
@@ -278,7 +268,6 @@ namespace Mmorpg.WorldData.Editor.Items
             {
                 formatVersion = header.formatVersion,
                 catalogId = header.catalogId,
-                baseSecureContainerTierId = header.baseSecureContainerTierId,
                 character = header.character,
                 economy = header.economy,
                 progression = header.progression,
@@ -289,7 +278,6 @@ namespace Mmorpg.WorldData.Editor.Items
                 weaponFamilies = header.weaponFamilies,
                 ammunitionFamilies = header.ammunitionFamilies,
                 definitions = definitions,
-                secureContainerTiers = header.secureContainerTiers,
                 vendors = vendors,
                 retired = header.retired
             };
@@ -312,7 +300,6 @@ namespace Mmorpg.WorldData.Editor.Items
                     {
                         formatVersion = normalized.formatVersion,
                         catalogId = normalized.catalogId,
-                        baseSecureContainerTierId = normalized.baseSecureContainerTierId,
                         character = normalized.character,
                         economy = normalized.economy,
                         progression = normalized.progression,
@@ -322,7 +309,6 @@ namespace Mmorpg.WorldData.Editor.Items
                         equipmentSlots = normalized.equipmentSlots,
                         weaponFamilies = normalized.weaponFamilies,
                         ammunitionFamilies = normalized.ammunitionFamilies,
-                        secureContainerTiers = normalized.secureContainerTiers,
                         retired = normalized.retired
                     })
             };
@@ -560,7 +546,6 @@ namespace Mmorpg.WorldData.Editor.Items
 
             Authoring.formatVersion = authoring.formatVersion;
             Authoring.catalogId = authoring.catalogId;
-            Authoring.baseSecureContainerTierId = authoring.baseSecureContainerTierId;
             Authoring.character = authoring.character;
             Authoring.economy = authoring.economy;
             Authoring.progression = authoring.progression;
@@ -572,7 +557,6 @@ namespace Mmorpg.WorldData.Editor.Items
             Authoring.weaponFamilies = authoring.weaponFamilies;
             Authoring.ammunitionFamilies = authoring.ammunitionFamilies;
             Authoring.definitions = authoring.definitions ?? Array.Empty<ItemCatalogJsonDefinition>();
-            Authoring.secureContainerTiers = authoring.secureContainerTiers;
             Authoring.vendors = authoring.vendors ?? Array.Empty<ItemCatalogJsonVendor>();
             Presentation.formatVersion = presentation.formatVersion;
             Presentation.sourceCatalogRevision = presentation.sourceCatalogRevision;
@@ -610,7 +594,6 @@ namespace Mmorpg.WorldData.Editor.Items
                 equipmentSlots = Array.Empty<string>(),
                 blockedEquipmentSlots = Array.Empty<string>(),
                 playerDestroyable = true,
-                locationEligibility = new ItemCatalogJsonLocationEligibility(),
                 defaultPolicies = Array.Empty<string>(),
                 bag = null,
                 requiredCharacterLevel = 1,

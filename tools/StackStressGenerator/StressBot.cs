@@ -342,9 +342,8 @@ public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
             return;
         }
 
-        var destinationId = owned.ContainerId == inventory.PermanentInventoryId
-            ? inventory.SecureContainerId
-            : inventory.PermanentInventoryId;
+        // The item moves to the next empty Permanent Inventory slot each time.
+        var destinationId = inventory.PermanentInventoryId;
         var destinationSlot = inventory.FindEmptySlot(destinationId);
         if (destinationSlot is null)
         {

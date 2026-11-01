@@ -55,9 +55,6 @@
     "bag"
   ],
   "id": "bag.travelers_pack",
-  "locationEligibility": {
-    "secureContainer": false
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

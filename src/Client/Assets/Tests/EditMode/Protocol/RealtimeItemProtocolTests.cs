@@ -7,17 +7,17 @@ namespace Mmorpg.Client.Tests.EditMode
     public sealed class RealtimeItemProtocolTests
     {
         [Test]
-        public void SecureContainerRelocateIntentRoundTripsWithoutClientAuthorityFields()
+        public void RelocateIntentRoundTripsWithoutClientAuthorityFields()
         {
             var operationId = Guid.NewGuid();
             var itemId = Guid.NewGuid();
-            var secureContainerId = Guid.NewGuid();
+            var destinationContainerId = Guid.NewGuid();
             var expected = RealtimeItemOperationIntent.CreateRelocate(
                 operationId,
                 7,
                 itemId,
                 3,
-                secureContainerId,
+                destinationContainerId,
                 1);
 
             var decoded = RealtimeProtocol.TryDecodeItemOperationIntent(
@@ -31,7 +31,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(actual.ExpectedCharacterRevision, Is.EqualTo(7));
             Assert.That(actual.ItemInstanceId, Is.EqualTo(itemId));
             Assert.That(actual.ExpectedItemRevision, Is.EqualTo(3));
-            Assert.That(actual.DestinationContainerId, Is.EqualTo(secureContainerId));
+            Assert.That(actual.DestinationContainerId, Is.EqualTo(destinationContainerId));
             Assert.That(actual.DestinationSlotIndex, Is.EqualTo(1));
         }
 

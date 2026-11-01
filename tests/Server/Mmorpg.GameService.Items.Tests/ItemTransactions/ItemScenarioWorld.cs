@@ -36,7 +36,6 @@ internal sealed class ItemScenarioWorld(PostgresIntegrationTestContext context)
                 revision as "Revision",
                 permanent_inventory_container_id as "PermanentInventoryContainerId",
                 bank_container_id as "BankContainerId",
-                secure_container_id as "SecureContainerId",
                 recovery_storage_container_id as "RecoveryStorageContainerId"
             from character_item_states
             where character_id = @CharacterId;
@@ -258,30 +257,6 @@ internal sealed class ItemScenarioWorld(PostgresIntegrationTestContext context)
             CorpsePresentationKey);
     }
 
-    public async Task AddSecureTierAsync(string tierId, int slotCapacity)
-    {
-        await ExecuteSqlAsync(
-            """
-            insert into secure_container_tiers (
-                id,
-                catalog_id,
-                catalog_revision,
-                display_name,
-                slot_capacity,
-                structural_fingerprint)
-            select
-                @TierId,
-                catalog_id,
-                revision,
-                'Golden Secure Container',
-                @SlotCapacity,
-                repeat('c', 64)
-            from item_catalog_revisions
-            where is_current;
-            """,
-            new { TierId = tierId, SlotCapacity = slotCapacity });
-    }
-
     public async Task<ConsumedSimulationJoinTicketResponse> JoinAsync(IntegrationPlayer player)
     {
         var join = await Context.ShardService.CreateJoinTicketAsync(
@@ -330,8 +305,6 @@ internal sealed class ItemScenarioWorld(PostgresIntegrationTestContext context)
         public Guid PermanentInventoryContainerId { get; set; }
 
         public Guid BankContainerId { get; set; }
-
-        public Guid SecureContainerId { get; set; }
 
         public Guid RecoveryStorageContainerId { get; set; }
     }

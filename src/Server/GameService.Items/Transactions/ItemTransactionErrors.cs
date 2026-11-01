@@ -39,7 +39,6 @@ internal static class ItemTransactionErrorCodes
     public const string EquipmentSlotBlocked = "equipment_slot_blocked";
     public const string EquipmentLevelRequirementNotMet = "equipment_level_requirement_not_met";
     public const string AmmunitionNotEquipped = "ammunition_not_equipped";
-    public const string SecureContainerItemForbidden = "secure_container_item_forbidden";
     public const string BankAccessRequired = "bank_access_required";
     public const string RecoveryAccessRequired = "recovery_access_required";
     public const string RecoveryDeliveryNotFound = "recovery_delivery_not_found";

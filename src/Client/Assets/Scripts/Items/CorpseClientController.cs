@@ -382,7 +382,7 @@ namespace Mmorpg.Client.Items
                 || sourceLocation.Kind != InventoryItemLocationKind.Container
                 || !ItemContainerTypeIds.IsCarried(sourceLocation.ContainerType))
             {
-                error = "Only items in carried inventory, Bag, or Secure Container slots can enter a corpse.";
+                error = "Only items in carried inventory or Bag slots can enter a corpse.";
                 return false;
             }
 

@@ -9,9 +9,6 @@
   "displayName": "Fixture Letter",
   "equipmentSlots": [ ],
   "id": "fixture.letter",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": false,
   "requiredCharacterLevel": 1,

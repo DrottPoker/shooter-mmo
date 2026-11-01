@@ -25,7 +25,6 @@ namespace Mmorpg.Client.Tests.EditMode
                     Array.Empty<InventoryEquipmentSlot>(),
                     null,
                     bank,
-                    new SecureContainerInventory("secure_container.base", 1, Container("secure_container")),
                     new RecoveryStorageInventory(Guid.NewGuid(), 1, Array.Empty<RecoveryDelivery>()),
                     0,
                     200,

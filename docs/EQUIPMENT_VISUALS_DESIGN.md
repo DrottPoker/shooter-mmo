@@ -40,6 +40,8 @@ Planned:
 - Skin colors, and changing a look in the game, such as a tattoo at an NPC, hair
   at a barber, or a dye at a dyer.
 - Soft see-through fabric, such as a veil.
+- Shoulder garments, such as pauldrons and mantles, for the `shoulders`
+  equipment slot, with a visual slot and layer of their own.
 - More hold poses, such as a sword raised or a shield in guard, weapons sheathed
   at the hip or on the back out of combat, and a quiver or a backpack on the
   back.
@@ -184,7 +186,8 @@ as a floor-length robe that hides the `legs` slot. The equipment slots `head`,
 `body`, `legs`, `hands`, `feet`, and `back` map to the visual slots of the same
 name. `main_hand` and `off_hand` show attachments, the `tool` slot shows its
 tool only while it is used, `neck`, `ring_1`, `ring_2`, and `ammunition` show
-nothing, and `bag` will show an attachment, such as a backpack (planned).
+nothing, `shoulders` shows nothing until shoulder garments exist (planned), and
+`bag` will show an attachment, such as a backpack (planned).
 
 One equipment slot holds one item, and a visual slot shows one garment: of two
 garments of a slot that a look names, the first in the catalog is worn, and

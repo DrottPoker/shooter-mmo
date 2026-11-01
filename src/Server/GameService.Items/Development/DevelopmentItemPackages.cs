@@ -34,7 +34,6 @@ internal static class DevelopmentItemPackageDestinations
 {
     public const string Inventory = "inventory";
     public const string Bank = "bank";
-    public const string SecureContainer = "secure_container";
     public const string Equipment = "equipment";
     public const string Bag = "bag";
     public const string Recovery = "recovery";
@@ -43,7 +42,6 @@ internal static class DevelopmentItemPackageDestinations
     {
         Inventory,
         Bank,
-        SecureContainer,
         Equipment,
         Bag,
         Recovery
@@ -52,7 +50,7 @@ internal static class DevelopmentItemPackageDestinations
     // Carried destinations count toward carry weight; equipped items do not.
     public static bool IsCarried(string destination)
     {
-        return destination is Inventory or SecureContainer or Bag;
+        return destination is Inventory or Bag;
     }
 }
 

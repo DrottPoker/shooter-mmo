@@ -5,7 +5,7 @@ using Mmorpg.WorldData.Items;
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Writes the player corpse layout: the corpse section containers and the snapshots
-// of the Secure Container, insured equipment, and a recovered Bag.
+// of insured equipment and a recovered Bag.
 internal static class PlayerCorpseLayoutWriter
 {
     internal static async Task CreateCorpseSectionContainersAsync(
@@ -156,44 +156,11 @@ internal static class PlayerCorpseLayoutWriter
     internal static async Task CreateCorpseSnapshotsAsync(
         ItemTransactionContext context,
         Guid corpseId,
-        LockedCharacterState characterState,
         IReadOnlyList<DeathPartitionItem> items,
         DeathPartitionItem? equippedBag,
         CancellationToken cancellationToken)
     {
-        // The character row is locked and its account never changes, so the locked
-        // item state's account is the character's account.
-        var secureTier = await context.Connection.QuerySingleAsync<SecureTierSnapshotRow>(
-            new CommandDefinition(
-                """
-                select
-                    tier.id as "TierId",
-                    tier.display_name as "DisplayName",
-                    tier.slot_capacity as "SlotCapacity"
-                from account_secure_container_entitlements entitlement
-                join secure_container_tiers tier on tier.id = entitlement.tier_id
-                where entitlement.account_id = @AccountId;
-                """,
-                new { characterState.AccountId },
-                context.Transaction,
-                cancellationToken: cancellationToken));
         var sortOrder = 0;
-        await InsertCorpseSnapshotAsync(
-            context,
-            corpseId,
-            "secure_container",
-            sortOrder++,
-            null,
-            null,
-            null,
-            new
-            {
-                tierId = secureTier.TierId,
-                displayName = secureTier.DisplayName,
-                slotCapacity = secureTier.SlotCapacity
-            },
-            cancellationToken);
-
         foreach (var item in items
                      .Where(item =>
                          item.Disposition == ItemDeathDisposition.InsuredRecovery
@@ -322,15 +289,6 @@ internal static class PlayerCorpseLayoutWriter
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-    }
-
-    private sealed class SecureTierSnapshotRow
-    {
-        public string TierId { get; set; } = string.Empty;
-
-        public string DisplayName { get; set; } = string.Empty;
-
-        public int SlotCapacity { get; set; }
     }
 
     private sealed class BagSnapshotSlotRow

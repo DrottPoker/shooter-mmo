@@ -87,7 +87,7 @@ public sealed class DeathLootIntegrationTests
     }
 
     [PostgresIntegrationFact]
-    public async Task RepeatedDeathPartitionsEveryCustodyOnceAndPreservesCurrencyAndSecureContents()
+    public async Task RepeatedDeathPartitionsEveryCustodyOnceAndPreservesCurrencyAndBank()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync(
@@ -126,11 +126,6 @@ public sealed class DeathLootIntegrationTests
             "fixture.arrow",
             8,
             equippedBag.Contents.ContainerId,
-            0);
-        var secureItem = await fixture.GrantAsync(
-            "fixture.potion",
-            2,
-            initial.SecureContainer.Contents.ContainerId,
             0);
         var bankItem = await fixture.GrantAsync(
             "fixture.ore",
@@ -175,7 +170,6 @@ public sealed class DeathLootIntegrationTests
             insuredArmor,
             bag,
             bagChild,
-            secureItem,
             bankItem
         };
         await using (var connection = await context.DataSource.OpenConnectionAsync())
@@ -210,10 +204,6 @@ public sealed class DeathLootIntegrationTests
                 connection,
                 insuredArmor,
                 initial.RecoveryStorage.ContainerId);
-            await AssertContainerAsync(
-                connection,
-                secureItem,
-                initial.SecureContainer.Contents.ContainerId);
             await AssertContainerAsync(connection, bankItem, initial.Bank.ContainerId);
 
             Assert.Equal(
@@ -231,18 +221,12 @@ public sealed class DeathLootIntegrationTests
                       and equipment_slot_id = 'body';
                     """,
                     new { partition.Corpse.CorpseId }));
-            var securePayload = await connection.ExecuteScalarAsync<string>(
-                """
-                select presentation_payload::text
-                from corpse_snapshots
-                where corpse_id = @CorpseId
-                  and snapshot_kind = 'secure_container';
-                """,
-                new { partition.Corpse.CorpseId });
-            Assert.DoesNotContain(
-                secureItem.ToString("D"),
-                securePayload,
-                StringComparison.OrdinalIgnoreCase);
+            // The insured equipment is the corpse's only presentation snapshot.
+            Assert.Equal(
+                1,
+                await connection.ExecuteScalarAsync<int>(
+                    "select count(*) from corpse_snapshots where corpse_id = @CorpseId;",
+                    new { partition.Corpse.CorpseId }));
         }
 
         var replayOperationId = Guid.NewGuid();
@@ -425,158 +409,6 @@ public sealed class DeathLootIntegrationTests
                     """,
                     new { protectedDeath.Corpse.CorpseId }));
         }
-    }
-
-    [PostgresIntegrationFact]
-    public async Task DeathAllowsSecureWeightOverflowAfterBagCapacityFallsButRejectsMoreWeight()
-    {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-        var player = await context.RegisterPlayerAsync(
-            "death-overflow@example.com",
-            "death_overflow_player",
-            "Death Overflow Hero");
-        var fixture = new DeathInventoryFixture(context, player);
-        var initial = await fixture.GetSnapshotAsync();
-        var bag = await fixture.GrantAsync(
-            "fixture.pack",
-            1,
-            initial.PermanentInventory.ContainerId,
-            0);
-        await fixture.EquipAsync(bag, "bag");
-        var ore = await fixture.GrantAsync(
-            "fixture.ore",
-            50,
-            initial.SecureContainer.Contents.ContainerId,
-            0);
-        var beforeDeath = await fixture.GetSnapshotAsync();
-        Assert.Equal(300, beforeDeath.CarriedWeight);
-        Assert.Equal(250, beforeDeath.CarryCapacity);
-
-        var death = await ProcessDeathAsync(context, player, Guid.NewGuid());
-        Assert.Equal(300, death.CharacterRevision.CarriedWeight);
-        Assert.Equal(200, death.CharacterRevision.CarryCapacity);
-        AssertSectionCount(death.Corpse, "equipment", 1);
-
-        var overflow = await fixture.GetSnapshotAsync();
-        var reduceWeight = await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<SplitItemStackCommand>(
-                Guid.NewGuid(),
-                ItemTransactionActor.ForSystem(),
-                new SplitItemStackCommand(
-                    player.Character.Id,
-                    overflow.ItemStateRevision,
-                    ore,
-                    await fixture.GetItemRevisionAsync(ore),
-                    2,
-                    initial.Bank.ContainerId,
-                    0)),
-            CancellationToken.None);
-        Assert.True(reduceWeight.Succeeded, reduceWeight.Error?.Message);
-        var reduced = await fixture.GetSnapshotAsync();
-        Assert.Equal(288, reduced.CarriedWeight);
-        Assert.Equal(200, reduced.CarryCapacity);
-
-        var rejectedOperationId = Guid.NewGuid();
-        var addWeight = await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<GrantItemCommand>(
-                rejectedOperationId,
-                ItemTransactionActor.ForSystem(),
-                new GrantItemCommand(
-                    player.Character.Id,
-                    reduced.ItemStateRevision,
-                    "fixture.potion",
-                    1,
-                    initial.PermanentInventory.ContainerId,
-                    0)),
-            CancellationToken.None);
-        Assert.False(addWeight.Succeeded);
-        Assert.Equal(ItemTransactionErrorCodes.CarryWeightLimitExceeded, addWeight.Error?.Code);
-        var afterRejectedWeight = await fixture.GetSnapshotAsync();
-        Assert.Equal(reduced.ItemStateRevision, afterRejectedWeight.ItemStateRevision);
-        Assert.Equal(288, afterRejectedWeight.CarriedWeight);
-
-        var clearWeight = await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<RelocateItemCommand>(
-                Guid.NewGuid(),
-                ItemTransactionActor.ForSystem(),
-                new RelocateItemCommand(
-                    player.Character.Id,
-                    afterRejectedWeight.ItemStateRevision,
-                    ore,
-                    await fixture.GetItemRevisionAsync(ore),
-                    initial.Bank.ContainerId,
-                    1)),
-            CancellationToken.None);
-        Assert.True(clearWeight.Succeeded, clearWeight.Error?.Message);
-        var cleared = await fixture.GetSnapshotAsync();
-        Assert.Equal(0, cleared.CarriedWeight);
-        Assert.Equal(200, cleared.CarryCapacity);
-
-        await using var connection = await context.DataSource.OpenConnectionAsync();
-        Assert.Equal(
-            0,
-            await connection.ExecuteScalarAsync<int>(
-                "select count(*) from item_operation_changes where operation_id = @OperationId;",
-                new { OperationId = rejectedOperationId }));
-        Assert.Equal(
-            0,
-            await connection.ExecuteScalarAsync<int>(
-                """
-                select count(*)
-                from item_instances
-                where container_id = @ContainerId
-                  and definition_id = 'fixture.potion';
-                """,
-                new { ContainerId = initial.PermanentInventory.ContainerId }));
-    }
-
-    [PostgresIntegrationFact]
-    public async Task CharacterWithInvoluntaryDeathOverflowCanJoinAgain()
-    {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-        var player = await context.RegisterPlayerAsync(
-            "death-overflow-join@example.com",
-            "death_overflow_join",
-            "Death Overflow Joiner");
-        var fixture = new DeathInventoryFixture(context, player);
-        var initial = await fixture.GetSnapshotAsync();
-        var bag = await fixture.GrantAsync(
-            "fixture.pack",
-            1,
-            initial.PermanentInventory.ContainerId,
-            0);
-        await fixture.EquipAsync(bag, "bag");
-        await fixture.GrantAsync(
-            "fixture.ore",
-            50,
-            initial.SecureContainer.Contents.ContainerId,
-            0);
-        await ProcessDeathAsync(context, player, Guid.NewGuid());
-
-        var join = await context.ShardService.CreateJoinTicketAsync(
-            player.Account,
-            ShardId,
-            new JoinShardRequest(player.Character.Id),
-            CancellationToken.None);
-        Assert.True(join.Succeeded, join.Error?.Message);
-        var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                join.Value!.JoinTicket,
-                WorkerId,
-                WorkerRuntimeId,
-                ShardId),
-            CancellationToken.None);
-
-        Assert.True(consumed.Succeeded, consumed.Error?.Message);
-        Assert.Equal(300, consumed.Value!.CarriedWeight);
-        Assert.Equal(200, consumed.Value.CarryCapacity);
-        var workerCarry = new Mmorpg.GameSimulation.PlayerCarryState(
-            consumed.Value.ItemStateRevision,
-            consumed.Value.CarriedWeight,
-            consumed.Value.CarryCapacity);
-        Assert.Equal(
-            EncumbranceRules.MinimumMovementMultiplierBasisPoints,
-            workerCarry.MovementMultiplierBasisPoints);
     }
 
     [PostgresIntegrationFact]

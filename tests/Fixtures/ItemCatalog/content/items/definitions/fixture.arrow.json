@@ -12,9 +12,6 @@
     "ammunition"
   ],
   "id": "fixture.arrow",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 60,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

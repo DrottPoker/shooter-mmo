@@ -7,9 +7,6 @@
   "displayName": "Iron Ore",
   "equipmentSlots": [ ],
   "id": "material.iron_ore",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 100,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

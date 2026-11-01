@@ -9,9 +9,6 @@
     "off_hand"
   ],
   "id": "armor.heater_shield",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

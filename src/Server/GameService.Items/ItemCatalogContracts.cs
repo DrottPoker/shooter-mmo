@@ -4,12 +4,10 @@ internal sealed record ItemCatalogResponse(
     string CatalogId,
     string Revision,
     int FormatVersion,
-    string BaseSecureContainerTierId,
     IReadOnlyList<ItemCatalogIdentityResponse> Categories,
     IReadOnlyList<ItemCatalogIdentityResponse> Tags,
     IReadOnlyList<ItemCatalogEquipmentSlotResponse> EquipmentSlots,
-    IReadOnlyList<ItemCatalogDefinitionResponse> Definitions,
-    IReadOnlyList<ItemCatalogSecureContainerTierResponse> SecureContainerTiers);
+    IReadOnlyList<ItemCatalogDefinitionResponse> Definitions);
 
 internal sealed record ItemCatalogIdentityResponse(
     string Id,
@@ -32,7 +30,6 @@ internal sealed record ItemCatalogDefinitionResponse(
     IReadOnlyList<string> Tags,
     IReadOnlyList<string> EquipmentSlots,
     IReadOnlyList<string> BlockedEquipmentSlots,
-    bool SecureContainerEligible,
     IReadOnlyList<string> DefaultPolicies,
     ItemCatalogBagResponse? Bag);
 
@@ -44,8 +41,3 @@ internal sealed record ItemCatalogBagSlotResponse(
     int SlotIndex,
     string SlotKind,
     IReadOnlyList<string> AcceptedTags);
-
-internal sealed record ItemCatalogSecureContainerTierResponse(
-    string Id,
-    string DisplayName,
-    int SlotCapacity);

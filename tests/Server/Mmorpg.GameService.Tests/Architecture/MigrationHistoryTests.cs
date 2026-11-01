@@ -45,7 +45,8 @@ public sealed class MigrationHistoryTests
         "202610181240_character_currency_ledger 9d092d7b4f1c7c0c7c67bf16ed59ee8f1604084fbc898c1a06f528d44b208856",
         "202610181250_item_economy b9120a4bd9f1db4e920a4b7ecece2a23de9fa7d1ba851a4cbd725f295cf2be98",
         "202610251200_character_appearance 17d6ebdb9a9e5050d742da7656b81794accf4c59c27acf111f03fcb083538870",
-        "202610261800_live_mob_loot_grants 09934b64934bbb04831075c84fa360d570392277b774c741293c382788fd4f87"
+        "202610261800_live_mob_loot_grants 09934b64934bbb04831075c84fa360d570392277b774c741293c382788fd4f87",
+        "202611011200_remove_secure_container 891d194dcf27f0812e1bcd3242347a07fde33807e5759d3672b85b4b13eb2f4a"
     ];
 
     [Fact]

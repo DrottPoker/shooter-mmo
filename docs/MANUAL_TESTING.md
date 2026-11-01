@@ -137,8 +137,8 @@ describes how the window works.
    and `Target` lists every local character with its account, online state,
    item count, weight, and capacity.
 4. Select the offline character. To give one item, choose it under `Give
-   Individual Item` with a quantity and the destination `Permanent Inventory`,
-   `Bank`, or `Secure Container`, and click `Give Item`. Expected result: the
+   Individual Item` with a quantity and the destination `Permanent Inventory`
+   or `Bank`, and click `Give Item`. Expected result: the
    status reports the grant, and the character row shows the new item count,
    weight, and revision at once.
 5. To give a [test package](#test-packages), choose it under `Give Test
@@ -163,9 +163,8 @@ describes how the window works.
    SimulationWorker so it restores the durable corpse.` The corpse expires five
    minutes after its creation. Restart SimulationWorker before joining.
 
-GameService rejects an invalid request, such as a stack above its size, an item
-the Secure Container does not allow, or a grant above the 140 percent carry
-limit, without a partial transaction. When a command fails, the window says why
+GameService rejects an invalid request, such as a stack above its size or a
+grant above the 140 percent carry limit, without a partial transaction. When a command fails, the window says why
 and logs the complete output, with the stack trace, as one error in the Unity
 Console:
 
@@ -194,12 +193,11 @@ problem, and nothing is granted.
 
 | Package | Command id | What it gives |
 | --- | --- | --- |
-| Full Inventory Test Pack | `full_inventory` | An equipped Traveler's Pack with Minor Healing Potions, Iron Ore, and 100 Bronze Arrows in its specialized slots; a spare Traveler's Pack, the Training Shortbow, the Leather Jerkin, the Starter Pickaxe, a Copper Ring, and Cooked Trout in Permanent Inventory; a Sealed Letter in the Secure Container; Iron Ore stacks of 20 and 19, one potion, 10 arrows, and a third Traveler's Pack in the Bank; and one Recovery delivery of ore and potions. Carry weight `1040 / 2500` |
+| Full Inventory Test Pack | `full_inventory` | An equipped Traveler's Pack with Minor Healing Potions, Iron Ore, and 100 Bronze Arrows in its specialized slots; a spare Traveler's Pack, the Training Shortbow, the Leather Jerkin, the Starter Pickaxe, a Copper Ring, Cooked Trout, and a Sealed Letter in Permanent Inventory; Iron Ore stacks of 20 and 19, one potion, 10 arrows, and a third Traveler's Pack in the Bank; and one Recovery delivery of ore and potions. Carry weight `1040 / 2500` |
 | Equipment Test Pack | `equipment` | A Traveler's Pack, the Training Shortbow with 500 Bronze Arrows, the Iron Sword, the Heater Shield, the Oak Staff, the Iron Greataxe, the Leather Jerkin, the Starter Pickaxe, the Woodcutting Axe, and two Copper Rings in Permanent Inventory |
 | Stack Split And Merge Pack | `stack_operations` | Pairs of ore, potion, and arrow stacks in the Bank |
 | Encumbrance 100% Pack | `encumbrance_100` | Carry weight exactly at the base capacity, `2000 / 2000` |
 | Encumbrance 140% Pack | `encumbrance_140` | Carry weight exactly at the 140 percent limit, `2800 / 2000` |
-| Secure Container Pack | `secure_container` | Four stacks that fill the Secure Container |
 | Recovery Delivery Pack | `recovery_delivery` | One Recovery delivery with ore and potions |
 | Outfits Test Pack | `outfits` | Every item of clothing and armor that shows a garment, with the wool robe, hood, and cloak in every color, in Permanent Inventory |
 
@@ -764,12 +762,13 @@ Give a new offline character the Full Inventory Test Pack, then join. The
 development worker opens the Bank and Recovery Storage everywhere.
 
 1. Press B. Expected result: only the right column shows: the carry meter,
-   Permanent Inventory, the contents of the equipped Traveler's Pack, and the
-   Warded Pouch, the Secure Container. The character header shows `100 Gold`
-   and the item-state revision.
+   Permanent Inventory, and the contents of the equipped Traveler's Pack. The
+   character header shows `100 Gold` and the item-state revision.
 2. Press C. Expected result: the equipment paper doll appears on the left, in
-   five rows: `Tool`, `Head`, `Bag`; `Ammunition`, `Neck`, `Hands`; `Main
-   Hand`, `Body`, `Off Hand`; `Ring 1`, `Legs`, `Ring 2`; and `Back` and `Feet`.
+   five full rows: `Tool`, `Head`, `Bag`; `Shoulders`, `Neck`, `Back`; `Main
+   Hand`, `Body`, `Off Hand`; `Hands`, `Legs`, `Ammunition`; and `Ring 1`,
+   `Feet`, `Ring 2`. The `Shoulders` slot is empty, and no item of the catalog
+   equips to it yet.
 3. Press I. Expected result: the complete view adds the middle column with its
    `Bank`, `Recovery`, `Corpse`, and `Vendor` tabs.
 4. Press the key of the open view, then another inventory key, then Escape.
@@ -831,9 +830,8 @@ development worker opens the Bank and Recovery Storage everywhere.
    Permanent, Bag, and Bank slots. Expected result: every destination rejects
    it, because a Bag with items moves only as a whole aggregate.
 3. Drag the potions, the ore, and the arrows out of their specialized slots and
-   back. Drag the shortbow onto a specialized slot and onto the Secure
-   Container. Expected result: the supplies move freely, and both targets
-   reject the shortbow.
+   back. Drag the shortbow onto a specialized slot. Expected result: the
+   supplies move freely, and the specialized slot rejects the shortbow.
 
 ### Bank Stacks And Swaps
 
@@ -843,8 +841,8 @@ development worker opens the Bank and Recovery Storage everywhere.
    moved once the server has confirmed it, and the merge restores the original
    quantity.
 2. Drag two unlike items between compatible occupied ordinary slots. Expected
-   result: they exchange slots. Repeat against an incompatible specialized or
-   Secure Container slot. Expected result: neither moves.
+   result: they exchange slots. Repeat against an incompatible specialized slot.
+   Expected result: neither moves.
 
 ### Recovery Deliveries
 
@@ -1145,7 +1143,7 @@ three or four of them kill a lone archer in about 10 seconds.
 
 Expected result: `You died` with `Respawning in 5 s` counting down appears
 above the open inventory, clicks do nothing while the character is dead, and
-the inventory shows at once that only the Secure Container contents are left.
+the inventory shows at once that every carried and equipped item is gone.
 The body falls and lies on its back. After the respawn the character stands at
 the World spawn with full health and does not walk on, its items lie in its
 corpse at the place of death, and the wolves walk home. Loot the corpse back as
@@ -1688,14 +1686,13 @@ $snapshot = Invoke-RestMethod "http://localhost:5000/api/characters/$($character
 $catalog.definitions.Count
 $snapshot.permanentInventory.slots.Count
 $snapshot.bank.slots.Count
-$snapshot.secureContainer.contents.slots.Count
 $snapshot.currency
 $snapshot.carriedWeight
 $snapshot.carryCapacity
 ```
 
 Expected result: one catalog definition per file in
-`content/items/definitions`, then `20`, `40`, `4`, `100`, `0`, and `2000`: the
+`content/items/definitions`, then `20`, `40`, `100`, `0`, and `2000`: the
 slot counts, the starting balance, and the base capacity of
 `content/items/catalog.json`. The snapshot is empty but complete, and it holds
 definition ids and item state only, no client icon, repeated definition data,
@@ -1714,29 +1711,13 @@ $unchangedResponse = Invoke-WebRequest -SkipHttpErrorCheck -Uri http://localhost
 $itemStateResponse = Invoke-WebRequest -Uri "http://localhost:5000/api/characters/$($character.id)/item-state" -Headers $headers
 $bankResponse = Invoke-WebRequest -Uri "http://localhost:5000/api/characters/$($character.id)/bank" -Headers $headers
 $recoveryResponse = Invoke-WebRequest -Uri "http://localhost:5000/api/characters/$($character.id)/recovery" -Headers $headers
-$itemState = $itemStateResponse.Content | ConvertFrom-Json
-$tierResponse = Invoke-WebRequest `
-  -Method Post `
-  -Uri http://localhost:5000/api/items/secure-container-tier `
-  -Headers $headers `
-  -ContentType application/json `
-  -Body (@{
-    operationId = [Guid]::NewGuid()
-    expectedEntitlementRevision = $itemState.secureContainer.entitlementRevision
-    tierId = $itemState.secureContainer.tierId
-    characterRevisions = @(@{
-      characterId = $character.id
-      revision = $itemState.itemStateRevision
-    })
-  } | ConvertTo-Json -Depth 5)
-@($catalogResponse, $unchangedResponse, $itemStateResponse, $bankResponse, $recoveryResponse, $tierResponse).StatusCode
+@($catalogResponse, $unchangedResponse, $itemStateResponse, $bankResponse, $recoveryResponse).StatusCode
 @($itemStateResponse, $bankResponse, $recoveryResponse) | ForEach-Object { $_.Headers.'Cache-Control' }
 ```
 
-Expected result: the status codes are `200`, `304`, `200`, `200`, `200`, and
-`200`. The catalog has an ETag, and the unchanged response has no body. Every
-character response reports `no-store`. The request for the same tier succeeds
-idempotently while the character is offline.
+Expected result: the status codes are `200`, `304`, `200`, `200`, and `200`.
+The catalog has an ETag, and the unchanged response has no body. Every
+character response reports `no-store`.
 
 ### Shard Topology And Registration
 

@@ -40,10 +40,7 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                         state.carry_capacity as "CarryCapacity",
                         state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                         state.bank_container_id as "BankContainerId",
-                        state.secure_container_id as "SecureContainerId",
                         state.recovery_storage_container_id as "RecoveryStorageContainerId",
-                        entitlement.tier_id as "SecureContainerTierId",
-                        entitlement.revision as "SecureContainerEntitlementRevision",
                         {CharactersSql.CurrencyOf("character.id")} as "Currency"
                     from {CharactersSql.ActiveCharacters} character
                     join character_item_states state on state.character_id = character.id
@@ -51,8 +48,6 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                     join item_catalog_revisions revision
                       on revision.catalog_id = settings.catalog_id
                      and revision.is_current
-                    left join account_secure_container_entitlements entitlement
-                      on entitlement.account_id = character.account_id
                     where character.id = @CharacterId
                       and character.account_id = @AccountId;
                     """,
@@ -68,12 +63,6 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                     "Character inventory was not found.");
             }
 
-            if (string.IsNullOrWhiteSpace(state.SecureContainerTierId))
-            {
-                throw new InvalidOperationException(
-                    "Character item state has no Secure Container entitlement.");
-            }
-
             var permanentInventory = await LoadContainerAsync(
                 connection,
                 transaction,
@@ -85,12 +74,6 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                 transaction,
                 state.BankContainerId,
                 "bank",
-                cancellationToken);
-            var secureContainer = await LoadContainerAsync(
-                connection,
-                transaction,
-                state.SecureContainerId,
-                "secure_container",
                 cancellationToken);
             var recoveryContainer = await LoadContainerAsync(
                 connection,
@@ -123,10 +106,6 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                 equipment,
                 equippedBag,
                 bank,
-                new SecureContainerSnapshotResponse(
-                    state.SecureContainerTierId,
-                    state.SecureContainerEntitlementRevision,
-                    secureContainer),
                 recoveryStorage,
                 state.CarriedWeight,
                 state.CarryCapacity,
@@ -271,18 +250,13 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
                 state.carry_capacity as "CarryCapacity",
                 state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                 state.bank_container_id as "BankContainerId",
-                state.secure_container_id as "SecureContainerId",
-                state.recovery_storage_container_id as "RecoveryStorageContainerId",
-                entitlement.tier_id as "SecureContainerTierId",
-                entitlement.revision as "SecureContainerEntitlementRevision"
+                state.recovery_storage_container_id as "RecoveryStorageContainerId"
             from {CharactersSql.ActiveCharacters} character
             join character_item_states state on state.character_id = character.id
             join item_system_settings settings on settings.id = 'character_default'
             join item_catalog_revisions revision
               on revision.catalog_id = settings.catalog_id
              and revision.is_current
-            left join account_secure_container_entitlements entitlement
-              on entitlement.account_id = character.account_id
             where character.id = @CharacterId
               and character.account_id = @AccountId;
             """,
@@ -607,13 +581,7 @@ internal sealed class ItemQueryService(NpgsqlDataSource dataSource)
 
         public Guid BankContainerId { get; set; }
 
-        public Guid SecureContainerId { get; set; }
-
         public Guid RecoveryStorageContainerId { get; set; }
-
-        public string? SecureContainerTierId { get; set; }
-
-        public long SecureContainerEntitlementRevision { get; set; }
 
         public long Currency { get; set; }
     }

@@ -5,7 +5,6 @@
       "id": "arrow"
     }
   ],
-  "baseSecureContainerTierId": "secure_container.base",
   "catalogId": "core",
   "categories": [
     {
@@ -101,7 +100,7 @@
       "maximumQuantity": 1
     }
   ],
-  "formatVersion": 7,
+  "formatVersion": 8,
   "progression": {
     "maximumCharacterLevel": 200
   },
@@ -113,16 +112,8 @@
       "primary_weapon",
       "secondary_weapon"
     ],
-    "secureContainerTiers": [ ],
     "tags": [ ]
   },
-  "secureContainerTiers": [
-    {
-      "displayName": "Fixture Pouch",
-      "id": "secure_container.base",
-      "slotCapacity": 4
-    }
-  ],
   "tags": [
     {
       "displayName": "Potion",

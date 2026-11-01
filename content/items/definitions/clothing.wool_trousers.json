@@ -9,9 +9,6 @@
     "legs"
   ],
   "id": "clothing.wool_trousers",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

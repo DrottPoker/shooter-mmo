@@ -124,7 +124,6 @@ public sealed class DevelopmentItemToolIntegrationTests
             new PackageExpectation("equipment", 5, 0, 71, 200),
             new PackageExpectation("stack_operations", 6, 0, 0, 200),
             new PackageExpectation("encumbrance_100", 2, 0, 200, 200),
-            new PackageExpectation("secure_container", 4, 0, 21, 200),
             new PackageExpectation("recovery_delivery", 2, 1, 0, 200)
         };
 

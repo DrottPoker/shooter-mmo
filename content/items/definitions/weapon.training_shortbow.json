@@ -11,9 +11,6 @@
     "main_hand"
   ],
   "id": "weapon.training_shortbow",
-  "locationEligibility": {
-    "secureContainer": false
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

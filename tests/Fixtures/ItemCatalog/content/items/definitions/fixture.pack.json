@@ -54,9 +54,6 @@
     "bag"
   ],
   "id": "fixture.pack",
-  "locationEligibility": {
-    "secureContainer": false
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

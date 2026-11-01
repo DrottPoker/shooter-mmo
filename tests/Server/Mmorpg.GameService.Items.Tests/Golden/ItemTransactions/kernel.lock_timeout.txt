@@ -5,7 +5,7 @@ trace:
   c1 sql insert into item_operations ( operation_id, actor_account_id, actor_character_id, operation_kind, request_hash, request_payload) values ( $1, (select accounts_sql_account.id from accounts accounts_sql_account where accounts_sql_account.id = cast($2 as uuid)), (select characters_sql_character.id from characters characters_sql_character where characters_sql_character.id = cast($3 as uuid)), $4, $5, cast($6 as jsonb)) on conflict (operation_id) do nothing returning 1
   c1 sql savepoint item_mutation
   c1 sql select id as "CharacterId", account_id as "AccountId" from characters where id = any($1) and deleted_at is null order by id for no key update
-  c1 sql select state.character_id as "CharacterId", state.revision as "Revision", state.carried_weight as "CarriedWeight", state.base_carry_capacity as "BaseCarryCapacity", state.carry_capacity as "CarryCapacity", state.permanent_inventory_container_id as "PermanentInventoryContainerId", state.bank_container_id as "BankContainerId", state.secure_container_id as "SecureContainerId", state.recovery_storage_container_id as "RecoveryStorageContainerId" from character_item_states state where state.character_id = any($1) order by state.character_id for update of state
+  c1 sql select state.character_id as "CharacterId", state.revision as "Revision", state.carried_weight as "CarriedWeight", state.base_carry_capacity as "BaseCarryCapacity", state.carry_capacity as "CarryCapacity", state.permanent_inventory_container_id as "PermanentInventoryContainerId", state.bank_container_id as "BankContainerId", state.recovery_storage_container_id as "RecoveryStorageContainerId" from character_item_states state where state.character_id = any($1) order by state.character_id for update of state
   c1 rollback
 result:
   operation kind: grant
@@ -16,6 +16,5 @@ result:
   container revisions: none
   item revisions: none
   recovery deliveries: 0
-  secure entitlement revision: none
 journal:
   operation row: none

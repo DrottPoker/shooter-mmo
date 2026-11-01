@@ -8,7 +8,6 @@ public sealed class ItemCatalogHeaderDocument
 {
     public int FormatVersion;
     public string? CatalogId;
-    public string? BaseSecureContainerTierId;
     public ItemCharacterSettingsEntry? Character;
     public ItemEconomySettingsEntry? Economy;
     public ItemProgressionSettingsEntry? Progression;
@@ -18,7 +17,6 @@ public sealed class ItemCatalogHeaderDocument
     public ItemEquipmentSlotEntry[]? EquipmentSlots;
     public ItemWeaponFamilyEntry[]? WeaponFamilies;
     public ItemCatalogIdentityEntry[]? AmmunitionFamilies;
-    public SecureContainerTierAuthoringEntry[]? SecureContainerTiers;
     public ItemCatalogRetiredIdsEntry? Retired;
 }
 
@@ -42,7 +40,6 @@ public static class ItemCatalogContent
         {
             FormatVersion = header.FormatVersion,
             CatalogId = header.CatalogId,
-            BaseSecureContainerTierId = header.BaseSecureContainerTierId,
             Character = header.Character,
             Economy = header.Economy,
             Progression = header.Progression,
@@ -53,7 +50,6 @@ public static class ItemCatalogContent
             WeaponFamilies = header.WeaponFamilies,
             AmmunitionFamilies = header.AmmunitionFamilies,
             Definitions = definitions,
-            SecureContainerTiers = header.SecureContainerTiers,
             Vendors = vendors,
             Retired = header.Retired
         };

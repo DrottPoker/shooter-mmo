@@ -491,7 +491,6 @@ namespace Mmorpg.Client.Ui
             var items = new Dictionary<Guid, InventoryItem>();
             AddContainerItems(snapshot.PermanentInventory, items);
             AddContainerItems(snapshot.Bank, items);
-            AddContainerItems(snapshot.SecureContainer?.Contents, items);
             if (snapshot.EquippedBag != null)
             {
                 items[snapshot.EquippedBag.Item.ItemInstanceId] = snapshot.EquippedBag.Item;

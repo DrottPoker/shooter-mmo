@@ -3,9 +3,9 @@ using System.Text.Json;
 namespace Mmorpg.GameService.Items.Transactions;
 
 // The in-memory change journal of one item transaction: audit changes, touched
-// characters and containers, result items, Recovery deliveries, the Secure Container
-// entitlement revision, and the death-only carry overflow permission. The kernel's
-// finalizer turns it into revisions, audit rows, and the result.
+// characters and containers, result items, Recovery deliveries, and the death-only carry
+// overflow permission. The kernel's finalizer turns it into revisions, audit rows, and the
+// result.
 internal sealed class ItemChangeJournal(
     ItemTransactionSession session,
     ItemStateReader reader)
@@ -16,7 +16,6 @@ internal sealed class ItemChangeJournal(
     private readonly HashSet<Guid> changedItemIds = [];
     private readonly List<ItemAuditChange> auditChanges = [];
     private readonly List<Guid> recoveryDeliveryIds = [];
-    private long? secureContainerEntitlementRevision;
     private bool allowInvoluntaryHardCapOverflow;
 
     private string OperationKind => session.OperationKind;
@@ -34,8 +33,6 @@ internal sealed class ItemChangeJournal(
     internal IReadOnlyList<ItemAuditChange> AuditChanges => auditChanges;
 
     internal IReadOnlyList<Guid> RecoveryDeliveryIds => recoveryDeliveryIds;
-
-    internal long? SecureContainerEntitlementRevision => secureContainerEntitlementRevision;
 
     internal bool AllowsInvoluntaryHardCapOverflow => allowInvoluntaryHardCapOverflow;
 
@@ -125,11 +122,6 @@ internal sealed class ItemChangeJournal(
     public void AddRecoveryDelivery(Guid recoveryDeliveryId)
     {
         recoveryDeliveryIds.Add(recoveryDeliveryId);
-    }
-
-    public void SetSecureContainerEntitlementRevision(long revision)
-    {
-        secureContainerEntitlementRevision = revision;
     }
 
     public void AllowInvoluntaryDeathHardCapOverflow()

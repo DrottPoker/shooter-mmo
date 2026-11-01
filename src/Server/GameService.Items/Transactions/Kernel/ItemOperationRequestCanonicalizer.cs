@@ -36,13 +36,6 @@ internal static class ItemOperationRequestCanonicalizer
                     .ThenBy(item => item.Revision)
                     .ToArray()
             },
-            ChangeSecureContainerTierCommand tier => tier with
-            {
-                CharacterRevisions = tier.CharacterRevisions
-                    .OrderBy(item => item.CharacterId)
-                    .ThenBy(item => item.Revision)
-                    .ToArray()
-            },
             _ => command
         };
     }

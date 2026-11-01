@@ -16,8 +16,7 @@ internal enum DevelopmentItemToolCommandKind
 internal enum DevelopmentItemDestination
 {
     PermanentInventory = 1,
-    Bank = 2,
-    SecureContainer = 3
+    Bank = 2
 }
 
 internal sealed record DevelopmentItemToolCommand(
@@ -199,7 +198,7 @@ internal static class DevelopmentItemToolCommandParser
             || !TryParseDestination(arguments[commandIndex + 4], out var destination))
         {
             error = $"{GrantArgument} requires <characterGuid> <definitionId> "
-                + "<positiveQuantity> <permanent|bank|secure>.";
+                + "<positiveQuantity> <permanent|bank>.";
             return true;
         }
 
@@ -284,7 +283,6 @@ internal static class DevelopmentItemToolCommandParser
         {
             "permanent" => DevelopmentItemDestination.PermanentInventory,
             "bank" => DevelopmentItemDestination.Bank,
-            "secure" => DevelopmentItemDestination.SecureContainer,
             _ => default
         };
         return destination != default;

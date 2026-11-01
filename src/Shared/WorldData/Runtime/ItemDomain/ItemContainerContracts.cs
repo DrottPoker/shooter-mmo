@@ -8,7 +8,6 @@ namespace Mmorpg.WorldData.Items
     {
         public const string PermanentInventory = "permanent_inventory";
         public const string BagContents = "bag_contents";
-        public const string SecureContainer = "secure_container";
         public const string Bank = "bank";
         public const string RecoveryStorage = "recovery_storage";
         public const string CorpseInventory = "corpse_inventory";
@@ -19,8 +18,7 @@ namespace Mmorpg.WorldData.Items
         public static bool IsCarried(string containerType)
         {
             return string.Equals(containerType, PermanentInventory, StringComparison.Ordinal)
-                || string.Equals(containerType, BagContents, StringComparison.Ordinal)
-                || string.Equals(containerType, SecureContainer, StringComparison.Ordinal);
+                || string.Equals(containerType, BagContents, StringComparison.Ordinal);
         }
 
         public static bool IsCorpse(string containerType)
@@ -79,9 +77,6 @@ namespace Mmorpg.WorldData.Items
                     destination = string.Equals(slotKind, BagSlotKindIds.General, StringComparison.Ordinal)
                         ? BagDestinationKind.BagGeneralSlot
                         : BagDestinationKind.BagSpecializedSlot;
-                    return true;
-                case ItemContainerTypeIds.SecureContainer:
-                    destination = BagDestinationKind.SecureContainerSlot;
                     return true;
                 case ItemContainerTypeIds.RecoveryStorage:
                     destination = BagDestinationKind.RecoveryStorageSlot;

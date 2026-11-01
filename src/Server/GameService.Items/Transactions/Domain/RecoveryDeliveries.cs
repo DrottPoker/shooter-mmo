@@ -2,8 +2,8 @@ using Dapper;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 
-// Recovery Storage delivery rules shared by the delivery, claim, expiry, Secure
-// Container tier, and player death handlers.
+// Recovery Storage delivery rules shared by the delivery, claim, expiry, and player death
+// handlers.
 internal static class RecoveryDeliveries
 {
     public static IReadOnlyDictionary<Guid, long> ValidateDistinctItemExpectations(

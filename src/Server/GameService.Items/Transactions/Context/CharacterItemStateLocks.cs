@@ -83,7 +83,6 @@ internal sealed class CharacterItemStateLocks(
                     state.carry_capacity as "CarryCapacity",
                     state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                     state.bank_container_id as "BankContainerId",
-                    state.secure_container_id as "SecureContainerId",
                     state.recovery_storage_container_id as "RecoveryStorageContainerId"
                 from character_item_states state
                 where state.character_id = any(@CharacterIds)
@@ -200,7 +199,6 @@ internal sealed class CharacterItemStateLocks(
                             state.carry_capacity as "CarryCapacity",
                             state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                             state.bank_container_id as "BankContainerId",
-                            state.secure_container_id as "SecureContainerId",
                             state.recovery_storage_container_id as "RecoveryStorageContainerId"
                         from character_item_states state
                         where state.character_id = @CharacterId

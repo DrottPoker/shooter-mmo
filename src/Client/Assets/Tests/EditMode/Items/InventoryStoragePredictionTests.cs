@@ -346,10 +346,6 @@ namespace Mmorpg.Client.Tests.EditMode
                     },
                     null,
                     Container(Guid.NewGuid(), ItemContainerTypeIds.Bank),
-                    new SecureContainerInventory(
-                        "secure_container.base",
-                        1,
-                        Container(Guid.NewGuid(), ItemContainerTypeIds.SecureContainer)),
                     new RecoveryStorageInventory(Guid.NewGuid(), 1, deliveries ?? Array.Empty<RecoveryDelivery>()),
                     100,
                     200,

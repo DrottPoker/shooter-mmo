@@ -22,7 +22,6 @@ internal sealed class ItemTransactionService
     private readonly ItemDestructionCommandHandler itemDestruction = new();
     private readonly BagAggregateCommandHandler bagAggregate = new();
     private readonly RecoveryDeliveryCommandHandler recoveryDelivery = new();
-    private readonly SecureContainerTierCommandHandler secureContainerTier = new();
     private readonly ItemPolicyCommandHandler itemPolicy;
     private readonly QuestItemCommandHandler questItem = new();
     private readonly PlayerDeathCommandHandler playerDeath = new();
@@ -222,18 +221,6 @@ internal sealed class ItemTransactionService
             ItemOperationKinds.ClaimRecoveryDelivery,
             request.Command.CharacterId,
             recoveryDelivery,
-            cancellationToken);
-    }
-
-    public Task<ItemTransactionResult> ExecuteAsync(
-        ItemTransactionRequest<ChangeSecureContainerTierCommand> request,
-        CancellationToken cancellationToken)
-    {
-        return kernel.ExecuteAsync(
-            request,
-            ItemOperationKinds.ChangeSecureContainerTier,
-            null,
-            secureContainerTier,
             cancellationToken);
     }
 

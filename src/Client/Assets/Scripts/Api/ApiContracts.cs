@@ -171,7 +171,6 @@ namespace Mmorpg.Client.Api
         public EquipmentSlotSnapshotResponse[] equipment;
         public EquippedBagSnapshotResponse equippedBag;
         public ItemContainerSnapshotResponse bank;
-        public SecureContainerSnapshotResponse secureContainer;
         public RecoveryStorageSnapshotResponse recoveryStorage;
         public long carriedWeight;
         public long carryCapacity;
@@ -229,14 +228,6 @@ namespace Mmorpg.Client.Api
     public sealed class EquippedBagSnapshotResponse
     {
         public ItemInstanceSnapshotResponse item;
-        public ItemContainerSnapshotResponse contents;
-    }
-
-    [Serializable]
-    public sealed class SecureContainerSnapshotResponse
-    {
-        public string tierId;
-        public long entitlementRevision;
         public ItemContainerSnapshotResponse contents;
     }
 

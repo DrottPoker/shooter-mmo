@@ -269,8 +269,8 @@ when generated data exists for content that no longer exists. A failure returns
 exit code 1 and reports what is stale or invalid. Compile mode deletes orphaned
 generated data together with its Unity `.meta` file.
 
-Expected result: the item compiler prints the catalog revision with its numbers
-of definitions and Secure Container tiers, the actor compiler prints every World
+Expected result: the item compiler prints the catalog revision with its number
+of definitions, the actor compiler prints every World
 with its revision and its numbers of definitions and runtime instances, and the
 collision compiler prints every World with its revision and chunk count.
 

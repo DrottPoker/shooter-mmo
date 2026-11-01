@@ -9,9 +9,6 @@
     "body"
   ],
   "id": "fixture.tunic",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

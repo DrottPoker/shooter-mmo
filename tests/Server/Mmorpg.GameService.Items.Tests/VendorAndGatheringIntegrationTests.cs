@@ -451,8 +451,7 @@ public sealed class VendorAndGatheringIntegrationTests
                 value.CharacterRevisions,
                 value.ContainerRevisions,
                 value.ItemRevisions,
-                value.RecoveryDeliveryIds,
-                value.SecureContainerEntitlementRevision)
+                value.RecoveryDeliveryIds)
             : new ItemTransactionResult(
                 request.OperationId,
                 request.OperationKind!,
@@ -461,8 +460,7 @@ public sealed class VendorAndGatheringIntegrationTests
                 [],
                 [],
                 [],
-                [],
-                null);
+                []);
     }
 
     private static async Task<long> RevisionAsync(ItemScenarioWorld world, Guid characterId)

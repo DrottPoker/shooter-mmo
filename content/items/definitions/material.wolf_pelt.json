@@ -7,9 +7,6 @@
   "displayName": "Wolf Pelt",
   "equipmentSlots": [ ],
   "id": "material.wolf_pelt",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 50,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

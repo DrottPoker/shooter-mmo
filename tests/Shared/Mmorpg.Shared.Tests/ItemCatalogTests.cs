@@ -60,7 +60,26 @@ public sealed class ItemCatalogTests
         Assert.Equal(500, Definition(catalog, "bag.travelers_pack").Bag.CarryCapacityBonus);
         Assert.Equal(2000, catalog.Character.BaseCarryCapacity);
         Assert.Equal(1000, catalog.EquipmentSlots.Single(slot => slot.Id == "ammunition").MaximumQuantity);
-        Assert.Equal(4, catalog.SecureContainerTiers.Single().SlotCapacity);
+        Assert.Equal(
+            [
+                "head",
+                "neck",
+                "shoulders",
+                "back",
+                "body",
+                "legs",
+                "hands",
+                "feet",
+                "main_hand",
+                "off_hand",
+                "ammunition",
+                "ring_1",
+                "ring_2",
+                "tool",
+                "bag"
+            ],
+            catalog.EquipmentSlots.Select(slot => slot.Id));
+        Assert.Equal(1, catalog.EquipmentSlots.Single(slot => slot.Id == "shoulders").MaximumQuantity);
         Assert.Equal(200, catalog.Progression.MaximumCharacterLevel);
         Assert.Equal(4, catalog.WeaponFamilies.Length);
         var bow = catalog.WeaponFamilies.Single(family => family.Id == "bow");
@@ -126,7 +145,6 @@ public sealed class ItemCatalogTests
         Array.Reverse(reorderedAuthoring.Categories);
         Array.Reverse(reorderedAuthoring.Tags);
         Array.Reverse(reorderedAuthoring.Definitions);
-        Array.Reverse(reorderedAuthoring.SecureContainerTiers);
         Array.Reverse(reorderedAuthoring.Retired.EquipmentSlots);
         foreach (var definition in reorderedAuthoring.Definitions)
         {
@@ -207,16 +225,17 @@ public sealed class ItemCatalogTests
             Definition(changed, "material.iron_ore").StructuralFingerprint);
     }
 
-    // Pinned when catalog format 4 added combat data: a format change that adds no structural
-    // field must keep every persisted definition compatible.
+    // Pinned when the Secure Container left the catalog. SecureContainerRemovalMigration
+    // restamps stored fingerprints to these values, and a format change that adds no
+    // structural field must keep every persisted definition compatible.
     [Fact]
     public void StructuralFingerprintsDoNotDependOnTheCatalogFormatVersion()
     {
         var catalog = ItemCatalogTestData.Compile();
 
-        Assert.Equal(3, ItemCatalogFormat.StructuralFingerprintVersion);
+        Assert.Equal(4, ItemCatalogFormat.StructuralFingerprintVersion);
         Assert.Equal(
-            "f062a6af3f7a41e821539b89a50408d07abd5a6577548fe54e7167c749542732",
+            "1b88be65bb0f83ee0d89743e20df4dcda649cd6ef76e53d05d088c9d0893b708",
             Definition(catalog, "weapon.training_shortbow").StructuralFingerprint);
     }
 
@@ -456,21 +475,6 @@ public sealed class ItemCatalogTests
         Assert.Contains(
             exception.Errors,
             error => error.Contains("maximumStackSize", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void WeaponSecureContainerEligibilityFailsValidation()
-    {
-        var authoring = ItemCatalogTestData.LoadAuthoring();
-        authoring.Definitions.First(definition => definition.Category == ItemCategoryIds.Weapon)
-            .LocationEligibility.SecureContainer = true;
-
-        var exception = Assert.Throws<ItemCatalogValidationException>(
-            () => ItemCatalogCompiler.Compile(authoring));
-
-        Assert.Contains(
-            exception.Errors,
-            error => error.Contains("cannot allow a weapon", StringComparison.Ordinal));
     }
 
     [Fact]

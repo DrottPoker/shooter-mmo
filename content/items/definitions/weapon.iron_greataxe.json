@@ -11,9 +11,6 @@
     "main_hand"
   ],
   "id": "weapon.iron_greataxe",
-  "locationEligibility": {
-    "secureContainer": false
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,
