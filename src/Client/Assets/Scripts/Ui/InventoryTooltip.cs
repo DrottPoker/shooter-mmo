@@ -114,10 +114,11 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            // TextMesh Pro measures a text only while it is active, so the tooltip shows first.
             owner = requester;
+            gameObject.SetActive(true);
             label.text = value;
             labelLayout.preferredWidth = Mathf.Min(MaximumWidth, label.preferredWidth + 2f);
-            gameObject.SetActive(true);
             transform.SetAsLastSibling();
             LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
             Move(requester, screenPosition);

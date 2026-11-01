@@ -2527,8 +2527,8 @@ the client has none.
   `WorldLabels` instead of a uGUI `Shadow`, which TextMesh Pro ignores.
 - TextMesh Pro measures a text only while it is active: under an inactive
   parent, `preferredWidth` and `GetPreferredValues` return the width of a
-  fraction of the text. Build a text on an active parent before a layout reads
-  its size, as the world menu does with its rows.
+  fraction of the text. Activate a text before anything reads its size, as the
+  world menu does with its rows and the inventory tooltip with its label.
 - `WorldLabelTests` pins the default font, its settings and characters, the
   outlined material, the build variant, and the digit height of a label.
   `LegacyUiTextTests` fails on a client type that holds a uGUI `Text`,

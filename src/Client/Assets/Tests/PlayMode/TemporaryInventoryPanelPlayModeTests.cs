@@ -109,6 +109,14 @@ namespace Mmorpg.Client.Tests.PlayMode
                     tooltip.Text,
                     Does.Contain(catalog.GetDisplayName(
                         snapshot.Equipment.Single(slot => slot.SlotId == equippedSlotId).Item.DefinitionId)));
+
+                // On the first hover the tooltip is as wide as its widest line, up to its limit.
+                var tooltipLabel = tooltip.GetComponentInChildren<TMP_Text>();
+                var widestLine = tooltipLabel.GetPreferredValues(tooltip.Text, float.PositiveInfinity, float.PositiveInfinity).x;
+                Assert.That(widestLine, Is.GreaterThan(100f));
+                Assert.That(
+                    tooltipLabel.rectTransform.rect.width,
+                    Is.GreaterThanOrEqualTo(Mathf.Min(320f, widestLine) - 1f));
                 trigger.OnPointerExit(pointer);
                 Assert.That(tooltip.IsVisible, Is.False);
 
