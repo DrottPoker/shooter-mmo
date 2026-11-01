@@ -784,6 +784,12 @@ development worker opens the Bank and Recovery Storage everywhere.
    `Material`, and `Ammunition`. A tooltip shows the item's name, category,
    quantity, weight, equipment slots, and policies. The carry meter is green
    with `Weight 1040 / 2500    Load 41.6%    Speed 100%`.
+6. With each view open, left-click the ground beside the windows, right-click
+   it, and scroll there, then do the same on a window. Expected result: the
+   world is not dimmed. Beside the windows the character walks, keeps steering
+   while the button stays down, the world menu opens, and the camera zooms. On a
+   window nothing reaches the world: the character stays, and the wheel scrolls
+   the window.
 
 ### Equip, Unequip, And Swap
 
