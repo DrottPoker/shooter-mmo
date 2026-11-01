@@ -7,8 +7,7 @@ namespace Mmorpg.GameService.Items.Transactions.Domain;
 // slot, as for a vendor purchase or a gathered yield. It tops up existing stacks in the
 // permanent inventory and then in the equipped Bag, and fills empty slots in this order:
 // matching specialized Bag slots, the permanent inventory, then general Bag slots. The
-// Secure Container is never filled automatically. The placement is all or nothing, and
-// the finalizer enforces the carry-weight cap.
+// placement is all or nothing, and the finalizer enforces the carry-weight cap.
 internal static class CarriedAcquisition
 {
     public static async Task AcquireAsync(

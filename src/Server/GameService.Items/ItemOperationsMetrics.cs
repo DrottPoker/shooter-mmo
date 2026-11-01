@@ -305,7 +305,6 @@ internal sealed class ItemOperationsMetrics : IDisposable
         ItemOperationKinds.SwapBagAggregates,
         ItemOperationKinds.AddRecoveryDelivery,
         ItemOperationKinds.ClaimRecoveryDelivery,
-        ItemOperationKinds.ChangeSecureContainerTier,
         ItemOperationKinds.ApplyItemPolicy,
         ItemOperationKinds.RemoveInsurancePolicy,
         ItemOperationKinds.AbandonQuestItems,

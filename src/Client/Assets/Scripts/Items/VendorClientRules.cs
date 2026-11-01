@@ -216,8 +216,8 @@ namespace Mmorpg.Client.Items
             return true;
         }
 
-        // Items in the inventory, the equipped Bag, or the Secure Container. An equipped item,
-        // a banked item, and the equipped Bag itself are not carried for a sale.
+        // Items in the inventory or the equipped Bag. An equipped item, a banked item, and the
+        // equipped Bag itself are not carried for a sale.
         private static bool IsCarried(
             CharacterInventorySnapshot snapshot,
             InventoryItem item,
@@ -234,8 +234,7 @@ namespace Mmorpg.Client.Items
                     && snapshot.EquippedBag.Contents.ContainerId == location.ContainerId;
             }
 
-            return string.Equals(location.ContainerType, ItemContainerTypeIds.PermanentInventory, StringComparison.Ordinal)
-                || string.Equals(location.ContainerType, ItemContainerTypeIds.SecureContainer, StringComparison.Ordinal);
+            return string.Equals(location.ContainerType, ItemContainerTypeIds.PermanentInventory, StringComparison.Ordinal);
         }
 
         private static IEnumerable<ItemPolicyState> ToPolicyStates(InventoryItem item)

@@ -67,7 +67,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 },
                 null,
                 source.Bank,
-                source.SecureContainer,
                 source.RecoveryStorage,
                 95,
                 200,
@@ -206,10 +205,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 },
                 null,
                 Container("bank", 40),
-                new SecureContainerInventory(
-                    "secure_container.base",
-                    1,
-                    Container("secure_container", 4)),
                 new RecoveryStorageInventory(Guid.NewGuid(), 1, Array.Empty<RecoveryDelivery>()),
                 100,
                 200,

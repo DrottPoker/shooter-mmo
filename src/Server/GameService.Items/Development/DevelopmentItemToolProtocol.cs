@@ -29,8 +29,7 @@ internal sealed record DevelopmentItemToolDefinition(
     string DisplayName,
     string CategoryId,
     int MaximumStackSize,
-    long UnitWeight,
-    bool SecureContainerEligible);
+    long UnitWeight);
 
 internal sealed record DevelopmentItemToolPackage(
     string PackageId,

@@ -8,7 +8,6 @@ internal sealed record CharacterInventorySnapshotResponse(
     IReadOnlyList<EquipmentSlotSnapshotResponse> Equipment,
     EquippedBagSnapshotResponse? EquippedBag,
     ItemContainerSnapshotResponse Bank,
-    SecureContainerSnapshotResponse SecureContainer,
     RecoveryStorageSnapshotResponse RecoveryStorage,
     long CarriedWeight,
     long CarryCapacity,
@@ -48,11 +47,6 @@ internal sealed record ItemPolicySummaryResponse(
 
 internal sealed record EquippedBagSnapshotResponse(
     ItemInstanceSnapshotResponse Item,
-    ItemContainerSnapshotResponse Contents);
-
-internal sealed record SecureContainerSnapshotResponse(
-    string TierId,
-    long EntitlementRevision,
     ItemContainerSnapshotResponse Contents);
 
 internal sealed record CharacterBankSnapshotResponse(

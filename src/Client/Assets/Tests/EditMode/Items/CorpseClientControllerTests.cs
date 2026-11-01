@@ -365,7 +365,6 @@ namespace Mmorpg.Client.Tests.EditMode
                         new[] { new InventoryEquipmentSlot("main_hand", 2, mainHand) },
                         null,
                         Container("bank"),
-                        new SecureContainerInventory("secure_container.base", 1, Container("secure_container")),
                         new RecoveryStorageInventory(Guid.NewGuid(), 1, Array.Empty<RecoveryDelivery>()),
                         0,
                         200,

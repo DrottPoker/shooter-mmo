@@ -70,9 +70,6 @@ namespace Mmorpg.Client.Tests.PlayMode
                 Assert.That(
                     views.Count(view => view.SlotKey.StartsWith("inventory:", StringComparison.Ordinal)),
                     Is.EqualTo(snapshot.PermanentInventory.Slots.Count));
-                Assert.That(
-                    views.Count(view => view.SlotKey.StartsWith("secure:", StringComparison.Ordinal)),
-                    Is.EqualTo(snapshot.SecureContainer.Contents.Slots.Count));
                 Assert.That(View(views, "equipment:" + equippedSlotId).VisualState, Is.EqualTo(InventorySlotVisualState.Occupied));
                 Assert.That(View(views, "inventory:0").VisualState, Is.EqualTo(InventorySlotVisualState.Occupied));
                 Assert.That(View(views, "inventory:1").VisualState, Is.EqualTo(InventorySlotVisualState.Empty));
@@ -388,7 +385,6 @@ namespace Mmorpg.Client.Tests.PlayMode
                     .ToArray(),
                 source.EquippedBag,
                 source.Bank,
-                source.SecureContainer,
                 source.RecoveryStorage,
                 source.CarriedWeight,
                 source.CarryCapacity,
@@ -446,8 +442,6 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             var stackable = catalog.Definitions.First(definition => definition.MaximumStackSize > 1);
             var settings = catalog.Gameplay.Character;
-            var secureTier = catalog.Gameplay.SecureContainerTiers.Single(tier =>
-                tier.Id == catalog.Gameplay.BaseSecureContainerTierId);
             var carried = settings.BaseCarryCapacity / 2;
             return new CharacterInventorySnapshot(
                 characterId,
@@ -460,10 +454,6 @@ namespace Mmorpg.Client.Tests.PlayMode
                 equipment,
                 null,
                 CreateContainer("bank", settings.BankSlotCount, new Dictionary<int, InventoryItem>()),
-                new SecureContainerInventory(
-                    secureTier.Id,
-                    1,
-                    CreateContainer("secure_container", secureTier.SlotCapacity, new Dictionary<int, InventoryItem>())),
                 new RecoveryStorageInventory(Guid.NewGuid(), 1, Array.Empty<RecoveryDelivery>()),
                 carried,
                 settings.BaseCarryCapacity,

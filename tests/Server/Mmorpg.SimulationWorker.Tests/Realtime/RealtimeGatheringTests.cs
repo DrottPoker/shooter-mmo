@@ -410,7 +410,6 @@ public sealed class RealtimeGatheringTests
                     [],
                     [],
                     [],
-                    null,
                     CharacterStateTestData.Create(player.Session.CharacterId, revision, 10)),
                 null)
         };

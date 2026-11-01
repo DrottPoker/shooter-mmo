@@ -60,7 +60,7 @@ public sealed class DevelopmentItemPackageIntegrationTests
 
         Assert.Equal(
             "fixture.letter",
-            snapshot.SecureContainer.Contents.Slots[0].Item!.DefinitionId);
+            snapshot.PermanentInventory.Slots[6].Item!.DefinitionId);
         var delivery = Assert.Single(snapshot.RecoveryStorage.Deliveries);
         Assert.True(delivery.Revision >= 0);
         Assert.Equal(DevelopmentItemPackageApplier.RecoverySourceKind, delivery.SourceKind);

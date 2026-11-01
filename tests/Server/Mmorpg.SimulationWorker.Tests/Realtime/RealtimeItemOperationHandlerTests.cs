@@ -41,8 +41,7 @@ public sealed class RealtimeItemOperationHandlerTests
                     revisions,
                     [],
                     [],
-                    [],
-                    null))));
+                    []))));
 
         var sent = Assert.Single(player.Peer.Sent);
         Assert.Equal(DeliveryMethod.ReliableOrdered, sent.Delivery);

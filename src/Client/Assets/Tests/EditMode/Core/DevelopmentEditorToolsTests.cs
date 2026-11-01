@@ -74,8 +74,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 + "\"itemStateRevision\":0,\"carriedWeight\":0,\"carryCapacity\":200}],"
                 + "\"definitions\":[{\"definitionId\":\"material.iron_ore\","
                 + "\"displayName\":\"Iron Ore\",\"categoryId\":\"material\","
-                + "\"maximumStackSize\":100,\"unitWeight\":6,"
-                + "\"secureContainerEligible\":true}],"
+                + "\"maximumStackSize\":100,\"unitWeight\":6}],"
                 + "\"packages\":[{\"packageId\":\"encumbrance_140\","
                 + "\"displayName\":\"Encumbrance 140% Pack\","
                 + "\"description\":\"Hard cap.\",\"requiresEmptyCharacter\":true}]}}";

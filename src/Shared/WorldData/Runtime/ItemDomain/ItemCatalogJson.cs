@@ -80,13 +80,6 @@ namespace Mmorpg.WorldData.Items
         public string[] tags;
         public string[] equipmentSlots;
         public string[] definitions;
-        public string[] secureContainerTiers;
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogJsonLocationEligibility
-    {
-        public bool secureContainer;
     }
 
     [Serializable]
@@ -118,7 +111,6 @@ namespace Mmorpg.WorldData.Items
         public string[] equipmentSlots;
         public string[] blockedEquipmentSlots;
         public bool playerDestroyable;
-        public ItemCatalogJsonLocationEligibility locationEligibility;
         public string[] defaultPolicies;
         public ItemCatalogJsonBagDefinition bag;
         public int requiredCharacterLevel;
@@ -167,12 +159,6 @@ namespace Mmorpg.WorldData.Items
                 EquipmentSlots = equipmentSlots ?? Array.Empty<string>(),
                 BlockedEquipmentSlots = blockedEquipmentSlots ?? Array.Empty<string>(),
                 PlayerDestroyable = playerDestroyable,
-                LocationEligibility = locationEligibility == null
-                    ? null
-                    : new ItemLocationEligibilityAuthoringEntry
-                    {
-                        SecureContainer = locationEligibility.secureContainer
-                    },
                 DefaultPolicies = defaultPolicies ?? Array.Empty<string>(),
                 Bag = bag == null
                     ? null
@@ -210,14 +196,6 @@ namespace Mmorpg.WorldData.Items
                     }
             };
         }
-    }
-
-    [Serializable]
-    public sealed class ItemCatalogJsonSecureContainerTier
-    {
-        public string id;
-        public string displayName;
-        public int slotCapacity;
     }
 
     [Serializable]
@@ -259,7 +237,6 @@ namespace Mmorpg.WorldData.Items
     {
         public int formatVersion;
         public string catalogId;
-        public string baseSecureContainerTierId;
         public ItemCatalogJsonCharacter character;
         public ItemCatalogJsonEconomy economy;
         public ItemCatalogJsonProgression progression;
@@ -270,7 +247,6 @@ namespace Mmorpg.WorldData.Items
         public ItemCatalogJsonWeaponFamily[] weaponFamilies;
         public ItemCatalogJsonIdentity[] ammunitionFamilies;
         public ItemCatalogJsonDefinition[] definitions;
-        public ItemCatalogJsonSecureContainerTier[] secureContainerTiers;
         public ItemCatalogJsonVendor[] vendors;
         public ItemCatalogJsonRetired retired;
 
@@ -280,7 +256,6 @@ namespace Mmorpg.WorldData.Items
             {
                 FormatVersion = formatVersion,
                 CatalogId = catalogId,
-                BaseSecureContainerTierId = baseSecureContainerTierId,
                 Character = character == null
                     ? null
                     : new ItemCharacterSettingsEntry
@@ -328,15 +303,6 @@ namespace Mmorpg.WorldData.Items
                 Definitions = (definitions ?? Array.Empty<ItemCatalogJsonDefinition>())
                     .Select(definition => definition.ToAuthoringEntry())
                     .ToArray(),
-                SecureContainerTiers = (secureContainerTiers
-                        ?? Array.Empty<ItemCatalogJsonSecureContainerTier>())
-                    .Select(tier => new SecureContainerTierAuthoringEntry
-                    {
-                        Id = tier.id,
-                        DisplayName = tier.displayName,
-                        SlotCapacity = tier.slotCapacity
-                    })
-                    .ToArray(),
                 Vendors = (vendors ?? Array.Empty<ItemCatalogJsonVendor>())
                     .Select(vendor => vendor.ToAuthoringEntry())
                     .ToArray(),
@@ -347,8 +313,7 @@ namespace Mmorpg.WorldData.Items
                         Categories = retired.categories ?? Array.Empty<string>(),
                         Tags = retired.tags ?? Array.Empty<string>(),
                         EquipmentSlots = retired.equipmentSlots ?? Array.Empty<string>(),
-                        Definitions = retired.definitions ?? Array.Empty<string>(),
-                        SecureContainerTiers = retired.secureContainerTiers ?? Array.Empty<string>()
+                        Definitions = retired.definitions ?? Array.Empty<string>()
                     }
             };
         }

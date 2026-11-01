@@ -15,6 +15,5 @@ result:
   container revisions: none
   item revisions: none
   recovery deliveries: 0
-  secure entitlement revision: none
 journal:
   operation row: none

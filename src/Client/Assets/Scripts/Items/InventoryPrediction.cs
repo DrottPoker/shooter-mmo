@@ -358,7 +358,6 @@ namespace Mmorpg.Client.Items
                 {
                     View.FullSnapshot.PermanentInventory,
                     View.FullSnapshot.EquippedBag?.Contents,
-                    View.FullSnapshot.SecureContainer?.Contents,
                     View.Bank
                 }
                 .FirstOrDefault(candidate => candidate != null && candidate.ContainerId == containerId);

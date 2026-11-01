@@ -7,9 +7,6 @@
   "displayName": "Oak Log",
   "equipmentSlots": [ ],
   "id": "material.oak_log",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 100,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

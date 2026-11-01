@@ -59,9 +59,9 @@ public sealed class ItemTransactionRoutingTests
             })
             .ToArray();
 
-        Assert.Equal(35, overloads.Length);
-        Assert.Equal(35, requestTypes.Distinct().Count());
-        Assert.Equal(35, Routes.Count);
+        Assert.Equal(34, overloads.Length);
+        Assert.Equal(34, requestTypes.Distinct().Count());
+        Assert.Equal(34, Routes.Count);
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -151,11 +151,6 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new ClaimRecoveryDeliveryCommand(Id, 1, Id, 1, Id, []),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.ChangeSecureContainerTier] = (service, actor) => Run(
-                service,
-                actor,
-                new ChangeSecureContainerTierCommand(Id, 1, "secure_container.base", []),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.ApplyItemPolicy] = (service, actor) => Run(
                 service,

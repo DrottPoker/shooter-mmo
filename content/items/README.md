@@ -4,8 +4,7 @@ This directory is the neutral source of truth for the shared item catalog:
 
 - `catalog.json` holds the catalog id, the character item settings, the economy
   settings, the progression limits, categories, tags, tool kinds, equipment
-  slots, weapon and ammunition families, Secure Container tiers, the base tier
-  id, and the retired ids.
+  slots, weapon and ammunition families, and the retired ids.
 - `definitions/<definition-id>.json` holds exactly one item definition. The file
   name must equal the `id` inside the file.
 - `vendors/<vendor-id>.json` holds exactly one vendor profile. The file name
@@ -46,9 +45,6 @@ together. The format contains these separate concepts:
   equipped, so a two-handed weapon in the main hand keeps the off hand free and
   nothing can be equipped into a blocked slot. A blocked slot cannot also be a
   compatible slot.
-- **Location eligibility** records explicit Secure Container permission. A
-  weapon can never be Secure Container eligible; the pure domain rule enforces
-  that prohibition as well.
 - **Player destroyability** in `playerDestroyable` is required on every
   definition and says whether the player may destroy the item. A protected
   quest item can never be player-destroyable.
@@ -100,9 +96,8 @@ together. The format contains these separate concepts:
   equipped in that slot, such as the Starter Pickaxe for `pickaxe`.
 - **Vendor profiles** in `vendors/` describe what an NPC vendor sells and buys.
   They are described in [Vendor Profiles](#vendor-profiles).
-- **Secure Container tiers** have stable ids and integer slot capacities.
-- **Retired ids** in `retired` list every category, tag, equipment slot,
-  definition, and tier id that was released and later removed. A retired id can
+- **Retired ids** in `retired` list every category, tag, equipment slot, and
+  definition id that was released and later removed. A retired id can
   never return with any meaning.
 
 Code requires only the ids that rules give a meaning to: the `weapon`,
@@ -124,8 +119,7 @@ than one unit, and one equipment slot holds at most the smaller of its own
 maximum quantity and the definition's stack size.
 
 Catalog ids, definition ids, tag ids, category ids, equipment slot ids, tool
-kind ids, vendor ids, policy ids, and tier ids use canonical lowercase
-identifiers. They must not be reused for a different meaning.
+kind ids, vendor ids, and policy ids use canonical lowercase identifiers. They must not be reused for a different meaning.
 
 Every authoring field is validated. Unknown JSON properties, duplicate JSON
 properties, missing required values, unknown references, duplicate ids, reused
@@ -192,10 +186,8 @@ is their display order.
   vendor profile including its offer order, and the retired ids.
 - Every item definition has a deterministic `structuralFingerprint` covering
   rule-affecting fields: category, tags, weight, stack limit, equipment
-  compatibility, blocked equipment slots, player destroyability, location
-  eligibility, default policies, and Bag layout.
-- Every Secure Container tier has a structural fingerprint covering its stable
-  id and slot capacity.
+  compatibility, blocked equipment slots, player destroyability, default
+  policies, and Bag layout.
 - Display-only changes, combat data, level requirements, values, tool kinds,
   vendor profiles, economy settings, and equipment slot reordering alter the
   catalog revision but do not alter an item's structural fingerprint, because
@@ -209,7 +201,7 @@ is their display order.
   the meaning of a structural field changes.
 
 After a compile, inspect the `structuralFingerprint` of every changed definition
-and Secure Container tier in the diff of the runtime catalog. A display-only
+in the diff of the runtime catalog. A display-only
 edit changes the catalog revision without changing a structural fingerprint.
 
 GameService mirrors the catalog into PostgreSQL at startup and refuses to start
@@ -217,8 +209,7 @@ when the change would invalidate live state. The error names the affected
 stable id:
 
 - A structural definition change is accepted only when no item instance uses the
-  definition. A tier change is accepted only when no account entitlement uses
-  the tier.
+  definition.
 - Lowering an equipment slot's maximum quantity is accepted only when no
   equipped stack is larger than the new maximum.
 - Changing the character settings is accepted only while no character has item
@@ -228,12 +219,11 @@ stable id:
 - Values, tool kinds, and vendor profiles hold no item state, so they may change
   at any time. A tool kind or vendor profile that leaves the catalog turns
   inactive in the database, and an inactive vendor profile cannot trade.
-- A category, tag, equipment slot, definition, or tier id that exists in the
-  database must stay in the catalog or be listed as retired. GameService retires
-  the row of a retired definition only when no item instance uses it, of a
-  retired equipment slot only when nothing is equipped in it, and of a retired
-  tier only when no entitlement uses it. A retired row stays in the database, so
-  audit records and old corpses keep their references.
+- A category, tag, equipment slot, or definition id that exists in the database
+  must stay in the catalog or be listed as retired. GameService retires the row
+  of a retired definition only when no item instance uses it, and of a retired
+  equipment slot only when nothing is equipped in it. A retired row stays in the
+  database, so audit records and old corpses keep their references.
 
 Regenerating runtime JSON is never sufficient authorization to invalidate live
 state. A change that live state depends on needs an explicit data migration. On
@@ -311,8 +301,8 @@ is updated in Actor Studio.
   deleted or reused. Retired ids can never be taken by a new definition. A new
   id remains editable until its first successful bake.
 - The character and economy settings, the progression limits, categories, tags,
-  tool kind identities, equipment slots, weapon and ammunition families, tiers,
-  and retired ids are edited by hand in `catalog.json`. The window keeps them
+  tool kind identities, equipment slots, weapon and ammunition families, and
+  retired ids are edited by hand in `catalog.json`. The window keeps them
   unchanged when it saves. To retire a released definition, move its id to
   `retired.definitions` and delete its definition file.
 - The window loads only authoring files that the compiler accepts, so fix a
@@ -401,8 +391,7 @@ dotnet run --project tools/ItemCatalogCompiler -- --verify
 ```
 
 Expected result: both commands print the catalog id `core`, its SHA-256
-revision, and the numbers of definitions and Secure Container tiers, and they
-print the same revision. `--verify` writes nothing and returns exit code 1 for
+revision, and the number of definitions, and they print the same revision. `--verify` writes nothing and returns exit code 1 for
 malformed authoring, a definition file whose name does not match its id,
 invalid rules, or stale runtime JSON. Neither command needs the Unity Editor.
 

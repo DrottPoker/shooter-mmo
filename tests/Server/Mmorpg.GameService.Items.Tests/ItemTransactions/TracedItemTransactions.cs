@@ -116,9 +116,6 @@ internal sealed partial class TracedItemTransactions : IAsyncDisposable
         builder.Append("  item revisions:");
         AppendSorted(builder, result.ItemRevisions.Select(revision => $"revision={revision.Revision}"));
         builder.Append("  recovery deliveries: ").Append(result.RecoveryDeliveryIds.Count).Append('\n');
-        builder.Append("  secure entitlement revision: ")
-            .Append(result.SecureContainerEntitlementRevision?.ToString() ?? "none")
-            .Append('\n');
 
         await using var connection = await context.DataSource.OpenConnectionAsync();
         var stored = await connection.QuerySingleOrDefaultAsync<StoredOperationRow>(

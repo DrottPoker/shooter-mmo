@@ -476,8 +476,7 @@ The message can exceed the packet limit, so it sets `runtimeSizeCheck`, and
 `RealtimeProtocol.CanEncodeOwnerItemStateChanged` lets the worker check a change
 before it encodes it. The worker sends the change only when the transaction
 reports every changed item, touches the owner alone, adds no Recovery delivery
-other than by a claim, changes no Secure Container tier, and fits one packet;
-the client reloads its inventory in every other case. It always goes out before
+other than by a claim, and fits one packet; the client reloads its inventory in every other case. It always goes out before
 the carry state and the result of the operation that caused it.
 
 ## Corpse Messages

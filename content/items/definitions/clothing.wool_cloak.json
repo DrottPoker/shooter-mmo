@@ -9,9 +9,6 @@
     "back"
   ],
   "id": "clothing.wool_cloak",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

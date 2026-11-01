@@ -243,13 +243,13 @@ public sealed class SimulationItemMutationIntegrationTests
     }
 
     [PostgresIntegrationFact]
-    public async Task SecureMutationIsIdempotentUpdatesCarryAndRestoresOnReconnect()
+    public async Task LiveMutationIsIdempotentUpdatesCarryAndRestoresOnReconnect()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync(
-            "secure-live@example.com",
-            "secure_live_player",
-            "Secure Live Hero");
+            "live-mutation@example.com",
+            "live_mutation_player",
+            "Live Mutation Hero");
         var snapshot = await GetSnapshotAsync(context, player);
         var grant = await GrantAsync(
             context,
@@ -257,7 +257,7 @@ public sealed class SimulationItemMutationIntegrationTests
             snapshot,
             "fixture.ore",
             10,
-            snapshot.SecureContainer.Contents.ContainerId,
+            snapshot.PermanentInventory.ContainerId,
             0);
         var item = Assert.Single(grant.ItemRevisions);
         snapshot = await GetSnapshotAsync(context, player);
@@ -478,8 +478,8 @@ public sealed class SimulationItemMutationIntegrationTests
             snapshot.ItemStateRevision,
             item.ItemInstanceId,
             item.Revision,
-            snapshot.SecureContainer.Contents.ContainerId,
-            0);
+            snapshot.PermanentInventory.ContainerId,
+            1);
 
         var workerTask = context.SimulationItemMutationService.ExecuteAsync(
             WorkerId,
@@ -507,8 +507,8 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(
             item.ItemInstanceId,
             after.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item!.ItemInstanceId);
-        Assert.Null(after.SecureContainer.Contents.Slots.Single(slot => slot.SlotIndex == 0).Item);
         Assert.Null(after.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 0).Item);
+        Assert.Null(after.PermanentInventory.Slots.Single(slot => slot.SlotIndex == 1).Item);
     }
 
     [PostgresIntegrationFact]
@@ -622,8 +622,8 @@ public sealed class SimulationItemMutationIntegrationTests
             snapshot,
             "fixture.potion",
             1,
-            snapshot.SecureContainer.Contents.ContainerId,
-            0);
+            snapshot.PermanentInventory.ContainerId,
+            2);
         snapshot = await GetSnapshotAsync(context, player);
         var bagGrant = await GrantAsync(
             context,
@@ -692,8 +692,6 @@ public sealed class SimulationItemMutationIntegrationTests
         var permanentSword = afterSwap.PermanentInventory.Slots
             .Single(slot => slot.SlotIndex == 0).Item!;
         var bankOre = afterSwap.Bank.Slots.Single(slot => slot.SlotIndex == 0).Item!;
-        var securePotion = afterSwap.SecureContainer.Contents.Slots
-            .Single(slot => slot.SlotIndex == 0).Item!;
         var bagPotion = afterSwap.EquippedBag!.Contents.Slots
             .Single(slot => slot.SlotIndex == 4).Item!;
         Assert.Equal(sword.ItemInstanceId, permanentSword.ItemInstanceId);
@@ -724,30 +722,6 @@ public sealed class SimulationItemMutationIntegrationTests
             ItemTransactionErrorCodes.ItemSlotIncompatible,
             specializedRejected.Error!.Code);
 
-        var secureRejected = await context.SimulationItemMutationService.ExecuteAsync(
-            WorkerId,
-            session.SimulationSessionId,
-            new SimulationItemOperationRequest(
-                Guid.NewGuid(),
-                session.AccountId,
-                session.CharacterId,
-                session.WorkerId,
-                session.WorkerRuntimeId,
-                session.ShardId,
-                session.SimulationSessionToken,
-                new SimulationItemAccessRequest(false, false, false),
-                ItemOperationKinds.SwapContainerItems,
-                afterSwap.ItemStateRevision,
-                permanentSword.ItemInstanceId,
-                permanentSword.Revision,
-                TargetItemInstanceId: securePotion.ItemInstanceId,
-                ExpectedTargetItemRevision: securePotion.Revision),
-            CancellationToken.None);
-
-        Assert.False(secureRejected.Succeeded);
-        Assert.Equal(
-            ItemTransactionErrorCodes.SecureContainerItemForbidden,
-            secureRejected.Error!.Code);
         var afterRejection = await GetSnapshotAsync(context, player);
         Assert.Equal(afterSwap.ItemStateRevision, afterRejection.ItemStateRevision);
         Assert.Equal(
@@ -756,9 +730,6 @@ public sealed class SimulationItemMutationIntegrationTests
         Assert.Equal(
             bagPotion.ItemInstanceId,
             afterRejection.EquippedBag!.Contents.Slots.Single(slot => slot.SlotIndex == 4).Item!.ItemInstanceId);
-        Assert.Equal(
-            securePotion.ItemInstanceId,
-            afterRejection.SecureContainer.Contents.Slots.Single(slot => slot.SlotIndex == 0).Item!.ItemInstanceId);
     }
 
     private static async Task AssertRejectedAsync(

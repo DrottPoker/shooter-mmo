@@ -96,15 +96,11 @@ public sealed class OwnerItemStateChangeMapperTests
             OperationId,
             CharacterId,
             Transaction([Contained(Guid.NewGuid())], currency: null)));
-        // Recovery deliveries and tiers are state the change cannot describe.
+        // Recovery deliveries are state the change cannot describe.
         Assert.Null(OwnerItemStateChangeMapper.TryCreate(
             OperationId,
             CharacterId,
             Transaction([Contained(Guid.NewGuid())]) with { RecoveryDeliveryIds = [Guid.NewGuid()] }));
-        Assert.Null(OwnerItemStateChangeMapper.TryCreate(
-            OperationId,
-            CharacterId,
-            Transaction([Contained(Guid.NewGuid())]) with { SecureContainerEntitlementRevision = 2 }));
         // Another character's transaction, or an item another character equips.
         Assert.Null(OwnerItemStateChangeMapper.TryCreate(OperationId, Guid.NewGuid(), Transaction([Contained(Guid.NewGuid())])));
         Assert.Null(OwnerItemStateChangeMapper.TryCreate(
@@ -154,7 +150,6 @@ public sealed class OwnerItemStateChangeMapperTests
             [new SimulationItemContainerRevision(ContainerId, 3)],
             [],
             [],
-            null,
             null,
             items);
     }

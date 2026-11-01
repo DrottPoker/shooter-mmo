@@ -28,8 +28,7 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                     select
                         revision.catalog_id as "CatalogId",
                         revision.revision as "Revision",
-                        revision.format_version as "FormatVersion",
-                        revision.base_secure_container_tier_id as "BaseSecureContainerTierId"
+                        revision.format_version as "FormatVersion"
                     from item_system_settings settings
                     join item_catalog_revisions revision
                       on revision.catalog_id = settings.catalog_id
@@ -118,17 +117,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
 
                 select
                     relation.definition_id as "DefinitionId",
-                    relation.is_allowed as "IsAllowed"
-                from item_definition_location_rules relation
-                join item_definitions definition on definition.id = relation.definition_id
-                where definition.catalog_id = @CatalogId
-                  and definition.catalog_revision = @Revision
-                  and definition.is_active
-                  and relation.location_kind = 'secure_container'
-                order by relation.definition_id;
-
-                select
-                    relation.definition_id as "DefinitionId",
                     relation.policy_kind as "Value"
                 from item_definition_default_policies relation
                 join item_definitions definition on definition.id = relation.definition_id
@@ -168,13 +156,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                   and definition.catalog_revision = @Revision
                   and definition.is_active
                 order by slot_tag.definition_id, slot_tag.slot_index, slot_tag.tag_id;
-
-                select id as "Id", display_name as "DisplayName", slot_capacity as "SlotCapacity"
-                from secure_container_tiers
-                where catalog_id = @CatalogId
-                  and catalog_revision = @Revision
-                  and is_active
-                order by id;
                 """,
                 new { catalog.CatalogId, catalog.Revision },
                 transaction,
@@ -187,14 +168,11 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
             var definitionTags = (await grid.ReadAsync<DefinitionValueRow>()).ToArray();
             var definitionEquipmentSlots = (await grid.ReadAsync<DefinitionValueRow>()).ToArray();
             var definitionBlockedSlots = (await grid.ReadAsync<DefinitionValueRow>()).ToArray();
-            var secureEligibility = (await grid.ReadAsync<DefinitionEligibilityRow>())
-                .ToDictionary(row => row.DefinitionId, row => row.IsAllowed, StringComparer.Ordinal);
             var defaultPolicies = (await grid.ReadAsync<DefinitionValueRow>()).ToArray();
             var bags = (await grid.ReadAsync<BagRow>())
                 .ToDictionary(row => row.DefinitionId, StringComparer.Ordinal);
             var bagSlots = (await grid.ReadAsync<BagSlotRow>()).ToArray();
             var bagSlotTags = (await grid.ReadAsync<BagSlotTagRow>()).ToArray();
-            var secureContainerTiers = (await grid.ReadAsync<SecureContainerTierRow>()).ToArray();
 
             var tagsByDefinition = definitionTags.ToLookup(
                 row => row.DefinitionId,
@@ -223,7 +201,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                 catalog.CatalogId,
                 catalog.Revision,
                 catalog.FormatVersion,
-                catalog.BaseSecureContainerTierId,
                 categories.Select(row => new ItemCatalogIdentityResponse(
                     row.Id,
                     row.DisplayName)).ToArray(),
@@ -246,18 +223,12 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                     tagsByDefinition[definition.Id].ToArray(),
                     equipmentSlotsByDefinition[definition.Id].ToArray(),
                     blockedSlotsByDefinition[definition.Id].ToArray(),
-                    secureEligibility.GetValueOrDefault(definition.Id),
                     policiesByDefinition[definition.Id].ToArray(),
                     CreateBagResponse(
                         definition.Id,
                         bags,
                         bagSlotsByDefinition,
-                        bagSlotTagsBySlot))).ToArray(),
-                secureContainerTiers.Select(tier =>
-                    new ItemCatalogSecureContainerTierResponse(
-                        tier.Id,
-                        tier.DisplayName,
-                        tier.SlotCapacity)).ToArray());
+                        bagSlotTagsBySlot))).ToArray());
 
             await transaction.CommitAsync(cancellationToken);
             return ServiceResult<ItemCatalogResponse>.Ok(response);
@@ -297,8 +268,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
         public string Revision { get; set; } = string.Empty;
 
         public int FormatVersion { get; set; }
-
-        public string BaseSecureContainerTierId { get; set; } = string.Empty;
     }
 
     private class IdentityRow
@@ -339,13 +308,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
         public string Value { get; set; } = string.Empty;
     }
 
-    private sealed class DefinitionEligibilityRow
-    {
-        public string DefinitionId { get; set; } = string.Empty;
-
-        public bool IsAllowed { get; set; }
-    }
-
     private sealed class BagRow
     {
         public string DefinitionId { get; set; } = string.Empty;
@@ -369,10 +331,5 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
         public int SlotIndex { get; set; }
 
         public string TagId { get; set; } = string.Empty;
-    }
-
-    private sealed class SecureContainerTierRow : IdentityRow
-    {
-        public int SlotCapacity { get; set; }
     }
 }

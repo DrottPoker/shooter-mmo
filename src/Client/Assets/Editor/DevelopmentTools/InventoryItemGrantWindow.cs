@@ -17,17 +17,13 @@ namespace Mmorpg.Client.Editor
         private static readonly string[] DestinationLabels =
         {
             "Permanent Inventory",
-            "Bank",
-            "Secure Container"
+            "Bank"
         };
-
-        private const string SecureContainerArgument = "secure";
 
         private static readonly string[] DestinationArguments =
         {
             "permanent",
-            "bank",
-            SecureContainerArgument
+            "bank"
         };
 
         private DevelopmentItemToolCliProcess activeProcess;
@@ -210,17 +206,7 @@ namespace Mmorpg.Client.Editor
                 "Definition",
                 definition.categoryId + ", unit weight " + definition.unitWeight
                     + ", max stack " + definition.maximumStackSize);
-            var toSecureContainer = DestinationArguments[destinationIndex] == SecureContainerArgument;
-            if (toSecureContainer && !definition.secureContainerEligible)
-            {
-                EditorGUILayout.HelpBox(
-                    "The canonical catalog does not allow this definition in the Secure Container.",
-                    MessageType.Warning);
-            }
-
-            var canGrant = activeProcess == null
-                && !character.isOnline
-                && (!toSecureContainer || definition.secureContainerEligible);
+            var canGrant = activeProcess == null && !character.isOnline;
             EditorGUI.BeginDisabledGroup(!canGrant);
             if (GUILayout.Button("Give Item", GUILayout.Height(30f)))
             {
@@ -1019,7 +1005,6 @@ namespace Mmorpg.Client.Editor
         public string categoryId;
         public int maximumStackSize;
         public long unitWeight;
-        public bool secureContainerEligible;
     }
 
     [Serializable]

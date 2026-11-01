@@ -67,9 +67,6 @@ internal sealed class DevelopmentItemPackageApplier(
                 case DevelopmentItemPackageDestinations.Bank:
                     await GrantAsync(target, grant, target.BankContainerId, cancellationToken);
                     break;
-                case DevelopmentItemPackageDestinations.SecureContainer:
-                    await GrantAsync(target, grant, target.SecureContainerId, cancellationToken);
-                    break;
                 case DevelopmentItemPackageDestinations.Bag:
                     await GrantAsync(
                         target,
@@ -210,7 +207,6 @@ internal sealed class DevelopmentItemPackageApplier(
                     character.id as "CharacterId",
                     state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                     state.bank_container_id as "BankContainerId",
-                    state.secure_container_id as "SecureContainerId",
                     state.carry_capacity as "CarryCapacity",
                     {PlacementSql.HasActiveSimulationSession("character.id")} as "IsOnline",
                     {DevelopmentItemSql.OwnedItemCount("character.id")} as "ItemCount",
@@ -268,8 +264,6 @@ internal sealed class DevelopmentItemPackageApplier(
         public Guid PermanentInventoryContainerId { get; set; }
 
         public Guid BankContainerId { get; set; }
-
-        public Guid SecureContainerId { get; set; }
 
         // With no items the capacity is the character's base carry capacity.
         public long CarryCapacity { get; set; }

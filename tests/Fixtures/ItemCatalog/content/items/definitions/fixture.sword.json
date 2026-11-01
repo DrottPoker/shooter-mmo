@@ -10,9 +10,6 @@
     "off_hand"
   ],
   "id": "fixture.sword",
-  "locationEligibility": {
-    "secureContainer": false
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

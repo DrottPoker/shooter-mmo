@@ -9,9 +9,6 @@
     "main_hand"
   ],
   "id": "weapon.iron_sword",
-  "locationEligibility": {
-    "secureContainer": false
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

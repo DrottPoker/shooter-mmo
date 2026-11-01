@@ -7,9 +7,6 @@
   "displayName": "Cooked Trout",
   "equipmentSlots": [ ],
   "id": "food.cooked_trout",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 10,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

@@ -28,7 +28,6 @@ namespace Mmorpg.Client.Items
             recoverySource = recovery ?? snapshot.RecoveryStorage;
             containers.Add(new EditableContainer(snapshot.PermanentInventory));
             containers.Add(new EditableContainer(bank ?? snapshot.Bank));
-            containers.Add(new EditableContainer(snapshot.SecureContainer.Contents));
             if (snapshot.EquippedBag != null)
             {
                 bagContents = new EditableContainer(snapshot.EquippedBag.Contents);
@@ -289,7 +288,6 @@ namespace Mmorpg.Client.Items
         {
             var permanent = containers[0].Build();
             var bank = containers[1].Build();
-            var secure = containers[2].Build();
             var equipmentSlots = new InventoryEquipmentSlot[equipment.Length];
             for (var index = 0; index < equipment.Length; index++)
             {
@@ -324,12 +322,6 @@ namespace Mmorpg.Client.Items
                 equipmentSlots,
                 equippedBag,
                 bank,
-                ReferenceEquals(secure, source.SecureContainer.Contents)
-                    ? source.SecureContainer
-                    : new SecureContainerInventory(
-                        source.SecureContainer.TierId,
-                        source.SecureContainer.EntitlementRevision,
-                        secure),
                 BuildRecovery(),
                 carriedWeight,
                 carryCapacity,

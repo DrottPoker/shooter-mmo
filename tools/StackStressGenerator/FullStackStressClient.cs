@@ -448,11 +448,6 @@ public sealed record FullStackEquippedBagResponse(
     FullStackItemInstanceResponse Item,
     FullStackItemContainerResponse Contents);
 
-public sealed record FullStackSecureContainerResponse(
-    string TierId,
-    long EntitlementRevision,
-    FullStackItemContainerResponse Contents);
-
 public sealed record FullStackRecoveryStorageResponse(
     Guid ContainerId,
     long Revision,
@@ -466,7 +461,6 @@ public sealed record FullStackCharacterInventoryResponse(
     IReadOnlyList<FullStackEquipmentSlotResponse> Equipment,
     FullStackEquippedBagResponse? EquippedBag,
     FullStackItemContainerResponse Bank,
-    FullStackSecureContainerResponse SecureContainer,
     FullStackRecoveryStorageResponse RecoveryStorage,
     long CarriedWeight,
     long CarryCapacity,

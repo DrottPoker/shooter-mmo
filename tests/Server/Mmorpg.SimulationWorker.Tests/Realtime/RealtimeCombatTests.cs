@@ -505,7 +505,6 @@ public sealed class RealtimeCombatTests
                 [],
                 [new SimulationItemInstanceRevision(BowItemId, 2)],
                 [],
-                null,
                 CharacterStateTestData.Create(request.CharacterId, 1, equipment: ArcherEquipment(50)))));
         await harness.StartAsync();
         var archerClient = await harness.JoinAsync(archer);
@@ -554,7 +553,6 @@ public sealed class RealtimeCombatTests
                 [],
                 [new SimulationItemInstanceRevision(BowItemId, 2)],
                 [],
-                null,
                 CharacterStateTestData.Create(request.CharacterId, 1, equipment: [ArcherEquipment(50)[0]]))));
         await harness.StartAsync();
         var archerClient = await harness.JoinAsync(archer);
@@ -591,7 +589,6 @@ public sealed class RealtimeCombatTests
                 [],
                 [new SimulationItemInstanceRevision(ArrowItemId, 2)],
                 [],
-                null,
                 CharacterStateTestData.Create(
                     request.CharacterId,
                     1,

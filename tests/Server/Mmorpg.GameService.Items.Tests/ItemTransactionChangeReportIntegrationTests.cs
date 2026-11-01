@@ -324,7 +324,7 @@ public sealed class ItemTransactionChangeReportIntegrationTests
     private static Dictionary<Guid, SnapshotItem> Flatten(CharacterInventorySnapshotResponse snapshot)
     {
         var items = new Dictionary<Guid, SnapshotItem>();
-        foreach (var container in new[] { snapshot.PermanentInventory, snapshot.Bank, snapshot.SecureContainer.Contents, snapshot.EquippedBag?.Contents }.OfType<ItemContainerSnapshotResponse>())
+        foreach (var container in new[] { snapshot.PermanentInventory, snapshot.Bank, snapshot.EquippedBag?.Contents }.OfType<ItemContainerSnapshotResponse>())
         {
             foreach (var slot in container.Slots.Where(slot => slot.Item is not null))
             {

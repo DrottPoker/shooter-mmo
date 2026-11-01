@@ -142,7 +142,6 @@ public sealed class GameServiceClientTests
             containerRevisions = new[] { new { containerId, revision = 4 } },
             itemRevisions = new[] { new { itemInstanceId = itemId, revision = 4 } },
             recoveryDeliveryIds = Array.Empty<Guid>(),
-            secureContainerEntitlementRevision = (long?)null,
             characterState = CharacterStateTestData.Create(characterId, 13, 25)
         }));
         var client = CreateClient(handler);
@@ -608,8 +607,7 @@ public sealed class GameServiceClientTests
                     new { containerId = destinationContainerId, revision = 4 }
                 },
                 itemRevisions = new[] { new { itemInstanceId = itemId, revision = 3 } },
-                recoveryDeliveryIds = Array.Empty<Guid>(),
-                secureContainerEntitlementRevision = (long?)null
+                recoveryDeliveryIds = Array.Empty<Guid>()
             },
             characterState = CharacterStateTestData.Create(characterId, 13, 30),
             corpse = CreateCorpseViewPayload(
@@ -689,8 +687,7 @@ public sealed class GameServiceClientTests
                     new { containerId = destinationContainerId, revision = 4 }
                 },
                 itemRevisions = new[] { new { itemInstanceId = itemId, revision = 3 } },
-                recoveryDeliveryIds = Array.Empty<Guid>(),
-                secureContainerEntitlementRevision = (long?)null
+                recoveryDeliveryIds = Array.Empty<Guid>()
             },
             characterState = CharacterStateTestData.Create(characterId, 13, 20),
             corpse = CreateCorpseViewPayload(
@@ -754,8 +751,7 @@ public sealed class GameServiceClientTests
                     new { containerId = destinationContainerId, revision = 4 }
                 },
                 itemRevisions = new[] { new { itemInstanceId = itemId, revision = 3 } },
-                recoveryDeliveryIds = Array.Empty<Guid>(),
-                secureContainerEntitlementRevision = (long?)null
+                recoveryDeliveryIds = Array.Empty<Guid>()
             },
             characterState = CharacterStateTestData.Create(characterId, 7),
             corpse = CreateCorpseViewPayload(
@@ -837,8 +833,7 @@ public sealed class GameServiceClientTests
                 },
                 containerRevisions = Array.Empty<object>(),
                 itemRevisions = Array.Empty<object>(),
-                recoveryDeliveryIds = Array.Empty<Guid>(),
-                secureContainerEntitlementRevision = (long?)null
+                recoveryDeliveryIds = Array.Empty<Guid>()
             },
             characterState = CharacterStateTestData.Create(characterId, 2),
             corpse = CreateCorpseViewPayload(corpseId, characterId, "local-shard-1", 2)
@@ -1217,7 +1212,6 @@ public sealed class GameServiceClientTests
             [],
             [new SimulationItemInstanceRevision(request.ItemInstanceId, 4)],
             [],
-            null,
             state);
     }
 

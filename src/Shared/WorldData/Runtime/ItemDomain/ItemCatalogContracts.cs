@@ -4,12 +4,12 @@ namespace Mmorpg.WorldData.Items
 {
     public static class ItemCatalogFormat
     {
-        public const int Version = 7;
+        public const int Version = 8;
 
         // Hashed into every structural fingerprint instead of the format version, so a new
         // format that adds non-structural fields leaves persisted definitions compatible. It
         // changes only when the meaning of a structural field changes.
-        public const int StructuralFingerprintVersion = 3;
+        public const int StructuralFingerprintVersion = 4;
 
         // Tags and equipment slot ids travel in realtime item and corpse messages, so
         // they must fit the protocol limits that RealtimeProtocolLimits defines.
@@ -33,7 +33,7 @@ namespace Mmorpg.WorldData.Items
     // equipment slot is content.
     public static class ItemCategoryIds
     {
-        // Weapons are never Secure Container eligible and carry weapon combat data.
+        // Weapons carry weapon combat data.
         public const string Weapon = "weapon";
 
         // Ammunition carries ammunition combat data.
@@ -78,7 +78,6 @@ namespace Mmorpg.WorldData.Items
     {
         public int FormatVersion;
         public string CatalogId;
-        public string BaseSecureContainerTierId;
         public ItemCharacterSettingsEntry Character;
         public ItemEconomySettingsEntry Economy;
         public ItemProgressionSettingsEntry Progression;
@@ -89,7 +88,6 @@ namespace Mmorpg.WorldData.Items
         public ItemWeaponFamilyEntry[] WeaponFamilies;
         public ItemCatalogIdentityEntry[] AmmunitionFamilies;
         public ItemDefinitionAuthoringEntry[] Definitions;
-        public SecureContainerTierAuthoringEntry[] SecureContainerTiers;
         public VendorProfileAuthoringEntry[] Vendors;
         public ItemCatalogRetiredIdsEntry Retired;
     }
@@ -182,7 +180,6 @@ namespace Mmorpg.WorldData.Items
         public string[] Tags;
         public string[] EquipmentSlots;
         public string[] Definitions;
-        public string[] SecureContainerTiers;
     }
 
     [Serializable]
@@ -201,20 +198,11 @@ namespace Mmorpg.WorldData.Items
 #pragma warning disable UAC1001 // Never Unity-serialized; null marks a missing authoring field.
         public bool? PlayerDestroyable;
 #pragma warning restore UAC1001
-        public ItemLocationEligibilityAuthoringEntry LocationEligibility;
         public string[] DefaultPolicies;
         public BagDefinitionAuthoringEntry Bag;
         public int RequiredCharacterLevel;
         public ItemWeaponEntry Weapon;
         public ItemAmmunitionEntry Ammunition;
-    }
-
-    [Serializable]
-    public sealed class ItemLocationEligibilityAuthoringEntry
-    {
-#pragma warning disable UAC1001 // Never Unity-serialized; null marks a missing authoring field.
-        public bool? SecureContainer;
-#pragma warning restore UAC1001
     }
 
     [Serializable]
@@ -230,14 +218,6 @@ namespace Mmorpg.WorldData.Items
         public int Index = -1;
         public string Kind;
         public string[] AcceptedTags;
-    }
-
-    [Serializable]
-    public sealed class SecureContainerTierAuthoringEntry
-    {
-        public string Id;
-        public string DisplayName;
-        public int SlotCapacity;
     }
 
     // An NPC vendor's offers and prices. Rates are named from the player's side: the player
@@ -266,7 +246,6 @@ namespace Mmorpg.WorldData.Items
         public int FormatVersion;
         public string CatalogId;
         public string Revision;
-        public string BaseSecureContainerTierId;
         public ItemCharacterSettingsEntry Character;
         public ItemEconomySettingsEntry Economy;
         public ItemProgressionSettingsEntry Progression;
@@ -277,7 +256,6 @@ namespace Mmorpg.WorldData.Items
         public ItemWeaponFamilyEntry[] WeaponFamilies;
         public ItemCatalogIdentityEntry[] AmmunitionFamilies;
         public ItemDefinition[] Definitions;
-        public SecureContainerTierDefinition[] SecureContainerTiers;
         public VendorProfileDefinition[] Vendors;
         public ItemCatalogRetiredIdsEntry Retired;
     }
@@ -296,19 +274,12 @@ namespace Mmorpg.WorldData.Items
         public string[] EquipmentSlots;
         public string[] BlockedEquipmentSlots;
         public bool PlayerDestroyable;
-        public ItemLocationEligibility LocationEligibility;
         public string[] DefaultPolicies;
         public BagDefinition Bag;
         public int RequiredCharacterLevel;
         public ItemWeaponEntry Weapon;
         public ItemAmmunitionEntry Ammunition;
         public string StructuralFingerprint;
-    }
-
-    [Serializable]
-    public sealed class ItemLocationEligibility
-    {
-        public bool SecureContainer;
     }
 
     [Serializable]
@@ -324,15 +295,6 @@ namespace Mmorpg.WorldData.Items
         public int Index;
         public string Kind;
         public string[] AcceptedTags;
-    }
-
-    [Serializable]
-    public sealed class SecureContainerTierDefinition
-    {
-        public string Id;
-        public string DisplayName;
-        public int SlotCapacity;
-        public string StructuralFingerprint;
     }
 
     [Serializable]

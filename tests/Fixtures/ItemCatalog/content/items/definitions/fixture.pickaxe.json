@@ -9,9 +9,6 @@
     "tool"
   ],
   "id": "fixture.pickaxe",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

@@ -412,7 +412,6 @@ public sealed class NpcItemLifecycleIntegrationTests
     {
         return snapshot.PermanentInventory.Slots
             .Concat(snapshot.Bank.Slots)
-            .Concat(snapshot.SecureContainer.Contents.Slots)
             .Select(slot => slot.Item)
             .Concat(snapshot.Equipment.Select(slot => slot.Item))
             .Where(item => item is not null)

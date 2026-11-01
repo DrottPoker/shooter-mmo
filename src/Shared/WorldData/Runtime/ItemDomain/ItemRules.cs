@@ -211,20 +211,6 @@ namespace Mmorpg.WorldData.Items
         }
     }
 
-    public static class SecureContainerRules
-    {
-        public static bool IsEligible(ItemDefinition definition)
-        {
-            return definition != null
-                && !string.Equals(
-                    definition.Category,
-                    ItemCategoryIds.Weapon,
-                    StringComparison.Ordinal)
-                && definition.LocationEligibility != null
-                && definition.LocationEligibility.SecureContainer;
-        }
-    }
-
     public sealed class ItemPolicyState
     {
         public ItemPolicyState(
@@ -366,7 +352,6 @@ namespace Mmorpg.WorldData.Items
         BagSpecializedSlot = 3,
         BankGeneralSlot = 4,
         RecoveryStorageSlot = 5,
-        SecureContainerSlot = 6,
         CharacterBagEquipmentSlot = 7,
         CorpseBagEquipmentSlot = 8,
         CorpseStorageSlot = 9

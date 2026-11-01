@@ -588,8 +588,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             || response.CharacterRevisions.Count > 1
             || response.ContainerRevisions.Count > MaximumOperationContainerRevisions
             || response.ItemRevisions.Count > MaximumOperationItemRevisions
-            || response.RecoveryDeliveryIds.Count > MaximumOperationRecoveryDeliveries
-            || response.SecureContainerEntitlementRevision is not null)
+            || response.RecoveryDeliveryIds.Count > MaximumOperationRecoveryDeliveries)
         {
             return false;
         }
@@ -643,7 +642,6 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 && revision.Revision > request.ExpectedItemRevision)
             && response.RecoveryDeliveryIds is not null
             && response.RecoveryDeliveryIds.Count == 0
-            && response.SecureContainerEntitlementRevision is null
             && IsValidCharacterState(
                 response.CharacterState,
                 request.CharacterId,
@@ -672,8 +670,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 ? MaximumLootAllItemRevisions
                 : MaximumOperationItemRevisions)
             || response.Transaction.RecoveryDeliveryIds is null
-            || response.Transaction.RecoveryDeliveryIds.Count != 0
-            || response.Transaction.SecureContainerEntitlementRevision is not null)
+            || response.Transaction.RecoveryDeliveryIds.Count != 0)
         {
             return false;
         }
@@ -741,7 +738,6 @@ public sealed class GameServiceClient(HttpClient httpClient)
             && response.ItemRevisions[0].Revision >= 0
             && response.RecoveryDeliveryIds is not null
             && response.RecoveryDeliveryIds.Count == 0
-            && response.SecureContainerEntitlementRevision is null
             && IsValidCharacterState(
                 response.CharacterState,
                 request.CharacterId,
@@ -774,7 +770,6 @@ public sealed class GameServiceClient(HttpClient httpClient)
             && transaction.ItemRevisions.Count <= MaximumLootAllItemRevisions
             && transaction.ItemRevisions.All(revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
             && transaction.RecoveryDeliveryIds is { Count: 0 }
-            && transaction.SecureContainerEntitlementRevision is null
             && response!.GrantedGrantIds is not null
             && response.GrantedGrantIds.Distinct().Count() == response.GrantedGrantIds.Count
             && response.GrantedGrantIds.All(requested.Contains)

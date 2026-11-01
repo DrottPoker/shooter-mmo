@@ -22,8 +22,8 @@ and adds gameplay in small vertical slices on top of it.
 7. Fight wolves and, on a shard that allows it, other players with a bow and arrows, a sword, a
    greataxe, or a staff whose bolts cost mana. Die, leave a corpse that others can loot, and
    respawn.
-8. Manage a slot inventory with equipment, Bags, a Bank, a Secure Container, Recovery Storage,
-   and carry weight that slows movement. What a character wears shows on its body.
+8. Manage a slot inventory with equipment, Bags, a Bank, Recovery Storage, and carry weight
+   that slows movement. What a character wears shows on its body.
 9. Use NPC services such as the Bank, Recovery Storage, insurance, and quest items.
 
 The temporary UI shows all of this. The development Worlds are test maps: Development World 2 has
@@ -53,7 +53,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 | Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets, offline Shard-to-World rebinding | Zones, Layers, several workers per shard, production orchestration |
 | Movement and collision | Click-to-move with client-planned routes, prediction, reconciliation, shared checksummed collision with terrain | Dynamic collision |
 | World actors | NPCs with composable capabilities, Mobs, resource nodes, visual spawn authoring, the world menu, server-validated interaction | Durable unique actors, dialogue, crafting, and trainer operations |
-| Items and inventory | Item catalog, slot inventory, equipment, Bags, Bank, Secure Container, Recovery Storage, policies, carry weight, predicted inventory moves | Consume and use, final inventory UI |
+| Items and inventory | Item catalog, slot inventory, equipment, Bags, Bank, Recovery Storage, policies, carry weight, predicted inventory moves | Consume and use, final inventory UI |
 | Death and corpses | Death partition, durable player corpses, live and durable Mob corpses, concurrent looting, Loot all | Final corpse presentation |
 | Economy | Gold with a ledger, one NPC vendor with fixed prices | More vendors, player trading, auction house |
 | Gathering and professions | Mining and woodcutting on shared nodes | Profession levels, crafting |

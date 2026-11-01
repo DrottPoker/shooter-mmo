@@ -266,12 +266,8 @@ internal sealed class DevelopmentItemToolService(
                 definition.display_name as "DisplayName",
                 definition.category_id as "CategoryId",
                 definition.maximum_stack_size as "MaximumStackSize",
-                definition.unit_weight as "UnitWeight",
-                coalesce(location.is_allowed, false) as "SecureContainerEligible"
+                definition.unit_weight as "UnitWeight"
             from item_definitions definition
-            left join item_definition_location_rules location
-              on location.definition_id = definition.id
-             and location.location_kind = 'secure_container'
             where definition.is_active
             order by lower(definition.display_name), definition.id;
             """,
@@ -294,8 +290,7 @@ internal sealed class DevelopmentItemToolService(
                 row.DisplayName,
                 row.CategoryId,
                 row.MaximumStackSize,
-                row.UnitWeight,
-                row.SecureContainerEligible)).ToArray(),
+                row.UnitWeight)).ToArray(),
             packages.Packages.Select(package => new DevelopmentItemToolPackage(
                 package.Id,
                 package.DisplayName,
@@ -320,7 +315,6 @@ internal sealed class DevelopmentItemToolService(
                 character.name as "CharacterName",
                 state.permanent_inventory_container_id as "PermanentInventoryContainerId",
                 state.bank_container_id as "BankContainerId",
-                state.secure_container_id as "SecureContainerId",
                 state.revision as "ItemStateRevision",
                 {PlacementSql.HasActiveSimulationSession("character.id")} as "IsOnline",
                 {DevelopmentItemSql.OwnedItemCount("character.id")} as "ItemCount",
@@ -348,7 +342,6 @@ internal sealed class DevelopmentItemToolService(
             DevelopmentItemDestination.PermanentInventory =>
                 target.PermanentInventoryContainerId,
             DevelopmentItemDestination.Bank => target.BankContainerId,
-            DevelopmentItemDestination.SecureContainer => target.SecureContainerId,
             _ => throw new InvalidOperationException("Unsupported item grant destination.")
         };
     }
@@ -405,8 +398,6 @@ internal sealed class DevelopmentItemToolService(
         public int MaximumStackSize { get; set; }
 
         public long UnitWeight { get; set; }
-
-        public bool SecureContainerEligible { get; set; }
     }
 
     private sealed class TargetRow
@@ -418,8 +409,6 @@ internal sealed class DevelopmentItemToolService(
         public Guid PermanentInventoryContainerId { get; set; }
 
         public Guid BankContainerId { get; set; }
-
-        public Guid SecureContainerId { get; set; }
 
         public bool IsOnline { get; set; }
 

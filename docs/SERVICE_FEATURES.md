@@ -38,7 +38,6 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/characters/{characterId}/item-operations/split` | Owning offline account session | Split a stack into an exact destination slot |
 | `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session | Merge compatible stacks |
 | `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session | Perform allowed player destruction with a server-owned reason |
-| `POST /api/items/secure-container-tier` | Offline account session | Return the account to the base Secure Container tier with every character revision. A larger tier needs a trusted entitlement source, so this route returns `403` with `item_authority_required` for it |
 | `GET /api/shards` | Public | List logical shards, status, players, and capacity |
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew the exact worker runtime and return the lease and the Shard's rule set |
@@ -928,7 +927,7 @@ This section describes the implemented behavior around them.
 
 - The item-state, bank, and Recovery routes first verify exact account and
   active-character ownership, then read permanent inventory, equipment, equipped
-  Bag contents, bank, Secure Container, Recovery deliveries, revisions,
+  Bag contents, bank, Recovery deliveries, revisions,
   encumbrance state, and the currency balance from one repeatable-read
   snapshot. An owning account may inspect its bank and Recovery Storage from
   anywhere; that read authorizes no mutation.
@@ -977,9 +976,9 @@ Seen from outside:
   `item_quantity_changed`, `bag_state_changed`, or `corpse_state_changed`.
 - Voluntary mutations enforce the exact 140 percent hard cap with
   `carry_weight_limit_exceeded`. The kernel is the only hard-cap authority; no
-  row-level check exists, so an authoritative death can persist retained Secure
-  Container weight above the cap, after which only non-worsening remediation
-  commits.
+  row-level check exists, so an authoritative death never fails on carry
+  weight, and a character above the cap, such as one from older data, commits
+  only non-worsening remediation.
 - Equipping into a slot that an equipped item blocks, or with an item that would
   block an occupied slot, is rejected with `equipment_slot_blocked`, and below
   the item's required character level with
@@ -1011,9 +1010,6 @@ Seen from outside:
   `item_offline_access_required` without partial mutation.
 - Bank and Recovery Storage sources and destinations are never reachable
   offline, so Recovery deliveries are claimed only in the world.
-- The Secure Container tier route lets an account actor select only the catalog
-  base tier. A larger tier is granted only by a trusted entitlement or purchase
-  source with system authority, which does not exist yet.
 
 ### Live Item Operations
 
@@ -1027,8 +1023,8 @@ Seen from outside:
   with a world actor whose `bank` or `recovery_storage` capability is available;
   otherwise GameService rejects with `bank_access_required` or
   `recovery_access_required`. The interaction closes when the player leaves its
-  range or loses line of sight, which ends the access. Secure Container custody
-  has no city requirement. Insurance and quest actions pass their flags only
+  range or loses line of sight, which ends the access. Insurance and quest
+  actions pass their flags only
   through their own NPC capability, and vendor trades pass the vendor profile of
   the validated `vendor` capability.
 - In the Development environment, `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess`
@@ -1147,7 +1143,7 @@ how to run them.
 | Command | Behavior |
 | --- | --- |
 | `--dev-items-list` | Report every local character with its balance, the active definitions, and the development packages |
-| `--dev-items-grant <characterId> <definitionId> <quantity> <permanent\|bank\|secure>` | Grant one stack into the permanent inventory, the bank, or the Secure Container |
+| `--dev-items-grant <characterId> <definitionId> <quantity> <permanent\|bank>` | Grant one stack into the permanent inventory or the bank |
 | `--dev-items-package <characterId> <packageId>` | Apply one package from `content/development/item-packages.json` to a new empty character. It refuses a replay once an item or Recovery delivery exists, and rejects a package that misses its exact expected load |
 | `--dev-items-corpse <characterId> <shardId> <x> <y> <z>` | Apply the corpse seed package to an empty source when necessary, then run the normal durable death transaction at that Shard position. The corpse keeps its database deadline across a worker restart |
 | `--dev-items-level <characterId> <level>` | Set the character's level, because no experience exists yet |
@@ -1178,8 +1174,8 @@ results and closures, and Unity adds `item_catalog_update_required`.
   `bag_state_changed`, `worker_runtime_changed`, `vendor_price_changed`,
   `inventory_full`, the corpse lifecycle codes, and on account routes
   `item_offline_access_required`, and `422` for every other domain rejection.
-  An incomplete request returns `400` with `item_operation_id_required`,
-  `item_secure_tier_request_invalid`, or `item_simulation_operation_invalid`.
+  An incomplete request returns `400` with `item_operation_id_required` or
+  `item_simulation_operation_invalid`.
 
 ### GameService Codes
 
@@ -1191,11 +1187,11 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
 | Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
 | Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_appearance_change`, `development_look_disabled` |
-| Item reads and requests | `item_catalog_not_found`, `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required`, `item_secure_tier_request_invalid` |
+| Item reads and requests | `item_catalog_not_found`, `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
 | Item authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `simulation_session_invalid` |
 | Item operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large` |
 | Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |
-| Item placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `equipment_level_requirement_not_met`, `secure_container_item_forbidden`, `bag_not_empty`, `carry_weight_limit_exceeded` |
+| Item placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `equipment_level_requirement_not_met`, `bag_not_empty`, `carry_weight_limit_exceeded` |
 | Stacks and ammunition | `item_stack_incompatible`, `item_stack_limit_exceeded`, `ammunition_not_equipped` |
 | Policy, quest, and currency | `item_policy_restricted`, `item_policy_not_found`, `item_destroy_forbidden`, `quest_grant_invalid`, `currency_insufficient`, `currency_limit_exceeded` |
 | Vendors and acquisition | `vendor_access_required`, `vendor_unavailable`, `vendor_offer_unavailable`, `vendor_price_changed`, `vendor_will_not_buy`, `inventory_full` |
@@ -1376,12 +1372,12 @@ content fail before UDP admission.
 
 - Startup bootstraps only characters that have no item state, each in its own
   short transaction, with the catalog's character settings: base carry
-  capacity, permanent inventory and bank slot counts, plus the account-entitled
-  Secure Container slots and one unbounded Recovery Storage identity. It then
+  capacity, permanent inventory and bank slot counts, plus one unbounded
+  Recovery Storage identity. It then
   recomputes carry state in batches of 500 rows that it locks first, so a
   concurrent item transaction is never overwritten with a stale weight, and it
   advances a character's item-state revision only when the weight or capacity
-  changed. Startup scales with the number of accounts.
+  changed. Startup scales with the number of characters.
 - New character creation calls the same PostgreSQL bootstrap function before
   committing, so a character cannot commit through the service without its
   required item state.
@@ -1403,7 +1399,6 @@ content fail before UDP admission.
   commands, and gameplay grants come only from NPC quest, Mob loot, vendor
   purchase, and gathering paths.
 - Consume and use intents for potions, food, and other consumables.
-- A trusted entitlement or purchase source for larger Secure Container tiers.
 - Profession experience and levels, gathering success chances, other
   professions, durable resource node state, limited vendor stock, dynamic
   prices, buyback, and player trading.

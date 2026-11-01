@@ -6,7 +6,7 @@ trace:
   c1 sql savepoint item_mutation
   c1 sql select pg_advisory_xact_lock($1, $2)
   c1 sql select account_id from characters where id = $1 and deleted_at is null for no key update
-  c1 sql select state.character_id as "CharacterId", state.revision as "Revision", state.carried_weight as "CarriedWeight", state.base_carry_capacity as "BaseCarryCapacity", state.carry_capacity as "CarryCapacity", state.permanent_inventory_container_id as "PermanentInventoryContainerId", state.bank_container_id as "BankContainerId", state.secure_container_id as "SecureContainerId", state.recovery_storage_container_id as "RecoveryStorageContainerId" from character_item_states state where state.character_id = $1 for update of state
+  c1 sql select state.character_id as "CharacterId", state.revision as "Revision", state.carried_weight as "CarriedWeight", state.base_carry_capacity as "BaseCarryCapacity", state.carry_capacity as "CarryCapacity", state.permanent_inventory_container_id as "PermanentInventoryContainerId", state.bank_container_id as "BankContainerId", state.recovery_storage_container_id as "RecoveryStorageContainerId" from character_item_states state where state.character_id = $1 for update of state
   c1 sql select event.request_hash as "RequestHash", event.corpse_id as "CorpseId", event.operation_id as "OriginalOperationId" from death_events event join corpses corpse on corpse.id = event.corpse_id where event.id = $1 for update of event, corpse
   c1 sql insert into item_operation_changes ( operation_id, change_index, item_instance_id, change_kind, before_state, after_state) values ( $1, $2, $3, $4, cast($5 as jsonb), cast($6 as jsonb))
   c1 sql update item_operations set status = $1, result_payload = cast($2 as jsonb), revision = revision + 1, completed_at = now() where operation_id = $3
@@ -20,7 +20,6 @@ result:
   container revisions: none
   item revisions: none
   recovery deliveries: 0
-  secure entitlement revision: none
 journal:
   operation row: process_player_death committed
   stored payload: equals returned result

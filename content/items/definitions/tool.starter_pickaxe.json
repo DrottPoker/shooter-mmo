@@ -9,9 +9,6 @@
     "tool"
   ],
   "id": "tool.starter_pickaxe",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

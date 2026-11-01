@@ -187,7 +187,6 @@ internal sealed class ItemTransactionFinalizer(
             containerResults,
             resultItems,
             journal.RecoveryDeliveryIds.Order().ToArray(),
-            journal.SecureContainerEntitlementRevision,
             itemChanges);
     }
 

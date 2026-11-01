@@ -83,7 +83,6 @@ namespace Mmorpg.Client.Tests.EditMode
             definition.maximumStackSize = 1;
             definition.equipmentSlots = new[] { ItemEquipmentSlotIds.Bag };
             definition.playerDestroyable = true;
-            definition.locationEligibility.secureContainer = false;
             definition.defaultPolicies = new[] { ItemPolicyIds.Insured };
             definition.bag = new ItemCatalogJsonBagDefinition
             {

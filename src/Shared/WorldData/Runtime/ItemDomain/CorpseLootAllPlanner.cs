@@ -257,11 +257,10 @@ namespace Mmorpg.WorldData.Items
     // equipment slot and never replaces an equipped item; equipped arrows are topped up. The
     // rest tops up carried stacks, Permanent Inventory first, and then takes empty slots in the
     // order GameService fills a purchase: matching specialized Bag slots, Permanent Inventory,
-    // general Bag slots, never the Secure Container. A corpse Bag with contents takes an empty
-    // Bag slot whole; otherwise its contents are looted and the emptied Bag follows them. A step
-    // takes part of a stack when the stack does not fit, unless whole items are required, and
-    // nothing passes the carry-weight hard cap. GameService and the client's prediction share
-    // this plan.
+    // general Bag slots. A corpse Bag with contents takes an empty Bag slot whole; otherwise its
+    // contents are looted and the emptied Bag follows them. A step takes part of a stack when the
+    // stack does not fit, unless whole items are required, and nothing passes the carry-weight
+    // hard cap. GameService and the client's prediction share this plan.
     public static class CorpseLootAllPlanner
     {
         public static LootAllPlan Plan(LootAllRequest request)

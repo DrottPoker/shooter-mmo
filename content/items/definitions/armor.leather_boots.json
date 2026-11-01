@@ -9,9 +9,6 @@
     "feet"
   ],
   "id": "armor.leather_boots",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

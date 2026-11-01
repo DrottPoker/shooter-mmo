@@ -108,6 +108,7 @@ public sealed class DevelopmentItemToolCommandParserTests
     [InlineData("00000000-0000-0000-0000-000000000000", "1", "bank")]
     [InlineData("73f78973-bda2-4e7d-a6d1-d6247606bd4e", "0", "bank")]
     [InlineData("73f78973-bda2-4e7d-a6d1-d6247606bd4e", "1", "recovery")]
+    [InlineData("73f78973-bda2-4e7d-a6d1-d6247606bd4e", "1", "secure")]
     public void InvalidGrantArgumentsReturnStableUsage(
         string characterId,
         string quantity,
@@ -128,7 +129,7 @@ public sealed class DevelopmentItemToolCommandParserTests
         Assert.Null(command);
         Assert.Equal(
             "--dev-items-grant requires <characterGuid> <definitionId> "
-                + "<positiveQuantity> <permanent|bank|secure>.",
+                + "<positiveQuantity> <permanent|bank>.",
             error);
     }
 

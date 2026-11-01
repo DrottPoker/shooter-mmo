@@ -19,8 +19,7 @@ internal static class ItemTransactionOutcomes
             [],
             [],
             [],
-            [],
-            null);
+            []);
     }
 
     public static ItemTransactionError? MapPostgresError(PostgresException exception)
@@ -63,7 +62,6 @@ internal static class ItemTransactionOutcomes
                 or "fk_item_containers_bound_bag"
                 or "fk_character_item_states_inventory_container"
                 or "fk_character_item_states_bank_container"
-                or "fk_character_item_states_secure_container"
                 or "fk_character_item_states_recovery_container" => new ItemTransactionError(
                     ItemTransactionErrorCodes.ItemStateConflict,
                     "The item state changed before the operation committed."),

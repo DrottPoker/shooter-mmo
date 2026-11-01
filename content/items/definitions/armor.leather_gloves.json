@@ -9,9 +9,6 @@
     "hands"
   ],
   "id": "armor.leather_gloves",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

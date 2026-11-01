@@ -9,9 +9,6 @@
   "displayName": "Sealed Letter",
   "equipmentSlots": [ ],
   "id": "quest_item.sealed_letter",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": false,
   "requiredCharacterLevel": 1,

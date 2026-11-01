@@ -7,8 +7,7 @@ using static Mmorpg.GameService.Items.ItemTransactionRejection;
 namespace Mmorpg.GameService.Items.Transactions;
 
 // Slot and equipment placement rules: which container slot or equipment slot accepts
-// an item, including Secure Container eligibility, Bag nesting, Recovery Storage, and the
-// level requirement of equipment.
+// an item, including Bag nesting, Recovery Storage, and the level requirement of equipment.
 internal sealed class ItemSlotPlacement(ItemTransactionSession session)
 {
     private NpgsqlConnection Connection => session.Connection;
@@ -40,14 +39,6 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
             Reject(
                 ItemTransactionErrorCodes.ItemSlotIncompatible,
                 "Recovery Storage delivery slots are allocated by the transaction kernel.");
-        }
-
-        if (string.Equals(container.ContainerType, ItemContainerTypeIds.SecureContainer, StringComparison.Ordinal)
-            && !SecureContainerRules.IsEligible(definition.RuntimeDefinition))
-        {
-            Reject(
-                ItemTransactionErrorCodes.SecureContainerItemForbidden,
-                "The item definition is not eligible for Secure Container custody.");
         }
 
         var rows = (await Connection.QueryAsync<ContainerSlotQueryRow>(new CommandDefinition(

@@ -616,7 +616,6 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             [],
             remaining is null ? [] : [new SimulationItemInstanceRevision(remaining.ItemInstanceId, remaining.Revision)],
             [],
-            null,
             CharacterStateTestData.Create(request.CharacterId, revision, equipment: equipment)));
     }
 
@@ -780,7 +779,6 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             [],
             [],
             [],
-            null,
             CharacterStateTestData.Create(
                 request.CharacterId,
                 revision,
@@ -810,7 +808,6 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 request.ExpectedDestinationContainerRevision + 1)],
             [new SimulationItemInstanceRevision(Guid.NewGuid(), 0)],
             [],
-            null,
             CharacterStateTestData.Create(
                 request.CharacterId,
                 revision,

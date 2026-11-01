@@ -36,7 +36,8 @@ public sealed class GameServiceSchema
         "202610181240_character_currency_ledger",
         "202610181250_item_economy",
         "202610251200_character_appearance",
-        "202610261800_live_mob_loot_grants"
+        "202610261800_live_mob_loot_grants",
+        "202611011200_remove_secure_container"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

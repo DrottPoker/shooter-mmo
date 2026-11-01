@@ -10,9 +10,6 @@
     "ring_2"
   ],
   "id": "jewelry.copper_ring",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

@@ -252,7 +252,6 @@ public sealed record SimulationItemTransactionResponse(
     IReadOnlyList<SimulationItemContainerRevision> ContainerRevisions,
     IReadOnlyList<SimulationItemInstanceRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
-    long? SecureContainerEntitlementRevision,
     SimulationCharacterState? CharacterState = null,
     IReadOnlyList<SimulationItemChange>? ItemChanges = null);
 

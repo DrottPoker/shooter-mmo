@@ -123,21 +123,6 @@ internal static class ItemEndpoints
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
-        app.MapPost("/api/items/secure-container-tier", async (
-            ChangeAccountSecureContainerTierRequest request,
-            ClaimsPrincipal principal,
-            AccountItemMutationService mutationService,
-            CancellationToken cancellationToken) =>
-        {
-            var result = await mutationService.ChangeSecureContainerTierAsync(
-                principal.GetAccountId(),
-                request,
-                cancellationToken);
-            return result.ToHttpResult();
-        })
-            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
-            .WithMetadata(new SensitiveResponseAttribute());
-
         return app;
     }
 

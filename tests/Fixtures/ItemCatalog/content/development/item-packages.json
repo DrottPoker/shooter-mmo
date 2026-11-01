@@ -5,7 +5,7 @@
     {
       "id": "full_inventory",
       "displayName": "Full Inventory Test Pack",
-      "description": "An equipped Bag with filled specialized slots, equipment candidates in Permanent Inventory, a Secure Container item, Bank stacks, and one Recovery delivery.",
+      "description": "An equipped Bag with filled specialized slots, equipment candidates in Permanent Inventory, Bank stacks, and one Recovery delivery.",
       "expectedLoadPercent": null,
       "grants": [
         { "definitionId": "fixture.pack", "quantity": 1, "destination": "equipment", "slotIndex": null, "equipmentSlotId": "bag" },
@@ -17,7 +17,7 @@
         { "definitionId": "fixture.tunic", "quantity": 1, "destination": "inventory", "slotIndex": 3, "equipmentSlotId": null },
         { "definitionId": "fixture.pickaxe", "quantity": 1, "destination": "inventory", "slotIndex": 4, "equipmentSlotId": null },
         { "definitionId": "fixture.ring", "quantity": 1, "destination": "inventory", "slotIndex": 5, "equipmentSlotId": null },
-        { "definitionId": "fixture.letter", "quantity": 1, "destination": "secure_container", "slotIndex": 0, "equipmentSlotId": null },
+        { "definitionId": "fixture.letter", "quantity": 1, "destination": "inventory", "slotIndex": 6, "equipmentSlotId": null },
         { "definitionId": "fixture.ore", "quantity": 20, "destination": "bank", "slotIndex": 0, "equipmentSlotId": null },
         { "definitionId": "fixture.ore", "quantity": 16, "destination": "bank", "slotIndex": 1, "equipmentSlotId": null },
         { "definitionId": "fixture.potion", "quantity": 1, "destination": "bank", "slotIndex": 2, "equipmentSlotId": null },
@@ -72,18 +72,6 @@
       "grants": [
         { "definitionId": "fixture.ore", "quantity": 46, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null },
         { "definitionId": "fixture.potion", "quantity": 2, "destination": "inventory", "slotIndex": null, "equipmentSlotId": null }
-      ]
-    },
-    {
-      "id": "secure_container",
-      "displayName": "Secure Container Pack",
-      "description": "Four eligible stacks that fill the base Secure Container.",
-      "expectedLoadPercent": null,
-      "grants": [
-        { "definitionId": "fixture.letter", "quantity": 1, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
-        { "definitionId": "fixture.arrow", "quantity": 10, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
-        { "definitionId": "fixture.potion", "quantity": 2, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null },
-        { "definitionId": "fixture.ore", "quantity": 1, "destination": "secure_container", "slotIndex": null, "equipmentSlotId": null }
       ]
     },
     {

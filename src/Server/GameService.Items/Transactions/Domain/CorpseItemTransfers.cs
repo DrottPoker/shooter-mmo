@@ -66,10 +66,6 @@ internal static class CorpseItemTransfers
                 StringComparison.Ordinal)
             && !string.Equals(
                 destination.ContainerType,
-                "secure_container",
-                StringComparison.Ordinal)
-            && !string.Equals(
-                destination.ContainerType,
                 "bag_contents",
                 StringComparison.Ordinal))
         {
@@ -82,7 +78,6 @@ internal static class CorpseItemTransfers
     public static void EnsureCarriedCorpseTransferSource(LockedContainer source)
     {
         if (!string.Equals(source.ContainerType, "permanent_inventory", StringComparison.Ordinal)
-            && !string.Equals(source.ContainerType, "secure_container", StringComparison.Ordinal)
             && !string.Equals(source.ContainerType, "bag_contents", StringComparison.Ordinal))
         {
             ItemTransactionContext.Reject(

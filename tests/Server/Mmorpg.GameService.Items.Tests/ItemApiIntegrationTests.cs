@@ -78,19 +78,15 @@ public sealed class ItemApiIntegrationTests
         using (var itemStateResponse = await host.Client.GetAsync(
                    $"/api/characters/{owner.Character.Id}/item-state"))
         {
-            var itemState = await itemStateResponse.Content
-                .ReadFromJsonAsync<CharacterInventorySnapshotResponse>();
-            Assert.NotNull(itemState);
-            Assert.Equal("secure_container.base", itemState.SecureContainer.TierId);
-            using var tierChange = await host.Client.PostAsJsonAsync(
+            // The Secure Container is gone from the snapshot and the API.
+            using var itemState = JsonDocument.Parse(
+                await itemStateResponse.Content.ReadAsStringAsync());
+            Assert.True(itemState.RootElement.TryGetProperty("permanentInventory", out _));
+            Assert.False(itemState.RootElement.TryGetProperty("secureContainer", out _));
+            using var removedRoute = await host.Client.PostAsJsonAsync(
                 "/api/items/secure-container-tier",
-                new ChangeAccountSecureContainerTierRequest(
-                    Guid.NewGuid(),
-                    itemState.SecureContainer.EntitlementRevision,
-                    itemState.SecureContainer.TierId,
-                    [new CharacterRevisionExpectation(owner.Character.Id, itemState.ItemStateRevision)]));
-            Assert.Equal(HttpStatusCode.OK, tierChange.StatusCode);
-            Assert.True(tierChange.Headers.CacheControl?.NoStore);
+                new { operationId = Guid.NewGuid() });
+            Assert.Equal(HttpStatusCode.NotFound, removedRoute.StatusCode);
         }
 
         host.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(

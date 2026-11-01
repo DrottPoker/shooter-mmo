@@ -9,9 +9,6 @@
     "tool"
   ],
   "id": "tool.woodcutting_axe",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

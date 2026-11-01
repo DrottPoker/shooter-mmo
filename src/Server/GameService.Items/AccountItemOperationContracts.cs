@@ -5,7 +5,6 @@ internal static class ItemApiErrorCodes
     public const string OperationIdRequired = "item_operation_id_required";
     // The kernel rejects invalid corpse transfer commands with the same code.
     public const string SimulationOperationInvalid = ItemTransactionErrorCodes.SimulationOperationInvalid;
-    public const string SecureTierRequestInvalid = "item_secure_tier_request_invalid";
 }
 
 internal sealed record RelocateAccountItemRequest(
@@ -38,9 +37,3 @@ internal sealed record DestroyAccountItemRequest(
     long ExpectedCharacterRevision,
     Guid ItemInstanceId,
     long ExpectedItemRevision);
-
-internal sealed record ChangeAccountSecureContainerTierRequest(
-    Guid OperationId,
-    long ExpectedEntitlementRevision,
-    string? TierId,
-    IReadOnlyList<CharacterRevisionExpectation>? CharacterRevisions);

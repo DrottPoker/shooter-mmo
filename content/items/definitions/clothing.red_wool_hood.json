@@ -9,9 +9,6 @@
     "head"
   ],
   "id": "clothing.red_wool_hood",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

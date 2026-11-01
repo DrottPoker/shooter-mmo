@@ -47,14 +47,10 @@ public sealed class ItemOperationAdmissionTests
                 "shard-1",
                 "secret-token-hash",
                 new ItemTransactionLiveAccess(true, true, true, true)),
-            new ChangeSecureContainerTierCommand(
-                First,
-                3,
-                "tier",
-                [new CharacterRevisionExpectation(Third, 5), new CharacterRevisionExpectation(Second, 6)]));
+            new DestroyItemCommand(Second, 3, Third, 5, "player_destroyed"));
 
         Assert.Equal(
-            """{"actor":{"authority":3,"accountId":"b0000000-0000-4000-8000-000000000001","requiresOfflineCharacter":false,"simulationSessionId":"b0000000-0000-4000-8000-000000000003","characterId":"b0000000-0000-4000-8000-000000000002","workerId":"worker-1","workerRuntimeId":"runtime-1","shardId":"shard-1"},"command":{"accountId":"b0000000-0000-4000-8000-000000000001","expectedEntitlementRevision":3,"tierId":"tier","characterRevisions":[{"characterId":"b0000000-0000-4000-8000-000000000002","revision":6},{"characterId":"b0000000-0000-4000-8000-000000000003","revision":5}]}}""",
+            """{"actor":{"authority":3,"accountId":"b0000000-0000-4000-8000-000000000001","requiresOfflineCharacter":false,"simulationSessionId":"b0000000-0000-4000-8000-000000000003","characterId":"b0000000-0000-4000-8000-000000000002","workerId":"worker-1","workerRuntimeId":"runtime-1","shardId":"shard-1"},"command":{"characterId":"b0000000-0000-4000-8000-000000000002","expectedCharacterRevision":3,"itemInstanceId":"b0000000-0000-4000-8000-000000000003","expectedItemRevision":5,"reason":"player_destroyed"}}""",
             canonical.Payload);
     }
 

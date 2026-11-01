@@ -1,7 +1,7 @@
 {
     "formatVersion": 4,
-    "sourceCatalogRevision": "eea2033ed0385c4860af469c5626771602671bd587d06bbd5ca65a90e65e4cee",
-    "presentationRevision": "64dbc723ce3ff7af77cc6e90f086735f59c151a3d11590f79abf11458f5e1430",
+    "sourceCatalogRevision": "1c430dfc4a7b1380b3b66a2d3a6d8478643d649f5eb560f7a1f39c436d04db72",
+    "presentationRevision": "67f6e9e177eccd1b28b749d9a7910c39eebed9a1de7dba655008e2f663f1ddaf",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",

@@ -88,10 +88,6 @@ internal sealed record ItemRevisionExpectation(
     Guid ItemInstanceId,
     long Revision);
 
-internal sealed record CharacterRevisionExpectation(
-    Guid CharacterId,
-    long Revision);
-
 internal sealed record GrantItemCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
@@ -200,12 +196,6 @@ internal sealed record ClaimRecoveryDeliveryCommand(
     long ExpectedRecoveryDeliveryRevision,
     Guid DestinationContainerId,
     IReadOnlyList<ItemRevisionExpectation> Items);
-
-internal sealed record ChangeSecureContainerTierCommand(
-    Guid AccountId,
-    long ExpectedEntitlementRevision,
-    string TierId,
-    IReadOnlyList<CharacterRevisionExpectation> CharacterRevisions);
 
 internal sealed record ApplyItemPolicyCommand(
     Guid CharacterId,
@@ -456,7 +446,6 @@ internal sealed record ItemTransactionResult(
     IReadOnlyList<ItemTransactionContainerRevision> ContainerRevisions,
     IReadOnlyList<ItemTransactionItemRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
-    long? SecureContainerEntitlementRevision,
     IReadOnlyList<ItemTransactionItemChange>? ItemChanges = null);
 
 internal sealed record ItemTransactionError(
@@ -511,7 +500,6 @@ internal static class ItemOperationKinds
     public const string SwapBagAggregates = "swap_bag_aggregates";
     public const string AddRecoveryDelivery = "add_recovery_delivery";
     public const string ClaimRecoveryDelivery = "claim_recovery_delivery";
-    public const string ChangeSecureContainerTier = "change_secure_container_tier";
     public const string ApplyItemPolicy = "apply_item_policy";
     public const string RemoveInsurancePolicy = "remove_insurance_policy";
     public const string AbandonQuestItems = "abandon_quest_items";

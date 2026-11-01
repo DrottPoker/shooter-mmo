@@ -26,7 +26,6 @@ public sealed class ItemReadModelIntegrationTests
         Assert.Equal(runtime.CatalogId, catalog.CatalogId);
         Assert.Equal(runtime.Revision, catalog.Revision);
         Assert.Equal(runtime.FormatVersion, catalog.FormatVersion);
-        Assert.Equal(runtime.BaseSecureContainerTierId, catalog.BaseSecureContainerTierId);
         Assert.Equal(runtime.Definitions.Length, catalog.Definitions.Count);
         Assert.Equal(
             catalog.Definitions.Count,
@@ -40,9 +39,6 @@ public sealed class ItemReadModelIntegrationTests
         Assert.Equal(50, bag.Bag.CarryCapacityBonus);
         Assert.Equal(Enumerable.Range(0, 7), bag.Bag.Slots.Select(slot => slot.SlotIndex));
         Assert.Equal(["ammunition"], bag.Bag.Slots[6].AcceptedTags);
-        Assert.Equal(
-            "secure_container.base",
-            Assert.Single(catalog.SecureContainerTiers).Id);
     }
 
     [PostgresIntegrationFact]
@@ -91,8 +87,6 @@ public sealed class ItemReadModelIntegrationTests
 
         AssertContainerIsEmptyAndOrdered(snapshot.PermanentInventory, "permanent_inventory", 20);
         AssertContainerIsEmptyAndOrdered(snapshot.Bank, "bank", 40);
-        AssertContainerIsEmptyAndOrdered(snapshot.SecureContainer.Contents, "secure_container", 4);
-        Assert.Equal("secure_container.base", snapshot.SecureContainer.TierId);
         Assert.Equal(
             catalog.EquipmentSlots.Select(slot => slot.Id),
             snapshot.Equipment.Select(slot => slot.EquipmentSlotId));
@@ -130,11 +124,6 @@ public sealed class ItemReadModelIntegrationTests
             0,
             "fixture.ore",
             5);
-        var secureItemId = await fixture.AddContainerItemAsync(
-            "secure_container",
-            0,
-            "fixture.potion",
-            2);
         var recovery = await fixture.AddRecoveryDeliveryAsync(
             "test_recovery",
             "internal-event-id",
@@ -182,9 +171,6 @@ public sealed class ItemReadModelIntegrationTests
             snapshot.EquippedBag.Contents.Slots[6].Item!.ItemInstanceId);
         Assert.Equal(["ammunition"], snapshot.EquippedBag.Contents.Slots[6].AcceptedTags);
         Assert.Equal(bankItemId, snapshot.Bank.Slots[0].Item!.ItemInstanceId);
-        Assert.Equal(
-            secureItemId,
-            snapshot.SecureContainer.Contents.Slots[0].Item!.ItemInstanceId);
 
         var delivery = Assert.Single(snapshot.RecoveryStorage.Deliveries);
         Assert.Equal(recovery.DeliveryId, delivery.DeliveryId);
@@ -332,7 +318,6 @@ public sealed class ItemReadModelIntegrationTests
     {
         return snapshot.PermanentInventory.Slots
             .Concat(snapshot.Bank.Slots)
-            .Concat(snapshot.SecureContainer.Contents.Slots)
             .Select(slot => slot.Item)
             .Concat(snapshot.Equipment.Select(slot => slot.Item))
             .Concat(snapshot.EquippedBag?.Contents.Slots.Select(slot => slot.Item)

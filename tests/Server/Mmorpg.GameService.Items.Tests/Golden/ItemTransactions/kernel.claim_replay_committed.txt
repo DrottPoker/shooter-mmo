@@ -17,7 +17,6 @@ result:
   item revisions:
     revision=0
   recovery deliveries: 0
-  secure entitlement revision: none
 journal:
   operation row: grant committed
   stored payload: equals returned result

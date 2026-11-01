@@ -7,9 +7,6 @@
   "displayName": "Fixture Ore",
   "equipmentSlots": [ ],
   "id": "fixture.ore",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 100,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

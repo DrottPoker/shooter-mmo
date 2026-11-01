@@ -200,7 +200,6 @@ internal sealed class StackStressFixtureService(
             || snapshot.Equipment.Any(slot => slot.Item is not null)
             || snapshot.EquippedBag is not null
             || snapshot.Bank.Slots.Any(slot => slot.Item is not null)
-            || snapshot.SecureContainer.Contents.Slots.Any(slot => slot.Item is not null)
             || snapshot.RecoveryStorage.Deliveries.Count > 0;
     }
 

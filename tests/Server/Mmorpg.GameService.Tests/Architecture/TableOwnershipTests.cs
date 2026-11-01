@@ -33,14 +33,11 @@ public sealed partial class TableOwnershipTests
             ["item_definition_tags"] = GameServiceSourceMap.Items,
             ["item_definition_equipment_slots"] = GameServiceSourceMap.Items,
             ["item_definition_blocked_equipment_slots"] = GameServiceSourceMap.Items,
-            ["item_definition_location_rules"] = GameServiceSourceMap.Items,
             ["item_definition_default_policies"] = GameServiceSourceMap.Items,
             ["bag_definitions"] = GameServiceSourceMap.Items,
             ["bag_definition_slots"] = GameServiceSourceMap.Items,
             ["bag_definition_slot_tags"] = GameServiceSourceMap.Items,
-            ["secure_container_tiers"] = GameServiceSourceMap.Items,
             ["item_system_settings"] = GameServiceSourceMap.Items,
-            ["account_secure_container_entitlements"] = GameServiceSourceMap.Items,
             ["item_containers"] = GameServiceSourceMap.Items,
             ["item_container_slots"] = GameServiceSourceMap.Items,
             ["item_container_slot_tags"] = GameServiceSourceMap.Items,
@@ -76,7 +73,8 @@ public sealed partial class TableOwnershipTests
         "GameService.Placement/Persistence/DevelopmentWorldIdentityMigration.cs",
         "GameService.Placement/Persistence/WorkerSelectedWorldBindingMigration.cs",
         "GameService.Items/Persistence/ReleaseRetryableOperationClaimsMigration.cs",
-        "GameService.Items/Persistence/EquippedItemLookupIndexMigration.cs"
+        "GameService.Items/Persistence/EquippedItemLookupIndexMigration.cs",
+        "GameService.Items/Persistence/SecureContainerRemovalMigration.cs"
     };
 
     [Fact]

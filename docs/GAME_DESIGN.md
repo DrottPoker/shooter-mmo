@@ -18,9 +18,8 @@ Implemented:
   creation, and Shard selection with one active session per character.
 - Click-to-move movement, the orbit camera, and the right-click world menu with
   Examine.
-- The item foundation: inventory, equipment, Bags, the Bank, the Secure
-  Container, Recovery Storage, insurance, carry weight, the death partition, and
-  corpses.
+- The item foundation: inventory, equipment, Bags, the Bank, Recovery Storage,
+  insurance, carry weight, the death partition, and corpses.
 - One currency, Gold, and one NPC vendor.
 - Gathering from shared resource nodes: Mining Iron Veins with a pickaxe and
   Woodcutting Oak Trees with a Woodcutting Axe, without profession experience.
@@ -873,8 +872,7 @@ The **Open Risk Rule Area** has:
 - PvP.
 - Simple Mobs.
 - Gathering and loot containers.
-- Management of carried inventory and eligible Secure Container items, under
-  the server's action and policy rules.
+- Management of carried inventory under the server's action and policy rules.
 - Durable corpse custody at death under the current protection rules.
 - A risk timer that keeps the character in the world after logout.
 
@@ -1030,11 +1028,8 @@ Implemented, except character deletion and changing a look in the game.
 - Accounts support multiple characters from the beginning. The MVP allows at
   most 5 characters per account, a GameService setting.
 - Character data is persistent.
-- Each character owns its inventory, equipment, Bag custody, bank, Secure
-  Container contents, Recovery Storage, currency, profession progress, quest
-  state, and reputation state.
-- The account owns the entitlement that selects the Secure Container name, tier,
-  and slot capacity for its characters.
+- Each character owns its inventory, equipment, Bag custody, bank, Recovery
+  Storage, currency, profession progress, quest state, and reputation state.
 - Bank contents and capacity are per character, not account-wide.
 - An account has one active client session, and one account and one character
   have at most one active simulation session at a time across every Fleet and
@@ -1080,7 +1075,7 @@ The MVP proves this loop:
 1. The player creates or selects a character.
 2. The player selects and joins a Shard running the shared World content.
 3. The player spawns in a safe city.
-4. The player prepares inventory, equipment, Bag, Secure Container, and bank.
+4. The player prepares inventory, equipment, Bag, and bank.
 5. The player leaves the city into an unsafe open-world area.
 6. The player gathers or loots a resource.
 7. The player sells it to a simple NPC vendor or keeps it for later crafting.
@@ -1102,7 +1097,7 @@ The MVP is built in named slices:
 | Account, character, and Shard join | Complete | Registration, login, characters, placement, exact-runtime tickets, and one active session per character |
 | Unity connection and movement | Complete | Unity API and UDP flow, entity lifecycle, spatial interest, click-to-move with client-planned paths, prediction, reconciliation, interpolation, and checksummed collision |
 | SimulationWorker performance baseline | Complete | Headless stress clients, active bots, visibility and packet reuse, bounded backpressure, and repeatable baselines |
-| Items, inventory, equipment, and carry weight | Complete | The slot inventory, equipment with the ammunition slot, Bags, the Bank, the Secure Container, Recovery Storage, carry weight and encumbrance, item policies, and insurance, as [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) decides them, with the temporary Unity inventory UI |
+| Items, inventory, equipment, and carry weight | Complete | The slot inventory, equipment with the ammunition slot, Bags, the Bank, Recovery Storage, carry weight and encumbrance, item policies, and insurance, as [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) decides them, with the temporary Unity inventory UI |
 | Vendor and gathering | Complete | One NPC vendor, persistent Gold, shared resource nodes gathered with a tool in the Tool slot, gathering through the item transaction service, and buying from and selling to the vendor |
 | Target-based combat and simple Mob | Complete | Ranged, Melee, and Magic weapons with consumed ammunition or mana, target selection and auto attack, health and Normal damage, authoritative death events, aggressive Mobs with live loot, and a boss with a durable corpse |
 | Death, Recovery, and corpse looting | Complete, with a temporary corpse loot interface | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, Loot all, insurance, and the combat death producer |
@@ -1136,6 +1131,6 @@ These do not block the first playable MVP:
   technology?
 - What are the names and thresholds of the criminal reputation levels?
 - Does gathering get a success chance per cycle once profession levels exist?
-- The item balance questions, such as Secure Container eligibility, Bank
-  unlocks, and Recovery Storage expiry, are in the
+- The item balance questions, such as Bank unlocks and Recovery Storage expiry,
+  are in the
   [open questions of the inventory design](INVENTORY_AND_DEATH_LOOT_DESIGN.md#open-questions).

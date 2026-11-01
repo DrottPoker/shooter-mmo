@@ -325,15 +325,14 @@ not implemented, and running with run energy is planned in
 ## Carry Weight And Encumbrance
 
 - A character can carry 2,000 weight units, plus the capacity bonus of its
-  equipped Bag. Items in Permanent inventory, in the equipped Bag, and in the
-  Secure Container count; equipped items, the Bank, Recovery Storage, and corpses
-  do not. The full rules are in
+  equipped Bag. Items in Permanent inventory and in the equipped Bag count;
+  equipped items, the Bank, Recovery Storage, and corpses do not. The full rules are in
   [Carry Weight And Encumbrance](INVENTORY_AND_DEATH_LOOT_DESIGN.md#carry-weight-and-encumbrance).
 - Up to full capacity the character walks at full speed. Above it the speed
   falls evenly to 20 percent at the 140 percent hard cap. No action may carry the
-  character past the hard cap, but a death may leave more weight in the Secure
-  Container; the character then still joins and moves at 20 percent speed, and
-  may only lighten its load.
+  character past the hard cap. A character above it, such as one from older
+  data, still joins and moves at 20 percent speed, and may only lighten its
+  load.
 - The inventory's carry meter and the Debug menu's Movement tab show the current
   weight, capacity, load, and movement speed.
 
@@ -352,9 +351,10 @@ button steers the walk, a right-click opens the world menu, and the wheel zooms.
 
 The panel has three columns that never move each other:
 
-- **Equipment**, on the left, is a paper doll in three columns: tool, head, and
-  Bag on top, ammunition, neck, and hands below them, main hand, body, and off
-  hand in the middle, the two rings beside legs, and back and feet at the bottom.
+- **Equipment**, on the left, is a paper doll of five full rows of three: tool,
+  head, and Bag on top, shoulders, neck, and back below them, main hand, body,
+  and off hand in the middle, hands, legs, and ammunition below them, and the two
+  rings beside the feet at the bottom. No item equips to the shoulders slot yet.
   A slot the catalog adds later appears in an extra row.
 - **Context**, in the middle, shows the Bank, Recovery Storage, a corpse, or a
   vendor in tabs, with a `Refresh` button. Its header names the NPC whose open
@@ -362,8 +362,7 @@ The panel has three columns that never move each other:
   delivery with its source, `Recovered: consumed insurance` or
   `Recovered: protected on death`.
 - **Character**, on the right, keeps its place in every view: a carry meter,
-  Permanent inventory, the equipped Bag's contents, and the Secure Container,
-  shown with its tier name, such as Warded Pouch. Its header shows the balance
+  Permanent inventory, and the equipped Bag's contents. Its header shows the balance
   and the item-state revision, such as `1,250 Gold    Revision 12`.
 
 Every slot is a square of the same size, and the slot grids sit in the middle of
@@ -377,8 +376,8 @@ item blocks, such as the off hand next to the two-handed Training Shortbow, is
 red and marked Blocked. Hovering a slot shows a tooltip with the item name,
 category, quantity and stack limit, weight, equipment slots and blocked slots,
 active policies with their source, such as `Insurance NPC`, `Quest grant`, or
-`Catalog rule`, destruction and Secure Container restrictions, and the slot
-location; tooltips never show during a drag.
+`Catalog rule`, the destruction restriction, and the slot location; tooltips
+never show during a drag.
 
 The carry meter spans zero to the 140 percent hard cap with a marker at full
 capacity. It is green up to full capacity, amber while movement is slowed, and
@@ -409,8 +408,8 @@ Items move by drag and drop:
 
 A right-click moves an item to where it belongs, as a shortcut for a drag:
 
-- An equippable item in Permanent inventory, the equipped Bag, or the Secure
-  Container equips: it takes the first free compatible slot, such as Ring 1 and
+- An equippable item in Permanent inventory or the equipped Bag equips: it
+  takes the first free compatible slot, such as Ring 1 and
   then Ring 2, or else replaces the item in the first compatible slot, which
   swaps into the slot the new item came from. Equipped items that block the slot
   move to the inventory first, so a two-handed bow takes the shield off. Arrows of
@@ -427,7 +426,7 @@ A right-click moves an item to where it belongs, as a shortcut for a drag:
   confirm the sale as after a drag.
 - The inventory fills as a purchase does: whole items top up a stack first, then
   take a free slot, matching specialized Bag slots first, then Permanent
-  inventory, then general Bag slots, never the Secure Container.
+  inventory, then general Bag slots.
 - A right-click that has nothing to do, such as on an ore with no Bank open, says
   why in the status line.
 
@@ -451,7 +450,7 @@ needs an open interaction with an NPC that offers them, such as Mira the
 Quartermaster; walking out of range or losing line of sight closes the
 interaction and ends the access. In the Development environment, the local stack
 lets both be used from anywhere, so item flows can be tested anywhere on the map;
-insurance always needs the NPC. The Secure Container needs no NPC.
+insurance always needs the NPC.
 
 ## Corpses And Looting
 
@@ -470,8 +469,8 @@ corpse in the world. The corpse shows its general inventory, equipment, and Bag
 contents once its complete state has arrived, and `Loot all`, `Close`,
 `Refresh`, and `Partial stack: off` above them.
 
-- Drag whole items into Permanent inventory, the equipped Bag, or the Secure
-  Container, or drag carried items back into compatible corpse slots. Turn on
+- Drag whole items into Permanent inventory or the equipped Bag, or drag
+  carried items back into compatible corpse slots. Turn on
   `Partial stack` before dragging to move a chosen quantity in either direction.
 - Items can be dragged between empty or occupied slots in any corpse section.
   Compatible stacks with room merge. A whole item that cannot merge swaps with
@@ -518,7 +517,7 @@ A character at 0 health dies. Above every open window, `You died` counts down
 World spawn with full health and mana. What happens to its items follows the
 [Player Death Partition](INVENTORY_AND_DEATH_LOOT_DESIGN.md#player-death-partition):
 
-- Currency and the Secure Container's contents stay with the character.
+- Currency stays with the character.
 - Items protected on death, and insured items that would otherwise be lootable,
   go to Recovery Storage; insurance is used up only when it actually protects an
   item.
@@ -588,11 +587,11 @@ real corpse from an offline character with the development item tools; see
   talk to a vendor, such as Mira, and choose `Trade`.
 - A purchase goes into carried storage. It first tops up existing stacks, then
   fills free slots: matching specialized Bag slots, Permanent inventory, and
-  general Bag slots, never the Secure Container. A purchase that does not fit,
+  general Bag slots. A purchase that does not fit,
   that the balance cannot pay, or that would pass the hard cap is refused without
   a partial result.
-- To sell, drag a carried item from Permanent inventory, the equipped Bag, or the
-  Secure Container onto the `Sell` slot, choose a quantity, which defaults to the
+- To sell, drag a carried item from Permanent inventory or the equipped Bag onto
+  the `Sell` slot, choose a quantity, which defaults to the
   whole stack, and confirm `Sell <n> <item> for <total>`, or press `Cancel`. The
   vendor pays 40 percent of the value, rounded down on the total, and part of a
   stack can be sold. A sale worth 0 Gold after rounding is refused. Equipped and

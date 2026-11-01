@@ -21,7 +21,6 @@ internal sealed class CharacterItemStateLifecycleHandler(
         await bootstrapper.BootstrapAsync(
             scope,
             characterCreated.CharacterId,
-            characterCreated.AccountId,
             cancellationToken);
 
         var settings = await scope.Connection.QuerySingleAsync<StartingBalanceRow>(

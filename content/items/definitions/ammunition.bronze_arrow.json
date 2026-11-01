@@ -12,9 +12,6 @@
     "ammunition"
   ],
   "id": "ammunition.bronze_arrow",
-  "locationEligibility": {
-    "secureContainer": true
-  },
   "maximumStackSize": 1000,
   "playerDestroyable": true,
   "requiredCharacterLevel": 1,

@@ -502,16 +502,7 @@ namespace Mmorpg.WorldData.Editor.Items
             compatibility.Add(toolKinds);
             toolLayout.Detail.Add(compatibility);
 
-            var rules = ContentToolStyles.CreateSection("Eligibility And Policies");
-            rules.Add(form.Toggle(
-                "Secure Container",
-                "locationEligibility",
-                definition => definition.locationEligibility != null && definition.locationEligibility.secureContainer,
-                (definition, value) =>
-                {
-                    definition.locationEligibility = definition.locationEligibility ?? new ItemCatalogJsonLocationEligibility();
-                    definition.locationEligibility.secureContainer = value;
-                }));
+            var rules = ContentToolStyles.CreateSection("Policies");
             rules.Add(form.Flags(
                 "Default Policies",
                 "defaultPolicies",

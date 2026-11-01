@@ -181,7 +181,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 state.FullSnapshot.Equipment.ToArray(),
                 null,
                 state.FullSnapshot.Bank,
-                state.FullSnapshot.SecureContainer,
                 state.FullSnapshot.RecoveryStorage,
                 280,
                 200,
@@ -224,7 +223,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 equipment,
                 null,
                 Container("bank", 4, bank == null ? Array.Empty<InventoryItem>() : new[] { bank }),
-                new SecureContainerInventory("secure_container.base", 1, Container("secure_container", 1)),
                 new RecoveryStorageInventory(
                     Guid.NewGuid(),
                     1,

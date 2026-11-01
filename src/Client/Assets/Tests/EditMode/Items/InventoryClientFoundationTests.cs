@@ -365,7 +365,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void TargetAdvisorUsesCanonicalSlotsSecureEligibilityBagRulesAndHardCap()
+        public void TargetAdvisorUsesCanonicalSlotsBagRulesAndHardCap()
         {
             var state = CreateAdvisorState(132, 250);
             var potion = CreateItem("fixture.potion", 1);
@@ -396,15 +396,6 @@ namespace Mmorpg.Client.Tests.EditMode
                     external,
                     state.FullSnapshot.EquippedBag.Contents,
                     bagPotionSlot,
-                    out _),
-                Is.False);
-            Assert.That(
-                InventoryTargetAdvisor.CanPlaceInContainer(
-                    state,
-                    weapon,
-                    external,
-                    state.FullSnapshot.SecureContainer.Contents,
-                    state.FullSnapshot.SecureContainer.Contents.Slots[0],
                     out _),
                 Is.False);
 
@@ -706,12 +697,6 @@ namespace Mmorpg.Client.Tests.EditMode
                     20),
                 equipment = Array.Empty<EquipmentSlotSnapshotResponse>(),
                 bank = CreateContainerResponse("bank", revision, 40),
-                secureContainer = new SecureContainerSnapshotResponse
-                {
-                    tierId = "secure_container.base",
-                    entitlementRevision = revision,
-                    contents = CreateContainerResponse("secure_container", revision, 4)
-                },
                 recoveryStorage = new RecoveryStorageSnapshotResponse
                 {
                     containerId = Guid.NewGuid().ToString(),
@@ -824,10 +809,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 Array.Empty<InventoryEquipmentSlot>(),
                 new EquippedBagInventory(equippedBagItem, bagContents),
                 CreateContainer("bank", 1, 40),
-                new SecureContainerInventory(
-                    "secure_container.base",
-                    1,
-                    CreateContainer("secure_container", 1, 4)),
                 new RecoveryStorageInventory(
                     Guid.NewGuid(),
                     1,
@@ -971,17 +952,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.True,
                 swapReason);
 
-            // The bow may not enter the Secure Container, so it cannot swap into a slot there.
-            Assert.That(
-                InventoryTargetAdvisor.CanEquip(
-                    state,
-                    CreateItem("fixture.sword", 1),
-                    ContainerLocation(state.FullSnapshot.SecureContainer.Contents),
-                    mainHand,
-                    out var secureReason),
-                Is.False);
-            Assert.That(secureReason, Does.Contain("Secure Container"));
-
             Assert.That(
                 InventoryTargetAdvisor.CanEquip(
                     state,
@@ -1034,10 +1004,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 equipment,
                 null,
                 CreateContainer("bank", 1, 40),
-                new SecureContainerInventory(
-                    "secure_container.base",
-                    1,
-                    CreateContainer("secure_container", 1, 4)),
                 new RecoveryStorageInventory(
                     Guid.NewGuid(),
                     1,
@@ -1066,10 +1032,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 Array.Empty<InventoryEquipmentSlot>(),
                 null,
                 CreateContainer("bank", 1, 40),
-                new SecureContainerInventory(
-                    "secure_container.base",
-                    1,
-                    CreateContainer("secure_container", 1, 4)),
                 new RecoveryStorageInventory(
                     Guid.NewGuid(),
                     1,

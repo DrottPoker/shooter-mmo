@@ -47,28 +47,6 @@ namespace Mmorpg.WorldData.Items
                 }
             }
 
-            var runtimeTiers = new Dictionary<string, SecureContainerTierDefinition>(StringComparer.Ordinal);
-            foreach (var tier in runtime.SecureContainerTiers ?? Array.Empty<SecureContainerTierDefinition>())
-            {
-                if (tier?.Id != null)
-                {
-                    runtimeTiers[tier.Id] = tier;
-                }
-            }
-
-            foreach (var tier in canonical.SecureContainerTiers)
-            {
-                if (!runtimeTiers.TryGetValue(tier.Id, out var runtimeTier)
-                    || !string.Equals(
-                        runtimeTier.StructuralFingerprint,
-                        tier.StructuralFingerprint,
-                        StringComparison.Ordinal))
-                {
-                    throw new InvalidDataException(
-                        "Secure Container tier '" + tier.Id + "' has a stale structural fingerprint.");
-                }
-            }
-
             return canonical;
         }
 
@@ -86,7 +64,6 @@ namespace Mmorpg.WorldData.Items
             {
                 FormatVersion = runtime.FormatVersion,
                 CatalogId = runtime.CatalogId,
-                BaseSecureContainerTierId = runtime.BaseSecureContainerTierId,
                 Character = runtime.Character == null
                     ? null
                     : new ItemCharacterSettingsEntry
@@ -136,16 +113,6 @@ namespace Mmorpg.WorldData.Items
                     .ToArray(),
                 AmmunitionFamilies = runtime.AmmunitionFamilies?.Select(CloneIdentity).ToArray(),
                 Definitions = runtime.Definitions?.Select(ToAuthoringDefinition).ToArray(),
-                SecureContainerTiers = runtime.SecureContainerTiers?
-                    .Select(tier => tier == null
-                        ? null
-                        : new SecureContainerTierAuthoringEntry
-                        {
-                            Id = tier.Id,
-                            DisplayName = tier.DisplayName,
-                            SlotCapacity = tier.SlotCapacity
-                        })
-                    .ToArray(),
                 Vendors = runtime.Vendors?
                     .Select(vendor => vendor == null
                         ? null
@@ -170,8 +137,7 @@ namespace Mmorpg.WorldData.Items
                         Categories = runtime.Retired.Categories,
                         Tags = runtime.Retired.Tags,
                         EquipmentSlots = runtime.Retired.EquipmentSlots,
-                        Definitions = runtime.Retired.Definitions,
-                        SecureContainerTiers = runtime.Retired.SecureContainerTiers
+                        Definitions = runtime.Retired.Definitions
                     }
             };
         }
@@ -210,12 +176,6 @@ namespace Mmorpg.WorldData.Items
                 EquipmentSlots = definition.EquipmentSlots,
                 BlockedEquipmentSlots = definition.BlockedEquipmentSlots,
                 PlayerDestroyable = definition.PlayerDestroyable,
-                LocationEligibility = definition.LocationEligibility == null
-                    ? null
-                    : new ItemLocationEligibilityAuthoringEntry
-                    {
-                        SecureContainer = definition.LocationEligibility.SecureContainer
-                    },
                 DefaultPolicies = definition.DefaultPolicies,
                 Bag = !hasBag
                     ? null

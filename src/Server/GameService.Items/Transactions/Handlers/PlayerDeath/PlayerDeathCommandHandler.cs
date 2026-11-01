@@ -248,7 +248,6 @@ internal sealed class PlayerDeathCommandHandler
         await PlayerCorpseLayoutWriter.CreateCorpseSnapshotsAsync(
             context,
             corpseId,
-            characterState,
             partitionItems,
             equippedBag,
             cancellationToken);

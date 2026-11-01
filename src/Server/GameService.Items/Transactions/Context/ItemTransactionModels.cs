@@ -24,8 +24,6 @@ internal sealed class LockedCharacterState
 
     public Guid BankContainerId { get; set; }
 
-    public Guid SecureContainerId { get; set; }
-
     public Guid RecoveryStorageContainerId { get; set; }
 }
 

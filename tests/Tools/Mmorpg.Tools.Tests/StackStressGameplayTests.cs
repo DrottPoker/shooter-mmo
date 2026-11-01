@@ -26,18 +26,14 @@ public sealed class StackStressGameplayTests
     {
         var itemId = Guid.NewGuid();
         var permanentId = Guid.NewGuid();
-        var secureId = Guid.NewGuid();
-        var state = new StressInventoryState(CreateInventory(
-            itemId,
-            permanentId,
-            secureId));
+        var state = new StressInventoryState(CreateInventory(itemId, permanentId));
         var intent = RealtimeItemOperationIntent.CreateRelocate(
             Guid.NewGuid(),
             1,
             itemId,
             1,
-            secureId,
-            0);
+            permanentId,
+            1);
         var result = new RealtimeItemOperationResult(
             intent.OperationId,
             intent.OperationKind,
@@ -46,17 +42,17 @@ public sealed class StackStressGameplayTests
             new RealtimeCarryState(2, 2, 200),
             null!,
             [new RealtimeItemRevision(itemId, 2)],
-            [
-                new RealtimeContainerRevision(permanentId, 2),
-                new RealtimeContainerRevision(secureId, 2)
-            ],
+            [new RealtimeContainerRevision(permanentId, 2)],
             []);
 
         Assert.True(state.ApplyRelocate(intent, result));
         var moved = state.FindItem("fixture.potion");
         Assert.NotNull(moved);
-        Assert.Equal(secureId, moved.ContainerId);
+        Assert.Equal(permanentId, moved.ContainerId);
+        Assert.Equal(1, moved.SlotIndex);
+        Assert.Equal(2, moved.ContainerRevision);
         Assert.Equal(2, moved.Item.Revision);
+        Assert.Equal(0, state.FindEmptySlot(permanentId));
         Assert.Equal(2, state.CharacterRevision);
     }
 
@@ -148,8 +144,7 @@ public sealed class StackStressGameplayTests
 
     private static FullStackCharacterInventoryResponse CreateInventory(
         Guid itemId,
-        Guid permanentId,
-        Guid secureId)
+        Guid permanentId)
     {
         return new FullStackCharacterInventoryResponse(
             Guid.NewGuid(),
@@ -180,15 +175,6 @@ public sealed class StackStressGameplayTests
                 0,
                 1,
                 [new FullStackItemSlotResponse(0, "general", [], null)]),
-            new FullStackSecureContainerResponse(
-                "base",
-                1,
-                new FullStackItemContainerResponse(
-                    secureId,
-                    "secure_container",
-                    1,
-                    1,
-                    [new FullStackItemSlotResponse(0, "general", [], null)])),
             new FullStackRecoveryStorageResponse(Guid.NewGuid(), 0, []),
             2,
             200,

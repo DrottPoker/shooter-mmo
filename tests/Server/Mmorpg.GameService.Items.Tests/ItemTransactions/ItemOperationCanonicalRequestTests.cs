@@ -138,18 +138,6 @@ public sealed class ItemOperationCanonicalRequestTests
         await AssertStoredAsync(
             context,
             await service.ExecuteAsync(
-                Request(new ChangeSecureContainerTierCommand(
-                    A,
-                    6,
-                    "secure_container.base",
-                    [new CharacterRevisionExpectation(C, 9), new CharacterRevisionExpectation(B, 8)])),
-                CancellationToken.None),
-            ItemOperationKinds.ChangeSecureContainerTier,
-            $$"""{"accountId":"{{A}}","expectedEntitlementRevision":6,"tierId":"secure_container.base","characterRevisions":[{"characterId":"{{B}}","revision":8},{"characterId":"{{C}}","revision":9}]}""",
-            expectedActorCharacterId: null);
-        await AssertStoredAsync(
-            context,
-            await service.ExecuteAsync(
                 Request(new ApplyItemPolicyCommand(A, 1, B, 2, "insured", "insurance_service", "npc", 25)),
                 CancellationToken.None),
             ItemOperationKinds.ApplyItemPolicy,

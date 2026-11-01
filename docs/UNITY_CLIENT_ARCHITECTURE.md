@@ -1334,8 +1334,8 @@ the current slot instead of the one drawn. An undone move marks its items for
 or allowed destruction. A Recovery item represents its complete delivery during a
 drag because the durable claim remains atomic.
 
-A UI-only target advisor reuses pure WorldData equipment, stack, Bag, Secure
-Container, slot-tag, weight, and hard-cap rules to disable obvious invalid
+A UI-only target advisor reuses pure WorldData equipment, stack, Bag, slot-tag,
+weight, and hard-cap rules to disable obvious invalid
 targets and to predict item operations. Server authority always revalidates any
 submitted action, and a prediction only shows what the confirmed state will
 become: the committed change or a reload always replaces it.
@@ -1507,8 +1507,8 @@ complete view shows it, so the panel switches to that view and the character
 views close the corpse. It renders all three sections and reuses
 `InventoryDragPayload` for corpse sources:
 
-- Dropping a full or selected partial stack into Permanent inventory, the
-  equipped Bag, or Secure Container submits a typed corpse intent, and dropping a
+- Dropping a full or selected partial stack into Permanent inventory or the
+  equipped Bag submits a typed corpse intent, and dropping a
   carried item into a compatible corpse slot submits a deposit.
 - Dropping a corpse item onto another corpse slot submits an authoritative
   internal move, split, merge, or complete swap.

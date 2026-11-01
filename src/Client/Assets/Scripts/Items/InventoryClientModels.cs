@@ -224,25 +224,6 @@ namespace Mmorpg.Client.Items
         public InventoryContainer Contents { get; }
     }
 
-    public sealed class SecureContainerInventory
-    {
-        public SecureContainerInventory(
-            string tierId,
-            long entitlementRevision,
-            InventoryContainer contents)
-        {
-            TierId = tierId;
-            EntitlementRevision = entitlementRevision;
-            Contents = contents;
-        }
-
-        public string TierId { get; }
-
-        public long EntitlementRevision { get; }
-
-        public InventoryContainer Contents { get; }
-    }
-
     public sealed class RecoveryDeliveryItem
     {
         public RecoveryDeliveryItem(int itemOrder, int slotIndex, InventoryItem item)
@@ -346,7 +327,6 @@ namespace Mmorpg.Client.Items
             InventoryEquipmentSlot[] equipment,
             EquippedBagInventory equippedBag,
             InventoryContainer bank,
-            SecureContainerInventory secureContainer,
             RecoveryStorageInventory recoveryStorage,
             long carriedWeight,
             long carryCapacity,
@@ -361,7 +341,6 @@ namespace Mmorpg.Client.Items
             Equipment = equipment ?? Array.Empty<InventoryEquipmentSlot>();
             EquippedBag = equippedBag;
             Bank = bank;
-            SecureContainer = secureContainer;
             RecoveryStorage = recoveryStorage;
             CarriedWeight = carriedWeight;
             CarryCapacity = carryCapacity;
@@ -383,8 +362,6 @@ namespace Mmorpg.Client.Items
         public EquippedBagInventory EquippedBag { get; }
 
         public InventoryContainer Bank { get; }
-
-        public SecureContainerInventory SecureContainer { get; }
 
         public RecoveryStorageInventory RecoveryStorage { get; }
 
@@ -413,7 +390,6 @@ namespace Mmorpg.Client.Items
                 .Append(Currency).Append('|')
                 .Append(PermanentInventory.CoherenceSignature()).Append('|')
                 .Append(Bank.CoherenceSignature()).Append('|')
-                .Append(SecureContainer.Contents.CoherenceSignature()).Append('|')
                 .Append(RecoveryStorage.CoherenceSignature());
             if (EquippedBag != null)
             {

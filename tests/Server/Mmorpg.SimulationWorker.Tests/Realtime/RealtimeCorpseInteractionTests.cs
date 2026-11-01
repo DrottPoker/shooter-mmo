@@ -320,8 +320,7 @@ public sealed class RealtimeCorpseInteractionTests
                     [new SimulationItemCharacterRevision(request.CharacterId, 1, 1, 200)],
                     [],
                     [],
-                    [],
-                    null),
+                    []),
                 RealtimeCorpseTestData.Snapshot(mutatedCorpseId, 2),
                 CharacterStateTestData.Create(request.CharacterId, 1, 1))));
         var looterCharacter = harness.AddCharacter("Looter");
@@ -402,8 +401,7 @@ public sealed class RealtimeCorpseInteractionTests
                     [new SimulationItemCharacterRevision(request.CharacterId, 1, 1, 200)],
                     [],
                     [],
-                    [],
-                    null),
+                    []),
                 RealtimeCorpseTestData.Snapshot(mutatedCorpseId, 2),
                 CharacterStateTestData.Create(request.CharacterId, 1, 1))));
         };

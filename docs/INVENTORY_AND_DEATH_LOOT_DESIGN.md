@@ -2,7 +2,7 @@
 
 This document is the product and domain source of truth for items: item
 definitions, instances and stacks, the permanent inventory, equipment, Bags,
-the Bank, the Secure Container, Recovery Storage, carry weight, item policies,
+the Bank, Recovery Storage, carry weight, item policies,
 currency, vendor trade, death, and corpses. How GameService implements these
 rules, with its tables, transaction kernel, and lock order, is in
 [GameService Modules](GAME_SERVICE_MODULES.md). The HTTP surface and the stable
@@ -27,11 +27,10 @@ temporary uGUI today.
 | --- | --- |
 | Item definition | Shared content that defines identity, category, tags, weight, stack limit, equipment compatibility, and other immutable rules |
 | Item instance | A durable, uniquely identified quantity of one item definition |
-| Carried storage | The permanent inventory, the equipped Bag's contents, and the Secure Container: what a character carries and what counts toward its carry weight |
+| Carried storage | The permanent inventory and the equipped Bag's contents: what a character carries and what counts toward its carry weight |
 | General slot | A slot that accepts any item not explicitly forbidden by location or policy rules |
 | Specialized slot | A Bag slot that accepts definitions with one or more configured tags |
 | Bag | A physical item that can be equipped in the character's Bag equipment slot and can provide item slots and carry-capacity bonuses |
-| Secure Container | Permanent per-character protected storage whose tier and slot capacity are selected by an account-level entitlement |
 | Recovery Storage | A per-character, system-write-only delivery queue reached through any NPC that offers it |
 | Recovery delivery | Items that one system event delivered to Recovery Storage together and that are claimed together |
 | Corpse | A bidirectional loot container backed by durable custody for players and selected persistent Mobs |
@@ -40,13 +39,14 @@ temporary uGUI today.
 
 `Bag` is the canonical equipment and item term. A Bag may be presented as a
 backpack, satchel, case, or another visual form without changing the domain.
-`Secure Container` is not a Bag item and does not use the Bag equipment slot.
+There is no protected carried storage: everything a character carries can be
+lost on death unless an item policy protects it.
 
 ## Authority And Data Ownership
 
 - GameService owns persistent item definitions mirrored from shared content,
   item instances, slot assignments, equipment assignments, policies, the bank,
-  the Secure Container, Recovery Storage, durable corpse custody, all durable
+  Recovery Storage, durable corpse custody, all durable
   item transactions, and character currency with its ledger.
 - PostgreSQL is the source of truth for persistent item ownership and custody.
 - SimulationWorker owns live interaction validation, proximity, active corpse
@@ -82,9 +82,7 @@ specialized Bag slot tags are `potion`, `food`, `material`, and `ammunition`. A
 supplies slot accepts both `potion` and `food`.
 
 A specialized slot accepts one or more configured tags. A matching item may
-still use a general slot. A definition must explicitly be allowed in the Secure
-Container. Weapons are never allowed in the Secure Container. Other allowed and
-forbidden definitions remain content-controlled.
+still use a general slot.
 
 Item definitions also own:
 
@@ -97,7 +95,6 @@ Item definitions also own:
   [Weapons And Ammunition](GAME_DESIGN.md#weapons-and-ammunition) describes.
 - Whether the item is a Bag, with the Bag's slots and carry bonus.
 - Whether the item may be destroyed by the player.
-- Location restrictions such as Secure Container eligibility.
 - Optional default server policies.
 - A value in whole currency units, from which vendors derive their prices. A
   value of `0` means no vendor buys or sells the item.
@@ -109,16 +106,16 @@ The game does not use weapon attachments.
 
 ### Structural Changes And Retired Ids
 
-Structural changes to weight, stack limits, Bag layouts, location eligibility,
-or equipment compatibility require an explicit data migration when existing
+Structural changes to weight, stack limits, Bag layouts, or equipment
+compatibility require an explicit data migration when existing
 instances could become invalid. Content reload must never silently create an
 invalid character state. Values, tool kinds, combat data, and level
 requirements are not structural, so changing them needs no data migration.
 
 Released ids are permanent. A released definition is never deleted or reused;
 it is retired by listing its id in the catalog's retired ids, and a retired id
-can never return with any meaning. Categories, tags, equipment slots, and
-Secure Container tiers retire the same way. The authoring workflow is in
+can never return with any meaning. Categories, tags, and equipment slots retire
+the same way. The authoring workflow is in
 [Item Catalog Authoring](../content/items/README.md).
 
 ### Item Data Ownership
@@ -132,8 +129,8 @@ become a second catalog, and compiling the catalog never requires Unity.
 Item data is split by responsibility:
 
 - WorldData item definitions own the gameplay rules: category, tags, unitless
-  weight, stack rules, equipment compatibility, location eligibility, policies,
-  Bag layout, value, tool kinds, and combat data.
+  weight, stack rules, equipment compatibility, policies, Bag layout, value,
+  tool kinds, and combat data.
 - The Unity client owns presentation: icons, localization keys, visual prefabs,
   the garments an item shows on a body with their dye colors, and other
   non-authoritative presentation metadata; see
@@ -177,8 +174,8 @@ Dropping an item onto an occupied container slot merges compatible stacks. When
 the items cannot merge, the server may atomically swap their complete slot
 assignments only if each item is valid in the other's container and slot type.
 Both item revisions, both containers, the character revision, live service
-access, policy, Bag, Secure Container, and hard-cap rules are validated in the
-same transaction. Non-empty Bag aggregates never use this ordinary item swap.
+access, policy, Bag, and hard-cap rules are validated in the same
+transaction. Non-empty Bag aggregates never use this ordinary item swap.
 
 ## Permanent Character Inventory
 
@@ -198,6 +195,7 @@ order:
 
 - `head`
 - `neck`
+- `shoulders`, for pauldrons and mantles
 - `back`, for a cloak
 - `body`
 - `legs`
@@ -232,8 +230,8 @@ assignment. It is not a parallel non-item system.
   slot.
 - Equipping an item onto an occupied slot swaps in one transaction: the
   equipped item moves into the container slot the new item came from. That slot
-  must accept the equipped item as an unequip into it would, so a Secure
-  Container slot refuses an ineligible item and a non-empty equipped Bag cannot
+  must accept the equipped item as an unequip into it would, so a specialized
+  Bag slot refuses an item without its tags and a non-empty equipped Bag cannot
   leave its slot, and the carry cap must hold afterwards.
 - A stack of the equipped definition tops up the equipped stack through a merge
   instead of swapping, and an equip request for such a stack is refused.
@@ -282,8 +280,7 @@ corpse revision the looter saw.
   equipped stack.
 - The rest tops up carried stacks, the permanent inventory before the equipped
   Bag, and then takes free slots in the order a purchase fills them: matching
-  specialized Bag slots, the permanent inventory, general Bag slots. The Secure
-  Container is never filled.
+  specialized Bag slots, the permanent inventory, general Bag slots.
 - A stack that does not fit whole moves in part and leaves the rest in the
   corpse; a live Mob corpse gives only whole items.
 - A corpse Bag with items takes an empty Bag slot whole, and its free slots then
@@ -402,48 +399,6 @@ rereads the aggregate, and is refused when it changed.
 
 Exact base capacity, unlock increments, and unlock sources remain balance data.
 
-## Secure Container
-
-The Secure Container is permanent per-character storage. It is not a physical
-Bag item, cannot move, cannot be traded, cannot be looted, and cannot be assigned
-to an equipment slot. Players see each tier by its content name; the base tier
-is the Warded Pouch, while the domain term stays Secure Container.
-
-### Ownership And Tier
-
-- Secure Container contents belong to the character.
-- The account owns the entitlement that selects the Secure Container name, tier,
-  and slot capacity for its characters.
-- The base tier starts with four slots.
-- Future premium or progression systems may grant larger tiers. A player may
-  only return to the base tier; a larger tier is granted only by a trusted
-  entitlement source.
-- The Secure Container itself has no item weight, but every item inside it
-  contributes to the character's carried weight.
-
-### Access And Eligibility
-
-- The character may move eligible items into and out of the Secure Container
-  while in the world.
-- The server validates all location eligibility, slot, stack, weight, and policy
-  rules.
-- Weapons are not eligible.
-- Other eligibility is definition-driven.
-- A move that would make carried weight exceed the hard cap is rejected.
-
-### Tier Reduction
-
-If the account's Secure Container tier loses slots:
-
-1. The change runs through the item transaction service.
-2. Items in removed slots are selected deterministically by descending slot
-   index.
-3. Those items move atomically to Recovery Storage with source
-   `secure_capacity_reduction`.
-4. No item is deleted.
-5. Items do not automatically return if the tier later increases.
-6. Any active SimulationWorker receives the resulting carry-state revision.
-
 ## Recovery Storage
 
 Recovery Storage is a global per-character system delivery queue. Every NPC that
@@ -461,9 +416,9 @@ offers Recovery Storage gives access to the same queue.
 - Recovery contents do not contribute to carry weight.
 - Every delivery stores source, source event id, creation time, optional
   availability time, optional expiry time, and claim state.
-- The sources are death protection, insurance, a protected Bag, and a Secure
-  Container capacity reduction. Insufficient respawn capacity and future system
-  restoration are reserved as sources and have no producer yet.
+- The sources are death protection, insurance, and a protected Bag.
+  Insufficient respawn capacity and future system restoration are reserved as
+  sources and have no producer yet.
 - An unclaimed delivery whose expiry time passed is destroyed by the system with
   audit records. No current source sets an expiry, and the expiry and retention
   policy is still open.
@@ -487,7 +442,6 @@ Carried weight includes:
 - Permanent character inventory.
 - Equipped Bag contents.
 - Empty Bag items carried in another compatible slot.
-- Secure Container contents.
 - Every stack quantity at definition unit weight.
 
 Carried weight excludes:
@@ -516,10 +470,11 @@ its bonus.
 - At 140 percent, movement uses 20 percent of base speed.
 - Exactly 140 percent is allowed.
 - No action may increase carried weight beyond 140 percent.
-- An involuntary capacity loss during death may leave retained Secure Container
-  weight above 140 percent. Death still commits. Until the character returns
-  within the hard cap, only operations that do not increase carried weight or
-  worsen the exact load ratio may commit.
+- Death never fails on carry weight. It empties carried storage today, but the
+  kernel lets it commit whatever carry state it leaves. A character above 140
+  percent, such as one from older data, may only make changes that do not
+  increase carried weight or worsen the exact load ratio until it is back within
+  the hard cap.
 
 With base capacity `2000`, normal capacity ends at carried weight `2000` and the
 140 percent hard cap is carried weight `2800`.
@@ -552,10 +507,9 @@ The inventory presentation uses a stable three-column layout:
 | Character          | Context container           | Character inventory    |
 | equipment          | Middle                      | Right                  |
 | Left               | Bank, corpse, Recovery      | Carry meter, Permanent |
-| Paper doll of the  | Storage, vendor, or another | slots, equipped Bag    |
-| equipment slots    | opened loot or storage      | contents, and Secure   |
-|                    | container                   | Container              |
-|                    |                             | Selected-item footer   |
+| Paper doll of the  | Storage, vendor, or another | slots, and equipped    |
+| equipment slots    | opened loot or storage      | Bag contents           |
+|                    | container                   | Selected-item footer   |
 +--------------------+-----------------------------+------------------------+
 ```
 
@@ -593,8 +547,7 @@ cannot grant, remove, or alter a policy.
 ### Protected On Death
 
 - The actual item does not enter lootable corpse custody.
-- The item is delivered to Recovery Storage at death unless it was already in
-  the Secure Container.
+- The item is delivered to Recovery Storage at death.
 - Protected items cannot be traded, auctioned, or sold to a vendor.
 - Protected items are not revealed to looters.
 - A non-quest protected item may be explicitly destroyed only when its
@@ -614,8 +567,7 @@ separate concepts.
 
 Insurance is one-death protection:
 
-- The actual insured item is delivered to Recovery Storage at death unless it
-  was already in the Secure Container.
+- The actual insured item is delivered to Recovery Storage at death.
 - The insurance policy is consumed by the first death where it protects an item.
 - A non-interactive snapshot may remain on the corpse so looters can see that
   the character carried the insured equipment.
@@ -628,9 +580,8 @@ Insurance is one-death protection:
   instance.
 - Insurance initially targets non-stackable equipment.
 
-Insurance does not consume a claim when the item was already in Secure
-Container, bank, or Recovery Storage because the death did not require the
-policy to protect it.
+Insurance does not consume a claim when the item was already in the bank or
+Recovery Storage because the death did not require the policy to protect it.
 
 ### Bag Policy Scope
 
@@ -727,7 +678,6 @@ deterministic, all-or-nothing rule places them in carried storage:
 2. Put the rest into empty compatible slots: equipped Bag specialized slots
    that accept the item first, then the permanent inventory, then equipped Bag
    general slots.
-3. The Secure Container is never filled automatically.
 
 If the whole quantity does not fit, the transaction is refused as a full
 inventory and changes nothing. The 140 percent hard cap still applies.
@@ -749,20 +699,17 @@ item exactly once:
 
 1. Currency remains on the character. Death never reads or writes the balance
    or its ledger, so the balance is unchanged after respawn.
-2. Secure Container contents remain in place.
-3. Protected-on-death items move to Recovery Storage.
-4. Insured items move to Recovery Storage and consume insurance.
-5. Remaining permanent inventory, equipment, Bag, and Bag contents move into
+2. Protected-on-death items move to Recovery Storage.
+3. Insured items move to Recovery Storage and consume insurance.
+4. Remaining permanent inventory, equipment, Bag, and Bag contents move into
    durable corpse custody.
-6. Non-interactive snapshots are created where required.
-7. Character and corpse inventory revisions advance together.
+5. Non-interactive snapshots are created where required.
+6. Character and corpse inventory revisions advance together.
 
-An equipped Bag capacity bonus is removed when the Bag leaves equipment. If
-retained Secure Container contents then place the character above 140 percent,
-the death transaction still commits because rejecting death would violate the
-authoritative event and custody partition. The item transaction kernel accepts
-only non-worsening remediation from that state and rejects any added weight or
-worse load ratio. SimulationWorker respawns a dead character only after its
+Death leaves no carried storage behind, and the equipped Bag capacity bonus is
+removed when the Bag leaves equipment. The death transaction never fails on
+carry weight, because rejecting death would violate the authoritative event and
+custody partition. SimulationWorker respawns a dead character only after its
 death committed and the committed carry state was applied.
 
 The corpse exposes separate sections for:
@@ -770,9 +717,7 @@ The corpse exposes separate sections for:
 - Permanent general inventory.
 - Equipment.
 - Bag and Bag contents.
-- Secure Container name and tier snapshot.
 
-The Secure Container snapshot is non-interactive and contains no item contents.
 Insured equipment snapshots may show the original definition and insured state.
 Protected items do not receive individual visible placeholders.
 
@@ -926,8 +871,6 @@ are described in
 - For local testing, a Development option makes Bank and Recovery access
   global. It never includes insurance, never bypasses GameService authority,
   and is refused outside the Development environment.
-- Secure Container operations are allowed anywhere in the world but remain
-  category, slot, policy, weight, and session validated.
 - Vendor trades need an open interaction with an NPC whose vendor capability is
   available, and the trade uses that capability's vendor profile. Gathering
   needs an open interaction with a resource node.
@@ -939,8 +882,8 @@ are described in
   boundary stay authoritative for corpse contents, while corpse target selection
   and the one-active-interaction lease join the shared interaction.
 - When the character has no active simulation session, account-authenticated
-  routes may move, split, merge, and destroy items in carried storage and change
-  the Secure Container tier, without inventing a live SimulationWorker.
+  routes may move, split, merge, and destroy items in carried storage without
+  inventing a live SimulationWorker.
 
 ## Transactional Invariants
 
@@ -954,7 +897,7 @@ The implementation must enforce all of the following:
 5. Stack merges preserve total quantity and identical policy state.
 6. A Bag with child items can only occupy a valid Bag slot.
 7. An ordinary slot may contain a Bag only when its child container is empty.
-8. Secure Container and specialized Bag eligibility is server validated.
+8. Specialized Bag eligibility is server validated.
 9. Carried weight never exceeds 140 percent after a weight-increasing action.
 10. Death partition, corpse transfer, Bag swap, policy consumption, and recovery
     delivery either commit completely or leave all prior state unchanged.
@@ -964,11 +907,10 @@ The implementation must enforce all of the following:
     quantity.
 14. Internal corpse moves preserve custody, carry state, immutable death
     presentation snapshots, and typed corpse equipment-slot compatibility.
-15. Account-tier reduction cannot lose Secure Container contents.
-16. Redis state can never override committed PostgreSQL custody.
-17. Every currency change writes exactly one ledger row in the same
+15. Redis state can never override committed PostgreSQL custody.
+16. Every currency change writes exactly one ledger row in the same
     transaction, and the balance never leaves its range.
-18. A vendor trade moves its items and its currency together or not at all.
+17. A vendor trade moves its items and its currency together or not at all.
 
 ## Planned
 
@@ -1001,10 +943,8 @@ These values are content or balance data and are not embedded in transaction
 control flow:
 
 - Bag slot counts and carry bonuses beyond the development content.
-- Secure Container upgrade prices and progression sources.
 - Bank unlock sizes and sources.
 - Recovery Storage expiry duration and retention.
-- Which non-weapon definitions are Secure Container eligible.
 - Insurance price and which NPCs offer insurance.
 - Item values, vendor price rates, and the starting balance beyond the
   development content.
