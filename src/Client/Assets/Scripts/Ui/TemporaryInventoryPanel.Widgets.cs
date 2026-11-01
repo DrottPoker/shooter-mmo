@@ -1,5 +1,6 @@
 using System;
 using Mmorpg.Client.Items;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -70,7 +71,7 @@ namespace Mmorpg.Client.Ui
                     + load.LoadPercentText + note + "</color>"
                     + "    Speed " + load.SpeedPercentText,
                 14,
-                FontStyle.Normal,
+                FontStyles.Normal,
                 TemporaryUiKit.TextSecondary,
                 20f);
         }
@@ -110,8 +111,8 @@ namespace Mmorpg.Client.Ui
             Vector2 anchorMax,
             bool withFooter,
             out RectTransform panelRect,
-            out Text header,
-            out Text headerDetail,
+            out TextMeshProUGUI header,
+            out TextMeshProUGUI headerDetail,
             out RectTransform footer,
             out RectTransform scrollRectTransform)
         {
@@ -136,16 +137,16 @@ namespace Mmorpg.Client.Ui
                 CreateUiObject("Title", headerBand.transform),
                 string.Empty,
                 20,
-                FontStyle.Bold,
-                TextAnchor.MiddleLeft,
+                FontStyles.Bold,
+                TextAlignmentOptions.Left,
                 TemporaryUiKit.TextPrimary);
             Stretch(header.rectTransform, Vector2.zero, Vector2.one, new Vector2(14f, 0f), new Vector2(-14f, 0f));
             headerDetail = TemporaryUiKit.AddText(
                 CreateUiObject("Detail", headerBand.transform),
                 string.Empty,
                 14,
-                FontStyle.Normal,
-                TextAnchor.MiddleRight,
+                FontStyles.Normal,
+                TextAlignmentOptions.Right,
                 TemporaryUiKit.TextSecondary);
             Stretch(headerDetail.rectTransform, Vector2.zero, Vector2.one, new Vector2(14f, 0f), new Vector2(-14f, 0f));
 
@@ -344,14 +345,14 @@ namespace Mmorpg.Client.Ui
                     CreateUiObject("Name", slotObject.transform),
                     displayName,
                     14,
-                    FontStyle.Normal,
-                    TextAnchor.MiddleCenter,
+                    FontStyles.Normal,
+                    TextAlignmentOptions.Center,
                     TemporaryUiKit.TextPrimary);
-                nameText.horizontalOverflow = HorizontalWrapMode.Wrap;
-                nameText.verticalOverflow = VerticalWrapMode.Truncate;
-                nameText.resizeTextForBestFit = true;
-                nameText.resizeTextMinSize = 10;
-                nameText.resizeTextMaxSize = 14;
+                nameText.textWrappingMode = TextWrappingModes.Normal;
+                nameText.overflowMode = TextOverflowModes.Truncate;
+                nameText.enableAutoSizing = true;
+                nameText.fontSizeMin = 10;
+                nameText.fontSizeMax = 14;
                 Stretch(nameText.rectTransform, Vector2.zero, Vector2.one, new Vector2(nameLeft, 15f), new Vector2(-6f, -15f));
                 // A replaced quantity, such as a live count, keeps its label to update.
                 if (quantity.Length > 0 || spec.QuantityText != null)
@@ -360,8 +361,8 @@ namespace Mmorpg.Client.Ui
                         CreateUiObject(QuantityLabelName, slotObject.transform),
                         quantity,
                         14,
-                        FontStyle.Bold,
-                        TextAnchor.LowerRight,
+                        FontStyles.Bold,
+                        TextAlignmentOptions.BottomRight,
                         QuantityColor);
                     Stretch(quantityText.rectTransform, Vector2.zero, Vector2.one, new Vector2(4f, 2f), new Vector2(-6f, -2f));
                 }
@@ -373,8 +374,8 @@ namespace Mmorpg.Client.Ui
                         CreateUiObject("PolicyBadge", slotObject.transform),
                         badge,
                         12,
-                        FontStyle.Bold,
-                        TextAnchor.UpperRight,
+                        FontStyles.Bold,
+                        TextAlignmentOptions.TopRight,
                         TemporaryUiKit.SuccessColor);
                     Stretch(badgeText.rectTransform, Vector2.zero, Vector2.one, new Vector2(4f, 4f), new Vector2(-6f, -5f));
                 }
@@ -385,8 +386,8 @@ namespace Mmorpg.Client.Ui
                         CreateUiObject("SlotLabel", slotObject.transform),
                         spec.CornerLabel,
                         11,
-                        FontStyle.Normal,
-                        TextAnchor.UpperLeft,
+                        FontStyles.Normal,
+                        TextAlignmentOptions.TopLeft,
                         TemporaryUiKit.TextMuted);
                     Stretch(cornerText.rectTransform, Vector2.zero, Vector2.one, new Vector2(6f, 4f), new Vector2(-18f, -5f));
                 }
@@ -397,10 +398,10 @@ namespace Mmorpg.Client.Ui
                     CreateUiObject("EmptyLabel", slotObject.transform),
                     spec.Blocked ? spec.EmptyLabel + "\n<b>Blocked</b>" : spec.EmptyLabel,
                     13,
-                    FontStyle.Normal,
-                    TextAnchor.MiddleCenter,
+                    FontStyles.Normal,
+                    TextAlignmentOptions.Center,
                     spec.Blocked ? TemporaryUiKit.DangerColor : TemporaryUiKit.TextMuted);
-                emptyText.horizontalOverflow = HorizontalWrapMode.Wrap;
+                emptyText.textWrappingMode = TextWrappingModes.Normal;
                 Stretch(emptyText.rectTransform, Vector2.zero, Vector2.one, new Vector2(4f, 2f), new Vector2(-4f, -2f));
             }
 
@@ -446,23 +447,23 @@ namespace Mmorpg.Client.Ui
                 CreateUiObject("Title", row.transform),
                 title,
                 16,
-                FontStyle.Bold,
-                TextAnchor.LowerLeft,
+                FontStyles.Bold,
+                TextAlignmentOptions.BottomLeft,
                 TemporaryUiKit.TextPrimary);
             Stretch(titleText.rectTransform, Vector2.zero, Vector2.one, new Vector2(1f, 2f), Vector2.zero);
             var detailText = TemporaryUiKit.AddText(
                 CreateUiObject("Detail", row.transform),
                 detail,
                 13,
-                FontStyle.Normal,
-                TextAnchor.LowerRight,
+                FontStyles.Normal,
+                TextAlignmentOptions.BottomRight,
                 TemporaryUiKit.TextMuted);
             Stretch(detailText.rectTransform, Vector2.zero, Vector2.one, new Vector2(0f, 3f), new Vector2(-2f, 0f));
         }
 
         private static void CreateMessage(Transform parent, string text, Color color)
         {
-            TemporaryUiKit.CreateLabel(parent, text, 14, FontStyle.Normal, color, 22f);
+            TemporaryUiKit.CreateLabel(parent, text, 14, FontStyles.Normal, color, 22f);
         }
 
         private static GameObject CreateUiObject(string name, Transform parent)
@@ -523,7 +524,7 @@ namespace Mmorpg.Client.Ui
             public InventoryItem Item;
             public string Description = string.Empty;
             public int DrawnQuantity;
-            public Text QuantityText;
+            public TextMeshProUGUI QuantityText;
             public InventoryTooltipTrigger Tooltip;
         }
     }

@@ -132,7 +132,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var coordinator = canvasObject.AddComponent<InventoryDragCoordinator>();
             coordinator.Configure(
                 canvasObject.GetComponent<RectTransform>(),
-                Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+                TemporaryUiKit.Font);
             var source = new GameObject(
                 "Source",
                 typeof(RectTransform),

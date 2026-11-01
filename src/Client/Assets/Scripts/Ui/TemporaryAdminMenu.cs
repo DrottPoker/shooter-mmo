@@ -7,6 +7,7 @@ using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -41,10 +42,10 @@ namespace Mmorpg.Client.Ui
         private LocalPlayerController localPlayer;
         private TemporaryMenuWindow window;
         private RectTransform lookPage;
-        private Text speedValue;
+        private TextMeshProUGUI speedValue;
         private Button pickButton;
-        private Text pickLabel;
-        private Text healthValue;
+        private TextMeshProUGUI pickLabel;
+        private TextMeshProUGUI healthValue;
         private Toggle invulnerableToggle;
         private BodyLook rowsLook;
         private string rowsModel;
@@ -271,7 +272,7 @@ namespace Mmorpg.Client.Ui
                 () => SetPicking(!IsPickingTeleport),
                 true,
                 TemporaryButtonTone.Normal);
-            pickLabel = pickButton.GetComponentInChildren<Text>();
+            pickLabel = pickButton.GetComponentInChildren<TextMeshProUGUI>();
             TemporaryMenuWindow.AddNote(
                 page,
                 "Then left-click the ground; Escape cancels. While this menu is open, right-clicking the "

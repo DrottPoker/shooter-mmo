@@ -186,7 +186,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(debugMenu.Overlay.ShowPath, Is.False);
             var collisionToggle = debugMenu.Window.Root
                 .GetComponentsInChildren<UnityEngine.UI.Toggle>(true)
-                .Single(toggle => toggle.GetComponentInChildren<UnityEngine.UI.Text>().text == "Collision around you");
+                .Single(toggle => toggle.GetComponentInChildren<TMPro.TMP_Text>().text == "Collision around you");
             Assert.That(collisionToggle.isOn, Is.False);
             collisionToggle.isOn = true;
             Assert.That(debugMenu.Overlay.ShowCollision, Is.True);

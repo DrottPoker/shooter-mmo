@@ -65,9 +65,9 @@ in both:
 | Charcoal | Boundary walls |
 
 Signs on two posts name every zone and test station, and floor labels give the
-measured values, such as `0.34 m` or `42 deg`. Labels are world-space uGUI text
-with the built-in font: they hide behind walls like any other surface and never
-take pointer input. Sign posts, buildings, rocks, and tree trunks collide;
+measured values, such as `0.34 m` or `42 deg`. Labels are world-space TextMesh
+Pro text in the UI font, sharp at any distance: they hide behind walls like any
+other surface and never take pointer input. Sign posts, buildings, rocks, and tree trunks collide;
 roads, floor paint, sign boards, labels, and tree crowns do not.
 
 ## Development World 1: Stress Arena

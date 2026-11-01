@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mmorpg.Client.Core;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,26 +17,26 @@ namespace Mmorpg.Client.Ui
         private readonly List<Button> shardRows = new List<Button>();
         private readonly List<string> shardRowIds = new List<string>();
         private readonly List<Button> bodyButtons = new List<Button>();
-        private readonly List<Text> lookValues = new List<Text>();
+        private readonly List<TextMeshProUGUI> lookValues = new List<TextMeshProUGUI>();
 
         private TemporaryEntryScreen screen;
         private CanvasGroup controls;
-        private Text accountText;
+        private TextMeshProUGUI accountText;
         private RectTransform characterList;
         private RectTransform enterPage;
         private RectTransform createPage;
-        private Text characterTitle;
-        private Text characterDetail;
+        private TextMeshProUGUI characterTitle;
+        private TextMeshProUGUI characterDetail;
         private RectTransform shardList;
-        private Text enterWorldBlocker;
+        private TextMeshProUGUI enterWorldBlocker;
         private Button enterWorldButton;
-        private Text enterWorldLabel;
-        private InputField nameField;
+        private TextMeshProUGUI enterWorldLabel;
+        private TMP_InputField nameField;
         private RectTransform bodyRow;
         private RectTransform lookList;
-        private Text lookNote;
+        private TextMeshProUGUI lookNote;
         private Button cancelCreationButton;
-        private Text statusText;
+        private TextMeshProUGUI statusText;
         private int shownCharactersVersion = -1;
         private int shownShardsVersion = -1;
         private CharacterCreationLook shownLook;
@@ -75,10 +76,10 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Status", screen.Root),
                 string.Empty,
                 15,
-                FontStyle.Normal,
-                TextAnchor.MiddleCenter,
+                FontStyles.Normal,
+                TextAlignmentOptions.Center,
                 TemporaryUiKit.TextSecondary);
-            statusText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            statusText.textWrappingMode = TextWrappingModes.Normal;
             TemporaryUiKit.Stretch(
                 statusText.rectTransform,
                 new Vector2(0.5f, 0f),
@@ -97,8 +98,8 @@ namespace Mmorpg.Client.Ui
                 TemporaryEntryScreen.GameTitle + "   <size=15><color=" + TemporaryUiKit.ColorTag(TemporaryUiKit.TextMuted)
                     + ">Character Select</color></size>",
                 22,
-                FontStyle.Bold,
-                TextAnchor.MiddleLeft,
+                FontStyles.Bold,
+                TextAlignmentOptions.Left,
                 TemporaryUiKit.TextPrimary);
             TemporaryUiKit.Stretch(title.rectTransform, Vector2.zero, Vector2.one, new Vector2(24f, 0f), new Vector2(-24f, 0f));
 
@@ -113,8 +114,8 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Account", actions),
                 string.Empty,
                 14,
-                FontStyle.Normal,
-                TextAnchor.MiddleRight,
+                FontStyles.Normal,
+                TextAlignmentOptions.Right,
                 TemporaryUiKit.TextSecondary);
             accountText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
             TemporaryUiKit.CreateButton(actions, "Refresh", Refresh, true, TemporaryButtonTone.Normal, 110f);
@@ -142,7 +143,7 @@ namespace Mmorpg.Client.Ui
             shardList = TemporaryEntryScreen.AddScrollList(enterPage, "ShardList");
             enterWorldBlocker = TemporaryEntryScreen.AddText(enterPage, string.Empty, 13, TemporaryUiKit.WarningColor);
             enterWorldButton = TemporaryEntryScreen.AddMainButton(enterPage, "Enter World", BeginJoin);
-            enterWorldLabel = enterWorldButton.GetComponentInChildren<Text>();
+            enterWorldLabel = enterWorldButton.GetComponentInChildren<TextMeshProUGUI>();
             TemporaryEntryScreen.AddText(
                 enterPage,
                 "Press Enter, or double-click a character, to enter the World.",
@@ -156,7 +157,7 @@ namespace Mmorpg.Client.Ui
                 "Name",
                 string.Empty,
                 "Character name",
-                InputField.ContentType.Standard,
+                TMP_InputField.ContentType.Standard,
                 AccountEntryPresentation.CharacterNameLimit,
                 AccountEntryPresentation.CharacterNameHint);
             TemporaryMenuWindow.AddSection(createPage, "Body");
@@ -173,7 +174,7 @@ namespace Mmorpg.Client.Ui
                 TemporaryButtonTone.Quiet,
                 140f);
             var create = TemporaryUiKit.CreateButton(buttons, "Create Character", CreateCharacter, true, TemporaryButtonTone.Active);
-            create.GetComponentInChildren<Text>().fontSize = 17;
+            create.GetComponentInChildren<TextMeshProUGUI>().fontSize = 17;
         }
 
         private void OpenCreation()

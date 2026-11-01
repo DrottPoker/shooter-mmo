@@ -54,18 +54,18 @@ namespace Mmorpg.Client.Ui
         private RectTransform worldLayer;
         private GameObject ownerFrame;
         private Bar ownerHealth;
-        private Text ownerHealthText;
+        private TextMeshProUGUI ownerHealthText;
         private Bar ownerMana;
-        private Text ownerManaText;
-        private Text ownerArrowText;
-        private Text ownerStatusText;
-        private Text messageText;
+        private TextMeshProUGUI ownerManaText;
+        private TextMeshProUGUI ownerArrowText;
+        private TextMeshProUGUI ownerStatusText;
+        private TextMeshProUGUI messageText;
         private GameObject targetFrame;
-        private Text targetNameText;
+        private TextMeshProUGUI targetNameText;
         private Bar targetHealth;
-        private Text targetDetailText;
+        private TextMeshProUGUI targetDetailText;
         private GameObject deathOverlay;
-        private Text deathCountdownText;
+        private TextMeshProUGUI deathCountdownText;
         private float messageVisibleUntil = -1f;
         private ulong shownTargetEntityId;
         private string shownTargetName = string.Empty;
@@ -494,19 +494,19 @@ namespace Mmorpg.Client.Ui
         {
             var frame = CreateFrame(parent, OwnerFrameName, new Vector2(0f, 1f), new Vector2(16f, -16f), new Vector2(330f, 144f));
             ownerFrame = frame.gameObject;
-            ownerHealthText = CreateLine(frame, 10f, 18, FontStyle.Bold, TemporaryUiKit.TextPrimary);
+            ownerHealthText = CreateLine(frame, 10f, 18, FontStyles.Bold, TemporaryUiKit.TextPrimary);
             ownerHealth = CreateBar(frame, new Vector2(14f, -36f), new Vector2(302f, 12f));
-            ownerManaText = CreateLine(frame, 52f, 15, FontStyle.Bold, TemporaryUiKit.TextPrimary);
+            ownerManaText = CreateLine(frame, 52f, 15, FontStyles.Bold, TemporaryUiKit.TextPrimary);
             ownerMana = CreateBar(frame, new Vector2(14f, -76f), new Vector2(302f, 10f));
-            ownerArrowText = CreateLine(frame, 94f, 15, FontStyle.Normal, TemporaryUiKit.TextSecondary);
-            ownerStatusText = CreateLine(frame, 116f, 15, FontStyle.Normal, TemporaryUiKit.TextSecondary);
+            ownerArrowText = CreateLine(frame, 94f, 15, FontStyles.Normal, TemporaryUiKit.TextSecondary);
+            ownerStatusText = CreateLine(frame, 116f, 15, FontStyles.Normal, TemporaryUiKit.TextSecondary);
 
             messageText = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("CombatMessage", parent),
                 string.Empty,
                 16,
-                FontStyle.Bold,
-                TextAnchor.UpperLeft,
+                FontStyles.Bold,
+                TextAlignmentOptions.TopLeft,
                 TemporaryUiKit.WarningColor);
             var messageRect = messageText.rectTransform;
             messageRect.anchorMin = new Vector2(0f, 1f);
@@ -514,7 +514,7 @@ namespace Mmorpg.Client.Ui
             messageRect.pivot = new Vector2(0f, 1f);
             messageRect.anchoredPosition = new Vector2(18f, -166f);
             messageRect.sizeDelta = new Vector2(600f, 24f);
-            AddShadow(messageText.gameObject);
+            OutlineText(messageText);
             messageText.gameObject.SetActive(false);
         }
 
@@ -522,9 +522,9 @@ namespace Mmorpg.Client.Ui
         {
             var frame = CreateFrame(parent, TargetFrameName, new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(360f, 84f));
             targetFrame = frame.gameObject;
-            targetNameText = CreateLine(frame, 8f, 18, FontStyle.Bold, TemporaryUiKit.TextPrimary);
+            targetNameText = CreateLine(frame, 8f, 18, FontStyles.Bold, TemporaryUiKit.TextPrimary);
             targetHealth = CreateBar(frame, new Vector2(14f, -36f), new Vector2(332f, 12f));
-            targetDetailText = CreateLine(frame, 54f, 15, FontStyle.Normal, TemporaryUiKit.TextSecondary);
+            targetDetailText = CreateLine(frame, 54f, 15, FontStyles.Normal, TemporaryUiKit.TextSecondary);
             targetFrame.SetActive(false);
         }
 
@@ -548,21 +548,21 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Title", deathOverlay.transform),
                 "You died",
                 54,
-                FontStyle.Bold,
-                TextAnchor.MiddleCenter,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center,
                 TemporaryUiKit.DangerColor);
             TemporaryUiKit.Stretch(title.rectTransform, new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, 10f), new Vector2(0f, 80f));
-            AddShadow(title.gameObject);
+            OutlineText(title);
 
             deathCountdownText = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("Countdown", deathOverlay.transform),
                 string.Empty,
                 26,
-                FontStyle.Bold,
-                TextAnchor.MiddleCenter,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center,
                 TemporaryUiKit.TextPrimary);
             TemporaryUiKit.Stretch(deathCountdownText.rectTransform, new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, -50f), new Vector2(0f, 0f));
-            AddShadow(deathCountdownText.gameObject);
+            OutlineText(deathCountdownText);
             deathOverlay.SetActive(false);
         }
 
@@ -586,14 +586,14 @@ namespace Mmorpg.Client.Ui
             return frame;
         }
 
-        private static Text CreateLine(RectTransform frame, float top, int fontSize, FontStyle style, Color color)
+        private static TextMeshProUGUI CreateLine(RectTransform frame, float top, int fontSize, FontStyles style, Color color)
         {
             var text = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("Line", frame),
                 string.Empty,
                 fontSize,
                 style,
-                TextAnchor.UpperLeft,
+                TextAlignmentOptions.TopLeft,
                 color);
             var rect = text.rectTransform;
             rect.anchorMin = new Vector2(0f, 1f);
@@ -657,11 +657,10 @@ namespace Mmorpg.Client.Ui
             return text;
         }
 
-        private static void AddShadow(GameObject target)
+        // Text over the world reads on any background with the world labels' black outline.
+        private static void OutlineText(TextMeshProUGUI text)
         {
-            var shadow = target.AddComponent<Shadow>();
-            shadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
-            shadow.effectDistance = new Vector2(1.5f, -1.5f);
+            text.fontSharedMaterial = WorldLabels.OutlinedMaterial;
         }
 
         private readonly struct Bar

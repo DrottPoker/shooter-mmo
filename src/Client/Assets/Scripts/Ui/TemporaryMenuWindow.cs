@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -30,7 +31,7 @@ namespace Mmorpg.Client.Ui
         private RectTransform tabs;
         private RectTransform footerButtons;
         private ScrollRect scroll;
-        private Text status;
+        private TextMeshProUGUI status;
 
         private TemporaryMenuWindow()
         {
@@ -206,22 +207,22 @@ namespace Mmorpg.Client.Ui
         }
 
         // A small heading that groups the rows below it.
-        public static Text AddSection(RectTransform page, string title)
+        public static TextMeshProUGUI AddSection(RectTransform page, string title)
         {
             var label = TemporaryUiKit.CreateLabel(
                 page,
                 title.ToUpperInvariant(),
                 12,
-                FontStyle.Bold,
+                FontStyles.Bold,
                 TemporaryUiKit.AccentColor,
                 RowHeight);
-            label.alignment = TextAnchor.LowerLeft;
+            label.alignment = TextAlignmentOptions.BottomLeft;
             label.GetComponent<LayoutElement>().minHeight = RowHeight + 6f;
             return label;
         }
 
         // A row with a label and a value beside it; returns the value text to update.
-        public static Text AddValue(RectTransform page, string label)
+        public static TextMeshProUGUI AddValue(RectTransform page, string label)
         {
             var row = TemporaryUiKit.CreateRow(page, RowHeight, 6f);
             row.GetComponent<LayoutElement>().minHeight = RowHeight;
@@ -229,8 +230,8 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Label", row),
                 label,
                 14,
-                FontStyle.Normal,
-                TextAnchor.UpperLeft,
+                FontStyles.Normal,
+                TextAlignmentOptions.TopLeft,
                 TemporaryUiKit.TextSecondary);
             var nameLayout = name.gameObject.AddComponent<LayoutElement>();
             nameLayout.preferredWidth = LabelWidth;
@@ -239,10 +240,10 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Value", row),
                 "-",
                 14,
-                FontStyle.Normal,
-                TextAnchor.UpperLeft,
+                FontStyles.Normal,
+                TextAlignmentOptions.TopLeft,
                 TemporaryUiKit.TextPrimary);
-            value.horizontalOverflow = HorizontalWrapMode.Wrap;
+            value.textWrappingMode = TextWrappingModes.Normal;
             value.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
             // Wrapped values make the row taller.
             var layout = row.GetComponent<HorizontalLayoutGroup>();
@@ -272,8 +273,8 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Label", row),
                 label,
                 14,
-                FontStyle.Normal,
-                TextAnchor.MiddleLeft,
+                FontStyles.Normal,
+                TextAlignmentOptions.Left,
                 TemporaryUiKit.TextPrimary);
             text.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
             // The label takes clicks too, so the whole row toggles.
@@ -292,15 +293,15 @@ namespace Mmorpg.Client.Ui
         }
 
         // A row that steps a value back and forth; returns the value text to update.
-        public static Text AddStepper(RectTransform page, string label, Action<int> step)
+        public static TextMeshProUGUI AddStepper(RectTransform page, string label, Action<int> step)
         {
             var row = TemporaryUiKit.CreateRow(page, 28f, 6f);
             var name = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("Label", row),
                 label,
                 14,
-                FontStyle.Normal,
-                TextAnchor.MiddleLeft,
+                FontStyles.Normal,
+                TextAlignmentOptions.Left,
                 TemporaryUiKit.TextSecondary);
             var nameLayout = name.gameObject.AddComponent<LayoutElement>();
             nameLayout.preferredWidth = LabelWidth;
@@ -310,13 +311,13 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Value", row),
                 "-",
                 14,
-                FontStyle.Bold,
-                TextAnchor.MiddleCenter,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center,
                 TemporaryUiKit.TextPrimary);
-            value.horizontalOverflow = HorizontalWrapMode.Wrap;
-            value.resizeTextForBestFit = true;
-            value.resizeTextMinSize = 10;
-            value.resizeTextMaxSize = 14;
+            value.textWrappingMode = TextWrappingModes.Normal;
+            value.enableAutoSizing = true;
+            value.fontSizeMin = 10;
+            value.fontSizeMax = 14;
             value.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
             TemporaryUiKit.CreateButton(row, ">", () => step(1), true, TemporaryButtonTone.Normal, 30f);
             return value;
@@ -329,9 +330,9 @@ namespace Mmorpg.Client.Ui
         }
 
         // A wrapping line of quiet text, such as how to use a tool.
-        public static Text AddNote(RectTransform page, string text)
+        public static TextMeshProUGUI AddNote(RectTransform page, string text)
         {
-            return TemporaryUiKit.CreateLabel(page, text, 13, FontStyle.Italic, TemporaryUiKit.TextMuted, 18f);
+            return TemporaryUiKit.CreateLabel(page, text, 13, FontStyles.Italic, TemporaryUiKit.TextMuted, 18f);
         }
 
         private void BuildHeader(string title, string keyHint, Action close)
@@ -344,16 +345,16 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Title", header),
                 title,
                 18,
-                FontStyle.Bold,
-                TextAnchor.MiddleLeft,
+                FontStyles.Bold,
+                TextAlignmentOptions.Left,
                 TemporaryUiKit.TextPrimary);
             TemporaryUiKit.Stretch(titleText.rectTransform, Vector2.zero, Vector2.one, new Vector2(12f, 0f), new Vector2(-80f, 0f));
             var hint = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("Key", header),
                 keyHint,
                 13,
-                FontStyle.Normal,
-                TextAnchor.MiddleRight,
+                FontStyles.Normal,
+                TextAlignmentOptions.Right,
                 TemporaryUiKit.TextMuted);
             TemporaryUiKit.Stretch(hint.rectTransform, Vector2.zero, Vector2.one, new Vector2(12f, 0f), new Vector2(-44f, 0f));
             var closeButton = TemporaryUiKit.CreateButton(header, "X", close, true, TemporaryButtonTone.Quiet);
@@ -394,11 +395,11 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.CreateUiObject("Status", footer),
                 string.Empty,
                 13,
-                FontStyle.Normal,
-                TextAnchor.UpperLeft,
+                FontStyles.Normal,
+                TextAlignmentOptions.TopLeft,
                 TemporaryUiKit.TextSecondary);
-            status.horizontalOverflow = HorizontalWrapMode.Wrap;
-            status.verticalOverflow = VerticalWrapMode.Truncate;
+            status.textWrappingMode = TextWrappingModes.Normal;
+            status.overflowMode = TextOverflowModes.Truncate;
             TemporaryUiKit.Stretch(
                 status.rectTransform,
                 new Vector2(0f, 1f),

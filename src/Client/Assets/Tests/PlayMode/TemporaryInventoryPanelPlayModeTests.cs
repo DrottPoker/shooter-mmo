@@ -10,6 +10,7 @@ using Mmorpg.Client.Ui;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -108,6 +109,14 @@ namespace Mmorpg.Client.Tests.PlayMode
                     tooltip.Text,
                     Does.Contain(catalog.GetDisplayName(
                         snapshot.Equipment.Single(slot => slot.SlotId == equippedSlotId).Item.DefinitionId)));
+
+                // On the first hover the tooltip is as wide as its widest line, up to its limit.
+                var tooltipLabel = tooltip.GetComponentInChildren<TMP_Text>();
+                var widestLine = tooltipLabel.GetPreferredValues(tooltip.Text, float.PositiveInfinity, float.PositiveInfinity).x;
+                Assert.That(widestLine, Is.GreaterThan(100f));
+                Assert.That(
+                    tooltipLabel.rectTransform.rect.width,
+                    Is.GreaterThanOrEqualTo(Mathf.Min(320f, widestLine) - 1f));
                 trigger.OnPointerExit(pointer);
                 Assert.That(tooltip.IsVisible, Is.False);
 
@@ -173,7 +182,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                 yield return null;
 
                 Assert.That(
-                    panel.GetComponentsInChildren<Text>().Any(text =>
+                    panel.GetComponentsInChildren<TMP_Text>().Any(text =>
                         text.text.Contains("active simulation session")),
                     Is.True,
                     "The status line names why the right-click move was not sent.");
@@ -264,7 +273,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             var slot = View(panel.GetComponentsInChildren<InventorySlotView>(), "equipment:" + AmmunitionSlotId);
             var label = slot.transform.Find("Quantity");
             Assert.That(label, Is.Not.Null);
-            return label.GetComponent<Text>().text;
+            return label.GetComponent<TMP_Text>().text;
         }
 
         private static CharacterInventorySnapshot WithEquipped(

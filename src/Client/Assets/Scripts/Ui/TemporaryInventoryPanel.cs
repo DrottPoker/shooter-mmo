@@ -8,6 +8,7 @@ using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -59,12 +60,12 @@ namespace Mmorpg.Client.Ui
         private RectTransform characterFooter;
         private PlayerBodyLookSetting bodyLook;
         private RectTransform characterScroll;
-        private Text equipmentHeader;
-        private Text contextHeader;
-        private Text characterHeader;
-        private Text equipmentHeaderDetail;
-        private Text contextHeaderDetail;
-        private Text characterHeaderDetail;
+        private TextMeshProUGUI equipmentHeader;
+        private TextMeshProUGUI contextHeader;
+        private TextMeshProUGUI characterHeader;
+        private TextMeshProUGUI equipmentHeaderDetail;
+        private TextMeshProUGUI contextHeaderDetail;
+        private TextMeshProUGUI characterHeaderDetail;
         private InventoryDragCoordinator dragCoordinator;
         private InventoryTooltipView tooltip;
         private Vector2 slotSize = new Vector2(MaximumSlotWidth, SlotHeight);
@@ -872,7 +873,7 @@ namespace Mmorpg.Client.Ui
                     Item = item,
                     Description = baseDescription,
                     DrawnQuantity = live,
-                    QuantityText = quantityLabel != null ? quantityLabel.GetComponent<Text>() : null,
+                    QuantityText = quantityLabel != null ? quantityLabel.GetComponent<TextMeshProUGUI>() : null,
                     Tooltip = slotObject.GetComponent<InventoryTooltipTrigger>()
                 };
             }
@@ -1148,7 +1149,7 @@ namespace Mmorpg.Client.Ui
                     characterFooter,
                     "Click an item to select it, drag it to move it, or right-click it to equip, store, or take it.",
                     13,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextMuted,
                     20f);
                 CreateStatusLine();
@@ -1165,7 +1166,7 @@ namespace Mmorpg.Client.Ui
                     + LocationLabel(state, location)
                     + "    Revision " + item.Revision.ToString(CultureInfo.InvariantCulture) + "</color>",
                 15,
-                FontStyle.Normal,
+                FontStyles.Normal,
                 TemporaryUiKit.TextPrimary,
                 22f);
             var row = TemporaryUiKit.CreateRow(characterFooter, 34f, 6f);
@@ -1212,7 +1213,7 @@ namespace Mmorpg.Client.Ui
                     characterFooter,
                     destroyReason,
                     13,
-                    FontStyle.Normal,
+                    FontStyles.Normal,
                     TemporaryUiKit.TextMuted,
                     18f);
             }
@@ -1226,7 +1227,7 @@ namespace Mmorpg.Client.Ui
                 characterFooter,
                 localStatus,
                 14,
-                FontStyle.Normal,
+                FontStyles.Normal,
                 TemporaryUiKit.TextSecondary,
                 22f);
         }

@@ -1,4 +1,5 @@
 using System;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -14,7 +15,8 @@ namespace Mmorpg.Client.Ui
         Quiet
     }
 
-    // Shared colors and widget builders for the temporary code-built uGUI panels.
+    // Shared colors and widget builders for the temporary code-built uGUI panels. Every text is
+    // TextMesh Pro in its default font, so it stays sharp at every canvas scale.
     public static class TemporaryUiKit
     {
         public static readonly Color BackdropColor = new Color(0.03f, 0.035f, 0.045f, 1f);
@@ -34,19 +36,13 @@ namespace Mmorpg.Client.Ui
         public static readonly Color ButtonQuietColor = new Color(0.10f, 0.115f, 0.14f, 1f);
         public static readonly Color InputColor = new Color(0.025f, 0.03f, 0.04f, 1f);
 
-        private static Font font;
+        // The text inside a field or button keeps this far from its edges.
+        private static readonly Vector2 FieldPadding = new Vector2(10f, 2f);
 
-        public static Font Font
+        // TextMesh Pro's default font, the project's UI font.
+        public static TMP_FontAsset Font
         {
-            get
-            {
-                if (font == null)
-                {
-                    font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                }
-
-                return font;
-            }
+            get { return TMP_Settings.defaultFontAsset; }
         }
 
         public static GameObject CreateUiObject(string name, Transform parent)
@@ -69,32 +65,35 @@ namespace Mmorpg.Client.Ui
             rect.offsetMax = offsetMax;
         }
 
-        public static Text AddText(
+        // A text that wraps at its width and may overflow its height, as a uGUI text did.
+        public static TextMeshProUGUI AddText(
             GameObject target,
             string value,
-            int fontSize,
-            FontStyle style,
-            TextAnchor alignment,
+            float fontSize,
+            FontStyles style,
+            TextAlignmentOptions alignment,
             Color color)
         {
-            var text = target.AddComponent<Text>();
+            var text = target.AddComponent<TextMeshProUGUI>();
             text.font = Font;
             text.text = value ?? string.Empty;
             text.fontSize = fontSize;
             text.fontStyle = style;
             text.alignment = alignment;
             text.color = color;
-            text.supportRichText = true;
+            text.richText = true;
+            text.textWrappingMode = TextWrappingModes.Normal;
+            text.overflowMode = TextOverflowModes.Overflow;
             text.raycastTarget = false;
             return text;
         }
 
         // A wrapping text line inside a vertical layout.
-        public static Text CreateLabel(
+        public static TextMeshProUGUI CreateLabel(
             Transform parent,
             string value,
-            int fontSize,
-            FontStyle style,
+            float fontSize,
+            FontStyles style,
             Color color,
             float minHeight)
         {
@@ -103,10 +102,10 @@ namespace Mmorpg.Client.Ui
                 value,
                 fontSize,
                 style,
-                TextAnchor.MiddleLeft,
+                TextAlignmentOptions.Left,
                 color);
-            label.horizontalOverflow = HorizontalWrapMode.Wrap;
-            label.verticalOverflow = VerticalWrapMode.Overflow;
+            label.textWrappingMode = TextWrappingModes.Normal;
+            label.overflowMode = TextOverflowModes.Overflow;
             label.gameObject.AddComponent<LayoutElement>().minHeight = minHeight;
             return label;
         }
@@ -135,8 +134,8 @@ namespace Mmorpg.Client.Ui
                 CreateUiObject("Label", buttonObject.transform),
                 label,
                 14,
-                FontStyle.Bold,
-                TextAnchor.MiddleCenter,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center,
                 interactable ? TextPrimary : TextMuted);
             Stretch(
                 text.rectTransform,
@@ -160,89 +159,111 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        public static InputField CreateIntegerField(
+        public static TMP_InputField CreateIntegerField(
             Transform parent,
             string value,
             float preferredWidth)
         {
-            var inputObject = CreateUiObject("QuantityField", parent);
-            var image = inputObject.AddComponent<Image>();
-            image.color = InputColor;
-            AddOutline(image, PanelBorderColor);
-            var input = inputObject.AddComponent<InputField>();
-            input.contentType = InputField.ContentType.IntegerNumber;
-            input.lineType = InputField.LineType.SingleLine;
-            input.customCaretColor = true;
-            input.caretColor = TextPrimary;
-            input.selectionColor = new Color(0.30f, 0.50f, 0.80f, 0.6f);
-            var text = AddText(
-                CreateUiObject("Text", inputObject.transform),
+            var input = CreateInputField(
+                "QuantityField",
+                parent,
                 value,
-                15,
-                FontStyle.Normal,
-                TextAnchor.MiddleCenter,
-                TextPrimary);
-            Stretch(
-                text.rectTransform,
-                Vector2.zero,
-                Vector2.one,
-                new Vector2(6f, 2f),
-                new Vector2(-6f, -2f));
-            text.supportRichText = false;
-            input.textComponent = text;
-            input.text = value;
-            var layout = inputObject.AddComponent<LayoutElement>();
+                null,
+                TMP_InputField.ContentType.IntegerNumber,
+                0,
+                TextAlignmentOptions.Center,
+                new Vector2(6f, 2f));
+            var layout = input.gameObject.AddComponent<LayoutElement>();
             layout.preferredWidth = preferredWidth;
             layout.flexibleWidth = 0f;
             return input;
         }
 
         // A single-line text field; the placeholder shows while it is empty.
-        public static InputField CreateTextField(
+        public static TMP_InputField CreateTextField(
             Transform parent,
             string value,
             string placeholder,
-            InputField.ContentType contentType,
+            TMP_InputField.ContentType contentType,
             int characterLimit,
             float height)
         {
-            var inputObject = CreateUiObject("TextField", parent);
+            var input = CreateInputField(
+                "TextField",
+                parent,
+                value,
+                placeholder,
+                contentType,
+                characterLimit,
+                TextAlignmentOptions.Left,
+                FieldPadding);
+            var layout = input.gameObject.AddComponent<LayoutElement>();
+            layout.minHeight = height;
+            layout.preferredHeight = height;
+            layout.flexibleWidth = 1f;
+            return input;
+        }
+
+        // A TextMesh Pro field: its text and placeholder sit in a masked text area, inset from
+        // the edges, which also bounds the caret and the selection.
+        private static TMP_InputField CreateInputField(
+            string name,
+            Transform parent,
+            string value,
+            string placeholder,
+            TMP_InputField.ContentType contentType,
+            int characterLimit,
+            TextAlignmentOptions alignment,
+            Vector2 padding)
+        {
+            var inputObject = CreateUiObject(name, parent);
             var image = inputObject.AddComponent<Image>();
             image.color = InputColor;
             AddOutline(image, PanelBorderColor);
-            var input = inputObject.AddComponent<InputField>();
+
+            var area = CreateUiObject("Text Area", inputObject.transform).GetComponent<RectTransform>();
+            Stretch(area, Vector2.zero, Vector2.one, padding, -padding);
+            area.gameObject.AddComponent<RectMask2D>();
+
+            var input = inputObject.AddComponent<TMP_InputField>();
+            input.textViewport = area;
+            if (placeholder != null)
+            {
+                var hint = AddText(
+                    CreateUiObject("Placeholder", area),
+                    placeholder,
+                    15,
+                    FontStyles.Italic,
+                    alignment,
+                    TextMuted);
+                Stretch(hint.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                hint.richText = false;
+                hint.textWrappingMode = TextWrappingModes.NoWrap;
+                input.placeholder = hint;
+            }
+
+            var text = AddText(
+                CreateUiObject("Text", area),
+                string.Empty,
+                15,
+                FontStyles.Normal,
+                alignment,
+                TextPrimary);
+            Stretch(text.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            text.richText = false;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            input.textComponent = text;
+            input.fontAsset = Font;
+            input.pointSize = 15;
             input.contentType = contentType;
-            input.lineType = InputField.LineType.SingleLine;
+            input.lineType = TMP_InputField.LineType.SingleLine;
             input.characterLimit = characterLimit;
             input.customCaretColor = true;
             input.caretColor = TextPrimary;
             input.caretWidth = 2;
             input.selectionColor = new Color(0.30f, 0.50f, 0.80f, 0.6f);
-            var hint = AddText(
-                CreateUiObject("Placeholder", inputObject.transform),
-                placeholder,
-                15,
-                FontStyle.Italic,
-                TextAnchor.MiddleLeft,
-                TextMuted);
-            Stretch(hint.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 2f), new Vector2(-10f, -2f));
-            hint.supportRichText = false;
-            var text = AddText(
-                CreateUiObject("Text", inputObject.transform),
-                value,
-                15,
-                FontStyle.Normal,
-                TextAnchor.MiddleLeft,
-                TextPrimary);
-            Stretch(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 2f), new Vector2(-10f, -2f));
-            text.supportRichText = false;
-            input.textComponent = text;
-            input.placeholder = hint;
+            input.richText = false;
             input.text = value ?? string.Empty;
-            var layout = inputObject.AddComponent<LayoutElement>();
-            layout.minHeight = height;
-            layout.preferredHeight = height;
-            layout.flexibleWidth = 1f;
             return input;
         }
 

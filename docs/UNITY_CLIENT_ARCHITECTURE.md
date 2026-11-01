@@ -2485,9 +2485,10 @@ never redraws the panel or cancels a drag.
 
 ### Text And Fonts
 
-Every new text is TextMesh Pro. The legacy uGUI `Text` of the temporary panels
-renders a bitmap font that blurs when the canvas scales; the panels still use it
-until they are replaced.
+Every text of the client is TextMesh Pro: the panels, the HUD, the menus, the
+entry screens, the world labels, and the signs of the development Worlds. The
+legacy uGUI `Text` renders a bitmap font that blurs when its canvas scales, so
+the client has none.
 
 - TextMesh Pro's Essential Resources are in `Assets/TextMesh Pro`: the shaders,
   the LiberationSans font file, and `Resources` with `TMP Settings`, its default
@@ -2517,8 +2518,23 @@ until they are replaced.
   `Resources` folder keeps that variant in every build.
   `WorldLabels.FontSizeForCapHeight` gives the font size whose capitals and
   digits have a given height.
+- `TemporaryUiKit` builds every panel text as a `TextMeshProUGUI` in the default
+  font that wraps at its width and may overflow its height, as a uGUI text did,
+  and every field as a `TMP_InputField` whose text and placeholder sit in a
+  masked `Text Area` inset from its edges, which also bounds the caret and the
+  selection. A text over the world, such as the combat message, the death
+  overlay, and the world menu's hover text, uses the outlined material of
+  `WorldLabels` instead of a uGUI `Shadow`, which TextMesh Pro ignores.
+- TextMesh Pro measures a text only while it is active: under an inactive
+  parent, `preferredWidth` and `GetPreferredValues` return the width of a
+  fraction of the text. Activate a text before anything reads its size, as the
+  world menu does with its rows and the inventory tooltip with its label.
 - `WorldLabelTests` pins the default font, its settings and characters, the
   outlined material, the build variant, and the digit height of a label.
+  `LegacyUiTextTests` fails on a client type that holds a uGUI `Text`,
+  `InputField`, or `Font`, on client code that creates or finds a uGUI `Text`
+  or `InputField` or loads the legacy runtime font, and on a scene or prefab
+  that contains either component.
 
 ### Mob Nameplates
 
@@ -2628,9 +2644,9 @@ How to run the suites, in the Editor or headless, is in
   [Working Rules For New Content](#working-rules-for-new-content): refer to fixed
   addresses through `ClientAddresses`, release every handle you own, and never
   add a `Resources` folder.
-- Draw every new text with TextMesh Pro, never with the legacy uGUI `Text`, and
-  every text over the world through `WorldLabels`, as
-  [Text And Fonts](#text-and-fonts) describes.
+- Draw every text with TextMesh Pro, never with the legacy uGUI `Text` or
+  `InputField`, panel texts through `TemporaryUiKit` and every text over the
+  world through `WorldLabels`, as [Text And Fonts](#text-and-fonts) describes.
 - Change scenes only through `ClientSceneLoader`. A new World scene needs its
   catalog entry and `MMORPG > Tools > Addressables > Apply Client Layout`.
 - Create runtime primitives only through `RuntimePrimitives` with the configured

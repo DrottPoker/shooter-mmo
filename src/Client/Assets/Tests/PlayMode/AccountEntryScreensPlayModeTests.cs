@@ -6,6 +6,7 @@ using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Ui;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -93,7 +94,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(Page(panel, "EnterPage").activeInHierarchy, Is.False);
             Assert.That(ButtonLabels(createPage), Does.Contain("Human Male").And.Contain("Human Female"));
             Assert.That(ButtonLabels(createPage), Does.Not.Contain("Cancel"), "Without a character there is nothing to go back to.");
-            var nameField = createPage.GetComponentInChildren<InputField>();
+            var nameField = createPage.GetComponentInChildren<TMP_InputField>();
             Assert.That(EventSystem.current.currentSelectedGameObject, Is.SameAs(nameField.gameObject));
 
             var first = Character("Mira");
@@ -118,7 +119,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             yield return null;
             Assert.That(enterWorld.interactable, Is.False);
             Assert.That(
-                enterPage.GetComponentsInChildren<Text>().Select(text => text.text),
+                enterPage.GetComponentsInChildren<TMP_Text>().Select(text => text.text),
                 Does.Contain("No shard is online. Start a SimulationWorker, then press Refresh."));
         }
 
@@ -146,9 +147,9 @@ namespace Mmorpg.Client.Tests.PlayMode
             yield return null;
         }
 
-        private static InputField[] VisibleFields(Component panel)
+        private static TMP_InputField[] VisibleFields(Component panel)
         {
-            return panel.GetComponentsInChildren<InputField>().Where(field => field.gameObject.activeInHierarchy).ToArray();
+            return panel.GetComponentsInChildren<TMP_InputField>().Where(field => field.gameObject.activeInHierarchy).ToArray();
         }
 
         private static GameObject Page(Component panel, string name)
@@ -168,7 +169,7 @@ namespace Mmorpg.Client.Tests.PlayMode
 
         private static string Label(Button button)
         {
-            var text = button.GetComponentInChildren<Text>();
+            var text = button.GetComponentInChildren<TMP_Text>();
             return text != null ? text.text : string.Empty;
         }
 
