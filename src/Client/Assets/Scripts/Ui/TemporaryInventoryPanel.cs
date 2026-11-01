@@ -411,12 +411,11 @@ namespace Mmorpg.Client.Ui
                 canvasObject.GetComponent<RectTransform>(),
                 TemporaryUiKit.Font);
 
+            // The root only groups the module windows and draws nothing, so a click beside or
+            // between them still reaches the world.
             rootObject = CreateUiObject("InventoryRoot", canvasObject.transform);
             var rootRect = rootObject.GetComponent<RectTransform>();
             Stretch(rootRect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            // Keeps world clicks from passing through while the inventory is open.
-            var blocker = rootObject.AddComponent<Image>();
-            blocker.color = new Color(0f, 0f, 0f, 0.22f);
 
             // The character module keeps its place in every mode, so B, C, and I only add
             // columns around it.

@@ -195,6 +195,89 @@ namespace Mmorpg.Client.Tests.PlayMode
             }
         }
 
+        // Each module is a window of its own: in every view the panel takes the pointer only
+        // above a shown window, so a click beside or between the windows reaches the world.
+        [UnityTest]
+        public IEnumerator EveryViewTakesThePointerOnlyAboveItsShownWindows()
+        {
+            var previousBaseUrl = ClientSession.GameServiceBaseUrl;
+            ConfigureGameServiceUrl(UnreachableGameServiceUrl);
+            ClientSession.Clear();
+            var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
+            yield return worldLoad;
+            Assert.That(worldLoad.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
+            yield return null;
+
+            var panel = UnityEngine.Object.FindAnyObjectByType<TemporaryInventoryPanel>();
+            Assert.That(panel, Is.Not.Null);
+            Assert.That(EventSystem.current, Is.Not.Null);
+            var windows = panel.GetComponentsInChildren<RectTransform>(true)
+                .Where(rect => rect.name is TemporaryInventoryPanel.EquipmentModuleName
+                    or TemporaryInventoryPanel.ContextModuleName
+                    or TemporaryInventoryPanel.CharacterModuleName)
+                .ToArray();
+            Assert.That(windows.Length, Is.EqualTo(3));
+            try
+            {
+                foreach (var mode in new[]
+                {
+                    InventoryPanelMode.CharacterOnly,
+                    InventoryPanelMode.CharacterAndEquipment,
+                    InventoryPanelMode.Complete
+                })
+                {
+                    panel.SetOpen(true, mode);
+                    yield return null;
+                    Canvas.ForceUpdateCanvases();
+
+                    // Cell centers never lie on a window edge, so both checks agree exactly.
+                    const int cells = 20;
+                    var overWindow = 0;
+                    var overWorld = 0;
+                    for (var column = 0; column < cells; column++)
+                    {
+                        for (var row = 0; row < cells; row++)
+                        {
+                            var point = new Vector2(
+                                (column + 0.5f) / cells * Screen.width,
+                                (row + 0.5f) / cells * Screen.height);
+                            var aboveShownWindow = windows.Any(window =>
+                                window.gameObject.activeInHierarchy
+                                && RectTransformUtility.RectangleContainsScreenPoint(window, point, null));
+                            Assert.That(
+                                PanelTakesPointer(panel, point),
+                                Is.EqualTo(aboveShownWindow),
+                                mode + " at " + point);
+                            if (aboveShownWindow)
+                            {
+                                overWindow++;
+                            }
+                            else
+                            {
+                                overWorld++;
+                            }
+                        }
+                    }
+
+                    Assert.That(overWindow, Is.GreaterThan(0), mode.ToString());
+                    Assert.That(overWorld, Is.GreaterThan(0), mode.ToString());
+                }
+            }
+            finally
+            {
+                panel.SetOpen(false);
+                ClientSession.Clear();
+                ConfigureGameServiceUrl(previousBaseUrl);
+            }
+        }
+
+        private static bool PanelTakesPointer(TemporaryInventoryPanel panel, Vector2 point)
+        {
+            var hits = new List<RaycastResult>();
+            EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = point }, hits);
+            return hits.Any(hit => hit.gameObject.transform.IsChildOf(panel.transform));
+        }
+
         [UnityTest]
         public IEnumerator EquippedArrowSlotFollowsTheLiveCountOfTheOwnerCombatState()
         {

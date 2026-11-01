@@ -1293,7 +1293,10 @@ views that `B`, `C`, and `I` toggle change root visibility only and never
 rewrite another module's layout, so the character column keeps its place in
 every view; the layout itself is
 [Inventory UI Layout](INVENTORY_AND_DEATH_LOOT_DESIGN.md#inventory-ui-layout).
-Clicks on the panel never reach the world.
+The shared panel root only groups the modules and draws no graphic, so each
+module is a window of its own: `WorldPointerFocus` sees the pointer over
+interface only above a shown module, and world input works beside and between
+them.
 
 `EquipmentPaperDollLayout` owns the positions of the equipment slots and appends
 any slot it does not know, such as one added to the catalog later, in extra rows.

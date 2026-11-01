@@ -341,9 +341,14 @@ not implemented, and running with run energy is planned in
 
 `B` shows character storage only, `C` adds the equipment, and `I` shows the
 complete view with the contextual storage. Pressing another inventory key
-switches the view, pressing the same key or `Escape` closes it, and a click on
-the panel never moves the character. Opening the Bank or Recovery Storage of an
-NPC, a vendor, or a corpse opens the complete view with it.
+switches the view, and pressing the same key or `Escape` closes it. Opening the
+Bank or Recovery Storage of an NPC, a vendor, or a corpse opens the complete
+view with it.
+
+Each column is a window of its own over the world, which stays undimmed. A click
+or scroll on a window never reaches the world, while the world beside and between
+the windows works as when they are closed: a click walks or attacks, a held
+button steers the walk, a right-click opens the world menu, and the wheel zooms.
 
 The panel has three columns that never move each other:
 
