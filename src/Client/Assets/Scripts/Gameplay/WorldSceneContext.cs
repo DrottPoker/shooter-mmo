@@ -42,11 +42,20 @@ namespace Mmorpg.Client.Gameplay
         private PlayerBodyLookSetting bodyLook;
         private PlayerEquipment equipment;
         private LocalPlayerController localPlayer;
+        private CharacterPreview preview;
 
         // The local player of the joined session, or null before it spawned.
         public LocalPlayerController LocalPlayer
         {
             get { return localPlayer; }
+        }
+
+        // The copy of the local character that the Equipment window shows, dressed as the
+        // character is but holding no tool; it exists from Initialize on and shows a body once
+        // the local player spawned.
+        public CharacterPreview Preview
+        {
+            get { return preview; }
         }
 
         // The presentations of the other players in view.
@@ -130,6 +139,10 @@ namespace Mmorpg.Client.Gameplay
             bodyTint = tintSetting;
             bodyLook = lookSetting;
             equipment = playerEquipment;
+            if (preview == null)
+            {
+                preview = CharacterPreview.Create(transform);
+            }
         }
 
         private void Start()
@@ -632,6 +645,32 @@ namespace Mmorpg.Client.Gameplay
                         equipment != null ? equipment.ToolInUse : null),
                     bodyMaterials);
             }
+
+            ShowPreview();
+        }
+
+        // The preview shows the model of the local body in the same look, without the tool a
+        // gathering character holds.
+        private void ShowPreview()
+        {
+            var slot = SlotOf(localPlayer);
+            var model = slot != null ? slot.Model : null;
+            if (preview == null || model == null || model.Body == null || bodyLook == null)
+            {
+                return;
+            }
+
+            preview.Show(
+                model,
+                EquipmentGarments.Dress(
+                    bodyLook.Look,
+                    model.Body.Catalog,
+                    equipment != null ? equipment.Items : null,
+                    Presentation,
+                    bodyLook.HeadwearLowered,
+                    null),
+                bodyMeshes,
+                bodyMaterials);
         }
 
         private bool ValidateReferences()

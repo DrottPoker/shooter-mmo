@@ -1002,7 +1002,7 @@ Characters move in `Update`. Then, in this order:
 | 50 | `Locomotion` | `CharacterLocomotionAnimator` reads how far its body moved, after every character moved and before the Animator evaluates |
 | 60 | `Projectiles` | `CombatProjectilePresentation` places arrows and bolts in `LateUpdate`, after the bodies posed their hands and drew their strings |
 | 100 | `Camera` | `OrbitCameraController` follows the player |
-| 110 | `Cloth` | `ClothChainScheduler` lays the cloth of the bodies the camera now sees |
+| 110 | `Cloth` | `ClothChainScheduler` lays the cloth of the bodies the main camera or the character preview now sees |
 | 200 | `ScreenAnchoredInterface` | `WorldNameplates` places the Mob nameplates, and `TemporaryCombatHud` places health bars and damage numbers |
 
 Without a fixed order Unity could place screen-anchored interface with the
@@ -1334,8 +1334,10 @@ one added to the catalog later, in further rows below. It hides the `back` slot,
 since no item equips to it until cloaks come from achievements, and the window's
 count of equipped slots leaves it out. `EquipmentWindow` places the columns
 symmetrically, as far from both window edges, around the theme's
-`EquipmentCenterWidth`, and centres each row below with the same gap as the
-columns; a slot draws no name, and its tooltip names it. Every slot is a square of the theme's
+`EquipmentCenterWidth`, where it shows the
+[Character Preview](#character-preview) on the theme's pedestal, and centres
+each row below with the same gap as the columns; a slot draws no name, and its
+tooltip names it. Every slot is a square of the theme's
 slot size; the Inventory and storage windows show their grids in six columns.
 An occupied slot draws the item's icon from `ClientItemCatalog.LoadIcon` in a
 frame of `ItemRarityPresentation.FrameColor`, which is the theme's common color
@@ -1862,6 +1864,36 @@ body in the same colors. A garment in its natural colors, or without dye
 channels, draws with the material itself, so only the colors and not the mesh
 decide the copy.
 
+### Character Preview
+
+The Equipment window shows the local character in 3D. `CharacterPreview`, which
+`WorldSceneContext` creates in `Initialize` below itself, is a stage at
+`(0, -10000, 0)` with a pivot, a camera of its own, and three short-range point
+lights. The camera looks level at the pivot from 4.4 m with a 28 degree field of
+view and draws into a 320 x 640 ARGB32 render texture with 4x MSAA, cleared to
+transparent. The player cameras end at 500 m and the stage camera at 12 m, so
+neither sees the other; `CharacterPreviewTests` holds both limits. Without a
+graphics device, as in the headless test run, the stage makes no texture, its
+camera never draws, and the window shows no figure.
+
+- `WorldSceneContext` shows a copy of the body model the local player shows on
+  the pivot (`CharacterPreview.Show`), combined with the shared
+  `PlayerBodyMeshes` and drawn with the shared `PlayerBodyMaterials`, each time
+  it dresses the local body: at the spawn, when the equipment changes, and when
+  the look or the model changes. The copy wears the same
+  `EquipmentGarments.Dress` look but holds no gathering tool, and it waits while
+  the local body lies dead, as the local body does. Another model puts in another
+  copy.
+- `ClientBootstrap` passes the preview to `InventoryWindows`, whose Equipment
+  window shows the texture in a `RawImage` over the pedestal, as tall as the slot
+  columns, with an `AspectRatioFitter`. The camera is enabled only while the
+  Equipment window is open (`CharacterPreview.Visible`). The copy's Animator
+  culls completely, so it plays its idle only while the camera draws it, and the
+  camera is a view of `ClothChainScheduler`, so the copy's cloth swings then.
+  Otherwise the preview costs nothing.
+- `CharacterPreviewDrag` on the picture turns the pivot by 1.2 degrees per
+  pixel of a left drag (`CharacterPreview.Yaw`); the copy faces the camera at 0.
+
 ### Cloth Chains
 
 The body's skeleton has the cloth chains of
@@ -1886,7 +1918,9 @@ from these parts:
   `ClothChainSolver.FarDistance` in its target pose and gives springs to the
   bodies largest on the screen, as many as `ClothChainScheduler.Budget` holds,
   keeping them against a slightly larger body so no body flickers between the
-  levels. Three Burst jobs do the work: one reads the bodies' bones, one lays
+  levels. Besides the main camera it looks through every enabled camera given to
+  `AddView`, such as the [Character Preview](#character-preview)'s, and measures
+  each body from the camera it looks largest in (`Measure`). Three Burst jobs do the work: one reads the bodies' bones, one lays
   each body with `ClothPose` and swings its springs with `ClothSprings`, and one
   turns the chain bones. Out of play, as in the Wardrobe and the tests, each body
   lays its own chains in a world of its own.
@@ -2706,7 +2740,10 @@ namespace rule are in [Folder Layout](#folder-layout).
   [Traits](../tests/README.md#traits).
 - **Batch mode.** CI runs the suites headless, where Unity never evokes
   `WaitForEndOfFrame`, so a test yields `null` instead; `tools/Test-Changes.ps1`
-  fails a test that yields `WaitForEndOfFrame`.
+  fails a test that yields `WaitForEndOfFrame`. Headless Unity also has no
+  graphics device, where making a render texture logs an error that fails the
+  test, so client code checks `SystemInfo.graphicsDeviceType` first, as
+  `CharacterPreview` does, and `tools/Test-Changes.ps1` fails code that does not.
 - **Architecture guards.** `ClientAssemblyArchitectureTests` pins the assembly
   graph described in [Assemblies](#assemblies). `ClientAddressablesTests`
   compares the committed Addressables settings with `ClientAddressablesLayout`,

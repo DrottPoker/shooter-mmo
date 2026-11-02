@@ -357,8 +357,10 @@ windows works as when they are closed: a click walks or attacks, a held button
 steers the walk, a right-click opens the world menu, and the wheel zooms. A click
 or scroll on a window never reaches the world.
 
-- **Equipment** shows the character's place in the middle on a pedestal, the
-  head, shoulders, body, legs, and feet slots in a column on its left, the neck,
+- **Equipment** shows the character in 3D in the middle, standing on a pedestal
+  in its idle, dressed in what it wears and holding its weapons but not the tool
+  it gathers with. Dragging across the character turns it around. The head,
+  shoulders, body, legs, and feet slots stand in a column on its left, the neck,
   hands, both rings, and Bag slots in a column on its right, both columns as far
   from the window's edge, and main hand, off hand, tool, and ammunition close
   together in a row below. A slot shows no name; hovering an empty slot names

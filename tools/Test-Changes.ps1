@@ -637,14 +637,24 @@ try {
 
     if ($runUnity) {
         # CI runs the suites headless, where Unity never evokes WaitForEndOfFrame, while the Editor
-        # does, so a test that yields it passes in the Editor and fails in CI.
+        # does, so a test that yields it passes in the Editor and fails in CI. It also runs them
+        # without a graphics device, where a render texture cannot be made and the error it logs
+        # fails the test, so client code that makes one checks for the device first.
         $null = Invoke-Check "Unity batchmode rules" {
             $offenders = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot "src/Client/Assets/Tests") -Recurse -Filter *.cs |
                 Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match 'new\s+(UnityEngine\.)?WaitForEndOfFrame\s*\(' })
             foreach ($offender in $offenders) {
                 Write-Host "  $($offender.FullName) yields WaitForEndOfFrame, which batchmode never evokes; yield null instead."
             }
-            $offenders.Count -eq 0
+            $textureOffenders = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot "src/Client/Assets/Scripts") -Recurse -Filter *.cs |
+                Where-Object {
+                    $text = Get-Content -Raw -LiteralPath $_.FullName
+                    $text -match 'new\s+(UnityEngine\.)?RenderTexture\s*\(' -and $text -notmatch 'GraphicsDeviceType\.Null'
+                })
+            foreach ($offender in $textureOffenders) {
+                Write-Host "  $($offender.FullName) makes a RenderTexture without checking SystemInfo.graphicsDeviceType against GraphicsDeviceType.Null, which headless runs have."
+            }
+            $offenders.Count -eq 0 -and $textureOffenders.Count -eq 0
         }
     }
     if ($runUnity -and -not $SkipUnity) {

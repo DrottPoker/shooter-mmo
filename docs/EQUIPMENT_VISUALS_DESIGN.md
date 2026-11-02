@@ -805,7 +805,9 @@ in the assembly `Mmorpg.Client.Cloth`:
   see [The Wardrobe](ART_PIPELINE.md#the-wardrobe).
 - **Level of detail and jobs**: one `ClothWorld` holds every dressed body in
   play in fixed blocks, and `ClothChainScheduler` steps it once a frame from the
-  main camera, after it moved. Three Burst jobs run on the worker threads: one
+  main camera, after it moved, and from every other enabled view, such as the
+  Equipment window's character preview; a body counts as seen by the camera it
+  looks largest in. Three Burst jobs run on the worker threads: one
   reads every body's bones, one lays every body in view in its target pose and
   swings its springs, a body a job, and one turns the chain bones. Every remote
   player is a root of its World scene, so the transform jobs take the players

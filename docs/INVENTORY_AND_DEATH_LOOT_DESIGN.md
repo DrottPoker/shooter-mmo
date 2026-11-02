@@ -526,9 +526,10 @@ fixed place on the screen, below the HUD:
 ```
 
 - Equipment stays at the left edge, laid out like a paper doll around the
-  character: a column of slots on each side, as far from both edges of the
-  window, and the hands, tool, and ammunition close together in a row below. The
-  slots show no names; the tooltip of an empty slot names it.
+  character, which stands in 3D on a pedestal in the middle and turns when
+  dragged: a column of slots on each side, as far from both edges of the window,
+  and the hands, tool, and ammunition close together in a row below. The slots
+  show no names; the tooltip of an empty slot names it.
 - Inventory stays at the right edge and holds everything the character carries:
   Permanent Inventory in rows of six and the equipped Bag's slots below it in the
   same columns. It grows in height with the Bag.

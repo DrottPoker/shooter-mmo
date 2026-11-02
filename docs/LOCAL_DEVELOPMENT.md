@@ -286,7 +286,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Changes.ps1 -All
 
 It starts the test containers when they do not run and stops them afterwards,
 fails on any test that was skipped, and also checks the PowerShell syntax of
-every script and that no Unity test yields `WaitForEndOfFrame`. These are the
+every script, that no Unity test yields `WaitForEndOfFrame`, and that client
+code makes a `RenderTexture` only after checking for a graphics device. These are the
 commands of the gate, in its order, for running one step by hand from the
 repository root:
 
@@ -402,8 +403,10 @@ ends with a summary:
 - The Unity suites run through `tools/Run-UnityEditorTests.ps1` when an Editor
   has this checkout's project open, and otherwise headless through
   `tools/Run-UnityTests.ps1`. CI runs them headless, where Unity never evokes
-  `WaitForEndOfFrame`, so whenever the Unity suites are selected, the check
-  `Unity batchmode rules` fails for a test that yields it, even with
+  `WaitForEndOfFrame` and has no graphics device, so whenever the Unity suites
+  are selected, the check `Unity batchmode rules` fails for a test that yields
+  it and for client code that makes a `RenderTexture` without checking
+  `SystemInfo.graphicsDeviceType` against `GraphicsDeviceType.Null`, even with
   `-SkipUnity`.
 
 Options:
@@ -521,8 +524,11 @@ The script reads the pull request head once, checks readiness for exactly that
 commit, and merges into `development` with a merge commit only while the head
 is still that commit, so a push in between is never merged unchecked. The body
 defaults to `<pull request title> (#<number>).`. `-AllowMissingCodexReview`
-accepts exit code 8 of the readiness check. After the merge the script deletes
-the branch on GitHub, but only while it still points to the merged head, and
+accepts exit code 8 of the readiness check. After the merge the script moves
+every open pull request stacked on the branch to `development`, since GitHub
+closes a pull request whose base branch is deleted, then deletes the branch on
+GitHub, but only while it still points to the merged head and no stacked pull
+request failed to move, and
 locally: when the current checkout has the branch checked out and no
 uncommitted changes, the main checkout switches to `development` and a task
 worktree detaches first. It then deletes every other local branch that is fully
@@ -535,7 +541,8 @@ detached main checkout to `development`.
 
 Exit code 0 means merged and cleaned up, 1 means nothing was merged, and 2
 means merged but the cleanup is incomplete: the remote branch moved after the
-merge, the main checkout could not return to `development` and was left
+merge or a stacked pull request could not move off it, the main checkout could
+not return to `development` and was left
 detached, the task branch had to stay (uncommitted changes in the current
 checkout, another worktree has it checked out, or it has commits that are not
 in `development`), or the local `development` does not match

@@ -1,15 +1,17 @@
 # Merges a ready pull request into development with a merge commit and cleans up after it, so a
 # task ends with nothing left behind. It refuses to merge unless Wait-PullRequest.ps1 reports the
-# pull request ready. After the merge it deletes the task branch on GitHub and locally (switching
-# the main checkout to development, or detaching a task worktree, when it has the branch checked
-# out), deletes every other local branch that is fully merged into origin/development and checked
-# out in no worktree, fast-forwards the local development branch, and prunes stale worktree
-# records. Run it again on an already merged pull request to finish a cleanup that failed.
+# pull request ready. After the merge it moves pull requests stacked on the task branch to
+# development, deletes the task branch on GitHub and locally (switching the main checkout to
+# development, or detaching a task worktree, when it has the branch checked out), deletes every
+# other local branch that is fully merged into origin/development and checked out in no worktree,
+# fast-forwards the local development branch, and prunes stale worktree records. Run it again on
+# an already merged pull request to finish a cleanup that failed.
 #
 # Exit codes: 0 merged and cleaned up, 1 not merged, 2 merged but the cleanup is incomplete: the
-# remote branch moved after the merge, the main checkout could not return to development, the
-# task branch had to stay (uncommitted changes, another worktree, or commits that are not in
-# development), or the local development branch does not match origin/development. The report
+# remote branch moved after the merge or a stacked pull request could not move off it, the main
+# checkout could not return to development, the task branch had to stay (uncommitted changes,
+# another worktree, or commits that are not in development), or the local development branch
+# does not match origin/development. The report
 # says why; never discard local work to fix it. Pull requests from main, development, a fork, or
 # an unusual branch name are refused.
 param(
@@ -140,11 +142,31 @@ $head = $pr.headRefName
 $mergedHead = "$($pr.headRefOid)"
 $exitCode = 0
 
+# GitHub closes a pull request whose base branch is deleted, so one stacked on the merged branch
+# moves to development first, which now holds the merged commits. While one cannot move, the
+# branch stays. The JSON list is enumerated, since Windows PowerShell hands it over as one object.
+$stackedKept = @()
+$stacked = @(Invoke-GitHubJson -ArgumentList @("pr", "list", "--base", $head, "--state", "open", "--json", "number") |
+    ForEach-Object { $_ })
+foreach ($dependent in $stacked) {
+    $retarget = Invoke-NativeCommand -FilePath "gh" -ArgumentList @("pr", "edit", "$($dependent.number)", "--base", "development")
+    if ($retarget.ExitCode -eq 0) {
+        Write-Output "Moved pull request #$($dependent.number) from $head to development"
+    }
+    else {
+        $stackedKept += "#$($dependent.number)"
+    }
+}
+
 # Delete the remote branch only while it still points to the merged head, so commits pushed to
 # a reused branch name after the merge are never deleted.
 $remoteTip = @(Invoke-Git ls-remote origin "refs/heads/$head")
 if ($remoteTip.Count -eq 0) {
     Write-Output "Remote branch $head is already gone"
+}
+elseif ($stackedKept.Count -gt 0) {
+    Write-Output "Kept remote branch $head because pull request $($stackedKept -join ', ') still targets it and could not move to development"
+    $exitCode = 2
 }
 elseif (($remoteTip[0] -split '\s+')[0] -ne $mergedHead) {
     Write-Output "Kept remote branch $head because it no longer points to the merged head $($mergedHead.Substring(0, 7))"

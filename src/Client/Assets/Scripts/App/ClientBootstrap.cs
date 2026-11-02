@@ -402,7 +402,8 @@ namespace Mmorpg.Client.App
                     worldMenu,
                     gameMessages,
                     inventoryWindowRequests,
-                    bodyLook));
+                    bodyLook,
+                    sceneContext != null ? sceneContext.Preview : null));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(
                     worldActorController,

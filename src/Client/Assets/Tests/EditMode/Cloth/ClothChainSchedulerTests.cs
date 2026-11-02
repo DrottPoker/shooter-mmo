@@ -102,5 +102,42 @@ namespace Mmorpg.Client.Tests.EditMode
             body.transform.position = new Vector3(0f, 0f, -1.5f);
             Assert.That(GeometryUtility.TestPlanesAABB(planes, ClothChainScheduler.ViewBounds(body.transform)), Is.True);
         }
+
+        // Another view, such as the character preview's camera far below the world, sees the body
+        // on its stage; a body counts as seen by the camera it looks largest in, and one no camera
+        // sees is measured from the main camera.
+        [Test]
+        public void ABodyIsMeasuredFromTheCameraItLooksLargestIn()
+        {
+            cameraObject = new GameObject("ClothChainSchedulerTests Cameras") { hideFlags = HideFlags.HideAndDontSave };
+            var main = new GameObject("Main", typeof(Camera)).GetComponent<Camera>();
+            main.transform.SetParent(cameraObject.transform, false);
+            main.transform.SetPositionAndRotation(new Vector3(0f, 1.6f, -20f), Quaternion.identity);
+            var stage = new Vector3(0f, -10000f, 0f);
+            var view = new GameObject("View", typeof(Camera)).GetComponent<Camera>();
+            view.transform.SetParent(cameraObject.transform, false);
+            view.transform.SetPositionAndRotation(stage + new Vector3(0f, 0.9f, 4.4f), Quaternion.Euler(0f, 180f, 0f));
+            view.fieldOfView = 28f;
+            var cameras = new List<Camera> { main, view };
+            var planes = cameras.Select(GeometryUtility.CalculateFrustumPlanes).ToList();
+            body = new GameObject("ClothChainSchedulerTests Body") { hideFlags = HideFlags.HideAndDontSave };
+
+            body.transform.position = stage;
+            ClothChainScheduler.Measure(body.transform, main.transform.position, cameras, planes, out var inView, out var distance, out var size);
+            Assert.That(inView, Is.True);
+            Assert.That(distance, Is.EqualTo(Vector3.Distance(stage, view.transform.position)).Within(1e-3f));
+            Assert.That(size, Is.GreaterThan(0.8f), "the body nearly fills the preview's height");
+
+            body.transform.position = Vector3.zero;
+            ClothChainScheduler.Measure(body.transform, main.transform.position, cameras, planes, out inView, out distance, out size);
+            Assert.That(inView, Is.True);
+            Assert.That(distance, Is.EqualTo(Vector3.Distance(Vector3.zero, main.transform.position)).Within(1e-3f));
+            Assert.That(size, Is.LessThan(0.3f));
+
+            body.transform.position = new Vector3(0f, 0f, -200f);
+            ClothChainScheduler.Measure(body.transform, main.transform.position, cameras, planes, out inView, out distance, out size);
+            Assert.That(inView, Is.False);
+            Assert.That(distance, Is.EqualTo(Vector3.Distance(body.transform.position, main.transform.position)).Within(1e-3f));
+        }
     }
 }

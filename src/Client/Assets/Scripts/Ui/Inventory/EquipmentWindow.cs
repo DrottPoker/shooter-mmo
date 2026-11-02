@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using TMPro;
 using UnityEngine;
@@ -37,6 +38,7 @@ namespace Mmorpg.Client.Ui
         private readonly Dictionary<string, ItemSlotView> slots = new Dictionary<string, ItemSlotView>(StringComparer.Ordinal);
         private readonly Button headwearToggle;
         private readonly InventoryTooltipTrigger headwearTooltip;
+        private readonly CharacterPreviewDrag previewDrag;
         private string arrangementKey = string.Empty;
 
         public EquipmentWindow(InventoryWindows owner, RectTransform parent)
@@ -61,6 +63,16 @@ namespace Mmorpg.Client.Ui
             pedestal.rectTransform.pivot = new Vector2(0.5f, 0f);
             pedestal.rectTransform.sizeDelta = new Vector2(PedestalWidth, PedestalWidth * 0.32f);
             pedestal.rectTransform.anchoredPosition = Vector2.zero;
+
+            // The character stands on the pedestal, as tall as the slot columns and as wide as
+            // its picture's shape allows.
+            PreviewImage = UiFactory.Create("Figure", PreviewArea).gameObject.AddComponent<RawImage>();
+            UiFactory.Fill(PreviewImage.rectTransform);
+            var fitter = PreviewImage.gameObject.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+            fitter.aspectRatio = (float)CharacterPreview.TextureWidth / CharacterPreview.TextureHeight;
+            previewDrag = PreviewImage.gameObject.AddComponent<CharacterPreviewDrag>();
+            PreviewImage.gameObject.SetActive(false);
             headwearToggle = UiFactory.IconButton(theme, doll, "HeadwearToggle", theme.HoodToggleIcon, HeadwearToggleSize, ToggleHeadwear);
             headwearTooltip = headwearToggle.gameObject.AddComponent<InventoryTooltipTrigger>();
             headwearToggle.gameObject.SetActive(false);
@@ -70,6 +82,19 @@ namespace Mmorpg.Client.Ui
 
         // The area between the slot columns where the character stands.
         public RectTransform PreviewArea { get; }
+
+        // The picture of the character preview, shown once a preview is given.
+        public RawImage PreviewImage { get; }
+
+        // Shows the preview's picture on the pedestal, which a drag across turns, or hides it for
+        // none.
+        public void ShowPreview(CharacterPreview preview)
+        {
+            var shown = preview != null && preview.Texture != null;
+            PreviewImage.texture = shown ? preview.Texture : null;
+            previewDrag.Preview = shown ? preview : null;
+            PreviewImage.gameObject.SetActive(shown);
+        }
 
         public IReadOnlyDictionary<string, ItemSlotView> Slots
         {

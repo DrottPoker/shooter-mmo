@@ -68,6 +68,7 @@ namespace Mmorpg.Client.Ui
         private GameMessageLog gameMessages;
         private InventoryWindowRequests requests;
         private PlayerBodyLookSetting bodyLook;
+        private CharacterPreview characterPreview;
         private InventoryInteractions interactions;
         private LocalPlayerInput localPlayerInput;
         private RectTransform root;
@@ -169,6 +170,12 @@ namespace Mmorpg.Client.Ui
             get { return bodyLook; }
         }
 
+        // The copy of the character that the Equipment window shows, or null without one.
+        public CharacterPreview CharacterPreview
+        {
+            get { return characterPreview; }
+        }
+
         // Called by the composition root before the component is activated.
         public void Initialize(
             UiTheme uiTheme,
@@ -179,8 +186,10 @@ namespace Mmorpg.Client.Ui
             WorldMenuController menu,
             GameMessageLog messages,
             InventoryWindowRequests windowRequests,
-            PlayerBodyLookSetting lookSetting = null)
+            PlayerBodyLookSetting lookSetting = null,
+            CharacterPreview preview = null)
         {
+            characterPreview = preview;
             theme = uiTheme;
             controller = inventoryController;
             corpseController = corpses;
@@ -521,6 +530,11 @@ namespace Mmorpg.Client.Ui
                 requests.StorageRequested -= OnStorageRequested;
             }
 
+            if (characterPreview != null)
+            {
+                characterPreview.Visible = false;
+            }
+
             if (dragCoordinator != null)
             {
                 dragCoordinator.DroppedOutside -= OnDroppedOutside;
@@ -546,7 +560,17 @@ namespace Mmorpg.Client.Ui
                 controller?.EnsureFullState();
             }
 
+            ShowPreviewWhileEquipmentIsOpen();
             Refresh();
+        }
+
+        // The preview draws only while the Equipment window shows it.
+        private void ShowPreviewWhileEquipmentIsOpen()
+        {
+            if (characterPreview != null)
+            {
+                characterPreview.Visible = IsEquipmentOpen;
+            }
         }
 
         // Every shot changes the live arrow count; the drawn slot updates in place, so a shot
@@ -668,6 +692,7 @@ namespace Mmorpg.Client.Ui
             UiFactory.Fill(root);
             tooltip = InventoryTooltipView.Create(theme, root, dragCoordinator);
             equipment = new EquipmentWindow(this, root);
+            equipment.ShowPreview(characterPreview);
             inventory = new CharacterInventoryWindow(this, root);
             storage = new StorageWindow(this, root);
             equipment.Window.Place(new Vector2(0f, 1f), new Vector2(theme.ScreenMargin, -theme.WindowTop));
