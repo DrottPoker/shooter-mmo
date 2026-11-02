@@ -1292,7 +1292,16 @@ implementation. It creates runtime uGUI below a World-scene controller and reads
 the persistent state without embedding API, protocol, revision, or item-rule
 ownership; it shows predicted item operations and never owns item custody. Its
 partial files hold the widgets (modules, slot grids, slots, and the carry
-meter), the right-click moves, and the vendor tab. Equipment, Context, and
+meter), the right-click moves, and the vendor tab. What a player's action sends
+lives outside the panel, in `Scripts/Ui/Inventory`, so another inventory view
+reuses it unchanged: `InventoryDropPlanner` decides as a pure function what a
+drop onto a container, equipment, or corpse slot sends, an
+`InventoryDropPlan`, or why it sends nothing, and `InventoryInteractions` sends
+a plan, a right-click move from `InventoryQuickMoves`, Loot all, a destruction,
+or a vendor trade through the controllers and returns an
+`InventoryInteractionResult` with the message for the player. A drop may ask
+for part of the dragged stack: a split of a carried or equipped stack, or a
+partial corpse loot, deposit, or move. Equipment, Context, and
 Character Inventory each own a separate panel root at fixed anchors. The three
 views that `B`, `C`, and `I` toggle change root visibility only and never
 rewrite another module's layout, so the character column keeps its place in
