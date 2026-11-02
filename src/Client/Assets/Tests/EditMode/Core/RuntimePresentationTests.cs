@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Editor;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Ui;
 using NUnit.Framework;
@@ -42,6 +43,24 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(config.DebugLineMaterial.shader.name, Is.EqualTo("Universal Render Pipeline/Unlit"));
             Assert.That(config.DebugLineMaterial.shader.isSupported, Is.True);
             Assert.That(config.DebugLineMaterial.HasProperty("_BaseColor"), Is.True);
+        }
+
+        // Players and Mobs leave rings and spray in water, drawn with the water's own particle
+        // materials.
+        [Test]
+        public void TheClientConfigurationCarriesTheWaterWakeMaterials()
+        {
+            var config = AssetDatabase.LoadAssetAtPath<ClientConfig>(ClientConfigPath);
+
+            Assert.That(config, Is.Not.Null);
+            Assert.That(config.WaterRingMaterial, Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.RingMaterialPath)));
+            Assert.That(config.WaterSprayMaterial, Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.SprayMaterialPath)));
+            foreach (var material in new[] { config.WaterRingMaterial, config.WaterSprayMaterial })
+            {
+                Assert.That(material.shader.name, Is.EqualTo(WaterAssets.ParticleShaderName), material.name);
+                Assert.That(material.shader.isSupported, Is.True, material.name);
+                Assert.That(material.GetTexture("_BaseMap"), Is.Not.Null, material.name);
+            }
         }
 
         [Test]

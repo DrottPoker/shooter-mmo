@@ -20,3 +20,5 @@ MonoBehaviour:
   runtimePrimitiveMaterial: {fileID: 2100000, guid: 286ed17e91773e3438e71482a4bf1c5f, type: 2}
   debugLineMaterial: {fileID: 2100000, guid: ac4cff4bbb31eca4faafff544c3d9df5, type: 2}
   arrowModel: {fileID: 919132149155446097, guid: 89d15f4d9e430474c905f1f6946d5b22, type: 3}
+  waterRingMaterial: {fileID: 2100000, guid: 4a8d1e1b6751b8a4597a748ff23dbc1a, type: 2}
+  waterSprayMaterial: {fileID: 2100000, guid: 9331522d5b3046a4cb52444287bc6c64, type: 2}

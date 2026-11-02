@@ -212,8 +212,11 @@ The client renders with the Universal Render Pipeline. `PC_RPAsset` and
 that uses the package default post-processing data. Graphics settings and the
 `PC` quality level use `PC_RPAsset` (4x MSAA, HDR, 80 m shadow distance), and the
 `Mobile` quality level uses `Mobile_RPAsset` (no MSAA, no HDR, 40 m shadow
-distance). Every project material uses a URP shader or one of the project's
-shaders built on URP Lit; the runtime fallback presentation sets both
+distance). Both assets provide the camera's depth and opaque textures, without
+downsampling on PC, because the water shaders read the ground and the color
+behind their surfaces; see [Water](ART_PIPELINE.md#water). Every project
+material uses a URP shader, one of the project's shaders built on URP Lit, or one
+of the project's URP water shaders; the runtime fallback presentation sets both
 `_BaseColor` and `_Color`, so it stays correct in any pipeline. There is no
 post-processing Volume in the scenes and no baked lighting yet.
 
@@ -264,6 +267,7 @@ World scene
   +-- runtime components that ClientBootstrap adds:
       +-- WorldMenuController
       +-- WorldActorPresentationController and CorpsePresentationController
+      +-- WaterWakePresentation
       +-- WorldInteractionTargetingController
       +-- CombatTargetingController, CombatProjectilePresentation,
       |   CombatDeathPresentation
@@ -382,6 +386,8 @@ endpoints.
 | Runtime primitive material | `Assets/Art/Materials/M_RuntimePrimitive.mat`, URP Lit | Primitives that runtime presentation creates |
 | Debug line material | `Assets/Art/Materials/M_DebugLines.mat`, URP Unlit | The Debug menu's collision and path lines |
 | Arrow model | `Assets/Art/Models/Projectiles/BronzeArrow.fbx` | Arrows in flight and on an archer's string |
+| Water ring material | `Assets/Art/Water/M_Water_Ring.mat`, URP Particles Unlit | The rings of the [water wakes](#water-wakes) |
+| Water spray material | `Assets/Art/Water/M_Water_Spray.mat`, URP Particles Unlit | The spray of the water wakes |
 
 The runtime primitive material references put the material and its shader into
 the Client Content bundle. The bootstrap passes the material to the components
@@ -2427,6 +2433,27 @@ within 1.5 m plays on that fall, as described under
 [Corpse Client State And Presentation](#corpse-client-state-and-presentation).
 The Animator culls its transforms off screen, and `CreatureAnimator.LieDead`
 writes the corpse's pose at once anyway.
+
+### Water Wakes
+
+`WaterWakePresentation` in `Assets/Scripts/WorldActors` shows where the local
+player, the other players, and the active Mobs stand in water. Each frame
+`WaterWakeTracker` asks `WaterRules.TryGetDepth` of the session's collision
+world, the same baked water as the movement rules, how deep the water is at a
+body's feet; from 5 cm deep a body leaves wakes:
+
+- A ring spreads on the surface from its feet every 1.6 s while it stands, of
+  1.2 m, and every 0.22 s while it moves faster than 0.4 m/s, of 1.4 to 2.2 m
+  with its speed. A body that starts to move gets its next ring soon.
+- Droplets of spray fly up and forward around its legs, 9 per meter it wades
+  in water at least 0.4 m deep and fewer in shallower water, and fall back under
+  gravity.
+- A body that moves 2 m or more in one frame was placed anew and starts still.
+
+One particle system draws every ring and another every droplet, with the ring
+and spray materials of the configuration, so a crowd in the water costs two
+draws; without the materials the component shows nothing. The wakes are
+presentation only. `WaterWakeTrackerTests` checks the tracker on a test pond.
 
 ### Gathering
 

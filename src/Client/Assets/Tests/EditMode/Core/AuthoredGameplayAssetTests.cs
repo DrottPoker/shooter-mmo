@@ -480,7 +480,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(waterside.transform.position, Is.EqualTo(DevelopmentWorld2Builder.WatersideOrigin));
                 Assert.That(waterside.terrainData.size, Is.EqualTo(DevelopmentWorld2Builder.WatersideSize));
 
-                // One lake, one river, and one sea, each a surface mesh without a collider.
+                // One lake, one river, one sea, and the stream above the waterfall, each a
+                // surface mesh without a collider that draws with the material of its kind.
                 var bodies = environment.GetComponentsInChildren<WaterBody>(true);
                 Assert.That(
                     bodies.Select(body => body.BodyId + ":" + body.Kind),
@@ -488,14 +489,30 @@ namespace Mmorpg.Client.Tests.EditMode
                     {
                         DevelopmentWorld2Builder.LakeBodyId + ":" + WaterBodyKind.Lake,
                         DevelopmentWorld2Builder.RiverBodyId + ":" + WaterBodyKind.River,
-                        DevelopmentWorld2Builder.SeaBodyId + ":" + WaterBodyKind.Sea
+                        DevelopmentWorld2Builder.SeaBodyId + ":" + WaterBodyKind.Sea,
+                        DevelopmentWorld2Builder.StreamBodyId + ":" + WaterBodyKind.River
                     }));
                 foreach (var body in bodies)
                 {
                     Assert.That(body.TryValidate(out var error), Is.True, error);
                     Assert.That(body.GetComponents<Collider>(), Is.Empty, body.name);
-                    Assert.That(body.GetComponent<MeshRenderer>().sharedMaterial.name, Is.EqualTo("M_DevelopmentWorld_Water"));
+                    Assert.That(
+                        body.GetComponent<MeshRenderer>().sharedMaterial,
+                        Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.MaterialPath(body.Kind))),
+                        body.name);
                 }
+
+                // The waterfall's sheet and the sea beyond the World only show.
+                var sheet = FindGameObject(scene, "WaterfallSheet");
+                Assert.That(sheet.GetComponents<Collider>(), Is.Empty);
+                Assert.That(
+                    sheet.GetComponent<MeshRenderer>().sharedMaterial,
+                    Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.WaterfallMaterialPath)));
+                var beyond = FindGameObject(scene, "SeaBeyondTheWorld");
+                Assert.That(beyond.GetComponents<Collider>(), Is.Empty);
+                Assert.That(
+                    beyond.GetComponent<MeshRenderer>().sharedMaterial,
+                    Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.MaterialPath(WaterBodyKind.Sea))));
             });
         }
         [Test]
@@ -513,6 +530,11 @@ namespace Mmorpg.Client.Tests.EditMode
                     levelPipeline.GetType().Name,
                     Is.EqualTo("UniversalRenderPipelineAsset"),
                     QualitySettings.names[level]);
+
+                // The water shader reads the depth and the color behind its surface.
+                var settings = new SerializedObject(levelPipeline);
+                Assert.That(settings.FindProperty("m_RequireDepthTexture").boolValue, Is.True, QualitySettings.names[level]);
+                Assert.That(settings.FindProperty("m_RequireOpaqueTexture").boolValue, Is.True, QualitySettings.names[level]);
             }
         }
 
@@ -679,6 +701,21 @@ namespace Mmorpg.Client.Tests.EditMode
                 if (AssetDatabase.LoadMainAssetAtPath(path) is Font)
                 {
                     Assert.That(material.shader.name, Is.EqualTo("GUI/Text Shader"), path);
+                    continue;
+                }
+
+                // The water surfaces and the waterfall use the water shaders, and the wakes
+                // URP's unlit particle shader.
+                if (path.StartsWith(WaterAssets.Directory + "/", System.StringComparison.Ordinal))
+                {
+                    Assert.That(
+                        material.shader.name,
+                        Is.EqualTo(path == WaterAssets.WaterfallMaterialPath
+                            ? WaterAssets.WaterfallShaderName
+                            : path == WaterAssets.RingMaterialPath || path == WaterAssets.SprayMaterialPath
+                                ? WaterAssets.ParticleShaderName
+                                : WaterAssets.ShaderName),
+                        path);
                     continue;
                 }
 

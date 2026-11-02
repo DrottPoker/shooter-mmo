@@ -159,7 +159,8 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Art/Appearance` | The appearance catalog of every body model, `<Model>_Appearance.asset`; see [Unity Import Rules](#unity-import-rules). |
 | `src/Client/Assets/Art/Fonts` | TextMesh Pro font assets of the interface, such as `LiberationSans UI SDF.asset`, TextMesh Pro's default font; how it is made is in [Text And Fonts](UNITY_CLIENT_ARCHITECTURE.md#text-and-fonts). |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, `HumanLocomotion.controller` and `WolfLocomotion.controller`, and the avatar masks of their layers. |
-| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces. |
+| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces; `Water.shader`, the water surface shader `Mmorpg/Water`, and `Waterfall.shader`, the falling water shader `Mmorpg/Waterfall`; see [Water](#water). |
+| `src/Client/Assets/Art/Water` | The textures and materials of the water, made by code; see [Water](#water). |
 | `artifacts/art-previews`, `artifacts/human-base` | The review sheets, review files, and reports the scripts write. Git ignores `artifacts`. |
 | `tools/art/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
 | `tools/art/Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/art/ArtPipelineCommon.ps1`. |
@@ -186,6 +187,7 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Editor/Wardrobe/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`; see [The Wardrobe](#the-wardrobe). |
 | `src/Client/Assets/Editor/Cloth/ClothStressMotion.cs`, `ClothMotionMeter.cs`, `ClothMeasurement.cs` | The cloth stress motions, what is measured of the cloth in them, and `MMORPG > Tools > Art Pipeline > Measure Cloth`, which writes `artifacts/cloth-measurements.md`; see [Measuring The Cloth](EQUIPMENT_VISUALS_DESIGN.md#measuring-the-cloth). |
 | `src/Client/Assets/Editor/Cloth/ClothKinematicFixtures.cs` | `MMORPG > Tools > Art Pipeline > Write Cloth Fixtures`: writes the fixtures of [Cloth Parity](#cloth-parity). |
+| `src/Client/Assets/Editor/Water/WaterAssets.cs`, `TileableNoise.cs` | `MMORPG > Tools > Water > Create Water Textures And Materials`: the water's textures from tileable noise and its materials; see [Water](#water). |
 | `.mcp.json` | The Blender MCP server for live work in Blender from Claude Code. |
 
 ## Asset Manifest
@@ -520,6 +522,13 @@ strong silhouettes, and clear colors, so actors stay readable from a zoomed-out
 camera that turns freely; see [Game Design](GAME_DESIGN.md#setting). For models
 and their textures this means:
 
+- The [water](#water) is the reference for the style of everything: fantasy
+  realism with a slightly cartoony touch, never photorealism. Materials and light
+  behave believably, with depth, transparency, reflections, and glints of the
+  sun, but colors are clear and saturated, shapes are simplified and a little
+  exaggerated, and details are painted and readable instead of measured from
+  reality. Compare every new model, texture, and effect with the water at the
+  waterside of Development World 2 before it goes to review.
 - Fantasy before realism. Every new model and texture is a creative design for
   this world, not a 1:1 copy of something real: shapes, proportions, colors,
   materials, and details lean toward fantasy, such as a sword with a sweeping
@@ -2619,6 +2628,98 @@ approves a new look from screenshots of the running windows before it is merged.
 Expected result: the windows show the changed sprite at its place, sharp at
 1920 by 1080, and `tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter
 UiThemeTests` passes.
+
+## Water
+
+Water is stylized and bright, with clear colors and visible foam: clear and
+light where it is shallow, so the ground and light patterns show through, and
+deep blue further out. Its look comes from two shaders and from textures and
+materials that code makes, not from Blender. `WaterAssets` writes them below
+`src/Client/Assets/Art/Water` with `MMORPG > Tools > Water > Create Water
+Textures And Materials`, and the Development World 2 builder runs it before it
+builds the waterside. Every value of the look is in `WaterAssets.cs`, so it is
+reviewed with the code and a rebuild writes the same files. The reviewer
+approves a new look from screenshots before it is merged.
+
+`Mmorpg/Water` draws lakes, rivers, and seas:
+
+- The color comes from the depth below the surface. Shallow water shows the
+  ground through it, bent by ripples, with light patterns on it, and turns to
+  the deep color with depth; a glancing view shows the sky and the horizon, and
+  the sun glints and sparkles on the ripples.
+- Foam gathers along the shore, around everything that stands in the water, in
+  lines that roll in toward a sea's shore, and in drifting patches where the
+  water runs fast; churning water, such as at the foot of a waterfall, foams all
+  over.
+- The surface mesh tells the shader how its water moves: the second texture
+  coordinate is the flow in meters per second, along which the ripples and the
+  foam move, the red of the vertex color how fast and foaming the water is, and
+  the green how much the waves lift the vertex. A lake leaves both at zero and
+  drifts with its material.
+- The shader reads the camera's depth and opaque textures, which every quality
+  level's render pipeline asset turns on. Overlapping water, such as a river
+  that reaches into a lake, draws once per pixel through a stencil bit, so it
+  never doubles its tint.
+
+`Mmorpg/Waterfall` draws the falling sheet of a waterfall, lit the same way:
+the rock behind shows through clear water, bent by ripples that rush down, the
+sky and the sun glint in it, and thin streaks and clumps of foam fall with the
+water. The water slides glassy over the lip, breaks into streaks, and turns white
+at the foot, and its sides fray. The sheet's mesh holds meters across the sheet
+and the seconds the water has fallen in its first texture coordinate, the meters
+to the nearer side and how far down the fall the vertex lies in its second, its
+normals facing out and its tangents running across. Because the pattern keeps to
+the seconds the water has fallen, its streaks stretch as the water speeds up.
+
+| File | Content |
+| --- | --- |
+| `T_Water_Ripples.png` | Ripple normals: soft swells bent by slower noise, with small ripples on top. |
+| `T_Water_Masks.png` | Red is the foam pattern, low where foam forms first, green the light lines of the shallows, and blue soft noise for the sparkles and the foam patches. |
+| `T_Water_Falls.png` | Red is long thin streaks down a waterfall, green clumps of foam, and blue the noise of its sparkles. |
+| `T_Water_Ring.png`, `T_Water_Droplet.png` | The ring and the droplet of the wakes in water. |
+| `M_Water_Lake.mat`, `M_Water_River.mat`, `M_Water_Sea.mat` | One material per kind of water body: a lake is calm and clear, a river runs and foams where it is fast, and the sea is turquoise over sand, with waves and foam lines. |
+| `M_Water_Waterfall.mat` | The waterfall's sheet. |
+| `M_Water_Ring.mat`, `M_Water_Spray.mat` | URP's unlit particle shader, one step after the water in the transparent queue, for the wakes and the waterfall's spray. |
+
+The textures live in their own folder because the
+[import rules](#unity-import-rules) of exported art own every texture below
+`Assets/Art/Textures` and import it as a color image; the water's textures are
+data, imported linear, and the ripples as a normal map.
+
+### Water Looks
+
+A zone that needs other water, such as a dark mountain lake or a green bog,
+gives its water bodies a look of their own without changing the code's
+materials:
+
+1. In the Project window, right-click `M_Water_Lake`, `M_Water_River`,
+   `M_Water_Sea`, or `M_Water_Waterfall` in `Assets/Art/Water` and choose
+   `Create > Material Variant`. Name it `M_Water_<Kind>_<Look>`, such as
+   `M_Water_Lake_Mountain`, and keep it in `Assets/Art/Water`.
+2. In its Inspector, change only the colors: `Shallow color`, `Deep color`,
+   `Depth of the deep color (m)`, `Visibility through the water (m)`, and
+   `Reflected horizon color`, or for a waterfall `Clear water color` and
+   `Shaded water color`.
+3. Put the variant on the MeshRenderer of the zone's water bodies.
+
+Expected result: the water shows the new colors with the same ripples, foam,
+and light, and a later run of the water command changes everything but the
+overridden colors, as `WaterLookTests` checks. A dark mountain lake uses about
+`(0.10, 0.38, 0.42)` shallow, `(0.01, 0.06, 0.14)` deep, a deep-color depth of
+1.4 m, and a visibility of 1.6 m; a green bog about `(0.24, 0.30, 0.14)`
+shallow, `(0.05, 0.08, 0.03)` deep, 1.2 m, and 0.9 m.
+
+### Change The Water's Look
+
+1. Change the values in `ApplyLook` or `ApplyWaterfallLook` of
+   `src/Client/Assets/Editor/Water/WaterAssets.cs`, or the noise of a texture.
+2. Run `MMORPG > Tools > Water > Create Water Textures And Materials`.
+3. Look at the water of Development World 2's waterside from the shore, from
+   above, and up close, and take screenshots for review.
+
+Expected result: only the changed textures and materials are written, and
+`tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter
+AuthoredGameplayAssetTests,WaterLookTests,RuntimePresentationTests` passes.
 
 ## Assets
 

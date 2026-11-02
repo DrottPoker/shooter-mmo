@@ -24,6 +24,11 @@ namespace Mmorpg.Client.Core
         // the model of art/Projectiles/BronzeArrow, with its point at its root.
         [SerializeField] private GameObject arrowModel;
 
+        // The particle materials of the wakes that players and Mobs leave in water: a ring that
+        // spreads on the surface and a droplet of spray.
+        [SerializeField] private Material waterRingMaterial;
+        [SerializeField] private Material waterSprayMaterial;
+
         public string GameServiceBaseUrl
         {
             get { return NormalizeUrl(gameServiceBaseUrl, "http://localhost:5000"); }
@@ -62,6 +67,16 @@ namespace Mmorpg.Client.Core
         public GameObject ArrowModel
         {
             get { return arrowModel; }
+        }
+
+        public Material WaterRingMaterial
+        {
+            get { return waterRingMaterial; }
+        }
+
+        public Material WaterSprayMaterial
+        {
+            get { return waterSprayMaterial; }
         }
 
         // The handle keeps the configuration and the catalog it references loaded. The owner

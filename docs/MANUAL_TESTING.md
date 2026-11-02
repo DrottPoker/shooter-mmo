@@ -536,22 +536,38 @@ reports a collision or simulation revision error.
 
 ### Water
 
-The waterside in the northwest of Development World 2 has a lake, a river with a
-ford and a bridge, and the sea where the World ends;
+The waterside in the northwest of Development World 2 has a lake with a
+waterfall, a river with a ford and a bridge, and the sea where the World ends;
 [Development Worlds](DEVELOPMENT_WORLDS.md#waterside) gives the positions.
 Open the Debug menu with F2 and keep its `Overview` tab in view.
 
 1. Walk from the town's north gate west past the movement course to the
    `WATERSIDE` sign at `(-60, 0, 60)` and up onto the plateau.
 2. Walk to the lake's sign and click the middle of the lake.
-3. Walk around the lake and click across the river 10 m downstream of the
+3. Walk around the lake to the waterfall on its north shore, wade into the pool
+   under the fall, then take the ramp behind the rock up to the stream.
+4. Walk around the lake and click across the river 10 m downstream of the
    `FORD` sign, then click back across, 10 m downstream of the `BRIDGE` sign.
-4. Walk to the `SEA` sign and click toward the open corner of the World, where
+5. Walk to the `SEA` sign and click toward the open corner of the World, where
    the boundary walls end in the sea.
-5. Turn on `Collision around you` near the lake.
+6. Turn on `Collision around you` near the lake.
 
 Expected result:
 
+- The water is clear and light in the shallows, with the sand and moving light
+  patterns showing through, and turns deep blue further out. White foam lines
+  every shore and rings the character's legs, the ripples drift on the lake,
+  run downstream in the river, and foam in patches over the ford, and the sea
+  rolls in gentle waves with lines of foam toward the beach. Where the river
+  meets the lake and the sea, no seam or doubled color shows.
+- While the character stands in water, a ring spreads from its legs now and
+  then; while it walks, rings follow it closely and droplets splash up around
+  its legs and fall back. A Mob in water does the same.
+- The waterfall slides glassy over the rock's lip, falls in thin streaks that
+  rush down and stretch as they fall, with the rock showing through, and turns
+  white at its foot, where the pool foams, white water boils up, and mist rises.
+  The pool is waded at 60 % speed, and the stream on the rock is 0.3 m deep and
+  walked at full speed.
 - In shallow water `Water depth` shows less than `0.50 m, full speed`, and the
   character walks at its normal pace. From 0.5 m deep it shows `wading at 60 %
   speed`, and the character visibly slows down.

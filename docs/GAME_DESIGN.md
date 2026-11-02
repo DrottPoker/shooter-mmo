@@ -139,12 +139,15 @@ are test maps, described in [Development Worlds](DEVELOPMENT_WORLDS.md).
 - Art is stylized low to mid poly with exaggerated proportions, strong
   silhouettes, and clear colors, so characters and actors stay readable from a
   zoomed-out camera that turns freely. Models and textures lean toward fantasy
-  instead of copying real objects. The human base characters are the exception
+  instead of copying real objects. The style of everything follows the water:
+  fantasy realism with a slightly cartoony touch, believable light and materials
+  in clear colors, never photorealistic. The human base characters are the exception
   and stay realistic. The rules are in
   [Art Pipeline](ART_PIPELINE.md#art-direction-for-models-and-textures).
-- Lakes, rivers, and the sea are stylized in the World of Warcraft way, with
-  clear colors and visible foam, and must look very good. Today they are
-  greybox surfaces.
+- Lakes, rivers, waterfalls, and the sea are stylized in the World of Warcraft
+  way, with clear colors and visible foam, and must look very good. The look is
+  implemented; its colors are adjustable per zone, so a zone can have darker
+  water, as [Water Looks](ART_PIPELINE.md#water-looks) describes.
 - Only humans are playable for now, with a male and a female body. Later races
   are fixed body types of their own, as
   [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#future-races-and-base-models)

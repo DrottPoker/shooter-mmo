@@ -103,6 +103,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Items",
                     "Mmorpg.Client.Gameplay",
                     "Mmorpg.GameProtocol",
+                    "Mmorpg.GameSimulation",
                     "Mmorpg.WorldData",
                     "Unity.Addressables",
                     "Unity.ResourceManager"
