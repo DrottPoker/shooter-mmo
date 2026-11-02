@@ -563,8 +563,8 @@ the Training Shortbow with the Bronze Arrows and the Starter Pickaxe.
    message fades out after about 12 seconds.
 4. Right-click Mira from a distance and choose `Trade`. Expected result: the
    interaction panel says `Walking to Mira the Quartermaster...`, the character
-   walks to her, the interaction opens, and the inventory opens on the `Vendor`
-   tab without a click in the panel. Right-click her again and choose `Bank`.
+   walks to her, the interaction opens, and the storage window opens beside
+   Inventory on the `Trade` tab without a click in the panel. Right-click her again and choose `Bank`.
    Expected result: the Character Bank opens at once, without walking.
 5. Walk away, then left-click Mira. Expected result: the character walks to her
    and the interaction panel opens with her capabilities, the same as
@@ -634,18 +634,19 @@ $env:DevelopmentItemInteractions__GlobalBankAndRecoveryAccess = "false"
 dotnet run --project src/Server/SimulationWorker
 ```
 
-1. Join, press I, and move a Bank item into Permanent Inventory. Expected
-   result: the item moves back at once, flashes red, and the status line says
-   `Item move undone:` with the reason that the character is outside validated
-   bank access (`bank_access_required`).
+1. Join, press F3, choose `Open Bank` on the `Storage` tab, and move a Bank
+   item into Permanent Inventory. Expected result: the item moves back at once,
+   flashes red, and the game messages say `Item move undone:` with the reason
+   that the character is outside validated bank access (`bank_access_required`).
 2. Left-click Mira and click `Open Character Bank` in the interaction panel.
    Expected result: `Character Bank is open while this interaction stays open.`,
-   and the inventory opens in the complete view on the Bank, whose header shows
-   `via Mira the Quartermaster`. Moving an item between the Bank and Permanent
-   Inventory now commits.
-3. Click `Open Recovery Storage`. Expected result: Recovery Storage opens, and
-   the prepared delivery can be claimed.
-4. Walk away until the interaction closes, then move a Bank item again.
+   and the storage window opens beside Inventory on its `Bank` tab, titled
+   `MIRA THE QUARTERMASTER`, with a `Recovery` tab beside it. Moving an item
+   between the Bank and Permanent Inventory now commits.
+3. Click `Open Recovery Storage`. Expected result: the storage window shows
+   Recovery Storage, and the prepared delivery can be claimed.
+4. Walk away until the interaction closes. Expected result: the storage window
+   closes with it. Open the Bank from the Admin menu again and move a Bank item.
    Expected result: the move is undone again with the same reason.
 
 Remove the variable with
@@ -669,8 +670,10 @@ Currency` for repeated tries. Then join and left-click Mira.
 3. In `Quest item lifecycle`, click `Accept quest and grant required item`
    twice. Expected result: one Sealed Letter appears, whose tooltip lists
    `Protected on death (Quest grant)`, and the second acceptance adds none.
-4. Select the Sealed Letter in the inventory. Expected result: `Destroy` is
-   disabled, and the tooltip says `Cannot be destroyed`. Click `Abandon quest
+4. Drag the Sealed Letter out of the Inventory window and drop it on the
+   world. Expected result: no dialog opens, the game messages say
+   `This item cannot be destroyed by the player.`, and the tooltip says
+   `Cannot be destroyed`. Click `Abandon quest
    and remove its grant lineage`, then accept again. Expected result: abandoning
    removes exactly that letter, and accepting creates exactly one new one.
 5. Walk more than 3.5 meters away, or out of sight. Expected result: the
@@ -733,9 +736,12 @@ The worker must log `Development admin tools are enabled`.
    no damage, and your health stays full. Turn it off, take a bite, and press
    `Restore health and mana`. Expected result: health and mana are full again,
    and the tab shows `100 / 100, mana 100 / 100`.
-5. The `Look` tab is checked in
+5. On the `Storage` tab press `Open Bank`, then `Open Recovery Storage`.
+   Expected result: the storage window opens beside the Inventory window on the
+   Bank with `Bank` and `Recovery` tabs, then switches to Recovery Storage.
+6. The `Look` tab is checked in
    [The Look Tab Of The Admin Menu](#the-look-tab-of-the-admin-menu).
-6. Stop SimulationWorker and start it again with
+7. Stop SimulationWorker and start it again with
    `$env:DevelopmentAdmin__Enabled = "false"`, join, and press F3. Expected
    result: the tabs are greyed out, and the footer says `The admin tools are
    off: only a SimulationWorker in the Development environment allows them.`
@@ -744,8 +750,8 @@ The worker must log `Development admin tools are enabled`.
 ## Inventory And Equipment
 
 Each item move shows at once, before the server answers, and the server still
-decides every move: a rejected move jumps back, flashes red, and the status
-line says `Item move undone:` with the reason.
+decides every move: a rejected move jumps back, flashes red, and the game
+messages at the lower left say `Item move undone:` with the reason.
 
 ### Carry State Of A New Character
 
@@ -756,48 +762,57 @@ Expected result: the tab shows `Carry weight / capacity` `0 / 2000` and `Item
 revision / movement` with the committed revision and `100%`. After the rejoin
 the same carry values and revision return, and movement works.
 
-### Inventory Views
+### Inventory Windows
 
 Give a new offline character the Full Inventory Test Pack, then join. The
-development worker opens the Bank and Recovery Storage everywhere.
+development worker opens the Bank and Recovery Storage everywhere, and the
+Admin menu (F3) opens them on its `Storage` tab.
 
-1. Press B. Expected result: only the right column shows: the carry meter,
-   Permanent Inventory, and the contents of the equipped Traveler's Pack. The
-   character header shows `100 Gold` and the item-state revision.
-2. Press C. Expected result: the equipment paper doll appears on the left, in
-   five full rows: `Tool`, `Head`, `Bag`; `Shoulders`, `Neck`, `Back`; `Main
-   Hand`, `Body`, `Off Hand`; `Hands`, `Legs`, `Ammunition`; and `Ring 1`,
-   `Feet`, `Ring 2`. The `Shoulders` slot is empty, and no item of the catalog
-   equips to it yet.
-3. Press I. Expected result: the complete view adds the middle column with its
-   `Bank`, `Recovery`, `Corpse`, and `Vendor` tabs.
-4. Press the key of the open view, then another inventory key, then Escape.
-   Expected result: the key of the open view closes it, another key switches
-   views, and Escape closes any view, while the cursor stays free. Hidden
-   modules leave no background or header behind, and the right column keeps its
-   position and size in all three views.
+1. Press B. Expected result: the Inventory window opens at the right edge below
+   the HUD: a dark panel with a gold frame and the title `INVENTORY` in serif
+   capitals, a search field, `1040 / 2500` over the carry meter with
+   `Load 41.6% | Move speed 100%`, `PERMANENT INVENTORY` with `/ 24` in four
+   rows of six slots, `TRAVELER'S PACK` with the Bag's seven slots below it in
+   the same columns, and `100 Gold` with a coin at the bottom. Press I. Expected
+   result: the window closes; I and B toggle the same window.
+2. Press C. Expected result: the Equipment window opens at the left edge with a
+   pedestal in the middle, `Head`, `Shoulders`, `Body`, `Legs`, and `Feet` down
+   its left side, `Neck`, `Hands`, `Ring 1`, `Ring 2`, and `Bag` down its right
+   side, and `Main Hand`, `Off Hand`, `Tool`, and `Ammunition` in a row below,
+   each with its name, and `<n> / 14 equipped` in its header. There is no
+   `Back` slot, and no item of the catalog equips to `Shoulders` yet. Press B.
+   Expected result: Inventory opens again, and Equipment stays where it was.
+3. Press F3 and choose `Open Bank` on the `Storage` tab. Expected result: the
+   storage window opens directly left of Inventory with `Bank` and `Recovery`
+   tabs and the Bank in rows of six. Neither other window moves.
+4. Close each window with its `X`, then open them again and press Escape.
+   Expected result: an `X` closes only its window, and Escape closes every
+   inventory window, while the cursor stays free.
 5. Look at the slots and hover items. Expected result: every slot is a square
-   of the same size, and the grids sit in the middle of their columns. Occupied
-   slots show the placeholder icon, a grey cube, a colored top strip for the
-   item category, and the stack quantity in the lower-right corner; empty slots
-   are darker. The empty specialized Traveler's Pack slots show `Food/Potion`,
-   `Material`, or `Ammunition`. A tooltip shows the item's name, category,
-   quantity, weight, equipment slots, policies, and slot, for an occupied
-   specialized slot also its accepted types. The carry meter is green with
-   `Weight 1040 / 2500    Load 41.6%    Speed 100%`.
-6. With each view open, left-click the ground beside the windows, right-click
-   it, and scroll there, then do the same on a window. Expected result: the
-   world is not dimmed. Beside the windows the character walks, keeps steering
-   while the button stays down, the world menu opens, and the camera zooms. On a
-   window nothing reaches the world: the character stays, and the wheel scrolls
-   the window.
+   of the same size. Occupied slots show the placeholder icon, a grey cube, in
+   a white frame, and the stack quantity in the lower-right corner; the Sealed
+   Letter shows a `P`. Empty slots are darker. Empty equipment slots show a
+   faint picture of what they take, such as a helmet or a ring, and the empty
+   specialized Traveler's Pack slots a potion, an ore, or arrows. A tooltip
+   shows the item's name, category, quantity, weight, equipment slots,
+   policies, and slot, for an occupied specialized slot also its accepted types.
+   The carry meter is cyan up to its marker.
+6. Type `ore` into the search field, then `MATERIAL`, then clear it. Expected
+   result: every item whose name or category does not contain the text dims, in
+   all open windows, and typing `b`, `c`, or `i` there never toggles a window.
+7. With the windows open, left-click the ground beside them, right-click it,
+   and scroll there, then do the same on a window. Expected result: the world is
+   not dimmed. Beside the windows the character walks, keeps steering while the
+   button stays down, the world menu opens, and the camera zooms. On a window
+   nothing reaches the world: the character stays, and the wheel scrolls the
+   window.
 
 ### Equip, Unequip, And Swap
 
 1. Drag the Training Shortbow, the Leather Jerkin, the Starter Pickaxe, or the
    Copper Ring from Permanent Inventory onto a compatible empty equipment slot,
    then back onto an empty Permanent slot. Expected result: valid targets
-   highlight green and invalid ones red, the dragged icon with its quantity
+   light up green and invalid ones red, the dragged icon with its quantity
    trails beside the pointer without covering the target, the slot it came from
    fades while you drag, and the item lands where you drop it.
    The carry meter drops by the item's weight when it is equipped and regains
@@ -805,17 +820,18 @@ development worker opens the Bank and Recovery Storage everywhere.
 2. Drag a second compatible item onto an occupied equipment slot. Expected
    result: the two swap, and the previously equipped item takes the slot the
    new one came from.
-3. Equip the shortbow. Expected result: `Off Hand` turns red and shows
-   `Blocked`, and its tooltip names the shortbow.
-4. Click a destination without dragging. Expected result: nothing moves.
+3. Equip the shortbow. Expected result: `Off Hand` shows a lock on a red slot,
+   and its tooltip names the shortbow.
+4. Click a slot without dragging. Expected result: nothing moves.
 
 ### Ammunition
 
 1. Drag the 100 Bronze Arrows from the Bag's ammunition slot onto the
    `Ammunition` equipment slot. Expected result: the weight drops by 100, and
    the slot shows `100`.
-2. Select the equipped arrows, enter `40` in the footer below the right column,
-   click `Split`, and drag the split part onto an empty Permanent slot.
+2. Hold Shift, drag the equipped arrows onto an empty Permanent slot, and
+   release. Expected result: the dragged icon shows `?`, and a `SPLIT STACK`
+   window asks for a quantity, starting at `50`. Enter `40` and press Enter.
    Expected result: 60 stay equipped, and the weight rises by 40.
 3. Drag the 40 arrows back onto the equipped stack, then drag the stack back
    onto the Bag's ammunition slot. Expected result: the equipped stack is back
@@ -835,14 +851,25 @@ development worker opens the Bank and Recovery Storage everywhere.
 
 ### Bank Stacks And Swaps
 
-1. In the Bank, click an Iron Ore stack, enter a quantity in the footer, click
-   `Split`, and drag the split part onto an empty Bank slot. Then drag it back
-   onto its peer. Expected result: the split creates a new stack, which can be
-   moved once the server has confirmed it, and the merge restores the original
-   quantity.
+1. In the Bank, hold Shift and drag an Iron Ore stack onto an empty Bank slot,
+   choose a quantity, and press `OK`. Then drag the new stack back onto its
+   peer. Expected result: the split creates a new stack, which can be moved once
+   the server has confirmed it, and the merge restores the original quantity.
+   A Shift drag onto an occupied slot lights red.
 2. Drag two unlike items between compatible occupied ordinary slots. Expected
    result: they exchange slots. Repeat against an incompatible specialized slot.
    Expected result: neither moves.
+
+### Destroy An Item
+
+1. Drag the Cooked Trout out of the Inventory window and drop it on the world.
+   Expected result: the character does not walk, and a `DESTROY ITEM` window
+   asks whether to destroy the Cooked Trout, with its quantity when it is a
+   stack. Press `Cancel`. Expected result: the trout
+   stays. Drop it outside again and press `Destroy`. Expected result: the trout
+   disappears at once and stays gone after a rejoin.
+2. Drop the Sealed Letter outside. Expected result: no dialog opens, and the
+   game messages say `This item cannot be destroyed by the player.`
 
 ### Recovery Deliveries
 
@@ -857,13 +884,13 @@ Start from `1040 / 2500` with the Bank stacks of the Full Inventory Test Pack.
 1. Move the Bank ore stack of 20 to Permanent Inventory. Expected result:
    `2240 / 2500`.
 2. Move the Bank ore stack of 19. Expected result: `3380 / 2500`, above 100
-   percent, so the speed drops and the carry meter turns amber with `(slowed)`.
+   percent, so the speed drops and the carry meter turns amber past its marker.
 3. Move the single Bank potion, then the empty Bank Traveler's Pack. Expected
    result: `3400 / 2500`, then exactly `3500 / 2500` with `Load 140%` and
-   `Speed 20%`; the carry meter is full and red with `(at the carry limit)`.
+   `Move speed 20%`; the carry meter is full and red.
 4. Try to move the Bank arrows into carried storage. Expected result: the
-   target is disabled locally, the server would reject the move, and the weight
-   stays at `3500 / 2500`.
+   target lights red, the server would reject the move, and the weight stays
+   at `3500 / 2500`.
 5. Walk. Expected result: the character walks at a fifth of its speed, and
    the body walks slower without sliding.
 
@@ -874,25 +901,25 @@ directly.
 
 Give the character the Equipment Test Pack.
 
-1. Press I and right-click an equippable item in Permanent Inventory. Expected
-   result: it lands in its equipment slot at once; a ring takes `Ring 1` and a
-   second ring `Ring 2`. Right-click an equipped item. Expected result: it goes
-   back to the first free inventory slot.
+1. Press C and B and right-click an equippable item in Permanent Inventory.
+   Expected result: it lands in its equipment slot at once; a ring takes
+   `Ring 1` and a second ring `Ring 2`. Right-click an equipped item. Expected
+   result: it goes back to the first free inventory slot.
 2. With the Heater Shield equipped, right-click the Training Shortbow. Expected
    result: the shield moves to the inventory, and the bow takes the main hand.
-3. Choose the `Bank` tab and right-click an inventory item, then a Bank item.
-   Expected result: the first goes into the Bank, topping up a stack of the same
-   item, and the second comes back to the inventory.
-4. Right-click an item that has nowhere to go, such as an ore with no Bank
-   open. Expected result: the status line says why nothing moved.
+3. Open the Bank from the Admin menu and right-click an inventory item, then a
+   Bank item. Expected result: the first goes into the Bank, topping up a stack
+   of the same item, and the second comes back to the inventory.
+4. Close the storage window and right-click an item that has nowhere to go,
+   such as an ore. Expected result: the game messages say why nothing moved.
 
 The right-click at a vendor and on corpse items is checked in [Vendor](#vendor)
 and [Loot All](#loot-all).
 
 ### Rejoin
 
-1. Leave to CharacterSelect and join again. Press I.
-2. Open and refresh the Bank and Recovery tabs several times.
+1. Leave to CharacterSelect and join again. Press B.
+2. Open the Bank and Recovery Storage from the Admin menu several times.
 
 Expected result: every item location, quantity, carry value, and the revision
 come back without loss or duplication, and the item labels stay stable.
@@ -904,34 +931,34 @@ Mira's `Trade` capability opens the General Store. It sells every offer of
 unlimited stock, and buys every carried item with a value except quest items
 for 40 percent of the value, rounded down on the total, without buyback.
 
-1. Join with a new character and press B. Expected result: the character header
-   shows `100 Gold`; an existing character keeps its balance.
+1. Join with a new character and press B. Expected result: the bottom of the
+   Inventory window shows `100 Gold`; an existing character keeps its balance.
 2. Left-click Mira and choose `Trade`. Expected result: the interaction reports
-   `Trade is open while this interaction stays open.`, and the inventory opens
-   in the complete view on the `Vendor` tab with `General Store` and `You have
-   100 Gold`. The offers are listed in the profile's order: the Bronze Arrow,
+   `Trade is open while this interaction stays open.`, and the storage window
+   opens beside Inventory on its `Trade` tab, titled `GENERAL STORE`, with
+   `You have 100 Gold`. The offers are listed in the profile's order: the Bronze Arrow,
    the Minor Healing Potion, the Cooked Trout, the Starter Pickaxe, the
    Woodcutting Axe, the clothes, the wool robe and hood in their three colors,
    the Nasal Helm, and then the Iron Sword, the Oak Staff, the Iron
-   Greataxe, and the Heater Shield, each with its unit price, such as `50 Gold
-   each` for the Starter Pickaxe. Each offer has a quantity field, `1` by
-   default, and a button that names the total while you type, such as `Buy for
-   50 Gold`.
-3. Click `Buy for 50 Gold` next to the Starter Pickaxe. Expected result: the
-   vendor panel reports `Purchased.`, the pickaxe appears in carried storage at
+   Greataxe, and the Heater Shield, each with its icon and unit price, such as
+   `50 Gold each` for the Starter Pickaxe. Each offer has a quantity field, `1`
+   by default, and a button that names the total while you type, such as
+   `Buy 50 Gold`.
+3. Click `Buy 50 Gold` next to the Starter Pickaxe. Expected result: the
+   Trade tab reports `Purchased.`, the pickaxe appears in carried storage at
    once, and the balance shows `50 Gold`.
 4. Mine five Iron Ore as [Mining](#mining) describes, return to Mira, choose
    `Trade`, and drag the ore stack onto the `Sell` slot. Expected result: the
    slot shows the ore's icon, and its tooltip names `Iron Ore` and `Offered to
    General Store`; a quantity field shows the whole stack, and the button reads
-   `Sell 5 Iron Ore for 20 Gold`. Enter a smaller quantity to sell part of the stack, or
+   `Sell 5 for 20 Gold`. Enter a smaller quantity to sell part of the stack, or
    click `Cancel` to discard the sale.
-5. Click the sell button. Expected result: the panel reports `Sold.`, the stack
+5. Click the sell button. Expected result: the Trade tab reports `Sold.`, the stack
    shrinks by the sold quantity, and the balance rises by 4 Gold per ore,
    rounded down on the total.
-6. Right-click a carried item while the `Vendor` tab shows. Expected result: it
-   shows in the `Sell` slot with `Sell <n> <item> for <total>`, and nothing is
-   sold until you confirm.
+6. Right-click a carried item while the `Trade` tab shows. Expected result: it
+   shows in the `Sell` slot with `Sell <n> for <total>`, and nothing is sold
+   until you confirm.
 7. Read the newest ledger rows:
 
    ```powershell
@@ -989,7 +1016,7 @@ sign; the stress arena has nine Iron Veins east of its spawn.
    with a progress bar and `Gathered <n> Oak Log.`, one log every 3 seconds.
    After the fifth log the tree turns into a stump with a pale cut face and wood
    chips for every client, and about 30 seconds later the whole oak returns.
-4. Sell the logs at Mira. Expected result: `Sell 5 Oak Log for 20 Gold`.
+4. Sell the logs at Mira. Expected result: `Sell 5 for 20 Gold`.
 
 ### Tools In The Hands
 
@@ -1138,11 +1165,11 @@ three or four of them kill a lone archer in about 10 seconds.
 
 ### Death And Respawn
 
-1. Press I to open the inventory, and let the Feral Alpha or several wolves
-   kill the character.
+1. Press B and C to open the Inventory and Equipment windows, and let the Feral
+   Alpha or several wolves kill the character.
 
 Expected result: `You died` with `Respawning in 5 s` counting down appears
-above the open inventory, clicks do nothing while the character is dead, and
+above the open windows, clicks do nothing while the character is dead, and
 the inventory shows at once that every carried and equipped item is gone.
 The body falls and lies on its back. After the respawn the character stands at
 the World spawn with full health and does not walk on, its items lie in its
@@ -1171,8 +1198,8 @@ batches.
 
 ## Corpses And Loot
 
-A corpse opens in the complete inventory view with its own middle column. Every
-move between a corpse and carried storage shows on both sides at once.
+A corpse opens in the storage window beside the Inventory window. Every move
+between a corpse and carried storage shows on both sides at once.
 
 ### Mob Corpses
 
@@ -1186,14 +1213,15 @@ Seconds` of each Mob.
 1. Kill a wolf and click its corpse. Expected result: the character walks to
    it, and the corpse opens. The wolf lies on its side.
 2. Drag every item into the inventory. Expected result: after the last item the
-   corpse disappears, and the Corpse context shows `The corpse is empty.` in
-   neutral text, not a red error.
+   corpse disappears, the storage window closes, and the game messages say
+   `The corpse is empty.`
 3. Drag a wolf's Bronze Arrows onto your equipped Bronze Arrows, and its pelt
    onto a Wolf Pelt stack in the inventory. Expected result: both stacks are
    topped up. Dropping wolf loot on a different item is rejected, because a
    live Mob corpse cannot take an item back.
-4. Leave a wolf corpse alone. Expected result: after 120 seconds it closes with
-   `The corpse expired and is no longer available.` in neutral text.
+4. Open a wolf corpse and leave it alone. Expected result: after 120 seconds it
+   closes with its window, and the game messages say
+   `The corpse expired and is no longer available.`
 5. Kill a wolf, then restart SimulationWorker before its corpse expires, and
    join again. Expected result: the wolf corpse is gone, because a live corpse
    exists only in the worker.
@@ -1214,15 +1242,15 @@ looter.
    equipment takes a free equipment slot, never replacing an equipped item,
    arrows of the equipped kind top up the equipped stack, and anything else goes
    to the inventory.
-2. Click `Loot all`. Expected result: the corpse empties at once as far as there
+2. Click `Loot All`. Expected result: the corpse empties at once as far as there
    is room: equipment fills free slots, arrows top up the equipped stack, a
    corpse Bag takes an empty Bag slot with its contents, and the rest fills the
    inventory. What does not fit stays in the corpse, and when nothing fits, the
-   status line says `Nothing in the corpse fits in your equipment or
+   game messages say `Nothing in the corpse fits in your equipment or
    inventory.`
-3. Kill a Feral Wolf, open its corpse, and click `Loot all`. Expected result:
-   the pelt goes to the inventory, and the empty corpse closes with `The corpse
-   is empty.`
+3. Kill a Feral Wolf, open its corpse, and click `Loot All`. Expected result:
+   the pelt goes to the inventory, and the empty corpse closes with its window
+   and the message `The corpse is empty.`
 
 ### A Player Corpse
 
@@ -1241,10 +1269,12 @@ its corpse holds several weapons, and use a looter with an empty `Main Hand`.
 2. Restart SimulationWorker and join the looter. Expected result: the corpse
    lies beside the spawn as the body of the source character lying on its back
    in its look.
-3. Open the corpse. Expected result: the character column stays fixed while the
-   middle `Corpse` column opens with the corpse's equipment, inventory, and Bag
-   sections, and each corpse equipment slot shows its type, such as `Head` or
-   `Body`.
+3. Open the corpse. Expected result: the Inventory window opens at its place,
+   and the storage window opens left of it, titled with the source character's
+   name and the time the corpse expires, with the corpse's equipment, inventory,
+   and Bag sections and `Close` and `Loot All` below them. An empty corpse
+   equipment slot shows the picture of its type, such as a helmet, and its
+   tooltip names it, such as `Head`.
 4. Drag the corpse's Iron Sword onto your empty `Main Hand`, then its Oak Staff
    onto your occupied `Main Hand`. Expected result: the first drop equips the
    sword, and the second puts the staff in `Main Hand` and the sword in the
@@ -1255,7 +1285,7 @@ its corpse holds several weapons, and use a looter with an empty `Main Hand`.
    deposit stays in the corpse, each valid drop on an occupied slot swaps the
    two items in one step, and the corpse stays open.
 6. Move a corpse item to another corpse slot, split a corpse stack into another
-   corpse slot, merge compatible corpse stacks, and drop two complete corpse
+   corpse slot with a Shift drag, merge compatible corpse stacks, and drop two complete corpse
    items that cannot merge onto each other. Expected result: each commits as a
    move inside the corpse, the last one as a swap, and the character's weight
    and item-state revision do not change.
@@ -1279,9 +1309,8 @@ corpse exists, then join one looter in the Editor and the other in the
    duplicated item. Then drag the same remaining item in both clients at once.
    Expected result: exactly one client gets it, and the other receives a stable
    error and then the current state.
-3. Click `Partial stack: off` so that it reads `Partial stack: on`, enter a
-   quantity, and drag part of a corpse stack to a valid destination in one
-   client while the other loots from the same stack. Expected result: no
+3. Hold Shift, drag part of a corpse stack to a valid destination in one
+   client, and choose a quantity, while the other loots from the same stack. Expected result: no
    quantity ever becomes negative, and the total is kept. A partial deposit of
    a compatible stack into the corpse keeps the total too.
 4. In one client, drag a child item of the corpse's Bag. At the same time, in
@@ -1449,10 +1478,12 @@ equips to the `back` slot; see
 
 ### Lower And Raise The Hood
 
-1. Wear `Wool Hood` and `Wool Robe`, and press C. Expected result: the
-   inventory footer shows `Lower Wool Hood`.
-2. Press it. Expected result: the hood falls back onto the shoulders, and the
-   button reads `Raise Wool Hood`. Press it again to raise the hood.
+1. Wear `Wool Hood` and `Wool Robe`, and press C. Expected result: a small
+   hood button shows at the Equipment window's `Head` slot, and its tooltip
+   says `Lower Wool Hood`.
+2. Press it. Expected result: the hood falls back onto the shoulders, the button
+   turns cyan, and its tooltip says `Raise Wool Hood`. Press it again to raise
+   the hood.
 3. Leave the shard with the hood lowered and join again. Expected result: the
    hood is still down.
 

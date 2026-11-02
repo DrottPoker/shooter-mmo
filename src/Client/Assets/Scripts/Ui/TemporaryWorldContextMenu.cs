@@ -16,7 +16,7 @@ namespace Mmorpg.Client.Ui
     public sealed class TemporaryWorldContextMenu : MonoBehaviour
     {
         // Above every panel and below the death overlay.
-        public const int CanvasSortingOrder = TemporaryInventoryPanel.CanvasSortingOrder + 40;
+        public const int CanvasSortingOrder = InventoryWindows.CanvasSortingOrder + 40;
 
         public static readonly Color NpcNameColor = new Color(1f, 1f, 0f, 1f);
         public static readonly Color ObjectNameColor = new Color(0f, 1f, 1f, 1f);

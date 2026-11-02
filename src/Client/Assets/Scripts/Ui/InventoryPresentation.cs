@@ -8,89 +8,111 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Ui
 {
-    public readonly struct PaperDollCell
+    // Where the equipment window shows each equipment slot: a column left of the character, a
+    // column right of it, and rows below it. Slots the layout does not know, such as ones added
+    // to the catalog later, fill extra rows below in their given order.
+    public sealed class PaperDollArrangement
     {
-        public PaperDollCell(string slotId, int row, int column)
+        public PaperDollArrangement(
+            IReadOnlyList<string> left,
+            IReadOnlyList<string> right,
+            IReadOnlyList<IReadOnlyList<string>> bottomRows)
         {
-            SlotId = slotId;
-            Row = row;
-            Column = column;
+            Left = left;
+            Right = right;
+            BottomRows = bottomRows;
         }
 
-        public string SlotId { get; }
+        public IReadOnlyList<string> Left { get; }
 
-        public int Row { get; }
+        public IReadOnlyList<string> Right { get; }
 
-        public int Column { get; }
+        public IReadOnlyList<IReadOnlyList<string>> BottomRows { get; }
+
+        public IEnumerable<string> All
+        {
+            get { return Left.Concat(Right).Concat(BottomRows.SelectMany(row => row)); }
+        }
     }
 
-    // Equipment slots laid out like a character silhouette. Slots the layout does not know,
-    // such as ones added to the catalog later, fill extra rows in their given order.
     public static class EquipmentPaperDollLayout
     {
-        public const int ColumnCount = 3;
+        public const int BottomColumns = 4;
 
         // Cloaks are achievement rewards that will be worn from their own window, so no item
-        // equips to the Back slot and the paper doll leaves its cell empty (Victor, 2026-11-02).
+        // equips to the Back slot and the paper doll leaves it out (Victor, 2026-11-02).
         private static readonly HashSet<string> HiddenSlots =
             new HashSet<string>(StringComparer.Ordinal) { "back" };
 
-        private static readonly Dictionary<string, (int Row, int Column)> KnownCells =
-            new Dictionary<string, (int Row, int Column)>(StringComparer.Ordinal)
-            {
-                ["tool"] = (0, 0),
-                ["head"] = (0, 1),
-                ["bag"] = (0, 2),
-                ["shoulders"] = (1, 0),
-                ["neck"] = (1, 1),
-                ["main_hand"] = (2, 0),
-                ["body"] = (2, 1),
-                ["off_hand"] = (2, 2),
-                ["hands"] = (3, 0),
-                ["legs"] = (3, 1),
-                ["ammunition"] = (3, 2),
-                ["ring_1"] = (4, 0),
-                ["feet"] = (4, 1),
-                ["ring_2"] = (4, 2)
-            };
+        private static readonly string[] LeftSlots = { "head", "shoulders", "body", "legs", "feet" };
+        private static readonly string[] RightSlots = { "neck", "hands", "ring_1", "ring_2", "bag" };
+        private static readonly string[] BottomSlots = { "main_hand", "off_hand", "tool", "ammunition" };
 
-        public static IReadOnlyList<PaperDollCell> Arrange(
-            IEnumerable<string> slotIds,
-            out int rowCount)
+        public static PaperDollArrangement Arrange(IEnumerable<string> slotIds)
         {
-            var distinct = (slotIds ?? Enumerable.Empty<string>())
+            var present = (slotIds ?? Enumerable.Empty<string>())
                 .Where(slotId => !string.IsNullOrWhiteSpace(slotId) && !HiddenSlots.Contains(slotId))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
-            var cells = new List<PaperDollCell>(distinct.Length);
-            var unknown = new List<string>();
-            var dollRows = 0;
-            foreach (var slotId in distinct)
+            var shown = new HashSet<string>(present, StringComparer.Ordinal);
+            var known = new HashSet<string>(
+                LeftSlots.Concat(RightSlots).Concat(BottomSlots),
+                StringComparer.Ordinal);
+            var rows = new List<IReadOnlyList<string>>();
+            var bottom = BottomSlots.Where(shown.Contains).ToArray();
+            if (bottom.Length > 0)
             {
-                if (KnownCells.TryGetValue(slotId, out var cell))
-                {
-                    cells.Add(new PaperDollCell(slotId, cell.Row, cell.Column));
-                    dollRows = Math.Max(dollRows, cell.Row + 1);
-                }
-                else
-                {
-                    unknown.Add(slotId);
-                }
+                rows.Add(bottom);
             }
 
-            for (var index = 0; index < unknown.Count; index++)
+            var unknown = present.Where(slotId => !known.Contains(slotId)).ToArray();
+            for (var start = 0; start < unknown.Length; start += BottomColumns)
             {
-                cells.Add(new PaperDollCell(
-                    unknown[index],
-                    dollRows + index / ColumnCount,
-                    index % ColumnCount));
+                rows.Add(unknown.Skip(start).Take(BottomColumns).ToArray());
             }
 
-            rowCount = dollRows + (unknown.Count + ColumnCount - 1) / ColumnCount;
-            return cells
-                .OrderBy(cell => cell.Row)
-                .ThenBy(cell => cell.Column)
-                .ToArray();
+            return new PaperDollArrangement(
+                LeftSlots.Where(shown.Contains).ToArray(),
+                RightSlots.Where(shown.Contains).ToArray(),
+                rows);
+        }
+    }
+
+    // The color of the frame around an item, which shows its rarity. Items have no rarity yet,
+    // so every item is Common; a rarity in the catalog will pick its color from the theme.
+    public static class ItemRarityPresentation
+    {
+        public static UnityEngine.Color FrameColor(UiTheme theme, ClientItemCatalog catalog, string definitionId)
+        {
+            return theme != null ? theme.RarityCommon : UnityEngine.Color.white;
+        }
+    }
+
+    // The inventory search: an item matches when its name or category contains the query,
+    // ignoring case. An empty query matches every item.
+    public static class InventorySearch
+    {
+        public static bool Matches(ClientItemCatalog catalog, string definitionId, string query)
+        {
+            var trimmed = query?.Trim();
+            if (string.IsNullOrEmpty(trimmed))
+            {
+                return true;
+            }
+
+            if (catalog == null || string.IsNullOrEmpty(definitionId))
+            {
+                return false;
+            }
+
+            return Contains(catalog.GetDisplayName(definitionId), trimmed)
+                || Contains(InventorySlotPresentation.CategoryName(catalog, definitionId), trimmed);
+        }
+
+        private static bool Contains(string value, string query)
+        {
+            return !string.IsNullOrEmpty(value)
+                && value.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 
@@ -345,6 +367,82 @@ namespace Mmorpg.Client.Ui
             return catalog != null && catalog.TryGetDefinition(definitionId, out var definition)
                 ? definition.Category ?? string.Empty
                 : string.Empty;
+        }
+
+        // The display name of the item's category, such as Material, or empty.
+        public static string CategoryName(ClientItemCatalog catalog, string definitionId)
+        {
+            var categoryId = CategoryId(catalog, definitionId);
+            return categoryId.Length > 0
+                ? IdentityName(catalog.Gameplay?.Categories, categoryId)
+                : string.Empty;
+        }
+
+        public static string ContainerName(InventoryClientState state, string containerType)
+        {
+            return containerType switch
+            {
+                ItemContainerTypeIds.PermanentInventory => "Permanent Inventory",
+                ItemContainerTypeIds.BagContents => state?.FullSnapshot?.EquippedBag != null
+                    ? state.Catalog.GetDisplayName(state.FullSnapshot.EquippedBag.Item.DefinitionId)
+                    : "Bag",
+                ItemContainerTypeIds.Bank => "Bank",
+                _ => containerType ?? string.Empty
+            };
+        }
+
+        public static string BlockedSlotText(ClientItemCatalog catalog, InventoryEquipmentSlot blocker)
+        {
+            return "Blocked by " + catalog.GetDisplayName(blocker.Item.DefinitionId)
+                + " in " + EquipmentSlotName(catalog, blocker.SlotId)
+                + ". Unequip it to use this slot.";
+        }
+
+        public static string EmptyEquipmentSlotText(ClientItemCatalog catalog, string slotId)
+        {
+            return catalog != null
+                && catalog.TryGetEquipmentSlot(slotId, out var definition)
+                && definition.MaximumQuantity > 1
+                    ? "Empty. Holds a stack of up to "
+                        + definition.MaximumQuantity.ToString(CultureInfo.InvariantCulture) + "."
+                    : "Empty";
+        }
+
+        public static string CorpseSectionTitle(string sectionKind)
+        {
+            return sectionKind switch
+            {
+                CorpseSectionKindIds.Equipment => "Corpse Equipment",
+                CorpseSectionKindIds.GeneralInventory => "Corpse Inventory",
+                CorpseSectionKindIds.Bag => "Corpse Bag Contents",
+                _ => "Corpse " + sectionKind
+            };
+        }
+
+        // The equipment slot name or the accepted item types of a corpse slot; empty for a
+        // general slot.
+        public static string CorpseSlotLabel(ClientItemCatalog catalog, CorpseLootSlot slot)
+        {
+            if (!string.IsNullOrWhiteSpace(slot.EquipmentSlotId))
+            {
+                return EquipmentSlotName(catalog, slot.EquipmentSlotId);
+            }
+
+            return string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal)
+                ? string.Empty
+                : AcceptedTagsLabel(catalog, slot.AcceptedTags);
+        }
+
+        public static string RecoverySourceLabel(string source)
+        {
+            return source switch
+            {
+                "death_recovered_insured" => "Recovered: consumed insurance",
+                "death_recovered_protected" => "Recovered: protected on death",
+                "secure_container_removal" => "Recovered: from the removed Warded Pouch",
+                "cloak_equipment_removal" => "Recovered: cloaks can no longer be worn",
+                _ => "Recovered: " + source
+            };
         }
 
         // Empty equipment slots that an item equipped elsewhere blocks, keyed by the blocked

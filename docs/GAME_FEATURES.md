@@ -21,10 +21,10 @@ to check each feature by hand is in [Manual Testing](MANUAL_TESTING.md).
 | Middle mouse button, dragged | Turns and tilts the camera |
 | Arrow keys | Left and right turn the camera, up and down tilt it |
 | Scroll wheel | Zooms the camera |
-| `Escape` | Closes an open world menu and does nothing else; otherwise ends the attack, closes the open interaction and the inventory, and cancels an Admin teleport pick |
-| `B` | Opens or closes the inventory with character storage only |
-| `C` | Opens or closes the inventory with equipment and character storage |
-| `I` | Opens or closes the complete inventory with Bank, Recovery Storage, a corpse, or a vendor |
+| `Escape` | Closes an open world menu or inventory dialog and does nothing else; otherwise ends the attack, closes the open interaction and every inventory window, and cancels an Admin teleport pick |
+| `B` or `I` | Opens or closes the Inventory window |
+| `C` | Opens or closes the Equipment window |
+| `Shift`, held while dragging a stack | Drags part of the stack and asks how many after the drop |
 | `F2` | Opens or closes the [Debug Menu](#debug-menu-f2) |
 | `F3` | Opens or closes the [Admin Menu](#admin-menu-f3), whose tools work in the Development environment |
 
@@ -325,6 +325,8 @@ not implemented, and running with run energy is planned in
 - **Combat** shows the character's health and mana, fills both with
   `Restore health and mana`, and switches `Invulnerable`, which makes hits leave
   its health as it is until the character leaves the World.
+- **Storage** opens the Bank or Recovery Storage in the storage window beside
+  Inventory without an NPC, as the development worker allows.
 - The footer shows what the worker answered, such as
   `Teleport to 85.0, 1.9, 80.0: done.` or the reason a tool was refused.
 
@@ -344,54 +346,59 @@ not implemented, and running with run energy is planned in
 
 ## Player Inventory Foundation
 
-`B` shows character storage only, `C` adds the equipment, and `I` shows the
-complete view with the contextual storage. Pressing another inventory key
-switches the view, and pressing the same key or `Escape` closes it. Opening the
-Bank or Recovery Storage of an NPC, a vendor, or a corpse opens the complete
-view with it.
+The inventory has three windows, each with its own close button. `C` opens and
+closes Equipment, `B` and `I` open and close Inventory, and the storage window
+opens by itself beside Inventory when an NPC's Bank, Recovery Storage, or trade
+opens, or a corpse opens. `Escape` closes an open dialog first and then every
+inventory window. Each window has a fixed place: Equipment at the left edge,
+Inventory at the right edge, and the storage window to the left of Inventory.
+Opening or closing one never moves another. The world beside and between the
+windows works as when they are closed: a click walks or attacks, a held button
+steers the walk, a right-click opens the world menu, and the wheel zooms. A click
+or scroll on a window never reaches the world.
 
-Each column is a window of its own over the world, which stays undimmed. A click
-or scroll on a window never reaches the world, while the world beside and between
-the windows works as when they are closed: a click walks or attacks, a held
-button steers the walk, a right-click opens the world menu, and the wheel zooms.
-
-The panel has three columns that never move each other:
-
-- **Equipment**, on the left, is a paper doll of five rows of three: tool,
-  head, and Bag on top, shoulders and neck below them with an empty cell where
-  the hidden back slot belongs, main hand, body, and off hand in the middle,
-  hands, legs, and ammunition below them, and the two rings beside the feet at
-  the bottom. No item equips to the shoulders slot yet. A slot the catalog adds
-  later appears in an extra row.
-- **Context**, in the middle, shows the Bank, Recovery Storage, a corpse, or a
-  vendor in tabs, with a `Refresh` button. Its header names the NPC whose open
-  interaction offers the shown storage or trade. Recovery Storage heads each
-  delivery with its source, `Recovered: consumed insurance` or
+- **Equipment** shows the character's place in the middle on a pedestal, the
+  head, shoulders, body, legs, and feet slots in a column on its left, the neck,
+  hands, both rings, and Bag slots in a column on its right, and main hand, off
+  hand, tool, and ammunition in a row below. Every slot has its name beside or
+  below it, and the header shows how many slots are filled, such as
+  `9 / 14 equipped`. The back slot is hidden, and no item equips to the
+  shoulders slot yet. A slot the catalog adds later appears in a row below.
+  While a hood that can be lowered is worn, a small hood button at the head slot
+  lowers or raises it.
+- **Inventory** has a search field, the carry meter, Permanent Inventory in four
+  rows of six, the equipped Bag's slots below it in the same columns under the
+  Bag's name, such as `TRAVELER'S PACK 2 / 7`, and the balance with a coin at
+  the bottom, such as `79 Gold`. The window grows with the Bag.
+- **The storage window** shows the Bank, Recovery Storage, a corpse, or a
+  vendor, with a tab for each one that the open NPC offers. Its title names the
+  NPC, the corpse, or the storage. Recovery Storage heads each delivery with its
+  source, such as `Recovered: consumed insurance` or
   `Recovered: protected on death`.
-- **Character**, on the right, keeps its place in every view: a carry meter,
-  Permanent inventory, and the equipped Bag's contents. Its header shows the balance
-  and the item-state revision, such as `1,250 Gold    Revision 12`.
 
-Every slot is a square of the same size, and the slot grids sit in the middle of
-their columns. An occupied slot shows the item's icon, a category color strip
-along its top edge, the stack quantity in its lower-right corner, and a `P` or
-`I` badge for protection on death or insurance. Until approved item art exists,
-every item shows the same placeholder icon, a grey cube, so the category strip
-and the tooltip tell items apart. An empty slot is darker and shows only its
-equipment slot name or accepted types. An empty equipment slot that an equipped
-item blocks, such as the off hand next to the two-handed Training Shortbow, is
-red and marked Blocked. Hovering a slot shows a tooltip with the item name,
-category, quantity and stack limit, weight, equipment slots and blocked slots,
-active policies with their source, such as `Insurance NPC`, `Quest grant`, or
-`Catalog rule`, the destruction restriction, and the slot location; tooltips
-never show during a drag.
+Every slot is a square of the same size. An occupied slot shows the item's icon
+in a frame of the item's rarity color, which is white for every item until items
+have a rarity, the stack quantity in its lower-right corner, and a `P` or `I`
+badge for protection on death or insurance. Until approved item art exists,
+every item shows the same placeholder icon, a grey cube, and the tooltip tells
+items apart. An empty equipment slot shows a faint picture of what it takes,
+such as a helmet or a ring, and an empty specialized Bag slot a picture of its
+type, such as a potion or arrows. An empty equipment slot that an equipped item
+blocks, such as the off hand next to the two-handed Training Shortbow, shows a
+lock. Hovering a slot shows a tooltip with the item name, category, quantity and
+stack limit, weight, equipment slots and blocked slots, active policies with
+their source, such as `Insurance NPC`, `Quest grant`, or `Catalog rule`, the
+destruction restriction, and the slot location; tooltips never show during a
+drag.
+
+The search field dims every item whose name or category does not contain what
+you type, ignoring case, in all three windows.
 
 The carry meter spans zero to the 140 percent hard cap with a marker at full
-capacity. It is green up to full capacity, amber while movement is slowed, and
-red at the hard cap, and its caption shows weight, capacity, load, and movement
-speed. The footer below the character column holds the selected item, its split
-quantity, `Split`, `Destroy` with `Confirm destroy`, and `Clear`, and the status
-line, so they work in every view.
+capacity. It is cyan up to full capacity, amber while movement is slowed, and red
+at the hard cap. Above it the window shows weight and capacity, such as
+`1040 / 2500`, and the load and movement speed, such as
+`Load 41.6% | Move speed 100%`.
 
 Items move by drag and drop:
 
@@ -403,8 +410,15 @@ Items move by drag and drop:
   the two items when each fits the other's slot. On an occupied equipment slot, a
   stack of the equipped item tops it up, and another item equips and sends the
   equipped one to the slot the new item came from.
-- A click only selects an item for `Split` or `Destroy`. `Split` moves part of a
-  stack, also of the equipped arrows, into an empty slot.
+- Hold `Shift` while you start dragging a stack to move part of it. The dragged
+  icon shows `?` instead of the quantity, and after the drop a small window asks
+  how many: for a split onto an empty slot up to all but one, starting at half,
+  and for a corpse item or a deposit into a corpse up to the whole stack. `Enter`
+  confirms and `Escape` cancels. The equipped arrows split the same way. Part of
+  a stack never equips.
+- Drop an item outside every window to destroy it. A dialog asks
+  `Destroy <name>?` first; an item that may not be destroyed, such as a protected
+  quest item, says why instead.
 - The ammunition slot holds one stack of up to 1,000 arrows.
 - An item cannot be equipped into a slot that an equipped item blocks, such as
   the off hand next to a two-handed bow, or while it would block an occupied
@@ -435,16 +449,16 @@ A right-click moves an item to where it belongs, as a shortcut for a drag:
   take a free slot, matching specialized Bag slots first, then Permanent
   inventory, then general Bag slots.
 - A right-click that has nothing to do, such as on an ore with no Bank open, says
-  why in the status line.
+  why in the game messages at the lower left.
 
 Every item move shows at once: moving, swapping, merging, splitting, equipping
 and unequipping items and Bags, destroying, claiming a Recovery delivery,
-looting, `Loot all`, depositing, rearranging a corpse, swapping Bags with a
+looting, `Loot All`, depositing, rearranging a corpse, swapping Bags with a
 corpse, and buying or selling at a vendor. The item lands where you drop it and
 the balance changes before the server answers, and you can keep going while up
 to eight moves wait. The server still decides every move. When it rejects one,
 every waiting move is undone, the items jump back and flash red for 1.5 seconds,
-and the status line says `Item move undone:` with the reason. A new stack from a
+and the game messages say `Item move undone:` with the reason. A new stack from a
 split, a purchase, or a partial loot, and the contents of a Bag you just
 equipped, can be used once the server has confirmed them, a fraction of a second
 later. Committed changes update the inventory directly, and opening the Bank or
@@ -452,12 +466,12 @@ Recovery tab shows them without reloading. A client whose item catalog does not
 match the server's says that a client update is required and shows no stale
 items.
 
-The Bank and Recovery Storage can be inspected from anywhere, but using them
-needs an open interaction with an NPC that offers them, such as Mira the
-Quartermaster; walking out of range or losing line of sight closes the
-interaction and ends the access. In the Development environment, the local stack
-lets both be used from anywhere, so item flows can be tested anywhere on the map;
-insurance always needs the NPC.
+Using the Bank and Recovery Storage needs an open interaction with an NPC that
+offers them, such as Mira the Quartermaster; walking out of range or losing line
+of sight closes the interaction, its storage window, and the access. In the
+Development environment, the local stack lets both be used from anywhere, and
+the Admin menu's (`F3`) `Storage` tab opens them without an NPC, so item flows
+can be tested anywhere on the map; insurance always needs the NPC.
 
 ## Corpses And Looting
 
@@ -469,16 +483,15 @@ also when it is empty, a Feral Wolf's 2 minutes, and the Feral Alpha's 10
 minutes.
 
 Left-click a corpse, or choose `Loot Corpse of <name>`, to walk to it and open
-it. An open corpse always shows in the complete view, which the panel switches
-to; switching to `B` or `C`, or closing the inventory, closes the corpse. The
-Corpse tab lists the corpses within 32 m but opens none; it says to click a
-corpse in the world. The corpse shows its general inventory, equipment, and Bag
-contents once its complete state has arrived, and `Loot all`, `Close`,
-`Refresh`, and `Partial stack: off` above them.
+it. An open corpse shows in the storage window beside Inventory, which opens with
+it; the window's close button or `Escape` closes the corpse. The window's title
+names the dead character or creature and its header the time the corpse expires.
+The corpse shows its equipment, general inventory, and Bag contents once its
+complete state has arrived, and `Close` and `Loot All` below them.
 
 - Drag whole items into Permanent inventory or the equipped Bag, or drag
-  carried items back into compatible corpse slots. Turn on
-  `Partial stack` before dragging to move a chosen quantity in either direction.
+  carried items back into compatible corpse slots. Hold `Shift` while you start
+  dragging to move a chosen quantity in either direction.
 - Items can be dragged between empty or occupied slots in any corpse section.
   Compatible stacks with room merge. A whole item that cannot merge swaps with
   the item on the occupied slot only when both slots accept the other item and
@@ -497,7 +510,7 @@ contents once its complete state has arrived, and `Loot all`, `Close`,
   the equipment, but never swaps, and it gives only whole stacks.
 - Bank and Recovery Storage items cannot enter a corpse, and an equipped item
   enters one only through a swap.
-- `Loot all` takes everything that fits in one server operation: the corpse
+- `Loot All` takes everything that fits in one server operation: the corpse
   equipment first, then the corpse inventory, then its Bag contents. An
   equippable item takes a free compatible equipment slot, and equipped arrows
   are topped up; the rest goes into the inventory as a right-click would place
@@ -510,12 +523,11 @@ Every corpse transfer and rearrangement shows on both sides at once, and other
 players looking at the same corpse see it change. Several players may open the
 same corpse, and the dead character loots by the same rules as everyone else.
 A live Mob corpse closes for every viewer once its last item is taken, and any
-corpse closes when it expires or when the viewer dies. The Corpse context then
-names the reason in neutral text, such as `The corpse is empty.` or
+corpse closes when it expires or when the viewer dies. The storage window then
+closes, and the game messages name the reason, such as `The corpse is empty.` or
 `The corpse expired and is no longer available.` Closing the view yourself
-leaves no message. Only a corpse that ended through an error, such as one whose
-state could no longer be trusted, shows a red error. A refused loot, such as one
-past the hard cap, shows its reason in red while the corpse stays open.
+leaves no message. A refused loot, such as one past the hard cap, says its reason
+in the game messages while the corpse stays open.
 
 ## Death
 
@@ -574,24 +586,25 @@ real corpse from an offline character with the development item tools; see
 ## Currency And Vendor Trade
 
 - Every character has a persistent balance of one currency, Gold. A new
-  character starts with 100 Gold. The inventory's character header shows the
+  character starts with 100 Gold. The bottom of the Inventory window shows the
   balance, such as `1,250 Gold`.
 - Currency is not an item. It takes no slot and no weight, and it stays with the
   character on death.
 - Mira the Quartermaster offers `Trade`, in her right-click menu and in her
-  interaction panel. Choosing it opens the complete inventory view on the
-  `Vendor` tab with the General Store and the current balance. Trading works only
-  while the interaction stays open; walking out of range closes it.
+  interaction panel. Choosing it opens the storage window beside Inventory on its
+  `Trade` tab, titled `General Store`, with the current balance. Trading works
+  only while the interaction stays open; walking out of range closes it and the
+  window.
 - The General Store sells arrows, a potion, food, both gathering tools, clothes,
   a helm, the melee and magic weapons, and the shield at 100 percent of each
   item's value, with unlimited stock. Its offers are the vendor profile
   `content/items/vendors/vendor.city_general_store.json`, and the item values
   are in the item definitions; see
   [Vendor Profiles](../content/items/README.md#vendor-profiles).
-- The Vendor tab shows the balance, then every offer in catalog order with its
-  unit price, a quantity field, and a button that names the total as you type,
-  such as `Buy for 50 Gold`. Without an open vendor interaction the tab says to
-  talk to a vendor, such as Mira, and choose `Trade`.
+- The `Trade` tab shows the balance, then every offer in catalog order with its
+  icon, name, unit price, a quantity field, and a button that names the total as
+  you type, such as `Buy 50 Gold`. Without an open vendor interaction the tab
+  says to talk to a vendor, such as Mira, and choose `Trade`.
 - A purchase goes into carried storage. It first tops up existing stacks, then
   fills free slots: matching specialized Bag slots, Permanent inventory, and
   general Bag slots. A purchase that does not fit,
@@ -599,7 +612,7 @@ real corpse from an offline character with the development item tools; see
   a partial result.
 - To sell, drag a carried item from Permanent inventory or the equipped Bag onto
   the `Sell` slot, choose a quantity, which defaults to the
-  whole stack, and confirm `Sell <n> <item> for <total>`, or press `Cancel`. The
+  whole stack, and confirm `Sell <n> for <total>`, or press `Cancel`. The
   vendor pays 40 percent of the value, rounded down on the total, and part of a
   stack can be sold. A sale worth 0 Gold after rounding is refused. Equipped and
   banked items, protected and insured items, quest items, non-empty Bags, and

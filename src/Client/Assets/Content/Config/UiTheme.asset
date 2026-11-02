@@ -1,0 +1,122 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9dc8f2045b41fc247883179621f5a312, type: 3}
+  m_Name: UiTheme
+  m_EditorClassIdentifier: Mmorpg.Client.Ui::Mmorpg.Client.Ui.UiTheme
+  TitleFont: {fileID: 11400000, guid: e12ca1900a313974aa6dd0a63fa179c9, type: 2}
+  BodyFont: {fileID: 11400000, guid: 8e7e585fa26c6714282d8d676c11db87, type: 2}
+  TitleSize: 24
+  SectionSize: 15
+  BodySize: 16
+  LabelSize: 15
+  SmallSize: 13
+  QuantitySize: 15
+  TitleCharacterSpacing: 8
+  TitleColor: {r: 0.93, g: 0.85, b: 0.66, a: 1}
+  TextColor: {r: 0.9, g: 0.91, b: 0.9, a: 1}
+  MutedTextColor: {r: 0.58, g: 0.63, b: 0.64, a: 1}
+  AccentColor: {r: 0.27, g: 0.85, b: 0.86, a: 1}
+  WarningColor: {r: 0.98, g: 0.76, b: 0.3, a: 1}
+  DangerColor: {r: 0.95, g: 0.38, b: 0.32, a: 1}
+  QuantityColor: {r: 0.98, g: 0.96, b: 0.9, a: 1}
+  GoldTextColor: {r: 0.96, g: 0.8, b: 0.4, a: 1}
+  WindowTint: {r: 1, g: 1, b: 1, a: 1}
+  SlotTint: {r: 1, g: 1, b: 1, a: 1}
+  SeparatorColor: {r: 0.62, g: 0.52, b: 0.33, a: 0.55}
+  SilhouetteColor: {r: 0.62, g: 0.66, b: 0.66, a: 0.3}
+  HoverColor: {r: 0.95, g: 0.85, b: 0.6, a: 0.85}
+  DropValidColor: {r: 0.4, g: 0.85, b: 0.45, a: 1}
+  DropInvalidColor: {r: 0.95, g: 0.35, b: 0.3, a: 1}
+  RollbackColor: {r: 0.95, g: 0.3, b: 0.25, a: 1}
+  BlockedColor: {r: 0.8, g: 0.32, b: 0.28, a: 0.85}
+  MeterNormalColor: {r: 0.27, g: 0.85, b: 0.86, a: 1}
+  MeterSlowedColor: {r: 0.98, g: 0.76, b: 0.3, a: 1}
+  MeterHardCapColor: {r: 0.95, g: 0.38, b: 0.32, a: 1}
+  SearchDimAlpha: 0.25
+  RarityCommon: {r: 1, g: 1, b: 1, a: 1}
+  SlotSize: 54
+  SlotSpacing: 6
+  IconInset: 6
+  WindowPadding: 16
+  HeaderHeight: 52
+  SectionSpacing: 10
+  ScreenMargin: 24
+  WindowTop: 210
+  WindowGap: 12
+  ButtonHeight: 34
+  FieldHeight: 34
+  MeterHeight: 12
+  EquipmentLabelWidth: 78
+  EquipmentCenterWidth: 150
+  WindowFrame: {fileID: 3286163911610860551, guid: ce06505771ec350449c7eb4faaa064cd, type: 3}
+  Separator: {fileID: 3286163911610860551, guid: bf6dafd0541f0e64abf5416fb49d7182, type: 3}
+  CloseIcon: {fileID: 3286163911610860551, guid: df9c85e7141c94d44a4b302a0aa04588, type: 3}
+  EquipmentIcon: {fileID: 3286163911610860551, guid: 61939d08a0ebc4c4483debe20697d5c4, type: 3}
+  InventoryIcon: {fileID: 3286163911610860551, guid: b7bbbd8ae35a7d944b125b6847bdef57, type: 3}
+  StorageIcon: {fileID: 3286163911610860551, guid: de2a4de22aa100e48a9865c347839a49, type: 3}
+  TooltipFrame: {fileID: 3286163911610860551, guid: 3e6648a22a0738d4698541b26b766695, type: 3}
+  DialogFrame: {fileID: 3286163911610860551, guid: cd6addf322edc154bac8d801b1bf5fba, type: 3}
+  ButtonFrame: {fileID: 3286163911610860551, guid: d6acb9be69162474685fbf565187ebf8, type: 3}
+  FieldFrame: {fileID: 3286163911610860551, guid: 2b3c7f90cade68d428b576562e47e642, type: 3}
+  SearchIcon: {fileID: 3286163911610860551, guid: 096dd091cdfa02449ac9fa71bbca51bb, type: 3}
+  MeterTrack: {fileID: 3286163911610860551, guid: 40e4a45350208fd4abbdc3d282a5b3de, type: 3}
+  MeterFill: {fileID: 3286163911610860551, guid: 95dab25ee4c450e4c85f19175560e11e, type: 3}
+  MeterMarker: {fileID: 3286163911610860551, guid: db966566ff0ac874287a329c4ec8fbd1, type: 3}
+  CoinIcon: {fileID: 3286163911610860551, guid: 8532fc86ca55f7a4bb8b73b9fd171787, type: 3}
+  BagIcon: {fileID: 3286163911610860551, guid: 518145df1e39d0348afd78a54a5e2895, type: 3}
+  Pedestal: {fileID: 3286163911610860551, guid: e21db8e48046169478da006cce4814b8, type: 3}
+  SlotBackground: {fileID: 3286163911610860551, guid: 978995a9f2a482744ae57747461d3e94, type: 3}
+  ItemFrame: {fileID: 3286163911610860551, guid: cc38aa22152021040b4a15db0410d2bd, type: 3}
+  SlotHighlight: {fileID: 3286163911610860551, guid: 0fef62215706f3642ad302b608103199, type: 3}
+  LockIcon: {fileID: 3286163911610860551, guid: efc3157c43cf1a0479963330c4f7fc72, type: 3}
+  HoodToggleIcon: {fileID: 3286163911610860551, guid: 771d7a6d9df61214d932309995022df9, type: 3}
+  EquipmentSilhouettes:
+  - Id: ammunition
+    Sprite: {fileID: 3286163911610860551, guid: 885ce0b41c61e26419348930da8cd670, type: 3}
+  - Id: back
+    Sprite: {fileID: 3286163911610860551, guid: a9d5aff949a958b439b462a6e89e778c, type: 3}
+  - Id: bag
+    Sprite: {fileID: 3286163911610860551, guid: 345328ad68c60b940927eadc11795ec2, type: 3}
+  - Id: body
+    Sprite: {fileID: 3286163911610860551, guid: dbc2f2b79ef70424f8ca11e75d5943e4, type: 3}
+  - Id: feet
+    Sprite: {fileID: 3286163911610860551, guid: 9c4c30e2d75794e49a5a5dc0fdb11e54, type: 3}
+  - Id: hands
+    Sprite: {fileID: 3286163911610860551, guid: 1a7aca2611e596246982277ae362d2c2, type: 3}
+  - Id: head
+    Sprite: {fileID: 3286163911610860551, guid: 4caebef3dfccf7c45a80de2b8697179e, type: 3}
+  - Id: legs
+    Sprite: {fileID: 3286163911610860551, guid: 5279dc0a4a8fd174ba7d324199a4bffa, type: 3}
+  - Id: main_hand
+    Sprite: {fileID: 3286163911610860551, guid: 5e290ba01ef01ee4194e800f020dad99, type: 3}
+  - Id: neck
+    Sprite: {fileID: 3286163911610860551, guid: e0e8ad8b1876c3343a8a8a7a2aefbb0a, type: 3}
+  - Id: off_hand
+    Sprite: {fileID: 3286163911610860551, guid: 583efd7b4c162dd41b9bd8101ecd4c5b, type: 3}
+  - Id: ring_1
+    Sprite: {fileID: 3286163911610860551, guid: 7e55ed0fde482ed4492a056a4434be5c, type: 3}
+  - Id: ring_2
+    Sprite: {fileID: 3286163911610860551, guid: 1daad07406545d047adeabfa8359128b, type: 3}
+  - Id: shoulders
+    Sprite: {fileID: 3286163911610860551, guid: bffccf59f9001e342bca35ecb473d9ab, type: 3}
+  - Id: tool
+    Sprite: {fileID: 3286163911610860551, guid: 146e9e6d14ee696449e33ef405df0e72, type: 3}
+  TagSilhouettes:
+  - Id: ammunition
+    Sprite: {fileID: 3286163911610860551, guid: 5aec42d867dac064faced6d7c38cce84, type: 3}
+  - Id: food
+    Sprite: {fileID: 3286163911610860551, guid: c1e376ee94f5c6441bc27780fef5434d, type: 3}
+  - Id: material
+    Sprite: {fileID: 3286163911610860551, guid: b15e7de8efca856428607932a1162b05, type: 3}
+  - Id: potion
+    Sprite: {fileID: 3286163911610860551, guid: 0bc5f29edf86d9b4eb9ac759c3714326, type: 3}
+  FallbackSilhouette: {fileID: 3286163911610860551, guid: 6fc92ef0dc34c154892e5014873a9067, type: 3}

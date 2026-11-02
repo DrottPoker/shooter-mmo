@@ -9,7 +9,6 @@ namespace Mmorpg.Client.Ui
     {
         Empty,
         Occupied,
-        Selected,
         Blocked
     }
 
@@ -23,14 +22,19 @@ namespace Mmorpg.Client.Ui
 
         public string ItemDefinitionId { get; private set; } = string.Empty;
 
+        // Whether the search dims the slot.
+        public bool Dimmed { get; private set; }
+
         public void Configure(
             string slotKey,
             InventorySlotVisualState visualState,
-            string itemDefinitionId)
+            string itemDefinitionId,
+            bool dimmed = false)
         {
             SlotKey = slotKey ?? string.Empty;
             VisualState = visualState;
             ItemDefinitionId = itemDefinitionId ?? string.Empty;
+            Dimmed = dimmed;
         }
     }
 
@@ -60,49 +64,61 @@ namespace Mmorpg.Client.Ui
         }
 
         public static InventoryTooltipView Create(
+            UiTheme theme,
             RectTransform parent,
             InventoryDragCoordinator coordinator)
         {
-            var tooltipObject = TemporaryUiKit.CreateUiObject("InventoryTooltip", parent);
-            var tooltipRect = tooltipObject.GetComponent<RectTransform>();
+            var tooltipRect = UiFactory.Create("InventoryTooltip", parent);
             tooltipRect.anchorMin = new Vector2(0.5f, 0.5f);
             tooltipRect.anchorMax = new Vector2(0.5f, 0.5f);
             tooltipRect.pivot = new Vector2(0f, 1f);
-            var background = tooltipObject.AddComponent<Image>();
-            background.color = new Color(0.02f, 0.025f, 0.035f, 0.97f);
+            var background = tooltipRect.gameObject.AddComponent<Image>();
+            if (theme.TooltipFrame != null)
+            {
+                UiFactory.SetSprite(background, theme.TooltipFrame, theme.WindowTint);
+            }
+            else
+            {
+                background.color = new Color(0.03f, 0.05f, 0.06f, 0.97f);
+            }
+
             background.raycastTarget = false;
-            TemporaryUiKit.AddOutline(background, TemporaryUiKit.PanelBorderColor);
-            var group = tooltipObject.AddComponent<CanvasGroup>();
+            var group = tooltipRect.gameObject.AddComponent<CanvasGroup>();
             group.blocksRaycasts = false;
             group.interactable = false;
-            var layout = tooltipObject.AddComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(10, 10, 8, 8);
+            var layout = tooltipRect.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(14, 14, 10, 12);
             layout.childControlWidth = true;
             layout.childControlHeight = true;
             layout.childForceExpandWidth = false;
             layout.childForceExpandHeight = false;
-            var fitter = tooltipObject.AddComponent<ContentSizeFitter>();
+            var fitter = tooltipRect.gameObject.AddComponent<ContentSizeFitter>();
             fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            var text = TemporaryUiKit.AddText(
-                TemporaryUiKit.CreateUiObject("Text", tooltipObject.transform),
-                string.Empty,
-                14,
-                FontStyles.Normal,
-                TextAlignmentOptions.TopLeft,
-                TemporaryUiKit.TextPrimary);
+            var text = UiFactory.BodyText(
+                theme,
+                tooltipRect,
+                "Text",
+                theme.LabelSize,
+                theme.TextColor,
+                TextAlignmentOptions.TopLeft);
             text.textWrappingMode = TextWrappingModes.Normal;
-            text.overflowMode = TextOverflowModes.Overflow;
+            text.lineSpacing = 4f;
 
-            var view = tooltipObject.AddComponent<InventoryTooltipView>();
+            var view = tooltipRect.gameObject.AddComponent<InventoryTooltipView>();
             view.rect = tooltipRect;
             view.bounds = parent;
             view.label = text;
             view.labelLayout = text.gameObject.AddComponent<LayoutElement>();
             view.dragCoordinator = coordinator;
-            tooltipObject.SetActive(false);
+            tooltipRect.gameObject.SetActive(false);
             return view;
+        }
+
+        public bool IsShownBy(object requester)
+        {
+            return requester != null && requester == owner && gameObject.activeSelf;
         }
 
         public void Show(object requester, string value, Vector2 screenPosition)
@@ -122,6 +138,19 @@ namespace Mmorpg.Client.Ui
             transform.SetAsLastSibling();
             LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
             Move(requester, screenPosition);
+        }
+
+        // Replaces the text the requester shows, such as a live arrow count, in place.
+        public void Replace(object requester, string value)
+        {
+            if (!IsShownBy(requester) || string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            label.text = value;
+            labelLayout.preferredWidth = Mathf.Min(MaximumWidth, label.preferredWidth + 2f);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
         }
 
         public void Move(object requester, Vector2 screenPosition)
@@ -192,10 +221,28 @@ namespace Mmorpg.Client.Ui
         private InventoryTooltipView view;
         private string text = string.Empty;
 
+        public string TooltipText
+        {
+            get { return text; }
+        }
+
+        // A new text replaces the shown one at once, so a hovered slot that is drawn again
+        // keeps its tooltip current.
         public void Configure(InventoryTooltipView tooltipView, string tooltipText)
         {
             view = tooltipView;
             text = tooltipText ?? string.Empty;
+            if (view != null && view.IsShownBy(this))
+            {
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    view.Hide(this);
+                }
+                else
+                {
+                    view.Replace(this, text);
+                }
+            }
         }
 
         public void OnPointerEnter(PointerEventData eventData)

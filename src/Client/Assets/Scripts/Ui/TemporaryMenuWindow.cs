@@ -13,7 +13,7 @@ namespace Mmorpg.Client.Ui
     public sealed class TemporaryMenuWindow
     {
         // Above the inventory, below the world context menu.
-        public const int CanvasSortingOrder = TemporaryInventoryPanel.CanvasSortingOrder + 20;
+        public const int CanvasSortingOrder = InventoryWindows.CanvasSortingOrder + 20;
 
         public const float LabelWidth = 150f;
 

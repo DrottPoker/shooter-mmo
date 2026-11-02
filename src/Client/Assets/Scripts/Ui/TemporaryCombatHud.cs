@@ -31,7 +31,7 @@ namespace Mmorpg.Client.Ui
 
         // The death overlay draws above every panel, so an open inventory or corpse view
         // never hides a death and its countdown.
-        public const int DeathOverlaySortingOrder = TemporaryInventoryPanel.CanvasSortingOrder + 50;
+        public const int DeathOverlaySortingOrder = InventoryWindows.CanvasSortingOrder + 50;
 
         private const int MaximumHealthBars = 32;
         private const int MaximumDamageNumbers = 24;

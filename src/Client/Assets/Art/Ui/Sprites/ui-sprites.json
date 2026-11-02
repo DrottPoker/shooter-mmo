@@ -1,0 +1,18 @@
+{
+  "defaultSize": 128,
+  "sprites": [
+    { "file": "WindowFrame.svg", "width": 128, "height": 128, "border": [ 32, 32, 32, 32 ] },
+    { "file": "DialogFrame.svg", "width": 128, "height": 128, "border": [ 32, 32, 32, 32 ] },
+    { "file": "TooltipFrame.svg", "width": 64, "height": 64, "border": [ 16, 16, 16, 16 ] },
+    { "file": "SlotBackground.svg", "width": 64, "height": 64, "border": [ 14, 14, 14, 14 ] },
+    { "file": "ItemFrame.svg", "width": 64, "height": 64, "border": [ 14, 14, 14, 14 ] },
+    { "file": "SlotHighlight.svg", "width": 64, "height": 64, "border": [ 14, 14, 14, 14 ] },
+    { "file": "ButtonFrame.svg", "width": 96, "height": 40, "border": [ 14, 14, 14, 14 ] },
+    { "file": "FieldFrame.svg", "width": 96, "height": 40, "border": [ 12, 12, 12, 12 ] },
+    { "file": "MeterTrack.svg", "width": 64, "height": 16, "border": [ 7, 7, 7, 7 ] },
+    { "file": "MeterFill.svg", "width": 64, "height": 16, "border": [ 7, 7, 7, 7 ] },
+    { "file": "MeterMarker.svg", "width": 8, "height": 32 },
+    { "file": "Separator.svg", "width": 256, "height": 8 },
+    { "file": "Pedestal.svg", "width": 512, "height": 160 }
+  ]
+}

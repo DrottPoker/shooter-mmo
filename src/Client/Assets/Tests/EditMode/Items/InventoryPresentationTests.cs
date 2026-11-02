@@ -30,62 +30,64 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void PaperDollPlacesEveryShownDesignSlotOnceInThreeColumns()
+        public void PaperDollPutsTheSlotsAroundTheCharacterAndTheHandsBelow()
         {
-            var cells = EquipmentPaperDollLayout.Arrange(DesignSlotIds, out var rows);
-            var shown = DesignSlotIds.Where(slotId => slotId != "back").ToArray();
+            var arrangement = EquipmentPaperDollLayout.Arrange(DesignSlotIds);
 
-            Assert.That(rows, Is.EqualTo(5));
-            Assert.That(cells.Select(cell => cell.SlotId), Is.EquivalentTo(shown));
-            Assert.That(
-                cells.Select(cell => cell.Row * EquipmentPaperDollLayout.ColumnCount + cell.Column).Distinct().Count(),
-                Is.EqualTo(shown.Length));
-            Assert.That(shown.Length + 1, Is.EqualTo(rows * EquipmentPaperDollLayout.ColumnCount));
-            Assert.That(cells.All(cell => cell.Column >= 0 && cell.Column < 3), Is.True);
-            var head = Cell(cells, "head");
-            var body = Cell(cells, "body");
-            var mainHand = Cell(cells, "main_hand");
-            var offHand = Cell(cells, "off_hand");
-            var feet = Cell(cells, "feet");
-            Assert.That(head.Column, Is.EqualTo(1));
-            Assert.That(head.Row, Is.LessThan(body.Row));
-            Assert.That(body.Row, Is.LessThan(feet.Row));
-            Assert.That(mainHand.Row, Is.EqualTo(body.Row));
-            Assert.That(offHand.Row, Is.EqualTo(body.Row));
-            Assert.That(mainHand.Column, Is.LessThan(body.Column));
-            Assert.That(offHand.Column, Is.GreaterThan(body.Column));
-            // Shoulders and neck form the row under the head. The cloak's Back slot is hidden
-            // and leaves its cell at the end of that row empty.
-            Assert.That(Cell(cells, "shoulders").Row, Is.EqualTo(head.Row + 1));
-            Assert.That(Cell(cells, "shoulders").Column, Is.EqualTo(0));
-            Assert.That(Cell(cells, "neck").Row, Is.EqualTo(head.Row + 1));
-            Assert.That(Cell(cells, "neck").Column, Is.EqualTo(head.Column));
-            Assert.That(cells.Any(cell => cell.Row == head.Row + 1 && cell.Column == 2), Is.False);
+            Assert.That(arrangement.Left, Is.EqualTo(new[] { "head", "shoulders", "body", "legs", "feet" }));
+            Assert.That(arrangement.Right, Is.EqualTo(new[] { "neck", "hands", "ring_1", "ring_2", "bag" }));
+            Assert.That(arrangement.BottomRows.Count, Is.EqualTo(1));
+            Assert.That(arrangement.BottomRows[0], Is.EqualTo(new[] { "main_hand", "off_hand", "tool", "ammunition" }));
+            // The cloak's Back slot is hidden; every other slot shows once.
+            Assert.That(arrangement.All, Is.EquivalentTo(DesignSlotIds.Where(slotId => slotId != "back")));
         }
 
         [Test]
-        public void PaperDollAppendsUnknownSlotsAfterTheSilhouette()
+        public void PaperDollAppendsUnknownSlotsInRowsBelow()
         {
-            var cells = EquipmentPaperDollLayout.Arrange(
-                DesignSlotIds.Concat(new[] { "cape", "head", " ", null, "quiver", "trinket", "belt" }),
-                out var rows);
+            var arrangement = EquipmentPaperDollLayout.Arrange(
+                DesignSlotIds.Concat(new[] { "cape", "head", " ", null, "quiver", "trinket", "belt", "charm" }));
 
-            Assert.That(rows, Is.EqualTo(7));
-            Assert.That(cells.Count, Is.EqualTo(DesignSlotIds.Length - 1 + 4));
-            Assert.That(Cell(cells, "cape").Row, Is.EqualTo(5));
-            Assert.That(Cell(cells, "cape").Column, Is.EqualTo(0));
-            Assert.That(Cell(cells, "quiver").Column, Is.EqualTo(1));
-            Assert.That(Cell(cells, "trinket").Column, Is.EqualTo(2));
-            Assert.That(Cell(cells, "belt").Row, Is.EqualTo(6));
+            Assert.That(arrangement.BottomRows.Count, Is.EqualTo(3));
+            Assert.That(arrangement.BottomRows[1], Is.EqualTo(new[] { "cape", "quiver", "trinket", "belt" }));
+            Assert.That(arrangement.BottomRows[2], Is.EqualTo(new[] { "charm" }));
+            Assert.That(arrangement.All.Count(), Is.EqualTo(DesignSlotIds.Length - 1 + 5));
 
-            // The fixture catalog lacks some design slots; its slots still fit the silhouette.
-            var fixtureCells = EquipmentPaperDollLayout.Arrange(
-                catalog.Gameplay.EquipmentSlots.Select(slot => slot.Id),
-                out var fixtureRows);
-            Assert.That(fixtureCells.Count, Is.EqualTo(catalog.Gameplay.EquipmentSlots.Length));
-            Assert.That(fixtureRows, Is.LessThanOrEqualTo(5));
-            Assert.That(EquipmentPaperDollLayout.Arrange(null, out var emptyRows), Is.Empty);
-            Assert.That(emptyRows, Is.EqualTo(0));
+            // The fixture catalog lacks some design slots; its columns are shorter.
+            var fixture = EquipmentPaperDollLayout.Arrange(catalog.Gameplay.EquipmentSlots.Select(slot => slot.Id));
+            Assert.That(
+                fixture.All,
+                Is.EquivalentTo(catalog.Gameplay.EquipmentSlots.Select(slot => slot.Id).Where(slotId => slotId != "back")));
+            var empty = EquipmentPaperDollLayout.Arrange(null);
+            Assert.That(empty.All, Is.Empty);
+            Assert.That(empty.BottomRows, Is.Empty);
+        }
+
+        [Test]
+        public void SearchMatchesNameOrCategoryIgnoringCase()
+        {
+            Assert.That(InventorySearch.Matches(catalog, "fixture.ore", string.Empty), Is.True);
+            Assert.That(InventorySearch.Matches(catalog, "fixture.ore", "  "), Is.True);
+            Assert.That(InventorySearch.Matches(catalog, "fixture.ore", "ORE"), Is.True);
+            Assert.That(InventorySearch.Matches(catalog, "fixture.ore", "materi"), Is.True);
+            Assert.That(InventorySearch.Matches(catalog, "fixture.ore", "arrow"), Is.False);
+            Assert.That(InventorySearch.Matches(null, "fixture.ore", "ore"), Is.False);
+        }
+
+        [Test]
+        public void EveryItemHasTheCommonFrameUntilItemsHaveARarity()
+        {
+            var theme = UnityEngine.ScriptableObject.CreateInstance<UiTheme>();
+            try
+            {
+                theme.RarityCommon = new UnityEngine.Color(0.9f, 0.9f, 0.9f, 1f);
+                Assert.That(ItemRarityPresentation.FrameColor(theme, catalog, "fixture.sword"), Is.EqualTo(theme.RarityCommon));
+                Assert.That(ItemRarityPresentation.FrameColor(theme, catalog, "fixture.ore"), Is.EqualTo(theme.RarityCommon));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(theme);
+            }
         }
 
         [Test]
@@ -239,11 +241,6 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 InventorySlotPresentation.BuildItemTooltip(catalog, CreateItem("fixture.missing", 2), "Bank slot 1"),
                 Is.EqualTo("<b>fixture.missing</b>\nQuantity 2\nBank slot 1"));
-        }
-
-        private static PaperDollCell Cell(System.Collections.Generic.IEnumerable<PaperDollCell> cells, string slotId)
-        {
-            return cells.Single(cell => cell.SlotId == slotId);
         }
 
         private static InventoryItem CreateItem(string definitionId, int quantity)
