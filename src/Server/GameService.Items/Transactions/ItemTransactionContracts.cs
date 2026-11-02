@@ -321,8 +321,10 @@ internal sealed record LootCorpseItemCommand(
     Guid? TargetItemInstanceId,
     long? ExpectedTargetItemRevision);
 
-// Loots a whole corpse stack straight into an equipment slot. The target is the item the
-// character had equipped in that slot when the client looked, or null for an empty slot.
+// Loots a corpse stack straight into an equipment slot: the whole stack, or with a quantity that
+// part of it, which tops up the equipped stack or fills the empty slot. The target is the item
+// the character had equipped in that slot when the client looked, or null for an empty slot. A
+// whole loot leaves the quantity out of the stored request.
 internal sealed record LootCorpseItemToEquipmentCommand(
     Guid CharacterId,
     Guid CorpseId,
@@ -330,7 +332,8 @@ internal sealed record LootCorpseItemToEquipmentCommand(
     long ExpectedItemRevision,
     string EquipmentSlotId,
     Guid? TargetItemInstanceId,
-    long? ExpectedTargetItemRevision);
+    long? ExpectedTargetItemRevision,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Quantity = null);
 
 internal sealed record LootCorpsePartialStackCommand(
     Guid CharacterId,

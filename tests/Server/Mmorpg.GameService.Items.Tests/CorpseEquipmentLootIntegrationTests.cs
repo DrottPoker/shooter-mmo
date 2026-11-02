@@ -8,6 +8,7 @@ namespace Mmorpg.GameService.Items.Tests;
 
 // Looting a corpse item straight into an equipment slot: into an empty slot, as a top-up of the
 // equipped stack, or as a swap that moves the equipped item into the corpse slot the loot left.
+// Part of a stack only fills an empty slot or tops up the equipped stack.
 public sealed class CorpseEquipmentLootIntegrationTests
 {
     [PostgresIntegrationFact]
@@ -57,6 +58,38 @@ public sealed class CorpseEquipmentLootIntegrationTests
         ItemScenarioWorld.AssertCommitted(result);
         Assert.Equal(30 + arrowsBefore.Quantity, (await world.LoadItemAsync(equippedArrows)).Quantity);
         Assert.Equal(equippedArrows, await LoadEquippedItemAsync(world, scenario.LooterId, "ammunition"));
+        Assert.Equal(0, await CountItemsAsync(world, scenario.ArrowsId));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task PartOfTheCorpseArrowsFillsAnEmptySlotAndTopsUpTheEquippedStack()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var scenario = await CreateLootScenarioAsync(world, "part");
+        var corpseContainer = (await world.LoadItemAsync(scenario.ArrowsId)).ContainerId;
+
+        var fill = await LootToEquipmentAsync(world, scenario, scenario.ArrowsId, "ammunition", null, 8);
+
+        ItemScenarioWorld.AssertCommitted(fill);
+        var equipped = await LoadEquippedItemAsync(world, scenario.LooterId, "ammunition") ?? Guid.Empty;
+        Assert.NotEqual(Guid.Empty, equipped);
+        Assert.NotEqual(scenario.ArrowsId, equipped);
+        Assert.Equal(8, (await world.LoadItemAsync(equipped)).Quantity);
+        var rest = await world.LoadItemAsync(scenario.ArrowsId);
+        Assert.Equal(12, rest.Quantity);
+        Assert.Equal(corpseContainer, rest.ContainerId);
+
+        ItemScenarioWorld.AssertCommitted(await LootToEquipmentAsync(world, scenario, scenario.ArrowsId, "ammunition", equipped, 5));
+        Assert.Equal(13, (await world.LoadItemAsync(equipped)).Quantity);
+        Assert.Equal(7, (await world.LoadItemAsync(scenario.ArrowsId)).Quantity);
+
+        // A part is at most the corpse stack, and the whole stack merges and leaves the corpse.
+        var tooMany = await LootToEquipmentAsync(world, scenario, scenario.ArrowsId, "ammunition", equipped, 8);
+        Assert.Equal(ItemTransactionErrorCodes.ItemQuantityChanged, tooMany.Error!.Code);
+
+        ItemScenarioWorld.AssertCommitted(await LootToEquipmentAsync(world, scenario, scenario.ArrowsId, "ammunition", equipped, 7));
+        Assert.Equal(20, (await world.LoadItemAsync(equipped)).Quantity);
         Assert.Equal(0, await CountItemsAsync(world, scenario.ArrowsId));
     }
 
@@ -271,7 +304,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
         LootScenario scenario,
         Guid itemInstanceId,
         string equipmentSlotId,
-        Guid? equippedItemInstanceId)
+        Guid? equippedItemInstanceId,
+        int? quantity = null)
     {
         var item = await world.LoadItemAsync(itemInstanceId);
         long? equippedRevision = equippedItemInstanceId is Guid equippedId
@@ -288,7 +322,8 @@ public sealed class CorpseEquipmentLootIntegrationTests
                     item.Revision,
                     equipmentSlotId,
                     equippedItemInstanceId,
-                    equippedRevision)),
+                    equippedRevision,
+                    quantity)),
             CancellationToken.None);
     }
 

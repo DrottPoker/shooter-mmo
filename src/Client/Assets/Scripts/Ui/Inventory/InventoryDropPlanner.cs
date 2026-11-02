@@ -162,14 +162,19 @@ namespace Mmorpg.Client.Ui
                 quantity: quantity);
         }
 
-        internal static InventoryDropPlan CorpseLootToEquipment(CorpseLootItem corpseItem, InventoryEquipmentSlot equipmentSlot)
+        // A quantity loots that part of the corpse stack into the slot; 0 loots it whole.
+        internal static InventoryDropPlan CorpseLootToEquipment(
+            CorpseLootItem corpseItem,
+            InventoryEquipmentSlot equipmentSlot,
+            int quantity = 0)
         {
             return new InventoryDropPlan(
                 InventoryDropPlanKind.CorpseLootToEquipment,
                 string.Empty,
                 equipmentSlotId: equipmentSlot.SlotId,
                 equipmentSlot: equipmentSlot,
-                corpseItem: corpseItem);
+                corpseItem: corpseItem,
+                quantity: quantity);
         }
 
         internal static InventoryDropPlan CorpseBagSwap(CorpseLootItem corpseBag)
@@ -395,9 +400,32 @@ namespace Mmorpg.Client.Ui
                         : InventoryDropPlan.Rejected(reason);
                 }
 
+                // Part of a corpse stack tops up the equipped stack of its kind or fills the empty
+                // slot; it never swaps, and the rest stays in the corpse.
                 if (quantity != null)
                 {
-                    return InventoryDropPlan.Rejected("Loot part of a corpse stack into your inventory before you equip it.");
+                    if (quantity.Value < 1 || quantity.Value >= corpseItem.Quantity)
+                    {
+                        return InventoryDropPlan.Rejected("The split quantity must leave a positive source stack.");
+                    }
+
+                    var part = corpseItem.WithQuantity(quantity.Value);
+                    if (equipmentSlot.Item != null
+                        && !InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, part.ToInventoryItem(), equipmentSlot.Item))
+                    {
+                        return InventoryDropPlan.Rejected("Part of a stack equips only into an empty slot or tops up the equipped stack.");
+                    }
+
+                    return CorpseTargetAdvisor.CanLootIntoEquipment(
+                            state,
+                            corpseView,
+                            part,
+                            sourceSection,
+                            sourceSlot,
+                            equipmentSlot,
+                            out reason)
+                        ? InventoryDropPlan.CorpseLootToEquipment(corpseItem, equipmentSlot, quantity.Value)
+                        : InventoryDropPlan.Rejected(reason);
                 }
 
                 return CorpseTargetAdvisor.CanLootIntoEquipment(

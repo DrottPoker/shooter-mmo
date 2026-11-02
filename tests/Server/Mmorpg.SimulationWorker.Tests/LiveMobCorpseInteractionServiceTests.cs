@@ -107,6 +107,50 @@ public sealed class LiveMobCorpseInteractionServiceTests
         Assert.Equal(equippedArrows, request.RootElement.GetProperty("targetItemInstanceId").GetGuid());
         Assert.Equal(2, request.RootElement.GetProperty("expectedTargetItemRevision").GetInt64());
     }
+
+    // A live Mob corpse keeps no part of a stack, so a part never reaches GameService, not even
+    // into equipment.
+    [Fact]
+    public async Task EquipmentLootOfPartOfAStackIsRejectedWithoutAGrant()
+    {
+        var handler = new CapturingUnavailableHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://game-service.test")
+        };
+        var corpseStore = new LiveMobCorpseStore(TimeProvider.System);
+        var itemStateStore = new CharacterItemStateStore();
+        var service = new LiveMobCorpseInteractionService(
+            corpseStore,
+            new GameServiceClient(httpClient),
+            itemStateStore);
+        var corpse = corpseStore.CreateOrGet(CreateCorpse());
+        var lootEntry = corpse.Loot.Single();
+        var session = CreateSession(new PlayerCarryState(3, 0, 200));
+        itemStateStore.Register(
+            session.CharacterId,
+            session.SimulationSessionId,
+            CharacterStateTestData.ItemState(session.CarryState),
+            out _);
+
+        var result = await service.MutateAsync(
+            session,
+            RealtimeCorpseInteractionIntent.CreateLootToEquipment(
+                Guid.NewGuid(),
+                corpse.CorpseId,
+                corpse.Revision,
+                lootEntry.LootEntryId,
+                0,
+                "ammunition",
+                Guid.Empty,
+                0,
+                1),
+            CancellationToken.None);
+
+        Assert.Empty(handler.Bodies);
+        Assert.Equal("live_mob_corpse_operation_unsupported", result.Error!.Code);
+    }
+
     [Fact]
     public async Task LootAllSendsEveryEntryInSlotOrderUnderTheIntentOperationId()
     {

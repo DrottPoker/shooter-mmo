@@ -180,6 +180,35 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(tooMany.Reason, Does.Contain("at most 50"));
         }
 
+        // Half of the corpse arrows goes where right-click sends them: onto the equipped arrows
+        // or into the empty ammunition slot, before carried storage.
+        [Test]
+        public void HalfTheCorpseArrowsGoToTheAmmunitionSlotFirst()
+        {
+            var corpseArrows = new CorpseLootItem(Guid.NewGuid(), "fixture.arrow", 20, 1, Guid.Empty, 0);
+            var view = CorpseView(corpseArrows);
+
+            var fill = InventoryQuickMoves.ForCorpseItemPart(CreateState(Array.Empty<InventoryItem>(), Slot("ammunition", null)), view, corpseArrows, 10);
+            var topUp = InventoryQuickMoves.ForCorpseItemPart(
+                CreateState(Array.Empty<InventoryItem>(), Slot("ammunition", Item("fixture.arrow", 30))),
+                view,
+                corpseArrows,
+                10);
+            var carried = InventoryQuickMoves.ForCorpseItemPart(
+                CreateState(Array.Empty<InventoryItem>(), Slot("ammunition", Item("fixture.arrow", 45))),
+                view,
+                corpseArrows,
+                10);
+
+            Assert.That(fill.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), fill.Reason);
+            Assert.That(fill.EquipmentSlotId, Is.EqualTo("ammunition"));
+            Assert.That(fill.Quantity, Is.EqualTo(10));
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), topUp.Reason);
+            Assert.That(topUp.Quantity, Is.EqualTo(10));
+            Assert.That(carried.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), "45 and 10 exceed the 50 the slot holds");
+            Assert.That(carried.Quantity, Is.EqualTo(10));
+        }
+
         // Half of a corpse stack tops up a carried stack, or takes the first free carried slot.
         [Test]
         public void HalfACorpseStackTopsUpACarriedStackOrTakesAFreeSlot()

@@ -173,9 +173,11 @@ namespace Mmorpg.Client.Ui
                             : "Corpse loot submitted.");
                 case InventoryDropPlanKind.CorpseLootToEquipment:
                     return InventoryInteractionResult.From(
-                        corpses.TryLootToEquipment(plan.CorpseItem, plan.EquipmentSlot, out error),
+                        corpses.TryLootToEquipment(plan.CorpseItem, plan.EquipmentSlot, plan.Quantity, out error),
                         error,
-                        plan.EquipmentSlot.Item == null ? "Corpse equip submitted." : "Corpse equip swap submitted.");
+                        plan.Quantity > 0
+                            ? "Partial corpse equip submitted."
+                            : plan.EquipmentSlot.Item == null ? "Corpse equip submitted." : "Corpse equip swap submitted.");
                 case InventoryDropPlanKind.CorpseBagSwap:
                     return InventoryInteractionResult.From(
                         corpses.TrySwapBag(plan.CorpseItem, out error),
@@ -259,9 +261,9 @@ namespace Mmorpg.Client.Ui
                     error = string.Empty;
                     return InventoryInteractionResult.From(
                         equipmentSlot != null
-                            && corpses.TryLootToEquipment(move.CorpseItem, equipmentSlot, out error),
+                            && corpses.TryLootToEquipment(move.CorpseItem, equipmentSlot, move.Quantity, out error),
                         string.IsNullOrEmpty(error) ? "The equipment slot is unavailable." : error,
-                        "Corpse equip submitted.");
+                        move.Quantity > 0 ? "Partial corpse equip submitted." : "Corpse equip submitted.");
                 }
 
                 default:

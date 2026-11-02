@@ -327,7 +327,7 @@ namespace Mmorpg.GameProtocol
         public long ExpectedItemRevision { get; }
 
         /// <summary>
-        /// The quantity a partial stack moves.
+        /// The quantity a partial stack moves, or the part that a loot into equipment moves, 0 for the whole stack.
         /// </summary>
         public int Quantity { get; }
 
@@ -713,7 +713,8 @@ namespace Mmorpg.GameProtocol
             long expectedItemRevision,
             string equipmentSlotId,
             Guid targetItemInstanceId,
-            long expectedTargetItemRevision)
+            long expectedTargetItemRevision,
+            int quantity = 0)
         {
             return new RealtimeCorpseInteractionIntent(
                 operationId,
@@ -722,7 +723,7 @@ namespace Mmorpg.GameProtocol
                 expectedCorpseRevision,
                 itemInstanceId,
                 expectedItemRevision,
-                0,
+                quantity,
                 Guid.Empty,
                 0,
                 -1,
@@ -1243,6 +1244,7 @@ namespace Mmorpg.GameProtocol
                         writer.WriteGuid(value.TargetItemInstanceId);
                         writer.WriteInt64(value.ExpectedTargetItemRevision);
                     }
+                    writer.WriteInt32(value.Quantity);
                     break;
                 }
                 case RealtimeCorpseInteractionKind.SwapBag:
@@ -1305,7 +1307,7 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeCorpseInteractionKind.LootToEquipment:
                 {
-                    size += 25;
+                    size += 29;
                     size += StringSize(value.EquipmentSlotId);
                     if (value.TargetItemInstanceId != Guid.Empty)
                     {
@@ -1527,6 +1529,11 @@ namespace Mmorpg.GameProtocol
                         }
                     }
 
+                    if (!reader.TryReadInt32(out quantity, out error))
+                    {
+                        return false;
+                    }
+
                     break;
                 }
                 case RealtimeCorpseInteractionKind.SwapBag:
@@ -1662,6 +1669,7 @@ namespace Mmorpg.GameProtocol
                         || string.IsNullOrWhiteSpace(value.EquipmentSlotId)
                         || value.EquipmentSlotId.Length > MaximumEquipmentSlotIdLength
                         || value.ExpectedTargetItemRevision < 0
+                        || value.Quantity < 0
                         || (value.TargetItemInstanceId == Guid.Empty && value.ExpectedTargetItemRevision != 0))
                     {
                         return false;

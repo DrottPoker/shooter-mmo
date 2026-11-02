@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 31,
+    "version": 32,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -1720,7 +1720,11 @@
             "description": "The item that moves, or the corpse bag of a bag swap."
           },
           { "name": "ExpectedItemRevision", "type": "i64", "description": "The item revision the client saw." },
-          { "name": "Quantity", "type": "i32", "description": "The quantity a partial stack moves." },
+          {
+            "name": "Quantity",
+            "type": "i32",
+            "description": "The quantity a partial stack moves, or the part that a loot into equipment moves, 0 for the whole stack."
+          },
           { "name": "DestinationContainerId", "type": "guid", "description": "The container the item moves into." },
           {
             "name": "ExpectedDestinationContainerRevision",
@@ -1836,7 +1840,8 @@
               {
                 "group": [ { "field": "TargetItemInstanceId" }, { "field": "ExpectedTargetItemRevision", "minimum": 0 } ],
                 "presence": "TargetItemInstanceId"
-              }
+              },
+              { "field": "Quantity", "minimum": 0, "parameterDefault": 0 }
             ]
           },
           {

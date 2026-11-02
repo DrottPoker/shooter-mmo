@@ -432,8 +432,8 @@ Items move by drag and drop:
   as half of the arrows onto the equipped arrows or onto the arrows in the Bag's
   ammunition slot. A part of your arrows also fills the empty `Ammunition` slot
   as a new stack, and a part of the equipped arrows goes back the same ways. A
-  part never replaces an item and never swaps. A part of a corpse stack is
-  looted into your inventory before it can be equipped.
+  part never replaces an item and never swaps. A part of a player corpse's
+  arrows goes into the `Ammunition` slot the same ways.
 - Drop an item outside every window to destroy it. A dialog asks
   `Destroy <name>?` first; an item that may not be destroyed, such as a protected
   quest item, says why instead. Destruction takes the whole stack, so a dragged
@@ -517,7 +517,10 @@ complete state has arrived, and `Close` and `Loot All` below them.
 
 - Drag whole items into Permanent inventory or the equipped Bag, or drag
   carried items back into compatible corpse slots. `Shift` drags half a stack
-  and `Ctrl`+click carries a chosen quantity, in either direction.
+  and `Ctrl`+click carries a chosen quantity, in either direction, also straight
+  into the `Ammunition` slot. A creature's corpse gives whole items only, so its
+  stacks always move whole, and `Shift`+right-click on them does what
+  right-click does.
 - Items can be dragged between empty or occupied slots in any corpse section.
   Compatible stacks with room merge. A whole item that cannot merge swaps with
   the item on the occupied slot only when both slots accept the other item and

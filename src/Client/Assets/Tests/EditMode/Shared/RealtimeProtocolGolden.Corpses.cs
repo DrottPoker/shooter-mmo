@@ -191,6 +191,9 @@ namespace Mmorpg.SharedTests
             Vector(
                 "loot to equipment with swap",
                 () => RealtimeCorpseInteractionIntent.CreateLootToEquipment(G(1), G(10), 3, G(2), 6, "main_hand", G(4), 8));
+            Vector(
+                "loot part to equipment",
+                () => RealtimeCorpseInteractionIntent.CreateLootToEquipment(G(1), G(10), 3, G(2), 6, "ammunition", G(4), 8, 50));
         }
 
         private static void RegisterCorpsePresenceCases(Registry r)

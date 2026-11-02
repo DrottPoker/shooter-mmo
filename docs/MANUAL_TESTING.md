@@ -1265,7 +1265,9 @@ Seconds` of each Mob.
 3. Drag a wolf's Bronze Arrows onto your equipped Bronze Arrows, and its pelt
    onto a Wolf Pelt stack in the inventory. Expected result: both stacks are
    topped up. Dropping wolf loot on a different item is rejected, because a
-   live Mob corpse cannot take an item back.
+   live Mob corpse cannot take an item back. Hold Shift while you drag a wolf's
+   arrows, and Ctrl+click them. Expected result: the whole stack moves, and no
+   `SPLIT STACK` window opens, because a creature's corpse gives whole items.
 4. Open a wolf corpse and leave it alone. Expected result: after 120 seconds it
    closes with its window, and the game messages say
    `The corpse expired and is no longer available.`
@@ -1347,6 +1349,10 @@ its corpse holds several weapons, and use a looter with an empty `Main Hand`.
 9. Shift+right-click a corpse stack. Expected result: half of it, rounded down,
    tops up a carried stack of its kind or takes the first free carried slot,
    and the rest stays in the corpse.
+10. With the `Ammunition` slot empty, hold Shift and drag the corpse's Bronze
+    Arrows onto it. Expected result: the slot glows while you drag, half of the
+    arrows land in it, and the rest stays in the corpse. Shift+right-click the
+    rest. Expected result: half of them top up the equipped arrows.
 
 ### Two Clients At One Corpse
 

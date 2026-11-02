@@ -225,7 +225,8 @@ internal sealed partial class CorpseService
                         NormalizeGuid(request.TargetItemInstanceId),
                         NormalizeRevision(
                             request.TargetItemInstanceId,
-                            request.ExpectedTargetItemRevision))),
+                            request.ExpectedTargetItemRevision),
+                        request.Quantity is > 0 ? request.Quantity : null)),
                 cancellationToken);
         }
 
@@ -711,7 +712,7 @@ internal sealed partial class CorpseService
             && request.ExpectedItemRevision >= 0
             && !string.IsNullOrWhiteSpace(request.EquipmentSlotId)
             && hasTarget == (request.ExpectedTargetItemRevision >= 0)
-            && (request.Quantity is null or 0)
+            && request.Quantity is null or >= 0
             && request.DestinationContainerId is null
             && request.DestinationSlotIndex is null;
     }
