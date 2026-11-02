@@ -48,7 +48,8 @@ public sealed class MigrationHistoryTests
         "202610261800_live_mob_loot_grants 09934b64934bbb04831075c84fa360d570392277b774c741293c382788fd4f87",
         "202611011200_remove_secure_container 891d194dcf27f0812e1bcd3242347a07fde33807e5759d3672b85b4b13eb2f4a",
         "202611021200_remove_cloak_equipment ef7117c99b3036e8d6c13b0a77acd9288e6c48b66a475d2e7cf56bd7db571bd1",
-        "202611021300_expand_permanent_inventory 473ae7002a820d3b7930e486569754e52960fca2eeeaa15416bf2d6da2195e1c"
+        "202611021300_expand_permanent_inventory 473ae7002a820d3b7930e486569754e52960fca2eeeaa15416bf2d6da2195e1c",
+        "202611021700_reduce_permanent_inventory 8adf70388be6ba9201c8ca9bf963aa01ba382f22e81c2db66525285e49c5e0e1"
     ];
 
     [Fact]

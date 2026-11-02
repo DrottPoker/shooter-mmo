@@ -37,7 +37,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(arrangement.Left, Is.EqualTo(new[] { "head", "shoulders", "body", "legs", "feet" }));
             Assert.That(arrangement.Right, Is.EqualTo(new[] { "neck", "hands", "ring_1", "ring_2", "bag" }));
             Assert.That(arrangement.BottomRows.Count, Is.EqualTo(1));
-            Assert.That(arrangement.BottomRows[0], Is.EqualTo(new[] { "main_hand", "off_hand", "tool", "ammunition" }));
+            Assert.That(arrangement.BottomRows[0], Is.EqualTo(new[] { "main_hand", "off_hand", "ammunition", "tool" }));
             // The cloak's Back slot is hidden; every other slot shows once.
             Assert.That(arrangement.All, Is.EquivalentTo(DesignSlotIds.Where(slotId => slotId != "back")));
         }

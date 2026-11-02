@@ -2596,6 +2596,9 @@ approves a new look from screenshots of the running windows before it is merged.
   rounded one where the frame has round corners, as `WindowFrame.svg` does. The
   importer cracks a rounded shape of a gradient along a triangle edge, and the
   stretched middle of the window then shows a faint diagonal line.
+- Draw a soft glow as one-pixel strokes that fade inward, as `SlotGlow.svg`
+  does, instead of a gradient; strokes two or more pixels wide show as steps at
+  the slot size.
 - A sprite's file name is its theme field, such as `ItemFrame.svg` for
   `ItemFrame`. `Silhouette_<slot id>.svg` is the empty picture of an equipment
   slot, such as `Silhouette_head.svg`, `Tag_<tag id>.svg` that of a specialized

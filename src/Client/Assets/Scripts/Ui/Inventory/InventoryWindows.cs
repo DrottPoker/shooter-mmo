@@ -69,6 +69,8 @@ namespace Mmorpg.Client.Ui
         private InventoryWindowRequests requests;
         private PlayerBodyLookSetting bodyLook;
         private CharacterPreview characterPreview;
+        private WorldPointerFocus pointerFocus;
+        private Func<bool> pointerCapture;
         private InventoryInteractions interactions;
         private LocalPlayerInput localPlayerInput;
         private RectTransform root;
@@ -187,9 +189,11 @@ namespace Mmorpg.Client.Ui
             GameMessageLog messages,
             InventoryWindowRequests windowRequests,
             PlayerBodyLookSetting lookSetting = null,
-            CharacterPreview preview = null)
+            CharacterPreview preview = null,
+            WorldPointerFocus focus = null)
         {
             characterPreview = preview;
+            pointerFocus = focus;
             theme = uiTheme;
             controller = inventoryController;
             corpseController = corpses;
@@ -354,8 +358,10 @@ namespace Mmorpg.Client.Ui
             return item != null && rolledBackItemIds.Contains(item.ItemInstanceId);
         }
 
-        // Redraws the open windows from the current state, or after the drag when one is in
-        // progress, so a confirmation never cancels it.
+        // Redraws the open windows from the current state, or after a held drag, so a
+        // confirmation never cancels it. A part carried on the pointer leaves its slot alone,
+        // so the windows redraw under it; it is put back when its stack is gone or no longer
+        // larger than the part.
         internal void Refresh()
         {
             if (equipment == null)
@@ -363,10 +369,17 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            if (dragCoordinator != null && dragCoordinator.IsDragging)
+            var carrying = dragCoordinator != null && dragCoordinator.IsCarrying;
+            if (dragCoordinator != null && dragCoordinator.IsDragging && !carrying)
             {
                 refreshDeferred = true;
                 return;
+            }
+
+            var carried = dragCoordinator != null ? dragCoordinator.ActivePayload : null;
+            if (carrying && (!TryFindStack(carried, out _, out var stack) || carried.Quantity >= stack))
+            {
+                dragCoordinator.Cancel();
             }
 
             refreshDeferred = false;
@@ -378,6 +391,10 @@ namespace Mmorpg.Client.Ui
             if (equipment.Window.IsOpen)
             {
                 equipment.Refresh();
+                if (dragCoordinator != null && dragCoordinator.IsCarrying)
+                {
+                    equipment.ShowDropTargets(dragCoordinator.ActivePayload);
+                }
             }
 
             if (inventory.Window.IsOpen)
@@ -470,9 +487,18 @@ namespace Mmorpg.Client.Ui
                 // the features, which then leave the interaction and the combat target alone.
                 // Otherwise the targeting controller closes the interaction on Cancel too. An
                 // Escape that only closed the world menu leaves the windows open.
-                if (dialog.IsOpen)
+                if (dialog.IsOpen || dragCoordinator.IsCarrying)
                 {
-                    dialog.Close();
+                    // A dialog closes first, then a part carried on the pointer is put back.
+                    if (dialog.IsOpen)
+                    {
+                        dialog.Close();
+                    }
+                    else
+                    {
+                        dragCoordinator.Cancel();
+                    }
+
                     if (worldMenu != null)
                     {
                         worldMenu.ConsumeCancel();
@@ -538,7 +564,28 @@ namespace Mmorpg.Client.Ui
             if (dragCoordinator != null)
             {
                 dragCoordinator.DroppedOutside -= OnDroppedOutside;
+                dragCoordinator.DragStarted -= OnDragStarted;
+                dragCoordinator.DragEnded -= OnDragEnded;
             }
+
+            if (pointerFocus != null && pointerCapture != null)
+            {
+                pointerFocus.RemoveCapture(pointerCapture);
+            }
+        }
+
+        // The equipment slots that take a dragged item glow until the drag ends.
+        private void OnDragStarted(InventoryDragPayload payload)
+        {
+            if (IsEquipmentOpen)
+            {
+                equipment.ShowDropTargets(payload);
+            }
+        }
+
+        private void OnDragEnded()
+        {
+            equipment?.ClearDropTargets();
         }
 
         private void SetWindowOpen(UiWindow window, bool open)
@@ -685,6 +732,13 @@ namespace Mmorpg.Client.Ui
             dragCoordinator = canvasObject.AddComponent<InventoryDragCoordinator>();
             dragCoordinator.Configure(canvasObject.GetComponent<RectTransform>(), theme);
             dragCoordinator.DroppedOutside += OnDroppedOutside;
+            dragCoordinator.DragStarted += OnDragStarted;
+            dragCoordinator.DragEnded += OnDragEnded;
+            if (pointerFocus != null)
+            {
+                pointerCapture = () => dragCoordinator != null && dragCoordinator.CapturesPointer;
+                pointerFocus.AddCapture(pointerCapture);
+            }
 
             // The root only groups the windows and draws nothing, so a click beside or between
             // them still reaches the world.

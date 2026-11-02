@@ -182,11 +182,14 @@ transaction. Non-empty Bag aggregates never use this ordinary item swap.
 - Every character has a permanent slot-based inventory independent of the
   equipped Bag.
 - The slot count is catalog content, `character.inventorySlotCount`, which is
-  24 today, four rows of six in the inventory window. Transaction logic never
+  20 today, four rows of five in the inventory window. Transaction logic never
   hard-codes it. Every character copies the count when its item state is
   created, so changing it needs a data migration that resizes the existing
-  inventories, as `202611021300_expand_permanent_inventory` did when the count
-  grew from 20.
+  inventories. `202611021300_expand_permanent_inventory` grew it from 20 to 24
+  without moving an item, and `202611021700_reduce_permanent_inventory` shrank
+  it back to 20: an item in a removed slot moved to the lowest free slot that
+  stays, and without one into Recovery Storage as one delivery per character,
+  so no item was lost.
 - Weapons use normal general slots when not equipped.
 - There are no dedicated weapon-storage slots.
 - Empty Bags may occupy compatible general slots as ordinary items.
@@ -517,7 +520,7 @@ fixed place on the screen, below the HUD:
 | Equipment        |                              | Storage   | | Inventory |
 | Slots on both    |                              | Bank,     | | Search,   |
 | sides of the     |                              | Recovery, | | carry     |
-| character, hands |                              | a corpse, | | meter, 24 |
+| character, hands |                              | a corpse, | | meter, 20 |
 | and tools below  |                              | or a      | | slots,    |
 |                  |                              | vendor    | | the Bag,  |
 +------------------+                              +-----------+ | balance   |
@@ -528,11 +531,12 @@ fixed place on the screen, below the HUD:
 - Equipment stays at the left edge, laid out like a paper doll around the
   character, which stands in 3D on a pedestal in the middle and turns when
   dragged: a column of slots on each side, as far from both edges of the window,
-  and the hands, tool, and ammunition close together in a row below. The slots
-  show no names; the tooltip of an empty slot names it.
+  and the hands, ammunition, and tool close together in a row below. The slots
+  show no names; the tooltip of an empty slot names it. While an item is
+  dragged, the equipment slots that take it glow.
 - Inventory stays at the right edge and holds everything the character carries:
-  Permanent Inventory in rows of six and the equipped Bag's slots below it in the
-  same columns. It grows in height with the Bag.
+  Permanent Inventory in rows of five without a heading and the equipped Bag's
+  slots below it in the same columns. It grows in height with the Bag.
 - The storage window stands directly left of Inventory and presents the
   currently relevant external container: the Bank, Recovery Storage, a corpse, a
   vendor, or later world loot. It opens with the NPC capability or corpse that

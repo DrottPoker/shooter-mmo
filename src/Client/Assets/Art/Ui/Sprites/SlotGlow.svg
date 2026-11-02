@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect x="0.5" y="0.5" width="63" height="63" rx="5" fill="none" stroke="#ffffff" stroke-opacity="1.00" stroke-width="1"/>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="4.7" fill="none" stroke="#ffffff" stroke-opacity="0.83" stroke-width="1"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="4.4" fill="none" stroke="#ffffff" stroke-opacity="0.67" stroke-width="1"/>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="4.1" fill="none" stroke="#ffffff" stroke-opacity="0.53" stroke-width="1"/>
+  <rect x="4.5" y="4.5" width="55" height="55" rx="3.8" fill="none" stroke="#ffffff" stroke-opacity="0.41" stroke-width="1"/>
+  <rect x="5.5" y="5.5" width="53" height="53" rx="3.5" fill="none" stroke="#ffffff" stroke-opacity="0.31" stroke-width="1"/>
+  <rect x="6.5" y="6.5" width="51" height="51" rx="3.2" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1"/>
+  <rect x="7.5" y="7.5" width="49" height="49" rx="2.9" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1"/>
+  <rect x="8.5" y="8.5" width="47" height="47" rx="2.6" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="1"/>
+  <rect x="9.5" y="9.5" width="45" height="45" rx="2.3" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <rect x="10.5" y="10.5" width="43" height="43" rx="2" fill="none" stroke="#ffffff" stroke-opacity="0.02" stroke-width="1"/>
+</svg>

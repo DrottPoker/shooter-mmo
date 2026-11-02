@@ -7,6 +7,7 @@
     { "file": "SlotBackground.svg", "width": 64, "height": 64, "border": [ 14, 14, 14, 14 ] },
     { "file": "ItemFrame.svg", "width": 64, "height": 64, "border": [ 14, 14, 14, 14 ] },
     { "file": "SlotHighlight.svg", "width": 64, "height": 64, "border": [ 14, 14, 14, 14 ] },
+    { "file": "SlotGlow.svg", "width": 64, "height": 64, "border": [ 16, 16, 16, 16 ] },
     { "file": "ButtonFrame.svg", "width": 96, "height": 40, "border": [ 14, 14, 14, 14 ] },
     { "file": "FieldFrame.svg", "width": 96, "height": 40, "border": [ 12, 12, 12, 12 ] },
     { "file": "MeterTrack.svg", "width": 64, "height": 16, "border": [ 7, 7, 7, 7 ] },

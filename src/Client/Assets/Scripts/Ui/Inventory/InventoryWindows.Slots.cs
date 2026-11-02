@@ -9,8 +9,9 @@ using UnityEngine.InputSystem;
 
 namespace Mmorpg.Client.Ui
 {
-    // What every kind of slot shows and does, and what a drop onto it sends. A drag with Shift
-    // carries part of a stack: the drop asks how many before it sends anything.
+    // What every kind of slot shows and does, and what a drop onto it sends. A stack splits
+    // three ways: Shift drags half of it, Shift+right-click sends half where right-click sends
+    // the stack, and Ctrl+click asks how many and carries them on the pointer. The rest stays.
     public sealed partial class InventoryWindows
     {
         // A slot of Permanent Inventory, the Bag, or the Bank.
@@ -27,10 +28,10 @@ namespace Mmorpg.Client.Ui
                 + (specialized ? ", accepts " + tagLabel : string.Empty);
             var spec = ItemSpec(item, keyPrefix + ":" + slot.SlotIndex.ToString(CultureInfo.InvariantCulture));
             spec.Silhouette = specialized ? theme.TagSilhouette(slot.AcceptedTags) : null;
-            spec.OnRightClick = item == null ? null : () => OnItemRightClicked(item);
+            spec.OnRightClick = item == null ? null : () => OnItemRightClicked(item, false);
             spec.DragPayload = item == null ? null : InventoryDragPayload.ForItem(item.ItemInstanceId);
             spec.CanDrag = InventoryDropPlanner.CanMoveItem(state, item);
-            spec.AllowPartial = item != null && item.Quantity > 1;
+            OfferStackParts(spec, item?.Quantity ?? 0, () => OnItemRightClicked(item, true));
             spec.DropValidator = (InventoryDragPayload payload, out string reason) =>
                 CanDropOnContainer(container, slot, payload, out reason);
             spec.OnDrop = payload => DropOnContainer(container, slot, payload);
@@ -53,14 +54,14 @@ namespace Mmorpg.Client.Ui
             var spec = ItemSpec(item, "equipment:" + equipmentSlot.SlotId);
             spec.Silhouette = theme.EquipmentSilhouette(equipmentSlot.SlotId);
             spec.Blocked = blocker != null;
-            spec.OnRightClick = item == null ? null : () => OnItemRightClicked(item);
+            spec.OnRightClick = item == null ? null : () => OnItemRightClicked(item, false);
             spec.DragPayload = item == null ? null : InventoryDragPayload.ForItem(item.ItemInstanceId);
             spec.CanDrag = InventoryDropPlanner.CanMoveItem(state, item);
-            spec.AllowPartial = item != null && item.Quantity > 1;
+            OfferStackParts(spec, item?.Quantity ?? 0, () => OnItemRightClicked(item, true));
             spec.DropValidator = (InventoryDragPayload payload, out string reason) =>
                 CanDropOnEquipment(equipmentSlot, payload, out reason);
             spec.OnDrop = payload => Report(interactions.Execute(
-                interactions.PlanEquipmentDrop(equipmentSlot, payload, null)));
+                interactions.PlanEquipmentDrop(equipmentSlot, payload, payload.Quantity)));
             var description = "Equipped in " + slotName;
             if (item != null && IsAmmunitionSlot(equipmentSlot))
             {
@@ -115,7 +116,7 @@ namespace Mmorpg.Client.Ui
             spec.CanDrag = CorpseState != null
                 && CorpseState.CanShowOperations
                 && InventoryDropPlanner.CanMoveItem(state, item);
-            spec.AllowPartial = corpseItem != null && corpseItem.Quantity > 1;
+            OfferStackParts(spec, corpseItem?.Quantity ?? 0, () => Report(interactions.QuickMoveCorpseItemPart(corpseItem)));
             spec.DropValidator = (InventoryDragPayload payload, out string reason) =>
                 CanDropOnCorpse(section, slot, payload, out reason);
             spec.OnDrop = payload => DropOnCorpse(section, slot, payload);
@@ -174,121 +175,148 @@ namespace Mmorpg.Client.Ui
             return spec;
         }
 
+        // A stack of more than one item splits: Shift drags half of it, Shift+right-click sends
+        // half, and Ctrl+click asks how many to carry. A slot that cannot be dragged offers none.
+        private void OfferStackParts(ItemSlotSpec spec, int stack, Action halfRightClick)
+        {
+            if (stack < 2 || !spec.CanDrag || spec.DragPayload == null)
+            {
+                return;
+            }
+
+            var payload = spec.DragPayload;
+            spec.HalfQuantity = InventoryQuickMoves.HalfOf(stack);
+            spec.OnHalfRightClick = halfRightClick;
+            spec.OnSplitClick = () => AskSplit(payload);
+        }
+
         private bool CanDropOnContainer(
             InventoryContainer container,
             InventorySlot slot,
             InventoryDragPayload payload,
             out string reason)
         {
-            var plan = interactions.PlanContainerDrop(container, slot, payload, ProbeQuantity(payload));
+            var plan = interactions.PlanContainerDrop(container, slot, payload, payload.Quantity);
             reason = plan.Reason;
             return plan.IsValid;
         }
 
         private void DropOnContainer(InventoryContainer container, InventorySlot slot, InventoryDragPayload payload)
         {
-            if (IsPartialDrop(payload))
-            {
-                AskPartialQuantity(payload, false, quantity => Report(interactions.Execute(
-                    interactions.PlanContainerDrop(container, slot, payload, quantity))));
-                return;
-            }
-
-            Report(interactions.Execute(interactions.PlanContainerDrop(container, slot, payload, null)));
+            Report(interactions.Execute(interactions.PlanContainerDrop(container, slot, payload, payload.Quantity)));
         }
 
         private bool CanDropOnEquipment(InventoryEquipmentSlot equipmentSlot, InventoryDragPayload payload, out string reason)
         {
-            var plan = interactions.PlanEquipmentDrop(equipmentSlot, payload, ProbeQuantity(payload));
+            var plan = interactions.PlanEquipmentDrop(equipmentSlot, payload, payload.Quantity);
             reason = plan.Reason;
             return plan.IsValid;
         }
 
         private bool CanDropOnCorpse(CorpseLootSection section, CorpseLootSlot slot, InventoryDragPayload payload, out string reason)
         {
-            var plan = interactions.PlanCorpseDrop(section, slot, payload, ProbeQuantity(payload));
+            var plan = interactions.PlanCorpseDrop(section, slot, payload, payload.Quantity);
             reason = plan.Reason;
             return plan.IsValid;
         }
 
         private void DropOnCorpse(CorpseLootSection section, CorpseLootSlot slot, InventoryDragPayload payload)
         {
-            if (IsPartialDrop(payload))
+            Report(interactions.Execute(interactions.PlanCorpseDrop(section, slot, payload, payload.Quantity)));
+        }
+
+        // Ctrl+click: asks how many items of the stack to take, up to all but one, then carries
+        // them on the pointer until a click puts them on a slot.
+        private void AskSplit(InventoryDragPayload payload)
+        {
+            if (!TryFindStack(payload, out var definitionId, out var stack))
             {
-                AskPartialQuantity(payload, true, quantity => Report(interactions.Execute(
-                    interactions.PlanCorpseDrop(section, slot, payload, quantity))));
+                Say("The item is no longer available.");
                 return;
             }
 
-            Report(interactions.Execute(interactions.PlanCorpseDrop(section, slot, payload, null)));
-        }
-
-        // A partial drag is judged as if it moved one item, the least a part can be.
-        private static int? ProbeQuantity(InventoryDragPayload payload)
-        {
-            return IsPartialDrop(payload) ? 1 : (int?)null;
-        }
-
-        private static bool IsPartialDrop(InventoryDragPayload payload)
-        {
-            return payload.IsPartial && payload.Kind != InventoryDragPayloadKind.RecoveryDelivery;
-        }
-
-        // Asks how many items of the dragged stack to move: up to all but one for a split, or
-        // up to the whole stack for a corpse item or a deposit into the corpse.
-        private void AskPartialQuantity(InventoryDragPayload payload, bool corpseDestination, Action<int> chosen)
-        {
-            string definitionId;
-            int stack;
-            var corpse = payload.Kind == InventoryDragPayloadKind.CorpseItem;
-            if (corpse)
-            {
-                var view = CorpseState?.ShownView;
-                if (view == null || !view.TryFindItem(payload.ItemInstanceId, out var corpseItem, out _, out _))
-                {
-                    Say("The corpse item is no longer available.");
-                    return;
-                }
-
-                definitionId = corpseItem.DefinitionId;
-                stack = corpseItem.Quantity;
-            }
-            else if (State != null && State.TryFindItem(payload.ItemInstanceId, out var item, out _))
-            {
-                definitionId = item.DefinitionId;
-                stack = item.Quantity;
-            }
-            else
-            {
-                Say("The dragged item is no longer available.");
-                return;
-            }
-
-            var maximum = corpse || corpseDestination ? stack : stack - 1;
-            if (maximum < 1)
+            if (stack < 2)
             {
                 Say("A single item cannot be split.");
                 return;
             }
 
-            var name = State.Catalog.GetDisplayName(definitionId);
+            var catalog = State.Catalog;
             dialog.AskQuantity(
-                corpse || corpseDestination ? "Move Part" : "Split Stack",
-                name + " (" + stack.ToString(CultureInfo.InvariantCulture) + ")",
+                "Split Stack",
+                catalog.GetDisplayName(definitionId) + " (" + stack.ToString(CultureInfo.InvariantCulture) + ")",
                 1,
-                maximum,
-                Math.Max(1, stack / 2),
+                stack - 1,
+                InventoryQuickMoves.HalfOf(stack),
                 PointerPosition(),
-                chosen);
+                quantity => CarrySplit(payload, quantity));
+        }
+
+        private void CarrySplit(InventoryDragPayload payload, int quantity)
+        {
+            if (!TryFindStack(payload, out var definitionId, out var stack) || quantity >= stack)
+            {
+                Say("The stack changed. Split it again.");
+                return;
+            }
+
+            var catalog = State.Catalog;
+            dragCoordinator.BeginCarry(
+                payload.WithQuantity(quantity),
+                catalog.GetDisplayName(definitionId),
+                catalog.LoadIcon(definitionId),
+                InventorySlotPresentation.QuantityText(quantity),
+                PointerPosition());
+        }
+
+        // The definition and quantity of a carried, equipped, or corpse stack.
+        private bool TryFindStack(InventoryDragPayload payload, out string definitionId, out int stack)
+        {
+            definitionId = string.Empty;
+            stack = 0;
+            if (payload == null || State?.Catalog == null)
+            {
+                return false;
+            }
+
+            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
+            {
+                var view = CorpseState?.ShownView;
+                if (view == null || !view.TryFindItem(payload.ItemInstanceId, out var corpseItem, out _, out _))
+                {
+                    return false;
+                }
+
+                definitionId = corpseItem.DefinitionId;
+                stack = corpseItem.Quantity;
+                return true;
+            }
+
+            if (payload.Kind != InventoryDragPayloadKind.Item
+                || !State.TryFindItem(payload.ItemInstanceId, out var item, out _))
+            {
+                return false;
+            }
+
+            definitionId = item.DefinitionId;
+            stack = item.Quantity;
+            return true;
         }
 
         // Dropped outside every window, a carried or equipped item is offered for destruction.
+        // Destruction takes the whole stack, so a dragged half is not offered.
         private void OnDroppedOutside(InventoryDragPayload payload)
         {
             if (payload.Kind != InventoryDragPayloadKind.Item
                 || State == null
                 || !State.TryFindItem(payload.ItemInstanceId, out var item, out _))
             {
+                return;
+            }
+
+            if (payload.IsPartial)
+            {
+                Say("Drag the whole stack out of the windows to destroy it.");
                 return;
             }
 
@@ -308,8 +336,9 @@ namespace Mmorpg.Client.Ui
         }
 
         // Right-clicking a carried or equipped item. An open vendor takes a carried item into
-        // its Sell slot, and an open Bank takes the item.
-        private void OnItemRightClicked(InventoryItem item)
+        // its Sell slot, and an open Bank takes the item. With Shift, half the stack, rounded
+        // down, goes the same way and the rest stays.
+        private void OnItemRightClicked(InventoryItem item, bool half)
         {
             var state = State;
             if (!InventoryDropPlanner.CanMoveItem(state, item))
@@ -326,11 +355,14 @@ namespace Mmorpg.Client.Ui
                 && location.Kind == InventoryItemLocationKind.Container
                 && ItemContainerTypeIds.IsCarried(location.ContainerType))
             {
-                storage.OfferForSale(InventoryDragPayload.ForItem(item.ItemInstanceId));
+                var payload = InventoryDragPayload.ForItem(item.ItemInstanceId);
+                storage.OfferForSale(half ? payload.WithQuantity(InventoryQuickMoves.HalfOf(item.Quantity)) : payload);
                 return;
             }
 
-            Report(interactions.QuickMoveItem(item, IsBankShown()));
+            Report(half
+                ? interactions.QuickMoveItemPart(item, IsBankShown())
+                : interactions.QuickMoveItem(item, IsBankShown()));
         }
 
         // The Bank takes right-clicked items only while its tab shows.

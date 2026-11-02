@@ -28,9 +28,19 @@ namespace Mmorpg.Client.Ui
         public Color FrameColor = Color.white;
         public string Badge = string.Empty;
         public Action OnRightClick;
+
+        // Shift+right-click moves half the stack where right-click moves it; without it,
+        // Shift+right-click does what right-click does.
+        public Action OnHalfRightClick;
+
+        // Ctrl+click asks how many items to take and carries them on the pointer.
+        public Action OnSplitClick;
         public InventoryDragPayload DragPayload;
         public bool CanDrag;
-        public bool AllowPartial;
+
+        // The part of the stack that Shift drags: half, rounded down; zero for a stack that
+        // cannot be split.
+        public int HalfQuantity;
         public InventoryDropValidator DropValidator;
         public Action<InventoryDragPayload> OnDrop;
         public Action<string> OnRejected;
@@ -38,14 +48,16 @@ namespace Mmorpg.Client.Ui
     }
 
     // One square item slot: its background, the silhouette of an empty slot, the item's icon
-    // in a frame of its rarity color, its quantity and policy badges, a lock while blocked, and
-    // highlights for hover and drop feedback. A slot is built once and bound again whenever
-    // what it shows changes, so redrawing never rebuilds it.
+    // in a frame of its rarity color, its quantity and policy badges, a lock while blocked, a
+    // glow while a dragged item may go there, and highlights for hover and drop feedback. A
+    // slot is built once and bound again whenever what it shows changes, so redrawing never
+    // rebuilds it.
     [DisallowMultipleComponent]
     public sealed class ItemSlotView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
         public const string QuantityLabelName = "Quantity";
         public const string IconName = "Icon";
+        public const string DropTargetGlowName = "DropTargetGlow";
 
         private static readonly Color FallbackSlotColor = new Color(0.07f, 0.10f, 0.11f, 1f);
 
@@ -61,13 +73,14 @@ namespace Mmorpg.Client.Ui
         private TextMeshProUGUI quantity;
         private TextMeshProUGUI badge;
         private Image lockIcon;
+        private Image glow;
         private Image hover;
         private Image highlight;
         private InventorySlotView slotView;
         private InventoryDragSource dragSource;
         private InventoryDropTarget dropTarget;
         private InventoryTooltipTrigger tooltipTrigger;
-        private InventorySlotRightClick rightClick;
+        private InventorySlotClicks clicks;
         private bool hoverable;
 
         public ItemSlotSpec Spec { get; private set; }
@@ -75,6 +88,11 @@ namespace Mmorpg.Client.Ui
         public TextMeshProUGUI QuantityLabel
         {
             get { return quantity; }
+        }
+
+        public bool ShowsDropTargetGlow
+        {
+            get { return glow.gameObject.activeSelf; }
         }
 
         public static ItemSlotView Create(
@@ -147,7 +165,7 @@ namespace Mmorpg.Client.Ui
                 Spec.Icon,
                 quantityText,
                 Spec.CanDrag && item != null,
-                Spec.AllowPartial);
+                item != null ? Spec.HalfQuantity : 0);
             dropTarget.Configure(
                 coordinator,
                 highlight,
@@ -157,11 +175,22 @@ namespace Mmorpg.Client.Ui
                 Spec.OnDrop,
                 Spec.OnRejected);
             tooltipTrigger.Configure(tooltip, Spec.Tooltip);
-            rightClick.Configure(Spec.OnRightClick);
+            clicks.Configure(coordinator, dropTarget, Spec.OnRightClick, Spec.OnHalfRightClick, Spec.OnSplitClick);
+            SetDropTargetGlow(false);
             hoverable = item != null || !string.IsNullOrWhiteSpace(Spec.Tooltip);
             if (!hoverable)
             {
                 hover.enabled = false;
+            }
+        }
+
+        // Glows while a dragged item may be dropped here, such as an equipment slot that
+        // takes the dragged ring.
+        public void SetDropTargetGlow(bool shown)
+        {
+            if (glow.gameObject.activeSelf != shown)
+            {
+                glow.gameObject.SetActive(shown);
             }
         }
 
@@ -249,6 +278,19 @@ namespace Mmorpg.Client.Ui
             lockIcon = UiFactory.Image(contentRect, "Lock", theme.LockIcon, theme.TextColor);
             UiFactory.Fill(lockIcon.rectTransform, theme.SlotSize * 0.28f);
 
+            glow = UiFactory.Image(
+                transform,
+                DropTargetGlowName,
+                theme.SlotGlow != null ? theme.SlotGlow : theme.SlotHighlight,
+                theme.DropTargetGlowColor);
+            UiFactory.Fill(glow.rectTransform);
+            glow.gameObject.AddComponent<UiPulse>().Configure(
+                glow,
+                theme.DropTargetGlowColor,
+                theme.DropTargetPulseSeconds,
+                theme.DropTargetGlowFloor);
+            glow.gameObject.SetActive(false);
+
             hover = UiFactory.Image(transform, "Hover", theme.SlotHighlight, theme.HoverColor);
             UiFactory.Fill(hover.rectTransform);
             hover.enabled = false;
@@ -260,7 +302,50 @@ namespace Mmorpg.Client.Ui
             dragSource = gameObject.AddComponent<InventoryDragSource>();
             dropTarget = gameObject.AddComponent<InventoryDropTarget>();
             tooltipTrigger = gameObject.AddComponent<InventoryTooltipTrigger>();
-            rightClick = gameObject.AddComponent<InventorySlotRightClick>();
+            clicks = gameObject.AddComponent<InventorySlotClicks>();
+        }
+    }
+
+    // Breathes a graphic's alpha between a floor and its color's own alpha, so a highlight
+    // glows. It runs only while its object is active.
+    [DisallowMultipleComponent]
+    public sealed class UiPulse : MonoBehaviour
+    {
+        private Graphic graphic;
+        private Color color;
+        private float period = 1f;
+        private float floor;
+        private float startTime;
+
+        public void Configure(Graphic target, Color baseColor, float seconds, float minimum)
+        {
+            graphic = target;
+            color = baseColor;
+            period = Mathf.Max(0.05f, seconds);
+            floor = Mathf.Clamp01(minimum);
+        }
+
+        private void OnEnable()
+        {
+            startTime = Time.unscaledTime;
+            Apply();
+        }
+
+        private void Update()
+        {
+            Apply();
+        }
+
+        // Starts at the floor and rises, so the glow fades in.
+        private void Apply()
+        {
+            if (graphic == null)
+            {
+                return;
+            }
+
+            var wave = 0.5f - 0.5f * Mathf.Cos((Time.unscaledTime - startTime) / period * 2f * Mathf.PI);
+            graphic.color = new Color(color.r, color.g, color.b, color.a * Mathf.Lerp(floor, 1f, wave));
         }
     }
 

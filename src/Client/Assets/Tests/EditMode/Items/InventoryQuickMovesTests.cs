@@ -110,6 +110,64 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(carry.Slot.SlotIndex, Is.EqualTo(0));
         }
 
+        // Shift+right-click sends half of a stack, rounded down, where right-click sends the
+        // stack: into the first free Bank slot while the Bank is open, and from the Bank or an
+        // equipment slot into the first free carried slot. A part never equips.
+        [Test]
+        public void HalfAStackGoesWhereRightClickSendsTheStackButNeverEquips()
+        {
+            var ore = Item("fixture.ore", 7);
+            var carriedArrows = Item("fixture.arrow", 10);
+            var equippedArrows = Item("fixture.arrow", 30);
+            var bankedPotion = Item("fixture.potion", 5);
+            var state = CreateState(new[] { ore, carriedArrows }, bankedPotion, null, Slot("ammunition", equippedArrows));
+
+            Assert.That(InventoryQuickMoves.HalfOf(7), Is.EqualTo(3));
+            Assert.That(InventoryQuickMoves.HalfOf(1), Is.EqualTo(0));
+
+            var deposit = InventoryQuickMoves.ForItemPart(state, ore, 3, true);
+            Assert.That(deposit.Kind, Is.EqualTo(InventoryQuickMoveKind.Split), deposit.Reason);
+            Assert.That(deposit.Quantity, Is.EqualTo(3));
+            Assert.That(deposit.Container.ContainerType, Is.EqualTo("bank"));
+            Assert.That(deposit.Slot.SlotIndex, Is.EqualTo(1));
+
+            var withdraw = InventoryQuickMoves.ForItemPart(state, bankedPotion, 2, true);
+            Assert.That(withdraw.Kind, Is.EqualTo(InventoryQuickMoveKind.Split), withdraw.Reason);
+            Assert.That(withdraw.Container.ContainerType, Is.EqualTo("permanent_inventory"));
+            Assert.That(withdraw.Slot.SlotIndex, Is.EqualTo(2));
+
+            var unequip = InventoryQuickMoves.ForItemPart(state, equippedArrows, 15, false);
+            Assert.That(unequip.Kind, Is.EqualTo(InventoryQuickMoveKind.Split), unequip.Reason);
+            Assert.That(unequip.Item.ItemInstanceId, Is.EqualTo(equippedArrows.ItemInstanceId));
+            Assert.That(unequip.Container.ContainerType, Is.EqualTo("permanent_inventory"));
+            Assert.That(unequip.Slot.SlotIndex, Is.EqualTo(2));
+
+            var equip = InventoryQuickMoves.ForItemPart(state, carriedArrows, 5, false);
+            Assert.That(equip.Kind, Is.EqualTo(InventoryQuickMoveKind.None));
+            Assert.That(equip.Reason, Is.EqualTo("Part of a stack cannot be equipped."));
+            Assert.That(InventoryQuickMoves.ForItemPart(state, ore, 3, false).Kind, Is.EqualTo(InventoryQuickMoveKind.None));
+            Assert.That(InventoryQuickMoves.ForItemPart(state, ore, 7, true).Kind, Is.EqualTo(InventoryQuickMoveKind.None));
+        }
+
+        // Half of a corpse stack tops up a carried stack, or takes the first free carried slot.
+        [Test]
+        public void HalfACorpseStackTopsUpACarriedStackOrTakesAFreeSlot()
+        {
+            var corpseOre = new CorpseLootItem(Guid.NewGuid(), "fixture.ore", 9, 1, Guid.Empty, 0);
+            var view = CorpseView(corpseOre);
+
+            var topUp = InventoryQuickMoves.ForCorpseItemPart(CreateState(new[] { Item("fixture.ore", 2) }), view, corpseOre, 4);
+            var free = InventoryQuickMoves.ForCorpseItemPart(CreateState(new[] { Item("fixture.potion", 1) }), view, corpseOre, 4);
+            var whole = InventoryQuickMoves.ForCorpseItemPart(CreateState(Array.Empty<InventoryItem>()), view, corpseOre, 9);
+
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), topUp.Reason);
+            Assert.That(topUp.Quantity, Is.EqualTo(4));
+            Assert.That(topUp.Slot.SlotIndex, Is.EqualTo(0));
+            Assert.That(free.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), free.Reason);
+            Assert.That(free.Slot.SlotIndex, Is.EqualTo(1));
+            Assert.That(whole.Kind, Is.EqualTo(InventoryQuickMoveKind.None));
+        }
+
         [Test]
         public void ARecoveryDeliveryIsClaimedIntoPermanentInventory()
         {

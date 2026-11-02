@@ -11,9 +11,9 @@ using UnityEngine.UI;
 namespace Mmorpg.Client.Ui
 {
     // The Equipment window: the character in the middle on a pedestal, the equipment slots in a
-    // column on each side, as far from the window's edge on both sides, and the hand, tool, and
-    // ammunition slots close together in a row below. A slot shows no name; its tooltip names
-    // it. EquipmentPaperDollLayout decides where each slot goes.
+    // column on each side, as far from the window's edge on both sides, and the hand,
+    // ammunition, and tool slots close together in a row below. A slot shows no name; its
+    // tooltip names it. EquipmentPaperDollLayout decides where each slot goes.
     internal sealed class EquipmentWindow
     {
         // Between two slots in a column or a row.
@@ -159,6 +159,29 @@ namespace Mmorpg.Client.Ui
 
             RefreshHeadwearToggle(state);
             Window.FitBody();
+        }
+
+        // While an item is dragged or carried, every equipment slot that takes it glows, so the
+        // player sees where it can go.
+        public void ShowDropTargets(InventoryDragPayload payload)
+        {
+            foreach (var view in slots.Values)
+            {
+                var validator = view.Spec?.DropValidator;
+                view.SetDropTargetGlow(
+                    payload != null
+                    && view.gameObject.activeSelf
+                    && validator != null
+                    && validator(payload, out _));
+            }
+        }
+
+        public void ClearDropTargets()
+        {
+            foreach (var view in slots.Values)
+            {
+                view.SetDropTargetGlow(false);
+            }
         }
 
         // The equipped arrows follow every shot in place.
