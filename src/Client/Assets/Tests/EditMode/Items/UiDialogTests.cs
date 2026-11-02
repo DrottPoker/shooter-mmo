@@ -1,4 +1,6 @@
+using Mmorpg.Client.Combat;
 using Mmorpg.Client.Ui;
+using Mmorpg.Client.WorldActors;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -74,6 +76,44 @@ namespace Mmorpg.Client.Tests.EditMode
             dialog.AskConfirmation("Destroy Item", "Destroy Iron Ore x20?", "Destroy", () => confirmed = true);
             dialog.Confirm();
             Assert.That(confirmed, Is.True);
+        }
+
+        // An Escape that dismisses a dialog reaches no feature: the windows take it after the
+        // world menu and mark it taken before the features that close an interaction or drop
+        // the combat target read it.
+        [Test]
+        public void AnEscapeThatDismissesADialogReachesNoFeature()
+        {
+            var windowsOrder = ExecutionOrderOf(typeof(InventoryWindows));
+            Assert.That(windowsOrder, Is.GreaterThan(ExecutionOrderOf(typeof(WorldMenuController))));
+            foreach (var feature in new[]
+                     {
+                         typeof(WorldInteractionTargetingController),
+                         typeof(CombatTargetingController),
+                         typeof(TemporaryAdminMenu)
+                     })
+            {
+                Assert.That(ExecutionOrderOf(feature), Is.GreaterThan(windowsOrder), feature.Name);
+            }
+
+            var menuObject = new GameObject("World Menu");
+            try
+            {
+                var menu = menuObject.AddComponent<WorldMenuController>();
+                Assert.That(menu.CancelConsumedThisFrame, Is.False);
+                menu.ConsumeCancel();
+                Assert.That(menu.CancelConsumedThisFrame, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(menuObject);
+            }
+        }
+
+        private static int ExecutionOrderOf(System.Type type)
+        {
+            var attribute = (DefaultExecutionOrder)System.Attribute.GetCustomAttribute(type, typeof(DefaultExecutionOrder));
+            return attribute != null ? attribute.order : 0;
         }
     }
 }

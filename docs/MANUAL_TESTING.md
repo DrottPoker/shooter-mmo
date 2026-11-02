@@ -1292,6 +1292,9 @@ its corpse holds several weapons, and use a looter with an empty `Main Hand`.
 7. Drop a corpse item on a corpse equipment slot of its type, then on one of
    another type. Expected result: the compatible slot accepts it, and the other
    rejects it without moving either item.
+8. Shift-drag a corpse stack onto an empty carried slot and press Escape in the
+   `SPLIT STACK` window. Expected result: only the window closes; the corpse and
+   the windows stay open, and nothing moves.
 
 ### Two Clients At One Corpse
 

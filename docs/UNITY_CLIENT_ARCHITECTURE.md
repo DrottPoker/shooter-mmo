@@ -2199,8 +2199,10 @@ into the open menu at the pointer. While the menu is open the controller takes n
 world action: a press in the world, Escape, or the pointer leaving the menu closes
 it, and a press over interface may choose a row. The controller runs before the
 features, at execution order -50, so combat, world interaction, and the inventory
-panel ignore an Escape whose frame reports `CancelConsumedThisFrame`, the Escape
-that closed the menu. `RunDefault` and `OpenMenu` run a left or right click for a
+windows ignore an Escape whose frame reports `CancelConsumedThisFrame`, the Escape
+that closed the menu. The inventory windows run next, at -40, and an Escape that
+dismisses their dialog calls `ConsumeCancel`, so it neither closes the open
+interaction nor drops the combat target. `RunDefault` and `OpenMenu` run a left or right click for a
 given ray, for tools and harnesses. Options are plain values with their provider,
 an action code, the pointer candidate, an entity id, an argument such as a
 capability id, and the ray, so building the menu every frame allocates nothing. A

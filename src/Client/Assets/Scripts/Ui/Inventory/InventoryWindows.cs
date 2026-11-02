@@ -41,10 +41,14 @@ namespace Mmorpg.Client.Ui
     // Storage, a corpse, or a vendor. Each window opens and closes on its own and sits at a
     // fixed place: Equipment at the left edge, Inventory at the right edge, and storage to the
     // left of Inventory. The windows read the persistent client state and send every action
-    // through InventoryInteractions; they own no item rule.
+    // through InventoryInteractions; they own no item rule. They run after the world menu and
+    // before the features, so an Escape that dismissed a dialog reaches nothing else.
+    [DefaultExecutionOrder(ExecutionOrder)]
     [DisallowMultipleComponent]
     public sealed partial class InventoryWindows : MonoBehaviour
     {
+        public const int ExecutionOrder = WorldMenuController.ExecutionOrder + 10;
+
         public const string EquipmentWindowName = "EquipmentWindow";
         public const string InventoryWindowName = "InventoryWindow";
         public const string StorageWindowName = "StorageWindow";
@@ -453,11 +457,17 @@ namespace Mmorpg.Client.Ui
             else if (localPlayerInput.CancelPressedThisFrame
                 && (worldMenu == null || !worldMenu.CancelConsumedThisFrame))
             {
-                // The targeting controller closes the interaction on Cancel. An Escape that
-                // only closed the world menu leaves the windows open.
+                // An Escape that dismissed a dialog does nothing else: the windows run before
+                // the features, which then leave the interaction and the combat target alone.
+                // Otherwise the targeting controller closes the interaction on Cancel too. An
+                // Escape that only closed the world menu leaves the windows open.
                 if (dialog.IsOpen)
                 {
                     dialog.Close();
+                    if (worldMenu != null)
+                    {
+                        worldMenu.ConsumeCancel();
+                    }
                 }
                 else if (IsAnyOpen)
                 {
