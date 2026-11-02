@@ -149,7 +149,7 @@ namespace Mmorpg.Client.Ui
                         "Move submitted.");
                 case InventoryDropPlanKind.Merge:
                     return InventoryInteractionResult.From(
-                        inventory.TryMerge(plan.Item, plan.Target, out error),
+                        inventory.TryMerge(plan.Item, plan.Target, plan.Quantity, out error),
                         error,
                         "Merge submitted.");
                 case InventoryDropPlanKind.Swap:
@@ -159,7 +159,7 @@ namespace Mmorpg.Client.Ui
                         "Swap submitted.");
                 case InventoryDropPlanKind.Equip:
                     return InventoryInteractionResult.From(
-                        inventory.TryEquip(plan.Item, plan.EquipmentSlotId, out error),
+                        inventory.TryEquip(plan.Item, plan.EquipmentSlotId, plan.Quantity, out error),
                         error,
                         plan.Target != null ? "Swap submitted." : "Equip submitted.");
                 case InventoryDropPlanKind.ClaimRecovery:
@@ -217,7 +217,7 @@ namespace Mmorpg.Client.Ui
                     }
 
                     return InventoryInteractionResult.From(
-                        inventory.TryEquip(move.Item, move.EquipmentSlotId, out error),
+                        inventory.TryEquip(move.Item, move.EquipmentSlotId, move.Quantity, out error),
                         error,
                         "Equip submitted.");
                 case InventoryQuickMoveKind.Unequip:
@@ -232,7 +232,7 @@ namespace Mmorpg.Client.Ui
                         "Move submitted.");
                 case InventoryQuickMoveKind.Merge:
                     return InventoryInteractionResult.From(
-                        inventory.TryMerge(move.Item, move.Target, out error),
+                        inventory.TryMerge(move.Item, move.Target, move.Quantity, out error),
                         error,
                         "Merge submitted.");
                 case InventoryQuickMoveKind.Split:

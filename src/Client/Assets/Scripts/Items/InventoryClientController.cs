@@ -216,8 +216,18 @@ namespace Mmorpg.Client.Items
             string equipmentSlotId,
             out string error)
         {
+            return TryEquip(item, equipmentSlotId, 0, out error);
+        }
+
+        // A quantity equips that part of a stack into an empty slot, such as some arrows.
+        public bool TryEquip(
+            InventoryItem item,
+            string equipmentSlotId,
+            int quantity,
+            out string error)
+        {
             return TryPrepareItemOperation(item, out _, out error)
-                && TryQueue(InventoryPredictedOperation.Equip(item.ItemInstanceId, equipmentSlotId), out error);
+                && TryQueue(InventoryPredictedOperation.Equip(item.ItemInstanceId, equipmentSlotId, quantity), out error);
         }
 
         public bool TryUnequip(
@@ -258,11 +268,22 @@ namespace Mmorpg.Client.Items
             InventoryItem targetItem,
             out string error)
         {
+            return TryMerge(sourceItem, targetItem, 0, out error);
+        }
+
+        // A quantity moves that part of the source stack and leaves the rest.
+        public bool TryMerge(
+            InventoryItem sourceItem,
+            InventoryItem targetItem,
+            int quantity,
+            out string error)
+        {
             if (!TryPrepareItemOperation(sourceItem, out var source, out error)
                 || !TryPrepareItemOperation(targetItem, out var target, out error)
+                || (quantity > 0 && quantity > sourceItem.Quantity)
                 || !InventoryTargetAdvisor.CanMerge(
                     State,
-                    sourceItem,
+                    quantity > 0 ? sourceItem.WithQuantity(quantity) : sourceItem,
                     source,
                     targetItem,
                     target,
@@ -277,7 +298,7 @@ namespace Mmorpg.Client.Items
             }
 
             return TryQueue(
-                InventoryPredictedOperation.Merge(sourceItem.ItemInstanceId, targetItem.ItemInstanceId),
+                InventoryPredictedOperation.Merge(sourceItem.ItemInstanceId, targetItem.ItemInstanceId, quantity),
                 out error);
         }
 
@@ -532,7 +553,8 @@ namespace Mmorpg.Client.Items
                         revision,
                         item.ItemInstanceId,
                         item.Revision,
-                        operation.EquipmentSlotId);
+                        operation.EquipmentSlotId,
+                        operation.Quantity);
                     return true;
                 case RealtimeItemOperationKind.SplitStack:
                     intent = RealtimeItemOperationIntent.CreateSplitStack(
@@ -552,7 +574,8 @@ namespace Mmorpg.Client.Items
                         item.ItemInstanceId,
                         item.Revision,
                         target.ItemInstanceId,
-                        target.Revision);
+                        target.Revision,
+                        operation.Quantity);
                     rejectionScope = InventoryRefreshScopes.ForLocations(State, location, targetLocation);
                     return true;
                 case RealtimeItemOperationKind.SwapContainerItems:

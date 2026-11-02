@@ -115,6 +115,12 @@ namespace Mmorpg.Client.Items
         public long Revision { get; }
 
         public IReadOnlyList<InventoryPolicy> Policies { get; }
+
+        // The same item with another quantity, such as the part of a stack that a move takes.
+        public InventoryItem WithQuantity(int quantity)
+        {
+            return new InventoryItem(ItemInstanceId, DefinitionId, quantity, Revision, Policies.ToArray());
+        }
     }
 
     public sealed class InventorySlot

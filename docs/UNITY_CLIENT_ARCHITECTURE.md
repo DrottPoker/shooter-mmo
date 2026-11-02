@@ -1330,8 +1330,11 @@ player. A drop may move part of the dragged stack, which its payload carries: a
 split of a carried or equipped stack, or a partial corpse loot, deposit, or
 move. `InventoryQuickMoves.ForItemPart` and `ForCorpseItemPart` give the
 Shift+right-click moves: half of the stack, `InventoryQuickMoves.HalfOf`, goes
-where the right-click move would send the stack, as a split into the first
-free slot or a partial loot that may top up a carried stack, and never equips.
+where the right-click move would send the stack: a partial merge into a stack of
+its kind first, else a split into the first free slot, a partial equip of
+arrows into the empty ammunition slot, or a partial loot that may top up a
+carried stack. A dragged part follows the same rules: it tops up a compatible
+stack, enters an empty slot, or equips into an empty slot, and never swaps.
 A message of an
 action that sent nothing, and the reason of an undone move, go to the
 `GameMessageLog` that `TemporaryGameMessagePanel` shows.

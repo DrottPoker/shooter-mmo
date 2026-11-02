@@ -86,7 +86,8 @@ namespace Mmorpg.Client.Ui
 
         public CorpseLootSlot CorpseSlot { get; }
 
-        // The moved quantity of a split or of a corpse loot, deposit, or move.
+        // The moved quantity of a split, of a merge or an equip of part of a stack, or of a
+        // corpse loot, deposit, or move; 0 for a whole merge or equip.
         public int Quantity { get; }
 
         // A corpse operation goes through the corpse controller and waits for its result.
@@ -117,9 +118,10 @@ namespace Mmorpg.Client.Ui
             return new InventoryDropPlan(InventoryDropPlanKind.Unequip, string.Empty, item, container: container, slot: slot);
         }
 
-        internal static InventoryDropPlan Merge(InventoryItem item, InventoryItem target)
+        // A quantity tops up the target with that part of the stack; 0 merges it whole.
+        internal static InventoryDropPlan Merge(InventoryItem item, InventoryItem target, int quantity = 0)
         {
-            return new InventoryDropPlan(InventoryDropPlanKind.Merge, string.Empty, item, target);
+            return new InventoryDropPlan(InventoryDropPlanKind.Merge, string.Empty, item, target, quantity: quantity);
         }
 
         internal static InventoryDropPlan Swap(InventoryItem item, InventoryItem target)
@@ -127,7 +129,8 @@ namespace Mmorpg.Client.Ui
             return new InventoryDropPlan(InventoryDropPlanKind.Swap, string.Empty, item, target);
         }
 
-        internal static InventoryDropPlan Equip(InventoryItem item, InventoryEquipmentSlot equipmentSlot)
+        // A quantity equips that part of the stack into the empty slot; 0 equips it whole.
+        internal static InventoryDropPlan Equip(InventoryItem item, InventoryEquipmentSlot equipmentSlot, int quantity = 0)
         {
             return new InventoryDropPlan(
                 InventoryDropPlanKind.Equip,
@@ -135,7 +138,8 @@ namespace Mmorpg.Client.Ui
                 item,
                 equipmentSlot.Item,
                 equipmentSlotId: equipmentSlot.SlotId,
-                equipmentSlot: equipmentSlot);
+                equipmentSlot: equipmentSlot,
+                quantity: quantity);
         }
 
         internal static InventoryDropPlan ClaimRecovery(RecoveryDelivery delivery, InventoryContainer container)
@@ -205,8 +209,9 @@ namespace Mmorpg.Client.Ui
     }
 
     // Decides what dropping a dragged item onto a container, equipment, or corpse slot sends.
-    // A quantity asks for part of the dragged stack: a split of a carried stack or a partial
-    // corpse loot, deposit, or move; null moves the whole stack. Every plan judges the current
+    // A quantity asks for part of the dragged stack: a split into an empty slot, a top-up of a
+    // compatible stack, an equip into an empty slot such as some arrows, or a partial corpse
+    // loot, deposit, or move; null moves the whole stack. Every plan judges the current
     // slot, not the drawn one, since a confirmation may arrive while the player drags. The
     // advisors reuse the shared item rules, and the server still decides every operation.
     public static class InventoryDropPlanner
@@ -290,11 +295,6 @@ namespace Mmorpg.Client.Ui
                     return InventoryDropPlan.Rejected("The item is already in this slot.");
                 }
 
-                if (quantity != null)
-                {
-                    return InventoryDropPlan.Rejected("Split stacks must be dropped into an empty slot.");
-                }
-
                 var targetLocation = new InventoryItemLocation(
                     InventoryItemLocationKind.Container,
                     container.ContainerId,
@@ -302,6 +302,16 @@ namespace Mmorpg.Client.Ui
                     slot.SlotIndex,
                     string.Empty,
                     Guid.Empty);
+
+                // A part tops up a compatible stack and leaves the rest; it never swaps.
+                if (quantity != null)
+                {
+                    return InventoryTargetAdvisor.CanSplit(state.Catalog, item, quantity.Value, out reason)
+                        && InventoryTargetAdvisor.CanMerge(state, item.WithQuantity(quantity.Value), source, slot.Item, targetLocation, out reason)
+                        ? InventoryDropPlan.Merge(item, slot.Item, quantity.Value)
+                        : InventoryDropPlan.Rejected(reason);
+                }
+
                 if (InventoryTargetAdvisor.CanMerge(state, item, source, slot.Item, targetLocation, out reason))
                 {
                     return InventoryDropPlan.Merge(item, slot.Item);
@@ -387,7 +397,7 @@ namespace Mmorpg.Client.Ui
 
                 if (quantity != null)
                 {
-                    return InventoryDropPlan.Rejected("Part of a stack cannot be equipped.");
+                    return InventoryDropPlan.Rejected("Loot part of a corpse stack into your inventory before you equip it.");
                 }
 
                 return CorpseTargetAdvisor.CanLootIntoEquipment(
@@ -408,23 +418,42 @@ namespace Mmorpg.Client.Ui
                 return InventoryDropPlan.Rejected("Only a current inventory item can be equipped.");
             }
 
-            if (quantity != null)
+            if (quantity != null && !InventoryTargetAdvisor.CanSplit(state.Catalog, item, quantity.Value, out reason))
             {
-                return InventoryDropPlan.Rejected("Part of a stack cannot be equipped.");
+                return InventoryDropPlan.Rejected(reason);
             }
 
             // A stack of the equipped definition tops up the equipped stack, such as arrows in
-            // the ammunition slot.
+            // the ammunition slot, whole or with the dragged part.
+            var moving = quantity != null ? item.WithQuantity(quantity.Value) : item;
             if (InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, item, equipmentSlot.Item))
             {
                 return InventoryTargetAdvisor.CanMerge(
                         state,
-                        item,
+                        moving,
                         source,
                         equipmentSlot.Item,
                         InventoryItemLocation.ForEquipment(equipmentSlot.SlotId),
                         out reason)
-                    ? InventoryDropPlan.Merge(item, equipmentSlot.Item)
+                    ? InventoryDropPlan.Merge(item, equipmentSlot.Item, quantity ?? 0)
+                    : InventoryDropPlan.Rejected(reason);
+            }
+
+            // A part equips into an empty slot as a new stack, such as some of the carried arrows.
+            if (quantity != null)
+            {
+                if (source.Kind != InventoryItemLocationKind.Container)
+                {
+                    return InventoryDropPlan.Rejected("Move the equipped item to an inventory slot before changing equipment slots.");
+                }
+
+                if (equipmentSlot.Item != null)
+                {
+                    return InventoryDropPlan.Rejected("Part of a stack equips only into an empty slot.");
+                }
+
+                return InventoryTargetAdvisor.CanEquip(state, moving, source, equipmentSlot, out reason)
+                    ? InventoryDropPlan.Equip(item, equipmentSlot, quantity.Value)
                     : InventoryDropPlan.Rejected(reason);
             }
 

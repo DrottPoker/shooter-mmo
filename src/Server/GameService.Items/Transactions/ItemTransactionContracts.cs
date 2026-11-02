@@ -106,12 +106,15 @@ internal sealed record RelocateItemCommand(
     Guid DestinationContainerId,
     int? DestinationSlotIndex);
 
+// Equips the whole item, or with a quantity that part of a stack into an empty slot, such as
+// some arrows. A whole equip leaves the quantity out of the stored request.
 internal sealed record EquipItemCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
     long ExpectedItemRevision,
-    string EquipmentSlotId);
+    string EquipmentSlotId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Quantity = null);
 
 internal sealed record UnequipItemCommand(
     Guid CharacterId,
@@ -130,13 +133,16 @@ internal sealed record SplitItemStackCommand(
     Guid DestinationContainerId,
     int? DestinationSlotIndex);
 
+// Merges the whole source stack, or with a quantity that part of it, into the target stack. A
+// whole merge leaves the quantity out of the stored request.
 internal sealed record MergeItemStacksCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     Guid SourceItemInstanceId,
     long ExpectedSourceItemRevision,
     Guid TargetItemInstanceId,
-    long ExpectedTargetItemRevision);
+    long ExpectedTargetItemRevision,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Quantity = null);
 
 internal sealed record SwapContainerItemsCommand(
     Guid CharacterId,

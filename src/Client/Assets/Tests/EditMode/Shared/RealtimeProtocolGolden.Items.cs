@@ -42,6 +42,11 @@ namespace Mmorpg.SharedTests
                 () => RealtimeProtocol.EncodeItemOperationIntent(
                     RealtimeItemOperationIntent.CreateEquip(G(1), 5, G(2), 6, "main_hand")));
             r.Vector(
+                "Items/ItemOperationIntent/equip part",
+                intent,
+                () => RealtimeProtocol.EncodeItemOperationIntent(
+                    RealtimeItemOperationIntent.CreateEquip(G(1), 5, G(2), 6, "ammunition", 50)));
+            r.Vector(
                 "Items/ItemOperationIntent/unequip",
                 intent,
                 () => RealtimeProtocol.EncodeItemOperationIntent(
@@ -56,6 +61,11 @@ namespace Mmorpg.SharedTests
                 intent,
                 () => RealtimeProtocol.EncodeItemOperationIntent(
                     RealtimeItemOperationIntent.CreateMergeStacks(G(1), 5, G(2), 6, G(4), 0)));
+            r.Vector(
+                "Items/ItemOperationIntent/merge part of a stack",
+                intent,
+                () => RealtimeProtocol.EncodeItemOperationIntent(
+                    RealtimeItemOperationIntent.CreateMergeStacks(G(1), 5, G(2), 6, G(4), 0, int.MaxValue)));
             r.Vector(
                 "Items/ItemOperationIntent/destroy",
                 intent,
@@ -169,6 +179,8 @@ namespace Mmorpg.SharedTests
             r.Rejects("Items/ItemOperationIntent/equip 65 character slot", EquipIntentWire(Repeat("e", 65)));
             r.Rejects("Items/ItemOperationIntent/equip whitespace slot", EquipIntentWire(" "));
             r.Rejects("Items/ItemOperationIntent/equip empty slot", EquipIntentWire(""));
+            r.Accepts("Items/ItemOperationIntent/equip part", EquipIntentWire("ammunition", 1));
+            r.Rejects("Items/ItemOperationIntent/equip negative quantity", EquipIntentWire("ammunition", -1));
 
             r.Accepts("Items/ItemOperationIntent/split baseline", SplitIntentWire(3));
             r.Accepts("Items/ItemOperationIntent/split to any slot", SplitIntentWire(1, slot: -1));
@@ -186,6 +198,9 @@ namespace Mmorpg.SharedTests
                     $"Items/ItemOperationIntent/{name} with negative target revision",
                     PairIntentWire(kind, G(2), G(4), targetRevision: -1));
             }
+
+            r.Accepts("Items/ItemOperationIntent/merge part", PairIntentWire(merge, G(2), G(4), quantity: 1));
+            r.Rejects("Items/ItemOperationIntent/merge negative quantity", PairIntentWire(merge, G(2), G(4), quantity: -1));
 
             r.Accepts("Items/ItemOperationIntent/destroy baseline", ItemIntentWire(destroy).Append(ItemExpectationWire(G(2), 6)));
             r.Rejects("Items/ItemOperationIntent/destroy without item", ItemIntentWire(destroy).Append(ItemExpectationWire(Guid.Empty, 6)));
@@ -875,9 +890,9 @@ namespace Mmorpg.SharedTests
                 .I32(slot);
         }
 
-        private static Wire EquipIntentWire(WireText slot)
+        private static Wire EquipIntentWire(WireText slot, int quantity = 0)
         {
-            return ItemIntentWire(2).Append(ItemExpectationWire(G(2), 6)).Text(slot);
+            return ItemIntentWire(2).Append(ItemExpectationWire(G(2), 6)).Text(slot).I32(quantity);
         }
 
         private static Wire SplitIntentWire(int quantity, Guid? destination = null, int slot = 0)
@@ -889,9 +904,11 @@ namespace Mmorpg.SharedTests
                 .I32(slot);
         }
 
-        private static Wire PairIntentWire(byte kind, Guid item, Guid target, long targetRevision = 0)
+        // A merge carries the part of the stack it moves after the pair, 0 for the whole stack.
+        private static Wire PairIntentWire(byte kind, Guid item, Guid target, long targetRevision = 0, int quantity = 0)
         {
-            return ItemIntentWire(kind).Append(ItemExpectationWire(item, 6)).Append(ItemExpectationWire(target, targetRevision));
+            var wire = ItemIntentWire(kind).Append(ItemExpectationWire(item, 6)).Append(ItemExpectationWire(target, targetRevision));
+            return kind == 5 ? wire.I32(quantity) : wire;
         }
 
         private static Wire ClaimIntentWire(params Wire[] items)

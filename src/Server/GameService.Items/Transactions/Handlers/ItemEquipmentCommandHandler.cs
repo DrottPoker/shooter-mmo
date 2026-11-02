@@ -1,11 +1,12 @@
 using Dapper;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
-// Equips a whole item or stack from a container and unequips it into a container slot. Equipping
-// onto an occupied slot swaps: the equipped item moves into the slot the new item came from, in
-// one transaction. The expected character revision guarantees the swap replaces the occupant the
-// player saw.
+// Equips a whole item or stack from a container, or part of a stack into an empty slot, and
+// unequips an item into a container slot. Equipping a whole item onto an occupied slot swaps: the
+// equipped item moves into the slot the new item came from, in one transaction. The expected
+// character revision guarantees the swap replaces the occupant the player saw.
 internal sealed class ItemEquipmentCommandHandler
     : IItemCommandHandler<EquipItemCommand>,
     IItemCommandHandler<UnequipItemCommand>
@@ -41,6 +42,20 @@ internal sealed class ItemEquipmentCommandHandler
         }
 
         var definition = await context.State.LoadDefinitionAsync(item.DefinitionId, cancellationToken);
+        var quantity = command.Quantity ?? item.Quantity;
+        if (quantity <= 0 || quantity > item.Quantity)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemQuantityChanged,
+                "An equip quantity must be positive and at most the stack quantity.");
+        }
+
+        if (quantity < item.Quantity)
+        {
+            await EquipPartAsync(context, command, item, definition, quantity, occupantId, cancellationToken);
+            return;
+        }
+
         var bagHasContents = await context.State.BagHasContentsAsync(item, cancellationToken);
         await context.Placement.EnsureEquipmentDestinationAsync(
             command.CharacterId,
@@ -146,6 +161,122 @@ internal sealed class ItemEquipmentCommandHandler
         context.Journal.TouchContainer(item.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);
         context.Journal.IncludeResultItem(item.ItemInstanceId);
+    }
+
+    // Equips part of a stack, such as some arrows, as a new stack in an empty slot; the rest
+    // stays where it was. A part never swaps, and topping up an equipped stack is a merge.
+    private static async Task EquipPartAsync(
+        ItemTransactionContext context,
+        EquipItemCommand command,
+        LockedItem source,
+        ResolvedItemDefinition definition,
+        int quantity,
+        Guid? occupantId,
+        CancellationToken cancellationToken)
+    {
+        if (definition.IsBag || definition.RuntimeDefinition.MaximumStackSize <= 1)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStackIncompatible,
+                "The item definition is not stackable.");
+        }
+
+        if (occupantId is not null)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.EquipmentSlotOccupied,
+                "Part of a stack equips only into an empty slot; it tops up an equipped stack through a merge.");
+        }
+
+        await context.Placement.EnsureEquipmentDestinationAsync(
+            command.CharacterId,
+            command.EquipmentSlotId,
+            definition,
+            quantity,
+            false,
+            cancellationToken);
+        var policies = await context.State.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
+        var beforeSource = await context.Journal.CaptureItemStateJsonAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        var equippedItemInstanceId = Guid.NewGuid();
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            update item_instances
+            set quantity = quantity - @Quantity,
+                revision = revision + 1,
+                updated_at = now()
+            where id = @SourceItemInstanceId;
+
+            insert into item_instances (
+                id,
+                definition_id,
+                quantity,
+                equipped_character_id,
+                equipment_slot_id)
+            values (
+                @EquippedItemInstanceId,
+                @DefinitionId,
+                @Quantity,
+                @CharacterId,
+                @EquipmentSlotId);
+            """,
+            new
+            {
+                Quantity = quantity,
+                SourceItemInstanceId = source.ItemInstanceId,
+                EquippedItemInstanceId = equippedItemInstanceId,
+                source.DefinitionId,
+                command.CharacterId,
+                command.EquipmentSlotId
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+
+        foreach (var policy in policies.Where(policy =>
+                     string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal)))
+        {
+            await context.Connection.ExecuteAsync(new CommandDefinition(
+                """
+                insert into item_instance_policies (
+                    id,
+                    item_instance_id,
+                    policy_kind,
+                    source_kind,
+                    source_id)
+                values (
+                    @PolicyId,
+                    @ItemInstanceId,
+                    @PolicyKind,
+                    @SourceKind,
+                    @SourceId);
+                """,
+                new
+                {
+                    PolicyId = Guid.NewGuid(),
+                    ItemInstanceId = equippedItemInstanceId,
+                    policy.PolicyKind,
+                    policy.SourceKind,
+                    policy.SourceId
+                },
+                context.Transaction,
+                cancellationToken: cancellationToken));
+        }
+
+        context.Journal.AddItemAudit(
+            "stack_split_source",
+            source.ItemInstanceId,
+            beforeSource,
+            await context.Journal.CaptureItemStateJsonAsync(source.ItemInstanceId, cancellationToken));
+        context.Journal.AddItemAudit(
+            "item_equipped",
+            equippedItemInstanceId,
+            null,
+            await context.Journal.CaptureItemStateJsonAsync(equippedItemInstanceId, cancellationToken));
+        context.Journal.TouchContainer(source.ContainerId);
+        context.Journal.TouchCharacter(command.CharacterId);
+        context.Journal.IncludeResultItem(source.ItemInstanceId);
+        context.Journal.IncludeResultItem(equippedItemInstanceId);
     }
 
     // The equipped item that a swap moves into the new item's source slot. The slot must accept

@@ -56,6 +56,63 @@ public sealed class EquipmentStackIntegrationTests
         Assert.Equal(0, await CountEquippedAsync(world, characterId));
     }
 
+    // Part of a stack equips into an empty slot and tops up an equipped or carried stack; the
+    // rest stays, and the stack limits of the slot and the target still hold.
+    [PostgresIntegrationFact]
+    public async Task PartOfAnArrowStackEquipsAndTopsUpStacks()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("part_player");
+        var characterId = player.Character.Id;
+        var state = await world.LoadStateAsync(characterId);
+        var inventoryId = state.PermanentInventoryContainerId;
+        var arrows = await world.GrantAsync(characterId, "fixture.arrow", 60, inventoryId, 0);
+        var carried = await world.GrantAsync(characterId, "fixture.arrow", 10, inventoryId, 1);
+
+        var tooMany = await EquipAsync(world, characterId, arrows, "ammunition", 55);
+        Assert.Equal(ItemTransactionErrorCodes.ItemStackLimitExceeded, tooMany.Error!.Code);
+
+        var equipPart = await EquipAsync(world, characterId, arrows, "ammunition", 30);
+        ItemScenarioWorld.AssertCommitted(equipPart);
+        var equipped = await LoadEquippedItemAsync(world, characterId, "ammunition") ?? Guid.Empty;
+        Assert.NotEqual(Guid.Empty, equipped);
+        Assert.NotEqual(arrows, equipped);
+        Assert.Contains(equipPart.ItemRevisions, item => item.ItemInstanceId == equipped);
+        Assert.Contains(equipPart.ItemRevisions, item => item.ItemInstanceId == arrows);
+        Assert.Equal(30, (await world.LoadItemAsync(equipped)).Quantity);
+        Assert.Equal(30, (await world.LoadItemAsync(arrows)).Quantity);
+        Assert.Equal(40, await LoadCarriedWeightAsync(world, characterId));
+
+        // An occupied slot takes a part only as a top-up through a merge.
+        var onOccupied = await EquipAsync(world, characterId, carried, "ammunition", 5);
+        Assert.Equal(ItemTransactionErrorCodes.EquipmentSlotOccupied, onOccupied.Error!.Code);
+
+        ItemScenarioWorld.AssertCommitted(await MergeAsync(world, characterId, arrows, equipped, 15));
+        Assert.Equal(45, (await world.LoadItemAsync(equipped)).Quantity);
+        Assert.Equal(15, (await world.LoadItemAsync(arrows)).Quantity);
+        Assert.Equal(25, await LoadCarriedWeightAsync(world, characterId));
+
+        var overTop = await MergeAsync(world, characterId, arrows, equipped, 6);
+        Assert.Equal(ItemTransactionErrorCodes.ItemStackLimitExceeded, overTop.Error!.Code);
+
+        // A part of the equipped stack tops up a carried stack.
+        ItemScenarioWorld.AssertCommitted(await MergeAsync(world, characterId, equipped, carried, 20));
+        Assert.Equal(25, (await world.LoadItemAsync(equipped)).Quantity);
+        Assert.Equal(30, (await world.LoadItemAsync(carried)).Quantity);
+        Assert.Equal(45, await LoadCarriedWeightAsync(world, characterId));
+
+        var none = await MergeAsync(world, characterId, arrows, carried, 0);
+        var all = await MergeAsync(world, characterId, arrows, carried, 16);
+        Assert.Equal(ItemTransactionErrorCodes.ItemQuantityChanged, none.Error!.Code);
+        Assert.Equal(ItemTransactionErrorCodes.ItemQuantityChanged, all.Error!.Code);
+
+        // The whole remaining stack merges as before, and the source is gone.
+        ItemScenarioWorld.AssertCommitted(await MergeAsync(world, characterId, arrows, carried, 15));
+        Assert.Equal(45, (await world.LoadItemAsync(carried)).Quantity);
+        Assert.Equal(0, await CountItemAsync(world, arrows));
+    }
+
     [PostgresIntegrationFact]
     public async Task StackLargerThanTheEquipmentSlotIsRejected()
     {
@@ -320,7 +377,8 @@ public sealed class EquipmentStackIntegrationTests
         ItemScenarioWorld world,
         Guid characterId,
         Guid itemInstanceId,
-        string equipmentSlotId)
+        string equipmentSlotId,
+        int? quantity = null)
     {
         var state = await world.LoadStateAsync(characterId);
         var item = await world.LoadItemAsync(itemInstanceId);
@@ -333,7 +391,8 @@ public sealed class EquipmentStackIntegrationTests
                     state.Revision,
                     itemInstanceId,
                     item.Revision,
-                    equipmentSlotId)),
+                    equipmentSlotId,
+                    quantity)),
             CancellationToken.None);
     }
 
@@ -364,7 +423,8 @@ public sealed class EquipmentStackIntegrationTests
         ItemScenarioWorld world,
         Guid characterId,
         Guid sourceItemInstanceId,
-        Guid targetItemInstanceId)
+        Guid targetItemInstanceId,
+        int? quantity = null)
     {
         var state = await world.LoadStateAsync(characterId);
         var source = await world.LoadItemAsync(sourceItemInstanceId);
@@ -379,8 +439,17 @@ public sealed class EquipmentStackIntegrationTests
                     sourceItemInstanceId,
                     source.Revision,
                     targetItemInstanceId,
-                    target.Revision)),
+                    target.Revision,
+                    quantity)),
             CancellationToken.None);
+    }
+
+    private static async Task<int> CountItemAsync(ItemScenarioWorld world, Guid itemInstanceId)
+    {
+        await using var connection = await world.Context.DataSource.OpenConnectionAsync();
+        return await connection.QuerySingleAsync<int>(
+            "select count(*)::int from item_instances where id = @ItemInstanceId;",
+            new { ItemInstanceId = itemInstanceId });
     }
 
     private static async Task<ItemTransactionResult> SplitAsync(

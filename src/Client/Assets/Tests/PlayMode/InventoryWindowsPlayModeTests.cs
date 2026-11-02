@@ -275,15 +275,22 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(GameMessageShows(NoSessionMessage), Is.True, "The game message names why the move was not sent.");
         }
 
-        // Shift-dragging a stack onto an empty slot splits half of it off without asking, and
-        // Shift+right-click sends half into the open Bank. Without a session the controller
-        // refuses both.
+        // Shift-dragging a stack splits half of it off without asking: onto an empty slot, and
+        // for arrows into the empty ammunition slot, which glows. Shift+right-click sends half
+        // where right-click sends the stack: arrows into the ammunition slot, anything into the
+        // open Bank. Without a session the controller refuses each after its checks passed.
         [UnityTest]
         public IEnumerator ShiftMovesHalfOfAStackWithoutAsking()
         {
             using var probe = new WindowProbe();
-            yield return probe.Load("Half Probe");
+            yield return probe.Load("Half Probe", extraCarried: catalog => CreateItem(
+                catalog.Definitions.First(definition =>
+                    definition.Ammunition != null
+                    && definition.EquipmentSlots != null
+                    && definition.EquipmentSlots.Contains(AmmunitionSlotId)).Id,
+                10));
             var windows = probe.Windows;
+            windows.SetEquipmentOpen(true);
             windows.SetInventoryOpen(true);
             yield return null;
 
@@ -303,17 +310,31 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(windows.Dialog.IsOpen, Is.False);
             Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage));
 
-            // A part never equips, so without the Bank the half has nowhere to go.
-            var clicks = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:0").GetComponent<InventorySlotClicks>();
-            clicks.ShiftOverride = true;
-            var right = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Right };
-            clicks.OnPointerClick(right);
+            var arrows = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:2").GetComponent<InventoryDragSource>();
+            arrows.PartialOverride = true;
+            arrows.OnBeginDrag(pointer);
+            Assert.That(windows.DragCoordinator.ActivePayload.Quantity, Is.EqualTo(5));
+            var ammunition = windows.GetComponentsInChildren<ItemSlotView>()
+                .Single(view => view.Spec.Key == "equipment:" + AmmunitionSlotId);
+            Assert.That(ammunition.ShowsDropTargetGlow, Is.True);
+            var ammunitionTarget = ammunition.GetComponent<InventoryDropTarget>();
+            ammunitionTarget.OnPointerEnter(pointer);
+            Assert.That(ammunitionTarget.ShowsValidDrop, Is.True);
+            ammunitionTarget.OnDrop(pointer);
+            arrows.OnEndDrag(pointer);
             yield return null;
-            Assert.That(NewestGameMessage(), Does.Not.Contain(NoSessionMessage));
+            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage));
+
+            var right = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Right };
+            var arrowClicks = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:2").GetComponent<InventorySlotClicks>();
+            arrowClicks.ShiftOverride = true;
+            arrowClicks.OnPointerClick(right);
+            yield return null;
+            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage), "half the arrows go to the ammunition slot");
 
             windows.OpenStorage(InventoryContextKind.Bank, InventoryStorageSource.Development);
             yield return null;
-            clicks = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:0").GetComponent<InventorySlotClicks>();
+            var clicks = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:0").GetComponent<InventorySlotClicks>();
             clicks.ShiftOverride = true;
             clicks.OnPointerClick(right);
             yield return null;

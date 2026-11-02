@@ -429,7 +429,9 @@ characters, body models, options, and definitions at most
 - `ItemOperationIntent` (13) carries an operation id, an `ItemOperationKind`
   (`Relocate`, `Equip`, `Unequip`, `SplitStack`, `MergeStacks`, `Destroy`,
   `ClaimRecoveryDelivery`, or `SwapContainerItems`), the expected character
-  revision, and the variant fields of its kind. `ItemOperationResult` (14)
+  revision, and the variant fields of its kind. `Equip` and `MergeStacks` carry
+  a `Quantity` last, the part of the stack they move, or 0 for the whole stack;
+  `SplitStack` requires one of at least 1. `ItemOperationResult` (14)
   correlates it by operation id and carries success, whether the client must
   refresh its inventory, the carry state, the `Error` on failure, and the item,
   container, and Recovery delivery revisions it changed.

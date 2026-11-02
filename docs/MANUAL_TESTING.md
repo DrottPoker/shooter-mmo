@@ -855,26 +855,27 @@ Admin menu (F3) opens them on its `Storage` tab.
 
 ### Ammunition
 
-1. Drag the 100 Bronze Arrows from the Bag's ammunition slot onto the
-   `Ammunition` equipment slot. Expected result: the weight drops by 100, and
-   the slot shows `100`.
-2. Hold Shift, drag the equipped arrows onto an empty Permanent slot, and
-   release. Expected result: the dragged icon shows `50`, no window asks, 50
-   stay equipped, 50 land on the slot, and the weight rises by 50. Drag the 50
-   back onto the equipped stack.
-3. Ctrl+click the equipped arrows. Expected result: a `SPLIT STACK` window asks
-   for a quantity, starting at `50`. Enter `40` and press Enter. Expected
+1. Hold Shift and drag the 100 Bronze Arrows from the Bag's ammunition slot onto
+   the empty `Ammunition` equipment slot. Expected result: the slot glows while
+   you drag, the dragged icon shows `50`, no window asks, 50 land in the slot,
+   50 stay in the Bag, and the weight drops by 50.
+2. Hold Shift and drag the Bag's 50 arrows onto the equipped stack. Expected
+   result: 25 top it up to `75`, and 25 stay in the Bag.
+3. Hold Shift and drag the equipped arrows onto the Bag's arrows. Expected
+   result: 37 go back, the Bag shows `62`, and 38 stay equipped.
+4. Shift+right-click the Bag's arrows. Expected result: 31 top up the equipped
+   stack to `69`, and 31 stay in the Bag.
+5. Ctrl+click the equipped arrows. Expected result: a `SPLIT STACK` window asks
+   for a quantity, starting at `34`. Enter `40` and press Enter. Expected
    result: the arrow icon with `40` follows the pointer. Click the ground beside
    the windows. Expected result: the character does not walk, and the arrows
-   are put back. Ctrl+click the arrows again, choose `40`, and click an occupied
-   Permanent slot. Expected result: the game messages say why, and the arrows
-   stay on the pointer. Click an empty Permanent slot. Expected result: 60 stay
+   are put back. Ctrl+click the arrows again, choose `40`, and click the
+   Leather Jerkin. Expected result: the game messages say why, and the arrows
+   stay on the pointer. Click an empty Permanent slot. Expected result: 29 stay
    equipped, the 40 land there, and the weight rises by 40.
-4. Shift+right-click the equipped arrows. Expected result: 30 go into the Bag's
-   empty ammunition slot, and 30 stay equipped.
-5. Drag the split stacks back onto the equipped stack, then drag the stack back
-   onto the Bag's ammunition slot. Expected result: the equipped stack is back
-   at 100, and then the weight is back at `1040 / 2500`.
+6. Drag the 40 arrows onto the Bag's arrows, then drag the equipped stack onto
+   them. Expected result: the Bag shows `100` again, and the weight is back at
+   `1040 / 2500`.
 
 ### Bags And Specialized Slots
 
@@ -893,10 +894,12 @@ Admin menu (F3) opens them on its `Storage` tab.
 1. In the Bank, hold Shift and drag the Iron Ore stack of 20 onto an empty Bank
    slot. Then drag the new stack back onto its peer. Expected result: 10 stay,
    10 form a new stack, which can be moved once the server has confirmed it, and
-   the merge restores 20. A Shift drag onto an occupied slot lights red.
-2. Shift+right-click the Iron Ore stack of 19 in the Bank. Expected result: 9
-   go to the first free inventory slot and 10 stay in the Bank. Shift+right-click
-   the 9 in the inventory. Expected result: 4 go into the first free Bank slot.
+   the merge restores 20. Hold Shift and drag the 20 onto the stack of 19.
+   Expected result: 10 top it up to 29. A Shift drag onto the potion lights red.
+2. Shift+right-click the Iron Ore stack of 29 in the Bank. Expected result: 14
+   top up the Iron Ore in the Bag's ore slot to 19, and 15 stay in the Bank.
+   Shift+right-click the Bag's 19 ore. Expected result: 9 top up the first Bank
+   ore stack.
 3. Drag two unlike items between compatible occupied ordinary slots. Expected
    result: they exchange slots. Repeat against an incompatible specialized slot.
    Expected result: neither moves.

@@ -134,7 +134,7 @@ namespace Mmorpg.Client.Items
             {
                 edit.Editor.TryReplace(
                     target.ItemInstanceId,
-                    InventoryPredictionEdit.WithQuantity(target, target.Quantity + quantity));
+                    target.WithQuantity(target.Quantity + quantity));
             }
             else if (!partial && edit.TryGetDefinition(target.DefinitionId, out var targetDefinition))
             {
@@ -188,7 +188,7 @@ namespace Mmorpg.Client.Items
             {
                 return edit.Editor.TryReplace(
                     occupant.ItemInstanceId,
-                    InventoryPredictionEdit.WithQuantity(occupant, occupant.Quantity + loot.Quantity));
+                    occupant.WithQuantity(occupant.Quantity + loot.Quantity));
             }
 
             // The equipped item swaps into the corpse slot the loot came from.
@@ -215,7 +215,7 @@ namespace Mmorpg.Client.Items
 
             if (quantity < item.Quantity)
             {
-                edit.Editor.TryReplace(item.ItemInstanceId, InventoryPredictionEdit.WithQuantity(item, item.Quantity - quantity));
+                edit.Editor.TryReplace(item.ItemInstanceId, item.WithQuantity(item.Quantity - quantity));
             }
             else
             {
@@ -511,7 +511,7 @@ namespace Mmorpg.Client.Items
                             ? mapped
                             : step.TargetItemInstanceId;
                         if (!edit.Editor.TryFind(targetId, out var target, out _)
-                            || !edit.Editor.TryReplace(targetId, InventoryPredictionEdit.WithQuantity(target, target.Quantity + step.Quantity)))
+                            || !edit.Editor.TryReplace(targetId, target.WithQuantity(target.Quantity + step.Quantity)))
                         {
                             return false;
                         }
@@ -616,7 +616,7 @@ namespace Mmorpg.Client.Items
                             slot.SlotIndex,
                             slot.SlotKind,
                             slot.AcceptedTags.ToArray(),
-                            left > 0 ? InventoryPredictionEdit.WithQuantity(item, left) : null);
+                            left > 0 ? item.WithQuantity(left) : null);
                     })
                     .ToArray());
         }
