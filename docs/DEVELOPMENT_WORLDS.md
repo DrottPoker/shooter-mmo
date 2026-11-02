@@ -60,7 +60,7 @@ in both:
 | Bright red | A movement test the character must not get through |
 | Brown grey | Rock |
 | Dark brown and dark green | Tree trunks and crowns |
-| See-through blue | Water |
+| Water | The stylized water materials of [Water](ART_PIPELINE.md#water) |
 | Sand | Beaches, banks, and the ground under water |
 | Cyan | Spawn pads, range stripes, and interest markers |
 | Charcoal | Boundary walls |
@@ -226,15 +226,19 @@ Trees, the resource nodes that a Woodcutting Axe chops down, at `(38, 0, -80)`,
 ### Waterside
 
 The water test area in the northwest: a Unity Terrain baked as a heightfield,
-three water bodies, a bridge, and the sea where the World ends. The builder
-computes every height from a fixed function of the position, so a rebuild
-reproduces the same terrain and water. A `WATERSIDE` sign stands at
-`(-60, 0, 60)`, and signs name the lake, the ford, the bridge, and the sea.
+four water bodies, a waterfall, a bridge, and the sea where the World ends. The
+builder computes every height from a fixed function of the position, so a
+rebuild reproduces the same terrain and water. A `WATERSIDE` sign stands at
+`(-60, 0, 60)`, and signs name the lake, the waterfall, the ford, the bridge,
+and the sea.
 
 | Element | Position or area | Notes |
 | --- | --- | --- |
 | Terrain | origin `(-192, 0, 64)`, size `(128, 8, 128)` | A 4 m plateau with one sample per meter that ramps down to the ground over 16 m at its east and south edges |
-| Lake `waterside-lake` | center `(-108, 112)`, surface at 3.6 m | The shore lies 13 m from the center and the floor falls 0.3 m per meter, so the water is 0.5 m deep at 11.3 m, 1.2 m deep at 9 m, and at most 3 m deep |
+| Lake `waterside-lake` | center `(-108, 112)`, surface at 3.6 m | The shore lies 13 m from the center and the floor falls 0.3 m per meter, so the water is 0.5 m deep at 11.3 m, 1.2 m deep at 9 m, and at most 3 m deep; the bank rises to the plateau over 2 m |
+| Waterfall outcrop | lip at `(-103.5, 124.5)` on the lake's north shore, facing the lake | Rock 10 m wide and 9 m deep with its top at 7.6 m, 4 m above the lake, and a ramp onto it from behind; a channel 3 m wide runs along its top from a spring under a boulder to the lip |
+| Stream `waterside-stream` | along the outcrop's channel, surface at 7.5 m | 0.3 m deep, flowing toward the lip ever faster and foaming where it tips over |
+| Waterfall and pool | the sheet falls 3.9 m from the lip and lands 1.4 m out, at `(-103.9, 123.2)` | The lake is 1 m deep in a pool around the landing, so it is waded under the fall; the water churns and foams there, white water boils up, mist rises, and droplets fly |
 | River `waterside-river` | from `(-113, 119)` in the lake to `(-149, 150)` at the sea | 8 m wide and 2 m deep; its surface stays level with the lake until it leaves it, then falls to the sea |
 | Ford | `(-127.5, 132.8)`, 20 m down the river | 0.8 m deep for 6 m of the river, so it is waded across at the wading speed |
 | Bridge | `(-140, 142.8)`, 36 m down the river | A 16 by 4 m deck with its top at 4.2 m, 1 m above the water, from plateau to plateau |
@@ -243,9 +247,18 @@ reproduces the same terrain and water. A `WATERSIDE` sign stands at
 | Sea beyond the World | west and north of the bounds, out to 400 m | Shows only, over a sand floor that does not collide |
 
 Terrain layers paint rock where the ground is steeper than 40 degrees, sand on
-the beds and banks of the water, and grass elsewhere. The terrain, the water
-surface meshes, and the terrain layers are generated assets below
-`Assets/Art/Terrain/DevelopmentWorld2`.
+the beds and banks of the water, and grass elsewhere; each cell of the 0.5 m
+layer map takes the share of its 16 samples that lie on a water bed, so the sand
+blends into the grass. The terrain, the water surface meshes, the waterfall's
+sheet, and the terrain layers are generated assets below
+`Assets/Art/Terrain/DevelopmentWorld2`. The surface meshes carry the data of the
+[water shader](ART_PIPELINE.md#water): the river and the stream their flow, faster
+in the middle and fastest over the ford and toward the lip, and their foam over
+the ford and at the lip; the sea its waves, which calm down toward the sea
+beyond the World so the two meet without a seam; and the lake, rings 1 m apart,
+the churn and spread around the waterfall's landing. The waterside's water uses
+the materials of its kind, `M_Water_Lake`, `M_Water_River`, and `M_Water_Sea`,
+and the sheet `M_Water_Waterfall`.
 
 ### Resource Node Placements
 
@@ -320,7 +333,7 @@ To rebuild and bake both Worlds:
 Expected result: the Console reports `[WORLD COLLISION] Baked world
 'development-world-1' at revision <revision> with ... boxes, ... meshes, ...
 heightfields, 0 water bodies with 0 deep water edge triangles in 4 chunks, and
-... resource node boxes.`, and the same for `development-world-2` with 3 water
+... resource node boxes.`, and the same for `development-world-2` with 4 water
 bodies and their deep water edges in 144 chunks; the revision is a SHA-256 of
 the World's collision. A rebuild and bake without a layout or actor change bakes
 the same revisions, so the collision shows no change in Git. A rebuild still
@@ -388,10 +401,11 @@ simulation:
 - The town, bridge, maze, camera tests, arena, and highlands routes work, and the
   inside of the peak stays unreachable.
 - The waterside lake stops a walker where it gets too deep and plans a click into
-  its middle to the edge, its shore is waded at the wading speed, the river is
-  crossed over the bridge without touching water and through the ford by wading,
-  never through deep water, the sea is deep along the open stretch of both
-  bounds, and the three water bodies are baked with their ids.
+  its middle to the edge, its shore is waded at the wading speed and its bank
+  rises from the water, the river is crossed over the bridge without touching
+  water and through the ford by wading, never through deep water, the sea is
+  deep along the open stretch of both bounds, the waterfall's pool is waded and
+  its stream is 0.3 m deep, and the four water bodies are baked with their ids.
 - The outpost lies beyond the interest exit radius from the town.
 
 The Unity `AuthoredGameplayAssetTests` check that both scenes keep the World
@@ -399,7 +413,9 @@ scene composition, that `PlayerSpawn` and the boundary walls match the manifest,
 that the labels are world-space text without raycasts, that every development
 World material is used, that every project material is in the form its shader's
 Inspector keeps, so selecting one never changes its file, that the waterside has
-its lake, river, and sea without colliders, and that the checked-in bake holds
+its lake, river, sea, and stream without colliders and with the water material
+of their kind, that the waterfall's sheet and the sea beyond the World only
+show, and that the checked-in bake holds
 exactly the scene's boxes, terrain cells, mesh triangles, and water surfaces,
 deep water edges where there is water, and one movement-only box per placed
 resource node.
@@ -450,6 +466,14 @@ Lakes, rivers, and seas follow these rules in every World scene:
 - Where water bodies overlap, the highest surface counts. Water beyond the ground
   of the World gets no edges, so a sea can reach to the horizon as a mesh
   without a `WaterBody`, which only shows.
+- Give the renderer the water material of the body's kind, or a variant of it
+  for a zone's own colors, and give the mesh the data the water shader reads:
+  the flow in the second texture coordinate, and in the vertex color red where
+  the water foams and green where waves lift it; see
+  [Water](ART_PIPELINE.md#water).
+- A waterfall is a sheet mesh with the waterfall material and no `WaterBody`,
+  from the lip of the water above down to the surface below, where the water
+  below foams and a pool lets characters wade under the fall.
 
 ## Post-Authoring Verification
 

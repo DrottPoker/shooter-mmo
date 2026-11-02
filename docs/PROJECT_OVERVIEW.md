@@ -52,7 +52,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 | --- | --- | --- |
 | Accounts and characters | Registration, login, one active session per account, characters with looks | Character deletion is an open question |
 | Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets, offline Shard-to-World rebinding | Zones, Layers, several workers per shard, production orchestration |
-| Movement and collision | Click-to-move with client-planned routes, prediction, reconciliation, shared checksummed collision with terrain, lakes, rivers, and sea that are waded and stop at deep water | Final water look, fishing, dynamic collision |
+| Movement and collision | Click-to-move with client-planned routes, prediction, reconciliation, shared checksummed collision with terrain, lakes, rivers, and sea that are waded and stop at deep water, stylized water with foam, waterfalls, and wakes | Fishing, dynamic collision |
 | World actors | NPCs with composable capabilities, Mobs, resource nodes, visual spawn authoring, the world menu, server-validated interaction | Durable unique actors, dialogue, crafting, and trainer operations |
 | Items and inventory | Item catalog, slot inventory, equipment, Bags, Bank, Recovery Storage, policies, carry weight, predicted inventory moves | Consume and use, final inventory UI |
 | Death and corpses | Death partition, durable player corpses, live and durable Mob corpses, concurrent looting, Loot all | Final corpse presentation |

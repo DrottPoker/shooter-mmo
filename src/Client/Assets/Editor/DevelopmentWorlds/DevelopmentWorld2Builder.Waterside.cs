@@ -6,9 +6,10 @@ using UnityEngine.Rendering;
 
 namespace Mmorpg.Client.Editor
 {
-    // The northwest waterside, the water test area: a plateau with a lake, a river from the
-    // lake to the sea with a ford and a bridge, and the sea in the World's northwest corner,
-    // where deep water instead of the boundary walls ends the World. Every height is a pure
+    // The northwest waterside, the water test area: a plateau with a lake, a waterfall that
+    // falls into the lake from a rock outcrop, a river from the lake to the sea with a ford and
+    // a bridge, and the sea in the World's northwest corner, where deep water instead of the
+    // boundary walls ends the World. Every height is a pure
     // function of the position, so every rebuild produces the same terrain and water.
     public static partial class DevelopmentWorld2Builder
     {
@@ -32,7 +33,7 @@ namespace Mmorpg.Client.Editor
         public static readonly Vector2 SeaCorner = new Vector2(-192f, 192f);
 
         private const int WatersideHeightmapResolution = 129;
-        private const int WatersideAlphamapResolution = 128;
+        private const int WatersideAlphamapResolution = 256;
         private const float WatersideBaseHeight = 0.02f;
         private const float WatersideRampLength = 16f;
         private const float FloorHeightMinimum = 0.1f;
@@ -63,6 +64,26 @@ namespace Mmorpg.Client.Editor
         private const float FordTransition = 3f;
         private const float BridgeDistance = 36f;
         private const float BridgeDeckTop = 4.2f;
+
+        // A rock outcrop on the lake's north shore whose top lies 4 m above the lake, east of
+        // where the river leaves it, with its face toward the afternoon sun. A stream runs in a
+        // channel along its top from a spring under a boulder and falls over its lip into a pool
+        // in the lake, shallow enough to wade under the fall.
+        public const string StreamBodyId = "waterside-stream";
+        private static readonly Vector2 OutcropDirection = new Vector2(0.34202014f, 0.93969262f);
+        private const float OutcropLipDistance = 13.3f;
+        private const float OutcropLength = 9f;
+        private const float OutcropHalfWidth = 5f;
+        private const float OutcropTop = 7.6f;
+        private const float OutcropBottom = 2.4f;
+        private const float StreamHalfWidth = 1.5f;
+        private const float StreamBedTop = 7.2f;
+        private const float StreamSurface = 7.5f;
+        private const float SpringLength = 1.2f;
+        private const float WaterfallSpeed = 1.6f;
+        private const float PlungePoolRadius = 3.2f;
+        private const float PlungePoolDepth = 1f;
+        private const float Gravity = 9.81f;
 
         private static float? riverFallStart;
 
@@ -96,6 +117,29 @@ namespace Mmorpg.Client.Editor
             }
         }
 
+        // The middle of the outcrop's lip, and the direction across the outcrop.
+        public static Vector2 WaterfallLip
+        {
+            get { return LakeCenter + (OutcropDirection * OutcropLipDistance); }
+        }
+
+        private static Vector2 OutcropAcross
+        {
+            get { return new Vector2(-OutcropDirection.y, OutcropDirection.x); }
+        }
+
+        // The water leaves the lip at the waterfall's speed and lands this far out, where the
+        // pool lies.
+        private static float WaterfallSeconds
+        {
+            get { return Mathf.Sqrt(2f * (StreamSurface - LakeSurface) / Gravity); }
+        }
+
+        public static Vector2 PlungePoolCenter
+        {
+            get { return WaterfallLip - (OutcropDirection * (WaterfallSpeed * WaterfallSeconds)); }
+        }
+
         private static void BuildWaterside(DevelopmentWorldBuilder builder)
         {
             var waterside = builder.Group(builder.Environment, "Waterside");
@@ -104,28 +148,34 @@ namespace Mmorpg.Client.Editor
             terrainObject.name = "WatersideTerrain";
             terrainObject.transform.SetParent(waterside, false);
             terrainObject.transform.localPosition = WatersideOrigin;
+            var terrain = terrainObject.GetComponent<Terrain>();
+
+            // The shorelines follow the drawn terrain, so it keeps every height sample near
+            // the camera instead of the default simplification.
+            terrain.heightmapPixelError = 1f;
             if (GraphicsSettings.currentRenderPipeline != null)
             {
-                terrainObject.GetComponent<Terrain>().materialTemplate =
-                    GraphicsSettings.currentRenderPipeline.defaultTerrainMaterial;
+                terrain.materialTemplate = GraphicsSettings.currentRenderPipeline.defaultTerrainMaterial;
             }
 
             var water = builder.Group(waterside, "Water");
-            WaterBodyObject(water, "Lake", LakeBodyId, WaterBodyKind.Lake, BuildLakeSurface(), palette.Water);
-            WaterBodyObject(water, "River", RiverBodyId, WaterBodyKind.River, BuildRiverSurface(), palette.Water);
-            WaterBodyObject(water, "Sea", SeaBodyId, WaterBodyKind.Sea, BuildSeaSurface(), palette.Water);
+            WaterAssets.CreateOrUpdate();
+            WaterBodyObject(water, "Lake", LakeBodyId, WaterBodyKind.Lake, BuildLakeSurface());
+            WaterBodyObject(water, "River", RiverBodyId, WaterBodyKind.River, BuildRiverSurface());
+            WaterBodyObject(water, "Sea", SeaBodyId, WaterBodyKind.Sea, BuildSeaSurface());
 
             // The sea beyond the World only shows; nothing reaches it, so it needs no collision.
             var beyond = new GameObject("SeaBeyondTheWorld");
             beyond.transform.SetParent(water, false);
             beyond.AddComponent<MeshFilter>().sharedMesh = BuildOuterSeaSurface();
-            ConfigureWaterRenderer(beyond.AddComponent<MeshRenderer>(), palette.Water);
+            ConfigureWaterRenderer(beyond.AddComponent<MeshRenderer>(), WaterAssets.LoadMaterial(WaterBodyKind.Sea));
             builder.Box(water, "WestSeabed", new Vector3(SeaCorner.x - (OuterSeaExtent * 0.5f), -0.25f, SeaCorner.y),
                 new Vector3(OuterSeaExtent, 0.5f, OuterSeaExtent * 2f), palette.Sand, false);
             builder.Box(water, "NorthSeabed", new Vector3(SeaCorner.x + (OuterSeaExtent * 0.5f), -0.25f, SeaCorner.y + (OuterSeaExtent * 0.5f)),
                 new Vector3(OuterSeaExtent, 0.5f, OuterSeaExtent), palette.Sand, false);
 
             BuildWatersideBridge(builder, waterside);
+            BuildWaterfall(builder, waterside, water);
             builder.Sign(waterside, "WatersideSign", new Vector3(-60f, 0f, 60f), -45f, "WATERSIDE\nLake, river, ford,\nbridge, sea");
             builder.Sign(waterside, "LakeSign", GroundPoint(LakeCenter + new Vector2(0f, -17f)), 0f,
                 "LAKE\nWade from 0.5 m deep,\ndeep water stops at 1.2 m");
@@ -153,20 +203,27 @@ namespace Mmorpg.Client.Editor
             return Mathf.Max(WatersideBaseHeight, Mathf.Min(plateau, water));
         }
 
+        // The lake's floor, with the pool the waterfall falls into, which reaches under the
+        // outcrop's lip.
         private static float LakeFloor(float x, float z)
         {
-            var radius = Vector2.Distance(new Vector2(x, z), LakeCenter);
+            var point = new Vector2(x, z);
+            var radius = Vector2.Distance(point, LakeCenter);
             if (radius >= LakeShoreRadius + LakeBankWidth)
             {
                 return float.MaxValue;
             }
 
-            if (radius >= LakeShoreRadius)
+            var floor = radius >= LakeShoreRadius
+                ? LakeSurface + ((WatersidePlateauHeight - LakeSurface) * (radius - LakeShoreRadius) / LakeBankWidth)
+                : Mathf.Max(LakeSurface - LakeMaximumDepth, LakeSurface - (LakeFloorSlope * (LakeShoreRadius - radius)));
+            var poolDistance = Vector2.Distance(point, PlungePoolCenter);
+            if (poolDistance >= PlungePoolRadius)
             {
-                return LakeSurface + ((WatersidePlateauHeight - LakeSurface) * (radius - LakeShoreRadius) / LakeBankWidth);
+                return floor;
             }
 
-            return Mathf.Max(LakeSurface - LakeMaximumDepth, LakeSurface - (LakeFloorSlope * (LakeShoreRadius - radius)));
+            return Mathf.Min(floor, LakeSurface - (PlungePoolDepth * (1f - Smooth01(poolDistance / PlungePoolRadius))));
         }
 
         private static float SeaFloor(float x, float z)
@@ -346,9 +403,12 @@ namespace Mmorpg.Client.Editor
         }
 
         // Rock where the ground is too steep to climb, sand on the beds and banks of the
-        // water, and grass elsewhere.
+        // water, and grass elsewhere. Each cell takes the share of its samples that lie on a
+        // water bed, so the sand's edge blends into the grass instead of stepping from cell to
+        // cell.
         private static float[,,] CreateWatersideAlphamaps(TerrainData terrainData)
         {
+            const int samplesPerSide = 4;
             var resolution = terrainData.alphamapResolution;
             var cell = WatersideSize.x / resolution;
             var alphamaps = new float[resolution, resolution, 3];
@@ -359,12 +419,24 @@ namespace Mmorpg.Client.Editor
                     var steepness = terrainData.GetSteepness(
                         (x + 0.5f) / resolution,
                         (z + 0.5f) / resolution);
-                    WatersideHeight(
-                        WatersideOrigin.x + ((x + 0.5f) * cell),
-                        WatersideOrigin.z + ((z + 0.5f) * cell),
-                        out var waterBed);
-                    var layer = steepness >= RockSteepnessDegrees ? 1 : waterBed ? 2 : 0;
-                    alphamaps[z, x, layer] = 1f;
+                    var rock = steepness >= RockSteepnessDegrees ? 1f : 0f;
+                    var bedSamples = 0;
+                    for (var sampleZ = 0; sampleZ < samplesPerSide; sampleZ++)
+                    {
+                        for (var sampleX = 0; sampleX < samplesPerSide; sampleX++)
+                        {
+                            WatersideHeight(
+                                WatersideOrigin.x + ((x + ((sampleX + 0.5f) / samplesPerSide)) * cell),
+                                WatersideOrigin.z + ((z + ((sampleZ + 0.5f) / samplesPerSide)) * cell),
+                                out var waterBed);
+                            bedSamples += waterBed ? 1 : 0;
+                        }
+                    }
+
+                    var sand = (float)bedSamples / (samplesPerSide * samplesPerSide);
+                    alphamaps[z, x, 0] = (1f - rock) * (1f - sand);
+                    alphamaps[z, x, 1] = rock;
+                    alphamaps[z, x, 2] = (1f - rock) * sand;
                 }
             }
 
@@ -376,13 +448,12 @@ namespace Mmorpg.Client.Editor
             string name,
             string bodyId,
             WaterBodyKind kind,
-            Mesh surface,
-            Material material)
+            Mesh surface)
         {
             var body = new GameObject(name);
             body.transform.SetParent(parent, false);
             body.AddComponent<MeshFilter>().sharedMesh = surface;
-            ConfigureWaterRenderer(body.AddComponent<MeshRenderer>(), material);
+            ConfigureWaterRenderer(body.AddComponent<MeshRenderer>(), WaterAssets.LoadMaterial(kind));
             var serialized = new SerializedObject(body.AddComponent<WaterBody>());
             serialized.FindProperty("bodyId").stringValue = bodyId;
             serialized.FindProperty("kind").enumValueIndex = (int)kind;
@@ -396,44 +467,113 @@ namespace Mmorpg.Client.Editor
             renderer.receiveShadows = false;
         }
 
-        // A disc that reaches under the bank all around the lake.
+        // A disc of rings 1 m apart that reaches under the bank all around the lake. Lakes do
+        // not flow, the material's drift moves their ripples, but where the waterfall lands the
+        // water churns and spreads out from the pool.
         private static Mesh BuildLakeSurface()
         {
-            var vertices = new List<Vector3>();
-            var triangles = new List<int>();
-            AddFan(vertices, triangles, LakeCenter, LakeSurface, LakeWaterRadius, 0f, 360f, 48);
-            return SaveMesh("M_DevelopmentWorld2_Lake", vertices, triangles);
+            var surface = new WaterSurfaceMesh();
+            const int segments = 48;
+            var rings = Mathf.CeilToInt(LakeWaterRadius);
+            AddLakeVertex(surface, LakeCenter);
+            for (var ring = 1; ring <= rings; ring++)
+            {
+                var radius = Mathf.Min(ring, LakeWaterRadius);
+                for (var segment = 0; segment < segments; segment++)
+                {
+                    var angle = segment * Mathf.PI * 2f / segments;
+                    AddLakeVertex(surface, LakeCenter + (new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius));
+                }
+            }
+
+            for (var segment = 0; segment < segments; segment++)
+            {
+                var next = (segment + 1) % segments;
+                surface.Triangle(0, 1 + segment, 1 + next);
+                for (var ring = 1; ring < rings; ring++)
+                {
+                    var inner = 1 + ((ring - 1) * segments);
+                    var outer = inner + segments;
+                    surface.Triangle(inner + segment, outer + segment, outer + next);
+                    surface.Triangle(inner + segment, outer + next, inner + next);
+                }
+            }
+
+            return surface.Save("M_DevelopmentWorld2_Lake");
         }
 
-        // The quarter disc of sea inside the World's corner.
+        // Foam churns within 1 m of where the waterfall lands and fades out 4 m away, and the
+        // water spreads out from there.
+        private static void AddLakeVertex(WaterSurfaceMesh surface, Vector2 point)
+        {
+            var fromPool = point - PlungePoolCenter;
+            var distance = fromPool.magnitude;
+            var churn = 1f - Smooth01((distance - 1f) / 3f);
+            var spread = distance > 0.01f
+                ? fromPool * (0.7f * churn * Smooth01(distance) / distance)
+                : Vector2.zero;
+            surface.Add(new Vector3(point.x, LakeSurface, point.y), spread, churn, 0f);
+        }
+
+        // The quarter disc of sea inside the World's corner, as a grid of 2 m cells whose
+        // vertices the waves lift. The waves calm down toward the World's edge, where the flat
+        // sea beyond the World meets this one, and the jagged rim lies under the beach.
         private static Mesh BuildSeaSurface()
         {
-            var vertices = new List<Vector3>();
-            var triangles = new List<int>();
-            AddFan(vertices, triangles, SeaCorner, SeaSurface, SeaWaterRadius, -90f, 0f, 24);
-            return SaveMesh("M_DevelopmentWorld2_Sea", vertices, triangles);
+            var surface = new WaterSurfaceMesh();
+            const float cell = 2f;
+            var cells = Mathf.CeilToInt(SeaWaterRadius / cell);
+            var indices = new int[cells + 1, cells + 1];
+            for (var row = 0; row <= cells; row++)
+            {
+                for (var column = 0; column <= cells; column++)
+                {
+                    var x = SeaCorner.x + (column * cell);
+                    var z = SeaCorner.y - (row * cell);
+                    var waves = Mathf.Clamp01(Mathf.Min(x - SeaCorner.x, SeaCorner.y - z) / 12f);
+                    indices[row, column] = surface.Add(new Vector3(x, SeaSurface, z), Vector2.zero, 0f, waves);
+                }
+            }
+
+            for (var row = 0; row < cells; row++)
+            {
+                for (var column = 0; column < cells; column++)
+                {
+                    var centerX = (column + 0.5f) * cell;
+                    var centerZ = (row + 0.5f) * cell;
+                    if (Mathf.Sqrt((centerX * centerX) + (centerZ * centerZ)) > SeaWaterRadius + cell)
+                    {
+                        continue;
+                    }
+
+                    surface.Triangle(indices[row, column], indices[row + 1, column], indices[row + 1, column + 1]);
+                    surface.Triangle(indices[row, column], indices[row + 1, column + 1], indices[row, column + 1]);
+                }
+            }
+
+            return surface.Save("M_DevelopmentWorld2_Sea");
         }
 
-        // The sea west and north of the World, out to the horizon.
+        // The calm sea west and north of the World, out to the horizon.
         private static Mesh BuildOuterSeaSurface()
         {
-            var vertices = new List<Vector3>();
-            var triangles = new List<int>();
-            AddQuad(vertices, triangles, SeaCorner.x - OuterSeaExtent, SeaCorner.x, SeaCorner.y - OuterSeaExtent, SeaCorner.y + OuterSeaExtent);
-            AddQuad(vertices, triangles, SeaCorner.x, SeaCorner.x + OuterSeaExtent, SeaCorner.y, SeaCorner.y + OuterSeaExtent);
-            return SaveMesh("M_DevelopmentWorld2_SeaBeyondTheWorld", vertices, triangles);
+            var surface = new WaterSurfaceMesh();
+            surface.Quad(SeaCorner.x - OuterSeaExtent, SeaCorner.x, SeaCorner.y - OuterSeaExtent, SeaCorner.y + OuterSeaExtent, SeaSurface);
+            surface.Quad(SeaCorner.x, SeaCorner.x + OuterSeaExtent, SeaCorner.y, SeaCorner.y + OuterSeaExtent, SeaSurface);
+            return surface.Save("M_DevelopmentWorld2_SeaBeyondTheWorld");
         }
 
-        // A ribbon along the river that reaches under both banks and falls with the river.
-        // It starts just inside the lake's disc and ends just outside the sea's, so the
-        // surfaces barely overlap.
+        // A ribbon along the river that reaches under both banks and falls with the river, five
+        // vertices across, so the water runs fastest in the middle. It starts just inside the
+        // lake's disc and ends just outside the sea's, so the surfaces barely overlap, and its
+        // flow starts still at the lake, so the ripples meet the lake's without a seam.
         private static Mesh BuildRiverSurface()
         {
-            var vertices = new List<Vector3>();
-            var triangles = new List<int>();
+            var surface = new WaterSurfaceMesh();
             var start = RiverFallStart;
             var end = RiverDistanceWhere(point => Vector2.Distance(point, SeaCorner) <= SeaWaterRadius + 0.3f);
             var steps = Mathf.CeilToInt(end - start);
+            const int columns = 5;
             for (var step = 0; step <= steps; step++)
             {
                 var along = Mathf.Lerp(start, end, (float)step / steps);
@@ -441,19 +581,49 @@ namespace Mmorpg.Client.Editor
                 RiverPointAt(along - 0.5f, out var before);
                 RiverPointAt(along + 0.5f, out var after);
                 var direction = (before + after).normalized;
-                var across = new Vector2(-direction.y, direction.x) * RiverWaterHalfWidth;
+                var across = new Vector2(-direction.y, direction.x);
                 var height = RiverSurfaceAt(along);
-                vertices.Add(new Vector3(point.x + across.x, height, point.y + across.y));
-                vertices.Add(new Vector3(point.x - across.x, height, point.y - across.y));
+                for (var column = 0; column < columns; column++)
+                {
+                    var side = ((2f * column) / (columns - 1)) - 1f;
+                    var offset = across * (side * RiverWaterHalfWidth);
+                    var profile = 1f - (0.7f * side * side);
+                    surface.Add(
+                        new Vector3(point.x + offset.x, height, point.y + offset.y),
+                        direction * (RiverFlowSpeedAt(along, start, end) * profile),
+                        RiverTurbulenceAt(along) * profile,
+                        0f);
+                }
             }
 
-            for (var first = 0; first + 3 < vertices.Count; first += 2)
+            for (var step = 0; step < steps; step++)
             {
-                AddTriangleFacingUp(vertices, triangles, first, first + 1, first + 2);
-                AddTriangleFacingUp(vertices, triangles, first + 1, first + 3, first + 2);
+                for (var column = 0; column < columns - 1; column++)
+                {
+                    var first = (step * columns) + column;
+                    surface.Triangle(first, first + 1, first + columns + 1);
+                    surface.Triangle(first, first + columns + 1, first + columns);
+                }
             }
 
-            return SaveMesh("M_DevelopmentWorld2_River", vertices, triangles);
+            return surface.Save("M_DevelopmentWorld2_River");
+        }
+
+        // About 0.8 m/s in the deep river and 1.4 m/s over the shallow ford, still where the
+        // river leaves the lake and slowing where it meets the sea.
+        private static float RiverFlowSpeedAt(float along, float start, float end)
+        {
+            var fordAmount = 1f - Smooth01((Mathf.Abs(along - FordDistance) - FordHalfLength) / FordTransition);
+            var speed = Mathf.Lerp(0.8f, 1.4f, fordAmount);
+            var fromLake = Smooth01((along - start) / 6f);
+            var toSea = Mathf.Lerp(0.4f, 1f, Smooth01((end - along) / 5f));
+            return speed * fromLake * toSea;
+        }
+
+        // Foam over the ford, where the fast water runs shallow.
+        private static float RiverTurbulenceAt(float along)
+        {
+            return 0.55f * (1f - Smooth01((Mathf.Abs(along - FordDistance) - FordHalfLength) / FordTransition));
         }
 
         // The first distance along the river, in 5 cm steps, whose point meets the condition.
@@ -471,52 +641,59 @@ namespace Mmorpg.Client.Editor
             return length;
         }
 
-        private static void AddFan(
-            List<Vector3> vertices,
-            List<int> triangles,
-            Vector2 center,
-            float height,
-            float radius,
-            float startDegrees,
-            float endDegrees,
-            int segments)
+        // The vertices of a water surface with what the water shader reads from them: the flow
+        // in m/s in the second texture coordinate, and in the vertex color red the fast water
+        // that foams and green how much the waves lift the vertex.
+        private sealed class WaterSurfaceMesh
         {
-            var centerIndex = vertices.Count;
-            vertices.Add(new Vector3(center.x, height, center.y));
-            for (var segment = 0; segment <= segments; segment++)
+            private readonly List<Vector3> vertices = new List<Vector3>();
+            private readonly List<Vector2> flows = new List<Vector2>();
+            private readonly List<Color> colors = new List<Color>();
+            private readonly List<int> triangles = new List<int>();
+
+            public int Add(Vector3 position, Vector2 flow, float turbulence, float waves)
             {
-                var angle = Mathf.Lerp(startDegrees, endDegrees, (float)segment / segments) * Mathf.Deg2Rad;
-                vertices.Add(new Vector3(center.x + (radius * Mathf.Cos(angle)), height, center.y + (radius * Mathf.Sin(angle))));
+                vertices.Add(position);
+                flows.Add(flow);
+                colors.Add(new Color(turbulence, waves, 0f, 1f));
+                return vertices.Count - 1;
             }
 
-            for (var segment = 0; segment < segments; segment++)
+            // Unity's front faces run clockwise seen from their front, so a triangle faces up
+            // when its edge cross product points up.
+            public void Triangle(int a, int b, int c)
             {
-                AddTriangleFacingUp(vertices, triangles, centerIndex, centerIndex + 1 + segment, centerIndex + 2 + segment);
+                var up = Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).y >= 0f;
+                triangles.Add(a);
+                triangles.Add(up ? b : c);
+                triangles.Add(up ? c : b);
+            }
+
+            public void Quad(float minimumX, float maximumX, float minimumZ, float maximumZ, float height)
+            {
+                var first = Add(new Vector3(minimumX, height, minimumZ), Vector2.zero, 0f, 0f);
+                Add(new Vector3(minimumX, height, maximumZ), Vector2.zero, 0f, 0f);
+                Add(new Vector3(maximumX, height, maximumZ), Vector2.zero, 0f, 0f);
+                Add(new Vector3(maximumX, height, minimumZ), Vector2.zero, 0f, 0f);
+                Triangle(first, first + 1, first + 2);
+                Triangle(first, first + 2, first + 3);
+            }
+
+            public Mesh Save(string name)
+            {
+                return SaveMesh(name, mesh =>
+                {
+                    mesh.SetVertices(vertices);
+                    mesh.SetUVs(1, flows);
+                    mesh.SetColors(colors);
+                    mesh.SetTriangles(triangles, 0);
+                });
             }
         }
 
-        private static void AddQuad(List<Vector3> vertices, List<int> triangles, float minimumX, float maximumX, float minimumZ, float maximumZ)
-        {
-            var first = vertices.Count;
-            vertices.Add(new Vector3(minimumX, SeaSurface, minimumZ));
-            vertices.Add(new Vector3(minimumX, SeaSurface, maximumZ));
-            vertices.Add(new Vector3(maximumX, SeaSurface, maximumZ));
-            vertices.Add(new Vector3(maximumX, SeaSurface, minimumZ));
-            AddTriangleFacingUp(vertices, triangles, first, first + 1, first + 2);
-            AddTriangleFacingUp(vertices, triangles, first, first + 2, first + 3);
-        }
-
-        // Unity's front faces run clockwise seen from their front, so a triangle faces up
-        // when its edge cross product points up.
-        private static void AddTriangleFacingUp(List<Vector3> vertices, List<int> triangles, int a, int b, int c)
-        {
-            var up = Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).y >= 0f;
-            triangles.Add(a);
-            triangles.Add(up ? b : c);
-            triangles.Add(up ? c : b);
-        }
-
-        private static Mesh SaveMesh(string name, List<Vector3> vertices, List<int> triangles)
+        // A mesh asset next to the terrain data, filled anew on every build, with normals from
+        // its triangles unless the fill gives its own.
+        private static Mesh SaveMesh(string name, System.Action<Mesh> fill)
         {
             var path = TerrainDirectory + "/" + name + ".asset";
             var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
@@ -530,12 +707,271 @@ namespace Mmorpg.Client.Editor
             }
 
             mesh.Clear();
-            mesh.SetVertices(vertices);
-            mesh.SetTriangles(triangles, 0);
-            mesh.RecalculateNormals();
+            fill(mesh);
+            if (!mesh.HasVertexAttribute(VertexAttribute.Normal))
+            {
+                mesh.RecalculateNormals();
+            }
+
             mesh.RecalculateBounds();
             EditorUtility.SetDirty(mesh);
             return mesh;
+        }
+
+        // The outcrop's rocks with a ramp onto them from behind, the stream along their top, the
+        // falling sheet, and the mist and droplets where the water lands.
+        private static void BuildWaterfall(DevelopmentWorldBuilder builder, Transform waterside, Transform water)
+        {
+            var palette = builder.Palette;
+            var lip = WaterfallLip;
+
+            // Local +Z points from the outcrop toward the lake and local +X across it, with the
+            // lip at the origin.
+            var outcrop = builder.Group(waterside, "Waterfall", new Vector3(lip.x, 0f, lip.y), Yaw(OutcropAcross));
+            var rockWidth = OutcropHalfWidth - StreamHalfWidth;
+            var rockHeight = OutcropTop - OutcropBottom;
+            foreach (var side in new[] { -1f, 1f })
+            {
+                builder.Box(
+                    outcrop,
+                    side < 0f ? "LeftRock" : "RightRock",
+                    new Vector3(side * (StreamHalfWidth + (rockWidth * 0.5f)), OutcropBottom + (rockHeight * 0.5f), -OutcropLength * 0.5f),
+                    new Vector3(rockWidth, rockHeight, OutcropLength),
+                    palette.Rock);
+            }
+
+            var bedLength = OutcropLength - SpringLength;
+            builder.Box(
+                outcrop,
+                "StreamBed",
+                new Vector3(0f, (OutcropBottom + StreamBedTop) * 0.5f, -bedLength * 0.5f),
+                new Vector3(StreamHalfWidth * 2f, StreamBedTop - OutcropBottom, bedLength),
+                palette.Rock);
+            var boulderTop = OutcropTop + 0.6f;
+            builder.Box(
+                outcrop,
+                "SpringBoulder",
+                new Vector3(0f, (OutcropBottom + boulderTop) * 0.5f, -OutcropLength + (SpringLength * 0.5f)),
+                new Vector3(StreamHalfWidth * 2f, boulderTop - OutcropBottom, SpringLength),
+                palette.Rock);
+            var path = builder.Group(outcrop, "Path", new Vector3(0f, WatersidePlateauHeight, 0f));
+            builder.Ramp(
+                path,
+                "Ramp",
+                StreamHalfWidth + (rockWidth * 0.5f),
+                rockWidth,
+                -OutcropLength,
+                OutcropTop - WatersidePlateauHeight,
+                25f,
+                palette.Traversal);
+
+            WaterBodyObject(water, "Stream", StreamBodyId, WaterBodyKind.River, BuildStreamSurface());
+            var sheet = new GameObject("WaterfallSheet");
+            sheet.transform.SetParent(water, false);
+            sheet.AddComponent<MeshFilter>().sharedMesh = BuildWaterfallSheet();
+            ConfigureWaterRenderer(sheet.AddComponent<MeshRenderer>(), WaterAssets.LoadMaterial(WaterAssets.WaterfallMaterialPath));
+            BuildWaterfallSpray(water, new Vector3(PlungePoolCenter.x, LakeSurface, PlungePoolCenter.y));
+
+            builder.Sign(
+                waterside,
+                "WaterfallSign",
+                GroundPoint(lip + (OutcropDirection * (OutcropLength + 6f)) - (OutcropAcross * 5f)),
+                Yaw(OutcropAcross),
+                "WATERFALL\nWade into the pool,\nramp up to the stream");
+        }
+
+        // The stream from inside the spring's boulder to just past the lip, five vertices across
+        // that reach under both rock walls. It runs faster toward the lip, bubbles at the
+        // spring, and foams where it tips over.
+        private static Mesh BuildStreamSurface()
+        {
+            var surface = new WaterSurfaceMesh();
+            const int columns = 5;
+            var length = OutcropLength - SpringLength + 0.1f;
+            var steps = Mathf.CeilToInt(length / 0.5f);
+            var downstream = -OutcropDirection;
+            for (var step = 0; step <= steps; step++)
+            {
+                // How far back from the lip, from 5 cm past it to inside the boulder.
+                var back = Mathf.Lerp(-0.05f, length, (float)step / steps);
+                var speed = Mathf.Lerp(1.8f, 0.5f, Smooth01(back / length));
+                var turbulence = Mathf.Max(
+                    0.6f * (1f - Smooth01((length - back) / 1.2f)),
+                    0.8f * (1f - Smooth01(back / 1.5f)));
+                var center = WaterfallLip + (OutcropDirection * back);
+                for (var column = 0; column < columns; column++)
+                {
+                    var side = ((2f * column) / (columns - 1)) - 1f;
+                    var point = center + (OutcropAcross * (side * (StreamHalfWidth + 0.1f)));
+                    var profile = 1f - (0.5f * side * side);
+                    surface.Add(new Vector3(point.x, StreamSurface, point.y), downstream * (speed * profile), turbulence * profile, 0f);
+                }
+            }
+
+            for (var step = 0; step < steps; step++)
+            {
+                for (var column = 0; column < columns - 1; column++)
+                {
+                    var first = (step * columns) + column;
+                    surface.Triangle(first, first + 1, first + columns + 1);
+                    surface.Triangle(first, first + columns + 1, first + columns);
+                }
+            }
+
+            return surface.Save("M_DevelopmentWorld2_Stream");
+        }
+
+        // The falling sheet from just behind the lip down to the lake's surface, along the path
+        // the water takes when it leaves the lip at the waterfall's speed, widening a little as
+        // it falls. The first texture coordinate holds meters across the sheet and the seconds
+        // the water has fallen, the second meters to the nearer side and how far down the fall
+        // the vertex lies. The normals face the lake and the tangents run across.
+        private static Mesh BuildWaterfallSheet()
+        {
+            const int rows = 20;
+            const int columns = 9;
+            var top = StreamSurface - 0.02f;
+            var seconds = Mathf.Sqrt(2f * (top - LakeSurface) / Gravity);
+            var across3 = new Vector3(OutcropAcross.x, 0f, OutcropAcross.y);
+            var towardLake = new Vector3(-OutcropDirection.x, 0f, -OutcropDirection.y);
+            var vertices = new List<Vector3>();
+            var normals = new List<Vector3>();
+            var tangents = new List<Vector4>();
+            var sheet = new List<Vector2>();
+            var edges = new List<Vector2>();
+            var triangles = new List<int>();
+            for (var row = 0; row <= rows; row++)
+            {
+                var fall = (float)row / rows;
+                var time = seconds * fall;
+                var flat = WaterfallLip - (OutcropDirection * ((WaterfallSpeed * time) - 0.05f));
+                var center = new Vector3(flat.x, top - (0.5f * Gravity * time * time), flat.y);
+
+                // The water moves along the fall; the sheet's normal is square to that and across.
+                var velocity = (towardLake * WaterfallSpeed) + (Vector3.down * (Gravity * time));
+                var normal = Vector3.Cross(across3, velocity).normalized;
+                if (Vector3.Dot(normal, towardLake) < 0f)
+                {
+                    normal = -normal;
+                }
+
+                var halfWidth = Mathf.Lerp(StreamHalfWidth - 0.05f, StreamHalfWidth + 0.3f, fall);
+                for (var column = 0; column < columns; column++)
+                {
+                    var across = (((2f * column) / (columns - 1)) - 1f) * halfWidth;
+                    vertices.Add(center + (across3 * across));
+                    normals.Add(normal);
+                    tangents.Add(new Vector4(across3.x, across3.y, across3.z, 1f));
+                    sheet.Add(new Vector2(across, time));
+                    edges.Add(new Vector2(halfWidth - Mathf.Abs(across), fall));
+                }
+            }
+
+            for (var row = 0; row < rows; row++)
+            {
+                for (var column = 0; column < columns - 1; column++)
+                {
+                    var first = (row * columns) + column;
+                    triangles.Add(first);
+                    triangles.Add(first + columns);
+                    triangles.Add(first + columns + 1);
+                    triangles.Add(first);
+                    triangles.Add(first + columns + 1);
+                    triangles.Add(first + 1);
+                }
+            }
+
+            return SaveMesh("M_DevelopmentWorld2_WaterfallSheet", mesh =>
+            {
+                mesh.SetVertices(vertices);
+                mesh.SetNormals(normals);
+                mesh.SetTangents(tangents);
+                mesh.SetUVs(0, sheet);
+                mesh.SetUVs(1, edges);
+                mesh.SetTriangles(triangles, 0);
+            });
+        }
+
+        // Where the waterfall lands, white water boils up along the sheet, mist rises and drifts,
+        // and droplets fly.
+        private static void BuildWaterfallSpray(Transform parent, Vector3 foot)
+        {
+            var material = WaterAssets.LoadMaterial(WaterAssets.SprayMaterialPath);
+            var boil = WaterfallParticles(parent, "WaterfallBoil", foot, material, 90, 30f, 0.75f);
+            var boilMain = boil.main;
+            boilMain.startLifetime = new ParticleSystem.MinMaxCurve(0.5f, 0.9f);
+            boilMain.startSpeed = new ParticleSystem.MinMaxCurve(0.5f, 1.3f);
+            boilMain.startSize = new ParticleSystem.MinMaxCurve(0.45f, 1f);
+            boilMain.gravityModifier = 0.4f;
+            var boilShape = boil.shape;
+            boilShape.shapeType = ParticleSystemShapeType.Box;
+            boilShape.scale = new Vector3((StreamHalfWidth + 0.3f) * 2f, 0.3f, 0.05f);
+            var boilSize = boil.sizeOverLifetime;
+            boilSize.enabled = true;
+            boilSize.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.7f, 1f, 1.3f));
+
+            var mist = WaterfallParticles(parent, "WaterfallMist", foot, material, 100, 18f, 0.2f);
+            var mistMain = mist.main;
+            mistMain.startLifetime = new ParticleSystem.MinMaxCurve(1.4f, 2.2f);
+            mistMain.startSpeed = new ParticleSystem.MinMaxCurve(0.3f, 0.8f);
+            mistMain.startSize = new ParticleSystem.MinMaxCurve(0.8f, 1.6f);
+            mistMain.gravityModifier = -0.01f;
+            var mistShape = mist.shape;
+            mistShape.shapeType = ParticleSystemShapeType.Hemisphere;
+            mistShape.radius = StreamHalfWidth;
+            var mistSize = mist.sizeOverLifetime;
+            mistSize.enabled = true;
+            mistSize.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.6f, 1f, 1.5f));
+
+            var splash = WaterfallParticles(parent, "WaterfallSplash", foot, material, 200, 60f, 0.85f);
+            var splashMain = splash.main;
+            splashMain.startLifetime = new ParticleSystem.MinMaxCurve(0.5f, 0.9f);
+            splashMain.startSpeed = new ParticleSystem.MinMaxCurve(2f, 3.6f);
+            splashMain.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.16f);
+            splashMain.gravityModifier = 1f;
+            var splashShape = splash.shape;
+            splashShape.shapeType = ParticleSystemShapeType.Cone;
+            splashShape.angle = 30f;
+            splashShape.radius = StreamHalfWidth;
+        }
+
+        // A looping emitter of soft white particles that fade in and out, whose shape points
+        // straight up, with its width across the sheet.
+        private static ParticleSystem WaterfallParticles(
+            Transform parent,
+            string name,
+            Vector3 position,
+            Material material,
+            int maximumParticles,
+            float rate,
+            float alpha)
+        {
+            var host = new GameObject(name);
+            host.transform.SetParent(parent, false);
+            host.transform.position = position;
+            host.transform.rotation = Quaternion.LookRotation(Vector3.up, new Vector3(-OutcropDirection.x, 0f, -OutcropDirection.y));
+            var system = host.AddComponent<ParticleSystem>();
+            var main = system.main;
+            main.loop = true;
+            main.prewarm = true;
+            main.playOnAwake = true;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.maxParticles = maximumParticles;
+            main.startColor = Color.white;
+            var emission = system.emission;
+            emission.rateOverTime = rate;
+            var gradient = new Gradient();
+            gradient.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(alpha, 0.2f), new GradientAlphaKey(0f, 1f) });
+            var color = system.colorOverLifetime;
+            color.enabled = true;
+            color.color = new ParticleSystem.MinMaxGradient(gradient);
+            var renderer = host.GetComponent<ParticleSystemRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return system;
         }
 
         // A deck 1 m above the river's deep middle, from plateau to plateau, which the

@@ -389,6 +389,8 @@ public sealed class DevelopmentWorldLayoutTests
         Assert.InRange(DistanceXz(final, -108f, 112f), 9f, 10.5f);
     }
 
+    // The shore is waded, and the bank behind it rises from the water to the plateau, so the
+    // waterline is a clean circle instead of land level with the water.
     [Fact]
     public void WatersideLakeShoreIsWadedAtTheWadingSpeed()
     {
@@ -397,6 +399,10 @@ public sealed class DevelopmentWorldLayoutTests
         Assert.True(WaterRules.TryGetDepth(DevelopmentWorld2.Value, ground, new CollisionQueryBuffer(), out var depth));
         Assert.InRange(depth, 0.55f, 0.65f);
         Assert.Equal(WaterRules.WadeSpeedMultiplier, WaterRules.SpeedMultiplier(depth));
+        foreach (var (x, z) in new[] { (-94f, 112f), (-108f, 98f), (-117.9f, 102.1f) })
+        {
+            Assert.InRange(GroundBelow(DevelopmentWorld2.Value, x, z).Y, 3.75f, 3.85f);
+        }
     }
 
     // The river is 2 m deep under the bridge and 0.8 m deep across the ford, 16 m upstream.
@@ -466,12 +472,30 @@ public sealed class DevelopmentWorldLayoutTests
         }
     }
 
+    // The waterfall falls from the outcrop on the lake's north shore into a pool about 1 m deep,
+    // which is waded, and the stream on the outcrop above runs 0.3 m deep.
+    [Fact]
+    public void WatersideWaterfallPoolIsWadedAndItsStreamIsShallow()
+    {
+        var buffer = new CollisionQueryBuffer();
+        var pool = GroundBelow(DevelopmentWorld2.Value, -103.94f, 123.16f);
+        Assert.True(WaterRules.TryGetDepth(DevelopmentWorld2.Value, pool, buffer, out var poolDepth));
+        Assert.InRange(poolDepth, 0.8f, 1.15f);
+        Assert.Equal(WaterRules.WadeSpeedMultiplier, WaterRules.SpeedMultiplier(poolDepth));
+
+        var stream = GroundBelow(DevelopmentWorld2.Value, -102.08f, 128.26f);
+        Assert.True(WaterRules.TryGetDepth(DevelopmentWorld2.Value, stream, buffer, out var streamDepth));
+        Assert.InRange(streamDepth, 0.25f, 0.35f);
+        Assert.InRange(stream.Y, 7.1f, 7.3f);
+    }
+
     [Fact]
     public void WatersideWaterBodiesAreBakedWithTheirIds()
     {
         Assert.Equal("waterside-lake", WaterBodyAt(DevelopmentWorld2.Value, -108f, 112f));
         Assert.Equal("waterside-river", WaterBodyAt(DevelopmentWorld2.Value, -127.47f, 132.78f));
         Assert.Equal("waterside-sea", WaterBodyAt(DevelopmentWorld2.Value, -175f, 175f));
+        Assert.Equal("waterside-stream", WaterBodyAt(DevelopmentWorld2.Value, -102.08f, 128.26f));
         Assert.Null(WaterBodyAt(DevelopmentWorld2.Value, 0f, 0f));
 
         var stressArenaWater = new CollisionQueryBuffer();

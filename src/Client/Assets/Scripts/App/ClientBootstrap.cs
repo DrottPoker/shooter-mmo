@@ -33,6 +33,8 @@ namespace Mmorpg.Client.App
         private Material runtimePrimitiveMaterial;
         private Material debugLineMaterial;
         private GameObject arrowModel;
+        private Material waterRingMaterial;
+        private Material waterSprayMaterial;
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
         private readonly GameMessageLog gameMessages = new GameMessageLog();
         private readonly InventoryWindowRequests inventoryWindowRequests = new InventoryWindowRequests();
@@ -100,6 +102,15 @@ namespace Mmorpg.Client.App
                 ClientLog.Warning(
                     ClientLogCategory.Client,
                     "The client configuration has no arrow model, so arrows fly as plain bars.");
+            }
+
+            waterRingMaterial = config.WaterRingMaterial;
+            waterSprayMaterial = config.WaterSprayMaterial;
+            if (waterRingMaterial == null || waterSprayMaterial == null)
+            {
+                ClientLog.Warning(
+                    ClientLogCategory.Client,
+                    "The client configuration lacks a water wake material, so characters leave no rings or spray in water.");
             }
 
             uiTheme = UiTheme.Load(out uiThemeHandle);
@@ -416,6 +427,13 @@ namespace Mmorpg.Client.App
                     runtimePrimitiveMaterial,
                     sceneContext,
                     actorPresentation));
+            AddSceneComponentIfMissing<WaterWakePresentation>(
+                wakes => wakes.Initialize(
+                    simulationClient,
+                    sceneContext,
+                    actorPresentation,
+                    waterRingMaterial,
+                    waterSprayMaterial));
             AddSceneComponentIfMissing<WorldInteractionTargetingController>(
                 targeting => targeting.Initialize(
                     worldInteractionController,
