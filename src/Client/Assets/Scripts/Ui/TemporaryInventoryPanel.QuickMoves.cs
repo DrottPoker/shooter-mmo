@@ -1,5 +1,3 @@
-using System;
-using System.Linq;
 using Mmorpg.Client.Items;
 using Mmorpg.WorldData.Items;
 
@@ -13,7 +11,7 @@ namespace Mmorpg.Client.Ui
         private void OnItemRightClicked(InventoryItem item)
         {
             var state = controller.State;
-            if (!CanMoveItem(state, item))
+            if (!InventoryDropPlanner.CanMoveItem(state, item))
             {
                 RejectDrop(state.IsPredictedItem(item.ItemInstanceId)
                     ? "Wait a moment until the stack is confirmed."
@@ -27,7 +25,7 @@ namespace Mmorpg.Client.Ui
                 && ItemContainerTypeIds.IsCarried(location.ContainerType))
             {
                 var payload = InventoryDragPayload.ForItem(item.ItemInstanceId);
-                if (CanDropOnVendor(state, vendor, payload, out var reason))
+                if (interactions.CanOfferToVendor(vendor, payload, out var reason))
                 {
                     OnVendorDrop(payload);
                 }
@@ -39,83 +37,22 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            RunQuickMove(InventoryQuickMoves.ForItem(state, item, IsBankShown(state)));
+            ShowResult(interactions.QuickMoveItem(item, IsBankShown(state)), true);
         }
 
         private void OnCorpseItemRightClicked(CorpseLootItem item)
         {
-            if (!corpseController.State.CanShowOperations || !CanMoveItem(controller.State, null))
-            {
-                RejectDrop("Inventory or corpse mutation is unavailable while state is loading or busy.");
-                return;
-            }
-
-            RunQuickMove(InventoryQuickMoves.ForCorpseItem(controller.State, corpseController.State.ShownView, item));
+            ShowResult(interactions.QuickMoveCorpseItem(item), false);
         }
 
-        private void RunQuickMove(InventoryQuickMove move)
+        private void OnRecoveryDeliveryRightClicked(RecoveryDelivery delivery)
         {
-            var error = string.Empty;
-            switch (move.Kind)
-            {
-                case InventoryQuickMoveKind.Equip:
-                    // The items that block the slot leave first; if one cannot, nothing is equipped.
-                    foreach (var unequip in move.Before)
-                    {
-                        if (!controller.TryUnequip(unequip.Item, unequip.Container.ContainerId, unequip.Slot.SlotIndex, out error))
-                        {
-                            Execute(false, error, string.Empty);
-                            return;
-                        }
-                    }
-
-                    Execute(controller.TryEquip(move.Item, move.EquipmentSlotId, out error), error, "Equip submitted.");
-                    return;
-                case InventoryQuickMoveKind.Unequip:
-                    Execute(
-                        controller.TryUnequip(move.Item, move.Container.ContainerId, move.Slot.SlotIndex, out error),
-                        error,
-                        "Move submitted.");
-                    return;
-                case InventoryQuickMoveKind.Relocate:
-                    Execute(
-                        controller.TryRelocate(move.Item, move.Container.ContainerId, move.Slot.SlotIndex, out error),
-                        error,
-                        "Move submitted.");
-                    return;
-                case InventoryQuickMoveKind.Merge:
-                    Execute(controller.TryMerge(move.Item, move.Target, out error), error, "Merge submitted.");
-                    return;
-                case InventoryQuickMoveKind.ClaimRecovery:
-                    ClaimRecovery(move.Delivery, move.Container.ContainerId);
-                    return;
-                case InventoryQuickMoveKind.Loot:
-                    ExecuteCorpse(
-                        corpseController.TryLoot(move.CorpseItem, move.Container, move.Slot, move.CorpseItem.Quantity, out error),
-                        error,
-                        "Corpse loot submitted.");
-                    return;
-                case InventoryQuickMoveKind.LootToEquipment:
-                {
-                    var equipmentSlot = controller.State.FullSnapshot?.Equipment.FirstOrDefault(slot =>
-                        string.Equals(slot.SlotId, move.EquipmentSlotId, StringComparison.Ordinal));
-                    ExecuteCorpse(
-                        equipmentSlot != null
-                            && corpseController.TryLootToEquipment(move.CorpseItem, equipmentSlot, out error),
-                        string.IsNullOrEmpty(error) ? "The equipment slot is unavailable." : error,
-                        "Corpse equip submitted.");
-                    return;
-                }
-
-                default:
-                    RejectDrop(move.Reason);
-                    return;
-            }
+            ShowResult(interactions.QuickMoveRecoveryDelivery(delivery), true);
         }
 
         private void ExecuteLootAll()
         {
-            ExecuteCorpse(corpseController.TryLootAll(out var error), error, "Loot all submitted.");
+            ShowResult(interactions.LootAll(), false);
         }
 
         // The Bank takes right-clicked items only while its tab shows.

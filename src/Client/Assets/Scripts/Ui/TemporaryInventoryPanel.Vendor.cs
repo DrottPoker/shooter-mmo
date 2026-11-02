@@ -112,7 +112,7 @@ namespace Mmorpg.Client.Ui
             }
 
             // Trades show at once and queue behind other item moves.
-            var idle = CanMoveItem(state, null);
+            var idle = InventoryDropPlanner.CanMoveItem(state, null);
             CreateSubheader(parent, vendor.DisplayName, "You have " + VendorClientRules.FormatAmount(state.Catalog, snapshot.Currency));
             foreach (var offer in VendorClientRules.ListOffers(state.Catalog, vendor))
             {
@@ -198,7 +198,6 @@ namespace Mmorpg.Client.Ui
             VendorProfileDefinition vendor,
             VendorOffer offer)
         {
-            var state = controller.State;
             vendorQuantityTexts.TryGetValue(offer.DefinitionId, out var quantityText);
             if (!int.TryParse(quantityText ?? "1", NumberStyles.None, CultureInfo.InvariantCulture, out var quantity))
             {
@@ -206,30 +205,7 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            if (!VendorClientRules.CanBuy(
-                    state.Catalog,
-                    vendor,
-                    state.FullSnapshot,
-                    offer.DefinitionId,
-                    quantity,
-                    out var price,
-                    out var reason))
-            {
-                RejectDrop(reason);
-                return;
-            }
-
-            var sent = worldInteractionController.TryPurchase(
-                capability.Id,
-                offer.DefinitionId,
-                quantity,
-                price,
-                out var error);
-            ExecuteTrade(
-                sent,
-                error,
-                "Buying " + quantity.ToString(CultureInfo.InvariantCulture) + " "
-                    + state.Catalog.GetDisplayName(offer.DefinitionId) + "...");
+            ShowResult(interactions.Buy(capability, vendor, offer.DefinitionId, quantity), false);
         }
 
         private void DrawVendorSale(
@@ -257,7 +233,7 @@ namespace Mmorpg.Client.Ui
                 EmptyLabel = "Sell",
                 Interactable = false,
                 DropValidator = (InventoryDragPayload candidate, out string reason) =>
-                    CanDropOnVendor(state, vendor, candidate, out reason),
+                    interactions.CanOfferToVendor(vendor, candidate, out reason),
                 OnDrop = OnVendorDrop,
                 Tooltip = pendingItem != null
                     ? InventorySlotPresentation.BuildItemTooltip(
@@ -334,37 +310,6 @@ namespace Mmorpg.Client.Ui
                 : "Sell " + name;
         }
 
-        private bool CanDropOnVendor(
-            InventoryClientState state,
-            VendorProfileDefinition vendor,
-            InventoryDragPayload payload,
-            out string reason)
-        {
-            reason = string.Empty;
-            if (!CanMoveItem(state, null))
-            {
-                reason = "Inventory mutation is unavailable while state is loading.";
-                return false;
-            }
-
-            if (payload.Kind != InventoryDragPayloadKind.Item
-                || !state.TryFindItem(payload.ItemInstanceId, out var item, out var location))
-            {
-                reason = "Only a carried item can be sold.";
-                return false;
-            }
-
-            return VendorClientRules.CanSell(
-                state.Catalog,
-                vendor,
-                state.FullSnapshot,
-                item,
-                location,
-                item.Quantity,
-                out _,
-                out reason);
-        }
-
         private void OnVendorDrop(InventoryDragPayload payload)
         {
             if (!controller.State.TryFindItem(payload.ItemInstanceId, out var item, out _))
@@ -383,8 +328,7 @@ namespace Mmorpg.Client.Ui
             RealtimeWorldActorCapability capability,
             VendorProfileDefinition vendor)
         {
-            var state = controller.State;
-            if (!state.TryFindItem(pendingSaleItemId, out var item, out var location))
+            if (!controller.State.TryFindItem(pendingSaleItemId, out _, out _))
             {
                 pendingSaleItemId = Guid.Empty;
                 RejectDrop("The item is no longer available.");
@@ -397,42 +341,13 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            if (!VendorClientRules.CanSell(
-                    state.Catalog,
-                    vendor,
-                    state.FullSnapshot,
-                    item,
-                    location,
-                    quantity,
-                    out var price,
-                    out var reason))
-            {
-                RejectDrop(reason);
-                return;
-            }
-
-            var sent = worldInteractionController.TrySell(
-                capability.Id,
-                item.ItemInstanceId,
-                quantity,
-                price,
-                out var error);
-            if (sent)
+            var result = interactions.Sell(capability, vendor, pendingSaleItemId, quantity);
+            if (result.Sent)
             {
                 pendingSaleItemId = Guid.Empty;
             }
 
-            ExecuteTrade(
-                sent,
-                error,
-                "Selling " + quantity.ToString(CultureInfo.InvariantCulture) + " "
-                    + state.Catalog.GetDisplayName(item.DefinitionId) + "...");
-        }
-
-        private void ExecuteTrade(bool sent, string error, string success)
-        {
-            localStatus = sent ? success : error;
-            Rebuild();
+            ShowResult(result, false);
         }
 
         private static string RateText(int basisPoints)

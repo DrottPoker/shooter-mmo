@@ -43,6 +43,7 @@ namespace Mmorpg.Client.Ui
         private const float RollbackMarkSeconds = 1.5f;
 
         private InventoryClientController controller;
+        private InventoryInteractions interactions;
         private CorpseClientController corpseController;
         private WorldInteractionClientController worldInteractionController;
         private CombatClientController combatController;
@@ -123,6 +124,7 @@ namespace Mmorpg.Client.Ui
             combatController = combat;
             worldMenu = menu;
             bodyLook = lookSetting;
+            interactions = new InventoryInteractions(inventory, corpses, worldInteraction);
         }
 
         private void Start()
@@ -783,9 +785,9 @@ namespace Mmorpg.Client.Ui
                 DragPayload = item == null
                     ? null
                     : InventoryDragPayload.ForItem(item.ItemInstanceId),
-                CanDrag = CanMoveItem(state, item),
+                CanDrag = InventoryDropPlanner.CanMoveItem(state, item),
                 DropValidator = (InventoryDragPayload candidate, out string reason) =>
-                    CanDropOnContainer(state, container, slot, candidate, out reason),
+                    CanDropOnContainer(container, slot, candidate, out reason),
                 OnDrop = candidate => OnContainerDrop(container, slot, candidate),
                 Tooltip = item != null
                     ? InventorySlotPresentation.BuildItemTooltip(state.Catalog, item, description)
@@ -846,9 +848,9 @@ namespace Mmorpg.Client.Ui
                 DragPayload = item == null
                     ? null
                     : InventoryDragPayload.ForItem(item.ItemInstanceId),
-                CanDrag = CanMoveItem(state, item),
+                CanDrag = InventoryDropPlanner.CanMoveItem(state, item),
                 DropValidator = (InventoryDragPayload candidate, out string reason) =>
-                    CanDropOnEquipment(state, equipmentSlot, candidate, out reason),
+                    CanDropOnEquipment(equipmentSlot, candidate, out reason),
                 OnDrop = candidate => OnEquipmentDrop(equipmentSlot, candidate),
                 Tooltip = tooltipText
             });
@@ -918,9 +920,9 @@ namespace Mmorpg.Client.Ui
                         Key = "recovery:" + delivery.DeliveryId + ":" + deliveryItem.ItemOrder,
                         Item = item,
                         Interactable = true,
-                        OnRightClick = () => RunQuickMove(InventoryQuickMoves.ForRecoveryDelivery(controller.State, delivery)),
+                        OnRightClick = () => OnRecoveryDeliveryRightClicked(delivery),
                         DragPayload = InventoryDragPayload.ForRecoveryDelivery(delivery.DeliveryId),
-                        CanDrag = CanMoveItem(state, null),
+                        CanDrag = InventoryDropPlanner.CanMoveItem(state, null),
                         DropValidator = RejectRecoveryDestination,
                         Tooltip = InventorySlotPresentation.BuildItemTooltip(
                             state.Catalog,
@@ -995,7 +997,7 @@ namespace Mmorpg.Client.Ui
                 "Loot all",
                 ExecuteLootAll,
                 corpseState.CanShowOperations
-                    && CanMoveItem(inventoryState, null)
+                    && InventoryDropPlanner.CanMoveItem(inventoryState, null)
                     && view.Sections.Any(section => section.Slots.Any(slot => slot.Item != null)),
                 TemporaryButtonTone.Active);
             TemporaryUiKit.CreateButton(
@@ -1078,16 +1080,10 @@ namespace Mmorpg.Client.Ui
                     ? null
                     : InventoryDragPayload.ForCorpseItem(view.CorpseId, item.ItemInstanceId),
                 CanDrag = corpseController.State.CanShowOperations
-                    && CanMoveItem(controller.State, item?.ToInventoryItem()),
+                    && InventoryDropPlanner.CanMoveItem(controller.State, item?.ToInventoryItem()),
                 DropValidator = (InventoryDragPayload candidate, out string reason) =>
-                    CanDropOnCorpse(
-                        inventoryState,
-                        view,
-                        section,
-                        slot,
-                        candidate,
-                        out reason),
-                OnDrop = candidate => OnCorpseDrop(view, section, slot, candidate),
+                    CanDropOnCorpse(section, slot, candidate, out reason),
+                OnDrop = candidate => OnCorpseDrop(section, slot, candidate),
                 Tooltip = inventoryItem != null
                     ? InventorySlotPresentation.BuildItemTooltip(
                         inventoryState.Catalog,
@@ -1169,7 +1165,7 @@ namespace Mmorpg.Client.Ui
                         : "Split cancelled.";
                     Rebuild();
                 },
-                item.Quantity > 1 && CanMoveItem(state, item),
+                item.Quantity > 1 && InventoryDropPlanner.CanMoveItem(state, item),
                 splitMode ? TemporaryButtonTone.Active : TemporaryButtonTone.Normal);
             var canDestroy = InventoryTargetAdvisor.CanDestroy(
                 state.Catalog,
@@ -1179,7 +1175,7 @@ namespace Mmorpg.Client.Ui
                 row,
                 destroyConfirmation ? "Confirm destroy" : "Destroy",
                 () => DestroySelected(item),
-                canDestroy && CanMoveItem(state, item),
+                canDestroy && InventoryDropPlanner.CanMoveItem(state, item),
                 destroyConfirmation ? TemporaryButtonTone.Danger : TemporaryButtonTone.Normal);
             TemporaryUiKit.CreateButton(
                 row,
@@ -1217,281 +1213,54 @@ namespace Mmorpg.Client.Ui
                 22f);
         }
 
+        // The split control asks for part of the selected stack, and the partial-stack control
+        // for part of a corpse stack or of a stack dropped onto the corpse; null moves the whole
+        // stack.
+        private int? DropQuantity(InventoryDragPayload payload, bool corpseDestination)
+        {
+            if (corpseDestination || payload.Kind == InventoryDragPayloadKind.CorpseItem)
+            {
+                return RequestedCorpseQuantity();
+            }
+
+            if (!IsSplitDrag(payload))
+            {
+                return null;
+            }
+
+            return int.TryParse(splitQuantityText, out var quantity) ? quantity : 0;
+        }
+
         private bool CanDropOnContainer(
-            InventoryClientState state,
             InventoryContainer container,
             InventorySlot slot,
             InventoryDragPayload payload,
             out string reason)
         {
-            reason = string.Empty;
-            if (!TryResolveCurrentSlot(state, container, slot, out container, out slot))
-            {
-                reason = "This slot is no longer available.";
-                return false;
-            }
-
-            // Item moves show at once and may follow pending ones; corpse loot and Recovery
-            // claims wait for a confirmed state.
-            if (!CanMoveItem(state, null))
-            {
-                reason = "Inventory mutation is unavailable while state is loading.";
-                return false;
-            }
-
-            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
-            {
-                return CanDropCorpseItemOnContainer(
-                    state,
-                    container,
-                    slot,
-                    payload,
-                    out reason);
-            }
-
-            if (payload.Kind == InventoryDragPayloadKind.RecoveryDelivery)
-            {
-                var delivery = state.RecoveryStorage?.Deliveries.FirstOrDefault(candidate =>
-                    candidate.DeliveryId == payload.RecoveryDeliveryId);
-                if (delivery == null)
-                {
-                    reason = "The Recovery delivery is no longer available.";
-                    return false;
-                }
-
-                return InventoryTargetAdvisor.CanClaimRecovery(
-                    state,
-                    delivery,
-                    container,
-                    out reason);
-            }
-
-            if (payload.Kind != InventoryDragPayloadKind.Item
-                || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
-            {
-                reason = "The dragged item is no longer available.";
-                return false;
-            }
-
-            var splitDrag = IsSplitDrag(payload);
-            if (slot.Item != null)
-            {
-                if (slot.Item.ItemInstanceId == item.ItemInstanceId)
-                {
-                    reason = "The item is already in this slot.";
-                    return false;
-                }
-
-                if (splitDrag)
-                {
-                    reason = "Split stacks must be dropped into an empty slot.";
-                    return false;
-                }
-
-                var targetLocation = new InventoryItemLocation(
-                    InventoryItemLocationKind.Container,
-                    container.ContainerId,
-                    container.ContainerType,
-                    slot.SlotIndex,
-                    string.Empty,
-                    Guid.Empty);
-                if (InventoryTargetAdvisor.CanMerge(
-                    state,
-                    item,
-                    source,
-                    slot.Item,
-                    targetLocation,
-                    out reason))
-                {
-                    return true;
-                }
-
-                return InventoryTargetAdvisor.CanSwap(
-                    state,
-                    item,
-                    source,
-                    slot.Item,
-                    targetLocation,
-                    out reason);
-            }
-
-            // A split drag from an equipped stack unequips part of it, such as some arrows.
-            if (source.Kind == InventoryItemLocationKind.Equipment && !splitDrag)
-            {
-                return InventoryTargetAdvisor.CanUnequip(
-                    state,
-                    item,
-                    container,
-                    slot,
-                    out reason);
-            }
-
-            var movedQuantity = item.Quantity;
-            if (splitDrag
-                && (!int.TryParse(splitQuantityText, out movedQuantity)
-                    || !InventoryTargetAdvisor.CanSplit(
-                        state.Catalog,
-                        item,
-                        movedQuantity,
-                        out reason)))
-            {
-                return false;
-            }
-
-            return InventoryTargetAdvisor.CanPlaceInContainer(
-                state,
-                item,
-                source,
-                container,
-                slot,
-                movedQuantity,
-                out reason);
+            var plan = interactions.PlanContainerDrop(container, slot, payload, DropQuantity(payload, false));
+            reason = plan.Reason;
+            return plan.IsValid;
         }
 
-        // A shown item moves at once, also while earlier moves wait for the server, unless it
-        // is a split stack that the server has not confirmed yet.
-        private static bool CanMoveItem(InventoryClientState state, InventoryItem item)
-        {
-            return (state.CanPredict || state.CanMutate)
-                && (item == null || !state.IsPredictedItem(item.ItemInstanceId));
-        }
-
-        // The drawn slot can be older than the state, when a confirmation arrived during a drag.
-        private static bool TryResolveCurrentSlot(
-            InventoryClientState state,
-            InventoryContainer drawnContainer,
-            InventorySlot drawnSlot,
-            out InventoryContainer container,
-            out InventorySlot slot)
-        {
-            slot = null;
-            var snapshot = state.FullSnapshot;
-            container = snapshot == null
-                ? null
-                : new[]
-                    {
-                        snapshot.PermanentInventory,
-                        snapshot.EquippedBag?.Contents,
-                        state.Bank
-                    }
-                    .FirstOrDefault(candidate =>
-                        candidate != null && candidate.ContainerId == drawnContainer.ContainerId);
-            return container != null && container.TryGetSlot(drawnSlot.SlotIndex, out slot);
-        }
-
-        private static bool TryResolveCurrentEquipmentSlot(
-            InventoryClientState state,
-            InventoryEquipmentSlot drawnSlot,
-            out InventoryEquipmentSlot equipmentSlot)
-        {
-            equipmentSlot = state.FullSnapshot?.Equipment.FirstOrDefault(candidate =>
-                string.Equals(candidate.SlotId, drawnSlot.SlotId, StringComparison.Ordinal));
-            return equipmentSlot != null;
-        }
-
-        private bool CanDropCorpseItemOnContainer(
-            InventoryClientState state,
-            InventoryContainer container,
-            InventorySlot slot,
+        private bool CanDropOnEquipment(
+            InventoryEquipmentSlot equipmentSlot,
             InventoryDragPayload payload,
             out string reason)
         {
-            var view = corpseController?.State.ShownView;
-            if (view == null
-                || !corpseController.State.CanShowOperations
-                || view.CorpseId != payload.CorpseId
-                || !view.TryFindItem(
-                    payload.ItemInstanceId,
-                    out var corpseItem,
-                    out var sourceSection,
-                    out var sourceSlot))
-            {
-                reason = "The corpse item is no longer available for mutation.";
-                return false;
-            }
-
-            return CorpseTargetAdvisor.CanLoot(
-                state,
-                view,
-                corpseItem,
-                sourceSection,
-                sourceSlot,
-                container,
-                slot,
-                RequestedCorpseQuantity(),
-                out reason);
-        }
-
-        // The drawn corpse slot again in the newest shown view, since a view update may have
-        // replaced its section, such as the Bag section after a committed Bag swap.
-        private bool TryResolveCorpseTarget(
-            ref CorpseLootView view,
-            ref CorpseLootSection section,
-            ref CorpseLootSlot slot)
-        {
-            view = corpseController?.State.ShownView;
-            return view != null
-                && corpseController.State.CanShowOperations
-                && view.TryGetSection(section.SectionKind, out section)
-                && section.TryGetSlot(slot.SlotIndex, out slot);
+            var plan = interactions.PlanEquipmentDrop(equipmentSlot, payload, DropQuantity(payload, false));
+            reason = plan.Reason;
+            return plan.IsValid;
         }
 
         private bool CanDropOnCorpse(
-            InventoryClientState state,
-            CorpseLootView view,
             CorpseLootSection section,
             CorpseLootSlot slot,
             InventoryDragPayload payload,
             out string reason)
         {
-            reason = string.Empty;
-            if (!CanMoveItem(state, null)
-                || !TryResolveCorpseTarget(ref view, ref section, ref slot))
-            {
-                reason = "Inventory or corpse mutation is unavailable while state is loading or busy.";
-                return false;
-            }
-
-            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
-            {
-                if (payload.CorpseId != view.CorpseId
-                    || !view.TryFindItem(
-                        payload.ItemInstanceId,
-                        out var sourceItem,
-                        out var sourceSection,
-                        out var sourceSlot))
-                {
-                    reason = "The corpse source item is no longer available.";
-                    return false;
-                }
-
-                return CorpseTargetAdvisor.CanMoveWithinCorpse(
-                    state,
-                    view,
-                    sourceItem,
-                    sourceSection,
-                    sourceSlot,
-                    section,
-                    slot,
-                    RequestedCorpseQuantity(),
-                    out reason);
-            }
-
-            if (payload.Kind != InventoryDragPayloadKind.Item
-                || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
-            {
-                reason = "Only a current carried inventory item can enter corpse custody.";
-                return false;
-            }
-
-            return CorpseTargetAdvisor.CanDeposit(
-                state,
-                item,
-                source,
-                section,
-                slot,
-                RequestedCorpseQuantity(),
-                out reason);
+            var plan = interactions.PlanCorpseDrop(section, slot, payload, DropQuantity(payload, true));
+            reason = plan.Reason;
+            return plan.IsValid;
         }
 
         // The partial-stack control requests an explicit quantity. An unparsable value is
@@ -1506,276 +1275,33 @@ namespace Mmorpg.Client.Ui
             return int.TryParse(corpseQuantityText, out var quantity) ? quantity : 0;
         }
 
-        private bool CanDropOnEquipment(
-            InventoryClientState state,
-            InventoryEquipmentSlot equipmentSlot,
-            InventoryDragPayload payload,
-            out string reason)
-        {
-            reason = string.Empty;
-            if (!TryResolveCurrentEquipmentSlot(state, equipmentSlot, out equipmentSlot))
-            {
-                reason = "This equipment slot is no longer available.";
-                return false;
-            }
-
-            if (!CanMoveItem(state, null))
-            {
-                reason = "Inventory mutation is unavailable while state is loading.";
-                return false;
-            }
-
-            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
-            {
-                var view = corpseController?.State.ShownView;
-                if (view == null
-                    || !corpseController.State.CanShowOperations
-                    || view.CorpseId != payload.CorpseId
-                    || !view.TryFindItem(
-                        payload.ItemInstanceId,
-                        out var corpseItem,
-                        out var sourceSection,
-                        out var sourceSlot))
-                {
-                    reason = "The corpse item is no longer available.";
-                    return false;
-                }
-
-                // A corpse Bag swaps with the equipped Bag, or takes an empty Bag slot with its
-                // contents; any other corpse item equips whole.
-                if (corpseItem.HasBagContents && equipmentSlot.Item != null)
-                {
-                    return CorpseTargetAdvisor.CanSwapCorpseBagIntoEquipment(
-                        state,
-                        corpseItem,
-                        sourceSection,
-                        equipmentSlot,
-                        out reason);
-                }
-
-                if (RequestedCorpseQuantity() != null)
-                {
-                    reason = "A partial corpse stack cannot be equipped. Turn the partial-stack control off.";
-                    return false;
-                }
-
-                return CorpseTargetAdvisor.CanLootIntoEquipment(
-                    state,
-                    view,
-                    corpseItem,
-                    sourceSection,
-                    sourceSlot,
-                    equipmentSlot,
-                    out reason);
-            }
-
-            if (payload.Kind != InventoryDragPayloadKind.Item
-                || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
-            {
-                reason = "Only a current inventory item can be equipped.";
-                return false;
-            }
-
-            if (IsSplitDrag(payload))
-            {
-                reason = "A split stack cannot be equipped.";
-                return false;
-            }
-
-            if (IsEquippedStackTopUp(state, item, equipmentSlot))
-            {
-                return CanTopUpEquippedStack(state, item, source, equipmentSlot, out reason);
-            }
-
-            if (source.Kind == InventoryItemLocationKind.Equipment)
-            {
-                reason = equipmentSlot.Item != null && equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId
-                    ? "The item is already equipped in this slot."
-                    : "Move the equipped item to an inventory slot before changing equipment slots.";
-                return false;
-            }
-
-            // An occupied slot swaps: the equipped item moves into the slot the new item came from.
-            return InventoryTargetAdvisor.CanEquip(
-                state,
-                item,
-                source,
-                equipmentSlot,
-                out reason);
-        }
-
         private void OnContainerDrop(
             InventoryContainer container,
             InventorySlot slot,
             InventoryDragPayload payload)
         {
-            var state = controller.State;
-            if (!CanDropOnContainer(state, container, slot, payload, out var validationError))
-            {
-                RejectDrop(validationError);
-                return;
-            }
-
-            TryResolveCurrentSlot(state, container, slot, out container, out slot);
-
-            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
-            {
-                SubmitCorpseLoot(container, slot, payload);
-                return;
-            }
-
-            if (payload.Kind == InventoryDragPayloadKind.RecoveryDelivery)
-            {
-                var delivery = state.RecoveryStorage.Deliveries.First(candidate =>
-                    candidate.DeliveryId == payload.RecoveryDeliveryId);
-                ClaimRecovery(delivery, container.ContainerId);
-                return;
-            }
-
-            state.TryFindItem(payload.ItemInstanceId, out var item, out var source);
-            if (slot.Item != null)
-            {
-                var targetLocation = new InventoryItemLocation(
-                    InventoryItemLocationKind.Container,
-                    container.ContainerId,
-                    container.ContainerType,
-                    slot.SlotIndex,
-                    string.Empty,
-                    Guid.Empty);
-                if (!InventoryTargetAdvisor.CanMerge(
-                    state,
-                    item,
-                    source,
-                    slot.Item,
-                    targetLocation,
-                    out _))
-                {
-                    Execute(
-                        controller.TrySwap(item, slot.Item, out var swapError),
-                        swapError,
-                        "Swap submitted.");
-                    return;
-                }
-
-                Execute(
-                    controller.TryMerge(item, slot.Item, out var mergeError),
-                    mergeError,
-                    "Merge submitted.");
-                return;
-            }
-
-            bool sent;
-            string operationError;
-            if (IsSplitDrag(payload))
-            {
-                int.TryParse(splitQuantityText, out var quantity);
-                sent = controller.TrySplit(
-                    item,
-                    quantity,
-                    container.ContainerId,
-                    slot.SlotIndex,
-                    out operationError);
-            }
-            else if (source.Kind == InventoryItemLocationKind.Equipment)
-            {
-                sent = controller.TryUnequip(
-                    item,
-                    container.ContainerId,
-                    slot.SlotIndex,
-                    out operationError);
-            }
-            else
-            {
-                sent = controller.TryRelocate(
-                    item,
-                    container.ContainerId,
-                    slot.SlotIndex,
-                    out operationError);
-            }
-
-            Execute(
-                sent,
-                operationError,
-                IsSplitDrag(payload) ? "Split submitted." : "Move submitted.");
+            ExecuteDrop(interactions.PlanContainerDrop(container, slot, payload, DropQuantity(payload, false)));
         }
 
         private void OnEquipmentDrop(
             InventoryEquipmentSlot equipmentSlot,
             InventoryDragPayload payload)
         {
-            var state = controller.State;
-            if (!CanDropOnEquipment(state, equipmentSlot, payload, out var validationError))
-            {
-                RejectDrop(validationError);
-                return;
-            }
-
-            TryResolveCurrentEquipmentSlot(state, equipmentSlot, out equipmentSlot);
-
-            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
-            {
-                var view = corpseController.State.ShownView;
-                view.TryFindItem(
-                    payload.ItemInstanceId,
-                    out var corpseItem,
-                    out _,
-                    out _);
-                if (corpseItem.HasBagContents && equipmentSlot.Item != null)
-                {
-                    ExecuteCorpse(
-                        corpseController.TrySwapBag(corpseItem, out var bagError),
-                        bagError,
-                        "Atomic Bag swap submitted.");
-                    return;
-                }
-
-                ExecuteCorpse(
-                    corpseController.TryLootToEquipment(corpseItem, equipmentSlot, out var corpseError),
-                    corpseError,
-                    equipmentSlot.Item == null ? "Corpse equip submitted." : "Corpse equip swap submitted.");
-                return;
-            }
-
-            state.TryFindItem(payload.ItemInstanceId, out var item, out _);
-            if (IsEquippedStackTopUp(state, item, equipmentSlot))
-            {
-                Execute(
-                    controller.TryMerge(item, equipmentSlot.Item, out var mergeError),
-                    mergeError,
-                    "Merge submitted.");
-                return;
-            }
-
-            Execute(
-                controller.TryEquip(item, equipmentSlot.SlotId, out var error),
-                error,
-                equipmentSlot.Item != null ? "Swap submitted." : "Equip submitted.");
+            ExecuteDrop(interactions.PlanEquipmentDrop(equipmentSlot, payload, DropQuantity(payload, false)));
         }
 
-        // A stack of the equipped definition tops up the equipped stack, such as arrows in the
-        // ammunition slot. Any other item on an occupied slot swaps with the equipped item.
-        private static bool IsEquippedStackTopUp(
-            InventoryClientState state,
-            InventoryItem item,
-            InventoryEquipmentSlot equipmentSlot)
+        private void OnCorpseDrop(
+            CorpseLootSection section,
+            CorpseLootSlot slot,
+            InventoryDragPayload payload)
         {
-            return InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, item, equipmentSlot.Item);
+            ExecuteDrop(interactions.PlanCorpseDrop(section, slot, payload, DropQuantity(payload, true)));
         }
 
-        private static bool CanTopUpEquippedStack(
-            InventoryClientState state,
-            InventoryItem item,
-            InventoryItemLocation source,
-            InventoryEquipmentSlot equipmentSlot,
-            out string reason)
+        // A sent item move clears the selection; a corpse operation keeps it.
+        private void ExecuteDrop(InventoryDropPlan plan)
         {
-            return InventoryTargetAdvisor.CanMerge(
-                state,
-                item,
-                source,
-                equipmentSlot.Item,
-                InventoryItemLocation.ForEquipment(equipmentSlot.SlotId),
-                out reason);
+            ShowResult(interactions.Execute(plan), !plan.IsCorpseOperation);
         }
 
         private void OnContainerSlotClicked(InventorySlot slot)
@@ -1832,113 +1358,6 @@ namespace Mmorpg.Client.Ui
             Rebuild();
         }
 
-        private void ClaimRecovery(RecoveryDelivery delivery, Guid destinationContainerId)
-        {
-            Execute(
-                controller.TryClaimRecovery(delivery, destinationContainerId, out var error),
-                error,
-                "Recovery claim submitted.");
-        }
-
-        private void SubmitCorpseLoot(
-            InventoryContainer destination,
-            InventorySlot destinationSlot,
-            InventoryDragPayload payload)
-        {
-            var view = corpseController?.State.ShownView;
-            if (view == null
-                || !view.TryFindItem(
-                    payload.ItemInstanceId,
-                    out var corpseItem,
-                    out _,
-                    out _))
-            {
-                RejectDrop("The corpse item is no longer available.");
-                return;
-            }
-
-            var quantity = RequestedCorpseQuantity() ?? corpseItem.Quantity;
-
-            ExecuteCorpse(
-                corpseController.TryLoot(
-                    corpseItem,
-                    destination,
-                    destinationSlot,
-                    quantity,
-                    out var error),
-                error,
-                quantity < corpseItem.Quantity
-                    ? "Partial corpse loot submitted."
-                    : "Corpse loot submitted.");
-        }
-
-        private void OnCorpseDrop(
-            CorpseLootView view,
-            CorpseLootSection section,
-            CorpseLootSlot slot,
-            InventoryDragPayload payload)
-        {
-            var state = controller.State;
-            if (!CanDropOnCorpse(
-                    state,
-                    view,
-                    section,
-                    slot,
-                    payload,
-                    out var validationError))
-            {
-                RejectDrop(validationError);
-                return;
-            }
-
-            TryResolveCorpseTarget(ref view, ref section, ref slot);
-            if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
-            {
-                view.TryFindItem(
-                    payload.ItemInstanceId,
-                    out var corpseItem,
-                    out _,
-                    out _);
-                var corpseQuantity = RequestedCorpseQuantity() ?? corpseItem.Quantity;
-
-                ExecuteCorpse(
-                    corpseController.TryMoveWithinCorpse(
-                        corpseItem,
-                        section,
-                        slot,
-                        corpseQuantity,
-                        out var moveError),
-                    moveError,
-                    corpseQuantity < corpseItem.Quantity
-                        ? "Partial corpse rearrangement submitted."
-                        : "Corpse rearrangement submitted.");
-                return;
-            }
-
-            state.TryFindItem(payload.ItemInstanceId, out var item, out var source);
-            if (CorpseTargetAdvisor.IsBagSwap(state, item, source, section, slot))
-            {
-                ExecuteCorpse(
-                    corpseController.TrySwapBag(slot.Item, out var bagError),
-                    bagError,
-                    "Atomic Bag swap submitted.");
-                return;
-            }
-
-            var quantity = RequestedCorpseQuantity() ?? item.Quantity;
-            ExecuteCorpse(
-                corpseController.TryDeposit(
-                    item,
-                    section,
-                    slot,
-                    quantity,
-                    out var error),
-                error,
-                quantity < item.Quantity
-                    ? "Partial corpse deposit submitted."
-                    : "Corpse deposit submitted.");
-        }
-
         private void DestroySelected(InventoryItem item)
         {
             if (!destroyConfirmation)
@@ -1949,26 +1368,17 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            Execute(
-                controller.TryDestroy(item, out var error),
-                error,
-                "Destroy submitted.");
+            ShowResult(interactions.Destroy(item), true);
         }
 
-        private void Execute(bool sent, string error, string success)
+        private void ShowResult(InventoryInteractionResult result, bool clearSelectionWhenSent)
         {
-            localStatus = sent ? success : error;
-            if (sent)
+            localStatus = result.Message;
+            if (result.Sent && clearSelectionWhenSent)
             {
                 ClearSelection();
             }
 
-            Rebuild();
-        }
-
-        private void ExecuteCorpse(bool sent, string error, string success)
-        {
-            localStatus = sent ? success : error;
             Rebuild();
         }
 
@@ -2021,28 +1431,12 @@ namespace Mmorpg.Client.Ui
 
         private void ExecuteCorpseClose()
         {
-            var error = "Corpse interaction state is unavailable.";
-            if (worldInteractionController == null
-                || !worldInteractionController.TryCloseActive(out error))
-            {
-                RejectDrop(error);
-                return;
-            }
-
-            localStatus = "Corpse close submitted.";
+            ShowResult(interactions.CloseCorpse(), false);
         }
 
         private void ExecuteCorpseRefresh()
         {
-            var error = "Corpse interaction state is unavailable.";
-            if (corpseController == null
-                || !corpseController.TryRefresh(out error))
-            {
-                RejectDrop(error);
-                return;
-            }
-
-            localStatus = "Corpse refresh submitted.";
+            ShowResult(interactions.RefreshCorpse(), false);
         }
 
         private void DrawStatus(Transform parent, InventoryClientState state)
