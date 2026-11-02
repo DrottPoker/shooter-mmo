@@ -38,7 +38,8 @@ public sealed class GameServiceSchema
         "202610251200_character_appearance",
         "202610261800_live_mob_loot_grants",
         "202611011200_remove_secure_container",
-        "202611021200_remove_cloak_equipment"
+        "202611021200_remove_cloak_equipment",
+        "202611021300_expand_permanent_inventory"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

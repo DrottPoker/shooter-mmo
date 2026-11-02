@@ -55,7 +55,7 @@
   "character": {
     "bankSlotCount": 40,
     "baseCarryCapacity": 2000,
-    "inventorySlotCount": 20
+    "inventorySlotCount": 24
   },
   "economy": {
     "currencyDisplayName": "Gold",

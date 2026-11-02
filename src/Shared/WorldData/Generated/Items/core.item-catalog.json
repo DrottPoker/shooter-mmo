@@ -1,10 +1,10 @@
 {
   "formatVersion": 8,
   "catalogId": "core",
-  "revision": "6fd5a31562190ee5051e01f485bd7cd26cfaca6edfd7492a12153c5404c1ed62",
+  "revision": "c5347e1726ab470b4a560c89ff037c2c2ed23ac88531e23561966a4869812b63",
   "character": {
     "baseCarryCapacity": 2000,
-    "inventorySlotCount": 20,
+    "inventorySlotCount": 24,
     "bankSlotCount": 40
   },
   "economy": {

@@ -21,6 +21,7 @@ internal static class ItemsSchemaMigrations
         new(ItemEconomyMigration.Id, ItemEconomyMigration.Sql),
         new(LiveMobLootGrantMigration.Id, LiveMobLootGrantMigration.Sql),
         new(SecureContainerRemovalMigration.Id, SecureContainerRemovalMigration.Sql),
-        new(CloakEquipmentRemovalMigration.Id, CloakEquipmentRemovalMigration.Sql)
+        new(CloakEquipmentRemovalMigration.Id, CloakEquipmentRemovalMigration.Sql),
+        new(PermanentInventoryExpansionMigration.Id, PermanentInventoryExpansionMigration.Sql)
     ];
 }
