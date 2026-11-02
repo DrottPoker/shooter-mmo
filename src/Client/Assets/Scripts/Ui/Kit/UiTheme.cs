@@ -49,6 +49,13 @@ namespace Mmorpg.Client.Ui
         public Color DropValidColor = new Color(0.40f, 0.85f, 0.45f, 1f);
         public Color DropInvalidColor = new Color(0.95f, 0.35f, 0.30f, 1f);
         public Color RollbackColor = new Color(0.95f, 0.30f, 0.25f, 1f);
+        [Tooltip("Glow of the equipment slots that take a dragged item.")]
+        public Color DropTargetGlowColor = new Color(0.98f, 0.80f, 0.40f, 0.95f);
+        [Tooltip("Seconds of one breath of the drop target glow.")]
+        public float DropTargetPulseSeconds = 1.2f;
+        [Range(0f, 1f)]
+        [Tooltip("The faintest the drop target glow gets during a breath, as part of its color's alpha.")]
+        public float DropTargetGlowFloor = 0.45f;
         public Color BlockedColor = new Color(0.80f, 0.32f, 0.28f, 0.85f);
         public Color MeterNormalColor = new Color(0.27f, 0.85f, 0.86f, 1f);
         public Color MeterSlowedColor = new Color(0.98f, 0.76f, 0.30f, 1f);
@@ -109,6 +116,8 @@ namespace Mmorpg.Client.Ui
         public Sprite ItemFrame;
         [Tooltip("Nine-sliced highlight for hover and drop feedback, tinted.")]
         public Sprite SlotHighlight;
+        [Tooltip("Nine-sliced soft glow inside a slot that takes a dragged item, tinted.")]
+        public Sprite SlotGlow;
         public Sprite LockIcon;
         public Sprite HoodToggleIcon;
 

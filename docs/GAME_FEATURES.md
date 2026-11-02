@@ -21,10 +21,12 @@ to check each feature by hand is in [Manual Testing](MANUAL_TESTING.md).
 | Middle mouse button, dragged | Turns and tilts the camera |
 | Arrow keys | Left and right turn the camera, up and down tilt it |
 | Scroll wheel | Zooms the camera |
-| `Escape` | Closes an open world menu or inventory dialog and does nothing else; otherwise ends the attack, closes the open interaction and every inventory window, and cancels an Admin teleport pick |
+| `Escape` | Closes an open world menu or inventory dialog, or puts back a stack part carried on the pointer, and does nothing else; otherwise ends the attack, closes the open interaction and every inventory window, and cancels an Admin teleport pick |
 | `B` or `I` | Opens or closes the Inventory window |
 | `C` | Opens or closes the Equipment window |
-| `Shift`, held while dragging a stack | Drags part of the stack and asks how many after the drop |
+| `Shift`, held while dragging a stack | Drags half of the stack |
+| `Shift`, held while right-clicking a stack | Sends half of the stack where a right-click sends it |
+| `Ctrl`, held while clicking a stack | Asks how many items to take and carries them on the pointer |
 | `F2` | Opens or closes the [Debug Menu](#debug-menu-f2) |
 | `F3` | Opens or closes the [Admin Menu](#admin-menu-f3), whose tools work in the Development environment |
 
@@ -362,17 +364,18 @@ or scroll on a window never reaches the world.
   it gathers with. Dragging across the character turns it around. The head,
   shoulders, body, legs, and feet slots stand in a column on its left, the neck,
   hands, both rings, and Bag slots in a column on its right, both columns as far
-  from the window's edge, and main hand, off hand, tool, and ammunition close
+  from the window's edge, and main hand, off hand, ammunition, and tool close
   together in a row below. A slot shows no name; hovering an empty slot names
   it, such as `Neck`. The header shows how many slots are filled, such as
   `9 / 14`. The back slot is hidden, and no item equips to the shoulders slot
   yet. A slot the catalog adds later appears in a row below. While a hood that
   can be lowered is worn, a small hood button beside the head slot lowers or
   raises it.
-- **Inventory** has a search field, the carry meter, Permanent Inventory in four
-  rows of six, the equipped Bag's slots below it in the same columns under the
-  Bag's name, such as `TRAVELER'S PACK 2 / 7`, and the balance with a coin at
-  the bottom, such as `79 Gold`. The window grows with the Bag.
+- **Inventory** has a search field, the carry meter, the 20 Permanent Inventory
+  slots in four rows of five without a heading, the equipped Bag's slots below
+  them in the same columns under the Bag's name, such as
+  `TRAVELER'S PACK 2 / 7`, and the balance with a coin at the bottom, such as
+  `79 Gold`. The window grows with the Bag.
 - **The storage window** shows the Bank, Recovery Storage, a corpse, or a
   vendor, with a tab for each one that the open NPC offers. Its title names the
   NPC, the corpse, or the storage. Recovery Storage heads each delivery with its
@@ -409,19 +412,29 @@ Items move by drag and drop:
   green and invalid ones red. The dragged item's icon, with its quantity, trails
   below and to the right of the pointer, so it never hides the target, and the
   slot it came from fades until the drag ends.
+- While you drag an item that can be equipped, every equipment slot that takes
+  it glows softly in gold, such as both ring slots for a ring, so you see where
+  it goes. The glow ends with the drag.
 - Dropping onto an occupied slot merges compatible stacks and otherwise swaps
   the two items when each fits the other's slot. On an occupied equipment slot, a
   stack of the equipped item tops it up, and another item equips and sends the
   equipped one to the slot the new item came from.
-- Hold `Shift` while you start dragging a stack to move part of it. The dragged
-  icon shows `?` instead of the quantity, and after the drop a small window asks
-  how many: for a split onto an empty slot up to all but one, starting at half,
-  and for a corpse item or a deposit into a corpse up to the whole stack. `Enter`
-  confirms and `Escape` cancels. The equipped arrows split the same way. Part of
-  a stack never equips.
+- Hold `Shift` while you start dragging a stack to drag half of it, rounded
+  down; the rest stays. The dragged icon shows the half, and dropping it on an
+  empty slot splits it off at once.
+- `Ctrl`+click a stack to choose how many items to take. A small `SPLIT STACK`
+  window asks, from one up to all but one, starting at half; `Enter` confirms and
+  `Escape` cancels. The chosen part then rides on the pointer until you click the
+  slot where it goes. A slot that refuses it says why and the part stays on the
+  pointer; a right-click, a click beside the windows, or `Escape` puts it back.
+  While the part rides on the pointer, a click never walks or attacks.
+- A part of your own stack goes into an empty slot, and a part of a corpse stack
+  may also top up a compatible stack. A part never equips. The equipped arrows
+  split the same way, which unequips the part.
 - Drop an item outside every window to destroy it. A dialog asks
   `Destroy <name>?` first; an item that may not be destroyed, such as a protected
-  quest item, says why instead.
+  quest item, says why instead. Destruction takes the whole stack, so a dragged
+  half dropped outside asks you to drag the whole stack.
 - The ammunition slot holds one stack of up to 1,000 arrows.
 - An item cannot be equipped into a slot that an equipped item blocks, such as
   the off hand next to a two-handed bow, or while it would block an occupied
@@ -453,6 +466,13 @@ A right-click moves an item to where it belongs, as a shortcut for a drag:
   inventory, then general Bag slots.
 - A right-click that has nothing to do, such as on an ore with no Bank open, says
   why in the game messages at the lower left.
+- `Shift`+right-click sends half of a stack, rounded down, the same way, and the
+  rest stays: into the first free Bank slot while the Bank tab shows, from the
+  Bank or the ammunition slot into the first free inventory slot, from a corpse
+  into a stack or a free inventory slot, and into the `Sell` slot with that
+  quantity while a vendor's tab shows. A part never equips, so on equippable
+  arrows with no Bank open it says so. On a single item `Shift`+right-click does
+  what right-click does.
 
 Every item move shows at once: moving, swapping, merging, splitting, equipping
 and unequipping items and Bags, destroying, claiming a Recovery delivery,
@@ -493,8 +513,8 @@ The corpse shows its equipment, general inventory, and Bag contents once its
 complete state has arrived, and `Close` and `Loot All` below them.
 
 - Drag whole items into Permanent inventory or the equipped Bag, or drag
-  carried items back into compatible corpse slots. Hold `Shift` while you start
-  dragging to move a chosen quantity in either direction.
+  carried items back into compatible corpse slots. `Shift` drags half a stack
+  and `Ctrl`+click carries a chosen quantity, in either direction.
 - Items can be dragged between empty or occupied slots in any corpse section.
   Compatible stacks with room merge. A whole item that cannot merge swaps with
   the item on the occupied slot only when both slots accept the other item and

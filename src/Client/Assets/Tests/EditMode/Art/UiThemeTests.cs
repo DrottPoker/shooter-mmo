@@ -52,6 +52,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 theme.SlotBackground,
                 theme.ItemFrame,
                 theme.SlotHighlight,
+                theme.SlotGlow,
                 theme.ButtonFrame,
                 theme.FieldFrame,
                 theme.MeterTrack,

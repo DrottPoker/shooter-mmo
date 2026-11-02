@@ -194,10 +194,10 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        // Shift drags part of a stack: the payload says so, and the ghost asks how many until
-        // the drop.
+        // Shift drags half of a stack, rounded down: the payload carries the half, and the ghost
+        // shows it.
         [Test]
-        public void ShiftDragCarriesPartOfTheStack()
+        public void ShiftDragCarriesHalfOfTheStack()
         {
             var fixture = CreateFixture();
             var texture = new Texture2D(4, 4);
@@ -209,36 +209,169 @@ namespace Mmorpg.Client.Tests.EditMode
                 source.Configure(
                     fixture.Coordinator,
                     InventoryDragPayload.ForItem(itemId),
-                    "Iron Ore  x20",
+                    "Iron Ore  x21",
                     icon,
-                    "20",
+                    "21",
                     true,
-                    true);
+                    10);
                 source.PartialOverride = true;
 
                 source.OnBeginDrag(new PointerEventData(fixture.EventSystem));
 
                 var payload = fixture.Coordinator.ActivePayload;
                 Assert.That(payload.IsPartial, Is.True);
+                Assert.That(payload.Quantity, Is.EqualTo(10));
                 Assert.That(payload.ItemInstanceId, Is.EqualTo(itemId));
                 var ghost = fixture.Coordinator.transform.Find(InventoryDragCoordinator.GhostName);
-                Assert.That(
-                    ghost.Find("Quantity").GetComponent<TMP_Text>().text,
-                    Is.EqualTo(InventoryDragCoordinator.PartialQuantityMark));
+                Assert.That(ghost.Find("Quantity").GetComponent<TMP_Text>().text, Is.EqualTo("10"));
                 source.OnEndDrag(OverInterface(fixture));
 
-                // A slot that does not allow part of its stack drags it whole even with Shift.
+                // Without Shift the whole stack moves.
+                source.PartialOverride = false;
+                source.OnBeginDrag(new PointerEventData(fixture.EventSystem));
+                Assert.That(fixture.Coordinator.ActivePayload.Quantity, Is.Null);
+                source.OnEndDrag(OverInterface(fixture));
+
+                // A slot without a half drags it whole even with Shift.
+                source.PartialOverride = true;
                 source.Configure(fixture.Coordinator, InventoryDragPayload.ForItem(itemId), "Ring", icon, string.Empty, true);
                 source.OnBeginDrag(new PointerEventData(fixture.EventSystem));
                 Assert.That(fixture.Coordinator.ActivePayload.IsPartial, Is.False);
                 source.OnEndDrag(OverInterface(fixture));
-                Assert.That(InventoryDragPayload.ForRecoveryDelivery(Guid.NewGuid()).AsPartial().IsPartial, Is.False);
+                Assert.That(InventoryDragPayload.ForRecoveryDelivery(Guid.NewGuid()).WithQuantity(3).IsPartial, Is.False);
+                Assert.Throws<ArgumentOutOfRangeException>(() => InventoryDragPayload.ForItem(itemId).WithQuantity(0));
             }
             finally
             {
                 fixture.Dispose();
                 UnityEngine.Object.DestroyImmediate(icon);
                 UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        // A carried part stays on the pointer: a slot that refuses it says why and keeps it
+        // carried, a slot that takes it ends the carry, and the pointer stays captured for the
+        // frame the carry ended in.
+        [Test]
+        public void ACarriedPartStaysUntilASlotTakesIt()
+        {
+            var fixture = CreateFixture();
+            try
+            {
+                var started = 0;
+                var ended = 0;
+                fixture.Coordinator.DragStarted += _ => started++;
+                fixture.Coordinator.DragEnded += () => ended++;
+                var accepts = false;
+                InventoryDragPayload received = null;
+                string rejection = null;
+                var target = fixture.Target.AddComponent<InventoryDropTarget>();
+                target.Configure(
+                    fixture.Coordinator,
+                    fixture.Highlight,
+                    Color.green,
+                    Color.red,
+                    (InventoryDragPayload candidate, out string reason) =>
+                    {
+                        reason = "The slot is taken.";
+                        return accepts;
+                    },
+                    candidate => received = candidate,
+                    reason => rejection = reason);
+                var part = InventoryDragPayload.ForItem(Guid.NewGuid()).WithQuantity(4);
+
+                Assert.That(fixture.Coordinator.BeginCarry(part, "Iron Ore", null, "4", Vector2.zero), Is.True);
+                Assert.That(fixture.Coordinator.IsDragging, Is.True);
+                Assert.That(fixture.Coordinator.IsCarrying, Is.True);
+                Assert.That(fixture.Coordinator.CapturesPointer, Is.True);
+                Assert.That(started, Is.EqualTo(1));
+                Assert.That(fixture.Coordinator.BeginCarry(part, "Iron Ore", null, "4", Vector2.zero), Is.False);
+
+                target.DropCarried();
+                Assert.That(rejection, Is.EqualTo("The slot is taken."));
+                Assert.That(received, Is.Null);
+                Assert.That(fixture.Coordinator.IsCarrying, Is.True);
+
+                accepts = true;
+                target.DropCarried();
+                Assert.That(received, Is.SameAs(part));
+                Assert.That(fixture.Coordinator.IsDragging, Is.False);
+                Assert.That(fixture.Coordinator.IsCarrying, Is.False);
+                Assert.That(fixture.Coordinator.CapturesPointer, Is.True, "the click that ended the carry");
+                Assert.That(ended, Is.EqualTo(1));
+
+                // Without a carried part a click puts nothing down.
+                received = null;
+                target.DropCarried();
+                Assert.That(received, Is.Null);
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
+        // Right-click moves, Shift+right-click moves half, and Ctrl+click splits. While a part
+        // is carried, a click puts it on the slot and a right-click puts it back.
+        [Test]
+        public void SlotClicksChooseTheirMoveAndPlaceACarriedPart()
+        {
+            var fixture = CreateFixture();
+            try
+            {
+                var calls = string.Empty;
+                var target = fixture.Target.AddComponent<InventoryDropTarget>();
+                target.Configure(
+                    fixture.Coordinator,
+                    fixture.Highlight,
+                    Color.green,
+                    Color.red,
+                    (InventoryDragPayload candidate, out string reason) =>
+                    {
+                        reason = string.Empty;
+                        return true;
+                    },
+                    _ => calls += "drop ",
+                    _ => Assert.Fail("The carried part was refused."));
+                var clicks = fixture.Target.AddComponent<InventorySlotClicks>();
+                clicks.Configure(
+                    fixture.Coordinator,
+                    target,
+                    () => calls += "right ",
+                    () => calls += "half ",
+                    () => calls += "split ");
+                clicks.ShiftOverride = false;
+                clicks.ControlOverride = false;
+                var right = new PointerEventData(fixture.EventSystem) { button = PointerEventData.InputButton.Right };
+                var left = new PointerEventData(fixture.EventSystem) { button = PointerEventData.InputButton.Left };
+
+                clicks.OnPointerClick(right);
+                clicks.OnPointerClick(left);
+                clicks.ShiftOverride = true;
+                clicks.OnPointerClick(right);
+                clicks.ControlOverride = true;
+                clicks.OnPointerClick(left);
+                Assert.That(calls, Is.EqualTo("right half split "));
+
+                // Without its own half move, Shift+right-click does what right-click does.
+                clicks.Configure(fixture.Coordinator, target, () => calls += "right ", null, null);
+                calls = string.Empty;
+                clicks.OnPointerClick(right);
+                Assert.That(calls, Is.EqualTo("right "));
+
+                var part = InventoryDragPayload.ForItem(Guid.NewGuid()).WithQuantity(2);
+                calls = string.Empty;
+                fixture.Coordinator.BeginCarry(part, "Ore", null, "2", Vector2.zero);
+                clicks.OnPointerClick(right);
+                Assert.That(fixture.Coordinator.IsCarrying, Is.False);
+                fixture.Coordinator.BeginCarry(part, "Ore", null, "2", Vector2.zero);
+                clicks.OnPointerClick(left);
+                Assert.That(calls, Is.EqualTo("drop "));
+                Assert.That(fixture.Coordinator.IsCarrying, Is.False);
+            }
+            finally
+            {
+                fixture.Dispose();
             }
         }
 
@@ -283,7 +416,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(payload.CorpseId, Is.EqualTo(corpseId));
             Assert.That(payload.ItemInstanceId, Is.EqualTo(itemId));
             Assert.That(payload.RecoveryDeliveryId, Is.EqualTo(Guid.Empty));
-            Assert.That(payload.AsPartial().CorpseId, Is.EqualTo(corpseId));
+            Assert.That(payload.WithQuantity(2).CorpseId, Is.EqualTo(corpseId));
             Assert.Throws<ArgumentException>(() =>
                 InventoryDragPayload.ForCorpseItem(Guid.Empty, itemId));
         }

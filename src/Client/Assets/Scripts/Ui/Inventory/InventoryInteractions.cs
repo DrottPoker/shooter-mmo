@@ -235,13 +235,23 @@ namespace Mmorpg.Client.Ui
                         inventory.TryMerge(move.Item, move.Target, out error),
                         error,
                         "Merge submitted.");
+                case InventoryQuickMoveKind.Split:
+                    return InventoryInteractionResult.From(
+                        inventory.TrySplit(move.Item, move.Quantity, move.Container.ContainerId, move.Slot.SlotIndex, out error),
+                        error,
+                        "Split submitted.");
                 case InventoryQuickMoveKind.ClaimRecovery:
                     return ClaimRecovery(move.Delivery, move.Container.ContainerId);
                 case InventoryQuickMoveKind.Loot:
                     return InventoryInteractionResult.From(
-                        corpses.TryLoot(move.CorpseItem, move.Container, move.Slot, move.CorpseItem.Quantity, out error),
+                        corpses.TryLoot(
+                            move.CorpseItem,
+                            move.Container,
+                            move.Slot,
+                            move.Quantity > 0 ? move.Quantity : move.CorpseItem.Quantity,
+                            out error),
                         error,
-                        "Corpse loot submitted.");
+                        move.Quantity > 0 ? "Partial corpse loot submitted." : "Corpse loot submitted.");
                 case InventoryQuickMoveKind.LootToEquipment:
                 {
                     var equipmentSlot = State?.FullSnapshot?.Equipment.FirstOrDefault(slot =>
@@ -274,6 +284,24 @@ namespace Mmorpg.Client.Ui
             return RunQuickMove(InventoryQuickMoves.ForItem(state, item, bankShown));
         }
 
+        // Shift+right-clicking a carried or equipped stack sends half of it, rounded down, where
+        // right-click sends the stack.
+        public InventoryInteractionResult QuickMoveItemPart(InventoryItem item, bool bankShown)
+        {
+            var state = State;
+            if (!InventoryDropPlanner.CanMoveItem(state, item))
+            {
+                return InventoryInteractionResult.Rejected(
+                    state != null && state.IsPredictedItem(item.ItemInstanceId)
+                        ? "Wait a moment until the stack is confirmed."
+                        : "Inventory mutation is unavailable while state is loading.");
+            }
+
+            return state.TryFindItem(item.ItemInstanceId, out var current, out _)
+                ? RunQuickMove(InventoryQuickMoves.ForItemPart(state, current, InventoryQuickMoves.HalfOf(current.Quantity), bankShown))
+                : InventoryInteractionResult.Rejected("The item is no longer available.");
+        }
+
         public InventoryInteractionResult QuickMoveCorpseItem(CorpseLootItem item)
         {
             if (!CanOperateOnCorpse || !InventoryDropPlanner.CanMoveItem(State, null))
@@ -283,6 +311,21 @@ namespace Mmorpg.Client.Ui
             }
 
             return RunQuickMove(InventoryQuickMoves.ForCorpseItem(State, CorpseView, item));
+        }
+
+        // Shift+right-clicking a corpse stack loots half of it, rounded down.
+        public InventoryInteractionResult QuickMoveCorpseItemPart(CorpseLootItem item)
+        {
+            if (!CanOperateOnCorpse || !InventoryDropPlanner.CanMoveItem(State, null))
+            {
+                return InventoryInteractionResult.Rejected(
+                    "Inventory or corpse mutation is unavailable while state is loading or busy.");
+            }
+
+            var view = CorpseView;
+            return view != null && item != null && view.TryFindItem(item.ItemInstanceId, out var current, out _, out _)
+                ? RunQuickMove(InventoryQuickMoves.ForCorpseItemPart(State, view, current, InventoryQuickMoves.HalfOf(current.Quantity)))
+                : InventoryInteractionResult.Rejected("The corpse item is no longer available.");
         }
 
         public InventoryInteractionResult QuickMoveRecoveryDelivery(RecoveryDelivery delivery)
@@ -353,7 +396,7 @@ namespace Mmorpg.Client.Ui
                 "Corpse refresh submitted.");
         }
 
-        // Whether a dragged item may be offered to the vendor, whole.
+        // Whether a dragged item may be offered to the vendor, whole or the dragged part.
         public bool CanOfferToVendor(
             VendorProfileDefinition vendor,
             InventoryDragPayload payload,
@@ -380,7 +423,7 @@ namespace Mmorpg.Client.Ui
                 state.FullSnapshot,
                 item,
                 location,
-                item.Quantity,
+                payload.Quantity ?? item.Quantity,
                 out _,
                 out reason);
         }

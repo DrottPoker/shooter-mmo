@@ -815,9 +815,12 @@ bindings out of gameplay and UI code and allows future rebinding and
 control-scheme work without changing those systems. The cursor is never locked.
 
 `ClientBootstrap` owns one `WorldPointerFocus` and passes it to the World scene,
-the local player, and the camera. It reports whether the pointer is over
-interface through the EventSystem, since every World scene panel is uGUI. A click
-or scroll over a panel therefore never reaches the world.
+the local player, the camera, and the inventory windows. It reports whether the
+pointer is over interface through the EventSystem, since every World scene panel
+is uGUI, or held by a capture that a panel adds, such as the inventory windows
+while a stack part rides on the pointer. A click or scroll over a panel, or a
+click that puts down or puts back a carried part, therefore never reaches the
+world.
 
 `CharacterBody` is the reusable collision foundation for local players, remote
 players, and NPCs. The character root is its logical ground point. CharacterBody
@@ -1323,8 +1326,13 @@ slot sends, an `InventoryDropPlan`, or why it sends nothing, and
 `InventoryInteractions` sends a plan, a right-click move from
 `InventoryQuickMoves`, Loot all, a destruction, or a vendor trade through the
 controllers and returns an `InventoryInteractionResult` with the message for the
-player. A drop may ask for part of the dragged stack: a split of a carried or
-equipped stack, or a partial corpse loot, deposit, or move. A message of an
+player. A drop may move part of the dragged stack, which its payload carries: a
+split of a carried or equipped stack, or a partial corpse loot, deposit, or
+move. `InventoryQuickMoves.ForItemPart` and `ForCorpseItemPart` give the
+Shift+right-click moves: half of the stack, `InventoryQuickMoves.HalfOf`, goes
+where the right-click move would send the stack, as a split into the first
+free slot or a partial loot that may top up a carried stack, and never equips.
+A message of an
 action that sent nothing, and the reason of an undone move, go to the
 `GameMessageLog` that `TemporaryGameMessagePanel` shows.
 
@@ -1337,8 +1345,11 @@ symmetrically, as far from both window edges, around the theme's
 `EquipmentCenterWidth`, where it shows the
 [Character Preview](#character-preview) on the theme's pedestal, and centres
 each row below with the same gap as the columns; a slot draws no name, and its
-tooltip names it. Every slot is a square of the theme's
-slot size; the Inventory and storage windows show their grids in six columns.
+tooltip names it. While a drag or a carried part is in progress, every
+equipment slot whose drop validator accepts the payload glows with the theme's
+`SlotGlow` sprite, breathing through `UiPulse`. Every slot is a square of the
+theme's slot size; the Inventory and storage windows show their grids in five
+columns, and Permanent Inventory draws no heading.
 An occupied slot draws the item's icon from `ClientItemCatalog.LoadIcon` in a
 frame of `ItemRarityPresentation.FrameColor`, which is the theme's common color
 for every item until items have a rarity; only an item whose icon cannot load
@@ -1359,16 +1370,25 @@ a swap that `InventoryTargetAdvisor.CanEquip` checks: the equipped item must fit
 the slot the new item leaves, a non-empty equipped Bag stays, the new item's
 blocked slots must be empty, and the carry cap must hold. Valid and invalid
 targets light the slot's highlight green or red, then revalidate the current
-state before sending an operation. A drag started with `Shift` carries a partial
-payload: a target judges it as if it moved one item, and after the drop the
-dialog asks for the quantity before the plan is made again with it. A drag that
-ends over no slot and no interface raises `DroppedOutside`, which offers a
-carried or equipped item for destruction behind a confirmation. A state change
-during a drag redraws the windows only when the drag ends, so a confirmation
-never cancels the drag, and drops always judge the current slot instead of the
-one drawn. An undone move marks its items for `RollbackMarkSeconds` (1.5 s). A
-Recovery item represents its complete delivery during a drag because the durable
-claim remains atomic.
+state before sending an operation. A payload carries an optional quantity, the
+part of the stack it moves. A drag started with `Shift` carries half the stack,
+rounded down, and targets judge and send that part. `Ctrl`+click on a slot asks
+for a quantity in the dialog, then `InventoryDragCoordinator.BeginCarry` puts
+that part on the pointer without a held button: `InventorySlotClicks` puts it
+on a clicked slot through `InventoryDropTarget.DropCarried`, a refusing slot
+says why and keeps it carried, and a right-click, a click beside the windows,
+or `Escape` puts it back. While a part is carried, and in the frame its carry
+ended, the coordinator's `CapturesPointer` holds `WorldPointerFocus`, so the
+click never walks or targets. The coordinator raises `DragStarted` and
+`DragEnded` for both kinds. A held drag that ends over no slot and no interface
+raises `DroppedOutside`, which offers a whole carried or equipped stack for
+destruction behind a confirmation. A state change during a held drag redraws
+the windows only when the drag ends, so a confirmation never cancels the drag,
+and drops always judge the current slot instead of the one drawn; during a carry
+the windows redraw under the part, which is put back when its stack is gone. An
+undone move marks its items for `RollbackMarkSeconds` (1.5 s). A Recovery item
+represents its complete delivery during a drag because the durable claim remains
+atomic.
 
 A UI-only target advisor reuses pure WorldData equipment, stack, Bag, slot-tag,
 weight, and hard-cap rules to disable obvious invalid
@@ -1405,6 +1425,9 @@ code change; what goes where stays in the windows' code.
   adds or hides slots only when the count changes.
 - `UiDialog` asks for a quantity or a confirmation; `Enter` confirms and
   `Escape` cancels through `InventoryWindows`.
+- `UiPulse` breathes a graphic's alpha between a floor and its color's alpha,
+  for the drop target glow with the theme's `DropTargetGlowColor`,
+  `DropTargetPulseSeconds`, and `DropTargetGlowFloor`.
 
 The theme's sources are in `Assets/Art/Ui/Sprites`, as
 [UI Art](ART_PIPELINE.md#ui-art) describes, and `UiThemeBuilder` in the Editor
@@ -1572,8 +1595,9 @@ An open snapshot opens the storage window on the corpse, beside the Inventory
 window, and closing the window closes the corpse. It renders all three sections
 and reuses `InventoryDragPayload` for corpse sources:
 
-- Dropping a full stack, or a partial one after a `Shift` drag, into Permanent
-  inventory or the equipped Bag submits a typed corpse intent, and dropping a
+- Dropping a full stack, or a part from a `Shift` drag or a `Ctrl`+click carry,
+  into Permanent inventory or the equipped Bag submits a typed corpse intent,
+  and dropping a
   carried item into a compatible corpse slot submits a deposit.
 - Dropping a corpse item onto another corpse slot submits an authoritative
   internal move, split, merge, or complete swap.

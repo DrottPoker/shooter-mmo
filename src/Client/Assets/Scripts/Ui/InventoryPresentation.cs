@@ -46,7 +46,7 @@ namespace Mmorpg.Client.Ui
 
         private static readonly string[] LeftSlots = { "head", "shoulders", "body", "legs", "feet" };
         private static readonly string[] RightSlots = { "neck", "hands", "ring_1", "ring_2", "bag" };
-        private static readonly string[] BottomSlots = { "main_hand", "off_hand", "tool", "ammunition" };
+        private static readonly string[] BottomSlots = { "main_hand", "off_hand", "ammunition", "tool" };
 
         public static PaperDollArrangement Arrange(IEnumerable<string> slotIds)
         {

@@ -64,7 +64,7 @@ namespace Mmorpg.Client.Ui
             }
 
             pendingSaleItemId = item.ItemInstanceId;
-            pendingSaleQuantityText = item.Quantity.ToString(CultureInfo.InvariantCulture);
+            pendingSaleQuantityText = (payload.Quantity ?? item.Quantity).ToString(CultureInfo.InvariantCulture);
             owner.Refresh();
         }
 

@@ -14,7 +14,8 @@ namespace Mmorpg.Client.Items
         Merge = 4,
         ClaimRecovery = 5,
         Loot = 6,
-        LootToEquipment = 7
+        LootToEquipment = 7,
+        Split = 8
     }
 
     // What a right-click does: one operation, which an equip may precede with unequips of the
@@ -31,7 +32,8 @@ namespace Mmorpg.Client.Items
             string equipmentSlotId = null,
             RecoveryDelivery delivery = null,
             CorpseLootItem corpseItem = null,
-            IReadOnlyList<InventoryQuickMove> before = null)
+            IReadOnlyList<InventoryQuickMove> before = null,
+            int quantity = 0)
         {
             Kind = kind;
             Reason = reason ?? string.Empty;
@@ -43,11 +45,15 @@ namespace Mmorpg.Client.Items
             Delivery = delivery;
             CorpseItem = corpseItem;
             Before = before ?? Array.Empty<InventoryQuickMove>();
+            Quantity = quantity;
         }
 
         public InventoryQuickMoveKind Kind { get; }
 
         public string Reason { get; }
+
+        // The part of the stack a split or a loot moves; zero moves the whole stack.
+        public int Quantity { get; }
 
         public InventoryItem Item { get; }
 
@@ -97,9 +103,14 @@ namespace Mmorpg.Client.Items
             return new InventoryQuickMove(InventoryQuickMoveKind.ClaimRecovery, string.Empty, container: container, delivery: delivery);
         }
 
-        internal static InventoryQuickMove Loot(CorpseLootItem item, InventoryContainer container, InventorySlot slot)
+        internal static InventoryQuickMove Split(InventoryItem item, int quantity, InventoryContainer container, InventorySlot slot)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.Loot, string.Empty, container: container, slot: slot, corpseItem: item);
+            return new InventoryQuickMove(InventoryQuickMoveKind.Split, string.Empty, item, container: container, slot: slot, quantity: quantity);
+        }
+
+        internal static InventoryQuickMove Loot(CorpseLootItem item, InventoryContainer container, InventorySlot slot, int quantity = 0)
+        {
+            return new InventoryQuickMove(InventoryQuickMoveKind.Loot, string.Empty, container: container, slot: slot, corpseItem: item, quantity: quantity);
         }
 
         internal static InventoryQuickMove LootToEquipment(CorpseLootItem item, string equipmentSlotId)
@@ -220,6 +231,120 @@ namespace Mmorpg.Client.Items
                 if (!lootReason.Contains("accepted tags"))
                 {
                     reason = lootReason;
+                }
+            }
+
+            return InventoryQuickMove.Nothing(reason);
+        }
+
+        // Half of a stack, rounded down: what Shift drags and Shift+right-click sends.
+        public static int HalfOf(int quantity)
+        {
+            return Math.Max(0, quantity) / 2;
+        }
+
+        // Shift+right-click: part of a stack goes where right-click sends the stack, and the
+        // rest stays. A part enters only an empty slot, as a split does, and never equips.
+        public static InventoryQuickMove ForItemPart(InventoryClientState state, InventoryItem item, int quantity, bool bankOpen)
+        {
+            if (state?.Catalog == null
+                || state.FullSnapshot == null
+                || item == null
+                || !state.TryFindItem(item.ItemInstanceId, out var current, out var location)
+                || !state.Catalog.TryGetDefinition(current.DefinitionId, out var definition))
+            {
+                return InventoryQuickMove.Nothing("The item is no longer available.");
+            }
+
+            if (!InventoryTargetAdvisor.CanSplit(state.Catalog, current, quantity, out var reason))
+            {
+                return InventoryQuickMove.Nothing(reason);
+            }
+
+            if (string.Equals(location.ContainerType, ItemContainerTypeIds.Bank, StringComparison.Ordinal))
+            {
+                return PartToSlots(state, current, quantity, CarriedFreeSlots(state), "Your inventory has no room for the item.");
+            }
+
+            if (bankOpen && state.Bank != null)
+            {
+                return PartToSlots(
+                    state,
+                    current,
+                    quantity,
+                    state.Bank.Slots.Where(slot => slot.Item == null).Select(slot => (state.Bank, slot)),
+                    "The Bank has no room for the item.");
+            }
+
+            if (location.Kind == InventoryItemLocationKind.Equipment)
+            {
+                return PartToSlots(state, current, quantity, CarriedFreeSlots(state), "Your inventory has no room for the item.");
+            }
+
+            return InventoryQuickMove.Nothing(definition.EquipmentSlots == null || definition.EquipmentSlots.Length == 0
+                ? "Right-click equips equipment; drag this item to move it."
+                : "Part of a stack cannot be equipped.");
+        }
+
+        // Shift+right-click on a corpse stack: part of it tops up a carried stack or takes the
+        // first free carried slot, and the rest stays in the corpse.
+        public static InventoryQuickMove ForCorpseItemPart(
+            InventoryClientState state,
+            CorpseLootView view,
+            CorpseLootItem corpseItem,
+            int quantity)
+        {
+            if (state?.Catalog == null
+                || state.FullSnapshot == null
+                || view == null
+                || corpseItem == null
+                || !view.TryFindItem(corpseItem.ItemInstanceId, out var item, out var section, out var slot))
+            {
+                return InventoryQuickMove.Nothing("The corpse item is no longer available.");
+            }
+
+            if (quantity < 1 || quantity >= item.Quantity)
+            {
+                return InventoryQuickMove.Nothing("A single item cannot be split.");
+            }
+
+            var reason = "Your inventory has no room for the item.";
+            foreach (var (container, carriedSlot) in CarriedStacks(state).Concat(CarriedFreeSlots(state)))
+            {
+                if (CorpseTargetAdvisor.CanLoot(state, view, item, section, slot, container, carriedSlot, quantity, out var lootReason))
+                {
+                    return InventoryQuickMove.Loot(item, container, carriedSlot, quantity);
+                }
+
+                if (carriedSlot.Item == null && !lootReason.Contains("accepted tags"))
+                {
+                    reason = lootReason;
+                }
+            }
+
+            return InventoryQuickMove.Nothing(reason);
+        }
+
+        // Splits the part into the first free slot that takes it.
+        private static InventoryQuickMove PartToSlots(
+            IInventoryView view,
+            InventoryItem item,
+            int quantity,
+            IEnumerable<(InventoryContainer Container, InventorySlot Slot)> freeSlots,
+            string failure)
+        {
+            var reason = failure;
+            foreach (var (container, slot) in freeSlots)
+            {
+                var split = InventoryPredictedOperation.Split(item.ItemInstanceId, quantity, container.ContainerId, slot.SlotIndex);
+                if (InventoryOperationPredictor.TryApply(view, split, out _, out var splitReason))
+                {
+                    return InventoryQuickMove.Split(item, quantity, container, slot);
+                }
+
+                if (!splitReason.Contains("accepted tags"))
+                {
+                    reason = splitReason;
                 }
             }
 

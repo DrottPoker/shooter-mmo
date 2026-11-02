@@ -44,7 +44,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             Canvas.ForceUpdateCanvases();
 
             // Every equipment slot shows except the hidden Back slot of the cloaks, and the
-            // permanent inventory shows every slot of the catalog, 24 in rows of six.
+            // permanent inventory shows every slot of the catalog, 20 in rows of five, without a
+            // heading.
             var views = windows.GetComponentsInChildren<InventorySlotView>();
             Assert.That(
                 views.Count(view => view.SlotKey.StartsWith("equipment:", StringComparison.Ordinal)),
@@ -54,7 +55,11 @@ namespace Mmorpg.Client.Tests.PlayMode
                 views.Count(view => view.SlotKey.StartsWith("inventory:", StringComparison.Ordinal)),
                 Is.EqualTo(catalog.Gameplay.Character.InventorySlotCount));
             var grid = View(views, "inventory:0").transform.parent.GetComponent<GridLayoutGroup>();
-            Assert.That(grid.constraintCount, Is.EqualTo(6));
+            Assert.That(grid.constraintCount, Is.EqualTo(5));
+            Assert.That(
+                Window(windows, InventoryWindows.InventoryWindowName).GetComponentsInChildren<TMP_Text>()
+                    .Any(text => text.text.IndexOf("permanent", StringComparison.OrdinalIgnoreCase) >= 0),
+                Is.False);
             Assert.That(View(views, "equipment:" + probe.EquippedSlotId).VisualState, Is.EqualTo(InventorySlotVisualState.Occupied));
             Assert.That(View(views, "inventory:0").VisualState, Is.EqualTo(InventorySlotVisualState.Occupied));
             Assert.That(View(views, "inventory:1").VisualState, Is.EqualTo(InventorySlotVisualState.Empty));
@@ -102,7 +107,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             var neck = WorldRect(View(views, "equipment:neck").transform);
             Assert.That(head.xMin - frame.xMin, Is.EqualTo(frame.xMax - neck.xMax).Within(0.5f));
             var columnGap = head.yMin - shoulders.yMax;
-            var row = new[] { "main_hand", "off_hand", "tool", "ammunition" }
+            var row = new[] { "main_hand", "off_hand", "ammunition", "tool" }
                 .Select(slotId => WorldRect(View(views, "equipment:" + slotId).transform))
                 .ToArray();
             for (var index = 1; index < row.Length; index++)
@@ -264,17 +269,62 @@ namespace Mmorpg.Client.Tests.PlayMode
             slot.GetComponent<InventoryDragSource>().OnBeginDrag(rightPress);
             Assert.That(windows.DragCoordinator.IsDragging, Is.False);
 
-            slot.GetComponent<InventorySlotRightClick>().OnPointerClick(rightPress);
+            slot.GetComponent<InventorySlotClicks>().OnPointerClick(rightPress);
             yield return null;
 
             Assert.That(GameMessageShows(NoSessionMessage), Is.True, "The game message names why the move was not sent.");
         }
 
-        // Shift-dragging a stack onto an empty slot asks how many to split; dropping an item
-        // outside every window asks to destroy it. Without a session the controller refuses
-        // both after the dialog.
+        // Shift-dragging a stack onto an empty slot splits half of it off without asking, and
+        // Shift+right-click sends half into the open Bank. Without a session the controller
+        // refuses both.
         [UnityTest]
-        public IEnumerator ShiftDragAsksForTheSplitAndADropOutsideAsksToDestroy()
+        public IEnumerator ShiftMovesHalfOfAStackWithoutAsking()
+        {
+            using var probe = new WindowProbe();
+            yield return probe.Load("Half Probe");
+            var windows = probe.Windows;
+            windows.SetInventoryOpen(true);
+            yield return null;
+
+            var views = windows.GetComponentsInChildren<InventorySlotView>();
+            var stack = View(views, "inventory:0");
+            var source = stack.GetComponent<InventoryDragSource>();
+            source.PartialOverride = true;
+            var pointer = new PointerEventData(EventSystem.current) { position = new Vector2(300f, 300f) };
+            source.OnBeginDrag(pointer);
+            Assert.That(windows.DragCoordinator.ActivePayload.Quantity, Is.EqualTo(1), "half of a stack of two");
+            var target = View(views, "inventory:1").GetComponent<InventoryDropTarget>();
+            target.OnPointerEnter(pointer);
+            Assert.That(target.ShowsValidDrop, Is.True);
+            target.OnDrop(pointer);
+            source.OnEndDrag(pointer);
+            yield return null;
+            Assert.That(windows.Dialog.IsOpen, Is.False);
+            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage));
+
+            // A part never equips, so without the Bank the half has nowhere to go.
+            var clicks = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:0").GetComponent<InventorySlotClicks>();
+            clicks.ShiftOverride = true;
+            var right = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Right };
+            clicks.OnPointerClick(right);
+            yield return null;
+            Assert.That(NewestGameMessage(), Does.Not.Contain(NoSessionMessage));
+
+            windows.OpenStorage(InventoryContextKind.Bank, InventoryStorageSource.Development);
+            yield return null;
+            clicks = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:0").GetComponent<InventorySlotClicks>();
+            clicks.ShiftOverride = true;
+            clicks.OnPointerClick(right);
+            yield return null;
+            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage));
+        }
+
+        // Ctrl+click asks how many items to take and carries them on the pointer, where the
+        // world cannot take the click; a click on a slot puts them down and a right-click puts
+        // them back. Dropping an item outside every window asks to destroy it.
+        [UnityTest]
+        public IEnumerator CtrlClickCarriesTheChosenPartAndADropOutsideAsksToDestroy()
         {
             using var probe = new WindowProbe();
             yield return probe.Load("Split Probe");
@@ -284,17 +334,10 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             var views = windows.GetComponentsInChildren<InventorySlotView>();
             var stack = View(views, "inventory:0");
-            var empty = View(views, "inventory:1");
-            var source = stack.GetComponent<InventoryDragSource>();
-            source.PartialOverride = true;
-            var pointer = new PointerEventData(EventSystem.current) { position = new Vector2(300f, 300f) };
-            source.OnBeginDrag(pointer);
-            Assert.That(windows.DragCoordinator.ActivePayload.IsPartial, Is.True);
-            var target = empty.GetComponent<InventoryDropTarget>();
-            target.OnPointerEnter(pointer);
-            Assert.That(target.ShowsValidDrop, Is.True);
-            target.OnDrop(pointer);
-            source.OnEndDrag(pointer);
+            var stackClicks = stack.GetComponent<InventorySlotClicks>();
+            stackClicks.ControlOverride = true;
+            var left = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Left };
+            stackClicks.OnPointerClick(left);
 
             var dialog = windows.Dialog;
             Assert.That(dialog.IsOpen, Is.True);
@@ -303,11 +346,37 @@ namespace Mmorpg.Client.Tests.PlayMode
             // A stack of two splits one item off.
             Assert.That(dialog.Quantity, Is.EqualTo(1));
             dialog.Confirm();
-            yield return null;
             Assert.That(dialog.IsOpen, Is.False);
+            var coordinator = windows.DragCoordinator;
+            Assert.That(coordinator.IsCarrying, Is.True);
+            Assert.That(coordinator.ActivePayload.Quantity, Is.EqualTo(1));
+            var localPlayer = UnityEngine.Object.FindAnyObjectByType<LocalPlayerController>();
+            if (localPlayer != null && localPlayer.PlayerInput != null && localPlayer.PlayerInput.IsConfigured)
+            {
+                Assert.That(localPlayer.TryGetPointerRay(out _), Is.False, "the world leaves a carrying pointer alone");
+            }
+
+            // The windows redraw under the carried part.
+            windows.SetEquipmentOpen(true);
+            yield return null;
+            Assert.That(coordinator.IsCarrying, Is.True);
+
+            var emptyClicks = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:1").GetComponent<InventorySlotClicks>();
+            emptyClicks.ControlOverride = false;
+            emptyClicks.OnPointerClick(new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Right });
+            Assert.That(coordinator.IsCarrying, Is.False, "a right-click puts the part back");
+
+            stackClicks.OnPointerClick(left);
+            dialog.Confirm();
+            Assert.That(coordinator.IsCarrying, Is.True);
+            emptyClicks.OnPointerClick(left);
+            yield return null;
+            Assert.That(coordinator.IsCarrying, Is.False);
             Assert.That(GameMessageShows(NoSessionMessage), Is.True);
 
             // Released over nothing of the interface, the item asks to be destroyed.
+            var source = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:0").GetComponent<InventoryDragSource>();
+            var pointer = new PointerEventData(EventSystem.current) { position = new Vector2(300f, 300f) };
             source.PartialOverride = false;
             source.OnBeginDrag(pointer);
             source.OnEndDrag(new PointerEventData(EventSystem.current) { position = new Vector2(960f, 540f) });
@@ -316,6 +385,47 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(dialog.Message, Does.Contain(probe.Catalog.GetDisplayName(stack.ItemDefinitionId)));
             dialog.Close();
             Assert.That(dialog.IsOpen, Is.False);
+        }
+
+        // While an equippable item is dragged, exactly the equipment slots that take it glow,
+        // such as both ring slots for a ring, until the drag ends.
+        [UnityTest]
+        public IEnumerator TheEquipmentSlotsThatTakeADraggedItemGlow()
+        {
+            using var probe = new WindowProbe();
+            string[] ringSlots = null;
+            yield return probe.Load("Glow Probe", extraCarried: catalog =>
+            {
+                var ring = catalog.Definitions.First(definition =>
+                    definition.EquipmentSlots != null
+                    && definition.EquipmentSlots.Length > 1
+                    && definition.MaximumStackSize == 1
+                    && definition.RequiredCharacterLevel <= 1
+                    && (definition.BlockedEquipmentSlots == null || definition.BlockedEquipmentSlots.Length == 0));
+                ringSlots = ring.EquipmentSlots;
+                return CreateItem(ring.Id, 1);
+            });
+            var windows = probe.Windows;
+            windows.SetEquipmentOpen(true);
+            windows.SetInventoryOpen(true);
+            yield return null;
+
+            var slots = windows.GetComponentsInChildren<ItemSlotView>()
+                .Where(view => view.Spec.Key.StartsWith("equipment:", StringComparison.Ordinal))
+                .ToArray();
+            Assert.That(slots.Any(view => view.ShowsDropTargetGlow), Is.False);
+            var source = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:2").GetComponent<InventoryDragSource>();
+            source.OnBeginDrag(new PointerEventData(EventSystem.current) { position = new Vector2(300f, 300f) });
+            Assert.That(windows.DragCoordinator.IsDragging, Is.True);
+
+            var glowing = slots
+                .Where(view => view.ShowsDropTargetGlow)
+                .Select(view => view.Spec.Key.Substring("equipment:".Length))
+                .OrderBy(slotId => slotId, StringComparer.Ordinal);
+            Assert.That(glowing, Is.EqualTo(ringSlots.OrderBy(slotId => slotId, StringComparer.Ordinal)));
+
+            windows.DragCoordinator.Cancel();
+            Assert.That(slots.Any(view => view.ShowsDropTargetGlow), Is.False);
         }
 
         // Each window takes the pointer only above itself, so a click beside or between the
@@ -437,6 +547,13 @@ namespace Mmorpg.Client.Tests.PlayMode
                 .Any(label => label.text.Contains(text));
         }
 
+        private static string NewestGameMessage()
+        {
+            var panel = UnityEngine.Object.FindAnyObjectByType<TemporaryGameMessagePanel>();
+            Assert.That(panel, Is.Not.Null);
+            return panel.VisibleTexts().LastOrDefault() ?? string.Empty;
+        }
+
         private static RectTransform Window(InventoryWindows windows, string name)
         {
             return windows.GetComponentsInChildren<RectTransform>(true).Single(rect => rect.name == name);
@@ -510,9 +627,11 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             public string BlockedSlotId { get; private set; }
 
+            // The extra carried item lies at Permanent Inventory slot index 2.
             public IEnumerator Load(
                 string characterName,
-                Func<ClientItemCatalog, (string SlotId, InventoryItem Item)> extraEquipment = null)
+                Func<ClientItemCatalog, (string SlotId, InventoryItem Item)> extraEquipment = null,
+                Func<ClientItemCatalog, InventoryItem> extraCarried = null)
             {
                 ConfigureGameServiceUrl(UnreachableGameServiceUrl);
                 ClientSession.Clear();
@@ -537,7 +656,7 @@ namespace Mmorpg.Client.Tests.PlayMode
 
                 // The controller observes the selected character on its next update.
                 yield return null;
-                Snapshot = CreateSnapshot(Catalog, characterId, extraEquipment?.Invoke(Catalog));
+                Snapshot = CreateSnapshot(Catalog, characterId, extraEquipment?.Invoke(Catalog), extraCarried?.Invoke(Catalog));
                 Assert.That(controller.State.ApplyFull(Snapshot), Is.EqualTo(InventorySnapshotApplyResult.Applied));
             }
 
@@ -557,7 +676,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             private CharacterInventorySnapshot CreateSnapshot(
                 ClientItemCatalog catalog,
                 Guid characterId,
-                (string SlotId, InventoryItem Item)? extra)
+                (string SlotId, InventoryItem Item)? extra,
+                InventoryItem extraCarried)
             {
                 var slotIds = catalog.Gameplay.EquipmentSlots.Select(slot => slot.Id).ToArray();
                 var blocker = catalog.Definitions.FirstOrDefault(definition =>
@@ -585,14 +705,17 @@ namespace Mmorpg.Client.Tests.PlayMode
                     definition.MaximumStackSize > 1 && definition.PlayerDestroyable);
                 var settings = catalog.Gameplay.Character;
                 var carried = settings.BaseCarryCapacity / 2;
+                var carriedItems = new Dictionary<int, InventoryItem> { [0] = CreateItem(stackable.Id, 2) };
+                if (extraCarried != null)
+                {
+                    carriedItems[2] = extraCarried;
+                }
+
                 return new CharacterInventorySnapshot(
                     characterId,
                     catalog.Revision,
                     3,
-                    CreateContainer(
-                        "permanent_inventory",
-                        settings.InventorySlotCount,
-                        new Dictionary<int, InventoryItem> { [0] = CreateItem(stackable.Id, 2) }),
+                    CreateContainer("permanent_inventory", settings.InventorySlotCount, carriedItems),
                     equipment,
                     null,
                     CreateContainer("bank", settings.BankSlotCount, new Dictionary<int, InventoryItem>()),

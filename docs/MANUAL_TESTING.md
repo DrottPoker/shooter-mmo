@@ -771,9 +771,9 @@ Admin menu (F3) opens them on its `Storage` tab.
 1. Press B. Expected result: the Inventory window opens at the right edge below
    the HUD: a dark panel with a gold frame and the title `INVENTORY` in serif
    capitals, a search field, `1040 / 2500` over the carry meter with
-   `Load 41.6% | Move speed 100%`, `PERMANENT INVENTORY` with `/ 24` in four
-   rows of six slots, `TRAVELER'S PACK` with the Bag's seven slots below it in
-   the same columns, and `100 Gold` with a coin at the bottom. Press I. Expected
+   `Load 41.6% | Move speed 100%`, 20 slots in four rows of five with no heading
+   above them, `TRAVELER'S PACK` with the Bag's seven slots below them in the
+   same columns, and `100 Gold` with a coin at the bottom. Press I. Expected
    result: the window closes; I and B toggle the same window.
 2. Press C. Expected result: the Equipment window opens at the left edge with
    your character on a pedestal in the middle, five slots down its left side and
@@ -782,12 +782,12 @@ Admin menu (F3) opens them on its `Storage` tab.
    name. Hover the empty slots. Expected result: the tooltips name `Head`,
    `Shoulders`, `Body`, `Legs`, and `Feet` down the left side, `Neck`, `Hands`,
    `Ring 1`, `Ring 2`, and `Bag` down the right side, and `Main Hand`,
-   `Off Hand`, `Tool`, and `Ammunition` in the row below. There is no `Back`
+   `Off Hand`, `Ammunition`, and `Tool` in the row below. There is no `Back`
    slot, and no item of the catalog equips to `Shoulders` yet. Press B. Expected
    result: Inventory opens again, and Equipment stays where it was.
 3. Press F3 and choose `Open Bank` on the `Storage` tab. Expected result: the
    storage window opens directly left of Inventory with `Bank` and `Recovery`
-   tabs and the Bank in rows of six. Neither other window moves.
+   tabs and the Bank in rows of five. Neither other window moves.
 4. Close each window with its `X`, then open them again and press Escape.
    Expected result: an `X` closes only its window, and Escape closes every
    inventory window, while the cursor stays free.
@@ -826,6 +826,11 @@ Admin menu (F3) opens them on its `Storage` tab.
 3. Equip the shortbow. Expected result: `Off Hand` shows a lock on a red slot,
    and its tooltip names the shortbow.
 4. Click a slot without dragging. Expected result: nothing moves.
+5. With Equipment open, start dragging the Copper Ring and hold it. Expected
+   result: `Ring 1` and `Ring 2` glow softly in gold and slowly pulse, and no
+   other equipment slot does. Drop it back on its slot, then drag the Iron Ore.
+   Expected result: the glow ends with the drop, and no equipment slot glows for
+   the ore.
 
 ### Character Preview
 
@@ -854,10 +859,20 @@ Admin menu (F3) opens them on its `Storage` tab.
    `Ammunition` equipment slot. Expected result: the weight drops by 100, and
    the slot shows `100`.
 2. Hold Shift, drag the equipped arrows onto an empty Permanent slot, and
-   release. Expected result: the dragged icon shows `?`, and a `SPLIT STACK`
-   window asks for a quantity, starting at `50`. Enter `40` and press Enter.
-   Expected result: 60 stay equipped, and the weight rises by 40.
-3. Drag the 40 arrows back onto the equipped stack, then drag the stack back
+   release. Expected result: the dragged icon shows `50`, no window asks, 50
+   stay equipped, 50 land on the slot, and the weight rises by 50. Drag the 50
+   back onto the equipped stack.
+3. Ctrl+click the equipped arrows. Expected result: a `SPLIT STACK` window asks
+   for a quantity, starting at `50`. Enter `40` and press Enter. Expected
+   result: the arrow icon with `40` follows the pointer. Click the ground beside
+   the windows. Expected result: the character does not walk, and the arrows
+   are put back. Ctrl+click the arrows again, choose `40`, and click an occupied
+   Permanent slot. Expected result: the game messages say why, and the arrows
+   stay on the pointer. Click an empty Permanent slot. Expected result: 60 stay
+   equipped, the 40 land there, and the weight rises by 40.
+4. Shift+right-click the equipped arrows. Expected result: 30 go into the Bag's
+   empty ammunition slot, and 30 stay equipped.
+5. Drag the split stacks back onto the equipped stack, then drag the stack back
    onto the Bag's ammunition slot. Expected result: the equipped stack is back
    at 100, and then the weight is back at `1040 / 2500`.
 
@@ -875,12 +890,14 @@ Admin menu (F3) opens them on its `Storage` tab.
 
 ### Bank Stacks And Swaps
 
-1. In the Bank, hold Shift and drag an Iron Ore stack onto an empty Bank slot,
-   choose a quantity, and press `OK`. Then drag the new stack back onto its
-   peer. Expected result: the split creates a new stack, which can be moved once
-   the server has confirmed it, and the merge restores the original quantity.
-   A Shift drag onto an occupied slot lights red.
-2. Drag two unlike items between compatible occupied ordinary slots. Expected
+1. In the Bank, hold Shift and drag the Iron Ore stack of 20 onto an empty Bank
+   slot. Then drag the new stack back onto its peer. Expected result: 10 stay,
+   10 form a new stack, which can be moved once the server has confirmed it, and
+   the merge restores 20. A Shift drag onto an occupied slot lights red.
+2. Shift+right-click the Iron Ore stack of 19 in the Bank. Expected result: 9
+   go to the first free inventory slot and 10 stay in the Bank. Shift+right-click
+   the 9 in the inventory. Expected result: 4 go into the first free Bank slot.
+3. Drag two unlike items between compatible occupied ordinary slots. Expected
    result: they exchange slots. Repeat against an incompatible specialized slot.
    Expected result: neither moves.
 
@@ -894,6 +911,9 @@ Admin menu (F3) opens them on its `Storage` tab.
    disappears at once and stays gone after a rejoin.
 2. Drop the Sealed Letter outside. Expected result: no dialog opens, and the
    game messages say `This item cannot be destroyed by the player.`
+3. Hold Shift and drag half of the Iron Ore stack outside. Expected result: no
+   dialog opens, and the game messages say
+   `Drag the whole stack out of the windows to destroy it.`
 
 ### Recovery Deliveries
 
@@ -1308,17 +1328,22 @@ its corpse holds several weapons, and use a looter with an empty `Main Hand`.
    that cannot merge onto each other in both directions. Expected result: the
    deposit stays in the corpse, each valid drop on an occupied slot swaps the
    two items in one step, and the corpse stays open.
-6. Move a corpse item to another corpse slot, split a corpse stack into another
-   corpse slot with a Shift drag, merge compatible corpse stacks, and drop two complete corpse
+6. Move a corpse item to another corpse slot, split half of a corpse stack into
+   another corpse slot with a Shift drag, merge compatible corpse stacks, and drop two complete corpse
    items that cannot merge onto each other. Expected result: each commits as a
    move inside the corpse, the last one as a swap, and the character's weight
    and item-state revision do not change.
 7. Drop a corpse item on a corpse equipment slot of its type, then on one of
    another type. Expected result: the compatible slot accepts it, and the other
    rejects it without moving either item.
-8. Shift-drag a corpse stack onto an empty carried slot and press Escape in the
-   `SPLIT STACK` window. Expected result: only the window closes; the corpse and
-   the windows stay open, and nothing moves.
+8. Ctrl+click a corpse stack and press Escape in the `SPLIT STACK` window.
+   Expected result: only the window closes; the corpse and the windows stay
+   open, and nothing moves. Ctrl+click it again, press Enter, and press Escape.
+   Expected result: the part on the pointer is put back, and the corpse and the
+   windows stay open.
+9. Shift+right-click a corpse stack. Expected result: half of it, rounded down,
+   tops up a carried stack of its kind or takes the first free carried slot,
+   and the rest stays in the corpse.
 
 ### Two Clients At One Corpse
 
@@ -1336,8 +1361,8 @@ corpse exists, then join one looter in the Editor and the other in the
    duplicated item. Then drag the same remaining item in both clients at once.
    Expected result: exactly one client gets it, and the other receives a stable
    error and then the current state.
-3. Hold Shift, drag part of a corpse stack to a valid destination in one
-   client, and choose a quantity, while the other loots from the same stack. Expected result: no
+3. Ctrl+click a corpse stack in one client, choose a quantity, and click a valid
+   destination, while the other loots from the same stack. Expected result: no
    quantity ever becomes negative, and the total is kept. A partial deposit of
    a compatible stack into the corpse keeps the total too.
 4. In one client, drag a child item of the corpse's Bag. At the same time, in
@@ -1765,7 +1790,7 @@ $snapshot.carryCapacity
 ```
 
 Expected result: one catalog definition per file in
-`content/items/definitions`, then `24`, `40`, `100`, `0`, and `2000`: the
+`content/items/definitions`, then `20`, `40`, `100`, `0`, and `2000`: the
 slot counts, the starting balance, and the base capacity of
 `content/items/catalog.json`. The snapshot is empty but complete, and it holds
 definition ids and item state only, no client icon, repeated definition data,

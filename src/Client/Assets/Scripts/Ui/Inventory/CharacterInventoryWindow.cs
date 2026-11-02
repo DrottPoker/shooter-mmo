@@ -8,12 +8,12 @@ using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
 {
-    // The Inventory window: a search field, the carry meter, Permanent Inventory in rows of six,
-    // the equipped Bag's slots below in the same columns, and the balance at the bottom. The
-    // window grows with the Bag.
+    // The Inventory window: a search field, the carry meter, Permanent Inventory in rows of five
+    // without a heading, the equipped Bag's slots below in the same columns, and the balance at
+    // the bottom. The window grows with the Bag.
     internal sealed class CharacterInventoryWindow
     {
-        public const int Columns = 6;
+        public const int Columns = 5;
 
         private readonly InventoryWindows owner;
         private readonly UiTheme theme;
@@ -26,7 +26,6 @@ namespace Mmorpg.Client.Ui
         private readonly Image meterFill;
         private readonly RectTransform meterMarker;
         private readonly RectTransform permanentSection;
-        private readonly TextMeshProUGUI permanentDetail;
         private readonly ItemSlotGrid permanentGrid;
         private readonly RectTransform bagSection;
         private readonly TextMeshProUGUI bagTitle;
@@ -85,7 +84,6 @@ namespace Mmorpg.Client.Ui
             meterMarker = UiFactory.Image(meterTrack, "FullCapacityMarker", theme.MeterMarker, theme.TitleColor).rectTransform;
 
             permanentSection = UiFactory.Column(body, "PermanentInventory", 8f).GetComponent<RectTransform>();
-            UiFactory.SectionHeading(theme, permanentSection, "Permanent Inventory", null, out permanentDetail);
             permanentGrid = new ItemSlotGrid(theme, permanentSection, Columns, owner.DragCoordinator, owner.Tooltip, "PermanentGrid");
 
             bagSection = UiFactory.Column(body, "Bag", 8f).GetComponent<RectTransform>();
@@ -168,7 +166,6 @@ namespace Mmorpg.Client.Ui
             RefreshCarryMeter(CarryLoadPresentation.From(snapshot));
 
             var permanent = snapshot.PermanentInventory;
-            permanentDetail.text = UsedSlotsText(permanent);
             permanentGrid.Bind(permanent.Slots
                 .Select(slot => owner.ContainerSlot(permanent, slot, "inventory"))
                 .ToArray());

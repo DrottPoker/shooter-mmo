@@ -403,7 +403,8 @@ namespace Mmorpg.Client.App
                     gameMessages,
                     inventoryWindowRequests,
                     bodyLook,
-                    sceneContext != null ? sceneContext.Preview : null));
+                    sceneContext != null ? sceneContext.Preview : null,
+                    pointerFocus));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(
                     worldActorController,

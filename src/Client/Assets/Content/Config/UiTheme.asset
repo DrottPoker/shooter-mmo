@@ -37,6 +37,9 @@ MonoBehaviour:
   DropValidColor: {r: 0.4, g: 0.85, b: 0.45, a: 1}
   DropInvalidColor: {r: 0.95, g: 0.35, b: 0.3, a: 1}
   RollbackColor: {r: 0.95, g: 0.3, b: 0.25, a: 1}
+  DropTargetGlowColor: {r: 0.98, g: 0.8, b: 0.4, a: 0.95}
+  DropTargetPulseSeconds: 1.2
+  DropTargetGlowFloor: 0.45
   BlockedColor: {r: 0.8, g: 0.32, b: 0.28, a: 0.85}
   MeterNormalColor: {r: 0.27, g: 0.85, b: 0.86, a: 1}
   MeterSlowedColor: {r: 0.98, g: 0.76, b: 0.3, a: 1}
@@ -76,6 +79,7 @@ MonoBehaviour:
   SlotBackground: {fileID: 3286163911610860551, guid: 978995a9f2a482744ae57747461d3e94, type: 3}
   ItemFrame: {fileID: 3286163911610860551, guid: cc38aa22152021040b4a15db0410d2bd, type: 3}
   SlotHighlight: {fileID: 3286163911610860551, guid: 0fef62215706f3642ad302b608103199, type: 3}
+  SlotGlow: {fileID: 3286163911610860551, guid: 529b320856bb8a54682374de5d9132bf, type: 3}
   LockIcon: {fileID: 3286163911610860551, guid: efc3157c43cf1a0479963330c4f7fc72, type: 3}
   HoodToggleIcon: {fileID: 3286163911610860551, guid: 771d7a6d9df61214d932309995022df9, type: 3}
   EquipmentSilhouettes:

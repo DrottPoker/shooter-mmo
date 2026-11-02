@@ -22,13 +22,13 @@ namespace Mmorpg.Client.Ui
             Guid itemInstanceId,
             Guid recoveryDeliveryId,
             Guid corpseId,
-            bool isPartial)
+            int? quantity)
         {
             Kind = kind;
             ItemInstanceId = itemInstanceId;
             RecoveryDeliveryId = recoveryDeliveryId;
             CorpseId = corpseId;
-            IsPartial = isPartial;
+            Quantity = quantity;
         }
 
         public InventoryDragPayloadKind Kind { get; }
@@ -39,8 +39,14 @@ namespace Mmorpg.Client.Ui
 
         public Guid CorpseId { get; }
 
-        // The player drags part of the stack, chosen after the drop, such as a split.
-        public bool IsPartial { get; }
+        // The part of the stack that moves, such as half with Shift or the amount chosen in
+        // the split box; null moves the whole stack.
+        public int? Quantity { get; }
+
+        public bool IsPartial
+        {
+            get { return Quantity != null; }
+        }
 
         public static InventoryDragPayload ForItem(Guid itemInstanceId)
         {
@@ -56,7 +62,7 @@ namespace Mmorpg.Client.Ui
                 itemInstanceId,
                 Guid.Empty,
                 Guid.Empty,
-                false);
+                null);
         }
 
         public static InventoryDragPayload ForRecoveryDelivery(Guid recoveryDeliveryId)
@@ -73,7 +79,7 @@ namespace Mmorpg.Client.Ui
                 Guid.Empty,
                 recoveryDeliveryId,
                 Guid.Empty,
-                false);
+                null);
         }
 
         public static InventoryDragPayload ForCorpseItem(
@@ -91,15 +97,20 @@ namespace Mmorpg.Client.Ui
                 itemInstanceId,
                 Guid.Empty,
                 corpseId,
-                false);
+                null);
         }
 
-        // The same item dragged as part of its stack. A Recovery delivery is always whole.
-        public InventoryDragPayload AsPartial()
+        // The same item moving as part of its stack. A Recovery delivery is always whole.
+        public InventoryDragPayload WithQuantity(int quantity)
         {
-            return Kind == InventoryDragPayloadKind.RecoveryDelivery || IsPartial
+            if (quantity < 1)
+            {
+                throw new ArgumentOutOfRangeException(nameof(quantity), "A part of a stack holds at least one item.");
+            }
+
+            return Kind == InventoryDragPayloadKind.RecoveryDelivery
                 ? this
-                : new InventoryDragPayload(Kind, ItemInstanceId, RecoveryDeliveryId, CorpseId, true);
+                : new InventoryDragPayload(Kind, ItemInstanceId, RecoveryDeliveryId, CorpseId, quantity);
         }
     }
 
@@ -107,13 +118,13 @@ namespace Mmorpg.Client.Ui
         InventoryDragPayload payload,
         out string reason);
 
+    // The item the player moves between slots: dragged with the left button held, or a part of
+    // a stack carried on the pointer after the split box, which a click on a slot puts down and
+    // a click beside the windows, a right-click, or Escape puts back.
     [DisallowMultipleComponent]
     public sealed class InventoryDragCoordinator : MonoBehaviour
     {
         public const string GhostName = "InventoryDragGhost";
-
-        // The quantity a partial drag shows until the player chooses it after the drop.
-        public const string PartialQuantityMark = "?";
 
         // The ghost trails below and right of the pointer so the hovered slot's green or
         // red highlight stays visible.
@@ -122,13 +133,30 @@ namespace Mmorpg.Client.Ui
         private RectTransform visualRoot;
         private UiTheme theme;
         private RectTransform dragGhost;
+        private int carryEndedFrame = -1;
+
+        // A drag started, held or carried, with its payload.
+        public event Action<InventoryDragPayload> DragStarted;
+
+        // The drag ended: dropped, put back, or cancelled.
+        public event Action DragEnded;
 
         // A drag ended over no window and no slot, such as over the world, with its payload.
         public event Action<InventoryDragPayload> DroppedOutside;
 
         public bool IsDragging { get; private set; }
 
+        // The player carries a part of a stack on the pointer without holding a button.
+        public bool IsCarrying { get; private set; }
+
         public InventoryDragPayload ActivePayload { get; private set; }
+
+        // World input leaves the pointer alone while a part is carried and in the frame its
+        // carry ended, so the click that put it down or back never also walks or targets.
+        public bool CapturesPointer
+        {
+            get { return IsCarrying || Time.frameCount <= carryEndedFrame; }
+        }
 
         public void Configure(RectTransform root, UiTheme dragTheme)
         {
@@ -149,41 +177,44 @@ namespace Mmorpg.Client.Ui
                 return false;
             }
 
-            ActivePayload = payload;
-            IsDragging = true;
-            var shownQuantity = payload.IsPartial ? PartialQuantityMark : quantity;
-            if (icon != null)
+            Begin(payload, label, icon, quantity);
+            Move(eventData);
+            return true;
+        }
+
+        // Puts a part of a stack on the pointer, where it stays until a click puts it on a
+        // slot or puts it back.
+        public bool BeginCarry(
+            InventoryDragPayload payload,
+            string label,
+            Sprite icon,
+            string quantity,
+            Vector2 screenPosition)
+        {
+            if (payload == null || IsDragging)
             {
-                CreateIconGhost(icon, shownQuantity);
-            }
-            else
-            {
-                CreateLabelGhost(label);
+                return false;
             }
 
-            Move(eventData);
+            IsCarrying = true;
+            Begin(payload, label, icon, quantity);
+            MoveTo(screenPosition, null);
             return true;
         }
 
         public void Move(PointerEventData eventData)
         {
-            if (!IsDragging || dragGhost == null || visualRoot == null || eventData == null)
+            if (eventData == null)
             {
                 return;
             }
 
-            var canvas = visualRoot.GetComponentInParent<Canvas>();
-            var eventCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
-                ? canvas.worldCamera
-                : eventData.pressEventCamera;
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    visualRoot,
-                    eventData.position,
-                    eventCamera,
-                    out var localPoint))
-            {
-                dragGhost.anchoredPosition = localPoint + GhostPointerOffset;
-            }
+            var canvas = visualRoot != null ? visualRoot.GetComponentInParent<Canvas>() : null;
+            MoveTo(
+                eventData.position,
+                canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+                    ? canvas.worldCamera
+                    : eventData.pressEventCamera);
         }
 
         // Ends a drag that no slot took. Released over nothing of the interface, the payload
@@ -206,7 +237,14 @@ namespace Mmorpg.Client.Ui
 
         public void Cancel()
         {
+            var wasDragging = IsDragging;
+            if (IsCarrying)
+            {
+                carryEndedFrame = Time.frameCount;
+            }
+
             IsDragging = false;
+            IsCarrying = false;
             ActivePayload = null;
             if (dragGhost != null)
             {
@@ -221,11 +259,66 @@ namespace Mmorpg.Client.Ui
                     DestroyImmediate(ghostObject);
                 }
             }
+
+            if (wasDragging)
+            {
+                DragEnded?.Invoke();
+            }
+        }
+
+        // A carried part follows the pointer; a click beside every window puts it back.
+        private void Update()
+        {
+            var mouse = Mouse.current;
+            if (!IsCarrying || mouse == null)
+            {
+                return;
+            }
+
+            MoveTo(mouse.position.ReadValue(), null);
+            if ((mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame)
+                && (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject()))
+            {
+                Cancel();
+            }
         }
 
         private void OnDisable()
         {
             Cancel();
+        }
+
+        private void Begin(InventoryDragPayload payload, string label, Sprite icon, string quantity)
+        {
+            ActivePayload = payload;
+            IsDragging = true;
+            if (icon != null)
+            {
+                CreateIconGhost(icon, quantity);
+            }
+            else
+            {
+                CreateLabelGhost(label);
+            }
+
+            DragStarted?.Invoke(payload);
+        }
+
+        private void MoveTo(Vector2 screenPosition, Camera eventCamera)
+        {
+            if (!IsDragging || dragGhost == null || visualRoot == null)
+            {
+                return;
+            }
+
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    visualRoot,
+                    screenPosition,
+                    eventCamera,
+                    out var localPoint))
+            {
+                dragGhost.anchoredPosition = localPoint + GhostPointerOffset;
+            }
         }
 
         private void CreateIconGhost(Sprite icon, string quantity)
@@ -341,7 +434,7 @@ namespace Mmorpg.Client.Ui
         private Sprite icon;
         private string quantity;
         private bool canDrag;
-        private bool allowPartial;
+        private int halfQuantity;
         private bool ownsActiveDrag;
 
         public bool IsDragging => ownsActiveDrag;
@@ -349,6 +442,7 @@ namespace Mmorpg.Client.Ui
         // Tests and tools hold Shift through this instead of the keyboard.
         public bool? PartialOverride { get; set; }
 
+        // The half is the part Shift drags; zero for a stack that cannot be split.
         public void Configure(
             InventoryDragCoordinator dragCoordinator,
             InventoryDragPayload dragPayload,
@@ -356,7 +450,7 @@ namespace Mmorpg.Client.Ui
             Sprite dragIcon,
             string dragQuantity,
             bool enabled,
-            bool partialAllowed = false)
+            int half = 0)
         {
             coordinator = dragCoordinator;
             payload = dragPayload;
@@ -364,7 +458,7 @@ namespace Mmorpg.Client.Ui
             icon = dragIcon;
             quantity = dragQuantity ?? string.Empty;
             canDrag = enabled && dragPayload != null;
-            allowPartial = partialAllowed;
+            halfQuantity = half;
             // The Editor's GetComponent returns a fake null object instead of null, which ??
             // treats as a component.
             if (!TryGetComponent(out canvasGroup))
@@ -373,17 +467,22 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        // Only the left button drags; a right press is a right-click move. Shift drags part of
-        // a stack.
+        // Only the left button drags; a right press is a right-click move. Shift drags half of
+        // a stack, rounded down, and the rest stays.
         public void OnBeginDrag(PointerEventData eventData)
         {
-            var partial = allowPartial && (PartialOverride ?? IsShiftHeld());
+            var half = halfQuantity > 0 && (PartialOverride ?? InventoryModifierKeys.IsShiftHeld());
             ownsActiveDrag = canDrag
                 && eventData != null
                 && eventData.button == PointerEventData.InputButton.Left
                 && coordinator != null
                 && payload != null
-                && coordinator.TryBegin(partial ? payload.AsPartial() : payload, label, icon, quantity, eventData);
+                && coordinator.TryBegin(
+                    half ? payload.WithQuantity(halfQuantity) : payload,
+                    label,
+                    icon,
+                    half ? InventorySlotPresentation.QuantityText(halfQuantity) : quantity,
+                    eventData);
             if (ownsActiveDrag && canvasGroup != null)
             {
                 canvasGroup.blocksRaycasts = false;
@@ -430,36 +529,92 @@ namespace Mmorpg.Client.Ui
                 canvasGroup.alpha = 1f;
             }
         }
+    }
 
-        private static bool IsShiftHeld()
+    public static class InventoryModifierKeys
+    {
+        public static bool IsShiftHeld()
         {
             var keyboard = Keyboard.current;
             return keyboard != null && keyboard.shiftKey.isPressed;
         }
+
+        public static bool IsControlHeld()
+        {
+            var keyboard = Keyboard.current;
+            return keyboard != null && keyboard.ctrlKey.isPressed;
+        }
     }
 
-    // Runs a slot's right-click move.
+    // The clicks of a slot: right-click moves the item, Shift+right-click moves half of its
+    // stack, and Ctrl+click opens the split box. While a part is carried on the pointer, a
+    // click puts it on the slot and a right-click puts it back.
     [DisallowMultipleComponent]
-    public sealed class InventorySlotRightClick : MonoBehaviour, IPointerClickHandler
+    public sealed class InventorySlotClicks : MonoBehaviour, IPointerClickHandler
     {
+        private InventoryDragCoordinator coordinator;
+        private InventoryDropTarget dropTarget;
         private Action onRightClick;
+        private Action onHalfRightClick;
+        private Action onSplitClick;
 
-        public void Configure(Action rightClick)
+        // Tests and tools hold Shift or Ctrl through these instead of the keyboard.
+        public bool? ShiftOverride { get; set; }
+
+        public bool? ControlOverride { get; set; }
+
+        // Without its own half move, Shift+right-click does what right-click does, such as for
+        // a single item.
+        public void Configure(
+            InventoryDragCoordinator dragCoordinator,
+            InventoryDropTarget target,
+            Action rightClick,
+            Action halfRightClick,
+            Action splitClick)
         {
+            coordinator = dragCoordinator;
+            dropTarget = target;
             onRightClick = rightClick;
+            onHalfRightClick = halfRightClick;
+            onSplitClick = splitClick;
         }
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            if (eventData != null && eventData.button == PointerEventData.InputButton.Right)
+            if (eventData == null)
             {
-                onRightClick?.Invoke();
+                return;
+            }
+
+            if (coordinator != null && coordinator.IsCarrying)
+            {
+                if (eventData.button == PointerEventData.InputButton.Left && dropTarget != null)
+                {
+                    dropTarget.DropCarried();
+                }
+                else if (eventData.button == PointerEventData.InputButton.Right)
+                {
+                    coordinator.Cancel();
+                }
+
+                return;
+            }
+
+            if (eventData.button == PointerEventData.InputButton.Right)
+            {
+                var half = onHalfRightClick != null && (ShiftOverride ?? InventoryModifierKeys.IsShiftHeld());
+                (half ? onHalfRightClick : onRightClick)?.Invoke();
+            }
+            else if (eventData.button == PointerEventData.InputButton.Left
+                && (ControlOverride ?? InventoryModifierKeys.IsControlHeld()))
+            {
+                onSplitClick?.Invoke();
             }
         }
     }
 
-    // A slot that takes drops. While an item is dragged over it, its highlight shows whether
-    // the drop is valid.
+    // A slot that takes drops. While an item is dragged or carried over it, its highlight shows
+    // whether the drop is valid.
     [DisallowMultipleComponent]
     public sealed class InventoryDropTarget : MonoBehaviour,
         IPointerEnterHandler,
@@ -519,15 +674,37 @@ namespace Mmorpg.Client.Ui
 
         public void OnDrop(PointerEventData eventData)
         {
-            if (coordinator == null || !coordinator.IsDragging || validator == null)
+            if (coordinator != null && coordinator.IsDragging)
+            {
+                Take();
+            }
+        }
+
+        // Puts the carried part on the slot. A slot that refuses it says why, and the part
+        // stays on the pointer.
+        public void DropCarried()
+        {
+            if (coordinator != null && coordinator.IsCarrying)
+            {
+                Take();
+            }
+        }
+
+        private void Take()
+        {
+            if (validator == null)
             {
                 return;
             }
 
             var payload = coordinator.ActivePayload;
             var accepted = Validate(payload, out var reason);
-            coordinator.Cancel();
-            ClearHighlight();
+            if (accepted || !coordinator.IsCarrying)
+            {
+                coordinator.Cancel();
+                ClearHighlight();
+            }
+
             if (accepted)
             {
                 onDrop?.Invoke(payload);
