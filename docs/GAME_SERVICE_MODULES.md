@@ -450,6 +450,7 @@ topology names.
 | 26 | `202610261800_live_mob_loot_grants` | Items |
 | 27 | `202611011200_remove_secure_container` | Items |
 | 28 | `202611021200_remove_cloak_equipment` | Items |
+| 29 | `202611021300_expand_permanent_inventory` | Items |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.

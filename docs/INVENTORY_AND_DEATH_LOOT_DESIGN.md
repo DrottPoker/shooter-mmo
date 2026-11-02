@@ -182,7 +182,11 @@ transaction. Non-empty Bag aggregates never use this ordinary item swap.
 - Every character has a permanent slot-based inventory independent of the
   equipped Bag.
 - The slot count is catalog content, `character.inventorySlotCount`, which is
-  20 today. Transaction logic never hard-codes it.
+  24 today, four rows of six in the inventory window. Transaction logic never
+  hard-codes it. Every character copies the count when its item state is
+  created, so changing it needs a data migration that resizes the existing
+  inventories, as `202611021300_expand_permanent_inventory` did when the count
+  grew from 20.
 - Weapons use normal general slots when not equipped.
 - There are no dedicated weapon-storage slots.
 - Empty Bags may occupy compatible general slots as ordinary items.

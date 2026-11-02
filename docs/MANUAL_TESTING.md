@@ -1707,7 +1707,7 @@ $snapshot.carryCapacity
 ```
 
 Expected result: one catalog definition per file in
-`content/items/definitions`, then `20`, `40`, `100`, `0`, and `2000`: the
+`content/items/definitions`, then `24`, `40`, `100`, `0`, and `2000`: the
 slot counts, the starting balance, and the base capacity of
 `content/items/catalog.json`. The snapshot is empty but complete, and it holds
 definition ids and item state only, no client icon, repeated definition data,
