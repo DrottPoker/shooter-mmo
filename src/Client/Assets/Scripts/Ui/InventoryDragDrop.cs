@@ -3,6 +3,7 @@ using Mmorpg.Client.Items;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
@@ -20,12 +21,14 @@ namespace Mmorpg.Client.Ui
             InventoryDragPayloadKind kind,
             Guid itemInstanceId,
             Guid recoveryDeliveryId,
-            Guid corpseId)
+            Guid corpseId,
+            bool isPartial)
         {
             Kind = kind;
             ItemInstanceId = itemInstanceId;
             RecoveryDeliveryId = recoveryDeliveryId;
             CorpseId = corpseId;
+            IsPartial = isPartial;
         }
 
         public InventoryDragPayloadKind Kind { get; }
@@ -35,6 +38,9 @@ namespace Mmorpg.Client.Ui
         public Guid RecoveryDeliveryId { get; }
 
         public Guid CorpseId { get; }
+
+        // The player drags part of the stack, chosen after the drop, such as a split.
+        public bool IsPartial { get; }
 
         public static InventoryDragPayload ForItem(Guid itemInstanceId)
         {
@@ -49,7 +55,8 @@ namespace Mmorpg.Client.Ui
                 InventoryDragPayloadKind.Item,
                 itemInstanceId,
                 Guid.Empty,
-                Guid.Empty);
+                Guid.Empty,
+                false);
         }
 
         public static InventoryDragPayload ForRecoveryDelivery(Guid recoveryDeliveryId)
@@ -65,7 +72,8 @@ namespace Mmorpg.Client.Ui
                 InventoryDragPayloadKind.RecoveryDelivery,
                 Guid.Empty,
                 recoveryDeliveryId,
-                Guid.Empty);
+                Guid.Empty,
+                false);
         }
 
         public static InventoryDragPayload ForCorpseItem(
@@ -82,7 +90,16 @@ namespace Mmorpg.Client.Ui
                 InventoryDragPayloadKind.CorpseItem,
                 itemInstanceId,
                 Guid.Empty,
-                corpseId);
+                corpseId,
+                false);
+        }
+
+        // The same item dragged as part of its stack. A Recovery delivery is always whole.
+        public InventoryDragPayload AsPartial()
+        {
+            return Kind == InventoryDragPayloadKind.RecoveryDelivery || IsPartial
+                ? this
+                : new InventoryDragPayload(Kind, ItemInstanceId, RecoveryDeliveryId, CorpseId, true);
         }
     }
 
@@ -95,23 +112,28 @@ namespace Mmorpg.Client.Ui
     {
         public const string GhostName = "InventoryDragGhost";
 
+        // The quantity a partial drag shows until the player chooses it after the drop.
+        public const string PartialQuantityMark = "?";
+
         // The ghost trails below and right of the pointer so the hovered slot's green or
         // red highlight stays visible.
         private static readonly Vector2 GhostPointerOffset = new Vector2(16f, -16f);
-        private const float GhostIconSize = 64f;
 
         private RectTransform visualRoot;
-        private TMP_FontAsset font;
+        private UiTheme theme;
         private RectTransform dragGhost;
+
+        // A drag ended over no window and no slot, such as over the world, with its payload.
+        public event Action<InventoryDragPayload> DroppedOutside;
 
         public bool IsDragging { get; private set; }
 
         public InventoryDragPayload ActivePayload { get; private set; }
 
-        public void Configure(RectTransform root, TMP_FontAsset dragFont)
+        public void Configure(RectTransform root, UiTheme dragTheme)
         {
             visualRoot = root;
-            font = dragFont;
+            theme = dragTheme;
         }
 
         // The ghost is the item's icon with its quantity, or its label without an icon.
@@ -129,9 +151,10 @@ namespace Mmorpg.Client.Ui
 
             ActivePayload = payload;
             IsDragging = true;
+            var shownQuantity = payload.IsPartial ? PartialQuantityMark : quantity;
             if (icon != null)
             {
-                CreateIconGhost(icon, quantity);
+                CreateIconGhost(icon, shownQuantity);
             }
             else
             {
@@ -163,6 +186,24 @@ namespace Mmorpg.Client.Ui
             }
         }
 
+        // Ends a drag that no slot took. Released over nothing of the interface, the payload
+        // dropped outside every window.
+        public void EndWithoutTarget(PointerEventData eventData)
+        {
+            if (!IsDragging)
+            {
+                return;
+            }
+
+            var payload = ActivePayload;
+            var overInterface = eventData != null && eventData.pointerCurrentRaycast.gameObject != null;
+            Cancel();
+            if (!overInterface && payload != null)
+            {
+                DroppedOutside?.Invoke(payload);
+            }
+        }
+
         public void Cancel()
         {
             IsDragging = false;
@@ -189,7 +230,8 @@ namespace Mmorpg.Client.Ui
 
         private void CreateIconGhost(Sprite icon, string quantity)
         {
-            var image = CreateGhost(new Vector2(GhostIconSize, GhostIconSize));
+            var size = theme != null ? theme.SlotSize : 54f;
+            var image = CreateGhost(new Vector2(size, size));
             if (image == null)
             {
                 return;
@@ -199,9 +241,13 @@ namespace Mmorpg.Client.Ui
             image.preserveAspect = true;
             if (!string.IsNullOrEmpty(quantity))
             {
-                var text = CreateGhostText("Quantity", quantity, TextAlignmentOptions.BottomRight, TemporaryUiKit.QuantityColor);
+                var text = CreateGhostText(
+                    "Quantity",
+                    quantity,
+                    TextAlignmentOptions.BottomRight,
+                    theme != null ? theme.QuantityColor : Color.white);
                 text.rectTransform.offsetMin = new Vector2(4f, 2f);
-                text.rectTransform.offsetMax = new Vector2(-6f, -2f);
+                text.rectTransform.offsetMax = new Vector2(-5f, -2f);
             }
         }
 
@@ -213,10 +259,22 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            image.color = new Color(0.16f, 0.32f, 0.48f, 0.98f);
-            var text = CreateGhostText("Label", label, TextAlignmentOptions.Left, Color.white);
-            text.rectTransform.offsetMin = new Vector2(8f, 4f);
-            text.rectTransform.offsetMax = new Vector2(-8f, -4f);
+            if (theme != null && theme.TooltipFrame != null)
+            {
+                UiFactory.SetSprite(image, theme.TooltipFrame, theme.WindowTint);
+            }
+            else
+            {
+                image.color = new Color(0.05f, 0.08f, 0.09f, 0.98f);
+            }
+
+            var text = CreateGhostText(
+                "Label",
+                label,
+                TextAlignmentOptions.MidlineLeft,
+                theme != null ? theme.TextColor : Color.white);
+            text.rectTransform.offsetMin = new Vector2(10f, 4f);
+            text.rectTransform.offsetMax = new Vector2(-10f, -4f);
         }
 
         private Image CreateGhost(Vector2 size)
@@ -251,22 +309,18 @@ namespace Mmorpg.Client.Ui
             TextAlignmentOptions alignment,
             Color color)
         {
-            var textObject = new GameObject(
+            var text = UiFactory.Text(
+                dragGhost,
                 objectName,
-                typeof(RectTransform),
-                typeof(TextMeshProUGUI));
-            var textRect = textObject.GetComponent<RectTransform>();
-            textRect.SetParent(dragGhost, false);
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            var text = textObject.GetComponent<TextMeshProUGUI>();
-            text.font = font;
-            text.text = value ?? string.Empty;
-            text.fontSize = 14;
+                theme != null ? theme.BodyFont : TMP_Settings.defaultFontAsset,
+                theme != null ? theme.QuantitySize : 15f,
+                color,
+                alignment,
+                value);
             text.fontStyle = FontStyles.Bold;
-            text.alignment = alignment;
-            text.color = color;
-            text.raycastTarget = false;
+            text.outlineWidth = 0.2f;
+            text.outlineColor = new Color32(0, 0, 0, 220);
+            UiFactory.Fill(text.rectTransform);
             return text;
         }
     }
@@ -287,9 +341,13 @@ namespace Mmorpg.Client.Ui
         private Sprite icon;
         private string quantity;
         private bool canDrag;
+        private bool allowPartial;
         private bool ownsActiveDrag;
 
         public bool IsDragging => ownsActiveDrag;
+
+        // Tests and tools hold Shift through this instead of the keyboard.
+        public bool? PartialOverride { get; set; }
 
         public void Configure(
             InventoryDragCoordinator dragCoordinator,
@@ -297,14 +355,16 @@ namespace Mmorpg.Client.Ui
             string dragLabel,
             Sprite dragIcon,
             string dragQuantity,
-            bool enabled)
+            bool enabled,
+            bool partialAllowed = false)
         {
             coordinator = dragCoordinator;
             payload = dragPayload;
             label = dragLabel ?? string.Empty;
             icon = dragIcon;
             quantity = dragQuantity ?? string.Empty;
-            canDrag = enabled;
+            canDrag = enabled && dragPayload != null;
+            allowPartial = partialAllowed;
             // The Editor's GetComponent returns a fake null object instead of null, which ??
             // treats as a component.
             if (!TryGetComponent(out canvasGroup))
@@ -313,15 +373,17 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        // Only the left button drags; a right press is a right-click move.
+        // Only the left button drags; a right press is a right-click move. Shift drags part of
+        // a stack.
         public void OnBeginDrag(PointerEventData eventData)
         {
+            var partial = allowPartial && (PartialOverride ?? IsShiftHeld());
             ownsActiveDrag = canDrag
                 && eventData != null
                 && eventData.button == PointerEventData.InputButton.Left
                 && coordinator != null
                 && payload != null
-                && coordinator.TryBegin(payload, label, icon, quantity, eventData);
+                && coordinator.TryBegin(partial ? payload.AsPartial() : payload, label, icon, quantity, eventData);
             if (ownsActiveDrag && canvasGroup != null)
             {
                 canvasGroup.blocksRaycasts = false;
@@ -339,28 +401,40 @@ namespace Mmorpg.Client.Ui
 
         public void OnEndDrag(PointerEventData eventData)
         {
-            EndOwnedDrag();
+            var owned = ownsActiveDrag;
+            RestoreSlot();
+            ownsActiveDrag = false;
+            // A slot that took the drop already ended it.
+            if (owned && coordinator != null && coordinator.IsDragging)
+            {
+                coordinator.EndWithoutTarget(eventData);
+            }
         }
 
         private void OnDisable()
         {
-            EndOwnedDrag();
-        }
-
-        private void EndOwnedDrag()
-        {
-            if (canvasGroup != null)
-            {
-                canvasGroup.blocksRaycasts = true;
-                canvasGroup.alpha = 1f;
-            }
-
+            RestoreSlot();
             if (ownsActiveDrag && coordinator != null && coordinator.IsDragging)
             {
                 coordinator.Cancel();
             }
 
             ownsActiveDrag = false;
+        }
+
+        private void RestoreSlot()
+        {
+            if (canvasGroup != null)
+            {
+                canvasGroup.blocksRaycasts = true;
+                canvasGroup.alpha = 1f;
+            }
+        }
+
+        private static bool IsShiftHeld()
+        {
+            var keyboard = Keyboard.current;
+            return keyboard != null && keyboard.shiftKey.isPressed;
         }
     }
 
@@ -384,59 +458,68 @@ namespace Mmorpg.Client.Ui
         }
     }
 
+    // A slot that takes drops. While an item is dragged over it, its highlight shows whether
+    // the drop is valid.
     [DisallowMultipleComponent]
     public sealed class InventoryDropTarget : MonoBehaviour,
         IPointerEnterHandler,
         IPointerExitHandler,
         IDropHandler
     {
-        private static readonly Color ValidColor = new Color(0.18f, 0.52f, 0.30f, 1f);
-        private static readonly Color InvalidColor = new Color(0.55f, 0.18f, 0.18f, 1f);
-
         private InventoryDragCoordinator coordinator;
-        private Image image;
-        private Color baseColor;
+        private Image highlight;
+        private Color validColor;
+        private Color invalidColor;
         private InventoryDropValidator validator;
         private Action<InventoryDragPayload> onDrop;
         private Action<string> onRejected;
 
+        // The shown feedback: null without a drag over the slot.
+        public bool? ShowsValidDrop { get; private set; }
+
         public void Configure(
             InventoryDragCoordinator dragCoordinator,
-            Image targetImage,
-            Color normalColor,
+            Image highlightImage,
+            Color valid,
+            Color invalid,
             InventoryDropValidator dropValidator,
             Action<InventoryDragPayload> accepted,
             Action<string> rejected)
         {
             coordinator = dragCoordinator;
-            image = targetImage;
-            baseColor = normalColor;
+            highlight = highlightImage;
+            validColor = valid;
+            invalidColor = invalid;
             validator = dropValidator;
             onDrop = accepted;
             onRejected = rejected;
-            RestoreColor();
+            ClearHighlight();
         }
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (coordinator == null || !coordinator.IsDragging || image == null)
+            if (coordinator == null || !coordinator.IsDragging || validator == null)
             {
                 return;
             }
 
-            image.color = Validate(coordinator.ActivePayload, out _)
-                ? ValidColor
-                : InvalidColor;
+            var valid = Validate(coordinator.ActivePayload, out _);
+            ShowsValidDrop = valid;
+            if (highlight != null)
+            {
+                highlight.color = valid ? validColor : invalidColor;
+                highlight.enabled = true;
+            }
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            RestoreColor();
+            ClearHighlight();
         }
 
         public void OnDrop(PointerEventData eventData)
         {
-            if (coordinator == null || !coordinator.IsDragging)
+            if (coordinator == null || !coordinator.IsDragging || validator == null)
             {
                 return;
             }
@@ -444,7 +527,7 @@ namespace Mmorpg.Client.Ui
             var payload = coordinator.ActivePayload;
             var accepted = Validate(payload, out var reason);
             coordinator.Cancel();
-            RestoreColor();
+            ClearHighlight();
             if (accepted)
             {
                 onDrop?.Invoke(payload);
@@ -459,7 +542,7 @@ namespace Mmorpg.Client.Ui
 
         private void OnDisable()
         {
-            RestoreColor();
+            ClearHighlight();
         }
 
         private bool Validate(InventoryDragPayload payload, out string reason)
@@ -470,11 +553,12 @@ namespace Mmorpg.Client.Ui
                 && validator(payload, out reason);
         }
 
-        private void RestoreColor()
+        private void ClearHighlight()
         {
-            if (image != null)
+            ShowsValidDrop = null;
+            if (highlight != null)
             {
-                image.color = baseColor;
+                highlight.enabled = false;
             }
         }
     }

@@ -72,6 +72,8 @@ largest, is split by area:
 | `Gameplay/Animation` | Human and creature locomotion and their Animator drivers |
 | `Gameplay/Cloth` | The cloth chains on the bodies with their solver and scheduler; the cloth math itself is the assembly `Mmorpg.Client.Cloth` |
 | `Gameplay/Diagnostics` | The Debug menu's collision and path overlay and its settings |
+| `Ui/Kit` | The themed widgets of the permanent UI; see [UI Kit And Theme](#ui-kit-and-theme) |
+| `Ui/Inventory` | The inventory windows and the logic of what their actions send; see [Inventory UI](#inventory-ui) |
 
 ### Editor
 
@@ -83,6 +85,7 @@ largest, is split by area:
 | `Editor/Wardrobe` | The Wardrobe window and its preview |
 | `Editor/DevelopmentTools` | The Inventory Item Grants window and its process runner |
 | `Editor/DevelopmentWorlds` | The development World builders; see [Development Worlds](DEVELOPMENT_WORLDS.md) |
+| `Editor/Ui` | `UiSpriteImportRules` and `UiThemeBuilder`, the import and build side of [UI Art](ART_PIPELINE.md#ui-art) |
 
 The item catalog, Actor Studio, and Spawn Authoring windows live in the shared
 WorldData package at `src/Shared/WorldData/Editor`.
@@ -112,6 +115,7 @@ goes there too:
 | `Item Catalog` | Edits item definitions and vendor profiles | [Unity Editor Workflow](../content/items/README.md#unity-editor-workflow) |
 | `Content > Actor Studio`, `Content > Spawn Authoring` | Edits actors and their spawns | [Unity Content Tools](../content/README.md#unity-content-tools) |
 | `Art Pipeline > Wardrobe`, `Update Appearance Catalogs`, `Create Missing Materials`, `Build Creature Presentations`, `Measure Cloth`, `Write Cloth Fixtures` | Art pipeline tools | [Art Pipeline](ART_PIPELINE.md) |
+| `UI > Build UI Fonts`, `UI > Build UI Theme` | Makes the UI font assets and fills the UI theme from its sprites | [UI Art](ART_PIPELINE.md#ui-art) |
 
 ## Assemblies
 
@@ -131,7 +135,7 @@ layers from the bottom up:
 | `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, the world menu and its providers, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
 | `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, death and projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
-| `Mmorpg.Client.Ui` | Every panel including the combat HUD, drag and drop, `ClientOperationState` | Api, Core, Worlds, Networking, Items, Gameplay, WorldActors, Combat |
+| `Mmorpg.Client.Ui` | Every panel including the combat HUD, the UI kit and theme, the inventory windows, drag and drop, `ClientOperationState` | Api, Core, Worlds, Networking, Items, Gameplay, WorldActors, Combat |
 | `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | The same as Ui, and Ui |
 
 The client assemblies also reference the shared runtime packages they use:
@@ -151,7 +155,7 @@ assembly name. Areas that read `ClientSession` reference Api as well, because
 the session caches Api contracts.
 
 The Editor-only `Mmorpg.Client.Editor` assembly references Core, Worlds,
-Gameplay, and Cloth, the shared WorldData editor, the WorldData actor editor,
+Gameplay, Cloth, and Ui, whose theme the UI builder fills, the shared WorldData editor, the WorldData actor editor,
 whose compiled World actors the collision bake adds resource nodes from, and the
 Addressables editor assemblies. It also holds the import side of the art
 pipeline, such as `ArtModelImportRules`, the import rules for every model the art
@@ -265,9 +269,10 @@ World scene
       |   CombatDeathPresentation
       +-- MovementDestinationMarker
       +-- WorldNameplates (runtime uGUI)
-      +-- temporary uGUI: TemporaryInventoryPanel, TemporaryWorldInteractionPanel,
-          TemporaryWorldContextMenu, TemporaryGameMessagePanel, TemporaryCombatHud,
-          TemporaryDebugMenu, TemporaryAdminMenu
+      +-- InventoryWindows (runtime uGUI of the UI kit, themed by UiTheme)
+      +-- temporary uGUI: TemporaryWorldInteractionPanel, TemporaryWorldContextMenu,
+          TemporaryGameMessagePanel, TemporaryCombatHud, TemporaryDebugMenu,
+          TemporaryAdminMenu
 
 LocalPlayer prefab
   +-- CharacterController
@@ -703,7 +708,7 @@ The canvases sort from the bottom up:
 | 20 | `TemporaryCombatHud` |
 | 35 | `TemporaryGameMessagePanel` |
 | 40 | `TemporaryWorldInteractionPanel` |
-| 100 | `TemporaryInventoryPanel` |
+| 100 | `InventoryWindows` |
 | 120 | `TemporaryDebugMenu` and `TemporaryAdminMenu` |
 | 140 | `TemporaryWorldContextMenu` |
 | 150 | The death overlay, a nested canvas of the combat HUD |
@@ -1287,45 +1292,59 @@ refresh to resolve the committed outcome.
 
 ### Inventory UI
 
-`TemporaryInventoryPanel` is the only replaceable part of the inventory
-implementation. It creates runtime uGUI below a World-scene controller and reads
-the persistent state without embedding API, protocol, revision, or item-rule
-ownership; it shows predicted item operations and never owns item custody. Its
-partial files hold the widgets (modules, slot grids, slots, and the carry
-meter), the right-click moves, and the vendor tab. What a player's action sends
-lives outside the panel, in `Scripts/Ui/Inventory`, so another inventory view
-reuses it unchanged: `InventoryDropPlanner` decides as a pure function what a
-drop onto a container, equipment, or corpse slot sends, an
-`InventoryDropPlan`, or why it sends nothing, and `InventoryInteractions` sends
-a plan, a right-click move from `InventoryQuickMoves`, Loot all, a destruction,
-or a vendor trade through the controllers and returns an
-`InventoryInteractionResult` with the message for the player. A drop may ask
-for part of the dragged stack: a split of a carried or equipped stack, or a
-partial corpse loot, deposit, or move. Equipment, Context, and
-Character Inventory each own a separate panel root at fixed anchors. The three
-views that `B`, `C`, and `I` toggle change root visibility only and never
-rewrite another module's layout, so the character column keeps its place in
-every view; the layout itself is
+`InventoryWindows` in `Scripts/Ui/Inventory` creates the inventory windows as
+runtime uGUI below a World-scene controller and reads the persistent state
+without embedding API, protocol, revision, or item-rule ownership; it shows
+predicted item operations and never owns item custody. It owns the canvas, the
+window keys, the tooltip, the drag coordinator, the dialog, and the storage
+context, and it builds three windows on the [UI Kit](#ui-kit-and-theme):
+`EquipmentWindow`, `CharacterInventoryWindow`, and `StorageWindow` with its
+vendor partial. Each window opens and closes on its own and sits at a fixed
+anchor from the theme's measures; the layout is
 [Inventory UI Layout](INVENTORY_AND_DEATH_LOOT_DESIGN.md#inventory-ui-layout).
-The shared panel root only groups the modules and draws no graphic, so each
-module is a window of its own: `WorldPointerFocus` sees the pointer over
-interface only above a shown module, and world input works beside and between
-them.
+The canvas root only groups the windows and draws no graphic, so
+`WorldPointerFocus` sees the pointer over interface only above a shown window,
+and world input works beside and between them. A key typed into the search field
+is text, so `B`, `C`, and `I` do nothing while it has focus.
 
-`EquipmentPaperDollLayout` owns the positions of the equipment slots and appends
-any slot it does not know, such as one added to the catalog later, in extra rows.
-It hides the `back` slot and leaves its cell empty, since no item equips to it
-until cloaks come from achievements.
-Every slot in every module is a square of one size, fitted to five columns in
-the character column, and every grid centers a full row in its module. An
-occupied slot draws the item's icon from `ClientItemCatalog.LoadIcon`; only an
-item whose icon cannot load falls back to its name as text.
-`InventorySlotPresentation` builds slot labels, badges, and tooltip text as pure
-functions, and the panel draws them through `InventorySlotView` and
-`InventoryTooltipView`; tooltips never show during a drag. Bank and Recovery may be inspected through global owning-account reads,
-and the context header names the NPC whose open interaction offers the shown
-storage or trade. Every mutation still travels through the joined
-SimulationWorker and is committed through GameService authority.
+`StorageWindow` shows one context of `InventoryContextKind`. What opened it,
+`InventoryStorageSource`, decides its tabs and what closes it: the capabilities
+of the open NPC interaction, which close the window when the interaction ends;
+an opened corpse, whose closing closes the window and puts its reason in the
+game messages; or the Development Admin menu, which opens the Bank and Recovery
+Storage through `InventoryWindowRequests`. The window's title names the NPC whose
+open interaction offers the shown storage or trade. Bank and Recovery are read
+through global owning-account reads, and every mutation still travels through
+the joined SimulationWorker and is committed through GameService authority.
+
+What a player's action sends lives outside the windows: `InventoryDropPlanner`
+decides as a pure function what a drop onto a container, equipment, or corpse
+slot sends, an `InventoryDropPlan`, or why it sends nothing, and
+`InventoryInteractions` sends a plan, a right-click move from
+`InventoryQuickMoves`, Loot all, a destruction, or a vendor trade through the
+controllers and returns an `InventoryInteractionResult` with the message for the
+player. A drop may ask for part of the dragged stack: a split of a carried or
+equipped stack, or a partial corpse loot, deposit, or move. A message of an
+action that sent nothing, and the reason of an undone move, go to the
+`GameMessageLog` that `TemporaryGameMessagePanel` shows.
+
+`EquipmentPaperDollLayout` owns where the equipment slots go: a column on each
+side of the character and rows below, and any slot it does not know, such as
+one added to the catalog later, in further rows below. It hides the `back` slot,
+since no item equips to it until cloaks come from achievements, and the window's
+count of equipped slots leaves it out. `EquipmentWindow` places the columns
+symmetrically, as far from both window edges, around the theme's
+`EquipmentCenterWidth`, and centres each row below with the same gap as the
+columns; a slot draws no name, and its tooltip names it. Every slot is a square of the theme's
+slot size; the Inventory and storage windows show their grids in six columns.
+An occupied slot draws the item's icon from `ClientItemCatalog.LoadIcon` in a
+frame of `ItemRarityPresentation.FrameColor`, which is the theme's common color
+for every item until items have a rarity; only an item whose icon cannot load
+falls back to its name as text. `InventorySlotPresentation` builds slot labels,
+badges, and tooltip text as pure functions, and `InventorySearch` decides which
+items the search dims. The windows bind slot specifications to `ItemSlotView`
+and draw the tooltip through `InventoryTooltipView`; tooltips never show during
+a drag.
 
 `InventoryDragCoordinator`, `InventoryDragSource`, typed `InventoryDragPayload`,
 and `InventoryDropTarget` form the reusable uGUI interaction layer. Relocation,
@@ -1337,13 +1356,17 @@ definition tops up the equipped stack, and any other container item equips with
 a swap that `InventoryTargetAdvisor.CanEquip` checks: the equipped item must fit
 the slot the new item leaves, a non-empty equipped Bag stays, the new item's
 blocked slots must be empty, and the carry cap must hold. Valid and invalid
-targets give green or red feedback, then revalidate the current state before
-sending an operation. A state change during a drag redraws the panel only when
-the drag ends, so a confirmation never cancels the drag, and drops always judge
-the current slot instead of the one drawn. An undone move marks its items for
-`RollbackMarkSeconds` (1.5 s). Item clicks only select action controls for split
-or allowed destruction. A Recovery item represents its complete delivery during a
-drag because the durable claim remains atomic.
+targets light the slot's highlight green or red, then revalidate the current
+state before sending an operation. A drag started with `Shift` carries a partial
+payload: a target judges it as if it moved one item, and after the drop the
+dialog asks for the quantity before the plan is made again with it. A drag that
+ends over no slot and no interface raises `DroppedOutside`, which offers a
+carried or equipped item for destruction behind a confirmation. A state change
+during a drag redraws the windows only when the drag ends, so a confirmation
+never cancels the drag, and drops always judge the current slot instead of the
+one drawn. An undone move marks its items for `RollbackMarkSeconds` (1.5 s). A
+Recovery item represents its complete delivery during a drag because the durable
+claim remains atomic.
 
 A UI-only target advisor reuses pure WorldData equipment, stack, Bag, slot-tag,
 weight, and hard-cap rules to disable obvious invalid
@@ -1355,11 +1378,41 @@ World loot keeps a reserved context, `WorldLootPrepared`, without inventing
 snapshots or operations. The corpse context is described in
 [Corpse Client State And Presentation](#corpse-client-state-and-presentation).
 
+### UI Kit And Theme
+
+`Scripts/Ui/Kit` holds the widgets the permanent windows are built from, and
+every one of them draws its sprites, fonts, colors, and measures from one
+`UiTheme`, so another design replaces the theme's sprites and values without a
+code change; what goes where stays in the windows' code.
+
+- `UiTheme` is a ScriptableObject at `Assets/Content/Config/UiTheme.asset`,
+  loaded through Addressables as `Config/UiTheme.asset`. `ClientBootstrap` loads
+  it with `UiTheme.Load` and passes it on; without it the windows draw with
+  defaults. It holds the title and body fonts, text sizes, text and element
+  colors, the rarity colors, measures such as the slot size and the windows'
+  distance from the screen edges, and the sprites: frames, slot states, controls,
+  icons, and a silhouette per equipment slot id and per accepted Bag tag.
+- `UiFactory` builds themed texts, headings, buttons, icon buttons, fields, rows,
+  and section headings. A heading's text holds its capitals, so layout measures
+  what it draws.
+- `UiWindow` is a framed window with a header, a body that grows with its content
+  up to a maximum and scrolls beyond it, and a footer that shows only with
+  content.
+- `ItemSlotView` is one slot, built once and bound again from an `ItemSlotSpec`
+  whenever what it shows changes, and `ItemSlotGrid` keeps a grid of them and
+  adds or hides slots only when the count changes.
+- `UiDialog` asks for a quantity or a confirmation; `Enter` confirms and
+  `Escape` cancels through `InventoryWindows`.
+
+The theme's sources are in `Assets/Art/Ui/Sprites`, as
+[UI Art](ART_PIPELINE.md#ui-art) describes, and `UiThemeBuilder` in the Editor
+assembly fills the theme from them.
+
 ### Vendor Context
 
-The Context module has a Vendor tab, `InventoryContextKind.Vendor`. Choosing a
+The storage window has a Trade tab, `InventoryContextKind.Vendor`. Choosing a
 vendor capability opens it through the worker, and the confirmed result raises
-`InventoryCapabilityOpened`, which opens the complete view on that tab. The
+`InventoryCapabilityOpened`, which opens the storage window on that tab. The
 capability's `profileId` names a vendor profile of the bundled item catalog, and
 an unknown profile asks for a client update instead of guessing prices. Without
 an open vendor interaction the tab only says to talk to a vendor, because trading
@@ -1374,7 +1427,7 @@ balance and its upper limit, the 140 percent hard cap, a carried location, a
 category the vendor buys, protection and insurance policies, and quest items.
 These checks are advisory. GameService recomputes every price, rejects a
 different one with `vendor_price_changed`, and owns every final rule. The
-worker's result or rejection appears in the vendor tab. The committed change of a
+worker's result or rejection appears in the Trade tab. The committed change of a
 trade, which arrives before the result, already patched the inventory and the
 balance, so `EnsureFullState` with the returned item-state revision reloads only
 when no change patched it.
@@ -1513,13 +1566,12 @@ Loot in a corpse's world menu, also its left-click option, walks the player into
 range and opens it through the shared [World Menu](#world-menu). No authored
 scene or prefab object is required for the corpse presentation.
 
-The Context module switches to Corpse when an open snapshot arrives, and only the
-complete view shows it, so the panel switches to that view and the character
-views close the corpse. It renders all three sections and reuses
-`InventoryDragPayload` for corpse sources:
+An open snapshot opens the storage window on the corpse, beside the Inventory
+window, and closing the window closes the corpse. It renders all three sections
+and reuses `InventoryDragPayload` for corpse sources:
 
-- Dropping a full or selected partial stack into Permanent inventory or the
-  equipped Bag submits a typed corpse intent, and dropping a
+- Dropping a full stack, or a partial one after a `Shift` drag, into Permanent
+  inventory or the equipped Bag submits a typed corpse intent, and dropping a
   carried item into a compatible corpse slot submits a deposit.
 - Dropping a corpse item onto another corpse slot submits an authoritative
   internal move, split, merge, or complete swap.
@@ -1533,7 +1585,7 @@ views close the corpse. It renders all three sections and reuses
   slot, a top-up of an equipped stack of the same definition, or a swap whose
   equipped item fits the corpse slot the loot leaves, and red for a partial stack
   or a blocked slot.
-- The `Loot all` button above the sections submits `LootAll`, and a right-click
+- The `Loot All` button below the sections submits `LootAll`, and a right-click
   on a slot runs its `InventoryQuickMoves` move; only the left button drags.
 
 Equipment destinations show the catalog display name, and local feedback rejects
@@ -2150,8 +2202,10 @@ into the open menu at the pointer. While the menu is open the controller takes n
 world action: a press in the world, Escape, or the pointer leaving the menu closes
 it, and a press over interface may choose a row. The controller runs before the
 features, at execution order -50, so combat, world interaction, and the inventory
-panel ignore an Escape whose frame reports `CancelConsumedThisFrame`, the Escape
-that closed the menu. `RunDefault` and `OpenMenu` run a left or right click for a
+windows ignore an Escape whose frame reports `CancelConsumedThisFrame`, the Escape
+that closed the menu. The inventory windows run next, at -40, and an Escape that
+dismisses their dialog calls `ConsumeCancel`, so it neither closes the open
+interaction nor drops the combat target. `RunDefault` and `OpenMenu` run a left or right click for a
 given ray, for tools and harnesses. Options are plain values with their provider,
 an action code, the pointer candidate, an entity id, an argument such as a
 capability id, and the ray, so building the menu every frame allocates nothing. A
@@ -2496,7 +2550,7 @@ forward. It follows the target and lands at the impact tick by
 runs its `LateUpdate` after the bodies posed and drew their strings,
 `PresentationExecutionOrder.Projectiles`.
 
-The equipped ammunition slot of `TemporaryInventoryPanel` shows the live arrow
+The equipped ammunition slot of the Equipment window shows the live arrow
 count from `OwnerCombatState` when its `AmmunitionItemInstanceId` names the
 equipped stack, and the committed quantity otherwise, through
 `CombatLoadoutRules.DisplayedAmmunitionQuantity`. A live count that differs from
@@ -2519,9 +2573,12 @@ the client has none.
 - The default font in `TMP Settings` is the project's UI font,
   `Assets/Art/Fonts/LiberationSans UI SDF.asset`: LiberationSans sampled at 48
   points with a padding of 10 in a 1024 by 1024 SDFAA atlas, static, with the
-  printable ASCII and Latin-1 characters, so `å`, `ä`, and `ö` are in it, and
-  TextMesh Pro's dynamic `LiberationSans SDF - Fallback` for every other
-  character. Its distance field is about twice as wide for its size as that of
+  printable ASCII and Latin-1 characters, so `å`, `ä`, and `ö` are in it, the
+  dashes, quotes, bullet, ellipsis, and per mille sign, and TextMesh Pro's
+  dynamic `LiberationSans SDF - Fallback` for every other character. A
+  character that reaches the dynamic fallback in Play Mode, such as the ellipsis
+  that the Unity CLI's Play Mode overlay draws, changes the fallback asset on
+  disk, so the UI font holds every character the client and the Editor draw. Its distance field is about twice as wide for its size as that of
   TextMesh Pro's own `LiberationSans SDF`, so a 12 to 14 pixel label still gets
   an outline of about a pixel. A static atlas never changes while the game runs,
   so Play Mode leaves the asset as it is. To make it again, use `Window >
@@ -2529,7 +2586,19 @@ the client has none.
   Sampling Point Size 48, Padding 10, Packing Method Optimum, Atlas Resolution
   1024 by 1024, Character Set Unicode Range (Hex) `20-7E,A0-FF`, and Render Mode
   SDFAA, then set the asset's Atlas Population Mode to Static and its fallback to
-  `LiberationSans SDF - Fallback`.
+  `LiberationSans SDF - Fallback`, and run `MMORPG > Tools > UI > Build UI Fonts`,
+  which adds the punctuation.
+- The permanent windows draw with the theme's fonts: Cinzel for titles and
+  headings, and Alegreya Sans with its bold face for everything else. Both are
+  SIL Open Font License fonts in `Assets/Art/Fonts/Cinzel` and
+  `Assets/Art/Fonts/AlegreyaSans`, each with its `OFL.txt`.
+  `MMORPG > Tools > UI > Build UI Fonts` (`UiThemeBuilder.BuildFonts`) makes their
+  static assets again from the font files with the same settings and characters
+  as the UI font, which is their fallback. It widens a space to at least a quarter
+  em, since Alegreya Sans draws a sixth of an em, which closes up words at UI
+  sizes, and links the bold face in the regular asset's font weight table, so
+  `<b>` draws the real bold. `UiThemeTests` pins that every UI font is static and
+  holds these characters.
 - `WorldLabels` creates every text drawn over the world, such as nameplates and
   damage numbers: TextMesh Pro's default font, no wrapping, no raycast, no rich
   text, and one shared material, the font's own with a black outline of 0.3 and

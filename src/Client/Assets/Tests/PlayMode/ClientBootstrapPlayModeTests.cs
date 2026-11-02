@@ -95,7 +95,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(deathOverlayCanvas.overrideSorting, Is.True);
             var panelCanvases = new[]
             {
-                Object.FindAnyObjectByType<TemporaryInventoryPanel>().GetComponentInChildren<Canvas>(true),
+                Object.FindAnyObjectByType<InventoryWindows>().GetComponentInChildren<Canvas>(true),
                 Object.FindAnyObjectByType<TemporaryWorldInteractionPanel>().GetComponentInChildren<Canvas>(true),
                 combatHud.GetComponentInChildren<Canvas>(true),
                 contextMenu.GetComponentInChildren<Canvas>(true),
@@ -119,43 +119,21 @@ namespace Mmorpg.Client.Tests.PlayMode
                     .Where(graphic => graphic.raycastTarget)
                     .Select(graphic => graphic.name),
                 Is.Empty);
-            var inventoryPanel = Object.FindAnyObjectByType<TemporaryInventoryPanel>();
-            Assert.That(inventoryPanel, Is.Not.Null);
-            Assert.That(inventoryPanel.IsOpen, Is.False);
-
-            inventoryPanel.SetOpen(true);
+            // The inventory windows start closed and open on their own.
+            var inventoryWindows = Object.FindAnyObjectByType<InventoryWindows>();
+            Assert.That(inventoryWindows, Is.Not.Null);
+            Assert.That(inventoryWindows.IsAnyOpen, Is.False);
+            Assert.That(inventoryWindows.GetComponentInChildren<Canvas>(true), Is.Not.Null);
+            inventoryWindows.SetInventoryOpen(true);
             yield return null;
-            Assert.That(inventoryPanel.IsOpen, Is.True);
-            Assert.That(inventoryPanel.Mode, Is.EqualTo(InventoryPanelMode.Complete));
-            Assert.That(inventoryPanel.IsEquipmentModuleVisible, Is.True);
-            Assert.That(inventoryPanel.IsContextModuleVisible, Is.True);
-            Assert.That(inventoryPanel.IsCharacterModuleVisible, Is.True);
-            var characterPanel = inventoryPanel
-                .GetComponentsInChildren<RectTransform>(true)
-                .Single(rectTransform => rectTransform.name == "Character InventoryPanel");
-            var characterAnchorMin = characterPanel.anchorMin;
-            var characterAnchorMax = characterPanel.anchorMax;
-            Assert.That(
-                inventoryPanel.GetComponentInChildren<Canvas>(true),
-                Is.Not.Null);
-            inventoryPanel.SetOpen(true, InventoryPanelMode.CharacterOnly);
+            Assert.That(inventoryWindows.IsInventoryOpen, Is.True);
+            Assert.That(inventoryWindows.IsEquipmentOpen, Is.False);
+            Assert.That(inventoryWindows.IsStorageOpen, Is.False);
+            inventoryWindows.SetEquipmentOpen(true);
             yield return null;
-            Assert.That(inventoryPanel.Mode, Is.EqualTo(InventoryPanelMode.CharacterOnly));
-            Assert.That(inventoryPanel.IsEquipmentModuleVisible, Is.False);
-            Assert.That(inventoryPanel.IsContextModuleVisible, Is.False);
-            Assert.That(inventoryPanel.IsCharacterModuleVisible, Is.True);
-            Assert.That(characterPanel.anchorMin, Is.EqualTo(characterAnchorMin));
-            Assert.That(characterPanel.anchorMax, Is.EqualTo(characterAnchorMax));
-            inventoryPanel.SetOpen(true, InventoryPanelMode.CharacterAndEquipment);
-            yield return null;
-            Assert.That(inventoryPanel.Mode, Is.EqualTo(InventoryPanelMode.CharacterAndEquipment));
-            Assert.That(inventoryPanel.IsEquipmentModuleVisible, Is.True);
-            Assert.That(inventoryPanel.IsContextModuleVisible, Is.False);
-            Assert.That(inventoryPanel.IsCharacterModuleVisible, Is.True);
-            Assert.That(characterPanel.anchorMin, Is.EqualTo(characterAnchorMin));
-            Assert.That(characterPanel.anchorMax, Is.EqualTo(characterAnchorMax));
-            inventoryPanel.SetOpen(false);
-            Assert.That(inventoryPanel.IsOpen, Is.False);
+            Assert.That(inventoryWindows.IsEquipmentOpen, Is.True);
+            inventoryWindows.CloseAll();
+            Assert.That(inventoryWindows.IsAnyOpen, Is.False);
         }
 
         // Both menus start closed. The Debug menu draws no collision until its toggle is on, and
@@ -194,7 +172,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(debugMenu.Window.SelectedTab, Is.EqualTo(2));
 
             Assert.That(adminMenu.IsOpen, Is.True);
-            Assert.That(adminMenu.Window.TabCount, Is.EqualTo(3));
+            Assert.That(adminMenu.Window.TabCount, Is.EqualTo(4));
             Assert.That(adminMenu.ToolsAvailable, Is.False);
             Assert.That(adminMenu.Window.StatusText, Does.Contain("Join a World"));
             Assert.That(

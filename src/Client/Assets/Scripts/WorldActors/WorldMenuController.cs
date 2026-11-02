@@ -14,10 +14,13 @@ namespace Mmorpg.Client.WorldActors
     // that walked keeps steering the walk toward the ground under the pointer while the
     // button stays down. It runs after input and before the features, so they can tell that
     // an Escape only closed the menu.
-    [DefaultExecutionOrder(-50)]
+    [DefaultExecutionOrder(ExecutionOrder)]
     [DisallowMultipleComponent]
     public sealed class WorldMenuController : MonoBehaviour, IWorldMenuProvider
     {
+        // After input and before the features, which run at the default order 0.
+        public const int ExecutionOrder = -50;
+
         private const int WalkAction = 1;
         private const int ExamineAction = 2;
 
@@ -44,11 +47,18 @@ namespace Mmorpg.Client.WorldActors
 
         public bool IsMenuOpen { get; private set; }
 
-        // True in the frame in which Escape closed the open menu. That Escape does nothing
-        // else, so it neither ends an attack nor closes an interaction or panel.
+        // True in the frame in which Escape closed the open menu, or an interface that runs
+        // before the features took it, such as an inventory dialog it dismissed. That Escape
+        // does nothing else, so it neither ends an attack nor closes an interaction or panel.
         public bool CancelConsumedThisFrame
         {
             get { return cancelConsumedFrame == Time.frameCount; }
+        }
+
+        // Marks this frame's Escape as taken by an interface.
+        public void ConsumeCancel()
+        {
+            cancelConsumedFrame = Time.frameCount;
         }
 
         // The open menu's options, top first, without Cancel.

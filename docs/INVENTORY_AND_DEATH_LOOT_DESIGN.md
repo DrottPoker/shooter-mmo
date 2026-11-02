@@ -509,44 +509,50 @@ could create an over-cap state requires an explicit migration.
 
 ## Inventory UI Layout
 
-The inventory presentation uses a stable three-column layout:
+The inventory is three windows that open and close on their own, each at a
+fixed place on the screen, below the HUD:
 
 ```text
-+--------------------+-----------------------------+------------------------+
-| Character          | Context container           | Character inventory    |
-| equipment          | Middle                      | Right                  |
-| Left               | Bank, corpse, Recovery      | Carry meter, Permanent |
-| Paper doll of the  | Storage, vendor, or another | slots, and equipped    |
-| equipment slots    | opened loot or storage      | Bag contents           |
-|                    | container                   | Selected-item footer   |
-+--------------------+-----------------------------+------------------------+
++------------------+                              +-----------+ +-----------+
+| Equipment        |                              | Storage   | | Inventory |
+| Slots on both    |                              | Bank,     | | Search,   |
+| sides of the     |                              | Recovery, | | carry     |
+| character, hands |                              | a corpse, | | meter, 24 |
+| and tools below  |                              | or a      | | slots,    |
+|                  |                              | vendor    | | the Bag,  |
++------------------+                              +-----------+ | balance   |
+ left edge                                                      +-----------+
+                                                                 right edge
 ```
 
-- Character equipment remains on the left, laid out like a paper doll.
-- Character-owned inventory remains in the right column and keeps its place
-  and size in every view.
-- The middle column presents the currently relevant external or contextual
-  container, including bank, corpse, Recovery Storage, vendor, and world loot
-  containers.
-- The character column remains visible while another container is open so
-  authoritative transfers have a clear source and destination.
-- There are three views: character storage only, equipment with character
-  storage, and the complete view with equipment, the context container, and
-  character storage. Opening the Bank, Recovery Storage, or vendor capability of
-  an NPC opens the complete view with that context, and an open corpse always
-  shows in the complete view. Each column has fixed bounds, so hiding or
-  showing one never moves or resizes another. The keys that open the views are
-  in [Player Inventory Foundation](GAME_FEATURES.md#player-inventory-foundation).
+- Equipment stays at the left edge, laid out like a paper doll around the
+  character: a column of slots on each side, as far from both edges of the
+  window, and the hands, tool, and ammunition close together in a row below. The
+  slots show no names; the tooltip of an empty slot names it.
+- Inventory stays at the right edge and holds everything the character carries:
+  Permanent Inventory in rows of six and the equipped Bag's slots below it in the
+  same columns. It grows in height with the Bag.
+- The storage window stands directly left of Inventory and presents the
+  currently relevant external container: the Bank, Recovery Storage, a corpse, a
+  vendor, or later world loot. It opens with the NPC capability or corpse that
+  offers it, together with Inventory, so a transfer has its source and
+  destination in view, and it closes when that interaction ends.
+- Opening or closing a window never moves another, and windows never overlap.
+  The windows are small enough to leave the middle of the screen to the world,
+  which keeps taking clicks beside and between them.
+- The frame around an item shows its rarity color. Items have no rarity yet, so
+  every frame is the common color, white.
 - While the character wears an item that can be lowered, such as the Wool Hood,
-  the footer of the character column offers to lower or raise it. The server
+  a button at the Equipment window's head slot lowers or raises it. The server
   stores the choice with the character's look and every client shows it, as
   [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#items) describes.
 
+The keys and the windows' contents are in
+[Player Inventory Foundation](GAME_FEATURES.md#player-inventory-foundation).
 This is a presentation contract only. Server authority, revisions, slot rules,
-and transaction behavior do not depend on screen layout. The current panels
-are replaceable uGUI over permanent client state, as
-[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#inventory-ui)
-describes.
+and transaction behavior do not depend on screen layout. How the windows are
+built and themed is in
+[Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#inventory-ui).
 
 ## Item Policies
 

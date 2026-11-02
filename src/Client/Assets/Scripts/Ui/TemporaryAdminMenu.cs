@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using Mmorpg.Client.Combat;
 using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
@@ -15,7 +16,7 @@ namespace Mmorpg.Client.Ui
 {
     // The Admin menu (F3): development tools for playing and testing. Look steps the stored body
     // model and look; Movement sets the walk speed and teleports; Combat fills health and mana and makes
-    // the character invulnerable. Only a worker in the Development environment allows them, which
+    // the character invulnerable; Storage opens the Bank or Recovery Storage without an NPC. Only a worker in the Development environment allows them, which
     // it says by sending the admin state after the join; without it the menu explains that the
     // tools are off. While the menu is open, the world menu offers Teleport here on the ground,
     // and after Pick a spot a left click on the ground teleports.
@@ -39,6 +40,7 @@ namespace Mmorpg.Client.Ui
         private PlayerBodyLookSetting bodyLook;
         private WorldMenuController worldMenu;
         private CombatClientController combat;
+        private InventoryWindowRequests inventoryWindowRequests;
         private LocalPlayerController localPlayer;
         private TemporaryMenuWindow window;
         private RectTransform lookPage;
@@ -79,12 +81,14 @@ namespace Mmorpg.Client.Ui
             RealtimeSimulationClient realtimeClient,
             PlayerBodyLookSetting lookSetting,
             WorldMenuController menu,
-            CombatClientController combatController)
+            CombatClientController combatController,
+            InventoryWindowRequests windowRequests = null)
         {
             simulationClient = realtimeClient;
             bodyLook = lookSetting;
             worldMenu = menu;
             combat = combatController;
+            inventoryWindowRequests = windowRequests;
         }
 
         public void SetOpen(bool open)
@@ -244,6 +248,33 @@ namespace Mmorpg.Client.Ui
             var combatPage = window.AddTab("Combat");
             toolPages.Add(combatPage.gameObject.AddComponent<CanvasGroup>());
             BuildCombatTab(combatPage);
+
+            var storagePage = window.AddTab("Storage");
+            toolPages.Add(storagePage.gameObject.AddComponent<CanvasGroup>());
+            BuildStorageTab(storagePage);
+        }
+
+        // The development worker opens the Bank and Recovery Storage everywhere, so their window
+        // opens here without an NPC.
+        private void BuildStorageTab(RectTransform page)
+        {
+            TemporaryMenuWindow.AddSection(page, "Storage");
+            var row = TemporaryMenuWindow.AddButtonRow(page);
+            TemporaryUiKit.CreateButton(
+                row,
+                "Open Bank",
+                () => inventoryWindowRequests?.RequestStorage(InventoryContextKind.Bank),
+                true,
+                TemporaryButtonTone.Normal);
+            TemporaryUiKit.CreateButton(
+                row,
+                "Open Recovery Storage",
+                () => inventoryWindowRequests?.RequestStorage(InventoryContextKind.RecoveryStorage),
+                true,
+                TemporaryButtonTone.Normal);
+            TemporaryMenuWindow.AddNote(
+                page,
+                "Opens the storage window beside your inventory. In a release only an NPC that keeps storage opens it.");
         }
 
         private void BuildMovementTab(RectTransform page)

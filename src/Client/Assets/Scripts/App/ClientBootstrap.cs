@@ -35,6 +35,9 @@ namespace Mmorpg.Client.App
         private GameObject arrowModel;
         private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
         private readonly GameMessageLog gameMessages = new GameMessageLog();
+        private readonly InventoryWindowRequests inventoryWindowRequests = new InventoryWindowRequests();
+        private UiTheme uiTheme;
+        private AsyncOperationHandle<UiTheme> uiThemeHandle;
 
         // The Debug menu's body tint, kept between sessions and off by default.
         private const string BodyTintPreference = "Mmorpg.Debug.TintPlayerBodies";
@@ -99,6 +102,7 @@ namespace Mmorpg.Client.App
                     "The client configuration has no arrow model, so arrows fly as plain bars.");
             }
 
+            uiTheme = UiTheme.Load(out uiThemeHandle);
             apiClient = new ApiClient(config.RequestTimeoutSeconds);
             bodyTint = new PlayerBodyTintSetting(PlayerPrefs.GetInt(BodyTintPreference, 0) == 1);
             bodyTint.Changed += SaveBodyTint;
@@ -180,6 +184,8 @@ namespace Mmorpg.Client.App
             apiClient = null;
             ClientAssets.Release(configHandle);
             configHandle = default;
+            ClientAssets.Release(uiThemeHandle);
+            uiThemeHandle = default;
         }
 
         private void SaveBodyTint()
@@ -385,14 +391,17 @@ namespace Mmorpg.Client.App
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(
                 menu => menu.Initialize(worldActorController, gameMessages));
             AddSceneComponentIfMissing<TemporaryAdminMenu>(
-                menu => menu.Initialize(simulationClient, bodyLook, worldMenu, combatController));
-            AddSceneComponentIfMissing<TemporaryInventoryPanel>(
-                panel => panel.Initialize(
+                menu => menu.Initialize(simulationClient, bodyLook, worldMenu, combatController, inventoryWindowRequests));
+            AddSceneComponentIfMissing<InventoryWindows>(
+                windows => windows.Initialize(
+                    uiTheme,
                     inventoryController,
                     corpseController,
                     worldInteractionController,
                     combatController,
                     worldMenu,
+                    gameMessages,
+                    inventoryWindowRequests,
                     bodyLook));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(

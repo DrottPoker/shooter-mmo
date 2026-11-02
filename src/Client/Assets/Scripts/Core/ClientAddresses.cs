@@ -8,6 +8,7 @@ namespace Mmorpg.Client.Core
     {
         public const string ContentRoot = "Assets/Content/";
         public const string ClientConfig = "Config/ClientConfig.asset";
+        public const string UiTheme = "Config/UiTheme.asset";
         public const string WorldSceneCatalog = "Worlds/world-scene-catalog.json";
         public const string ItemPresentationCatalog = "Items/Presentation/item-presentation-catalog.json";
         public const string WorldActorPresentationRegistry =

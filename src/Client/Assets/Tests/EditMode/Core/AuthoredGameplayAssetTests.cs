@@ -614,8 +614,9 @@ namespace Mmorpg.Client.Tests.EditMode
 
         // URP Lit everywhere, except the body materials that paint layers paint over, which use
         // the skin shader, URP Lit with paint layers, the Debug menu's line material, which is
-        // URP Unlit so its lines keep their colors in any light, and the materials inside
-        // TextMesh Pro font assets, which use its shaders.
+        // URP Unlit so its lines keep their colors in any light, the materials inside
+        // TextMesh Pro font assets, which use its shaders, and the built-in material of a font
+        // file.
         [Test]
         public void EveryProjectMaterialUsesTheUrpShaderOfItsKind()
         {
@@ -649,6 +650,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 if (AssetDatabase.LoadMainAssetAtPath(path) is TMP_FontAsset)
                 {
                     Assert.That(material.shader.name, Does.StartWith("TextMeshPro/"), path);
+                    continue;
+                }
+
+                // A font file's built-in material is for legacy text, which the client never
+                // draws; the TextMesh Pro assets made from the file draw its text.
+                if (AssetDatabase.LoadMainAssetAtPath(path) is Font)
+                {
+                    Assert.That(material.shader.name, Is.EqualTo("GUI/Text Shader"), path);
                     continue;
                 }
 

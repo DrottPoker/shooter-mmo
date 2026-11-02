@@ -1,0 +1,53 @@
+fileFormatVersion: 2
+guid: 40e4a45350208fd4abbdc3d282a5b3de
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 12408, guid: 0000000000000000e000000000000000, type: 0}
+  svgType: 1
+  texturedSpriteMeshType: 0
+  svgPixelsPerUnit: 100
+  gradientResolution: 64
+  alignment: 0
+  customPivot: {x: 0, y: 0}
+  generatePhysicsShape: 0
+  viewportOptions: 1
+  preserveViewport: 0
+  advancedMode: 0
+  tessellationMode: 0
+  predefinedResolutionIndex: 1
+  targetResolution: 1080
+  resolutionMultiplier: 1
+  stepDistance: 10
+  samplingStepDistance: 100
+  maxCordDeviationEnabled: 0
+  maxCordDeviation: 1
+  maxTangentAngleEnabled: 0
+  maxTangentAngle: 5
+  keepTextureAspectRatio: 0
+  textureSize: 64
+  textureWidth: 64
+  textureHeight: 16
+  wrapMode: 1
+  filterMode: 1
+  sampleCount: 8
+  preserveSVGImageAspect: 0
+  useSVGPixelsPerUnit: 0
+  spriteData:
+    TessellationDetail: 0
+    SpriteName: MeterTrack
+    SpritePivot: {x: 0.5, y: 0.5}
+    SpriteAlignment: 0
+    SpriteBorder: {x: 7, y: 7, z: 7, w: 7}
+    SpriteRect:
+      serializedVersion: 2
+      x: 0
+      y: 0
+      width: 64
+      height: 16
+    SpriteID: f3645c8c1469ed64e9bac40df329c88d
+    PhysicsOutlines: []

@@ -14,7 +14,8 @@
     "Mmorpg.WorldData.Client",
     "Unity.Addressables.Editor",
     "UnityEngine.UI",
-    "Unity.TextMeshPro"
+    "Unity.TextMeshPro",
+    "Mmorpg.Client.Ui"
   ],
   "includePlatforms": [
     "Editor"

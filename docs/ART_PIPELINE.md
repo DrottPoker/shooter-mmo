@@ -65,6 +65,7 @@ art has one how-to:
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](#review-approve-and-export-an-asset) |
 | Confirm that every source, approval, and export is current, such as after an edit of the bodies | the sync scripts and their review sheets | [Check That The Art Sources Are Current](#check-that-the-art-sources-are-current) |
 | Look at clothes and cloth in motion and tune the cloth's springs | `MMORPG > Tools > Art Pipeline > Wardrobe` in Unity | [The Wardrobe](#the-wardrobe) |
+| Change the look of the windows: frames, slots, icons, silhouettes, fonts | the SVG files in `Assets/Art/Ui/Sprites`, then `MMORPG > Tools > UI > Build UI Theme` | [UI Art](#ui-art) |
 
 Weapons, shields, quivers, and backpacks are [attachments](#attachments):
 models held on a socket of the skeleton.
@@ -2568,6 +2569,53 @@ art/Animations/Human_Actions`. Expected result: every body holds the tool in the
 rows of its clip. In Unity, add a looping base layer state of the clip's name to
 `Assets/Art/Animation/HumanLocomotion.controller` and give a Tool slot item the
 attachment; `ToolInUseTests` checks both.
+
+## UI Art
+
+The look of the permanent windows comes from SVG files and one theme, not from
+Blender: frames, slot states, buttons, fields, the carry meter, icons, and the
+silhouettes of empty slots are vector drawings in
+`src/Client/Assets/Art/Ui/Sprites`, and `Assets/Content/Config/UiTheme.asset`
+holds them together with the fonts, colors, and measures; see
+[UI Kit And Theme](UNITY_CLIENT_ARCHITECTURE.md#ui-kit-and-theme). The reviewer
+approves a new look from screenshots of the running windows before it is merged.
+
+- Every SVG imports as one textured UI Sprite through `UiSpriteImportRules`, with
+  Unity's built-in SVG importer. `ui-sprites.json` in the same folder names the
+  texture size and the nine-slice border, left, bottom, right, and top in texture
+  pixels, of every sprite that stretches, such as `WindowFrame.svg` at 128 by 128
+  with a border of 32; any other SVG imports square at the default size of 128
+  without a border. The importer keeps the SVG's whole view box, so an icon keeps
+  its margins.
+- Draw an icon or silhouette in white on a 128 by 128 view box, since the theme
+  tints it: the window icons and the close button in the title color, the
+  silhouettes in a faint grey. A frame that shows a color of the game, such as
+  the item frame of the rarity color, is white too. The coin and the pedestal
+  keep their own colors.
+- Fill a gradient that a frame stretches as a plain rectangle, over a solid
+  rounded one where the frame has round corners, as `WindowFrame.svg` does. The
+  importer cracks a rounded shape of a gradient along a triangle edge, and the
+  stretched middle of the window then shows a faint diagonal line.
+- A sprite's file name is its theme field, such as `ItemFrame.svg` for
+  `ItemFrame`. `Silhouette_<slot id>.svg` is the empty picture of an equipment
+  slot, such as `Silhouette_head.svg`, `Tag_<tag id>.svg` that of a specialized
+  Bag slot, such as `Tag_potion.svg`, and `FallbackSilhouette.svg` that of a slot
+  without its own.
+- After adding or changing an SVG or `ui-sprites.json`, run
+  `MMORPG > Tools > UI > Build UI Theme` in Unity. It reimports the sprites,
+  creates the theme if it is missing, and fills every sprite field, the
+  silhouettes, and the fonts from their files; it never changes a color or
+  measure, so values tuned in the theme's Inspector stay. `UiThemeTests` fails on
+  a missing sprite, a frame without a border, or an equipment slot or Bag tag
+  without a silhouette.
+- The fonts are in `src/Client/Assets/Art/Fonts`; after changing a font file or
+  the character set, run `MMORPG > Tools > UI > Build UI Fonts`, then
+  `Build UI Theme`. [Text And Fonts](UNITY_CLIENT_ARCHITECTURE.md#text-and-fonts)
+  has their settings.
+
+Expected result: the windows show the changed sprite at its place, sharp at
+1920 by 1080, and `tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter
+UiThemeTests` passes.
 
 ## Assets
 

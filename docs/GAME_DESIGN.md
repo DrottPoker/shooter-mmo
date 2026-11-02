@@ -1078,8 +1078,11 @@ icons. This project sets rules from the start:
 - Put consumables on dedicated hotkeys instead of clicking them in the
   inventory.
 
-The current UI is explicitly temporary, so the final UI can follow these rules
-without migration. The inventory layout rules are in
+The inventory windows are the first permanent UI: dark panels with gold frames
+and serif headings, at fixed places on the screen, on a UI kit whose theme holds
+the whole look, so a new design changes the theme rather than the windows. The
+other panels are still explicitly temporary, so they can move onto the kit and
+follow these rules without migration. The inventory layout rules are in
 [Inventory UI Layout](INVENTORY_AND_DEATH_LOOT_DESIGN.md#inventory-ui-layout).
 
 ## MVP

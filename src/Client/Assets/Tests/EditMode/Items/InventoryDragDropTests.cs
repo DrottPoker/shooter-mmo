@@ -30,8 +30,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 var target = fixture.Target.AddComponent<InventoryDropTarget>();
                 target.Configure(
                     fixture.Coordinator,
-                    fixture.Target.GetComponent<Image>(),
-                    Color.gray,
+                    fixture.Highlight,
+                    Color.green,
+                    Color.red,
                     (InventoryDragPayload candidate, out string reason) =>
                     {
                         reason = string.Empty;
@@ -50,6 +51,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(fixture.Coordinator.ActivePayload, Is.SameAs(payload));
 
                 target.OnPointerEnter(eventData);
+                Assert.That(target.ShowsValidDrop, Is.True);
+                Assert.That(fixture.Highlight.enabled, Is.True);
+                Assert.That(fixture.Highlight.color, Is.EqualTo(Color.green));
                 target.OnDrop(eventData);
                 source.OnEndDrag(eventData);
 
@@ -57,6 +61,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(received.ItemInstanceId, Is.EqualTo(itemId));
                 Assert.That(fixture.Coordinator.IsDragging, Is.False);
                 Assert.That(fixture.Coordinator.ActivePayload, Is.Null);
+                Assert.That(fixture.Highlight.enabled, Is.False);
+                Assert.That(target.ShowsValidDrop, Is.Null);
             }
             finally
             {
@@ -84,8 +90,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 var target = fixture.Target.AddComponent<InventoryDropTarget>();
                 target.Configure(
                     fixture.Coordinator,
-                    fixture.Target.GetComponent<Image>(),
-                    Color.gray,
+                    fixture.Highlight,
+                    Color.green,
+                    Color.red,
                     (InventoryDragPayload candidate, out string reason) =>
                     {
                         reason = "Recovery can be claimed only to Permanent Inventory or Bank.";
@@ -96,6 +103,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 var eventData = new PointerEventData(fixture.EventSystem);
 
                 source.OnBeginDrag(eventData);
+                target.OnPointerEnter(eventData);
+                Assert.That(target.ShowsValidDrop, Is.False);
+                Assert.That(fixture.Highlight.color, Is.EqualTo(Color.red));
                 target.OnDrop(eventData);
 
                 Assert.That(operationInvoked, Is.False);
@@ -139,7 +149,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(group.alpha, Is.EqualTo(InventoryDragSource.DraggedAlpha));
                 Assert.That(group.blocksRaycasts, Is.False);
 
-                source.OnEndDrag(new PointerEventData(fixture.EventSystem));
+                source.OnEndDrag(OverInterface(fixture));
 
                 Assert.That(fixture.Coordinator.IsDragging, Is.False);
                 Assert.That(fixture.Coordinator.transform.Find(InventoryDragCoordinator.GhostName), Is.Null);
@@ -176,7 +186,84 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(ghost, Is.Not.Null);
                 Assert.That(ghost.Find("Label").GetComponent<TMP_Text>().text, Is.EqualTo("Iron Ore  x20"));
                 Assert.That(ghost.Find("Quantity"), Is.Null);
+                source.OnEndDrag(OverInterface(fixture));
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
+        // Shift drags part of a stack: the payload says so, and the ghost asks how many until
+        // the drop.
+        [Test]
+        public void ShiftDragCarriesPartOfTheStack()
+        {
+            var fixture = CreateFixture();
+            var texture = new Texture2D(4, 4);
+            var icon = Sprite.Create(texture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f));
+            try
+            {
+                var itemId = Guid.NewGuid();
+                var source = fixture.Source.AddComponent<InventoryDragSource>();
+                source.Configure(
+                    fixture.Coordinator,
+                    InventoryDragPayload.ForItem(itemId),
+                    "Iron Ore  x20",
+                    icon,
+                    "20",
+                    true,
+                    true);
+                source.PartialOverride = true;
+
+                source.OnBeginDrag(new PointerEventData(fixture.EventSystem));
+
+                var payload = fixture.Coordinator.ActivePayload;
+                Assert.That(payload.IsPartial, Is.True);
+                Assert.That(payload.ItemInstanceId, Is.EqualTo(itemId));
+                var ghost = fixture.Coordinator.transform.Find(InventoryDragCoordinator.GhostName);
+                Assert.That(
+                    ghost.Find("Quantity").GetComponent<TMP_Text>().text,
+                    Is.EqualTo(InventoryDragCoordinator.PartialQuantityMark));
+                source.OnEndDrag(OverInterface(fixture));
+
+                // A slot that does not allow part of its stack drags it whole even with Shift.
+                source.Configure(fixture.Coordinator, InventoryDragPayload.ForItem(itemId), "Ring", icon, string.Empty, true);
+                source.OnBeginDrag(new PointerEventData(fixture.EventSystem));
+                Assert.That(fixture.Coordinator.ActivePayload.IsPartial, Is.False);
+                source.OnEndDrag(OverInterface(fixture));
+                Assert.That(InventoryDragPayload.ForRecoveryDelivery(Guid.NewGuid()).AsPartial().IsPartial, Is.False);
+            }
+            finally
+            {
+                fixture.Dispose();
+                UnityEngine.Object.DestroyImmediate(icon);
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        // A drag released over nothing of the interface drops outside every window; released
+        // over a window it only ends.
+        [Test]
+        public void ADragReleasedOverNoInterfaceDropsOutside()
+        {
+            var fixture = CreateFixture();
+            try
+            {
+                InventoryDragPayload outside = null;
+                fixture.Coordinator.DroppedOutside += payload => outside = payload;
+                var payload = InventoryDragPayload.ForItem(Guid.NewGuid());
+                var source = fixture.Source.AddComponent<InventoryDragSource>();
+                source.Configure(fixture.Coordinator, payload, "Ore", null, string.Empty, true);
+
+                source.OnBeginDrag(new PointerEventData(fixture.EventSystem));
+                source.OnEndDrag(OverInterface(fixture));
+                Assert.That(outside, Is.Null);
+
+                source.OnBeginDrag(new PointerEventData(fixture.EventSystem));
                 source.OnEndDrag(new PointerEventData(fixture.EventSystem));
+                Assert.That(outside, Is.SameAs(payload));
+                Assert.That(fixture.Coordinator.IsDragging, Is.False);
             }
             finally
             {
@@ -196,8 +283,18 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(payload.CorpseId, Is.EqualTo(corpseId));
             Assert.That(payload.ItemInstanceId, Is.EqualTo(itemId));
             Assert.That(payload.RecoveryDeliveryId, Is.EqualTo(Guid.Empty));
+            Assert.That(payload.AsPartial().CorpseId, Is.EqualTo(corpseId));
             Assert.Throws<ArgumentException>(() =>
                 InventoryDragPayload.ForCorpseItem(Guid.Empty, itemId));
+        }
+
+        // A release over a window: the event system's raycast found an interface object.
+        private static PointerEventData OverInterface(DragFixture fixture)
+        {
+            return new PointerEventData(fixture.EventSystem)
+            {
+                pointerCurrentRaycast = new RaycastResult { gameObject = fixture.Target }
+            };
         }
 
         private static DragFixture CreateFixture()
@@ -208,10 +305,11 @@ namespace Mmorpg.Client.Tests.EditMode
                 typeof(RectTransform),
                 typeof(Canvas));
             canvasObject.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            var theme = ScriptableObject.CreateInstance<UiTheme>();
+            theme.TitleFont = TMP_Settings.defaultFontAsset;
+            theme.BodyFont = TMP_Settings.defaultFontAsset;
             var coordinator = canvasObject.AddComponent<InventoryDragCoordinator>();
-            coordinator.Configure(
-                canvasObject.GetComponent<RectTransform>(),
-                TemporaryUiKit.Font);
+            coordinator.Configure(canvasObject.GetComponent<RectTransform>(), theme);
             var source = new GameObject(
                 "Source",
                 typeof(RectTransform),
@@ -222,32 +320,41 @@ namespace Mmorpg.Client.Tests.EditMode
                 typeof(RectTransform),
                 typeof(Image));
             target.transform.SetParent(canvasObject.transform, false);
+            var highlight = new GameObject("Highlight", typeof(RectTransform), typeof(Image));
+            highlight.transform.SetParent(target.transform, false);
             return new DragFixture(
                 eventSystemObject.GetComponent<EventSystem>(),
                 canvasObject,
                 source,
                 target,
-                coordinator);
+                highlight.GetComponent<Image>(),
+                coordinator,
+                theme);
         }
 
         private sealed class DragFixture : IDisposable
         {
             private readonly GameObject eventSystemObject;
             private readonly GameObject canvasObject;
+            private readonly UiTheme theme;
 
             public DragFixture(
                 EventSystem eventSystem,
                 GameObject canvas,
                 GameObject source,
                 GameObject target,
-                InventoryDragCoordinator coordinator)
+                Image highlight,
+                InventoryDragCoordinator coordinator,
+                UiTheme dragTheme)
             {
                 EventSystem = eventSystem;
                 eventSystemObject = eventSystem.gameObject;
                 canvasObject = canvas;
                 Source = source;
                 Target = target;
+                Highlight = highlight;
                 Coordinator = coordinator;
+                theme = dragTheme;
             }
 
             public EventSystem EventSystem { get; }
@@ -256,12 +363,15 @@ namespace Mmorpg.Client.Tests.EditMode
 
             public GameObject Target { get; }
 
+            public Image Highlight { get; }
+
             public InventoryDragCoordinator Coordinator { get; }
 
             public void Dispose()
             {
                 UnityEngine.Object.DestroyImmediate(canvasObject);
                 UnityEngine.Object.DestroyImmediate(eventSystemObject);
+                UnityEngine.Object.DestroyImmediate(theme);
             }
         }
     }
