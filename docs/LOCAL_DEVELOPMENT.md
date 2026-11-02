@@ -524,8 +524,11 @@ The script reads the pull request head once, checks readiness for exactly that
 commit, and merges into `development` with a merge commit only while the head
 is still that commit, so a push in between is never merged unchecked. The body
 defaults to `<pull request title> (#<number>).`. `-AllowMissingCodexReview`
-accepts exit code 8 of the readiness check. After the merge the script deletes
-the branch on GitHub, but only while it still points to the merged head, and
+accepts exit code 8 of the readiness check. After the merge the script moves
+every open pull request stacked on the branch to `development`, since GitHub
+closes a pull request whose base branch is deleted, then deletes the branch on
+GitHub, but only while it still points to the merged head and no stacked pull
+request failed to move, and
 locally: when the current checkout has the branch checked out and no
 uncommitted changes, the main checkout switches to `development` and a task
 worktree detaches first. It then deletes every other local branch that is fully
@@ -538,7 +541,8 @@ detached main checkout to `development`.
 
 Exit code 0 means merged and cleaned up, 1 means nothing was merged, and 2
 means merged but the cleanup is incomplete: the remote branch moved after the
-merge, the main checkout could not return to `development` and was left
+merge or a stacked pull request could not move off it, the main checkout could
+not return to `development` and was left
 detached, the task branch had to stay (uncommitted changes in the current
 checkout, another worktree has it checked out, or it has commits that are not
 in `development`), or the local `development` does not match
