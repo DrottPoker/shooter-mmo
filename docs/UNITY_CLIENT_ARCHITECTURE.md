@@ -1332,7 +1332,10 @@ action that sent nothing, and the reason of an undone move, go to the
 side of the character and rows below, and any slot it does not know, such as
 one added to the catalog later, in further rows below. It hides the `back` slot,
 since no item equips to it until cloaks come from achievements, and the window's
-count of equipped slots leaves it out. Every slot is a square of the theme's
+count of equipped slots leaves it out. `EquipmentWindow` places the columns
+symmetrically, as far from both window edges, around the theme's
+`EquipmentCenterWidth`, and centres each row below with the same gap as the
+columns; a slot draws no name, and its tooltip names it. Every slot is a square of the theme's
 slot size; the Inventory and storage windows show their grids in six columns.
 An occupied slot draws the item's icon from `ClientItemCatalog.LoadIcon` in a
 frame of `ItemRarityPresentation.FrameColor`, which is the theme's common color

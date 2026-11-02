@@ -2592,6 +2592,10 @@ approves a new look from screenshots of the running windows before it is merged.
   silhouettes in a faint grey. A frame that shows a color of the game, such as
   the item frame of the rarity color, is white too. The coin and the pedestal
   keep their own colors.
+- Fill a gradient that a frame stretches as a plain rectangle, over a solid
+  rounded one where the frame has round corners, as `WindowFrame.svg` does. The
+  importer cracks a rounded shape of a gradient along a triangle edge, and the
+  stretched middle of the window then shows a faint diagonal line.
 - A sprite's file name is its theme field, such as `ItemFrame.svg` for
   `ItemFrame`. `Silhouette_<slot id>.svg` is the empty picture of an equipment
   slot, such as `Silhouette_head.svg`, `Tag_<tag id>.svg` that of a specialized

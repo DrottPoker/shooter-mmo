@@ -6,7 +6,10 @@
     </linearGradient>
   </defs>
   <rect x="2" y="2" width="124" height="124" rx="5" fill="#050b0d"/>
-  <rect x="3" y="3" width="122" height="122" rx="5" fill="url(#panel)"/>
+  <!-- A rounded rectangle of a gradient cracks along a triangle edge when rasterized, so the
+       gradient fills a plain rectangle inside the gold border over a solid rounded one. -->
+  <rect x="3" y="3" width="122" height="122" rx="5" fill="#132328"/>
+  <rect x="5" y="5" width="118" height="118" fill="url(#panel)"/>
   <rect x="3.5" y="3.5" width="121" height="121" rx="5" fill="none" stroke="#b8945a" stroke-width="2"/>
   <rect x="8.5" y="8.5" width="111" height="111" rx="3" fill="none" stroke="#56462b" stroke-width="1"/>
   <path d="M3.5 26 V9 Q3.5 3.5 9 3.5 H26" fill="none" stroke="#ecd08e" stroke-width="2.5" stroke-linecap="round"/>

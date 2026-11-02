@@ -359,13 +359,14 @@ or scroll on a window never reaches the world.
 
 - **Equipment** shows the character's place in the middle on a pedestal, the
   head, shoulders, body, legs, and feet slots in a column on its left, the neck,
-  hands, both rings, and Bag slots in a column on its right, and main hand, off
-  hand, tool, and ammunition in a row below. Every slot has its name beside or
-  below it, and the header shows how many slots are filled, such as
-  `9 / 14 equipped`. The back slot is hidden, and no item equips to the
-  shoulders slot yet. A slot the catalog adds later appears in a row below.
-  While a hood that can be lowered is worn, a small hood button at the head slot
-  lowers or raises it.
+  hands, both rings, and Bag slots in a column on its right, both columns as far
+  from the window's edge, and main hand, off hand, tool, and ammunition close
+  together in a row below. A slot shows no name; hovering an empty slot names
+  it, such as `Neck`. The header shows how many slots are filled, such as
+  `9 / 14`. The back slot is hidden, and no item equips to the shoulders slot
+  yet. A slot the catalog adds later appears in a row below. While a hood that
+  can be lowered is worn, a small hood button beside the head slot lowers or
+  raises it.
 - **Inventory** has a search field, the carry meter, Permanent Inventory in four
   rows of six, the equipped Bag's slots below it in the same columns under the
   Bag's name, such as `TRAVELER'S PACK 2 / 7`, and the balance with a coin at
