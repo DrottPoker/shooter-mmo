@@ -11,7 +11,8 @@ namespace Mmorpg.GameSimulation
     public static class CollisionDataFormat
     {
         // Version 2 adds one-sided triangles from meshes and heightfields next to boxes.
-        public const ushort Version = 2;
+        // Version 3 adds water surfaces and the deep water edges derived from them.
+        public const ushort Version = 3;
         public const uint ChunkMagic = 0x4C434D53;
         public const int MaximumShapesPerChunk = 1_000_000;
 
@@ -48,6 +49,18 @@ namespace Mmorpg.GameSimulation
     {
         public const uint CharacterMovement = 1u << 0;
         public const uint CombatQueries = 1u << 1;
+
+        // Water surfaces, which only depth queries read. Nothing collides with them.
+        public const uint Water = 1u << 2;
+
+        // Marks the walls the compiler derives along deep water. They also carry
+        // CharacterMovement, so they block movement like any other wall.
+        public const uint DeepWaterEdge = 1u << 3;
+
+        // Marks the triangles of baked terrain, which is solid below its surface. They also
+        // carry the layers of their authoring.
+        public const uint Terrain = 1u << 4;
+
         public const uint All = uint.MaxValue;
     }
 

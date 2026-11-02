@@ -14,15 +14,20 @@ namespace Mmorpg.SharedTests
         // Change both values together, and only for an intended change to shared movement
         // or collision behavior: bump GameSimulationCompatibility.Revision and pin the new
         // fingerprint. Clients and workers with different revisions must not interoperate.
-        public const string ExpectedSimulationRevision = "movement-simulation-v6";
-        public const string ExpectedFingerprint = "26fda36424d42767";
+        public const string ExpectedSimulationRevision = "movement-simulation-v7";
+        public const string ExpectedFingerprint = "7c513e9f60c61a2e";
 
         // The planner does not affect the wire contract, because paths travel as data, so
         // its fingerprint changes without a revision bump. It still must match in both
         // runtimes, so the worker can plan for world actors with the same results.
-        public const string ExpectedPlannerFingerprint = "ffb4bfd3e948c8cb";
+        public const string ExpectedPlannerFingerprint = "cebc6accf5bc34d2";
 
-        private const int TickCount = 1600;
+        // The pond in the bowl around (19, 19): its surface lies at 1.8 m, and its deep water
+        // edge, where the depth reaches 1.2 m, at a radius of about 2.27 m.
+        public const float PondCenter = 19f;
+        public const float PondSurface = 1.8f;
+
+        private const int TickCount = 1920;
 
         private static readonly PlayerCarryState Encumbered = new PlayerCarryState(1, 240, 200);
 
@@ -30,7 +35,8 @@ namespace Mmorpg.SharedTests
         // gives up, sliding along it, climbing a rotated ramp and dropping off its high
         // edge, blocked by a rotated pillar, stepping up onto a step while encumbered, a
         // click that replaces a path halfway, climbing over a heightfield mound, blocked by
-        // the front of a one-sided mesh wall, and walking through its back.
+        // the front of a one-sided mesh wall, walking through its back, and wading into a
+        // pond until its deep water edge stops the walk.
         private static readonly Click[] Route =
         {
             new Click(1, 60, false, new[] { Point(10f, 0f) }),
@@ -44,6 +50,7 @@ namespace Mmorpg.SharedTests
             new Click(9, 60, false, new[] { Point(18f, -26f) }),
             new Click(10, 320, false, new[] { Point(-12f, -2f), Point(-20f, -2f) }),
             new Click(11, 240, false, new[] { Point(-14f, 10f), Point(-20f, 10f), Point(-20f, 0f), Point(-10f, 0f) }),
+            new Click(12, 320, false, new[] { Point(-4f, 18f), Point(8f, 19f), Point(PondCenter, PondCenter) }),
             new Click(0, 30, false, null)
         };
 
@@ -129,7 +136,8 @@ namespace Mmorpg.SharedTests
                 new SimulationVector3(0f, 0f, 18f),
                 new SimulationVector3(-12f, 0f, -12f),
                 new SimulationVector3(10f, 0f, -12f),
-                new SimulationVector3(-12f, 0f, 0f)
+                new SimulationVector3(-12f, 0f, 0f),
+                new SimulationVector3(8f, 0f, PondCenter)
             };
             var destinations = new[]
             {
@@ -137,7 +145,8 @@ namespace Mmorpg.SharedTests
                 new SimulationVector3(0f, 2f, 7f),
                 new SimulationVector3(-6f, 0.3f, 1f),
                 new SimulationVector3(18f, 3f, -18f),
-                new SimulationVector3(-20f, 0f, 0f)
+                new SimulationVector3(-20f, 0f, 0f),
+                new SimulationVector3(PondCenter, 0.05f, PondCenter)
             };
             var plans = new MovementPathPlan[starts.Length];
             for (var index = 0; index < starts.Length; index++)
@@ -251,7 +260,8 @@ namespace Mmorpg.SharedTests
                         },
                         new[] { 0, 1, 2, 0, 2, 3 })
                 },
-                Heightfields = new[] { Mound() }
+                Heightfields = new[] { Mound(), Bowl() },
+                Water = new[] { Pond() }
             });
             return new ChunkedStaticCollisionWorld(
                 bake.Manifest.WorldId,
@@ -289,6 +299,72 @@ namespace Mmorpg.SharedTests
                 SamplesZ = samples,
                 Heights = CollisionAuthoringEncoding.EncodeFloats(heights),
                 Holes = string.Empty
+            };
+        }
+
+        // A bowl around the pond: a 2 m rim from a radius of 4.6 to 6.5 m, an outer slope of
+        // about 37 degrees down to 0.05 m, and an inner slope of about 31 degrees down to
+        // 0.05 m. Only casted float arithmetic, so both runtimes bake the same heights.
+        private static CollisionHeightfieldAuthoringEntry Bowl()
+        {
+            const int samples = 21;
+            var heights = new float[samples * samples];
+            for (var z = 0; z < samples; z++)
+            {
+                for (var x = 0; x < samples; x++)
+                {
+                    var offsetX = (float)(x - 10);
+                    var offsetZ = (float)(z - 10);
+                    var radius = (float)Math.Sqrt((float)((float)(offsetX * offsetX) + (float)(offsetZ * offsetZ)));
+                    float height;
+                    if (radius >= 6.5f)
+                    {
+                        height = (float)(2f - (float)(0.745f * (float)(radius - 6.5f)));
+                    }
+                    else if (radius >= 4.6f)
+                    {
+                        height = 2f;
+                    }
+                    else
+                    {
+                        height = (float)(2f - (float)(0.6f * (float)(4.6f - radius)));
+                    }
+
+                    heights[(z * samples) + x] = Math.Max(0.05f, height);
+                }
+            }
+
+            return new CollisionHeightfieldAuthoringEntry
+            {
+                SourcePath = "MovementDeterminism/Bowl#TerrainCollider0",
+                LayerMask = CollisionLayers.CharacterMovement,
+                OriginX = 9f,
+                OriginZ = 9f,
+                SpacingX = 1f,
+                SpacingZ = 1f,
+                SamplesX = samples,
+                SamplesZ = samples,
+                Heights = CollisionAuthoringEncoding.EncodeFloats(heights),
+                Holes = string.Empty
+            };
+        }
+
+        // A square surface 4.4 m from the center to each side, which reaches under the rim,
+        // clockwise seen from above.
+        private static CollisionWaterAuthoringEntry Pond()
+        {
+            return new CollisionWaterAuthoringEntry
+            {
+                SourcePath = "MovementDeterminism/Pond#WaterBody",
+                BodyId = "movement-determinism.pond",
+                Vertices = CollisionAuthoringEncoding.EncodeFloats(new[]
+                {
+                    14.6f, PondSurface, 14.6f,
+                    14.6f, PondSurface, 23.4f,
+                    23.4f, PondSurface, 23.4f,
+                    23.4f, PondSurface, 14.6f
+                }),
+                Triangles = CollisionAuthoringEncoding.EncodeInts(new[] { 0, 1, 2, 0, 2, 3 })
             };
         }
 

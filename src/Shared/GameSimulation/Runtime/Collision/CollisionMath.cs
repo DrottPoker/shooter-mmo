@@ -201,9 +201,36 @@ namespace Mmorpg.GameSimulation
             CollisionTriangle triangle,
             out CollisionRayHit hit)
         {
+            if (triangle == null)
+            {
+                hit = default(CollisionRayHit);
+                return false;
+            }
+
+            return TryRaycastTriangle(
+                origin,
+                direction,
+                maximumDistance,
+                triangle.A,
+                triangle.B,
+                triangle.C,
+                triangle.Normal,
+                out hit);
+        }
+
+        // The same test for any one-sided triangle with a precomputed front normal.
+        public static bool TryRaycastTriangle(
+            SimulationVector3 origin,
+            SimulationVector3 direction,
+            float maximumDistance,
+            SimulationVector3 a,
+            SimulationVector3 b,
+            SimulationVector3 c,
+            SimulationVector3 frontNormal,
+            out CollisionRayHit hit)
+        {
             hit = default(CollisionRayHit);
-            if (triangle == null
-                || !SimulationVector3.IsFinite(origin)
+            if (!SimulationVector3.IsFinite(origin)
                 || !SimulationVector3.IsFinite(direction)
                 || !IsFinite(maximumDistance)
                 || maximumDistance <= 0f)
@@ -218,13 +245,13 @@ namespace Mmorpg.GameSimulation
             }
 
             var normalizedDirection = direction / directionLength;
-            if (SimulationVector3.Dot(normalizedDirection, triangle.Normal) >= -Epsilon)
+            if (SimulationVector3.Dot(normalizedDirection, frontNormal) >= -Epsilon)
             {
                 return false;
             }
 
-            var firstEdge = triangle.B - triangle.A;
-            var secondEdge = triangle.C - triangle.A;
+            var firstEdge = b - a;
+            var secondEdge = c - a;
             var directionCrossEdge = SimulationVector3.Cross(normalizedDirection, secondEdge);
             var determinant = SimulationVector3.Dot(firstEdge, directionCrossEdge);
             if (!(determinant > 0f))
@@ -233,7 +260,7 @@ namespace Mmorpg.GameSimulation
             }
 
             var inverse = (float)(1f / determinant);
-            var offset = origin - triangle.A;
+            var offset = origin - a;
             var u = (float)(SimulationVector3.Dot(offset, directionCrossEdge) * inverse);
             if (u < MinimumBarycentric || u > MaximumBarycentric)
             {
@@ -254,7 +281,7 @@ namespace Mmorpg.GameSimulation
             }
 
             var travelled = normalizedDirection * distance;
-            hit = new CollisionRayHit(distance, origin + travelled, triangle.Normal);
+            hit = new CollisionRayHit(distance, origin + travelled, frontNormal);
             return true;
         }
 

@@ -45,7 +45,9 @@ namespace Mmorpg.Client.Editor
 
         public Material Foliage { get; private set; }
 
-        public Material Sandbox { get; private set; }
+        public Material Water { get; private set; }
+
+        public Material Sand { get; private set; }
 
         public Material Marker { get; private set; }
 
@@ -73,7 +75,9 @@ namespace Mmorpg.Client.Editor
                 Rock = CreateOrUpdateMaterial("M_DevelopmentWorld_Rock", new Color(0.45f, 0.42f, 0.38f)),
                 Trunk = CreateOrUpdateMaterial("M_DevelopmentWorld_Trunk", new Color(0.33f, 0.24f, 0.16f)),
                 Foliage = CreateOrUpdateMaterial("M_DevelopmentWorld_Foliage", new Color(0.18f, 0.34f, 0.18f)),
-                Sandbox = CreateOrUpdateMaterial("M_DevelopmentWorld_Sandbox", new Color(0.28f, 0.52f, 0.52f)),
+                // See-through, so the depth of the water shows on the ground below it.
+                Water = CreateOrUpdateMaterial("M_DevelopmentWorld_Water", new Color(0.10f, 0.33f, 0.66f, 0.7f), null, 1f, true, 0.4f),
+                Sand = CreateOrUpdateMaterial("M_DevelopmentWorld_Sand", new Color(0.76f, 0.69f, 0.50f)),
                 Marker = CreateOrUpdateMaterial("M_DevelopmentWorld_Marker", new Color(0.26f, 0.72f, 0.82f)),
                 SignPost = CreateOrUpdateMaterial("M_DevelopmentWorld_SignPost", new Color(0.30f, 0.22f, 0.14f)),
                 SignBoard = CreateOrUpdateMaterial("M_DevelopmentWorld_SignBoard", new Color(0.12f, 0.13f, 0.15f))
@@ -169,7 +173,9 @@ namespace Mmorpg.Client.Editor
             string name,
             Color color,
             Texture2D baseMap = null,
-            float tiling = 1f)
+            float tiling = 1f,
+            bool transparent = false,
+            float smoothness = 0.12f)
         {
             var path = MaterialDirectory + "/" + name + ".mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -223,8 +229,20 @@ namespace Mmorpg.Client.Editor
                     }
                 }
 
-                SetFloat(target, "_Smoothness", 0.12f);
-                SetFloat(target, "_Glossiness", 0.12f);
+                SetFloat(target, "_Smoothness", smoothness);
+                SetFloat(target, "_Glossiness", smoothness);
+
+                // URP Lit blends a transparent surface by its alpha, here without the sky's
+                // reflection, so the greybox water keeps its own color; validating the material
+                // then sets the blend modes, keywords, and render queue.
+                SetFloat(target, "_Surface", transparent ? 1f : 0f);
+                SetFloat(target, "_Blend", 0f);
+                if (transparent)
+                {
+                    SetFloat(target, "_BlendModePreserveSpecular", 0f);
+                    SetFloat(target, "_EnvironmentReflections", 0f);
+                }
+
                 ValidateAsTheInspectorDoes(target);
                 if (EditorJsonUtility.ToJson(target) != EditorJsonUtility.ToJson(untouched))
                 {

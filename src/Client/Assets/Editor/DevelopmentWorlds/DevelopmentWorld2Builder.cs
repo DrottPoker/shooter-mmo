@@ -7,7 +7,8 @@ namespace Mmorpg.Client.Editor
     // in the center and one test zone in each direction, 30 to 110 m from the town. North is
     // the movement course, northeast the highlands terrain, east the combat range, west the
     // interest road to a distant outpost, southwest the wolf woods and the alpha lair,
-    // southeast the quarry, south an open meadow, and northwest a sandbox for new features.
+    // southeast the quarry, south an open meadow, and northwest the waterside with a lake, a
+    // river, and the sea that ends the World in its corner.
     public static partial class DevelopmentWorld2Builder
     {
         public const string MenuPath =
@@ -47,7 +48,7 @@ namespace Mmorpg.Client.Editor
                 return;
             }
 
-            builder.BuildGroundAndBoundaries(GroundSize, 6f);
+            builder.BuildGroundAndBoundaries(GroundSize, 6f, NorthWallStartX, WestWallEndZ);
             BuildTown(builder);
             BuildRoads(builder);
             BuildMovementCourse(builder);
@@ -57,7 +58,7 @@ namespace Mmorpg.Client.Editor
             BuildWolfWoods(builder);
             BuildQuarry(builder);
             BuildMeadow(builder);
-            BuildSandbox(builder);
+            BuildWaterside(builder);
             builder.Finish("DEVELOPMENT WORLD 2");
         }
 

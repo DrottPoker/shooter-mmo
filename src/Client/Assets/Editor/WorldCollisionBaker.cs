@@ -187,6 +187,7 @@ namespace Mmorpg.Client.Editor
             var heightfields = BuildHeightfieldEntries(
                 authoring,
                 colliders.OfType<TerrainCollider>()).ToArray();
+            var water = BuildWaterEntries(authoring.CollisionRoot).ToArray();
             var document = new CollisionWorldAuthoringDocument
             {
                 FormatVersion = CollisionDataFormat.Version,
@@ -196,7 +197,8 @@ namespace Mmorpg.Client.Editor
                 ChunkSize = authoring.ChunkSize,
                 Boxes = boxes,
                 Meshes = meshes,
-                Heightfields = heightfields
+                Heightfields = heightfields,
+                Water = water
             };
             // The authoring file keeps the scene; the chunks also hold the resource nodes.
             var authoringJson = JsonUtility.ToJson(document, true) + Environment.NewLine;
@@ -210,8 +212,9 @@ namespace Mmorpg.Client.Editor
             Debug.Log(
                 "[WORLD COLLISION] Baked world '" + result.Manifest.WorldId
                 + "' at revision " + result.Manifest.Revision
-                + " with " + boxes.Length + " boxes, " + meshes.Length + " meshes, and "
-                + heightfields.Length + " heightfields in " + result.Chunks.Count
+                + " with " + boxes.Length + " boxes, " + meshes.Length + " meshes, "
+                + heightfields.Length + " heightfields, " + water.Length + " water bodies with "
+                + CountDeepWaterEdges(result) + " deep water edge triangles in " + result.Chunks.Count
                 + " chunks, and " + resourceNodes.Length + " resource node boxes.");
             return result;
         }
@@ -242,6 +245,23 @@ namespace Mmorpg.Client.Editor
                     box.HalfExtentY,
                     box.HalfExtentZ))
                 .ToArray();
+        }
+
+        private static int CountDeepWaterEdges(CollisionWorldBakeResult result)
+        {
+            var stableIds = new HashSet<ulong>();
+            foreach (var chunk in result.Chunks)
+            {
+                foreach (var shape in CollisionChunkCodec.Decode(chunk.Data).Shapes)
+                {
+                    if ((shape.LayerMask & CollisionLayers.DeepWaterEdge) != 0)
+                    {
+                        stableIds.Add(shape.StableId);
+                    }
+                }
+            }
+
+            return stableIds.Count;
         }
 
         private static WorldCollisionAuthoring FindAuthoringComponent()
@@ -458,6 +478,65 @@ namespace Mmorpg.Client.Editor
             }
         }
 
+        // Each active water body's mesh becomes its surface in world space, every triangle
+        // facing up like its rendered front face.
+        private static IEnumerable<CollisionWaterAuthoringEntry> BuildWaterEntries(Transform root)
+        {
+            var bodies = root.GetComponentsInChildren<WaterBody>(true)
+                .Where(body => body.isActiveAndEnabled)
+                .OrderBy(body => GetStableSourcePath(body), StringComparer.Ordinal)
+                .ToArray();
+            var duplicate = bodies.GroupBy(body => body.BodyId, StringComparer.Ordinal)
+                .FirstOrDefault(group => group.Count() > 1);
+            if (duplicate != null)
+            {
+                throw new InvalidOperationException(
+                    "Water body id '" + duplicate.Key + "' is used more than once: "
+                    + string.Join(", ", duplicate.Select(body => GetHierarchyPath(body.transform))));
+            }
+
+            foreach (var body in bodies)
+            {
+                if (!body.TryValidate(out var error))
+                {
+                    throw new InvalidOperationException(
+                        "Water body " + GetHierarchyPath(body.transform) + " is invalid: " + error);
+                }
+
+                var mesh = body.Surface;
+                var localToWorld = body.transform.localToWorldMatrix;
+                var vertices = new List<float>(mesh.vertexCount * 3);
+                foreach (var vertex in mesh.vertices)
+                {
+                    var position = localToWorld.MultiplyPoint3x4(vertex);
+                    vertices.Add(position.x);
+                    vertices.Add(position.y);
+                    vertices.Add(position.z);
+                }
+
+                // A mirroring transform reverses the winding, so swap two corners back.
+                var triangles = mesh.triangles;
+                if (localToWorld.determinant < 0f)
+                {
+                    for (var index = 0; index < triangles.Length; index += 3)
+                    {
+                        var swap = triangles[index + 1];
+                        triangles[index + 1] = triangles[index + 2];
+                        triangles[index + 2] = swap;
+                    }
+                }
+
+                yield return new CollisionWaterAuthoringEntry
+                {
+                    StableId = string.Empty,
+                    SourcePath = GetStableSourcePath(body),
+                    BodyId = body.BodyId,
+                    Vertices = CollisionAuthoringEncoding.EncodeFloats(vertices),
+                    Triangles = CollisionAuthoringEncoding.EncodeInts(triangles)
+                };
+            }
+        }
+
         private static void WriteBakeOutputs(
             string authoringJson,
             CollisionWorldBakeResult result)
@@ -578,12 +657,12 @@ namespace Mmorpg.Client.Editor
         }
 
         // Boxes keep their original path form, so existing box ids stay stable.
-        private static string GetStableSourcePath(Collider collider)
+        private static string GetStableSourcePath(Component component)
         {
-            var colliders = collider.GetComponents(collider.GetType());
-            var index = Array.IndexOf(colliders, collider);
-            return collider.gameObject.scene.name + "/" + GetHierarchyPath(collider.transform)
-                + "#" + collider.GetType().Name + index;
+            var components = component.GetComponents(component.GetType());
+            var index = Array.IndexOf(components, component);
+            return component.gameObject.scene.name + "/" + GetHierarchyPath(component.transform)
+                + "#" + component.GetType().Name + index;
         }
 
         private static string GetHierarchyPath(Transform transform)

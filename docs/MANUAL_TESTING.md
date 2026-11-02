@@ -534,6 +534,37 @@ A client whose baked World data or compiled movement rules differ from those of
 the worker, such as an old standalone build, refuses to start movement and
 reports a collision or simulation revision error.
 
+### Water
+
+The waterside in the northwest of Development World 2 has a lake, a river with a
+ford and a bridge, and the sea where the World ends;
+[Development Worlds](DEVELOPMENT_WORLDS.md#waterside) gives the positions.
+Open the Debug menu with F2 and keep its `Overview` tab in view.
+
+1. Walk from the town's north gate west past the movement course to the
+   `WATERSIDE` sign at `(-60, 0, 60)` and up onto the plateau.
+2. Walk to the lake's sign and click the middle of the lake.
+3. Walk around the lake and click across the river 10 m downstream of the
+   `FORD` sign, then click back across, 10 m downstream of the `BRIDGE` sign.
+4. Walk to the `SEA` sign and click toward the open corner of the World, where
+   the boundary walls end in the sea.
+5. Turn on `Collision around you` near the lake.
+
+Expected result:
+
+- In shallow water `Water depth` shows less than `0.50 m, full speed`, and the
+  character walks at its normal pace. From 0.5 m deep it shows `wading at 60 %
+  speed`, and the character visibly slows down.
+- The click into the lake walks to where the water is about 1.1 m deep and
+  stops there, without being pushed back or snapping.
+- The route across the river wades through the ford, slower in the middle, and
+  the route back crosses the bridge without touching the water; no route enters
+  the deep middle of the river.
+- The walk toward the corner stops in the sea about 52 m from the corner, far
+  inside the World's bounds; the sea reaches past the walls to the horizon.
+- The collision view draws the water surfaces in blue and the deep water edges
+  as pink walls along the deep parts of the lake, the river, and the sea.
+
 ### A World Scene Without A Join
 
 1. Open `Assets/Scenes/DevelopmentWorld2.unity` directly and press Play.
@@ -696,7 +727,8 @@ identities, and no old actor or interaction survives.
 
 1. Join and press F2. Expected result: the Debug menu opens in the top-right
    corner on its `Overview` tab with your position, facing, and collision
-   chunk, and `Ground at pointer` follows the pointer over the ground.
+   chunk, `Water depth` says `Not in water`, and `Ground at pointer` follows the
+   pointer over the ground.
    `Collision around you` is off. Press `Copy player` and paste somewhere: the
    clipboard holds `x, y, z`.
 2. Turn on `Collision around you`. Expected result: within about 24 m of you,

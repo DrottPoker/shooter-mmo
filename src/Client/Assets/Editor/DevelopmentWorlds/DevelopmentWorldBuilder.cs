@@ -139,13 +139,21 @@ namespace Mmorpg.Client.Editor
                 + Environment.GetComponentsInChildren<BoxCollider>(true).Length
                 + " collision boxes, "
                 + Environment.GetComponentsInChildren<MeshCollider>(true).Length
-                + " collision meshes, and "
+                + " collision meshes, "
                 + Environment.GetComponentsInChildren<TerrainCollider>(true).Length
-                + " terrains. Actor content was not changed.");
+                + " terrains, and "
+                + Environment.GetComponentsInChildren<WaterBody>(true).Length
+                + " water bodies. Actor content was not changed.");
         }
 
-        // A one meter thick boundary wall whose inner faces lie on the manifest bounds.
-        public void BuildGroundAndBoundaries(float groundSize, float wallHeight)
+        // A one meter thick boundary wall whose inner faces lie on the manifest bounds. Where
+        // deep sea is the edge of the World, the north wall can start east of the west bound
+        // and the west wall end south of the north bound, both out in the deep water.
+        public void BuildGroundAndBoundaries(
+            float groundSize,
+            float wallHeight,
+            float northWallStartX = float.NegativeInfinity,
+            float westWallEndZ = float.PositiveInfinity)
         {
             Box(Environment, "Ground", new Vector3(0f, -0.25f, 0f),
                 new Vector3(groundSize, 0.5f, groundSize), Palette.Ground);
@@ -155,14 +163,18 @@ namespace Mmorpg.Client.Editor
             var depth = bounds.maximumZ - bounds.minimumZ + 2f;
             var centerX = (bounds.minimumX + bounds.maximumX) * 0.5f;
             var centerZ = (bounds.minimumZ + bounds.maximumZ) * 0.5f;
-            Box(boundaries, "NorthWall", new Vector3(centerX, wallHeight * 0.5f, bounds.maximumZ + 0.5f),
-                new Vector3(width, wallHeight, 1f), Palette.Boundary);
+            var northStart = Mathf.Max(bounds.minimumX - 1f, northWallStartX);
+            var northEnd = bounds.maximumX + 1f;
+            var westStart = bounds.minimumZ - 1f;
+            var westEnd = Mathf.Min(bounds.maximumZ + 1f, westWallEndZ);
+            Box(boundaries, "NorthWall", new Vector3((northStart + northEnd) * 0.5f, wallHeight * 0.5f, bounds.maximumZ + 0.5f),
+                new Vector3(northEnd - northStart, wallHeight, 1f), Palette.Boundary);
             Box(boundaries, "SouthWall", new Vector3(centerX, wallHeight * 0.5f, bounds.minimumZ - 0.5f),
                 new Vector3(width, wallHeight, 1f), Palette.Boundary);
             Box(boundaries, "EastWall", new Vector3(bounds.maximumX + 0.5f, wallHeight * 0.5f, centerZ),
                 new Vector3(1f, wallHeight, depth), Palette.Boundary);
-            Box(boundaries, "WestWall", new Vector3(bounds.minimumX - 0.5f, wallHeight * 0.5f, centerZ),
-                new Vector3(1f, wallHeight, depth), Palette.Boundary);
+            Box(boundaries, "WestWall", new Vector3(bounds.minimumX - 0.5f, wallHeight * 0.5f, (westStart + westEnd) * 0.5f),
+                new Vector3(1f, wallHeight, westEnd - westStart), Palette.Boundary);
         }
 
         public Transform Group(Transform parent, string name, Vector3 position = default, float yaw = 0f)

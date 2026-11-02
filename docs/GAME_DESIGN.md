@@ -16,8 +16,8 @@ Implemented:
 
 - Accounts with several characters, a body model and look chosen at character
   creation, and Shard selection with one active session per character.
-- Click-to-move movement, the orbit camera, and the right-click world menu with
-  Examine.
+- Click-to-move movement that wades through water and stops at deep water, the
+  orbit camera, and the right-click world menu with Examine.
 - The item foundation: inventory, equipment, Bags, the Bank, Recovery Storage,
   insurance, carry weight, the death partition, and corpses.
 - One currency, Gold, and one NPC vendor.
@@ -142,6 +142,9 @@ are test maps, described in [Development Worlds](DEVELOPMENT_WORLDS.md).
   instead of copying real objects. The human base characters are the exception
   and stay realistic. The rules are in
   [Art Pipeline](ART_PIPELINE.md#art-direction-for-models-and-textures).
+- Lakes, rivers, and the sea are stylized in the World of Warcraft way, with
+  clear colors and visible foam, and must look very good. Today they are
+  greybox surfaces.
 - Only humans are playable for now, with a male and a female body. Later races
   are fixed body types of their own, as
   [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#future-races-and-base-models)
@@ -177,6 +180,9 @@ and one active session per character.
 - The canonical terms and the topology are in
   [Project Architecture](PROJECT_ARCHITECTURE.md#topology-model). Zones and
   Layers are future scaling systems inside a Shard, never gameplay areas.
+- Deep sea is the edge of the World map instead of walls. The sea reaches past
+  the playable bounds to the horizon, and its deep water stops characters well
+  before the bounds. Development World 2 tries this in its northwest corner.
 
 ## Progression And Roles
 
@@ -242,8 +248,9 @@ is planned.
 
 ## Movement And Camera
 
-Implemented: click-to-move, one walk speed scaled by carry weight, the orbit
-camera, and the world menu. The controls and their values are in
+Implemented: click-to-move, one walk speed scaled by carry weight and wading,
+deep water that stops movement, the orbit camera, and the world menu. The
+controls and their values are in
 [Player Movement](GAME_FEATURES.md#player-movement),
 [Orbit Camera](GAME_FEATURES.md#orbit-camera), and
 [World Menu](GAME_FEATURES.md#world-menu).
@@ -260,6 +267,14 @@ camera, and the world menu. The controls and their values are in
   server. Mobs plan their routes with the same shared planner.
 - There is one walking speed, scaled by carry weight. There is no sprint, jump,
   or aim.
+- Characters wade but never swim. Shallow water is walked at full speed, water
+  from about knee deep slows the walk, and water deeper than about chest deep
+  stops movement at its edge, like a slope too steep to climb. Deep water is
+  therefore never entered, so a corpse and its loot always stay reachable, and
+  fords and bridges are the ways across a river. The depth limits are shared
+  simulation rules, and the block depth is baked into every World's collision
+  as walls along deep water, so the shoreline follows the terrain.
+- Water stops neither sight nor arrows, and Mobs follow the same water rules.
 - The camera orbits the character freely and zooms, as in RuneScape. The cursor
   is always free.
 - Every world action goes through one menu, as in RuneScape. A right click lists
@@ -287,6 +302,8 @@ camera, and the world menu. The controls and their values are in
 - Examine also shows a Mob's elemental weakness once resistances exist.
 - A baked navigation grid replaces the on-demand sampling of the collision if
   larger Worlds need it.
+- Boats or ferries may carry characters across water later. Swimming is not
+  ruled out for good.
 
 ## Combat Model
 
@@ -985,6 +1002,10 @@ Crafting professions:
   rule, and gathered resources can be sold to an NPC vendor.
 - There is no gathering success chance and no profession experience yet; both
   belong to profession progression.
+- Fishing needs no resource node and is not implemented yet. A character fishes
+  in any water whose water body has a fishing table, with a fishing rod in the
+  Tool slot, from land or from wading water. Every water body, or region of the
+  sea, has its own fishing table, so different waters give different fish.
 
 The resource node rules of the actor model are in
 [Resource Nodes And Gathering](NPC_AND_MOB_SYSTEM_DESIGN.md#resource-nodes-and-gathering).

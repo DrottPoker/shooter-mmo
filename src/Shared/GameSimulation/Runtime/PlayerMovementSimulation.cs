@@ -458,6 +458,15 @@ namespace Mmorpg.GameSimulation
                     directionX = (float)(deltaX / distance);
                     directionZ = (float)(deltaZ / distance);
                     var speed = (float)(settings.WalkSpeed * carryState.MovementMultiplier);
+                    if (WaterRules.TryGetDepth(
+                            collisionWorld,
+                            new SimulationVector3(startX, state.PositionY, startZ),
+                            queryBuffer,
+                            out var waterDepth))
+                    {
+                        speed = (float)(speed * WaterRules.SpeedMultiplier(waterDepth));
+                    }
+
                     var stepDistance = (float)(speed * settings.FixedDeltaTime);
                     // The last step lands exactly on the waypoint instead of passing it.
                     planarSpeed = distance < stepDistance
