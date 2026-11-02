@@ -111,10 +111,11 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // Shift+right-click sends half of a stack, rounded down, where right-click sends the
-        // stack: into the first free Bank slot while the Bank is open, and from the Bank or an
-        // equipment slot into the first free carried slot. A part never equips.
+        // stack: into the Bank while it is open, and from the Bank or an equipment slot into
+        // carried storage, topping up a stack before it takes a free slot. Carried arrows top up
+        // the equipped arrows.
         [Test]
-        public void HalfAStackGoesWhereRightClickSendsTheStackButNeverEquips()
+        public void HalfAStackGoesWhereRightClickSendsTheStack()
         {
             var ore = Item("fixture.ore", 7);
             var carriedArrows = Item("fixture.arrow", 10);
@@ -137,16 +138,46 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(withdraw.Slot.SlotIndex, Is.EqualTo(2));
 
             var unequip = InventoryQuickMoves.ForItemPart(state, equippedArrows, 15, false);
-            Assert.That(unequip.Kind, Is.EqualTo(InventoryQuickMoveKind.Split), unequip.Reason);
+            Assert.That(unequip.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), unequip.Reason);
             Assert.That(unequip.Item.ItemInstanceId, Is.EqualTo(equippedArrows.ItemInstanceId));
-            Assert.That(unequip.Container.ContainerType, Is.EqualTo("permanent_inventory"));
-            Assert.That(unequip.Slot.SlotIndex, Is.EqualTo(2));
+            Assert.That(unequip.Target.ItemInstanceId, Is.EqualTo(carriedArrows.ItemInstanceId));
+            Assert.That(unequip.Quantity, Is.EqualTo(15));
 
-            var equip = InventoryQuickMoves.ForItemPart(state, carriedArrows, 5, false);
-            Assert.That(equip.Kind, Is.EqualTo(InventoryQuickMoveKind.None));
-            Assert.That(equip.Reason, Is.EqualTo("Part of a stack cannot be equipped."));
+            var topUp = InventoryQuickMoves.ForItemPart(state, carriedArrows, 5, false);
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), topUp.Reason);
+            Assert.That(topUp.Target.ItemInstanceId, Is.EqualTo(equippedArrows.ItemInstanceId));
+            Assert.That(topUp.Quantity, Is.EqualTo(5));
             Assert.That(InventoryQuickMoves.ForItemPart(state, ore, 3, false).Kind, Is.EqualTo(InventoryQuickMoveKind.None));
             Assert.That(InventoryQuickMoves.ForItemPart(state, ore, 7, true).Kind, Is.EqualTo(InventoryQuickMoveKind.None));
+        }
+
+        // Half of the carried arrows fills an empty ammunition slot as a new stack, and the
+        // prediction shows both stacks and the weight that left carried storage.
+        [Test]
+        public void HalfTheArrowsFillAnEmptyAmmunitionSlot()
+        {
+            var arrows = Item("fixture.arrow", 40);
+            var state = CreateState(new[] { arrows }, Slot("ammunition", null));
+
+            var move = InventoryQuickMoves.ForItemPart(state, arrows, 20, false);
+
+            Assert.That(move.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), move.Reason);
+            Assert.That(move.EquipmentSlotId, Is.EqualTo("ammunition"));
+            Assert.That(move.Quantity, Is.EqualTo(20));
+            var operation = InventoryPredictedOperation.Equip(arrows.ItemInstanceId, "ammunition", 20);
+            Assert.That(InventoryOperationPredictor.TryApply(state, operation, out var predicted, out var reason), Is.True, reason);
+            Assert.That(predicted.PermanentInventory.Slots[0].Item.Quantity, Is.EqualTo(20));
+            var equipped = predicted.Equipment.Single(slot => slot.SlotId == "ammunition").Item;
+            Assert.That(equipped.ItemInstanceId, Is.EqualTo(operation.PredictedItemInstanceId));
+            Assert.That(equipped.Quantity, Is.EqualTo(20));
+            Assert.That(catalog.TryGetDefinition("fixture.arrow", out var definition), Is.True);
+            Assert.That(predicted.CarriedWeight, Is.EqualTo(state.FullSnapshot.CarriedWeight - definition.UnitWeight * 20));
+
+            // The ammunition slot holds 50 arrows, so a larger part stays carried.
+            var full = Item("fixture.arrow", 60);
+            var tooMany = InventoryQuickMoves.ForItemPart(CreateState(new[] { full }, Slot("ammunition", null)), full, 55, false);
+            Assert.That(tooMany.Kind, Is.EqualTo(InventoryQuickMoveKind.None));
+            Assert.That(tooMany.Reason, Does.Contain("at most 50"));
         }
 
         // Half of a corpse stack tops up a carried stack, or takes the first free carried slot.

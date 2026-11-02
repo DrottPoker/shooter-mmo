@@ -84,7 +84,7 @@ namespace Mmorpg.Client.Items
                         }
 
                         var added = Math.Min(remaining, definition.MaximumStackSize - stack.Quantity);
-                        edit.Editor.TryReplace(stack.ItemInstanceId, InventoryPredictionEdit.WithQuantity(stack, stack.Quantity + added));
+                        edit.Editor.TryReplace(stack.ItemInstanceId, stack.WithQuantity(stack.Quantity + added));
                         remaining -= added;
                     }
                 }
@@ -145,7 +145,7 @@ namespace Mmorpg.Client.Items
 
             if (quantity < item.Quantity)
             {
-                edit.Editor.TryReplace(itemInstanceId, InventoryPredictionEdit.WithQuantity(item, item.Quantity - quantity));
+                edit.Editor.TryReplace(itemInstanceId, item.WithQuantity(item.Quantity - quantity));
             }
             else
             {

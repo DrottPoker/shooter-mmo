@@ -52,7 +52,8 @@ namespace Mmorpg.Client.Items
 
         public string Reason { get; }
 
-        // The part of the stack a split or a loot moves; zero moves the whole stack.
+        // The part of the stack a split, a merge, an equip, or a loot moves; zero moves the
+        // whole stack.
         public int Quantity { get; }
 
         public InventoryItem Item { get; }
@@ -78,9 +79,19 @@ namespace Mmorpg.Client.Items
             return new InventoryQuickMove(InventoryQuickMoveKind.None, reason);
         }
 
-        internal static InventoryQuickMove Equip(InventoryItem item, string equipmentSlotId, IReadOnlyList<InventoryQuickMove> before)
+        internal static InventoryQuickMove Equip(
+            InventoryItem item,
+            string equipmentSlotId,
+            IReadOnlyList<InventoryQuickMove> before,
+            int quantity = 0)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.Equip, string.Empty, item, equipmentSlotId: equipmentSlotId, before: before);
+            return new InventoryQuickMove(
+                InventoryQuickMoveKind.Equip,
+                string.Empty,
+                item,
+                equipmentSlotId: equipmentSlotId,
+                before: before,
+                quantity: quantity);
         }
 
         internal static InventoryQuickMove Unequip(InventoryItem item, InventoryContainer container, InventorySlot slot)
@@ -93,9 +104,9 @@ namespace Mmorpg.Client.Items
             return new InventoryQuickMove(InventoryQuickMoveKind.Relocate, string.Empty, item, container: container, slot: slot);
         }
 
-        internal static InventoryQuickMove Merge(InventoryItem item, InventoryItem target)
+        internal static InventoryQuickMove Merge(InventoryItem item, InventoryItem target, int quantity = 0)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.Merge, string.Empty, item, target);
+            return new InventoryQuickMove(InventoryQuickMoveKind.Merge, string.Empty, item, target, quantity: quantity);
         }
 
         internal static InventoryQuickMove Claim(RecoveryDelivery delivery, InventoryContainer container)
@@ -244,7 +255,9 @@ namespace Mmorpg.Client.Items
         }
 
         // Shift+right-click: part of a stack goes where right-click sends the stack, and the
-        // rest stays. A part enters only an empty slot, as a split does, and never equips.
+        // rest stays. Like the whole stack, it tops up a stack first and else takes a free
+        // slot; arrows top up the equipped arrows or fill an empty ammunition slot. A part never
+        // replaces an equipped item.
         public static InventoryQuickMove ForItemPart(InventoryClientState state, InventoryItem item, int quantity, bool bankOpen)
         {
             if (state?.Catalog == null
@@ -263,27 +276,32 @@ namespace Mmorpg.Client.Items
 
             if (string.Equals(location.ContainerType, ItemContainerTypeIds.Bank, StringComparison.Ordinal))
             {
-                return PartToSlots(state, current, quantity, CarriedFreeSlots(state), "Your inventory has no room for the item.");
+                return PartToCarriedStorage(state, current, quantity);
             }
 
             if (bankOpen && state.Bank != null)
             {
+                var bank = state.Bank;
                 return PartToSlots(
                     state,
                     current,
                     quantity,
-                    state.Bank.Slots.Where(slot => slot.Item == null).Select(slot => (state.Bank, slot)),
+                    bank.Slots.Where(slot => slot.Item != null).Select(slot => (bank, slot)),
+                    bank.Slots.Where(slot => slot.Item == null).Select(slot => (bank, slot)),
                     "The Bank has no room for the item.");
             }
 
             if (location.Kind == InventoryItemLocationKind.Equipment)
             {
-                return PartToSlots(state, current, quantity, CarriedFreeSlots(state), "Your inventory has no room for the item.");
+                return PartToCarriedStorage(state, current, quantity);
             }
 
-            return InventoryQuickMove.Nothing(definition.EquipmentSlots == null || definition.EquipmentSlots.Length == 0
-                ? "Right-click equips equipment; drag this item to move it."
-                : "Part of a stack cannot be equipped.");
+            if (definition.EquipmentSlots == null || definition.EquipmentSlots.Length == 0)
+            {
+                return InventoryQuickMove.Nothing("Right-click equips equipment; drag this item to move it.");
+            }
+
+            return EquipPart(state, current, definition, quantity);
         }
 
         // Shift+right-click on a corpse stack: part of it tops up a carried stack or takes the
@@ -325,14 +343,39 @@ namespace Mmorpg.Client.Items
             return InventoryQuickMove.Nothing(reason);
         }
 
-        // Splits the part into the first free slot that takes it.
+        private static InventoryQuickMove PartToCarriedStorage(InventoryClientState state, InventoryItem item, int quantity)
+        {
+            return PartToSlots(
+                state,
+                item,
+                quantity,
+                CarriedStacks(state),
+                CarriedFreeSlots(state),
+                "Your inventory has no room for the item.");
+        }
+
+        // Tops up the first stack that takes the part, or else splits it into the first free
+        // slot that takes it.
         private static InventoryQuickMove PartToSlots(
             IInventoryView view,
             InventoryItem item,
             int quantity,
+            IEnumerable<(InventoryContainer Container, InventorySlot Slot)> stacks,
             IEnumerable<(InventoryContainer Container, InventorySlot Slot)> freeSlots,
             string failure)
         {
+            var part = item.WithQuantity(quantity);
+            foreach (var (_, slot) in stacks)
+            {
+                if (slot.Item != null
+                    && slot.Item.ItemInstanceId != item.ItemInstanceId
+                    && InventoryTargetAdvisor.CanMerge(view.Catalog, part, slot.Item, out _)
+                    && Predicts(view, InventoryPredictedOperation.Merge(item.ItemInstanceId, slot.Item.ItemInstanceId, quantity), out _))
+                {
+                    return InventoryQuickMove.Merge(item, slot.Item, quantity);
+                }
+            }
+
             var reason = failure;
             foreach (var (container, slot) in freeSlots)
             {
@@ -349,6 +392,39 @@ namespace Mmorpg.Client.Items
             }
 
             return InventoryQuickMove.Nothing(reason);
+        }
+
+        // Part of a stack tops up the equipped stack of its kind, or else fills an empty
+        // compatible slot as a new stack.
+        private static InventoryQuickMove EquipPart(
+            InventoryClientState state,
+            InventoryItem item,
+            ItemDefinition definition,
+            int quantity)
+        {
+            var compatible = state.FullSnapshot.Equipment
+                .Where(slot => ItemEquipmentRules.IsCompatible(definition, slot.SlotId))
+                .ToArray();
+            var reason = "The item cannot be equipped.";
+            var topUp = compatible.FirstOrDefault(slot => InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, item, slot.Item));
+            if (topUp != null)
+            {
+                return Predicts(state, InventoryPredictedOperation.Merge(item.ItemInstanceId, topUp.Item.ItemInstanceId, quantity), out reason)
+                    ? InventoryQuickMove.Merge(item, topUp.Item, quantity)
+                    : InventoryQuickMove.Nothing(reason);
+            }
+
+            foreach (var slot in compatible.Where(slot => slot.Item == null))
+            {
+                if (Predicts(state, InventoryPredictedOperation.Equip(item.ItemInstanceId, slot.SlotId, quantity), out reason))
+                {
+                    return InventoryQuickMove.Equip(item, slot.SlotId, Array.Empty<InventoryQuickMove>(), quantity);
+                }
+            }
+
+            return InventoryQuickMove.Nothing(compatible.Any(slot => slot.Item == null)
+                ? reason
+                : "Part of a stack equips only into an empty slot.");
         }
 
         private static InventoryQuickMove Equip(

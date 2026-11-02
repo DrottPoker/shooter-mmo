@@ -53,8 +53,12 @@ namespace Mmorpg.Client.Items
             Quantity = quantity;
             EquipmentSlotId = equipmentSlotId ?? string.Empty;
             RecoveryDelivery = recoveryDelivery;
-            // A split shows its new stack under an id the server replaces when it commits.
-            PredictedItemInstanceId = kind == RealtimeItemOperationKind.SplitStack ? Guid.NewGuid() : Guid.Empty;
+            // A split, and an equip of part of a stack, show their new stack under an id the
+            // server replaces when it commits.
+            PredictedItemInstanceId = kind == RealtimeItemOperationKind.SplitStack
+                || (kind == RealtimeItemOperationKind.Equip && quantity > 0)
+                ? Guid.NewGuid()
+                : Guid.Empty;
             predictedItemIds = PredictedItemInstanceId == Guid.Empty
                 ? Array.Empty<Guid>()
                 : new[] { PredictedItemInstanceId };
@@ -90,6 +94,8 @@ namespace Mmorpg.Client.Items
 
         public int DestinationSlotIndex { get; }
 
+        // The quantity a split moves, or the part of the stack a merge or an equip moves, 0 for
+        // the whole stack.
         public int Quantity { get; }
 
         public string EquipmentSlotId { get; }
@@ -186,7 +192,8 @@ namespace Mmorpg.Client.Items
                 null);
         }
 
-        public static InventoryPredictedOperation Equip(Guid itemInstanceId, string equipmentSlotId)
+        // A quantity equips that part of a stack into an empty slot as a new stack.
+        public static InventoryPredictedOperation Equip(Guid itemInstanceId, string equipmentSlotId, int quantity = 0)
         {
             return new InventoryPredictedOperation(
                 RealtimeItemOperationKind.Equip,
@@ -194,7 +201,7 @@ namespace Mmorpg.Client.Items
                 Guid.Empty,
                 Guid.Empty,
                 -1,
-                0,
+                quantity,
                 equipmentSlotId,
                 null);
         }
@@ -216,7 +223,8 @@ namespace Mmorpg.Client.Items
                 null);
         }
 
-        public static InventoryPredictedOperation Merge(Guid sourceItemInstanceId, Guid targetItemInstanceId)
+        // A quantity moves that part of the source and leaves the rest.
+        public static InventoryPredictedOperation Merge(Guid sourceItemInstanceId, Guid targetItemInstanceId, int quantity = 0)
         {
             return new InventoryPredictedOperation(
                 RealtimeItemOperationKind.MergeStacks,
@@ -224,7 +232,7 @@ namespace Mmorpg.Client.Items
                 targetItemInstanceId,
                 Guid.Empty,
                 -1,
-                0,
+                quantity,
                 string.Empty,
                 null);
         }
@@ -382,16 +390,6 @@ namespace Mmorpg.Client.Items
         {
             return Editor.Build(View.FullSnapshot.ItemStateRevision, Math.Max(0, Weight), Capacity, Currency);
         }
-
-        public static InventoryItem WithQuantity(InventoryItem item, int quantity)
-        {
-            return new InventoryItem(
-                item.ItemInstanceId,
-                item.DefinitionId,
-                quantity,
-                item.Revision,
-                item.Policies.ToArray());
-        }
     }
 
     // Applies one operation to an inventory the way GameService commits it, after the same
@@ -504,6 +502,11 @@ namespace Mmorpg.Client.Items
                         return false;
                     }
 
+                    if (IsPart(operation, item))
+                    {
+                        return TryEquipPart(edit, operation, item, source, definition, equipmentSlot, out reason);
+                    }
+
                     if (source.Kind != InventoryItemLocationKind.Container
                         || !InventoryTargetAdvisor.CanEquip(view, item, source, equipmentSlot, out reason))
                     {
@@ -562,19 +565,40 @@ namespace Mmorpg.Client.Items
                 }
                 case RealtimeItemOperationKind.MergeStacks:
                 {
+                    var moved = operation.Quantity > 0 ? operation.Quantity : item.Quantity;
+                    if (moved > item.Quantity)
+                    {
+                        reason = "The stack no longer holds that many items.";
+                        return false;
+                    }
+
                     if (!editor.TryFind(operation.TargetItemInstanceId, out var target, out var targetLocation)
-                        || !InventoryTargetAdvisor.CanMerge(view, item, source, target, targetLocation, out reason))
+                        || !InventoryTargetAdvisor.CanMerge(
+                            view,
+                            item.WithQuantity(moved),
+                            source,
+                            target,
+                            targetLocation,
+                            out reason))
                     {
                         return false;
                     }
 
-                    editor.Remove(item.ItemInstanceId);
+                    if (moved < item.Quantity)
+                    {
+                        editor.TryReplace(item.ItemInstanceId, item.WithQuantity(item.Quantity - moved));
+                    }
+                    else
+                    {
+                        editor.Remove(item.ItemInstanceId);
+                    }
+
                     editor.TryReplace(
                         target.ItemInstanceId,
-                        InventoryPredictionEdit.WithQuantity(target, target.Quantity + item.Quantity));
+                        target.WithQuantity(target.Quantity + moved));
                     edit.MoveWeightFrom(
                         definition,
-                        item.Quantity,
+                        moved,
                         source,
                         targetLocation.Kind == InventoryItemLocationKind.Equipment ? null : targetLocation.ContainerType);
                     return true;
@@ -590,7 +614,7 @@ namespace Mmorpg.Client.Items
 
                     editor.TryReplace(
                         item.ItemInstanceId,
-                        InventoryPredictionEdit.WithQuantity(item, item.Quantity - operation.Quantity));
+                        item.WithQuantity(item.Quantity - operation.Quantity));
                     editor.TryPlace(
                         container.ContainerId,
                         slot.SlotIndex,
@@ -623,6 +647,57 @@ namespace Mmorpg.Client.Items
                     reason = "This operation cannot be shown before the server answers.";
                     return false;
             }
+        }
+
+        private static bool IsPart(InventoryPredictedOperation operation, InventoryItem item)
+        {
+            return operation.Quantity > 0 && operation.Quantity != item.Quantity;
+        }
+
+        // Part of a stack equips into an empty slot as a new stack, and the rest stays.
+        private static bool TryEquipPart(
+            InventoryPredictionEdit edit,
+            InventoryPredictedOperation operation,
+            InventoryItem item,
+            InventoryItemLocation source,
+            ItemDefinition definition,
+            InventoryEquipmentSlot equipmentSlot,
+            out string reason)
+        {
+            if (source.Kind != InventoryItemLocationKind.Container)
+            {
+                reason = "Only a stack in a container can equip part of itself.";
+                return false;
+            }
+
+            if (!InventoryTargetAdvisor.CanSplit(edit.View.Catalog, item, operation.Quantity, out reason))
+            {
+                return false;
+            }
+
+            if (equipmentSlot.Item != null)
+            {
+                reason = "Part of a stack equips only into an empty slot.";
+                return false;
+            }
+
+            var part = item.WithQuantity(operation.Quantity);
+            if (!InventoryTargetAdvisor.CanEquip(edit.View, part, source, equipmentSlot, out reason))
+            {
+                return false;
+            }
+
+            var editor = edit.Editor;
+            editor.TryReplace(item.ItemInstanceId, item.WithQuantity(item.Quantity - operation.Quantity));
+            edit.MoveWeightFrom(definition, operation.Quantity, source, null);
+            return editor.TryEquip(
+                equipmentSlot.SlotId,
+                new InventoryItem(
+                    operation.PredictedItemInstanceId,
+                    item.DefinitionId,
+                    operation.Quantity,
+                    0,
+                    item.Policies.ToArray()));
         }
 
         // A claim moves the whole delivery, in item order, into the first free slots of the

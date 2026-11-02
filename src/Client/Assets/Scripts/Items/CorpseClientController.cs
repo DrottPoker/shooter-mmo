@@ -411,7 +411,7 @@ namespace Mmorpg.Client.Items
             var merges = target != null
                 && InventoryTargetAdvisor.CanMerge(
                     inventoryController.State.Catalog,
-                    InventoryPredictionEdit.WithQuantity(currentItem, quantity),
+                    currentItem.WithQuantity(quantity),
                     target.ToInventoryItem(),
                     out _);
             if (target != null && !merges && partial)

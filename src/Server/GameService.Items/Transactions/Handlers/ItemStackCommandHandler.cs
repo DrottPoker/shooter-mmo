@@ -191,6 +191,16 @@ internal sealed class ItemStackCommandHandler
                 "Both stacks must be in ordinary container slots or equipment slots.");
         }
 
+        // A part of the source moves and the rest stays; without a quantity the whole source does.
+        var moved = command.Quantity ?? source.Quantity;
+        if (moved <= 0 || moved > source.Quantity)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemQuantityChanged,
+                "A merge quantity must be positive and at most the source quantity.");
+        }
+
+        var partial = moved < source.Quantity;
         var definition = await context.State.LoadDefinitionAsync(source.DefinitionId, cancellationToken);
         var sourcePolicies = await context.State.LoadPoliciesAsync(source.ItemInstanceId, cancellationToken);
         var targetPolicies = await context.State.LoadPoliciesAsync(target.ItemInstanceId, cancellationToken);
@@ -209,7 +219,7 @@ internal sealed class ItemStackCommandHandler
 
         var sourceState = new ItemStackState(
             source.DefinitionId,
-            source.Quantity,
+            moved,
             ItemPolicyStates.CalculatePolicyFingerprint(
                 sourcePolicies.Where(policy => string.Equals(
                     policy.Status,
@@ -243,7 +253,7 @@ internal sealed class ItemStackCommandHandler
                 command.CharacterId,
                 target.EquipmentSlotId,
                 definition,
-                target.Quantity + source.Quantity,
+                target.Quantity + moved,
                 cancellationToken);
         }
 
@@ -254,19 +264,33 @@ internal sealed class ItemStackCommandHandler
             target.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
-            """
-            update item_instances
-            set quantity = quantity + @SourceQuantity,
-                revision = revision + 1,
-                updated_at = now()
-            where id = @TargetItemInstanceId;
+            partial
+                ? """
+                  update item_instances
+                  set quantity = quantity + @MovedQuantity,
+                      revision = revision + 1,
+                      updated_at = now()
+                  where id = @TargetItemInstanceId;
 
-            delete from item_instances
-            where id = @SourceItemInstanceId;
-            """,
+                  update item_instances
+                  set quantity = quantity - @MovedQuantity,
+                      revision = revision + 1,
+                      updated_at = now()
+                  where id = @SourceItemInstanceId;
+                  """
+                : """
+                  update item_instances
+                  set quantity = quantity + @MovedQuantity,
+                      revision = revision + 1,
+                      updated_at = now()
+                  where id = @TargetItemInstanceId;
+
+                  delete from item_instances
+                  where id = @SourceItemInstanceId;
+                  """,
             new
             {
-                SourceQuantity = source.Quantity,
+                MovedQuantity = moved,
                 TargetItemInstanceId = target.ItemInstanceId,
                 SourceItemInstanceId = source.ItemInstanceId
             },
@@ -280,11 +304,24 @@ internal sealed class ItemStackCommandHandler
             target.ItemInstanceId,
             beforeTarget,
             afterTarget);
-        context.Journal.AddItemAudit(
-            "stack_merge_source_removed",
-            source.ItemInstanceId,
-            beforeSource,
-            null);
+        if (partial)
+        {
+            context.Journal.AddItemAudit(
+                "stack_merge_source",
+                source.ItemInstanceId,
+                beforeSource,
+                await context.Journal.CaptureItemStateJsonAsync(source.ItemInstanceId, cancellationToken));
+            context.Journal.IncludeResultItem(source.ItemInstanceId);
+        }
+        else
+        {
+            context.Journal.AddItemAudit(
+                "stack_merge_source_removed",
+                source.ItemInstanceId,
+                beforeSource,
+                null);
+        }
+
         context.Journal.TouchContainer(source.ContainerId);
         context.Journal.TouchContainer(target.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);

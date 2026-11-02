@@ -237,6 +237,11 @@ assignment. It is not a parallel non-item system.
   compatible stack dropped on the equipped stack tops it up to that limit, and
   a split from the equipped stack moves part of it into an empty container
   slot.
+- A merge and an equip may name a quantity and then move only that part of the
+  source stack, which keeps the rest. A partial merge tops up any compatible
+  stack, in a container or equipped, within its limit. A partial equip puts the
+  part into an empty slot as a new stack with the source's policies, such as
+  some arrows into the ammunition slot, and never swaps.
 - Equipping an item onto an occupied slot swaps in one transaction: the
   equipped item moves into the container slot the new item came from. That slot
   must accept the equipped item as an unequip into it would, so a specialized

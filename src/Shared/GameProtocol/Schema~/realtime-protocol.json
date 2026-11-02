@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 30,
+    "version": 31,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -1499,7 +1499,11 @@
             "absent": -1,
             "description": "The destination slot, or -1 for any free slot."
           },
-          { "name": "Quantity", "type": "i32", "description": "The quantity that a split moves." },
+          {
+            "name": "Quantity",
+            "type": "i32",
+            "description": "The quantity that a split moves, or the part of the stack that a merge or an equip moves, 0 for the whole stack."
+          },
           {
             "name": "EquipmentSlotId",
             "type": "string",
@@ -1543,7 +1547,8 @@
             "fields": [
               { "field": "ItemInstanceId", "nonEmpty": true },
               { "field": "ExpectedItemRevision", "minimum": 0 },
-              { "field": "EquipmentSlotId" }
+              { "field": "EquipmentSlotId" },
+              { "field": "Quantity", "minimum": 0, "parameterDefault": 0 }
             ]
           },
           {
@@ -1562,7 +1567,8 @@
               { "field": "ItemInstanceId", "nonEmpty": true, "parameter": "sourceItemInstanceId" },
               { "field": "ExpectedItemRevision", "minimum": 0, "parameter": "expectedSourceItemRevision" },
               { "field": "TargetItemInstanceId", "nonEmpty": true },
-              { "field": "ExpectedTargetItemRevision", "minimum": 0 }
+              { "field": "ExpectedTargetItemRevision", "minimum": 0 },
+              { "field": "Quantity", "minimum": 0, "parameterDefault": 0 }
             ]
           },
           {

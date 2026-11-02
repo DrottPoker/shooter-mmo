@@ -211,7 +211,8 @@ internal sealed class SimulationItemMutationService(
                         request.ExpectedCharacterRevision,
                         request.ItemInstanceId!.Value,
                         request.ExpectedItemRevision!.Value,
-                        request.EquipmentSlotId.Trim())),
+                        request.EquipmentSlotId.Trim(),
+                        request.Quantity)),
                 cancellationToken)
             : null;
     }
@@ -278,7 +279,8 @@ internal sealed class SimulationItemMutationService(
                         request.ItemInstanceId!.Value,
                         request.ExpectedItemRevision!.Value,
                         request.TargetItemInstanceId.Value,
-                        request.ExpectedTargetItemRevision!.Value)),
+                        request.ExpectedTargetItemRevision!.Value,
+                        request.Quantity)),
                 cancellationToken)
             : null;
     }

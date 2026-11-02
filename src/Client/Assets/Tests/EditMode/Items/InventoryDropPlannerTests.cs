@@ -36,19 +36,27 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(split.IsCorpseOperation, Is.False);
         }
 
+        // A part tops up a compatible stack and never swaps with another item, and it always
+        // leaves part of the stack behind.
         [Test]
-        public void ASplitNeedsAnEmptySlotAndLeavesPartOfTheStack()
+        public void APartTopsUpACompatibleStackAndLeavesPartOfTheStack()
         {
             var ore = Item("fixture.ore", 10);
             var potion = Item("fixture.potion", 1);
-            var state = CreateState(new[] { ore, potion });
+            var moreOre = Item("fixture.ore", 95);
+            var state = CreateState(new[] { ore, potion, moreOre });
             var inventory = state.FullSnapshot.PermanentInventory;
 
             var ontoItem = Plan(state, inventory, inventory.Slots[1], ore, 4);
-            var whole = Plan(state, inventory, inventory.Slots[2], ore, 10);
+            var topUp = Plan(state, inventory, inventory.Slots[2], ore, 4);
+            var overTop = Plan(state, inventory, inventory.Slots[2], ore, 6);
+            var whole = Plan(state, inventory, inventory.Slots[3], ore, 10);
 
             Assert.That(ontoItem.Kind, Is.EqualTo(InventoryDropPlanKind.None));
-            Assert.That(ontoItem.Reason, Does.Contain("empty slot"));
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), topUp.Reason);
+            Assert.That(topUp.Target.ItemInstanceId, Is.EqualTo(moreOre.ItemInstanceId));
+            Assert.That(topUp.Quantity, Is.EqualTo(4));
+            Assert.That(overTop.Kind, Is.EqualTo(InventoryDropPlanKind.None));
             Assert.That(whole.Kind, Is.EqualTo(InventoryDropPlanKind.None));
             Assert.That(whole.Reason, Is.Not.Empty);
         }
@@ -88,8 +96,10 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(split.Quantity, Is.EqualTo(10));
         }
 
+        // A part of a stack tops up the equipped stack or equips into an empty slot, but never
+        // replaces an equipped item.
         [Test]
-        public void AnItemEquipsTopsUpTheEquippedStackAndNeverEquipsPartOfAStack()
+        public void AnItemOrPartOfAStackEquipsOrTopsUpTheEquippedStack()
         {
             var sword = Item("fixture.sword", 1);
             var arrows = Item("fixture.arrow", 10);
@@ -103,14 +113,23 @@ namespace Mmorpg.Client.Tests.EditMode
 
             var equip = PlanEquipment(state, mainHand, sword, null);
             var topUp = PlanEquipment(state, ammunition, arrows, null);
-            var part = PlanEquipment(state, ammunition, arrows, 5);
+            var partTopUp = PlanEquipment(state, ammunition, arrows, 5);
 
             Assert.That(equip.Kind, Is.EqualTo(InventoryDropPlanKind.Equip), equip.Reason);
             Assert.That(equip.EquipmentSlotId, Is.EqualTo("main_hand"));
             Assert.That(equip.Target, Is.Null);
             Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), topUp.Reason);
             Assert.That(topUp.Target.ItemInstanceId, Is.EqualTo(equippedArrows.ItemInstanceId));
-            Assert.That(part.Kind, Is.EqualTo(InventoryDropPlanKind.None));
+            Assert.That(topUp.Quantity, Is.EqualTo(0));
+            Assert.That(partTopUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), partTopUp.Reason);
+            Assert.That(partTopUp.Quantity, Is.EqualTo(5));
+
+            var emptyAmmunition = CreateState(new[] { arrows }, Slot("ammunition", null));
+            var emptySlot = emptyAmmunition.FullSnapshot.Equipment.Single(slot => slot.SlotId == "ammunition");
+            var partEquip = PlanEquipment(emptyAmmunition, emptySlot, arrows, 5);
+            Assert.That(partEquip.Kind, Is.EqualTo(InventoryDropPlanKind.Equip), partEquip.Reason);
+            Assert.That(partEquip.Quantity, Is.EqualTo(5));
+            Assert.That(PlanEquipment(emptyAmmunition, emptySlot, arrows, 10).Kind, Is.EqualTo(InventoryDropPlanKind.None));
         }
 
         [Test]

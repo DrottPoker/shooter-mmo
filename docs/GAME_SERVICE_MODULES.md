@@ -303,8 +303,8 @@ system services.
 | `grant` | `GrantItemCommand` | `ItemGrantCommandHandler` | Quest grants on the worker route, the Development item tool and its packages, and the stack stress fixtures |
 | `relocate` | `RelocateItemCommand` | `ItemRelocationCommandHandler` | Account and worker routes |
 | `swap_container_items` | `SwapContainerItemsCommand` | `ItemRelocationCommandHandler` | Worker route |
-| `equip`, `unequip` | `EquipItemCommand`, `UnequipItemCommand` | `ItemEquipmentCommandHandler` | Worker route; Development item packages also equip |
-| `split_stack`, `merge_stacks` | `SplitItemStackCommand`, `MergeItemStacksCommand` | `ItemStackCommandHandler` | Account and worker routes |
+| `equip`, `unequip` | `EquipItemCommand`, whose optional quantity equips part of a stack into an empty slot, and `UnequipItemCommand` | `ItemEquipmentCommandHandler` | Worker route; Development item packages also equip |
+| `split_stack`, `merge_stacks` | `SplitItemStackCommand`, `MergeItemStacksCommand`, whose optional quantity merges part of the source | `ItemStackCommandHandler` | Account and worker routes |
 | `consume_quantity` | `ConsumeItemQuantityCommand` | `ItemStackCommandHandler` | No caller outside tests yet |
 | `consume_equipped_ammunition` | `ConsumeEquippedAmmunitionCommand` | `AmmunitionConsumptionCommandHandler` | Worker ammunition route |
 | `destroy` | `DestroyItemCommand` | `ItemDestructionCommandHandler` | Account and worker routes |

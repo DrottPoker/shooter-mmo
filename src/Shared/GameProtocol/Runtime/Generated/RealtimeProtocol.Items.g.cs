@@ -343,7 +343,7 @@ namespace Mmorpg.GameProtocol
         public int DestinationSlotIndex { get; }
 
         /// <summary>
-        /// The quantity that a split moves.
+        /// The quantity that a split moves, or the part of the stack that a merge or an equip moves, 0 for the whole stack.
         /// </summary>
         public int Quantity { get; }
 
@@ -422,7 +422,8 @@ namespace Mmorpg.GameProtocol
             long expectedCharacterRevision,
             Guid itemInstanceId,
             long expectedItemRevision,
-            string equipmentSlotId)
+            string equipmentSlotId,
+            int quantity = 0)
         {
             return new RealtimeItemOperationIntent(
                 operationId,
@@ -434,7 +435,7 @@ namespace Mmorpg.GameProtocol
                 0,
                 Guid.Empty,
                 -1,
-                0,
+                quantity,
                 equipmentSlotId,
                 Guid.Empty,
                 0,
@@ -473,7 +474,8 @@ namespace Mmorpg.GameProtocol
             Guid sourceItemInstanceId,
             long expectedSourceItemRevision,
             Guid targetItemInstanceId,
-            long expectedTargetItemRevision)
+            long expectedTargetItemRevision,
+            int quantity = 0)
         {
             return new RealtimeItemOperationIntent(
                 operationId,
@@ -485,7 +487,7 @@ namespace Mmorpg.GameProtocol
                 expectedTargetItemRevision,
                 Guid.Empty,
                 -1,
-                0,
+                quantity,
                 string.Empty,
                 Guid.Empty,
                 0,
@@ -872,6 +874,7 @@ namespace Mmorpg.GameProtocol
                     writer.WriteGuid(value.ItemInstanceId);
                     writer.WriteInt64(value.ExpectedItemRevision);
                     writer.WriteString(value.EquipmentSlotId);
+                    writer.WriteInt32(value.Quantity);
                     break;
                 }
                 case RealtimeItemOperationKind.SplitStack:
@@ -889,6 +892,7 @@ namespace Mmorpg.GameProtocol
                     writer.WriteInt64(value.ExpectedItemRevision);
                     writer.WriteGuid(value.TargetItemInstanceId);
                     writer.WriteInt64(value.ExpectedTargetItemRevision);
+                    writer.WriteInt32(value.Quantity);
                     break;
                 }
                 case RealtimeItemOperationKind.SwapContainerItems:
@@ -937,7 +941,7 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeItemOperationKind.Equip:
                 {
-                    size += 24;
+                    size += 28;
                     size += StringSize(value.EquipmentSlotId);
                     break;
                 }
@@ -948,7 +952,7 @@ namespace Mmorpg.GameProtocol
                 }
                 case RealtimeItemOperationKind.MergeStacks:
                 {
-                    size += 48;
+                    size += 52;
                     break;
                 }
                 case RealtimeItemOperationKind.SwapContainerItems:
@@ -1052,6 +1056,11 @@ namespace Mmorpg.GameProtocol
                         return false;
                     }
 
+                    if (!reader.TryReadInt32(out quantity, out error))
+                    {
+                        return false;
+                    }
+
                     break;
                 }
                 case RealtimeItemOperationKind.SplitStack:
@@ -1101,6 +1110,11 @@ namespace Mmorpg.GameProtocol
                     }
 
                     if (!reader.TryReadInt64(out expectedTargetItemRevision, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadInt32(out quantity, out error))
                     {
                         return false;
                     }
@@ -1227,7 +1241,8 @@ namespace Mmorpg.GameProtocol
                     if (value.ItemInstanceId == Guid.Empty
                         || value.ExpectedItemRevision < 0
                         || string.IsNullOrWhiteSpace(value.EquipmentSlotId)
-                        || value.EquipmentSlotId.Length > MaximumEquipmentSlotIdLength)
+                        || value.EquipmentSlotId.Length > MaximumEquipmentSlotIdLength
+                        || value.Quantity < 0)
                     {
                         return false;
                     }
@@ -1252,7 +1267,8 @@ namespace Mmorpg.GameProtocol
                     if (value.ItemInstanceId == Guid.Empty
                         || value.ExpectedItemRevision < 0
                         || value.TargetItemInstanceId == Guid.Empty
-                        || value.ExpectedTargetItemRevision < 0)
+                        || value.ExpectedTargetItemRevision < 0
+                        || value.Quantity < 0)
                     {
                         return false;
                     }

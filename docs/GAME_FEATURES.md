@@ -420,17 +420,20 @@ Items move by drag and drop:
   stack of the equipped item tops it up, and another item equips and sends the
   equipped one to the slot the new item came from.
 - Hold `Shift` while you start dragging a stack to drag half of it, rounded
-  down; the rest stays. The dragged icon shows the half, and dropping it on an
-  empty slot splits it off at once.
+  down; the rest stays. The dragged icon shows the half, and dropping it moves
+  it at once.
 - `Ctrl`+click a stack to choose how many items to take. A small `SPLIT STACK`
   window asks, from one up to all but one, starting at half; `Enter` confirms and
   `Escape` cancels. The chosen part then rides on the pointer until you click the
   slot where it goes. A slot that refuses it says why and the part stays on the
   pointer; a right-click, a click beside the windows, or `Escape` puts it back.
   While the part rides on the pointer, a click never walks or attacks.
-- A part of your own stack goes into an empty slot, and a part of a corpse stack
-  may also top up a compatible stack. A part never equips. The equipped arrows
-  split the same way, which unequips the part.
+- A part of a stack goes into an empty slot or tops up a compatible stack, such
+  as half of the arrows onto the equipped arrows or onto the arrows in the Bag's
+  ammunition slot. A part of your arrows also fills the empty `Ammunition` slot
+  as a new stack, and a part of the equipped arrows goes back the same ways. A
+  part never replaces an item and never swaps. A part of a corpse stack is
+  looted into your inventory before it can be equipped.
 - Drop an item outside every window to destroy it. A dialog asks
   `Destroy <name>?` first; an item that may not be destroyed, such as a protected
   quest item, says why instead. Destruction takes the whole stack, so a dragged
@@ -467,12 +470,12 @@ A right-click moves an item to where it belongs, as a shortcut for a drag:
 - A right-click that has nothing to do, such as on an ore with no Bank open, says
   why in the game messages at the lower left.
 - `Shift`+right-click sends half of a stack, rounded down, the same way, and the
-  rest stays: into the first free Bank slot while the Bank tab shows, from the
-  Bank or the ammunition slot into the first free inventory slot, from a corpse
-  into a stack or a free inventory slot, and into the `Sell` slot with that
-  quantity while a vendor's tab shows. A part never equips, so on equippable
-  arrows with no Bank open it says so. On a single item `Shift`+right-click does
-  what right-click does.
+  rest stays. Like the whole stack it tops up a stack of its kind first and
+  otherwise takes a free slot: in the Bank while the Bank tab shows, in the
+  inventory from the Bank, the ammunition slot, or a corpse, and into the `Sell`
+  slot with that quantity while a vendor's tab shows. Carried arrows top up the
+  equipped arrows or fill the empty `Ammunition` slot. On a single item
+  `Shift`+right-click does what right-click does.
 
 Every item move shows at once: moving, swapping, merging, splitting, equipping
 and unequipping items and Bags, destroying, claiming a Recovery delivery,
