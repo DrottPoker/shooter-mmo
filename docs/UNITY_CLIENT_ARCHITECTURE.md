@@ -2452,8 +2452,10 @@ body's feet; from 5 cm deep a body leaves wakes:
 
 One particle system draws every ring and another every droplet, with the ring
 and spray materials of the configuration, so a crowd in the water costs two
-draws; without the materials the component shows nothing. The wakes are
-presentation only. `WaterWakeTrackerTests` checks the tracker on a test pond.
+draws; without the materials the component shows nothing. Neither system moves
+its particles by itself, so a ring grows where it formed and only the spray gets
+a velocity. The wakes are presentation only. `WaterWakeTrackerTests` checks the
+tracker on a test pond and `WaterWakePresentationTests` the particle systems.
 
 ### Gathering
 

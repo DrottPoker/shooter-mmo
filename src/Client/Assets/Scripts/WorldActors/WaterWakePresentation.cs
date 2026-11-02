@@ -97,6 +97,7 @@ namespace Mmorpg.Client.WorldActors
                     new ParticleSystem.EmitParams
                     {
                         position = surface,
+                        velocity = Vector3.zero,
                         startSize = wake.RingSize,
                         startLifetime = 1.4f,
                         applyShapeToPosition = false
@@ -169,6 +170,10 @@ namespace Mmorpg.Client.WorldActors
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             main.maxParticles = maximumParticles;
             main.startColor = Color.white;
+
+            // A new system moves its particles at 5 m/s; rings stay where they formed, and spray
+            // gets its own velocity when it is emitted.
+            main.startSpeed = 0f;
             var emission = system.emission;
             emission.enabled = false;
             var shape = system.shape;
