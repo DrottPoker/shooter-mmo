@@ -74,7 +74,8 @@ public sealed partial class TableOwnershipTests
         "GameService.Placement/Persistence/WorkerSelectedWorldBindingMigration.cs",
         "GameService.Items/Persistence/ReleaseRetryableOperationClaimsMigration.cs",
         "GameService.Items/Persistence/EquippedItemLookupIndexMigration.cs",
-        "GameService.Items/Persistence/SecureContainerRemovalMigration.cs"
+        "GameService.Items/Persistence/SecureContainerRemovalMigration.cs",
+        "GameService.Items/Persistence/CloakEquipmentRemovalMigration.cs"
     };
 
     [Fact]

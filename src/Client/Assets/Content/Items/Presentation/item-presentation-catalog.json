@@ -1,7 +1,7 @@
 {
     "formatVersion": 4,
-    "sourceCatalogRevision": "1c430dfc4a7b1380b3b66a2d3a6d8478643d649f5eb560f7a1f39c436d04db72",
-    "presentationRevision": "67f6e9e177eccd1b28b749d9a7910c39eebed9a1de7dba655008e2f663f1ddaf",
+    "sourceCatalogRevision": "6fd5a31562190ee5051e01f485bd7cd26cfaca6edfd7492a12153c5404c1ed62",
+    "presentationRevision": "4e66825fd05927583a76c9cfc8006279353be541b11c54954af1bd57509850fe",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
@@ -94,13 +94,9 @@
             "localizationKey": "items.clothing.blue_wool_cloak.name",
             "fallbackDisplayName": "Blue Wool Cloak",
             "prefabPresentationKey": "",
-            "garments": [
-                "WoolCloak"
-            ],
+            "garments": [],
             "loweredGarments": [],
-            "dyes": [
-                "#2B4364"
-            ],
+            "dyes": [],
             "attachment": ""
         },
         {
@@ -180,13 +176,9 @@
             "localizationKey": "items.clothing.red_wool_cloak.name",
             "fallbackDisplayName": "Red Wool Cloak",
             "prefabPresentationKey": "",
-            "garments": [
-                "WoolCloak"
-            ],
+            "garments": [],
             "loweredGarments": [],
-            "dyes": [
-                "#742519"
-            ],
+            "dyes": [],
             "attachment": ""
         },
         {
@@ -227,9 +219,7 @@
             "localizationKey": "items.clothing.wool_cloak.name",
             "fallbackDisplayName": "Wool Cloak",
             "prefabPresentationKey": "",
-            "garments": [
-                "WoolCloak"
-            ],
+            "garments": [],
             "loweredGarments": [],
             "dyes": [],
             "attachment": ""

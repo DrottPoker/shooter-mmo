@@ -5,9 +5,7 @@
   "category": "clothing",
   "defaultPolicies": [ ],
   "displayName": "Red Wool Cloak",
-  "equipmentSlots": [
-    "back"
-  ],
+  "equipmentSlots": [ ],
   "id": "clothing.red_wool_cloak",
   "maximumStackSize": 1,
   "playerDestroyable": true,

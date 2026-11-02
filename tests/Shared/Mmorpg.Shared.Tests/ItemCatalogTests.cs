@@ -80,6 +80,13 @@ public sealed class ItemCatalogTests
             ],
             catalog.EquipmentSlots.Select(slot => slot.Id));
         Assert.Equal(1, catalog.EquipmentSlots.Single(slot => slot.Id == "shoulders").MaximumQuantity);
+        // Cloaks are achievement rewards worn from their own window later, so no item equips
+        // to the Back slot and no vendor sells a cloak.
+        Assert.DoesNotContain(catalog.Definitions, definition => definition.EquipmentSlots.Contains("back"));
+        Assert.Empty(Definition(catalog, "clothing.wool_cloak").EquipmentSlots);
+        Assert.DoesNotContain(
+            catalog.Vendors.SelectMany(vendor => vendor.Offers),
+            offer => offer.DefinitionId.EndsWith("_cloak", StringComparison.Ordinal));
         Assert.Equal(200, catalog.Progression.MaximumCharacterLevel);
         Assert.Equal(4, catalog.WeaponFamilies.Length);
         var bow = catalog.WeaponFamilies.Single(family => family.Id == "bow");

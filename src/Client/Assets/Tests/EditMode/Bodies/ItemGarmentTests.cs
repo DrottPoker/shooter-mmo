@@ -86,7 +86,6 @@ namespace Mmorpg.Client.Tests.EditMode
             var equipment = new[]
             {
                 new EquippedItem("head", "clothing.blue_wool_hood"),
-                new EquippedItem("back", "clothing.red_wool_cloak"),
                 new EquippedItem("body", "clothing.wool_robe"),
                 new EquippedItem("feet", "armor.leather_boots"),
                 new EquippedItem("ring_1", "jewelry.copper_ring"),
@@ -98,7 +97,7 @@ namespace Mmorpg.Client.Tests.EditMode
             // The hair and the face stay, a garment the look named but no item shows is taken off,
             // items without garments add none, and the bow is held in the left hand.
             Assert.That(dressed.Key, Is.EqualTo(
-                "Attachment=TrainingShortbow;Face=Clean;Garment=DarkBrownHair+LeatherBoots+WoolCloak@742519+WoolHoodUp@3A5A85+WoolRobe;Paint=Tattoo"));
+                "Attachment=TrainingShortbow;Face=Clean;Garment=DarkBrownHair+LeatherBoots+WoolHoodUp@3A5A85+WoolRobe;Paint=Tattoo"));
             Assert.That(dressed.DyesFor("WoolHoodUp").Single(), Is.EqualTo(Rgb(0x3A, 0x5A, 0x85)));
             Assert.That(dressed.DyesFor("WoolRobe"), Is.Empty);
 

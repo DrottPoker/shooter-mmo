@@ -30,6 +30,11 @@ namespace Mmorpg.Client.Ui
     {
         public const int ColumnCount = 3;
 
+        // Cloaks are achievement rewards that will be worn from their own window, so no item
+        // equips to the Back slot and the paper doll leaves its cell empty (Victor, 2026-11-02).
+        private static readonly HashSet<string> HiddenSlots =
+            new HashSet<string>(StringComparer.Ordinal) { "back" };
+
         private static readonly Dictionary<string, (int Row, int Column)> KnownCells =
             new Dictionary<string, (int Row, int Column)>(StringComparer.Ordinal)
             {
@@ -38,7 +43,6 @@ namespace Mmorpg.Client.Ui
                 ["bag"] = (0, 2),
                 ["shoulders"] = (1, 0),
                 ["neck"] = (1, 1),
-                ["back"] = (1, 2),
                 ["main_hand"] = (2, 0),
                 ["body"] = (2, 1),
                 ["off_hand"] = (2, 2),
@@ -55,7 +59,7 @@ namespace Mmorpg.Client.Ui
             out int rowCount)
         {
             var distinct = (slotIds ?? Enumerable.Empty<string>())
-                .Where(slotId => !string.IsNullOrWhiteSpace(slotId))
+                .Where(slotId => !string.IsNullOrWhiteSpace(slotId) && !HiddenSlots.Contains(slotId))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
             var cells = new List<PaperDollCell>(distinct.Length);
