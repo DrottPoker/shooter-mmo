@@ -55,8 +55,7 @@ MonoBehaviour:
   ButtonHeight: 34
   FieldHeight: 34
   MeterHeight: 12
-  EquipmentLabelWidth: 78
-  EquipmentCenterWidth: 150
+  EquipmentCenterWidth: 180
   WindowFrame: {fileID: 3286163911610860551, guid: ce06505771ec350449c7eb4faaa064cd, type: 3}
   Separator: {fileID: 3286163911610860551, guid: bf6dafd0541f0e64abf5416fb49d7182, type: 3}
   CloseIcon: {fileID: 3286163911610860551, guid: df9c85e7141c94d44a4b302a0aa04588, type: 3}

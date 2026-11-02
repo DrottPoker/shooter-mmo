@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Mmorpg.Client.Gameplay
 {
@@ -35,7 +36,7 @@ namespace Mmorpg.Client.Gameplay
         private string shownModel;
         private float yaw;
 
-        // The picture of the copy, for a raw image to show.
+        // The picture of the copy, for a raw image to show, or null without a graphics device.
         public RenderTexture Texture
         {
             get { return texture; }
@@ -52,15 +53,17 @@ namespace Mmorpg.Client.Gameplay
             get { return body; }
         }
 
-        // Whether the camera draws the copy, as while the Equipment window is open.
+        // Whether the camera draws the copy, as while the Equipment window is open; never without
+        // a texture to draw into.
         public bool Visible
         {
             get { return stageCamera != null && stageCamera.enabled; }
             set
             {
-                if (stageCamera != null && stageCamera.enabled != value)
+                var drawn = value && texture != null;
+                if (stageCamera != null && stageCamera.enabled != drawn)
                 {
-                    stageCamera.enabled = value;
+                    stageCamera.enabled = drawn;
                 }
             }
         }
@@ -124,13 +127,18 @@ namespace Mmorpg.Client.Gameplay
             pivot.SetParent(transform, false);
             Yaw = 0f;
 
-            texture = new RenderTexture(TextureWidth, TextureHeight, 24, RenderTextureFormat.ARGB32)
+            // Without a graphics device, as in the headless test run, a render texture cannot be
+            // made; the stage then shows its copy to nobody.
+            if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null)
             {
-                name = "CharacterPreview",
-                antiAliasing = 4,
-                useMipMap = false
-            };
-            texture.Create();
+                texture = new RenderTexture(TextureWidth, TextureHeight, 24, RenderTextureFormat.ARGB32)
+                {
+                    name = "CharacterPreview",
+                    antiAliasing = 4,
+                    useMipMap = false
+                };
+                texture.Create();
+            }
 
             var cameraObject = new GameObject("Camera");
             cameraObject.transform.SetParent(transform, false);

@@ -11,14 +11,24 @@ using UnityEngine.UI;
 namespace Mmorpg.Client.Ui
 {
     // The Equipment window: the character in the middle on a pedestal, the equipment slots in a
-    // column on each side with their names beside them, and the hand, tool, and ammunition
-    // slots in a row below. EquipmentPaperDollLayout decides where each slot goes.
+    // column on each side, as far from the window's edge on both sides, and the hand, tool, and
+    // ammunition slots close together in a row below. A slot shows no name; its tooltip names
+    // it. EquipmentPaperDollLayout decides where each slot goes.
     internal sealed class EquipmentWindow
     {
-        private const float LabelGap = 6f;
-        private const float RowGap = 8f;
-        private const float BottomGap = 14f;
-        private const float BottomLabelHeight = 22f;
+        // Between two slots in a column or a row.
+        private const float SlotGap = 8f;
+
+        // Between a slot column and the character.
+        private const float ColumnGap = 12f;
+
+        // Between the slot columns and the row below.
+        private const float BottomGap = 12f;
+
+        // The pedestal is as wide as the character's picture, so the feet stand on its top.
+        private const float PedestalWidth = 150f;
+
+        private const float HeadwearToggleSize = 24f;
 
         private readonly InventoryWindows owner;
         private readonly UiTheme theme;
@@ -26,7 +36,6 @@ namespace Mmorpg.Client.Ui
         private readonly RectTransform doll;
         private readonly LayoutElement dollLayout;
         private readonly Dictionary<string, ItemSlotView> slots = new Dictionary<string, ItemSlotView>(StringComparer.Ordinal);
-        private readonly Dictionary<string, TextMeshProUGUI> labels = new Dictionary<string, TextMeshProUGUI>(StringComparer.Ordinal);
         private readonly Button headwearToggle;
         private readonly InventoryTooltipTrigger headwearTooltip;
         private readonly CharacterPreviewDrag previewDrag;
@@ -49,10 +58,10 @@ namespace Mmorpg.Client.Ui
             dollLayout = UiFactory.Layout(doll, InnerWidth);
             PreviewArea = UiFactory.Create("CharacterPreview", doll);
             var pedestal = UiFactory.Image(PreviewArea, "Pedestal", theme.Pedestal, Color.white);
-            pedestal.rectTransform.anchorMin = new Vector2(0f, 0f);
-            pedestal.rectTransform.anchorMax = new Vector2(1f, 0f);
+            pedestal.rectTransform.anchorMin = new Vector2(0.5f, 0f);
+            pedestal.rectTransform.anchorMax = new Vector2(0.5f, 0f);
             pedestal.rectTransform.pivot = new Vector2(0.5f, 0f);
-            pedestal.rectTransform.sizeDelta = new Vector2(0f, theme.EquipmentCenterWidth * 0.32f);
+            pedestal.rectTransform.sizeDelta = new Vector2(PedestalWidth, PedestalWidth * 0.32f);
             pedestal.rectTransform.anchoredPosition = Vector2.zero;
 
             // The character stands on the pedestal, as tall as the slot columns and as wide as
@@ -64,7 +73,7 @@ namespace Mmorpg.Client.Ui
             fitter.aspectRatio = (float)CharacterPreview.TextureWidth / CharacterPreview.TextureHeight;
             previewDrag = PreviewImage.gameObject.AddComponent<CharacterPreviewDrag>();
             PreviewImage.gameObject.SetActive(false);
-            headwearToggle = UiFactory.IconButton(theme, doll, "HeadwearToggle", theme.HoodToggleIcon, 24f, ToggleHeadwear);
+            headwearToggle = UiFactory.IconButton(theme, doll, "HeadwearToggle", theme.HoodToggleIcon, HeadwearToggleSize, ToggleHeadwear);
             headwearTooltip = headwearToggle.gameObject.AddComponent<InventoryTooltipTrigger>();
             headwearToggle.gameObject.SetActive(false);
         }
@@ -99,12 +108,7 @@ namespace Mmorpg.Client.Ui
 
         private float InnerWidth
         {
-            get { return 2f * CellWidth + theme.EquipmentCenterWidth; }
-        }
-
-        private float CellWidth
-        {
-            get { return theme.SlotSize + LabelGap + theme.EquipmentLabelWidth; }
+            get { return 2f * (theme.SlotSize + ColumnGap) + theme.EquipmentCenterWidth; }
         }
 
         public void Refresh()
@@ -138,7 +142,7 @@ namespace Mmorpg.Client.Ui
             var shown = arrangement.All.ToArray();
             Window.SetDetail(
                 shown.Count(slotId => equipment[slotId].Item != null).ToString(CultureInfo.InvariantCulture)
-                + " / " + shown.Length.ToString(CultureInfo.InvariantCulture) + " equipped");
+                + " / " + shown.Length.ToString(CultureInfo.InvariantCulture));
             var key = string.Join(",", arrangement.Left) + "|" + string.Join(",", arrangement.Right) + "|"
                 + string.Join(";", arrangement.BottomRows.Select(row => string.Join(",", row)));
             if (!string.Equals(key, arrangementKey, StringComparison.Ordinal))
@@ -151,7 +155,6 @@ namespace Mmorpg.Client.Ui
             foreach (var slotId in arrangement.All)
             {
                 slots[slotId].Bind(owner.EquipmentSlot(equipment[slotId], blocked));
-                labels[slotId].text = InventorySlotPresentation.EquipmentSlotName(state.Catalog, slotId);
             }
 
             RefreshHeadwearToggle(state);
@@ -187,63 +190,61 @@ namespace Mmorpg.Client.Ui
                 view.gameObject.SetActive(false);
             }
 
-            foreach (var label in labels.Values)
-            {
-                label.gameObject.SetActive(false);
-            }
-
             var slotSize = theme.SlotSize;
             var rows = Math.Max(arrangement.Left.Count, arrangement.Right.Count);
-            var columnsHeight = rows > 0 ? rows * slotSize + (rows - 1) * RowGap : 0f;
+            var columnsHeight = rows > 0 ? rows * slotSize + (rows - 1) * SlotGap : 0f;
             for (var index = 0; index < arrangement.Left.Count; index++)
             {
-                PlaceSideSlot(arrangement.Left[index], 0f, index * (slotSize + RowGap));
+                PlaceSideSlot(arrangement.Left[index], 0f, index * (slotSize + SlotGap));
             }
 
-            var rightX = InnerWidth - CellWidth;
+            var rightX = InnerWidth - slotSize;
             for (var index = 0; index < arrangement.Right.Count; index++)
             {
-                PlaceSideSlot(arrangement.Right[index], rightX, index * (slotSize + RowGap));
+                PlaceSideSlot(arrangement.Right[index], rightX, index * (slotSize + SlotGap));
             }
 
-            UiFactory.Place(PreviewArea, new Vector2(CellWidth, 0f), new Vector2(theme.EquipmentCenterWidth, Mathf.Max(columnsHeight, slotSize)));
+            UiFactory.Place(
+                PreviewArea,
+                new Vector2(slotSize + ColumnGap, 0f),
+                new Vector2(theme.EquipmentCenterWidth, Mathf.Max(columnsHeight, slotSize)));
 
+            // Each row below stands in the middle, its slots as close as those of a column.
             var top = columnsHeight + BottomGap;
-            var cellWidth = InnerWidth / EquipmentPaperDollLayout.BottomColumns;
             foreach (var row in arrangement.BottomRows)
             {
+                var rowWidth = row.Count * slotSize + (row.Count - 1) * SlotGap;
+                var left = (InnerWidth - rowWidth) / 2f;
                 for (var index = 0; index < row.Count; index++)
                 {
-                    var x = index * cellWidth + (cellWidth - slotSize) / 2f;
                     var view = SlotView(row[index]);
-                    UiFactory.Place((RectTransform)view.transform, new Vector2(x, top), new Vector2(slotSize, slotSize));
-                    var label = Label(row[index]);
-                    label.alignment = TextAlignmentOptions.Top;
-                    UiFactory.Place(label.rectTransform, new Vector2(index * cellWidth, top + slotSize + 3f), new Vector2(cellWidth, BottomLabelHeight));
+                    UiFactory.Place(
+                        (RectTransform)view.transform,
+                        new Vector2(left + index * (slotSize + SlotGap), top),
+                        new Vector2(slotSize, slotSize));
                 }
 
-                top += slotSize + BottomLabelHeight + RowGap;
+                top += slotSize + SlotGap;
             }
 
-            var height = arrangement.BottomRows.Count > 0 ? top - RowGap : columnsHeight;
+            var height = arrangement.BottomRows.Count > 0 ? top - SlotGap : columnsHeight;
             dollLayout.preferredHeight = height;
             dollLayout.minHeight = height;
             headwearToggle.transform.SetAsLastSibling();
         }
 
+        // The hood button stands beside the head slot, toward the character.
         private void PlaceSideSlot(string slotId, float x, float y)
         {
             var view = SlotView(slotId);
             UiFactory.Place((RectTransform)view.transform, new Vector2(x, y), new Vector2(theme.SlotSize, theme.SlotSize));
-            var label = Label(slotId);
-            label.alignment = TextAlignmentOptions.MidlineLeft;
-            UiFactory.Place(label.rectTransform, new Vector2(x + theme.SlotSize + LabelGap, y), new Vector2(theme.EquipmentLabelWidth, theme.SlotSize));
             if (string.Equals(slotId, "head", StringComparison.Ordinal))
             {
+                var toggleX = x < InnerWidth / 2f ? x + theme.SlotSize + ColumnGap : x - ColumnGap - HeadwearToggleSize;
                 UiFactory.Place(
                     (RectTransform)headwearToggle.transform,
-                    new Vector2(x + CellWidth - 26f, y + (theme.SlotSize - 24f) / 2f),
-                    new Vector2(24f, 24f));
+                    new Vector2(toggleX, y + (theme.SlotSize - HeadwearToggleSize) / 2f),
+                    new Vector2(HeadwearToggleSize, HeadwearToggleSize));
             }
         }
 
@@ -257,19 +258,6 @@ namespace Mmorpg.Client.Ui
 
             view.gameObject.SetActive(true);
             return view;
-        }
-
-        private TextMeshProUGUI Label(string slotId)
-        {
-            if (!labels.TryGetValue(slotId, out var label))
-            {
-                label = UiFactory.BodyText(theme, doll, "Label " + slotId, theme.LabelSize, theme.TextColor, TextAlignmentOptions.MidlineLeft);
-                label.overflowMode = TextOverflowModes.Ellipsis;
-                labels.Add(slotId, label);
-            }
-
-            label.gameObject.SetActive(true);
-            return label;
         }
 
         // Lowers or raises worn headwear that can be pushed back, such as a hood; the server

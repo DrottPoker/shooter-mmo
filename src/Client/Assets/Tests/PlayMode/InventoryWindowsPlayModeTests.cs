@@ -89,6 +89,37 @@ namespace Mmorpg.Client.Tests.PlayMode
                 Assert.That(emptyHead.transform.Find("Content/Silhouette").gameObject.activeSelf, Is.True);
             }
 
+            // The equipment slots show no names. The side columns stand as far from both edges
+            // of the window, and the row below stands in the middle with its slots as close as
+            // those of a column.
+            var equipmentWindow = Window(windows, InventoryWindows.EquipmentWindowName);
+            Assert.That(
+                equipmentWindow.GetComponentsInChildren<TMP_Text>().Select(text => text.text),
+                Has.None.EqualTo(InventorySlotPresentation.EquipmentSlotName(catalog, "neck")));
+            var frame = WorldRect(equipmentWindow);
+            var head = WorldRect(View(views, "equipment:head").transform);
+            var shoulders = WorldRect(View(views, "equipment:shoulders").transform);
+            var neck = WorldRect(View(views, "equipment:neck").transform);
+            Assert.That(head.xMin - frame.xMin, Is.EqualTo(frame.xMax - neck.xMax).Within(0.5f));
+            var columnGap = head.yMin - shoulders.yMax;
+            var row = new[] { "main_hand", "off_hand", "tool", "ammunition" }
+                .Select(slotId => WorldRect(View(views, "equipment:" + slotId).transform))
+                .ToArray();
+            for (var index = 1; index < row.Length; index++)
+            {
+                Assert.That(row[index].xMin - row[index - 1].xMax, Is.EqualTo(columnGap).Within(0.5f));
+                Assert.That(row[index].y, Is.EqualTo(row[0].y).Within(0.5f));
+            }
+
+            Assert.That(row[0].xMin - frame.xMin, Is.EqualTo(frame.xMax - row[row.Length - 1].xMax).Within(0.5f));
+
+            // An empty slot's tooltip names it.
+            var neckTrigger = View(views, "equipment:neck").GetComponent<InventoryTooltipTrigger>();
+            var neckPointer = new PointerEventData(EventSystem.current) { position = new Vector2(200f, 200f) };
+            neckTrigger.OnPointerEnter(neckPointer);
+            Assert.That(windows.Tooltip.Text, Does.StartWith("<b>" + InventorySlotPresentation.EquipmentSlotName(catalog, "neck") + "</b>"));
+            neckTrigger.OnPointerExit(neckPointer);
+
             var fill = windows.GetComponentsInChildren<RectTransform>()
                 .Single(rect => rect.name == "Fill" && rect.parent.name == "Meter");
             Assert.That(
@@ -125,8 +156,11 @@ namespace Mmorpg.Client.Tests.PlayMode
         }
 
         // The Equipment window shows the World scene's character preview on its pedestal, lets it
-        // draw only while the window is open, and a drag across the picture turns the copy.
+        // draw only while the window is open, and a drag across the picture turns the copy. The
+        // preview draws only with a graphics device, so the headless run leaves this test out; see
+        // tests/README.md.
         [UnityTest]
+        [Category("Graphics")]
         public IEnumerator TheEquipmentWindowShowsTheCharacterPreviewWhileOpen()
         {
             using var probe = new WindowProbe();
@@ -406,6 +440,14 @@ namespace Mmorpg.Client.Tests.PlayMode
         private static RectTransform Window(InventoryWindows windows, string name)
         {
             return windows.GetComponentsInChildren<RectTransform>(true).Single(rect => rect.name == name);
+        }
+
+        // The screen rectangle a UI element covers.
+        private static Rect WorldRect(Transform element)
+        {
+            var corners = new Vector3[4];
+            ((RectTransform)element).GetWorldCorners(corners);
+            return Rect.MinMaxRect(corners[0].x, corners[0].y, corners[2].x, corners[2].y);
         }
 
         private static string ArrowSlotQuantity(InventoryWindows windows)

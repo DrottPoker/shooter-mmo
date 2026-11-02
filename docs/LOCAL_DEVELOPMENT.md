@@ -286,7 +286,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Changes.ps1 -All
 
 It starts the test containers when they do not run and stops them afterwards,
 fails on any test that was skipped, and also checks the PowerShell syntax of
-every script and that no Unity test yields `WaitForEndOfFrame`. These are the
+every script, that no Unity test yields `WaitForEndOfFrame`, and that client
+code makes a `RenderTexture` only after checking for a graphics device. These are the
 commands of the gate, in its order, for running one step by hand from the
 repository root:
 
@@ -402,8 +403,10 @@ ends with a summary:
 - The Unity suites run through `tools/Run-UnityEditorTests.ps1` when an Editor
   has this checkout's project open, and otherwise headless through
   `tools/Run-UnityTests.ps1`. CI runs them headless, where Unity never evokes
-  `WaitForEndOfFrame`, so whenever the Unity suites are selected, the check
-  `Unity batchmode rules` fails for a test that yields it, even with
+  `WaitForEndOfFrame` and has no graphics device, so whenever the Unity suites
+  are selected, the check `Unity batchmode rules` fails for a test that yields
+  it and for client code that makes a `RenderTexture` without checking
+  `SystemInfo.graphicsDeviceType` against `GraphicsDeviceType.Null`, even with
   `-SkipUnity`.
 
 Options:

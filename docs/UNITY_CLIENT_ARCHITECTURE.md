@@ -1332,8 +1332,12 @@ action that sent nothing, and the reason of an undone move, go to the
 side of the character and rows below, and any slot it does not know, such as
 one added to the catalog later, in further rows below. It hides the `back` slot,
 since no item equips to it until cloaks come from achievements, and the window's
-count of equipped slots leaves it out. Between the columns the window shows the
-[Character Preview](#character-preview) on the theme's pedestal. Every slot is a square of the theme's
+count of equipped slots leaves it out. `EquipmentWindow` places the columns
+symmetrically, as far from both window edges, around the theme's
+`EquipmentCenterWidth`, where it shows the
+[Character Preview](#character-preview) on the theme's pedestal, and centres
+each row below with the same gap as the columns; a slot draws no name, and its
+tooltip names it. Every slot is a square of the theme's
 slot size; the Inventory and storage windows show their grids in six columns.
 An occupied slot draws the item's icon from `ClientItemCatalog.LoadIcon` in a
 frame of `ItemRarityPresentation.FrameColor`, which is the theme's common color
@@ -1868,7 +1872,9 @@ The Equipment window shows the local character in 3D. `CharacterPreview`, which
 lights. The camera looks level at the pivot from 4.4 m with a 28 degree field of
 view and draws into a 320 x 640 ARGB32 render texture with 4x MSAA, cleared to
 transparent. The player cameras end at 500 m and the stage camera at 12 m, so
-neither sees the other; `CharacterPreviewTests` holds both limits.
+neither sees the other; `CharacterPreviewTests` holds both limits. Without a
+graphics device, as in the headless test run, the stage makes no texture, its
+camera never draws, and the window shows no figure.
 
 - `WorldSceneContext` shows a copy of the body model the local player shows on
   the pivot (`CharacterPreview.Show`), combined with the shared
@@ -2734,7 +2740,10 @@ namespace rule are in [Folder Layout](#folder-layout).
   [Traits](../tests/README.md#traits).
 - **Batch mode.** CI runs the suites headless, where Unity never evokes
   `WaitForEndOfFrame`, so a test yields `null` instead; `tools/Test-Changes.ps1`
-  fails a test that yields `WaitForEndOfFrame`.
+  fails a test that yields `WaitForEndOfFrame`. Headless Unity also has no
+  graphics device, where making a render texture logs an error that fails the
+  test, so client code checks `SystemInfo.graphicsDeviceType` first, as
+  `CharacterPreview` does, and `tools/Test-Changes.ps1` fails code that does not.
 - **Architecture guards.** `ClientAssemblyArchitectureTests` pins the assembly
   graph described in [Assemblies](#assemblies). `ClientAddressablesTests`
   compares the committed Addressables settings with `ClientAddressablesLayout`,

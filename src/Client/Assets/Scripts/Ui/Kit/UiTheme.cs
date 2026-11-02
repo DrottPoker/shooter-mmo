@@ -77,8 +77,8 @@ namespace Mmorpg.Client.Ui
         public float ButtonHeight = 34f;
         public float FieldHeight = 34f;
         public float MeterHeight = 12f;
-        public float EquipmentLabelWidth = 78f;
-        public float EquipmentCenterWidth = 150f;
+        [Tooltip("Width of the Equipment window's middle, where the character stands between the slot columns.")]
+        public float EquipmentCenterWidth = 180f;
 
         [Header("Window Sprites")]
         [Tooltip("Nine-sliced window background with its frame.")]

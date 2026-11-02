@@ -776,12 +776,15 @@ Admin menu (F3) opens them on its `Storage` tab.
    the same columns, and `100 Gold` with a coin at the bottom. Press I. Expected
    result: the window closes; I and B toggle the same window.
 2. Press C. Expected result: the Equipment window opens at the left edge with
-   your character on a pedestal in the middle, `Head`, `Shoulders`, `Body`, `Legs`, and `Feet` down
-   its left side, `Neck`, `Hands`, `Ring 1`, `Ring 2`, and `Bag` down its right
-   side, and `Main Hand`, `Off Hand`, `Tool`, and `Ammunition` in a row below,
-   each with its name, and `<n> / 14 equipped` in its header. There is no
-   `Back` slot, and no item of the catalog equips to `Shoulders` yet. Press B.
-   Expected result: Inventory opens again, and Equipment stays where it was.
+   your character on a pedestal in the middle, five slots down its left side and
+   five down its right side, as far from both edges of the window, four slots
+   close together in a row below, and `<n> / 14` in its header. No slot shows a
+   name. Hover the empty slots. Expected result: the tooltips name `Head`,
+   `Shoulders`, `Body`, `Legs`, and `Feet` down the left side, `Neck`, `Hands`,
+   `Ring 1`, `Ring 2`, and `Bag` down the right side, and `Main Hand`,
+   `Off Hand`, `Tool`, and `Ammunition` in the row below. There is no `Back`
+   slot, and no item of the catalog equips to `Shoulders` yet. Press B. Expected
+   result: Inventory opens again, and Equipment stays where it was.
 3. Press F3 and choose `Open Bank` on the `Storage` tab. Expected result: the
    storage window opens directly left of Inventory with `Bank` and `Recovery`
    tabs and the Bank in rows of six. Neither other window moves.
