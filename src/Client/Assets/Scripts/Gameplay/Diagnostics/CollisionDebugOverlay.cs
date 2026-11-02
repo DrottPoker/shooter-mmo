@@ -25,7 +25,9 @@ namespace Mmorpg.Client.Gameplay
             new Color(1f, 0.82f, 0.25f, 1f),
             new Color(1f, 0.3f, 0.28f, 1f),
             new Color(1f, 0.55f, 0.12f, 1f),
-            new Color(0.72f, 0.5f, 1f, 1f)
+            new Color(0.72f, 0.5f, 1f, 1f),
+            new Color(0.25f, 0.55f, 1f, 1f),
+            new Color(1f, 0.35f, 0.85f, 1f)
         };
 
         private static readonly Color PathColor = new Color(0.3f, 0.9f, 1f, 1f);

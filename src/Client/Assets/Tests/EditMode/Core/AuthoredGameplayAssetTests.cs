@@ -463,7 +463,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 foreach (var zone in new[]
                          {
                              "Town", "Roads", "MovementCourse", "Highlands", "CombatRange", "InterestRoad",
-                             "WolfWoods", "Quarry", "Meadow", "Sandbox"
+                             "WolfWoods", "Quarry", "Meadow", "Waterside"
                          })
                 {
                     Assert.That(FindGameObject(scene, zone), Is.Not.Null, zone);
@@ -472,9 +472,30 @@ namespace Mmorpg.Client.Tests.EditMode
                 var environment = FindGameObject(scene, "Environment");
                 var tunnel = environment.GetComponentsInChildren<MeshCollider>(true).Single();
                 Assert.That(tunnel.convex, Is.False);
-                var terrain = environment.GetComponentsInChildren<TerrainCollider>(true).Single();
-                Assert.That(terrain.transform.position, Is.EqualTo(DevelopmentWorld2Builder.HighlandsOrigin));
-                Assert.That(terrain.terrainData.size, Is.EqualTo(DevelopmentWorld2Builder.HighlandsSize));
+                Assert.That(environment.GetComponentsInChildren<TerrainCollider>(true).Length, Is.EqualTo(2));
+                var highlands = FindGameObject(scene, "HighlandsTerrain").GetComponent<Terrain>();
+                Assert.That(highlands.transform.position, Is.EqualTo(DevelopmentWorld2Builder.HighlandsOrigin));
+                Assert.That(highlands.terrainData.size, Is.EqualTo(DevelopmentWorld2Builder.HighlandsSize));
+                var waterside = FindGameObject(scene, "WatersideTerrain").GetComponent<Terrain>();
+                Assert.That(waterside.transform.position, Is.EqualTo(DevelopmentWorld2Builder.WatersideOrigin));
+                Assert.That(waterside.terrainData.size, Is.EqualTo(DevelopmentWorld2Builder.WatersideSize));
+
+                // One lake, one river, and one sea, each a surface mesh without a collider.
+                var bodies = environment.GetComponentsInChildren<WaterBody>(true);
+                Assert.That(
+                    bodies.Select(body => body.BodyId + ":" + body.Kind),
+                    Is.EquivalentTo(new[]
+                    {
+                        DevelopmentWorld2Builder.LakeBodyId + ":" + WaterBodyKind.Lake,
+                        DevelopmentWorld2Builder.RiverBodyId + ":" + WaterBodyKind.River,
+                        DevelopmentWorld2Builder.SeaBodyId + ":" + WaterBodyKind.Sea
+                    }));
+                foreach (var body in bodies)
+                {
+                    Assert.That(body.TryValidate(out var error), Is.True, error);
+                    Assert.That(body.GetComponents<Collider>(), Is.Empty, body.name);
+                    Assert.That(body.GetComponent<MeshRenderer>().sharedMaterial.name, Is.EqualTo("M_DevelopmentWorld_Water"));
+                }
             });
         }
         [Test]
@@ -732,7 +753,26 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(
                     buffer.Shapes.OfType<CollisionBox>().Count(),
                     Is.EqualTo(environment.GetComponentsInChildren<BoxCollider>(true).Length + resourceNodes.Length));
-                Assert.That(buffer.Shapes.OfType<CollisionTriangle>().Count(), Is.EqualTo(expectedTriangles));
+                Assert.That(
+                    buffer.Shapes.OfType<CollisionTriangle>()
+                        .Count(triangle => (triangle.LayerMask & CollisionLayers.DeepWaterEdge) == 0),
+                    Is.EqualTo(expectedTriangles));
+
+                // Every water body's surface is baked, and water always has deep water edges here.
+                var bodies = environment.GetComponentsInChildren<WaterBody>(true);
+                var water = new CollisionQueryBuffer();
+                collisionWorld.QueryShapes(
+                    new CollisionAabb(
+                        new SimulationVector3(ground.min.x, -2f, ground.min.z),
+                        new SimulationVector3(ground.max.x, 64f, ground.max.z)),
+                    CollisionLayers.Water,
+                    water);
+                Assert.That(
+                    water.Shapes.OfType<CollisionWaterSurface>().Count(),
+                    Is.EqualTo(bodies.Sum(body => body.Surface.triangles.Length / 3)));
+                Assert.That(
+                    buffer.Shapes.Any(shape => (shape.LayerMask & CollisionLayers.DeepWaterEdge) != 0),
+                    Is.EqualTo(bodies.Length > 0));
                 foreach (var node in resourceNodes)
                 {
                     var stableId = CollisionWorldCompiler.ResolveStableId(node.StableId, node.SourcePath);

@@ -152,13 +152,6 @@ namespace Mmorpg.Client.Editor
             }
         }
 
-        private static void BuildSandbox(DevelopmentWorldBuilder builder)
-        {
-            var sandbox = builder.Group(builder.Environment, "Sandbox");
-            builder.Decal(sandbox, "SandboxPad", new Vector2(-120f, 120f), new Vector2(100f, 100f), builder.Palette.Sandbox);
-            builder.Sign(sandbox, "SandboxSign", new Vector3(-66f, 0f, 66f), -45f, "SANDBOX\nSpace for new features");
-        }
-
         // A collidable trunk under a crown that only blocks the view.
         private static void Tree(DevelopmentWorldBuilder builder, Transform parent, string name, Vector2 position, int variant)
         {

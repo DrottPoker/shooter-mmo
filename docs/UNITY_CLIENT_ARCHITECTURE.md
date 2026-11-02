@@ -739,8 +739,9 @@ on, the baked collision around the local player and the rest of its route.
 `CollisionDebugLines` queries the movement session's `ChunkedStaticCollisionWorld`
 in a square 48 m wide and turns every shape into line segments by kind: triangle
 edges, lifted 3 cm along their normal, are walkable ground or too steep by the
-character's maximum slope, and the twelve edges of a box are an obstacle, a
-movement-only box such as a resource node, or a sight-only box by its layers. The
+character's maximum slope, or a deep water edge by its layer, water surface
+edges are water, and the twelve edges of a box are an obstacle, a movement-only
+box such as a resource node, or a sight-only box by its layers. The
 overlay builds the lines again when the player moved 2 m or the loaded chunks
 changed, and draws one line mesh per kind every frame with `Graphics.RenderMesh`
 and the configured debug line material, whose `_BaseColor` it sets per kind.
@@ -922,23 +923,35 @@ authority or feeds presentation positions back into prediction.
 
 The network simulation collides with every baked box and one-sided triangle of
 the selected World, including rotated ramps, steps, cover, boundaries, terrain,
-and tunnel meshes. The capsule dimensions, slope limit, step height, ground snap
-distance, and substep budget come from the validated server join settings.
-Movement never uses Unity CharacterController or PhysX to decide network
-position.
+tunnel meshes, and the deep water edges. Each tick that a grounded character
+follows a route, `WaterRules` measures the water above its feet from the baked
+water surfaces and slows the walk from the wading depth on. The capsule
+dimensions, slope limit, step height, ground snap distance, and substep budget
+come from the validated server join settings; the water depths and the wading
+speed are shared simulation rules. Movement never uses Unity CharacterController
+or PhysX to decide network position.
+
+The route planner treats the deep water edges like any wall. Because a one-sided
+wall is thin, the planner also refuses a grid step, or a sample of a straight
+segment that skipped the clearance test, when a ray between the two points at
+the height of the clearance capsule meets a wall from its front.
 
 `WorldCollisionAuthoring` defines the World id, chunk size, collision root, and
 layer mask on an authored scene object, and `WorldCollisionBaker` bakes the
 enabled, non-trigger BoxColliders, non-convex MeshColliders, and
-TerrainColliders below that root into neutral authoring JSON plus versioned
-binary chunks in WorldData. Mesh vertices are baked in world space and terrain
-heights as a heightfield, both as exact base64 floats. The shared compiler
+TerrainColliders below that root, and the surface meshes of its `WaterBody`
+components, into neutral authoring JSON plus versioned binary chunks in
+WorldData. Mesh vertices and water surfaces are baked in world space and terrain
+heights as a heightfield, all as exact base64 floats. The shared compiler derives
+the deep water edges from the water surfaces and the ground below them and
 canonicalizes signed floating-point zero before encoding, so Unity and .NET
-produce identical chunk hashes for equivalent transforms. Runtime code never
-scans the Unity scene or treats PhysX as network authority. The bake workflow and
-the authoring rules are in
-[Rebuild And Bake Workflow](DEVELOPMENT_WORLDS.md#rebuild-and-bake-workflow) and
-[Terrain And Mesh Collision Authoring](DEVELOPMENT_WORLDS.md#terrain-and-mesh-collision-authoring).
+produce identical chunk hashes for equivalent transforms. `WaterBody` itself does
+nothing at runtime; its mesh renders the water. Runtime code never scans the
+Unity scene or treats PhysX as network authority. The bake workflow and the
+authoring rules are in
+[Rebuild And Bake Workflow](DEVELOPMENT_WORLDS.md#rebuild-and-bake-workflow),
+[Terrain And Mesh Collision Authoring](DEVELOPMENT_WORLDS.md#terrain-and-mesh-collision-authoring),
+and [Water Authoring](DEVELOPMENT_WORLDS.md#water-authoring).
 
 ### Remote Players
 

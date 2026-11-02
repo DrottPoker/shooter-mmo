@@ -55,12 +55,13 @@ in both:
 | Light grey | Town square, booth, and arena floors |
 | Blue grey | Buildings, platforms, walls, and pillars |
 | Brick red | Roofs |
-| Orange | Ramps, stairs, cover, crates, and the bridge |
+| Orange | Ramps, stairs, cover, crates, and the bridges |
 | Bright green | A movement test the character gets through |
 | Bright red | A movement test the character must not get through |
 | Brown grey | Rock |
 | Dark brown and dark green | Tree trunks and crowns |
-| Teal | The sandbox pad reserved for new features |
+| See-through blue | Water |
+| Sand | Beaches, banks, and the ground under water |
 | Cyan | Spawn pads, range stripes, and interest markers |
 | Charcoal | Boundary walls |
 
@@ -99,11 +100,11 @@ each direction, 30 to 110 m from the town, so every zone is a short walk away.
 ```text
                          North (+Z)
 +------------------+------------------+------------------+
-| Sandbox          | Movement course  | Highlands        |
-| reserved pad     | steps, slopes,   | hills, peak,     |
-|                  | gaps, stairs,    | cliffs, tunnel   |
-|                  | bridge, maze,    |                  |
-|                  | camera tests     |                  |
+| Waterside        | Movement course  | Highlands        |
+| lake, river,     | steps, slopes,   | hills, peak,     |
+| ford, bridge,    | gaps, stairs,    | cliffs, tunnel   |
+| sea at the       | bridge, maze,    |                  |
+| World's edge     | camera tests     |                  |
 +------------------+------------------+------------------+
 | Interest road    | Town             | Combat range     |
 | to the outpost   | spawn, Mira,     | PvP arena,       |
@@ -212,7 +213,7 @@ Seven Iron Veins: a 2 by 2 group 6 m apart around `(84, 0, -84)` and single vein
 at `(104, 0, -76)`, `(76, 0, -104)`, and `(106, 0, -106)`, inside rock walls on
 the south and east sides.
 
-### Meadow And Sandbox
+### Meadow
 
 The meadow south of the town is open ground with six greybox trees, for crowds of
 bots and players. Three Grey Wolves, defensive Mobs that only fight back, stand
@@ -220,8 +221,31 @@ in its spawn area X `-20` to `-4`, Z `-100` to `-84`, so a yellow nameplate can
 be seen and a Mob can be fought without being attacked first. East of them, toward the quarry, the oak grove holds four Oak
 Trees, the resource nodes that a Woodcutting Axe chops down, at `(38, 0, -80)`,
 `(48, 0, -88)`, `(32, 0, -92)`, and `(42, 0, -100)`, with an `OAK GROVE` sign at
-`(28, 0, -74)`. The sandbox is a 100 by 100 m teal pad centered at
-`(-120, 0, 120)`, kept free for features that need space of their own.
+`(28, 0, -74)`.
+
+### Waterside
+
+The water test area in the northwest: a Unity Terrain baked as a heightfield,
+three water bodies, a bridge, and the sea where the World ends. The builder
+computes every height from a fixed function of the position, so a rebuild
+reproduces the same terrain and water. A `WATERSIDE` sign stands at
+`(-60, 0, 60)`, and signs name the lake, the ford, the bridge, and the sea.
+
+| Element | Position or area | Notes |
+| --- | --- | --- |
+| Terrain | origin `(-192, 0, 64)`, size `(128, 8, 128)` | A 4 m plateau with one sample per meter that ramps down to the ground over 16 m at its east and south edges |
+| Lake `waterside-lake` | center `(-108, 112)`, surface at 3.6 m | The shore lies 13 m from the center and the floor falls 0.3 m per meter, so the water is 0.5 m deep at 11.3 m, 1.2 m deep at 9 m, and at most 3 m deep |
+| River `waterside-river` | from `(-113, 119)` in the lake to `(-149, 150)` at the sea | 8 m wide and 2 m deep; its surface stays level with the lake until it leaves it, then falls to the sea |
+| Ford | `(-127.5, 132.8)`, 20 m down the river | 0.8 m deep for 6 m of the river, so it is waded across at the wading speed |
+| Bridge | `(-140, 142.8)`, 36 m down the river | A 16 by 4 m deck with its top at 4.2 m, 1 m above the water, from plateau to plateau |
+| Sea `waterside-sea` | a quarter disc around the corner `(-192, 192)`, surface at 3 m | The shore lies 60 m from the corner and the floor falls 0.15 m per meter, so the water is 1.2 m deep 52 m from the corner |
+| Boundary walls | the north wall starts at X `-146` and the west wall ends at Z `146` | Both end out in deep water, so the sea is the edge of the World between them |
+| Sea beyond the World | west and north of the bounds, out to 400 m | Shows only, over a sand floor that does not collide |
+
+Terrain layers paint rock where the ground is steeper than 40 degrees, sand on
+the beds and banks of the water, and grass elsewhere. The terrain, the water
+surface meshes, and the terrain layers are generated assets below
+`Assets/Art/Terrain/DevelopmentWorld2`.
 
 ### Resource Node Placements
 
@@ -288,16 +312,20 @@ To rebuild and bake both Worlds:
    cancelling stops the rebuild. Expected result: the Console reports
    `[DEVELOPMENT WORLD 1] Rebuilt the environment with ...` and
    `[DEVELOPMENT WORLD 2] Rebuilt the environment with ...`, each with its
-   collision boxes, meshes, and terrains, and `Actor content was not changed.`
+   collision boxes, meshes, terrains, and water bodies, and `Actor content was
+   not changed.`
 3. Select `MMORPG > Tools > World Collision > Bake World Scenes` and wait for
    asset import and script compilation to finish.
 
 Expected result: the Console reports `[WORLD COLLISION] Baked world
-'development-world-1' at revision <revision> with ... boxes, ... meshes, and
-... heightfields in 4 chunks, and ... resource node boxes.`, and the same for
-`development-world-2` in 144 chunks; the revision is a SHA-256 of the World's
-collision. A rebuild and bake without a layout or actor change bakes the same
-revisions, so Git shows no change.
+'development-world-1' at revision <revision> with ... boxes, ... meshes, ...
+heightfields, 0 water bodies with 0 deep water edge triangles in 4 chunks, and
+... resource node boxes.`, and the same for `development-world-2` with 3 water
+bodies and their deep water edges in 144 chunks; the revision is a SHA-256 of
+the World's collision. A rebuild and bake without a layout or actor change bakes
+the same revisions, so the collision shows no change in Git. A rebuild still
+rewrites the tunnel arch mesh and the highlands terrain data with serialization
+noise only; restore those two files from Git.
 
 `Bake World Scenes` validates the World scene catalog against the Addressables
 World scenes and bakes every mapped World in one deterministic pass, then
@@ -310,11 +338,14 @@ The bake reads the enabled, non-trigger BoxColliders, non-convex MeshColliders,
 and TerrainColliders below the collision root; meshes and terrains bake as
 one-sided triangles that collide only from their front. It stops with a red
 error for any other collider type, a convex MeshCollider, a MeshCollider without
-a mesh, a zero scale, and a rotated or scaled Terrain. It adds one movement-only
-box per resource node from the World actors, which it compiles from their
-authoring; it stops when they differ from the compiled actors, so save actor
-changes in Actor Studio or Spawn Authoring, or run the World Actor Compiler,
-first. For each World it writes:
+a mesh, a zero scale, and a rotated or scaled Terrain. It also reads the mesh of
+every active water body below the collision root as that body's surface, as
+[Water Authoring](#water-authoring) describes, and the shared compiler derives
+the deep water edges from the surfaces and the ground below them. It adds one
+movement-only box per resource node from the World actors, which it compiles
+from their authoring; it stops when they differ from the compiled actors, so
+save actor changes in Actor Studio or Spawn Authoring, or run the World Actor
+Compiler, first. For each World it writes:
 
 - `content/worlds/<WorldId>/collision.json`, the neutral authoring of the scene.
 - `src/Shared/WorldData/Generated/WorldCollision/<WorldId>/manifest.json`.
@@ -356,15 +387,22 @@ simulation:
 - Every movement course station behaves as its label says.
 - The town, bridge, maze, camera tests, arena, and highlands routes work, and the
   inside of the peak stays unreachable.
+- The waterside lake stops a walker where it gets too deep and plans a click into
+  its middle to the edge, its shore is waded at the wading speed, the river is
+  crossed over the bridge without touching water and through the ford by wading,
+  never through deep water, the sea is deep along the open stretch of both
+  bounds, and the three water bodies are baked with their ids.
 - The outpost lies beyond the interest exit radius from the town.
 
 The Unity `AuthoredGameplayAssetTests` check that both scenes keep the World
 scene composition, that `PlayerSpawn` and the boundary walls match the manifest,
 that the labels are world-space text without raycasts, that every development
 World material is used, that every project material is in the form its shader's
-Inspector keeps, so selecting one never changes its file, and that the checked-in
-bake holds exactly the scene's boxes, terrain cells, and mesh triangles, and one
-movement-only box per placed resource node.
+Inspector keeps, so selecting one never changes its file, that the waterside has
+its lake, river, and sea without colliders, and that the checked-in bake holds
+exactly the scene's boxes, terrain cells, mesh triangles, and water surfaces,
+deep water edges where there is water, and one movement-only box per placed
+resource node.
 
 ## Terrain And Mesh Collision Authoring
 
@@ -386,6 +424,32 @@ These rules apply to every World scene, including a future production map.
   from above.
 - Leave the world ground box or terrain below tunnel floors, or give the tunnel
   mesh its own floor that faces up.
+
+## Water Authoring
+
+Lakes, rivers, and seas follow these rules in every World scene:
+
+- A water body is a GameObject below the collision root with a MeshFilter, a
+  MeshRenderer, and a `WaterBody` component that names its body id and its kind,
+  `Lake`, `River`, or `Sea`. Give it no collider. The body id is unique in its
+  World and uses lowercase letters, digits, dots, dashes, and underscores, so
+  content such as fishing can refer to it.
+- The mesh is the water surface. Every triangle faces up, tilted at most about
+  26 degrees, so a river can fall toward the sea. Let the surface reach under
+  the banks: the terrain hides it there, and water under terrain or inside a box
+  counts as dry land. Water inside a cave below terrain is therefore not
+  supported yet.
+- Shape the beds and banks with the terrain. The shared compiler samples the
+  water every 0.25 m, measures the depth from the surface down to the first
+  ground below it, and places one-sided walls, the deep water edges, along the
+  line where the water gets deeper than 1.2 m. They face the shallow side, reach
+  from 0.5 m below that line to 0.3 m above the surface, and only block
+  movement. A character that fell into deep water walks out through their backs.
+- Keep the walking surface of a bridge or pier over deep water at least 0.3 m
+  above the water, so it passes over the edges.
+- Where water bodies overlap, the highest surface counts. Water beyond the ground
+  of the World gets no edges, so a sea can reach to the horizon as a mesh
+  without a `WaterBody`, which only shows.
 
 ## Post-Authoring Verification
 

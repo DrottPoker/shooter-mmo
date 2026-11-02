@@ -6,6 +6,7 @@ using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -28,6 +29,7 @@ namespace Mmorpg.Client.Ui
 
         private readonly ClientOperationState operationState = new ClientOperationState();
         private readonly WorldDebugTelemetryTracker telemetry = new WorldDebugTelemetryTracker();
+        private readonly CollisionQueryBuffer waterBuffer = new CollisionQueryBuffer();
         private RealtimeSimulationClient simulationClient;
         private PlayerBodyTintSetting bodyTint;
         private WorldDebugViewSettings viewSettings;
@@ -45,6 +47,7 @@ namespace Mmorpg.Client.Ui
         private TextMeshProUGUI playerPosition;
         private TextMeshProUGUI playerFacing;
         private TextMeshProUGUI playerChunk;
+        private TextMeshProUGUI playerWater;
         private TextMeshProUGUI pointerPosition;
         private TextMeshProUGUI glanceFrame;
         private TextMeshProUGUI glancePing;
@@ -235,6 +238,7 @@ namespace Mmorpg.Client.Ui
             playerPosition = TemporaryMenuWindow.AddValue(page, "Player");
             playerFacing = TemporaryMenuWindow.AddValue(page, "Facing");
             playerChunk = TemporaryMenuWindow.AddValue(page, "Collision chunk");
+            playerWater = TemporaryMenuWindow.AddValue(page, "Water depth");
             pointerPosition = TemporaryMenuWindow.AddValue(page, "Ground at pointer");
             var copyRow = TemporaryMenuWindow.AddButtonRow(page);
             TemporaryUiKit.CreateButton(copyRow, "Copy player", CopyPlayerPosition, true, TemporaryButtonTone.Normal);
@@ -258,7 +262,9 @@ namespace Mmorpg.Client.Ui
                 + Colored("yellow", CollisionDebugOverlay.ColorOf(CollisionDebugKind.SteepSurface)) + " too steep, "
                 + Colored("red", CollisionDebugOverlay.ColorOf(CollisionDebugKind.Obstacle)) + " blocks movement and sight, "
                 + Colored("orange", CollisionDebugOverlay.ColorOf(CollisionDebugKind.MovementOnly)) + " movement only, "
-                + Colored("purple", CollisionDebugOverlay.ColorOf(CollisionDebugKind.CombatOnly)) + " sight only. "
+                + Colored("purple", CollisionDebugOverlay.ColorOf(CollisionDebugKind.CombatOnly)) + " sight only, "
+                + Colored("blue", CollisionDebugOverlay.ColorOf(CollisionDebugKind.Water)) + " water surface, "
+                + Colored("pink", CollisionDebugOverlay.ColorOf(CollisionDebugKind.DeepWaterEdge)) + " deep water edge. "
                 + "It shows " + (2f * CollisionDebugOverlay.Reach).ToString("0", CultureInfo.InvariantCulture)
                 + " m around you.");
             collisionShapes = TemporaryMenuWindow.AddValue(page, "Shapes shown");
@@ -418,6 +424,7 @@ namespace Mmorpg.Client.Ui
                 Set(playerPosition, "No local player", WorldDebugHealth.Unavailable);
                 Set(playerFacing, "-", WorldDebugHealth.Unavailable);
                 Set(playerChunk, "-", WorldDebugHealth.Unavailable);
+                Set(playerWater, "-", WorldDebugHealth.Unavailable);
             }
             else
             {
@@ -430,6 +437,19 @@ namespace Mmorpg.Client.Ui
                     Mathf.FloorToInt(state.PositionX / chunkSize) + ", " + Mathf.FloorToInt(state.PositionZ / chunkSize)
                     + " (" + chunkSize.ToString("0", CultureInfo.InvariantCulture) + " m chunks, "
                     + session.CollisionWorld.ChunkCount + " loaded)");
+                if (WaterRules.TryGetDepth(session.CollisionWorld, state.Position, waterBuffer, out var depth))
+                {
+                    Set(
+                        playerWater,
+                        depth.ToString("0.00", CultureInfo.InvariantCulture) + " m, "
+                        + (depth >= WaterRules.WadeDepth
+                            ? "wading at " + (WaterRules.WadeSpeedMultiplier * 100f).ToString("0", CultureInfo.InvariantCulture) + " % speed"
+                            : "full speed"));
+                }
+                else
+                {
+                    Set(playerWater, "Not in water", WorldDebugHealth.Unavailable);
+                }
             }
 
             Set(

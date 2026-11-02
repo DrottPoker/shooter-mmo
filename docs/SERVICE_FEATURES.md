@@ -507,15 +507,20 @@ zone interest is deferred until zones exist.
   the World spawn, and walking Mobs.
 - A composite collision world combines static chunks and mutable dynamic shapes.
 
-Collision format version 2 holds oriented boxes and one-sided triangles. The
-bake turns non-convex MeshColliders into triangles and TerrainColliders into
-heightfields. The shared compiler triangulates heightfields, two triangles per
-cell except for holes, so Unity and .NET produce identical chunks. A triangle
+The collision format holds oriented boxes, one-sided triangles, and water
+surfaces. The bake turns non-convex MeshColliders into triangles,
+TerrainColliders into heightfields, and the meshes of water bodies into water
+surfaces. The shared compiler triangulates heightfields, two triangles per cell
+except for holes, so Unity and .NET produce identical chunks. A triangle
 collides only from its front, so a tunnel can run below walkable terrain. The
 compilers also add one movement-layer box per placed resource node, as
-[Collision Bounds](../content/README.md#collision-bounds) describes. Replicated
-dynamic transforms are not implemented. Collision authoring is described in
-[Development Worlds](DEVELOPMENT_WORLDS.md).
+[Collision Bounds](../content/README.md#collision-bounds) describes, and the
+deep water edges: one-sided walls along the line where water gets deeper than
+the block depth, which stop movement from the shallow side, as
+[Player Movement](GAME_FEATURES.md#player-movement) describes. Water surfaces
+lie on their own layer, which only depth queries read, so they never block
+movement, sight, or arrows. Replicated dynamic transforms are not implemented.
+Collision authoring is described in [Development Worlds](DEVELOPMENT_WORLDS.md).
 
 ## World Actors And Interaction
 

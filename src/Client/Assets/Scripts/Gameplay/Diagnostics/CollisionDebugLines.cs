@@ -20,7 +20,13 @@ namespace Mmorpg.Client.Gameplay
         MovementOnly = 3,
 
         // Boxes that stop line of sight only.
-        CombatOnly = 4
+        CombatOnly = 4,
+
+        // Water surfaces, which only depth queries read.
+        Water = 5,
+
+        // The walls along deep water, which stop movement from their shallow side.
+        DeepWaterEdge = 6
     }
 
     // Turns the collision near a point into line segments by kind, two points per segment: the
@@ -29,7 +35,7 @@ namespace Mmorpg.Client.Gameplay
     // planner, the prediction, and the worker use.
     public sealed class CollisionDebugLines
     {
-        public const int KindCount = 5;
+        public const int KindCount = 7;
 
         // How far above its triangle a ground line is drawn.
         public const float TriangleLift = 0.03f;
@@ -92,6 +98,9 @@ namespace Mmorpg.Client.Gameplay
                     case CollisionBox box:
                         AddBox(box);
                         break;
+                    case CollisionWaterSurface surface:
+                        AddWaterSurface(surface);
+                        break;
                 }
             }
 
@@ -117,9 +126,24 @@ namespace Mmorpg.Client.Gameplay
             var a = ToVector(triangle.A) + lift;
             var b = ToVector(triangle.B) + lift;
             var c = ToVector(triangle.C) + lift;
-            var lines = segments[(int)(normal.y >= minimumGroundNormalY
-                ? CollisionDebugKind.WalkableGround
-                : CollisionDebugKind.SteepSurface)];
+            var kind = (triangle.LayerMask & CollisionLayers.DeepWaterEdge) != 0
+                ? CollisionDebugKind.DeepWaterEdge
+                : normal.y >= minimumGroundNormalY
+                    ? CollisionDebugKind.WalkableGround
+                    : CollisionDebugKind.SteepSurface;
+            var lines = segments[(int)kind];
+            AddSegment(lines, a, b);
+            AddSegment(lines, b, c);
+            AddSegment(lines, c, a);
+        }
+
+        private void AddWaterSurface(CollisionWaterSurface surface)
+        {
+            var lift = ToVector(surface.Normal) * TriangleLift;
+            var a = ToVector(surface.A) + lift;
+            var b = ToVector(surface.B) + lift;
+            var c = ToVector(surface.C) + lift;
+            var lines = segments[(int)CollisionDebugKind.Water];
             AddSegment(lines, a, b);
             AddSegment(lines, b, c);
             AddSegment(lines, c, a);

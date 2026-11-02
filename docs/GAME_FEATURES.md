@@ -230,6 +230,13 @@ revision, session, and availability for every request.
   up to 45 degrees; steeper surfaces are not ground. Routes never step off a
   ledge higher than 0.4 m, so from a raised platform they take the stairs down; a
   character that leaves the ground falls and keeps its momentum until it lands.
+- Characters wade in water and never swim. Below 0.5 m of water at the feet
+  they walk at full speed; from 0.5 m deep they wade at 60 % of their speed,
+  on top of any slowdown from a heavy load. Water deeper than 1.2 m stops them
+  at its edge like a wall, so a click into deep water walks to the nearest
+  reachable point, and routes go around deep water, over a bridge, or through a
+  ford. A character that falls into deep water walks out of it. Water stops
+  neither sight nor arrows, and Mobs follow the same rules.
 - A route that collision blocks for half a second ends, so the character never
   keeps pushing against a wall.
 - A small yellow disc marks the destination until the character arrives.
@@ -273,8 +280,9 @@ not implemented, and running with run energy is planned in
   closes it too. It is closed when a World scene loads. Its values refresh four
   times a second.
 - The menu has four tabs:
-  - **Overview**: the player's position, facing, and collision chunk, the ground
-    under the pointer, `Copy player` and `Copy pointer` buttons that put
+  - **Overview**: the player's position, facing, collision chunk, and water
+    depth with the wading speed, the ground under the pointer, `Copy player`
+    and `Copy pointer` buttons that put
     `x, y, z` on the clipboard, a quick check of the frame, ping, latest
     snapshot, and connection, and what the world shows for debugging.
   - **Performance**: FPS against a 60 FPS budget, frame average, p95, and
@@ -293,9 +301,10 @@ not implemented, and running with run energy is planned in
   - `Collision around you` draws the baked collision in a square 48 m wide
     around the player while the menu is open: green for walkable ground, yellow
     for surfaces too steep to stand on, red for boxes that block movement and
-    sight, orange for boxes that block movement only, such as resource nodes, and
-    purple for boxes that block sight only. It is the collision the planner, the
-    prediction, and SimulationWorker use.
+    sight, orange for boxes that block movement only, such as resource nodes,
+    purple for boxes that block sight only, blue for water surfaces, and pink
+    for the deep water edges. It is the collision the planner, the prediction,
+    and SimulationWorker use.
   - `Path you follow` draws the rest of the current route in cyan.
   - `Tint bodies: you purple, players orange, bots blue` is kept between
     sessions.

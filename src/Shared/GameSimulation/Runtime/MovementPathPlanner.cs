@@ -488,7 +488,7 @@ namespace Mmorpg.GameSimulation
                 }
             }
 
-            return true;
+            return !CrossesWall(current.Point.Position, point.Position);
         }
 
         private bool IsHeightChangeWalkable(RoutePoint from, RoutePoint to, float planarDistance)
@@ -524,6 +524,7 @@ namespace Mmorpg.GameSimulation
                 ? (float)(clearanceRadius * clearanceRadius)
                 : 0f;
             var current = from;
+            var currentRelaxed = relaxedStart;
             for (var sample = 1; sample <= sampleCount; sample++)
             {
                 var amount = (float)((float)sample / sampleCount);
@@ -543,13 +544,20 @@ namespace Mmorpg.GameSimulation
                     return false;
                 }
 
-                if (PlanarDistanceSquared(from.Position, next.Position) > relaxedDistanceSquared
-                    && !IsClear(next.Position))
+                var nextRelaxed = PlanarDistanceSquared(from.Position, next.Position) <= relaxedDistanceSquared;
+                if (!nextRelaxed && !IsClear(next.Position))
+                {
+                    return false;
+                }
+
+                // A sample without the clearance test may stand right in front of a wall.
+                if ((currentRelaxed || nextRelaxed) && CrossesWall(current.Position, next.Position))
                 {
                     return false;
                 }
 
                 current = next;
+                currentRelaxed = nextRelaxed;
             }
 
             return Math.Abs((float)(current.Position.Y - to.Position.Y)) <= SameLevelTolerance;
@@ -679,6 +687,41 @@ namespace Mmorpg.GameSimulation
             }
 
             return true;
+        }
+
+        // A one-sided wall, such as a deep water edge, blocks only from its front, so two
+        // points with clearance can still lie on both sides of it. A ray between them at the
+        // height of the lifted clearance capsule finds such a wall, and ignores the ground.
+        private bool CrossesWall(SimulationVector3 from, SimulationVector3 to)
+        {
+            var lift = (float)(clearanceLift + clearanceRadius);
+            var origin = new SimulationVector3(from.X, (float)(from.Y + lift), from.Z);
+            var target = new SimulationVector3(to.X, (float)(to.Y + lift), to.Z);
+            var delta = target - origin;
+            var distance = delta.Length;
+            if (distance <= HeightEpsilon)
+            {
+                return false;
+            }
+
+            var direction = delta / distance;
+            queryBuffer.Clear();
+            collisionWorld.QueryShapes(
+                new CollisionAabb(
+                    SimulationVector3.Min(origin, target),
+                    SimulationVector3.Max(origin, target)).Expanded(HeightEpsilon),
+                CollisionLayers.CharacterMovement,
+                queryBuffer);
+            for (var index = 0; index < queryBuffer.Shapes.Count; index++)
+            {
+                if (queryBuffer.Shapes[index].TryRaycast(origin, direction, distance, out var hit)
+                    && hit.Normal.Y < collision.MinimumGroundNormalY)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private MovementPathPlan Finish(MovementPathPlanStatus status, int expanded)

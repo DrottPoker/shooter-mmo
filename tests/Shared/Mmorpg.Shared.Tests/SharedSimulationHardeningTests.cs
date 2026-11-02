@@ -61,6 +61,14 @@ public sealed class SharedSimulationHardeningTests
             state.PositionX < -18f && Math.Abs(state.PositionZ) < 7f);
         Assert.True(behindWall >= 0);
         Assert.Contains(states.Skip(behindWall), state => state.PositionX > -12f && Math.Abs(state.PositionZ) < 7f);
+        // Waded at the wading speed into the pond and stopped at its deep water edge.
+        Assert.Contains(Enumerable.Range(1, states.Count - 1), index =>
+            DistanceXz(states[index], MovementDeterminismScenario.PondCenter, MovementDeterminismScenario.PondCenter) is > 2.7f and < 3.3f
+            && Math.Abs(StepLength(states[index - 1], states[index]) - (5f * WaterRules.WadeSpeedMultiplier / 30f)) < 0.005f);
+        Assert.True(states.Count(state =>
+            DistanceXz(state, MovementDeterminismScenario.PondCenter, MovementDeterminismScenario.PondCenter) is > 2.3f and < 2.8f) >= 10);
+        Assert.DoesNotContain(states, state =>
+            DistanceXz(state, MovementDeterminismScenario.PondCenter, MovementDeterminismScenario.PondCenter) < 2.27f);
     }
 
     [Fact]
@@ -71,7 +79,16 @@ public sealed class SharedSimulationHardeningTests
         var trace = MovementDeterminismScenario.ComputePlannerTrace();
 
         Assert.Equal(MovementDeterminismScenario.ExpectedPlannerFingerprint, trace.Fingerprint);
-        Assert.All(trace.Plans, plan => Assert.Equal(MovementPathPlanStatus.Reached, plan.Status));
+        Assert.All(trace.Plans.Take(trace.Plans.Count - 1), plan => Assert.Equal(MovementPathPlanStatus.Reached, plan.Status));
+
+        // The last click lands in the deep middle of the pond, so its plan ends at the edge.
+        var pond = trace.Plans[^1];
+        Assert.Equal(MovementPathPlanStatus.Closest, pond.Status);
+        var pondEnd = pond.Waypoints[^1];
+        Assert.InRange(
+            MathF.Sqrt(MathF.Pow(pondEnd.X - MovementDeterminismScenario.PondCenter, 2f) + MathF.Pow(pondEnd.Z - MovementDeterminismScenario.PondCenter, 2f)),
+            2.27f,
+            3.2f);
 
         // The motor follows every planned path to its end without being blocked.
         var starts = trace.Starts;
@@ -261,6 +278,13 @@ public sealed class SharedSimulationHardeningTests
 
         Assert.Contains("tags[", tagError.Message, StringComparison.Ordinal);
         Assert.Contains("equipmentSlots[", slotError.Message, StringComparison.Ordinal);
+    }
+
+    private static float StepLength(PlayerMovementState from, PlayerMovementState to)
+    {
+        var deltaX = to.PositionX - from.PositionX;
+        var deltaZ = to.PositionZ - from.PositionZ;
+        return MathF.Sqrt((deltaX * deltaX) + (deltaZ * deltaZ));
     }
 
     private static float DistanceXz(PlayerMovementState state, float x, float z)

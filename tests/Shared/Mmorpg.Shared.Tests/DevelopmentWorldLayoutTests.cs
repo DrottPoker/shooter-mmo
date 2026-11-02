@@ -368,6 +368,120 @@ public sealed class DevelopmentWorldLayoutTests
         Assert.InRange(DistanceXz(final, 111f, 152f), 10f, 17f);
     }
 
+    // The waterside lake around (-108, 112): its surface lies at 3.6 m on a 4 m plateau, and
+    // the water reaches the depth limit 9 m from the center. A walker stops there, and a
+    // click into the middle plans to the edge.
+    [Fact]
+    public void WatersideLakeStopsAWalkerWhereTheWaterGetsTooDeep()
+    {
+        var settings = SettingsFor(TestWorld);
+        var start = new SimulationVector3(-90f, 4f, 112f);
+        var center = new SimulationVector3(-108f, 0.6f, 112f);
+
+        var walked = AssertWalksUntilBlocked(settings, start, center);
+        Assert.InRange(DistanceXz(walked, -108f, 112f), 9f, 9.9f);
+        Assert.True(WaterRules.TryGetDepth(DevelopmentWorld2.Value, walked.Position, new CollisionQueryBuffer(), out var depth));
+        Assert.InRange(depth, 1f, WaterRules.BlockDepth);
+
+        var plan = Planner(DevelopmentWorld2.Value, settings).Plan(start, center);
+        Assert.Equal(MovementPathPlanStatus.Closest, plan.Status);
+        var final = AssertFollowsToTheEnd(DevelopmentWorld2.Value, settings, start, plan);
+        Assert.InRange(DistanceXz(final, -108f, 112f), 9f, 10.5f);
+    }
+
+    [Fact]
+    public void WatersideLakeShoreIsWadedAtTheWadingSpeed()
+    {
+        var ground = GroundBelow(DevelopmentWorld2.Value, -97f, 112f);
+
+        Assert.True(WaterRules.TryGetDepth(DevelopmentWorld2.Value, ground, new CollisionQueryBuffer(), out var depth));
+        Assert.InRange(depth, 0.55f, 0.65f);
+        Assert.Equal(WaterRules.WadeSpeedMultiplier, WaterRules.SpeedMultiplier(depth));
+    }
+
+    // The river is 2 m deep under the bridge and 0.8 m deep across the ford, 16 m upstream.
+    // A route across the river never enters deep water: at the bridge it goes over the deck,
+    // and at the ford it wades.
+    [Theory]
+    [InlineData("bridge", -147.46f, 133.40f, -132.47f, 152.14f, false)]
+    [InlineData("ford", -134.97f, 123.40f, -119.97f, 142.15f, true)]
+    public void WatersideRiverIsCrossedWithoutEnteringDeepWater(
+        string crossing,
+        float startX,
+        float startZ,
+        float x,
+        float z,
+        bool wades)
+    {
+        var settings = SettingsFor(TestWorld);
+        var start = new SimulationVector3(startX, 4f, startZ);
+        var plan = Planner(DevelopmentWorld2.Value, settings).Plan(start, new SimulationVector3(x, 4f, z));
+
+        Assert.True(plan.Status == MovementPathPlanStatus.Reached, $"The {crossing} route ended as {plan.Status}.");
+        var path = new MovementPath(1, plan.Waypoints.ToArray());
+        var state = PlayerMovementSimulation.CreateInitialState(settings, DevelopmentWorld2.Value, start.X, start.Y, start.Z, 0f);
+        var buffer = new CollisionQueryBuffer();
+        var deepest = 0f;
+        for (uint tick = 1; tick <= 3_000 && state.PathProgress.NextWaypointIndex < path.Count; tick++)
+        {
+            state = PlayerMovementSimulation.Step(state, new PlayerMovementInput(tick, tick, path), settings, PlayerCarryState.Default, DevelopmentWorld2.Value);
+            if (WaterRules.TryGetDepth(DevelopmentWorld2.Value, state.Position, buffer, out var depth))
+            {
+                deepest = MathF.Max(deepest, depth);
+            }
+        }
+
+        Assert.Equal(path.Count, state.PathProgress.NextWaypointIndex);
+        Assert.True(deepest <= WaterRules.BlockDepth, $"The {crossing} route went {deepest} m deep.");
+        if (wades)
+        {
+            Assert.InRange(deepest, WaterRules.WadeDepth, WaterRules.BlockDepth);
+        }
+        else
+        {
+            Assert.Equal(0f, deepest);
+        }
+    }
+
+    // The sea fills the World's northwest corner, where the boundary walls end out in it. A
+    // walker toward the corner stops where it gets too deep, far inside the bounds, and the
+    // water is deep everywhere along the open stretch of each bound.
+    [Fact]
+    public void WatersideSeaIsTheEdgeOfTheWorld()
+    {
+        var settings = SettingsFor(TestWorld);
+
+        var walked = AssertWalksUntilBlocked(settings, new SimulationVector3(-122f, 4f, 164f), new SimulationVector3(-192f, 0.1f, 192f));
+        Assert.InRange(DistanceXz(walked, -192f, 192f), 52f, 53.2f);
+
+        var buffer = new CollisionQueryBuffer();
+        for (var along = 147f; along <= 189f; along += 3f)
+        {
+            foreach (var point in new[] { GroundBelow(DevelopmentWorld2.Value, -189.5f, along), GroundBelow(DevelopmentWorld2.Value, -along, 189.5f) })
+            {
+                Assert.True(
+                    WaterRules.TryGetDepth(DevelopmentWorld2.Value, point, buffer, out var depth) && depth > WaterRules.BlockDepth,
+                    $"The sea is not deep at ({point.X}, {point.Z}).");
+            }
+        }
+    }
+
+    [Fact]
+    public void WatersideWaterBodiesAreBakedWithTheirIds()
+    {
+        Assert.Equal("waterside-lake", WaterBodyAt(DevelopmentWorld2.Value, -108f, 112f));
+        Assert.Equal("waterside-river", WaterBodyAt(DevelopmentWorld2.Value, -127.47f, 132.78f));
+        Assert.Equal("waterside-sea", WaterBodyAt(DevelopmentWorld2.Value, -175f, 175f));
+        Assert.Null(WaterBodyAt(DevelopmentWorld2.Value, 0f, 0f));
+
+        var stressArenaWater = new CollisionQueryBuffer();
+        DevelopmentWorld1.Value.QueryShapes(
+            new CollisionAabb(new SimulationVector3(-64f, -10f, -64f), new SimulationVector3(64f, 20f, 64f)),
+            CollisionLayers.Water | CollisionLayers.DeepWaterEdge,
+            stressArenaWater);
+        Assert.Empty(stressArenaWater.Shapes);
+    }
+
     // Walking the west road to the outpost must take the town out of interest and bring the
     // outpost guard in, so both sides of the exit radius are covered.
     [Fact]
@@ -388,6 +502,62 @@ public sealed class DevelopmentWorldLayoutTests
             var distance = MathF.Sqrt(MathF.Pow(outpost.X - x, 2f) + MathF.Pow(outpost.Z - z, 2f));
             Assert.True(distance > InterestExitRadius() + 16f, $"The outpost is only {distance} m from ({x}, {z}).");
         }
+    }
+
+    // Walks straight at the destination until the motor blocks the path.
+    private static PlayerMovementState AssertWalksUntilBlocked(
+        MovementSimulationSettings settings,
+        SimulationVector3 start,
+        SimulationVector3 destination)
+    {
+        var path = new MovementPath(1, [destination]);
+        var state = PlayerMovementSimulation.CreateInitialState(settings, DevelopmentWorld2.Value, start.X, start.Y, start.Z, 0f);
+        for (uint tick = 1; tick <= 3_000 && state.PathProgress.NextWaypointIndex < path.Count; tick++)
+        {
+            state = PlayerMovementSimulation.Step(state, new PlayerMovementInput(tick, tick, path), settings, PlayerCarryState.Default, DevelopmentWorld2.Value);
+        }
+
+        Assert.Equal(path.Count, state.PathProgress.NextWaypointIndex);
+        Assert.True(DistanceXz(state, destination.X, destination.Z) > 1f, "The walk was not blocked.");
+        return state;
+    }
+
+    private static SimulationVector3 GroundBelow(ICollisionWorld world, float x, float z)
+    {
+        Assert.True(
+            CollisionRaycast.TryRaycast(
+                world,
+                new SimulationVector3(x, 50f, z),
+                new SimulationVector3(0f, -1f, 0f),
+                100f,
+                CollisionLayers.CharacterMovement,
+                new CollisionQueryBuffer(),
+                out var hit),
+            $"There is no ground at ({x}, {z}).");
+        return hit.Point;
+    }
+
+    // The body of the highest water surface at the point, or null when there is none.
+    private static string? WaterBodyAt(ICollisionWorld world, float x, float z)
+    {
+        var buffer = new CollisionQueryBuffer();
+        world.QueryShapes(
+            new CollisionAabb(new SimulationVector3(x, -10f, z), new SimulationVector3(x, 50f, z)),
+            CollisionLayers.Water,
+            buffer);
+        string? body = null;
+        var highest = float.MinValue;
+        foreach (var surface in buffer.Shapes.OfType<CollisionWaterSurface>())
+        {
+            if (surface.TryRaycast(new SimulationVector3(x, 50f, z), new SimulationVector3(0f, -1f, 0f), 100f, out var hit)
+                && hit.Point.Y > highest)
+            {
+                highest = hit.Point.Y;
+                body = surface.BodyId;
+            }
+        }
+
+        return body;
     }
 
     private static void AssertStation(SimulationVector3 start, SimulationVector3 destination, bool passable, string station)

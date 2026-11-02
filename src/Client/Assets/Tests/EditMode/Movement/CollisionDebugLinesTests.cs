@@ -54,6 +54,59 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(lines.Segments(CollisionDebugKind.Obstacle), Is.Empty);
         }
 
+        [Test]
+        public void WaterSurfacesAndDeepWaterEdgesHaveKindsOfTheirOwn()
+        {
+            // A square of water 2 m deep over flat ground is deep all the way to its border.
+            var bake = CollisionWorldCompiler.Compile(new CollisionWorldAuthoringDocument
+            {
+                FormatVersion = CollisionDataFormat.Version,
+                WorldId = "collision-debug-water",
+                ChunkSize = 32f,
+                Boxes = new[]
+                {
+                    new CollisionBoxAuthoringEntry
+                    {
+                        SourcePath = "Fixture/Ground#BoxCollider0",
+                        LayerMask = CollisionLayers.CharacterMovement,
+                        CenterY = -0.5f,
+                        HalfExtentX = 10f,
+                        HalfExtentY = 0.5f,
+                        HalfExtentZ = 10f,
+                        RotationW = 1f
+                    }
+                },
+                Water = new[]
+                {
+                    new CollisionWaterAuthoringEntry
+                    {
+                        SourcePath = "Fixture/Pond#WaterBody0",
+                        BodyId = "fixture-pond",
+                        Vertices = CollisionAuthoringEncoding.EncodeFloats(new[]
+                        {
+                            -2f, 2f, -2f, -2f, 2f, 2f, 2f, 2f, 2f, 2f, 2f, -2f
+                        }),
+                        Triangles = CollisionAuthoringEncoding.EncodeInts(new[] { 0, 1, 2, 0, 2, 3 })
+                    }
+                }
+            });
+            var world = new ChunkedStaticCollisionWorld(
+                bake.Manifest.WorldId,
+                bake.Manifest.Revision,
+                bake.Manifest.ChunkSize,
+                bake.Chunks.Select(chunk => CollisionChunkCodec.Decode(chunk.Data)));
+            var lines = new CollisionDebugLines();
+
+            lines.Build(world, Vector3.zero, 24f, 50f);
+
+            Assert.That(lines.Segments(CollisionDebugKind.Water).Count, Is.EqualTo(12));
+            Assert.That(
+                lines.Segments(CollisionDebugKind.Water).Select(point => point.y),
+                Has.All.EqualTo(2f + CollisionDebugLines.TriangleLift).Within(0.0001f));
+            Assert.That(lines.Segments(CollisionDebugKind.DeepWaterEdge), Is.Not.Empty);
+            Assert.That(lines.Segments(CollisionDebugKind.SteepSurface), Is.Empty);
+        }
+
         // A flat and an upright triangle, an obstacle, a movement-only and a sight-only box near
         // the origin, and another obstacle far away.
         private static ChunkedStaticCollisionWorld CreateWorld()

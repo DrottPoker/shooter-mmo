@@ -17,6 +17,7 @@ namespace Mmorpg.GameSimulation
         public CollisionBoxAuthoringEntry[] Boxes;
         public CollisionMeshAuthoringEntry[] Meshes;
         public CollisionHeightfieldAuthoringEntry[] Heightfields;
+        public CollisionWaterAuthoringEntry[] Water;
     }
 
     [Serializable]
@@ -268,6 +269,92 @@ namespace Mmorpg.GameSimulation
         }
     }
 
+    // The surface of a water body in world space, baked from the mesh of a WaterBody. Several
+    // entries may share one body id, such as the pieces of a long coast.
+    [Serializable]
+    public sealed class CollisionWaterAuthoringEntry
+    {
+        public string StableId;
+        public string SourcePath;
+        public string BodyId;
+
+        // World positions as little-endian float32 x, y, z values, base64 encoded.
+        public string Vertices;
+
+        // Vertex index triples as little-endian int32 values, base64 encoded. Each triangle
+        // faces up, so its vertices run clockwise seen from above.
+        public string Triangles;
+
+        // Degenerate triangles are skipped; a triangle that does not face up stops the bake.
+        public IEnumerable<CollisionWaterSurface> ToWaterSurfaces()
+        {
+            if (!CollisionWaterSurface.IsValidBodyId(BodyId))
+            {
+                throw new InvalidDataException(
+                    "Water surface '" + SourcePath + "' needs a body id of lowercase letters, digits, "
+                    + "dots, dashes, and underscores, at most "
+                    + CollisionWaterSurface.MaximumBodyIdLength + " characters.");
+            }
+
+            var stableId = CollisionWorldCompiler.ResolveStableId(StableId, SourcePath);
+            var vertices = CollisionAuthoringEncoding.DecodeFloats(Vertices);
+            var indices = CollisionAuthoringEncoding.DecodeInts(Triangles);
+            if (vertices.Length == 0 || vertices.Length % 3 != 0)
+            {
+                throw new InvalidDataException(
+                    "Water surface '" + SourcePath + "' must contain whole vertex positions.");
+            }
+
+            if (indices.Length == 0 || indices.Length % 3 != 0)
+            {
+                throw new InvalidDataException(
+                    "Water surface '" + SourcePath + "' must contain whole triangles.");
+            }
+
+            var vertexCount = vertices.Length / 3;
+            var surfaces = new List<CollisionWaterSurface>(indices.Length / 3);
+            for (var triangle = 0; triangle < indices.Length / 3; triangle++)
+            {
+                var a = ReadVertex(vertices, indices[triangle * 3], vertexCount);
+                var b = ReadVertex(vertices, indices[(triangle * 3) + 1], vertexCount);
+                var c = ReadVertex(vertices, indices[(triangle * 3) + 2], vertexCount);
+                if (!CollisionTriangle.TryCalculateNormal(a, b, c, out var normal))
+                {
+                    continue;
+                }
+
+                if (normal.Y < CollisionWaterSurface.MinimumNormalY)
+                {
+                    throw new InvalidDataException(
+                        "Water surface '" + SourcePath + "' has a triangle that does not face up.");
+                }
+
+                surfaces.Add(new CollisionWaterSurface(
+                    CollisionWorldCompiler.TriangleStableId(stableId, triangle),
+                    BodyId,
+                    a,
+                    b,
+                    c));
+            }
+
+            return surfaces;
+        }
+
+        private SimulationVector3 ReadVertex(float[] vertices, int index, int vertexCount)
+        {
+            if (index < 0 || index >= vertexCount)
+            {
+                throw new InvalidDataException(
+                    "Water surface '" + SourcePath + "' references a missing vertex.");
+            }
+
+            return new SimulationVector3(
+                CollisionWorldCompiler.CanonicalizeZero(vertices[index * 3]),
+                CollisionWorldCompiler.CanonicalizeZero(vertices[(index * 3) + 1]),
+                CollisionWorldCompiler.CanonicalizeZero(vertices[(index * 3) + 2]));
+        }
+    }
+
     // Packs large numeric arrays into compact, exact base64 strings for authoring JSON.
     public static class CollisionAuthoringEncoding
     {
@@ -389,6 +476,9 @@ namespace Mmorpg.GameSimulation
     {
         private const float ChunkMaximumEpsilon = 0.0001f;
 
+        // The source path of the derived deep water edges, which seeds their stable ids.
+        public const string DeepWaterEdgesSourcePath = "DeepWaterEdges";
+
         public static CollisionWorldBakeResult Compile(CollisionWorldAuthoringDocument authoring)
         {
             if (authoring == null)
@@ -422,28 +512,82 @@ namespace Mmorpg.GameSimulation
                 shapes.AddRange(mesh.ToCollisionTriangles());
             }
 
+            var terrain = new List<CollisionTriangle>();
             foreach (var heightfield in authoring.Heightfields
                 ?? Array.Empty<CollisionHeightfieldAuthoringEntry>())
             {
-                shapes.AddRange(heightfield.ToCollisionTriangles());
+                terrain.AddRange(heightfield.ToCollisionTriangles());
             }
 
+            shapes.AddRange(terrain);
             if (shapes.Count == 0)
             {
                 throw new InvalidDataException("Collision authoring must contain at least one shape.");
             }
+
+            var water = new List<CollisionWaterSurface>();
+            foreach (var entry in authoring.Water ?? Array.Empty<CollisionWaterAuthoringEntry>())
+            {
+                water.AddRange(entry.ToWaterSurfaces());
+            }
+
+            var edges = DeepWaterEdges.Build(
+                authoring.ChunkSize,
+                shapes,
+                terrain,
+                water,
+                StableIdFromPath(DeepWaterEdgesSourcePath));
+            shapes.AddRange(water);
+            shapes.AddRange(edges);
 
             if (shapes.Select(shape => shape.StableId).Distinct().Count() != shapes.Count)
             {
                 throw new InvalidDataException("Collision authoring contains duplicate stable ids.");
             }
 
+            var compiledChunks = new List<CompiledCollisionChunk>();
+            foreach (var chunk in BuildChunks(shapes, authoring.ChunkSize))
+            {
+                var data = CollisionChunkCodec.Encode(chunk);
+                var resourceName = "chunk_" + CoordinateName(chunk.X) + "_" + CoordinateName(chunk.Z);
+                var manifestEntry = new CollisionChunkManifestEntry
+                {
+                    X = chunk.X,
+                    Z = chunk.Z,
+                    ResourceName = resourceName,
+                    Sha256 = ComputeSha256Hex(data),
+                    MinimumX = chunk.Bounds.Minimum.X,
+                    MinimumZ = chunk.Bounds.Minimum.Z,
+                    MaximumX = chunk.Bounds.Maximum.X,
+                    MaximumZ = chunk.Bounds.Maximum.Z
+                };
+                compiledChunks.Add(new CompiledCollisionChunk(manifestEntry, data));
+            }
+
+            var revision = ComputeRevision(
+                authoring.WorldId.Trim(),
+                authoring.ChunkSize,
+                compiledChunks.Select(chunk => chunk.ManifestEntry));
+            var manifest = new CollisionWorldManifest
+            {
+                FormatVersion = CollisionDataFormat.Version,
+                WorldId = authoring.WorldId.Trim(),
+                Revision = revision,
+                ChunkSize = authoring.ChunkSize,
+                Chunks = compiledChunks.Select(chunk => chunk.ManifestEntry).ToArray()
+            };
+            return new CollisionWorldBakeResult(manifest, compiledChunks);
+        }
+
+        // Groups the shapes into the chunks their bounds touch, ordered by chunk key.
+        internal static List<CollisionChunk> BuildChunks(IReadOnlyList<CollisionShape> shapes, float chunkSize)
+        {
             var shapesByChunk = new Dictionary<long, List<CollisionShape>>();
             foreach (var shape in shapes)
             {
                 var minimumX = ChunkedStaticCollisionWorld.ToChunkCoordinate(
                     shape.Bounds.Minimum.X,
-                    authoring.ChunkSize);
+                    chunkSize);
                 // A shape that ends on a chunk edge stays out of the next chunk, and a
                 // flat shape lying on a chunk edge, such as a wall triangle, still gets
                 // the chunk that starts there.
@@ -451,15 +595,15 @@ namespace Mmorpg.GameSimulation
                     minimumX,
                     ChunkedStaticCollisionWorld.ToChunkCoordinate(
                         (float)(shape.Bounds.Maximum.X - ChunkMaximumEpsilon),
-                        authoring.ChunkSize));
+                        chunkSize));
                 var minimumZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(
                     shape.Bounds.Minimum.Z,
-                    authoring.ChunkSize);
+                    chunkSize);
                 var maximumZ = Math.Max(
                     minimumZ,
                     ChunkedStaticCollisionWorld.ToChunkCoordinate(
                         (float)(shape.Bounds.Maximum.Z - ChunkMaximumEpsilon),
-                        authoring.ChunkSize));
+                        chunkSize));
                 if (ChunkedStaticCollisionWorld.CellCount(minimumX, maximumX, minimumZ, maximumZ)
                     > CollisionDataFormat.MaximumChunksPerShape)
                 {
@@ -483,48 +627,22 @@ namespace Mmorpg.GameSimulation
                 }
             }
 
-            var compiledChunks = new List<CompiledCollisionChunk>();
+            var chunks = new List<CollisionChunk>(shapesByChunk.Count);
             foreach (var pair in shapesByChunk.OrderBy(value => value.Key))
             {
                 DecodeChunkKey(pair.Key, out var x, out var z);
-                var minimumX = (float)(x * authoring.ChunkSize);
-                var minimumZ = (float)(z * authoring.ChunkSize);
+                var minimumX = (float)(x * chunkSize);
+                var minimumZ = (float)(z * chunkSize);
                 var bounds = new CollisionAabb(
                     new SimulationVector3(minimumX, float.MinValue, minimumZ),
                     new SimulationVector3(
-                        minimumX + authoring.ChunkSize,
+                        minimumX + chunkSize,
                         float.MaxValue,
-                        minimumZ + authoring.ChunkSize));
-                var chunk = new CollisionChunk(x, z, bounds, pair.Value);
-                var data = CollisionChunkCodec.Encode(chunk);
-                var resourceName = "chunk_" + CoordinateName(x) + "_" + CoordinateName(z);
-                var manifestEntry = new CollisionChunkManifestEntry
-                {
-                    X = x,
-                    Z = z,
-                    ResourceName = resourceName,
-                    Sha256 = ComputeSha256Hex(data),
-                    MinimumX = bounds.Minimum.X,
-                    MinimumZ = bounds.Minimum.Z,
-                    MaximumX = bounds.Maximum.X,
-                    MaximumZ = bounds.Maximum.Z
-                };
-                compiledChunks.Add(new CompiledCollisionChunk(manifestEntry, data));
+                        minimumZ + chunkSize));
+                chunks.Add(new CollisionChunk(x, z, bounds, pair.Value));
             }
 
-            var revision = ComputeRevision(
-                authoring.WorldId.Trim(),
-                authoring.ChunkSize,
-                compiledChunks.Select(chunk => chunk.ManifestEntry));
-            var manifest = new CollisionWorldManifest
-            {
-                FormatVersion = CollisionDataFormat.Version,
-                WorldId = authoring.WorldId.Trim(),
-                Revision = revision,
-                ChunkSize = authoring.ChunkSize,
-                Chunks = compiledChunks.Select(chunk => chunk.ManifestEntry).ToArray()
-            };
-            return new CollisionWorldBakeResult(manifest, compiledChunks);
+            return chunks;
         }
 
         public static string ComputeSha256Hex(byte[] data)

@@ -167,8 +167,9 @@ namespace Mmorpg.GameSimulation
         }
     }
 
-    // Version 2 layout after the header: the box count and boxes, then the triangle count
-    // and triangles. Each list is ordered by stable id.
+    // Version 3 layout after the header: the box count and boxes, the triangle count and
+    // triangles, the water body ids in ordinal order, and the water surface count and
+    // surfaces, each with the index of its body id. Each shape list is ordered by stable id.
     public static class CollisionChunkCodec
     {
         public static byte[] Encode(CollisionChunk chunk)
@@ -187,7 +188,10 @@ namespace Mmorpg.GameSimulation
             var triangles = chunk.Shapes.OfType<CollisionTriangle>()
                 .OrderBy(triangle => triangle.StableId)
                 .ToArray();
-            if (boxes.Length + triangles.Length != chunk.Shapes.Count)
+            var waterSurfaces = chunk.Shapes.OfType<CollisionWaterSurface>()
+                .OrderBy(surface => surface.StableId)
+                .ToArray();
+            if (boxes.Length + triangles.Length + waterSurfaces.Length != chunk.Shapes.Count)
             {
                 throw new ArgumentException("Collision chunk contains an unsupported shape.", nameof(chunk));
             }
@@ -222,6 +226,26 @@ namespace Mmorpg.GameSimulation
                     WriteVector(writer, triangle.A);
                     WriteVector(writer, triangle.B);
                     WriteVector(writer, triangle.C);
+                }
+
+                var bodyIds = waterSurfaces.Select(surface => surface.BodyId)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(bodyId => bodyId, StringComparer.Ordinal)
+                    .ToArray();
+                writer.Write(bodyIds.Length);
+                foreach (var bodyId in bodyIds)
+                {
+                    writer.Write(bodyId);
+                }
+
+                writer.Write(waterSurfaces.Length);
+                foreach (var surface in waterSurfaces)
+                {
+                    writer.Write(surface.StableId);
+                    writer.Write(Array.BinarySearch(bodyIds, surface.BodyId, StringComparer.Ordinal));
+                    WriteVector(writer, surface.A);
+                    WriteVector(writer, surface.B);
+                    WriteVector(writer, surface.C);
                 }
 
                 writer.Flush();
@@ -283,6 +307,35 @@ namespace Mmorpg.GameSimulation
                             ReadVector(reader)));
                     }
 
+                    var bodyIdCount = ReadCount(reader, 0);
+                    var bodyIds = new string[bodyIdCount];
+                    for (var index = 0; index < bodyIdCount; index++)
+                    {
+                        bodyIds[index] = reader.ReadString();
+                        if (index > 0 && string.CompareOrdinal(bodyIds[index - 1], bodyIds[index]) >= 0)
+                        {
+                            throw new InvalidDataException("Collision chunk water body ids are not ordered.");
+                        }
+                    }
+
+                    var waterSurfaceCount = ReadCount(reader, boxCount + triangleCount);
+                    for (var index = 0; index < waterSurfaceCount; index++)
+                    {
+                        var stableId = reader.ReadUInt64();
+                        var bodyIndex = reader.ReadInt32();
+                        if (bodyIndex < 0 || bodyIndex >= bodyIds.Length)
+                        {
+                            throw new InvalidDataException("Collision chunk water surface names a missing body.");
+                        }
+
+                        shapes.Add(new CollisionWaterSurface(
+                            stableId,
+                            bodyIds[bodyIndex],
+                            ReadVector(reader),
+                            ReadVector(reader),
+                            ReadVector(reader)));
+                    }
+
                     if (stream.Position != stream.Length)
                     {
                         throw new InvalidDataException("Collision chunk contains trailing data.");
@@ -298,6 +351,10 @@ namespace Mmorpg.GameSimulation
             catch (ArgumentException exception)
             {
                 throw new InvalidDataException("Collision chunk contains invalid geometry.", exception);
+            }
+            catch (FormatException exception)
+            {
+                throw new InvalidDataException("Collision chunk contains an invalid water body id.", exception);
             }
         }
 
