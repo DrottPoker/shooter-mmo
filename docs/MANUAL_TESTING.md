@@ -199,7 +199,7 @@ problem, and nothing is granted.
 | Encumbrance 100% Pack | `encumbrance_100` | Carry weight exactly at the base capacity, `2000 / 2000` |
 | Encumbrance 140% Pack | `encumbrance_140` | Carry weight exactly at the 140 percent limit, `2800 / 2000` |
 | Recovery Delivery Pack | `recovery_delivery` | One Recovery delivery with ore and potions |
-| Outfits Test Pack | `outfits` | Every item of clothing and armor that shows a garment, with the wool robe, hood, and cloak in every color, in Permanent Inventory |
+| Outfits Test Pack | `outfits` | Every item of clothing and armor that shows a garment, with the wool robe and hood in every color, in Permanent Inventory |
 
 ### Development Item Commands
 
@@ -911,8 +911,8 @@ for 40 percent of the value, rounded down on the total, without buyback.
    in the complete view on the `Vendor` tab with `General Store` and `You have
    100 Gold`. The offers are listed in the profile's order: the Bronze Arrow,
    the Minor Healing Potion, the Cooked Trout, the Starter Pickaxe, the
-   Woodcutting Axe, the clothes, the wool robe, hood, and cloak in their three
-   colors, the Nasal Helm, and then the Iron Sword, the Oak Staff, the Iron
+   Woodcutting Axe, the clothes, the wool robe and hood in their three colors,
+   the Nasal Helm, and then the Iron Sword, the Oak Staff, the Iron
    Greataxe, and the Heater Shield, each with its unit price, such as `50 Gold
    each` for the Starter Pickaxe. Each offer has a quantity field, `1` by
    default, and a button that names the total while you type, such as `Buy for
@@ -1383,69 +1383,74 @@ woman.
    soles sink about 1 cm into the ground. Drag the boots and gloves back into
    the inventory. Expected result: the bare feet and hands are back, whole.
 5. Wear `Leather Boots` and `Wool Robe`, then `Long-Sleeved Linen Shirt`, then
-   `Wool Robe` again, and `Wool Cloak` on the `Back` slot beside `Feet`.
-   Expected result: the robe reaches the ankles with the boots showing below it,
-   and the shirt and the robe replace each other, since both are chest pieces.
-   The robe's skirt starts just below the navel and falls straight over the
-   hips, wider toward the hem, without showing the shape of the legs. The cloak
-   lies on the trapezius beside the neck, not on the shoulder muscle, and fans
-   out in front from a large round bronze clasp on each side, with the throat
-   and the chest free. Its back hangs from the nape between the arms and falls
-   straight over the skirt, with no skirt showing through it and no bulge in
-   the middle of the back. With `Wool Trousers` under the robe, the trousers are
-   not drawn.
-6. Wear `Long-Sleeved Linen Shirt` and `Wool Trousers` under the cloak.
-   Expected result: the cloak hangs taut from the nape down the back to the
-   middle of the calves, between the arms, without following the back or the
-   buttocks.
-7. Wear the robe and the cloak again, then walk, jog, stop, and turn. Expected
-   result: the skirt follows the legs, the cloak is pushed back by legs that
-   kick back and swings behind over the skirt, both settle when you stop, and no
-   leg pokes out through the skirt or the cloak, no skirt shows through the
-   cloak, and no hole shows anywhere.
-8. Wear `Long-Sleeved Linen Shirt` and `Wool Cloak`, choose `DarkBrownHair` on
-   the `Hair` row, then wear `Wool Hood` on `Head`. Expected result: the hair
-   falls to the shoulders over the cloak. The grey-brown hood covers the head,
-   with the fringe and a little hair at the sides of the face showing in its
-   opening; the hair is pressed flat under it and comes through nowhere, and
-   the hood's short collar lies over the neck and the cloak, ending above the
-   bronze clasps.
-9. Wear `Nasal Helm` on `Head`. Expected result: the helmet takes the hood's
+   `Wool Robe` again. Expected result: the robe reaches the ankles with the
+   boots showing below it, and the shirt and the robe replace each other, since
+   both are chest pieces. The robe's skirt starts just below the navel and falls
+   straight over the hips, wider toward the hem, without showing the shape of
+   the legs. With `Wool Trousers` under the robe, the trousers are not drawn.
+6. Walk, jog, stop, and turn in the robe. Expected result: the skirt follows the
+   legs and settles when you stop, no leg pokes out through the skirt, and no
+   hole shows anywhere.
+7. Wear `Long-Sleeved Linen Shirt`, choose `DarkBrownHair` on the `Hair` row,
+   then wear `Wool Hood` on `Head`. Expected result: the hair falls to the
+   shoulders. The grey-brown hood covers the head, with the fringe and a little
+   hair at the sides of the face showing in its opening; the hair is pressed
+   flat under it and comes through nowhere, and the hood's short collar lies
+   over the neck.
+8. Wear `Nasal Helm` on `Head`. Expected result: the helmet takes the hood's
    place, and the hood moves into the inventory. A pointed riveted iron helmet
    sits above the brows and the ears with the leather lining showing below the
    iron and the nasal down in front of the nose, and the hair, pressed flat
    under it, hangs out below it to the shoulders. Choose `none` on the `Hair`
    row. Expected result: a bald head under the helmet; the hair is part of the
    look, not an item.
-10. Walk, jog, and turn with the hood and with the helmet. Expected result:
-    nothing of the hair, the cloak, or the shirt shows through the hood or the
-    helmet.
+9. Walk, jog, and turn with the hood and with the helmet. Expected result:
+   nothing of the hair or the shirt shows through the hood or the helmet.
 
 Drag the items back into the inventory and the bare body is back. What a
 character wears comes from its equipment, so it is the same after a new join.
 
 ### Dye Colors
 
-1. At Mira's General Store, buy the Wool Cloak for 35 Gold and the Blue Wool
-   Cloak for 50 Gold with the 100 Gold of a new character. Drag `Wool Cloak`
-   onto `Back`. Expected result: the dark brown wool cloak hangs down the back
-   from the nape, held in front by its bronze clasps.
-2. Drag `Blue Wool Cloak` onto `Back`. Expected result: the cloak turns dark
-   blue with the same folds, hems, and stitches, the clasps stay bronze, and the
-   brown cloak moves into the inventory slot the blue one came from.
-3. With the Outfits Test Pack, wear `Blue Wool Robe`, `Blue Wool Hood`, `Blue
-   Wool Cloak`, and `Leather Boots`. Expected result: the robe and the hood are
-   the same medium blue, and the cloak a darker blue over them. With `Red Wool
-   Robe`, `Red Wool Hood`, and `Red Wool Cloak` it is the same in a warm madder
-   red with the cloak darker. With `Wool Robe`, `Wool Hood`, and `Wool Cloak` the
-   robe and the hood are undyed grey-brown and the cloak dark brown.
+1. At Mira's General Store, buy the Wool Robe for 40 Gold and the Blue Wool
+   Robe for 60 Gold with the 100 Gold of a new character. Drag `Wool Robe` onto
+   `Body`. Expected result: the undyed grey-brown wool robe reaches the ankles.
+2. Drag `Blue Wool Robe` onto `Body`. Expected result: the robe turns medium
+   blue with the same folds, hems, and stitches, and the grey-brown robe moves
+   into the inventory slot the blue one came from.
+3. With the Outfits Test Pack, wear `Blue Wool Robe`, `Blue Wool Hood`, and
+   `Leather Boots`. Expected result: the robe and the hood are the same medium
+   blue. With `Red Wool Robe` and `Red Wool Hood` they are the same warm madder
+   red, and with `Wool Robe` and `Wool Hood` undyed grey-brown.
 4. Switch to the woman. Expected result: she wears the same items in the same
    colors.
 
+### Cloaks Cannot Be Worn
+
+Cloaks will be achievement rewards worn from a window of their own, so no item
+equips to the `back` slot; see
+[Game Design](GAME_DESIGN.md#achievements-and-cloaks).
+
+1. Press C. Expected result: the paper doll has no `Back` slot, and the cell
+   right of `Neck` is empty.
+2. Leave the shard and give the character a `Wool Cloak` with the
+   [Inventory Item Grants Window](#inventory-item-grants-window), then join
+   again and press B. Expected result: the cloak lies in Permanent Inventory.
+   Right-clicking it reports `Right-click equips equipment; drag this item to
+   move it.`, and dragging it lights no equipment slot green.
+3. Open Mira's `Trade`. Expected result: the offers list no cloak, and with
+   the cloak on the `Sell` slot the button reads `Sell 1 Wool Cloak for 14
+   Gold`.
+4. A character that wore a cloak before migration
+   `202611021200_remove_cloak_equipment` ran: open the `Recovery` tab at an NPC
+   that offers Recovery Storage. Expected result: a delivery
+   `Recovered: cloaks can no longer be worn` holds the cloak, and dragging it
+   onto a Permanent Inventory slot moves it there.
+
 ### Lower And Raise The Hood
 
-1. Wear `Wool Hood`, `Wool Robe`, and `Wool Cloak`, and press C. Expected
-   result: the inventory footer shows `Lower Wool Hood`.
+1. Wear `Wool Hood` and `Wool Robe`, and press C. Expected result: the
+   inventory footer shows `Lower Wool Hood`.
 2. Press it. Expected result: the hood falls back onto the shoulders, and the
    button reads `Raise Wool Hood`. Press it again to raise the hood.
 3. Leave the shard with the hood lowered and join again. Expected result: the
@@ -1455,7 +1460,7 @@ character wears comes from its equipment, so it is the same after a new join.
 
 1. Join the same shard near the first character with the
    [second client](#add-a-second-client). Expected result: each client shows
-   the other player in its own body model, look, hair, robe, hood, and cloak.
+   the other player in its own body model, look, hair, robe, and hood.
    Lowering or raising the hood, changing an item, or stepping the `Face` and
    `Body` rows of the Admin menu in the first client changes the character in
    the second within a moment, and the change stays after leaving and joining
@@ -1464,15 +1469,15 @@ character wears comes from its equipment, so it is the same after a new join.
    [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) describes, and join
    `Local Stress Arena`. Expected result: the bots show both bodies, about half
    each, with varied faces, eyes, hair, and outfits of shirts, trousers, boots,
-   robes, and cloaks. Some hold weapons, such as a sword, a shield, both, a
+   and robes, and none wears a cloak. Some hold weapons, such as a sword, a shield, both, a
    shortbow, or a staff, but never a shield together with a weapon that takes
    both hands. Each bot keeps its body and look while it walks in and out of
    view.
 3. Let the dressed character die, such as to the wolves. Expected result: the
    dying body keeps its clothes until the respawn, then the corpse lies there
-   in the character's body and look, with the hood as it was, wearing the robe,
-   hood, and cloak. Loot the cloak from the corpse with the second character.
-   Expected result: the cloak leaves the lying body at once.
+   in the character's body and look, with the hood as it was, wearing the robe
+   and the hood. Loot the robe from the corpse with the second character.
+   Expected result: the robe leaves the lying body at once.
 
 ## Art In The Game
 
@@ -1580,16 +1585,26 @@ Pick each body in turn in `Body`.
    Expected result: the boots follow the feet and bend at the front of the
    ankle, the gloves' fingers follow the hands, and the body falls and lies in
    the outfit.
-3. Tick `LeatherBoots`, `WoolRobe`, and `WoolCloak`. Press `Walk`, `Jog`, and
-   `Death`, and drag around the body. Expected result: the skirt and the cloak
-   swing with the steps, the legs stay inside the skirt and in front of the
-   cloak, the cloak lies over the skirt, and its inside shows from the front.
+3. Tick `LeatherBoots`, `WoolRobe`, and `WoolCloak`. Expected result: the
+   cloak lies on the trapezius beside the neck, not on the shoulder muscle, and
+   fans out in front from a large round bronze clasp on each side, with the
+   throat and the chest free. Its back hangs from the nape between the arms and
+   falls straight over the skirt, with no skirt showing through it and no bulge
+   in the middle of the back. Press `Walk`, `Jog`, and `Death`, and drag around
+   the body. Expected result: the skirt and the cloak swing with the steps, the
+   legs stay inside the skirt and in front of the cloak, the cloak is pushed
+   back by legs that kick back, the cloak lies over the skirt, and its inside
+   shows from the front.
    When the body falls, the legs swing up through the cloak and the skirt for a
    moment, as the art pipeline reports for `Death`, and then it lies in the
    robe and the cloak.
-4. Tick `LinenLongShirt`, `WoolCloak`, `DarkBrownHair`, and `WoolHoodUp`.
-   Expected result: `Drawn` lists all four, with the hair pressed flat under
-   the hood. Tick `WoolHoodDown` and then `IronNasalHelm` instead of the hood up,
+4. Tick `LinenLongShirt`, `WoolTrousers`, and `WoolCloak`. Expected result:
+   the cloak hangs taut from the nape down the back to the middle of the calves,
+   between the arms, without following the back or the buttocks.
+5. Tick `LinenLongShirt`, `WoolCloak`, `DarkBrownHair`, and `WoolHoodUp`.
+   Expected result: `Drawn` lists all four, the hair falls to the shoulders
+   over the cloak, and it is pressed flat under the hood, whose short collar
+   lies over the neck and the cloak, ending above the bronze clasps. Tick `WoolHoodDown` and then `IronNasalHelm` instead of the hood up,
    and press `Walk`, `Jog`, and `Death`. Expected result: the hair takes its own
    form under the lowered hood, whose bag stays on the upper back, and its
    pressed form under the helmet; the helmet moves with the head, and neither

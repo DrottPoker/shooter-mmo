@@ -1,7 +1,7 @@
 {
   "formatVersion": 8,
   "catalogId": "core",
-  "revision": "1c430dfc4a7b1380b3b66a2d3a6d8478643d649f5eb560f7a1f39c436d04db72",
+  "revision": "6fd5a31562190ee5051e01f485bd7cd26cfaca6edfd7492a12153c5404c1ed62",
   "character": {
     "baseCarryCapacity": 2000,
     "inventorySlotCount": 20,
@@ -394,14 +394,12 @@
       "unitWeight": 100,
       "value": 50,
       "maximumStackSize": 1,
-      "equipmentSlots": [
-        "back"
-      ],
+      "equipmentSlots": [],
       "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "defaultPolicies": [],
       "requiredCharacterLevel": 1,
-      "structuralFingerprint": "9c6014810905415494c9b20b3df04aa777e475911f1fdbe0e58c453810b8e641"
+      "structuralFingerprint": "deec133dcdd08ddb4ae43354b1f70b9f69ffd68956fa871750f6ef695cc4ee4f"
     },
     {
       "id": "clothing.blue_wool_hood",
@@ -502,14 +500,12 @@
       "unitWeight": 100,
       "value": 50,
       "maximumStackSize": 1,
-      "equipmentSlots": [
-        "back"
-      ],
+      "equipmentSlots": [],
       "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "defaultPolicies": [],
       "requiredCharacterLevel": 1,
-      "structuralFingerprint": "01a030b667e0e474918fb341b72b4f98a32fd0365bda81c026b39e6946e3c80e"
+      "structuralFingerprint": "62d0ee09b90ab03740d7a61a500df719fb77d0654061cfb51346de12b23bd6ec"
     },
     {
       "id": "clothing.red_wool_hood",
@@ -556,14 +552,12 @@
       "unitWeight": 100,
       "value": 35,
       "maximumStackSize": 1,
-      "equipmentSlots": [
-        "back"
-      ],
+      "equipmentSlots": [],
       "blockedEquipmentSlots": [],
       "playerDestroyable": true,
       "defaultPolicies": [],
       "requiredCharacterLevel": 1,
-      "structuralFingerprint": "7cda73642793f84b2d8bb5056a2dee9155163c4c1835dd1b8b0b4f4b97e2e88f"
+      "structuralFingerprint": "be1df35f526ffd50e01ea2d8d20202284b54a1df3904bf5a5a5300feef6e6a72"
     },
     {
       "id": "clothing.wool_hood",
@@ -956,15 +950,6 @@
         },
         {
           "definitionId": "clothing.red_wool_hood"
-        },
-        {
-          "definitionId": "clothing.wool_cloak"
-        },
-        {
-          "definitionId": "clothing.blue_wool_cloak"
-        },
-        {
-          "definitionId": "clothing.red_wool_cloak"
         },
         {
           "definitionId": "armor.nasal_helm"

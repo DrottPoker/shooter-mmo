@@ -5,9 +5,7 @@
   "category": "clothing",
   "defaultPolicies": [ ],
   "displayName": "Blue Wool Cloak",
-  "equipmentSlots": [
-    "back"
-  ],
+  "equipmentSlots": [ ],
   "id": "clothing.blue_wool_cloak",
   "maximumStackSize": 1,
   "playerDestroyable": true,

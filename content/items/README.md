@@ -315,7 +315,7 @@ It maps every gameplay definition id to an optional icon address below
 presentation key, and the look of the item on a body:
 
 - `garments` names the garment textures the item shows when worn, such as
-  `WoolCloak`, at most four. `loweredGarments` names those it shows instead
+  `WoolRobe`, at most four. `loweredGarments` names those it shows instead
   while its wearer has lowered it, such as `WoolHoodDown` for the hood. `dyes`
   holds the colors of their dye channels as `#RRGGBB` with upper-case digits,
   at most three, or none for their natural colors. Lowered garments and dyes

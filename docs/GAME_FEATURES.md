@@ -122,16 +122,22 @@ delay recovers instead of growing. Interest is described in
   character: face, eyes, paint layers such as a scar, a tattoo, or underwear,
   and hair. The body stands, walks, and jogs with the speed it moves at.
 - Every player wears the garments of the items it has equipped, such as a linen
-  shirt, a wool robe, or a blue wool cloak, and holds its weapon and shield. The
+  shirt, a wool robe, or a wool hood, and holds its weapon and shield. The
   local player changes as soon as it equips an item, and others as the worker
-  sends their equipment. Robes and cloaks swing with the body.
+  sends their equipment. Robes swing with the body.
+- No item can be worn as a cloak: cloaks will be achievement rewards worn from
+  a window of their own, as
+  [Game Design](GAME_DESIGN.md#achievements-and-cloaks) describes. The Wool
+  Cloak, Blue Wool Cloak, and Red Wool Cloak stay as items that cannot be
+  equipped, no vendor sells them, and the cloak garment shows only in the
+  Unity Editor's [Wardrobe](ART_PIPELINE.md#the-wardrobe).
 - A gathering tool shows only while its character gathers; see
   [Gathering](#gathering).
 - A worn hood can be lowered and raised with the `Lower <item>` or
   `Raise <item>` button in the inventory footer, and every client shows it.
 - A dying body keeps its clothes until its character respawns. A player corpse
   then shows the dead character's body, look, and the garments still in it, and
-  an item looted from it, such as the cloak, leaves the lying body at once.
+  an item looted from it, such as the robe, leaves the lying body at once.
 - Development bots show either body with a varied look, outfit, and weapons
   chosen by their ids.
 - In the Development environment, the Admin menu's Look tab changes the stored
@@ -351,11 +357,12 @@ button steers the walk, a right-click opens the world menu, and the wheel zooms.
 
 The panel has three columns that never move each other:
 
-- **Equipment**, on the left, is a paper doll of five full rows of three: tool,
-  head, and Bag on top, shoulders, neck, and back below them, main hand, body,
-  and off hand in the middle, hands, legs, and ammunition below them, and the two
-  rings beside the feet at the bottom. No item equips to the shoulders slot yet.
-  A slot the catalog adds later appears in an extra row.
+- **Equipment**, on the left, is a paper doll of five rows of three: tool,
+  head, and Bag on top, shoulders and neck below them with an empty cell where
+  the hidden back slot belongs, main hand, body, and off hand in the middle,
+  hands, legs, and ammunition below them, and the two rings beside the feet at
+  the bottom. No item equips to the shoulders slot yet. A slot the catalog adds
+  later appears in an extra row.
 - **Context**, in the middle, shows the Bank, Recovery Storage, a corpse, or a
   vendor in tabs, with a `Refresh` button. Its header names the NPC whose open
   interaction offers the shown storage or trade. Recovery Storage heads each

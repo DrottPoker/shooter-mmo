@@ -63,10 +63,12 @@ namespace Mmorpg.Client.Tests.PlayMode
                 yield return null;
                 Canvas.ForceUpdateCanvases();
 
+                // Every equipment slot shows except the hidden Back slot of the cloaks.
                 var views = panel.GetComponentsInChildren<InventorySlotView>();
                 Assert.That(
                     views.Count(view => view.SlotKey.StartsWith("equipment:", StringComparison.Ordinal)),
-                    Is.EqualTo(catalog.Gameplay.EquipmentSlots.Length));
+                    Is.EqualTo(catalog.Gameplay.EquipmentSlots.Count(slot => slot.Id != "back")));
+                Assert.That(views.Any(view => view.SlotKey == "equipment:back"), Is.False);
                 Assert.That(
                     views.Count(view => view.SlotKey.StartsWith("inventory:", StringComparison.Ordinal)),
                     Is.EqualTo(snapshot.PermanentInventory.Slots.Count));

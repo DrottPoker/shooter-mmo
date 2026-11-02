@@ -31,7 +31,9 @@ Implemented:
   and gathering tools held only while they are used.
 - Items that show their garments in their dye colors and their attachments, and
   a look that is chosen at character creation, stored with the character, and
-  sent to every client; development bots are dressed from their ids.
+  sent to every client; development bots are dressed from their ids. No item
+  shows the cloak, because no item equips to the `back` slot; the cloak shows in
+  the Unity Editor's [Wardrobe](ART_PIPELINE.md#the-wardrobe).
 
 Planned:
 
@@ -42,6 +44,9 @@ Planned:
 - Soft see-through fabric, such as a veil.
 - Shoulder garments, such as pauldrons and mantles, for the `shoulders`
   equipment slot, with a visual slot and layer of their own.
+- Cloaks earned through achievements and put on in a window of their own, on
+  the cloak garment and its cloth chains; see
+  [Game Design](GAME_DESIGN.md#achievements-and-cloaks).
 - More hold poses, such as a sword raised or a shield in guard, weapons sheathed
   at the hip or on the back out of combat, and a quiver or a backpack on the
   back.
@@ -540,7 +545,7 @@ natural color of each channel, which its undyed garment wears, so an existing
 texture becomes dyeable without being painted again; see
 [Dyeable Textures](ART_PIPELINE.md#dyeable-textures). The wool of the cloak, the
 robe, and the hood is dyeable, one channel each, with the cloak's bronze clasps
-left undyed. The dye colors belong to the item definition: a Blue Wool Cloak is
+left undyed. The dye colors belong to the item definition: a Blue Wool Robe is
 an item of its own; see [Items](#items).
 
 ## Fitting Every Body Type
@@ -1141,7 +1146,7 @@ stops, and everyone sees it.
 Items show their garments and attachments:
 
 - **An item names its garments** in the client's item presentation, by the
-  names of their garment textures, such as `WoolCloak` on `Cloak`, which name a
+  names of their garment textures, such as `WoolRobe` on `Robe`, which name a
   template and its texture together, with the colors of their dye channels, or
   none for the textures' natural colors. The presentation is the client's, next
   to the item's icon and name; the server knows only the definition ids. Every
@@ -1173,7 +1178,9 @@ Items show their garments and attachments:
   item names a tool instead; see [Tools In Use](#tools-in-use).
 
 The clothing and armor of the item catalog show garments this way, the wool set
-also in blue and in red, and the weapons and the shield show attachments.
+also in blue and in red, and the weapons and the shield show attachments. The
+Wool Cloak, Blue Wool Cloak, and Red Wool Cloak equip to no slot and show no
+garment, since cloaks will be achievement rewards.
 
 ### The Look On The Server
 
@@ -1211,15 +1218,15 @@ Every client sees a character as the server stores it:
   creation chooses them otherwise.
 - **Development bots** have no stored look and no items: the worker gives each a
   body model, a look, and an outfit of catalog items picked from its character id
-  by a stable hash, so a crowd shows every body, face, and garment, and each bot
-  keeps its own. The outfit is only shown. The visible slots include `main_hand`
+  by a stable hash, so a crowd shows every body, face, and garment that an item
+  shows, and each bot keeps its own; no bot wears a cloak. The outfit is only shown. The visible slots include `main_hand`
   and `off_hand`, so bots hold weapons and shields too, and an item stays out of
   a slot that an item of an earlier slot blocks, such as a shield beside a
   two-handed bow.
 - **A dying body keeps its clothes** until its character respawns, though its
   items already lie in its corpse. A player corpse shows the dead character's
   body model and look, with its headwear, wearing the items still in the
-  corpse's equipment section, so a looted cloak leaves the corpse.
+  corpse's equipment section, so a looted robe leaves the corpse.
 
 ## Putting A Character Together In Unity
 

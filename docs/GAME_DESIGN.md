@@ -42,7 +42,8 @@ triangle with armor and misses, elemental damage and resistances, threat,
 healing abilities, potions, food, and drinking, movement impairments,
 experience and talents, profession levels and crafting, the other gathering
 professions, gameplay rule areas with the logout risk timer, the hostile flag
-and criminal reputation, quests, player trading, and social systems. The status
+and criminal reputation, achievements and the cloaks they reward, quests, player
+trading, and social systems. The status
 of the whole project is in [Project Overview](PROJECT_OVERVIEW.md).
 
 Each section says what of it is implemented. Its rules are grouped as
@@ -1040,6 +1041,25 @@ Implemented, except character deletion and changing a look in the game.
   in the game, such as at a barber; the rules are in
   [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-server).
 - A new character starts with the starting currency balance.
+
+## Achievements And Cloaks
+
+Not implemented. Until the cloak window exists, no item can be worn as a cloak;
+what that means in the game is in
+[Game Features](GAME_FEATURES.md#characters-and-their-looks).
+
+### Decided
+
+- Cloaks are rewards for achievements that a character wears to show them off.
+  A cloak is not a regular item: no vendor sells one, and it is not worn from
+  the inventory.
+- A character puts on a cloak it has earned in a window of its own.
+
+### Open
+
+- Which achievements exist, and which cloak each one rewards.
+- Whether a cloak is earned by the character or by the account, and whether
+  it can be lost.
 
 ## UI And UX Principles
 

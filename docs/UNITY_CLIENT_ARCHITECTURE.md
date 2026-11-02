@@ -1305,6 +1305,8 @@ them.
 
 `EquipmentPaperDollLayout` owns the positions of the equipment slots and appends
 any slot it does not know, such as one added to the catalog later, in extra rows.
+It hides the `back` slot and leaves its cell empty, since no item equips to it
+until cloaks come from achievements.
 Every slot in every module is a square of one size, fitted to five columns in
 the character column, and every grid centers a full row in its module. An
 occupied slot draws the item's icon from `ClientItemCatalog.LoadIcon`; only an
@@ -1479,7 +1481,7 @@ presence entry and updates it from server position, facing, and presentation key
   corpses costs no animation or skinning; the corpse has a box collider around it
   for the pointer. The hidden copy of the body takes the look from the shared
   `PlayerBodyMaterials` before it is baked, since the underwear is paint over the
-  skin. A corpse whose look changes, such as when someone loots its cloak, swaps
+  skin. A corpse whose look changes, such as when someone loots its robe, swaps
   to the body of its new look, and a baked body that no corpse in view shows any
   more is destroyed. While a body that shows its character dead lies within
   1.5 m, the corpse stays hidden, so the dying body and its remains never show

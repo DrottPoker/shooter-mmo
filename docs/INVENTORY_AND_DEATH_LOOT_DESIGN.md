@@ -196,7 +196,9 @@ order:
 - `head`
 - `neck`
 - `shoulders`, for pauldrons and mantles
-- `back`, for a cloak
+- `back`, for a cloak. No item equips to it and the inventory hides it, because
+  cloaks are achievement rewards worn from a window of their own; see
+  [Game Design](GAME_DESIGN.md#achievements-and-cloaks).
 - `body`
 - `legs`
 - `hands`
@@ -416,7 +418,10 @@ offers Recovery Storage gives access to the same queue.
 - Recovery contents do not contribute to carry weight.
 - Every delivery stores source, source event id, creation time, optional
   availability time, optional expiry time, and claim state.
-- The sources are death protection, insurance, and a protected Bag.
+- The sources are death protection, insurance, and a protected Bag. Two data
+  migrations also delivered the items that a removed rule left without a place:
+  `secure_container_removal` the contents of the removed Secure Container, and
+  `cloak_equipment_removal` the cloaks that were worn in the `back` slot.
   Insufficient respawn capacity and future system restoration are reserved as
   sources and have no producer yet.
 - An unclaimed delivery whose expiry time passed is destroyed by the system with

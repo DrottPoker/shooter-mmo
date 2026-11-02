@@ -2162,6 +2162,8 @@ namespace Mmorpg.Client.Ui
             {
                 "death_recovered_insured" => "Recovered: consumed insurance",
                 "death_recovered_protected" => "Recovered: protected on death",
+                "secure_container_removal" => "Recovered: from the removed Warded Pouch",
+                "cloak_equipment_removal" => "Recovered: cloaks can no longer be worn",
                 _ => "Recovered: " + source
             };
         }
