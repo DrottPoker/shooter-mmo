@@ -519,7 +519,9 @@ deep water edges: one-sided walls along the line where water gets deeper than
 the block depth, which stop movement from the shallow side, as
 [Player Movement](GAME_FEATURES.md#player-movement) describes. Water surfaces
 lie on their own layer, which only depth queries read, so they never block
-movement, sight, or arrows. Replicated dynamic transforms are not implemented.
+movement, sight, or arrows. Heightfield triangles also carry a terrain layer,
+because terrain is solid below its surface: water drawn under terrain or inside
+a box is dry land for the deep water edges and the depth query alike. Replicated dynamic transforms are not implemented.
 Collision authoring is described in [Development Worlds](DEVELOPMENT_WORLDS.md).
 
 ## World Actors And Interaction

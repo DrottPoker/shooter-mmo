@@ -57,6 +57,10 @@ namespace Mmorpg.GameSimulation
         // CharacterMovement, so they block movement like any other wall.
         public const uint DeepWaterEdge = 1u << 3;
 
+        // Marks the triangles of baked terrain, which is solid below its surface. They also
+        // carry the layers of their authoring.
+        public const uint Terrain = 1u << 4;
+
         public const uint All = uint.MaxValue;
     }
 

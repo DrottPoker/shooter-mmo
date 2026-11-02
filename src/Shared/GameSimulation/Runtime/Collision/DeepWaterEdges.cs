@@ -27,7 +27,6 @@ namespace Mmorpg.GameSimulation
         private const int TileSamples = 32;
         private const float RayStartOffset = 0.001f;
         private const float GroundProbeDistance = 512f;
-        private const float TerrainProbeHeight = 1024f;
         private const float MinimumSegmentLengthSquared = 0.000001f;
         private const string WorkWorldId = "deep-water-edges";
 
@@ -67,7 +66,6 @@ namespace Mmorpg.GameSimulation
         public static List<CollisionTriangle> Build(
             float chunkSize,
             IReadOnlyList<CollisionShape> solidShapes,
-            IReadOnlyList<CollisionTriangle> terrainTriangles,
             IReadOnlyList<CollisionWaterSurface> waterSurfaces,
             ulong baseStableId)
         {
@@ -79,7 +77,6 @@ namespace Mmorpg.GameSimulation
 
             var context = new SampleContext(
                 CreateWorld(solidShapes, chunkSize),
-                terrainTriangles.Count == 0 ? null : CreateWorld(terrainTriangles, chunkSize),
                 CreateWorld(waterSurfaces, chunkSize),
                 waterSurfaces);
             var corners = new Sample[4];
@@ -424,7 +421,6 @@ namespace Mmorpg.GameSimulation
             private static readonly float BottomlessField = WaterRules.BlockDepth;
 
             private readonly ChunkedStaticCollisionWorld solids;
-            private readonly ChunkedStaticCollisionWorld terrain;
             private readonly ChunkedStaticCollisionWorld water;
             private readonly float waterTop;
             private readonly float waterProbeDistance;
@@ -433,12 +429,10 @@ namespace Mmorpg.GameSimulation
 
             public SampleContext(
                 ChunkedStaticCollisionWorld solids,
-                ChunkedStaticCollisionWorld terrain,
                 ChunkedStaticCollisionWorld water,
                 IReadOnlyList<CollisionWaterSurface> waterSurfaces)
             {
                 this.solids = solids;
-                this.terrain = terrain;
                 this.water = water;
                 var top = float.MinValue;
                 var bottom = float.MaxValue;
@@ -481,15 +475,14 @@ namespace Mmorpg.GameSimulation
                 }
 
                 var surface = surfaceHit.Point.Y;
-                var start = new SimulationVector3(x, (float)(surface + RayStartOffset), z);
-                if (IsUnderTerrain(start) || IsInsideBox(start))
+                if (!WaterRules.IsOpenSurface(solids, surfaceHit.Point, buffer))
                 {
                     return new Sample(DryField, true, surface);
                 }
 
                 if (!CollisionRaycast.TryRaycast(
                         solids,
-                        start,
+                        new SimulationVector3(x, (float)(surface + RayStartOffset), z),
                         Down,
                         GroundProbeDistance,
                         CollisionLayers.CharacterMovement,
@@ -501,44 +494,6 @@ namespace Mmorpg.GameSimulation
 
                 var depth = (float)(surface - groundHit.Point.Y);
                 return new Sample((float)(depth - WaterRules.BlockDepth), true, surface);
-            }
-
-            // Terrain is solid below its surface, so water drawn under a bank is dry land.
-            private bool IsUnderTerrain(SimulationVector3 point)
-            {
-                return terrain != null
-                    && CollisionRaycast.TryRaycast(
-                        terrain,
-                        new SimulationVector3(point.X, (float)(point.Y + TerrainProbeHeight), point.Z),
-                        Down,
-                        TerrainProbeHeight,
-                        CollisionLayers.All,
-                        buffer,
-                        out _);
-            }
-
-            private bool IsInsideBox(SimulationVector3 point)
-            {
-                buffer.Clear();
-                solids.QueryShapes(
-                    new CollisionAabb(point, point),
-                    CollisionLayers.CharacterMovement,
-                    buffer);
-                for (var index = 0; index < buffer.Shapes.Count; index++)
-                {
-                    if (buffer.Shapes[index] is CollisionBox box)
-                    {
-                        var local = box.Rotation.InverseRotate(point - box.Center);
-                        if (Math.Abs(local.X) < box.HalfExtents.X
-                            && Math.Abs(local.Y) < box.HalfExtents.Y
-                            && Math.Abs(local.Z) < box.HalfExtents.Z)
-                        {
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
             }
         }
     }

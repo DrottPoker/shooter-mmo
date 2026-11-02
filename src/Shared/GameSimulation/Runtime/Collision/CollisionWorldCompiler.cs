@@ -164,7 +164,7 @@ namespace Mmorpg.GameSimulation
 
     // A regular grid of world heights, baked from a TerrainCollider. Each cell becomes two
     // triangles that face up, split along the diagonal from its lowest to its highest
-    // sample coordinates.
+    // sample coordinates, on the authored layers and the terrain layer.
     [Serializable]
     public sealed class CollisionHeightfieldAuthoringEntry
     {
@@ -234,13 +234,13 @@ namespace Mmorpg.GameSimulation
                     var highHigh = Sample(heights, cellX + 1, cellZ + 1);
                     triangles.Add(new CollisionTriangle(
                         CollisionWorldCompiler.TriangleStableId(stableId, cell * 2),
-                        LayerMask,
+                        LayerMask | CollisionLayers.Terrain,
                         lowLow,
                         lowHigh,
                         highHigh));
                     triangles.Add(new CollisionTriangle(
                         CollisionWorldCompiler.TriangleStableId(stableId, (cell * 2) + 1),
-                        LayerMask,
+                        LayerMask | CollisionLayers.Terrain,
                         lowLow,
                         highHigh,
                         highLow));
@@ -512,14 +512,12 @@ namespace Mmorpg.GameSimulation
                 shapes.AddRange(mesh.ToCollisionTriangles());
             }
 
-            var terrain = new List<CollisionTriangle>();
             foreach (var heightfield in authoring.Heightfields
                 ?? Array.Empty<CollisionHeightfieldAuthoringEntry>())
             {
-                terrain.AddRange(heightfield.ToCollisionTriangles());
+                shapes.AddRange(heightfield.ToCollisionTriangles());
             }
 
-            shapes.AddRange(terrain);
             if (shapes.Count == 0)
             {
                 throw new InvalidDataException("Collision authoring must contain at least one shape.");
@@ -534,7 +532,6 @@ namespace Mmorpg.GameSimulation
             var edges = DeepWaterEdges.Build(
                 authoring.ChunkSize,
                 shapes,
-                terrain,
                 water,
                 StableIdFromPath(DeepWaterEdgesSourcePath));
             shapes.AddRange(water);

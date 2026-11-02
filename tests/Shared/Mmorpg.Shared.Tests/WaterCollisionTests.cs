@@ -189,6 +189,48 @@ public sealed class WaterCollisionTests
         Assert.False(WaterRules.TryGetDepth(world, new SimulationVector3(10f, 0f, 0f), buffer, out _));
     }
 
+    // A surface drawn into a bank is dry land for the depth query as for the edges: a box bank
+    // from 2.5 to 3.5 m, and a terrain bank at 4 m, each over a passage at 0 m, and a pond
+    // surface at 3 m that reaches into both.
+    [Fact]
+    public void WaterDrawnIntoABankIsDryLandBelowIt()
+    {
+        var world = CompileWorld(new CollisionWorldAuthoringDocument
+        {
+            FormatVersion = CollisionDataFormat.Version,
+            WorldId = "water-tests",
+            ChunkSize = 32f,
+            Boxes =
+            [
+                Box("Test/Floor", 0f, -0.25f, 0f, 20f, 0.25f, 20f),
+                Box("Test/BoxBank", -3f, 3f, 0f, 2f, 0.5f, 2f)
+            ],
+            Heightfields =
+            [
+                new CollisionHeightfieldAuthoringEntry
+                {
+                    SourcePath = "Test/TerrainBank#TerrainCollider0",
+                    LayerMask = CollisionLayers.CharacterMovement,
+                    OriginX = 2f,
+                    OriginZ = -2f,
+                    SpacingX = 1f,
+                    SpacingZ = 1f,
+                    SamplesX = 5,
+                    SamplesZ = 5,
+                    Heights = CollisionAuthoringEncoding.EncodeFloats(Enumerable.Repeat(4f, 25).ToArray()),
+                    Holes = string.Empty
+                }
+            ],
+            Water = [Square("Test/Pond", "test.pond", 5f, 3f)]
+        });
+        var buffer = new CollisionQueryBuffer();
+
+        Assert.False(WaterRules.TryGetDepth(world, new SimulationVector3(-3f, 0f, 0f), buffer, out _));
+        Assert.False(WaterRules.TryGetDepth(world, new SimulationVector3(4f, 0f, 0f), buffer, out _));
+        Assert.True(WaterRules.TryGetDepth(world, new SimulationVector3(0f, 0f, 0f), buffer, out var depth));
+        Assert.Equal(3f, depth, 4);
+    }
+
     [Fact]
     public void WaterSurfacesKeepTheirBodyThroughTheChunkCodec()
     {
