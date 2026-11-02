@@ -245,6 +245,17 @@ namespace Mmorpg.Client.Items
             InventoryEquipmentSlot equipmentSlot,
             out string error)
         {
+            return TryLootToEquipment(corpseItem, equipmentSlot, 0, out error);
+        }
+
+        // A quantity loots that part of the corpse stack: it tops up the equipped stack of its
+        // kind or fills the empty slot, and the rest stays in the corpse.
+        public bool TryLootToEquipment(
+            CorpseLootItem corpseItem,
+            InventoryEquipmentSlot equipmentSlot,
+            int quantity,
+            out string error)
+        {
             var view = State.ShownView;
             if (!CanQueue(out error) || corpseItem == null || equipmentSlot == null)
             {
@@ -255,6 +266,13 @@ namespace Mmorpg.Client.Items
             if (!view.TryFindItem(corpseItem.ItemInstanceId, out var item, out var section, out var slot))
             {
                 error = "The corpse item is no longer available.";
+                return false;
+            }
+
+            var partial = quantity > 0 && quantity < item.Quantity;
+            if (quantity > item.Quantity || (partial && item.HasBagContents))
+            {
+                error = "Loot quantity must be within the current stack quantity.";
                 return false;
             }
 
@@ -276,8 +294,9 @@ namespace Mmorpg.Client.Items
 
             var createdId = Guid.NewGuid();
             var slotId = equipmentSlot.SlotId;
+            var loot = partial ? item.WithQuantity(quantity) : item;
             var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
-            if (!CorpseInventoryPrediction.TryLootToEquipment(probe, item, slotId, createdId, bagContents, out var displaced, out error))
+            if (!CorpseInventoryPrediction.TryLootToEquipment(probe, loot, slotId, createdId, bagContents, !partial, out var displaced, out error))
             {
                 return false;
             }
@@ -287,7 +306,9 @@ namespace Mmorpg.Client.Items
                 CorpseViewEdit.SetSlot(
                     section.ContainerId,
                     slot.SlotIndex,
-                    displaced == null ? null : CorpseLootItem.FromInventoryItem(displaced))
+                    partial
+                        ? item.WithQuantity(item.Quantity - quantity)
+                        : displaced == null ? null : CorpseLootItem.FromInventoryItem(displaced))
             };
             if (ownsBagSection)
             {
@@ -297,9 +318,9 @@ namespace Mmorpg.Client.Items
             return Queue(
                 InventoryPredictedOperation.External(
                     (InventoryPredictionEdit edit, out string reason) =>
-                        CorpseInventoryPrediction.TryLootToEquipment(edit, item, slotId, createdId, bagContents, out _, out reason),
+                        CorpseInventoryPrediction.TryLootToEquipment(edit, loot, slotId, createdId, bagContents, !partial, out _, out reason),
                     (InventoryClientState state, out Guid operationId, out string sendError) =>
-                        SendLootToEquipment(state, view.CorpseId, item.ItemInstanceId, slotId, out operationId, out sendError),
+                        SendLootToEquipment(state, view.CorpseId, item.ItemInstanceId, slotId, partial ? quantity : 0, out operationId, out sendError),
                     new[] { item.ItemInstanceId, displaced?.ItemInstanceId ?? Guid.Empty },
                     new[] { createdId }),
                 edits,
@@ -682,6 +703,7 @@ namespace Mmorpg.Client.Items
             Guid corpseId,
             Guid itemInstanceId,
             string equipmentSlotId,
+            int quantity,
             out Guid operationId,
             out string error)
         {
@@ -708,7 +730,8 @@ namespace Mmorpg.Client.Items
                     item.Revision,
                     equipmentSlotId,
                     equipped?.ItemInstanceId ?? Guid.Empty,
-                    equipped?.Revision ?? 0),
+                    equipped?.Revision ?? 0,
+                    quantity),
                 out operationId,
                 out error);
         }

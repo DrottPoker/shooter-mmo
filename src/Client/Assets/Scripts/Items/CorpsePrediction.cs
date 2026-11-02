@@ -155,12 +155,15 @@ namespace Mmorpg.Client.Items
             return edit.FitsHardCap();
         }
 
+        // The loot is the stack, or the part of it, that enters the slot. Without a swap, as for
+        // a part, an occupied slot only takes a top-up.
         public static bool TryLootToEquipment(
             InventoryPredictionEdit edit,
             CorpseLootItem loot,
             string equipmentSlotId,
             Guid createdItemId,
             InventoryContainer bagContents,
+            bool allowSwap,
             out InventoryItem displaced,
             out string reason)
         {
@@ -189,6 +192,12 @@ namespace Mmorpg.Client.Items
                 return edit.Editor.TryReplace(
                     occupant.ItemInstanceId,
                     occupant.WithQuantity(occupant.Quantity + loot.Quantity));
+            }
+
+            if (!allowSwap)
+            {
+                reason = "Part of a stack equips only into an empty slot or tops up the equipped stack.";
+                return false;
             }
 
             // The equipped item swaps into the corpse slot the loot came from.

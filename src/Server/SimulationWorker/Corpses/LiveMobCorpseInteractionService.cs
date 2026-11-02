@@ -116,16 +116,16 @@ public sealed class LiveMobCorpseInteractionService(
                 requiresInventoryRefresh: true);
         }
 
-        if (!toEquipment
-            && (intent.DestinationContainerId == Guid.Empty
-                || intent.ExpectedDestinationContainerRevision < 0
-                || intent.DestinationSlotIndex < 0
-                || intent.Quantity > 0))
+        if (intent.Quantity > 0
+            || (!toEquipment
+                && (intent.DestinationContainerId == Guid.Empty
+                    || intent.ExpectedDestinationContainerRevision < 0
+                    || intent.DestinationSlotIndex < 0)))
         {
             return SimulationCorpseInteractionResult.Rejected(
                 intent,
                 "live_mob_corpse_operation_unsupported",
-                "Live Mob loot must target one player inventory slot as a whole item.");
+                "Live Mob loot moves a whole item into one inventory or equipment slot.");
         }
 
         // The session object is the join-time snapshot; carry changes after the join

@@ -332,6 +332,100 @@ internal static class CorpseCustodyWrites
         context.Journal.IncludeResultItem(source.ItemInstanceId);
     }
 
+    // Part of a corpse stack becomes a new equipped stack with the source's policies; the rest
+    // stays in the corpse.
+    public static async Task EquipCorpseQuantityAsync(
+        ItemTransactionContext context,
+        LockedItem source,
+        IReadOnlyList<LockedItemPolicy> policies,
+        int quantity,
+        Guid characterId,
+        string equipmentSlotId,
+        CancellationToken cancellationToken)
+    {
+        var sourceBefore = await context.Journal.CaptureItemStateJsonAsync(
+            source.ItemInstanceId,
+            cancellationToken);
+        var equippedItemId = Guid.NewGuid();
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            update item_instances
+            set quantity = quantity - @Quantity,
+                revision = revision + 1,
+                updated_at = now()
+            where id = @SourceItemInstanceId;
+
+            insert into item_instances (
+                id,
+                definition_id,
+                quantity,
+                equipped_character_id,
+                equipment_slot_id)
+            values (
+                @EquippedItemId,
+                @DefinitionId,
+                @Quantity,
+                @CharacterId,
+                @EquipmentSlotId);
+            """,
+            new
+            {
+                Quantity = quantity,
+                SourceItemInstanceId = source.ItemInstanceId,
+                EquippedItemId = equippedItemId,
+                source.DefinitionId,
+                CharacterId = characterId,
+                EquipmentSlotId = equipmentSlotId
+            },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+
+        foreach (var policy in policies.Where(policy => string.Equals(
+                     policy.Status,
+                     ItemPolicyRules.ActiveStatus,
+                     StringComparison.Ordinal)))
+        {
+            await context.Connection.ExecuteAsync(new CommandDefinition(
+                """
+                insert into item_instance_policies (
+                    id,
+                    item_instance_id,
+                    policy_kind,
+                    source_kind,
+                    source_id)
+                values (
+                    @PolicyId,
+                    @ItemInstanceId,
+                    @PolicyKind,
+                    @SourceKind,
+                    @SourceId);
+                """,
+                new
+                {
+                    PolicyId = Guid.NewGuid(),
+                    ItemInstanceId = equippedItemId,
+                    policy.PolicyKind,
+                    policy.SourceKind,
+                    policy.SourceId
+                },
+                context.Transaction,
+                cancellationToken: cancellationToken));
+        }
+
+        context.Journal.AddItemAudit(
+            "corpse_stack_loot_source",
+            source.ItemInstanceId,
+            sourceBefore,
+            await context.Journal.CaptureItemStateJsonAsync(source.ItemInstanceId, cancellationToken));
+        context.Journal.AddItemAudit(
+            "corpse_item_looted_to_equipment",
+            equippedItemId,
+            null,
+            await context.Journal.CaptureItemStateJsonAsync(equippedItemId, cancellationToken));
+        context.Journal.IncludeResultItem(source.ItemInstanceId);
+        context.Journal.IncludeResultItem(equippedItemId);
+    }
+
     // The corpse item becomes equipped and the equipped item takes its corpse slot.
     public static async Task SwapCorpseItemWithEquipmentAsync(
         ItemTransactionContext context,

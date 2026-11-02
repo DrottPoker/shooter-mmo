@@ -124,9 +124,14 @@ namespace Mmorpg.Client.Items
             return new InventoryQuickMove(InventoryQuickMoveKind.Loot, string.Empty, container: container, slot: slot, corpseItem: item, quantity: quantity);
         }
 
-        internal static InventoryQuickMove LootToEquipment(CorpseLootItem item, string equipmentSlotId)
+        internal static InventoryQuickMove LootToEquipment(CorpseLootItem item, string equipmentSlotId, int quantity = 0)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.LootToEquipment, string.Empty, equipmentSlotId: equipmentSlotId, corpseItem: item);
+            return new InventoryQuickMove(
+                InventoryQuickMoveKind.LootToEquipment,
+                string.Empty,
+                equipmentSlotId: equipmentSlotId,
+                corpseItem: item,
+                quantity: quantity);
         }
     }
 
@@ -304,8 +309,10 @@ namespace Mmorpg.Client.Items
             return EquipPart(state, current, definition, quantity);
         }
 
-        // Shift+right-click on a corpse stack: part of it tops up a carried stack or takes the
-        // first free carried slot, and the rest stays in the corpse.
+        // Shift+right-click on a corpse stack: part of it goes where right-click sends the stack,
+        // and the rest stays in the corpse. It tops up the equipped stack of its kind or fills an
+        // empty compatible equipment slot, else tops up a carried stack or takes the first free
+        // carried slot.
         public static InventoryQuickMove ForCorpseItemPart(
             InventoryClientState state,
             CorpseLootView view,
@@ -324,6 +331,23 @@ namespace Mmorpg.Client.Items
             if (quantity < 1 || quantity >= item.Quantity)
             {
                 return InventoryQuickMove.Nothing("A single item cannot be split.");
+            }
+
+            var part = item.WithQuantity(quantity);
+            if (state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
+                && definition.EquipmentSlots != null
+                && definition.RequiredCharacterLevel <= 1)
+            {
+                foreach (var equipmentSlot in state.FullSnapshot.Equipment.Where(candidate =>
+                             ItemEquipmentRules.IsCompatible(definition, candidate.SlotId)))
+                {
+                    var takesPart = equipmentSlot.Item == null
+                        || InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, part.ToInventoryItem(), equipmentSlot.Item);
+                    if (takesPart && CorpseTargetAdvisor.CanLootIntoEquipment(state, view, part, section, slot, equipmentSlot, out _))
+                    {
+                        return InventoryQuickMove.LootToEquipment(item, equipmentSlot.SlotId, quantity);
+                    }
+                }
             }
 
             var reason = "Your inventory has no room for the item.";

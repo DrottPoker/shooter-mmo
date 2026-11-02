@@ -241,7 +241,9 @@ assignment. It is not a parallel non-item system.
   source stack, which keeps the rest. A partial merge tops up any compatible
   stack, in a container or equipped, within its limit. A partial equip puts the
   part into an empty slot as a new stack with the source's policies, such as
-  some arrows into the ammunition slot, and never swaps.
+  some arrows into the ammunition slot, and never swaps. A loot from a player
+  corpse into equipment may name a quantity the same way; a live Mob corpse
+  gives whole items only.
 - Equipping an item onto an occupied slot swaps in one transaction: the
   equipped item moves into the container slot the new item came from. That slot
   must accept the equipped item as an unequip into it would, so a specialized

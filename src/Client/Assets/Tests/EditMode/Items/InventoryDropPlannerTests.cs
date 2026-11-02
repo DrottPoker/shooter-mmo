@@ -182,6 +182,30 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(busy.Kind, Is.EqualTo(InventoryDropPlanKind.None));
         }
 
+        // Part of the corpse arrows tops up the equipped arrows or fills the empty ammunition
+        // slot, and the rest stays in the corpse.
+        [Test]
+        public void PartOfACorpseStackTopsUpOrFillsTheAmmunitionSlot()
+        {
+            var corpseArrows = new CorpseLootItem(Guid.NewGuid(), "fixture.arrow", 20, 1, Guid.Empty, 0);
+            var view = CorpseView(corpseArrows);
+            var payload = InventoryDragPayload.ForCorpseItem(view.CorpseId, corpseArrows.ItemInstanceId);
+            var empty = CreateState(Array.Empty<InventoryItem>(), Slot("ammunition", null));
+            var topped = CreateState(Array.Empty<InventoryItem>(), Slot("ammunition", Item("fixture.arrow", 40)));
+
+            var fill = InventoryDropPlanner.PlanEquipmentDrop(empty, view, true, AmmunitionSlot(empty), payload, 10);
+            var topUp = InventoryDropPlanner.PlanEquipmentDrop(topped, view, true, AmmunitionSlot(topped), payload, 10);
+            var overTop = InventoryDropPlanner.PlanEquipmentDrop(topped, view, true, AmmunitionSlot(topped), payload, 19);
+            var whole = InventoryDropPlanner.PlanEquipmentDrop(empty, view, true, AmmunitionSlot(empty), payload, 20);
+
+            Assert.That(fill.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLootToEquipment), fill.Reason);
+            Assert.That(fill.Quantity, Is.EqualTo(10));
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLootToEquipment), topUp.Reason);
+            Assert.That(topUp.Quantity, Is.EqualTo(10));
+            Assert.That(overTop.Kind, Is.EqualTo(InventoryDropPlanKind.None), "the ammunition slot holds 50");
+            Assert.That(whole.Kind, Is.EqualTo(InventoryDropPlanKind.None));
+        }
+
         [Test]
         public void ACarriedItemIsDepositedIntoAnEmptyCorpseSlot()
         {
@@ -310,6 +334,11 @@ namespace Mmorpg.Client.Tests.EditMode
         private static InventoryItem Item(string definitionId, int quantity)
         {
             return new InventoryItem(Guid.NewGuid(), definitionId, quantity, 1, Array.Empty<InventoryPolicy>());
+        }
+
+        private static InventoryEquipmentSlot AmmunitionSlot(InventoryClientState state)
+        {
+            return state.FullSnapshot.Equipment.Single(slot => slot.SlotId == "ammunition");
         }
 
         private static CorpseLootView CorpseView(CorpseLootItem item)

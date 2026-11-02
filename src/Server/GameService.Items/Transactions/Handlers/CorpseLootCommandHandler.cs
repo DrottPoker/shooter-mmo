@@ -4,7 +4,8 @@ using Mmorpg.WorldData.Items;
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Loots a whole or partial corpse stack into carried character storage, merging
-// or swapping with a target stack, or a whole stack straight into an equipment slot.
+// or swapping with a target stack, or straight into an equipment slot: a whole stack, or
+// part of one that tops up the equipped stack or fills the empty slot.
 internal sealed class CorpseLootCommandHandler
     : IItemCommandHandler<LootCorpseItemCommand>,
     IItemCommandHandler<LootCorpsePartialStackCommand>,
@@ -13,6 +14,7 @@ internal sealed class CorpseLootCommandHandler
     // An equipped stack of the same stackable definition takes the loot as a top-up, or the loot
     // is rejected. Otherwise the loot equips under the normal equip rules, and an equipped item in
     // the slot swaps into the corpse slot the loot came from, as a deposit into that slot would.
+    // Part of a stack only tops up or fills the empty slot, and the rest stays in the corpse.
     public async Task ExecuteAsync(
         ItemTransactionContext context,
         LootCorpseItemToEquipmentCommand command,
@@ -59,6 +61,22 @@ internal sealed class CorpseLootCommandHandler
                 "An active item policy prevents this corpse item from changing ownership.");
         }
 
+        var moved = command.Quantity ?? source.Quantity;
+        if (moved <= 0 || moved > source.Quantity)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemQuantityChanged,
+                "A loot quantity must be positive and at most the corpse stack quantity.");
+        }
+
+        var partial = moved < source.Quantity;
+        if (partial && (source.IsBag || definition.RuntimeDefinition.MaximumStackSize <= 1))
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStackIncompatible,
+                "The item definition is not stackable.");
+        }
+
         if (source.IsBag)
         {
             await EquipCorpseBagAsync(context, corpse, command, source, definition, occupantId, cancellationToken);
@@ -88,7 +106,7 @@ internal sealed class CorpseLootCommandHandler
                 occupant,
                 occupantPolicies,
                 definition,
-                source.Quantity);
+                moved);
             if (disposition != CorpseStackDisposition.Merge)
             {
                 CorpseItemTransfers.RejectCorpseStackMerge(disposition);
@@ -98,28 +116,46 @@ internal sealed class CorpseLootCommandHandler
                 command.CharacterId,
                 command.EquipmentSlotId,
                 definition,
-                occupant.Quantity + source.Quantity,
+                occupant.Quantity + moved,
                 cancellationToken);
             await CorpseCustodyWrites.MergeCorpseQuantityAsync(
                 context,
                 source,
                 occupant,
-                source.Quantity,
-                false,
+                moved,
+                partial,
                 cancellationToken);
             await FinishEquipmentLootAsync(context, corpse, source, command.CharacterId, cancellationToken);
             return;
+        }
+
+        if (partial && occupant is not null)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.EquipmentSlotOccupied,
+                "Part of a corpse stack equips only into an empty slot or tops up the equipped stack.");
         }
 
         await context.Placement.EnsureEquipmentDestinationAsync(
             command.CharacterId,
             command.EquipmentSlotId,
             definition,
-            source.Quantity,
+            moved,
             false,
             cancellationToken,
             occupantId);
-        if (occupant is null)
+        if (partial)
+        {
+            await CorpseCustodyWrites.EquipCorpseQuantityAsync(
+                context,
+                source,
+                sourcePolicies,
+                moved,
+                command.CharacterId,
+                command.EquipmentSlotId,
+                cancellationToken);
+        }
+        else if (occupant is null)
         {
             await CorpseCustodyWrites.EquipCorpseItemAsync(
                 context,
@@ -295,7 +331,8 @@ internal sealed class CorpseLootCommandHandler
             || (command.TargetItemInstanceId is null) != (command.ExpectedTargetItemRevision is null)
             || command.TargetItemInstanceId == Guid.Empty
             || command.TargetItemInstanceId == command.ItemInstanceId
-            || command.ExpectedTargetItemRevision < 0)
+            || command.ExpectedTargetItemRevision < 0
+            || command.Quantity <= 0)
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.SimulationOperationInvalid,

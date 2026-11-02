@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using Mmorpg.Client.Combat;
 using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -116,7 +117,11 @@ namespace Mmorpg.Client.Ui
             spec.CanDrag = CorpseState != null
                 && CorpseState.CanShowOperations
                 && InventoryDropPlanner.CanMoveItem(state, item);
-            OfferStackParts(spec, corpseItem?.Quantity ?? 0, () => Report(interactions.QuickMoveCorpseItemPart(corpseItem)));
+            // A creature's corpse gives whole items only, so its stacks offer no part.
+            OfferStackParts(
+                spec,
+                WorldActorCorpseRules.IsMobCorpsePresentationKey(view.PresentationKey) ? 0 : corpseItem?.Quantity ?? 0,
+                () => Report(interactions.QuickMoveCorpseItemPart(corpseItem)));
             spec.DropValidator = (InventoryDragPayload payload, out string reason) =>
                 CanDropOnCorpse(section, slot, payload, out reason);
             spec.OnDrop = payload => DropOnCorpse(section, slot, payload);

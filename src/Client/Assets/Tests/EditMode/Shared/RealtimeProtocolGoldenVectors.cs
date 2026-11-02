@@ -146,7 +146,8 @@ namespace Mmorpg.SharedTests
                 "0b a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
                 "af 03 00 00 00 00 00 00 00 20 21 22 23 24 25 26 " +
                 "27 28 29 2a 2b 2c 2d 2e 2f 06 00 00 00 00 00 00 " +
-                "00 09 00 6d 61 69 6e 5f 68 61 6e 64 00",
+                "00 09 00 6d 61 69 6e 5f 68 61 6e 64 00 00 00 00 " +
+                "00",
             ["Corpses/CorpseInteractionIntent/loot to equipment with swap"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "0b a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
@@ -154,7 +155,15 @@ namespace Mmorpg.SharedTests
                 "27 28 29 2a 2b 2c 2d 2e 2f 06 00 00 00 00 00 00 " +
                 "00 09 00 6d 61 69 6e 5f 68 61 6e 64 01 40 41 42 " +
                 "43 44 45 46 47 48 49 4a 4b 4c 4d 4e 4f 08 00 00 " +
-                "00 00 00 00 00",
+                "00 00 00 00 00 00 00 00 00",
+            ["Corpses/CorpseInteractionIntent/loot part to equipment"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "0b a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
+                "af 03 00 00 00 00 00 00 00 20 21 22 23 24 25 26 " +
+                "27 28 29 2a 2b 2c 2d 2e 2f 06 00 00 00 00 00 00 " +
+                "00 0a 00 61 6d 6d 75 6e 69 74 69 6f 6e 01 40 41 " +
+                "42 43 44 45 46 47 48 49 4a 4b 4c 4d 4e 4f 08 00 " +
+                "00 00 00 00 00 00 32 00 00 00",
             ["Corpses/CorpseInteractionIntent/move item"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "09 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
