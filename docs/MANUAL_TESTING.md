@@ -775,8 +775,8 @@ Admin menu (F3) opens them on its `Storage` tab.
    rows of six slots, `TRAVELER'S PACK` with the Bag's seven slots below it in
    the same columns, and `100 Gold` with a coin at the bottom. Press I. Expected
    result: the window closes; I and B toggle the same window.
-2. Press C. Expected result: the Equipment window opens at the left edge with a
-   pedestal in the middle, `Head`, `Shoulders`, `Body`, `Legs`, and `Feet` down
+2. Press C. Expected result: the Equipment window opens at the left edge with
+   your character on a pedestal in the middle, `Head`, `Shoulders`, `Body`, `Legs`, and `Feet` down
    its left side, `Neck`, `Hands`, `Ring 1`, `Ring 2`, and `Bag` down its right
    side, and `Main Hand`, `Off Hand`, `Tool`, and `Ammunition` in a row below,
    each with its name, and `<n> / 14 equipped` in its header. There is no
@@ -823,6 +823,27 @@ Admin menu (F3) opens them on its `Storage` tab.
 3. Equip the shortbow. Expected result: `Off Hand` shows a lock on a red slot,
    and its tooltip names the shortbow.
 4. Click a slot without dragging. Expected result: nothing moves.
+
+### Character Preview
+
+1. Press C. Expected result: your character stands on the pedestal facing you
+   and breathes in its idle, dressed as the body in the world, with its hair and
+   helmet, and holding its weapons. Its edges are clean against the window, with
+   no dark box around it.
+2. Drag left and right across the character. Expected result: it turns around
+   its height and stops when you stop; the world camera does not move, and the
+   character in the world does not walk.
+3. Equip and unequip the Leather Jerkin and the Training Shortbow. Expected
+   result: the character in the window changes at once, together with the body
+   in the world.
+4. Start mining an Iron Vein with the Starter Pickaxe and press C. Expected
+   result: the body in the world swings the pickaxe, and the character in the
+   window stands in its idle without it.
+5. On the Admin menu's `Look` tab, press `>` on the `Body` row and then on the
+   `Hair` row. Expected result: the window shows the woman at once, then with the
+   other hair.
+6. Close the window. Expected result: nothing of the stage shows in the world,
+   and the frame rate is the same as before the window opened.
 
 ### Ammunition
 

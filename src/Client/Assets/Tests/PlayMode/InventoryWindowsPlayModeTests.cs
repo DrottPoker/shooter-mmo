@@ -5,6 +5,7 @@ using System.Linq;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Combat;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Ui;
 using Mmorpg.Client.Worlds;
@@ -121,6 +122,45 @@ namespace Mmorpg.Client.Tests.PlayMode
                 Is.GreaterThanOrEqualTo(Mathf.Min(320f, widestLine) - 1f));
             trigger.OnPointerExit(pointer);
             Assert.That(tooltip.IsVisible, Is.False);
+        }
+
+        // The Equipment window shows the World scene's character preview on its pedestal, lets it
+        // draw only while the window is open, and a drag across the picture turns the copy.
+        [UnityTest]
+        public IEnumerator TheEquipmentWindowShowsTheCharacterPreviewWhileOpen()
+        {
+            using var probe = new WindowProbe();
+            yield return probe.Load("Preview Probe");
+            var windows = probe.Windows;
+            var preview = windows.CharacterPreview;
+            Assert.That(preview, Is.Not.Null);
+            Assert.That(preview, Is.SameAs(UnityEngine.Object.FindAnyObjectByType<WorldSceneContext>(FindObjectsInactive.Include).Preview));
+            Assert.That(preview.Visible, Is.False);
+
+            windows.SetEquipmentOpen(true);
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+            var figure = windows.GetComponentsInChildren<RawImage>().Single(image => image.name == "Figure");
+            Assert.That(figure.texture, Is.SameAs(preview.Texture));
+            Assert.That(preview.Visible, Is.True);
+            var size = figure.rectTransform.rect.size;
+            Assert.That(size.x / size.y, Is.EqualTo((float)CharacterPreview.TextureWidth / CharacterPreview.TextureHeight).Within(0.01f));
+
+            var before = preview.Yaw;
+            figure.GetComponent<CharacterPreviewDrag>().OnDrag(new PointerEventData(EventSystem.current)
+            {
+                delta = new Vector2(-50f, 0f),
+                button = PointerEventData.InputButton.Left
+            });
+            Assert.That(
+                Mathf.DeltaAngle(before, preview.Yaw),
+                Is.EqualTo(50f * CharacterPreviewDrag.DegreesPerPixel).Within(0.01f));
+
+            // Another window leaves it drawing; closing Equipment stops it.
+            windows.SetInventoryOpen(true);
+            Assert.That(preview.Visible, Is.True);
+            windows.SetEquipmentOpen(false);
+            Assert.That(preview.Visible, Is.False);
         }
 
         // Each window opens and closes on its own and keeps its place; its close button closes
