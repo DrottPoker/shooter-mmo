@@ -47,7 +47,8 @@ namespace Mmorpg.Client.Editor
 
         // Moving a shape or an object above it changes what it makes, such as a lake's level,
         // without changing the shape's own values, and adding or removing one changes the water
-        // it meets, such as a river's end where a waterfall falls from it.
+        // it meets, such as a river's end where a waterfall falls from it. Moving the ground's
+        // colliders moves the World's edge, where a sea runs on to the horizon.
         private static void OnChangesPublished(ref ObjectChangeEventStream stream)
         {
             if (!Listening)
@@ -94,7 +95,8 @@ namespace Mmorpg.Client.Editor
         {
             var changed = EditorUtility.EntityIdToObject(entityId);
             var owner = changed is GameObject gameObject ? gameObject : changed is Component component ? component.gameObject : null;
-            if (owner != null && owner.GetComponentInChildren<WorldBuilderShape>(true) != null)
+            if (owner != null
+                && (owner.GetComponentInChildren<WorldBuilderShape>(true) != null || owner.GetComponentInChildren<Collider>(true) != null))
             {
                 pending.Add(scene);
             }

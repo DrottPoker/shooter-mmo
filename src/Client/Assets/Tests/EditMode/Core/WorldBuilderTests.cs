@@ -145,6 +145,65 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(issue.Severity, Is.EqualTo(WorldBuilderIssueSeverity.Error));
         }
 
+        // A disabled river makes no water to fall from, so its waterfall shows nothing, and the
+        // validation says why instead of letting the bake go on without the waterfall.
+        [Test]
+        public void AWaterfallFromADisabledRiverIsAnError()
+        {
+            WorldBuilderCreate.AddLake(scene, Vector3.zero);
+            var river = FallingRiver();
+            var waterfall = WorldBuilderCreate.AddWaterfall(river);
+            WorldBuilder.Rebuild(scene);
+
+            river.enabled = false;
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(waterfall.GetComponent<MeshFilter>().sharedMesh.vertexCount, Is.Zero);
+            var issues = WorldBuilder.Validate(scene);
+            Assert.That(
+                issues.Any(issue => issue.Target == waterfall
+                    && issue.Severity == WorldBuilderIssueSeverity.Error
+                    && issue.Message.Contains(river.name)),
+                Is.True,
+                string.Join("\n", issues));
+            Assert.That(
+                issues.Any(issue => issue.Target == river && issue.Severity == WorldBuilderIssueSeverity.Warning),
+                Is.True,
+                "the disabled river is named");
+        }
+
+        // A river that starts in a sea calms the sea there, as one that ends in it does, so they
+        // meet without a seam.
+        [Test]
+        public void ASeaCalmsWhereARiverStartsInIt()
+        {
+            var sea = WorldBuilderCreate.AddSea(scene, Vector3.zero);
+            var river = WorldBuilderCreate.AddRiver(scene, Vector3.zero);
+            SetPoints(
+                river,
+                new RiverPoint(new Vector3(0f, 0.1f, 10f), 4f, 1f, 1f, 0.3f),
+                new RiverPoint(new Vector3(0f, 2f, 50f), 4f, 1f, 1f, 0.3f));
+            WorldBuilder.Rebuild(scene);
+
+            var mesh = sea.GetComponent<MeshFilter>().sharedMesh;
+            var vertices = mesh.vertices;
+            var colors = mesh.colors;
+            var near = 0;
+            for (var index = 0; index < vertices.Length; index++)
+            {
+                var world = sea.transform.TransformPoint(vertices[index]);
+                if (Vector2.Distance(new Vector2(world.x, world.z), new Vector2(0f, 12f)) <= 2f)
+                {
+                    near++;
+                    Assert.That(colors[index].g, Is.Zero, "waves at " + world);
+                    Assert.That(colors[index].b, Is.Zero, "foam lines at " + world);
+                }
+            }
+
+            Assert.That(near, Is.GreaterThan(0));
+            Assert.That(WorldBuilder.Validate(scene), Is.Empty);
+        }
+
         [Test]
         public void NewWaterGetsAnIdAndANameOfItsOwnBelowTheCollisionRootAndStaysOffStaticBatching()
         {
@@ -260,12 +319,14 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        // The sea's grid lies 0.75 m off the World's west edge, and then also turned, so the edge
-        // crosses its cells; the surface still ends exactly at the edge, where the sea beyond the
-        // World starts.
-        [TestCase(0f)]
-        [TestCase(30f)]
-        public void ASeaEndsExactlyAtTheWorldsEdgeHoweverItsGridLies(float yaw)
+        // The sea's grid lies on the World's west edge or 0.75 m off it, and turned or not, so the
+        // edge runs along its cells' sides or crosses them; the surface still ends exactly at the
+        // edge, where the sea beyond the World starts, without a triangle that has no area.
+        [TestCase(0f, 0f)]
+        [TestCase(0f, 45f)]
+        [TestCase(0.75f, 0f)]
+        [TestCase(0.75f, 30f)]
+        public void ASeaEndsExactlyAtTheWorldsEdgeHoweverItsGridLies(float offset, float yaw)
         {
             var world = new GameObject("World");
             SceneManager.MoveGameObjectToScene(world, scene);
@@ -275,7 +336,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var box = ground.AddComponent<BoxCollider>();
             box.center = new Vector3(20f, -0.5f, 0f);
             box.size = new Vector3(40f, 1f, 60f);
-            var sea = WorldBuilderCreate.AddSea(scene, new Vector3(0.75f, -0.2f, 0f));
+            var sea = WorldBuilderCreate.AddSea(scene, new Vector3(offset, -0.2f, 0f));
             sea.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             var serialized = new SerializedObject(sea);
             serialized.FindProperty("horizon").intValue = (int)HorizonSides.West;
@@ -291,7 +352,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 if (sea.transform.TransformPoint(vertices[index]).x < 0.0001f)
                 {
-                    Assert.That(colors[index].g, Is.Zero, "no waves where the sea beyond the World starts");
+                    Assert.That(colors[index].g, Is.LessThan(0.00001f), "no waves where the sea beyond the World starts");
                 }
             }
 
@@ -300,7 +361,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 var a = vertices[triangles[index]];
                 var cross = Vector3.Cross(vertices[triangles[index + 1]] - a, vertices[triangles[index + 2]] - a);
-                Assert.That(cross.y, Is.GreaterThanOrEqualTo(0f), "every triangle faces up");
+                Assert.That(cross.y, Is.GreaterThan(0.00001f), "every triangle faces up and has an area");
             }
 
             // The default outline is 40 m square around the sea's origin, so the water covers the

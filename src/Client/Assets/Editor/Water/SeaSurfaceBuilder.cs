@@ -7,15 +7,15 @@ namespace Mmorpg.Client.Editor
     // The surface of a sea: a grid of cells in the sea's space over every cell whose center lies
     // inside its outline or within the bank reach of it, whose vertices the waves lift, with foam
     // lines that roll onto its beaches. The waves calm down toward the sides of the World where
-    // the sea runs on to the horizon, and the waves and the foam lines both calm down at a river's
-    // mouth, so the surfaces meet without a seam. Beyond the World's ground on those sides, a flat
-    // and still surface over a seabed continues the sea to the horizon; it only shows. A cell that
-    // the World's edge crosses there is cut off at the edge, so the two meet exactly however the
-    // sea's grid lies.
+    // the sea runs on to the horizon, and the waves and the foam lines both calm down where a
+    // river starts or ends in the sea, so the surfaces meet without a seam. Beyond the World's
+    // ground on those sides, a flat and still surface over a seabed continues the sea to the
+    // horizon; it only shows. A cell that the World's edge crosses there is cut off at the edge,
+    // so the two meet exactly however the sea's grid lies.
     internal static class SeaSurfaceBuilder
     {
-        // The river's water calms the sea within its half width and this much more of its end.
-        private const float MouthMargin = 0.5f;
+        // A river's water calms the sea within its half width and this much more of its end.
+        private const float RiverMargin = 0.5f;
 
         // A cut cell keeps a part at least this share of a whole cell.
         private const float SmallestPart = 0.0001f;
@@ -100,6 +100,24 @@ namespace Mmorpg.Client.Editor
                 }
             }
 
+            // A corner on the edge comes out twice, once as a corner and once as a cut, which
+            // would make a triangle without area.
+            var closest = SmallestPart * SmallestPart * cell * cell;
+            var distinct = new List<Vector2>();
+            foreach (var point in polygon)
+            {
+                if (distinct.Count == 0 || (point - distinct[distinct.Count - 1]).sqrMagnitude >= closest)
+                {
+                    distinct.Add(point);
+                }
+            }
+
+            if (distinct.Count > 1 && (distinct[0] - distinct[distinct.Count - 1]).sqrMagnitude < closest)
+            {
+                distinct.RemoveAt(distinct.Count - 1);
+            }
+
+            polygon = distinct;
             if (polygon.Count < 3 || Mathf.Abs(Area(polygon)) < SmallestPart * cell * cell)
             {
                 return;
@@ -325,10 +343,10 @@ namespace Mmorpg.Client.Editor
         private static int AddAt(WaterSurfaceMesh surface, SeaModel sea, Rect? worldEdge, Vector3 local, Vector2 point)
         {
             var shape = sea.Sea;
-            var mouths = MouthCalm(sea, point);
-            var waves = shape.Waves * HorizonCalm(shape, worldEdge, point) * mouths;
+            var rivers = RiverCalm(sea, point);
+            var waves = shape.Waves * HorizonCalm(shape, worldEdge, point) * rivers;
             WaterfallChurn.At(sea, point, out var flow, out var churn);
-            return surface.Add(local, flow, churn, waves, mouths);
+            return surface.Add(local, flow, churn, waves, rivers);
         }
 
         // 0 at the World's edge on a horizon side, rising to 1 the calm distance inside it.
@@ -364,16 +382,16 @@ namespace Mmorpg.Client.Editor
             return Mathf.Clamp01(nearest / sea.CalmDistance);
         }
 
-        // 0 on the water of a river that flows into the sea, rising to 1 the calm distance beyond
-        // its surface.
-        private static float MouthCalm(SeaModel sea, Vector2 point)
+        // 0 on the water of a river that starts or ends in the sea, rising to 1 the calm distance
+        // beyond its surface.
+        private static float RiverCalm(SeaModel sea, Vector2 point)
         {
             var calm = 1f;
-            foreach (var river in sea.Mouths)
+            foreach (var river in sea.Rivers)
             {
                 var path = river.Path;
                 var distance = path.DistanceTo(point, out var along);
-                var reach = (path.ValuesAt(along).Width * 0.5f) + river.Shape.BankReach + MouthMargin;
+                var reach = (path.ValuesAt(along).Width * 0.5f) + river.Shape.BankReach + RiverMargin;
                 calm *= WorldBuilderGeometry.Smooth01((distance - reach) / sea.Sea.CalmDistance);
             }
 

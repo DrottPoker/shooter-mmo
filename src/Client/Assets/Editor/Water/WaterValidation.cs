@@ -82,6 +82,12 @@ namespace Mmorpg.Client.Editor
             }
 
             var mesh = body.Surface;
+            if (!mesh.isReadable)
+            {
+                issues.Add(new WorldBuilderIssue(body, "The surface mesh cannot be read; the bake and the client read it, so turn on Read/Write for it."));
+                return false;
+            }
+
             if (mesh.vertexCount == 0)
             {
                 issues.Add(new WorldBuilderIssue(body, "The water has no surface: its mesh is empty."));

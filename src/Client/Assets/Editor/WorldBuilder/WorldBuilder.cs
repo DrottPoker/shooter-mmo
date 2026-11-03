@@ -37,26 +37,22 @@ namespace Mmorpg.Client.Editor
         public static List<WorldBuilderIssue> Validate(Scene scene)
         {
             var issues = WaterValidation.Validate(WaterBodies(scene));
-            foreach (var lake in Shapes<LakeShape>(scene).Where(lake => lake.Shore.Count < 3))
+
+            // What a shape that makes nothing lacks, exactly as the build sees it.
+            foreach (var incomplete in WaterScene.Collect(scene).Incomplete)
             {
-                issues.Add(new WorldBuilderIssue(lake, "A lake's shore needs at least three points."));
+                issues.Add(new WorldBuilderIssue(incomplete.Key, incomplete.Value));
             }
 
-            foreach (var sea in Shapes<SeaShape>(scene).Where(sea => sea.Outline.Count < 3))
+            foreach (var root in scene.GetRootGameObjects())
             {
-                issues.Add(new WorldBuilderIssue(sea, "A sea's outline needs at least three points."));
-            }
-
-            foreach (var river in Shapes<RiverShape>(scene).Where(river => river.Points.Count < 2))
-            {
-                issues.Add(new WorldBuilderIssue(river, "A river needs at least two points."));
-            }
-
-            var water = WaterScene.Collect(scene);
-            var falling = new HashSet<RiverShape>();
-            foreach (var waterfall in Shapes<WaterfallShape>(scene))
-            {
-                ValidateWaterfall(waterfall, water, falling, issues);
+                foreach (var disabled in root.GetComponentsInChildren<WorldBuilderShape>(false).Where(shape => !shape.enabled))
+                {
+                    issues.Add(new WorldBuilderIssue(
+                        disabled,
+                        "The shape is disabled, so the World Builder builds nothing from it and what it made stays as it was.",
+                        WorldBuilderIssueSeverity.Warning));
+                }
             }
 
             foreach (var shape in Shapes<WorldBuilderShape>(scene))
@@ -94,47 +90,6 @@ namespace Mmorpg.Client.Editor
             }
 
             return issues;
-        }
-
-        // A waterfall falls from the end of a river that no other waterfall falls from, down into
-        // another water body.
-        private static void ValidateWaterfall(
-            WaterfallShape waterfall,
-            WaterScene water,
-            HashSet<RiverShape> falling,
-            List<WorldBuilderIssue> issues)
-        {
-            var river = waterfall.River;
-            if (river == null)
-            {
-                issues.Add(new WorldBuilderIssue(waterfall, "A waterfall falls from a river: choose its River."));
-            }
-            else if (!falling.Add(river))
-            {
-                issues.Add(new WorldBuilderIssue(waterfall, "Another waterfall already falls from " + river.name + "; a river has one waterfall, at its end."));
-            }
-
-            if (waterfall.Landing == null)
-            {
-                issues.Add(new WorldBuilderIssue(waterfall, "A waterfall falls into a water body: choose its Landing."));
-            }
-            else if (river != null && waterfall.Landing == river.Body)
-            {
-                issues.Add(new WorldBuilderIssue(waterfall, "A waterfall falls into another water body than the river it falls from."));
-            }
-            else
-            {
-                var model = water.Rivers.Find(candidate => candidate.River == river);
-                var landing = water.FindSurface(waterfall.Landing);
-                if (model != null
-                    && landing != null
-                    && model.Path.ValuesAt(model.Path.Length).Position.y - landing.Level < WaterScene.MinimumFall)
-                {
-                    issues.Add(new WorldBuilderIssue(
-                        waterfall,
-                        "The landing lies at or above the lip, so the water has nowhere to fall: lower the landing or raise the river's last point."));
-                }
-            }
         }
 
         // Moves the meshes that the World Builder made for the scene, and that nothing uses any

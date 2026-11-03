@@ -500,13 +500,14 @@ past the shore, under the bank that hides it. Move, turn, or lift a shape's
 object with the usual tools, but keep it level and unscaled.
 
 The water follows every change a moment later, also when a shape is moved,
-added, or removed, and after an undo. The World Builder rebuilds all of a
-scene's water at once, because water shapes the water it meets:
+added, or removed, when the ground's colliders change, and after an undo. The
+World Builder rebuilds all of a scene's water at once, because water shapes the
+water it meets:
 
 - A river whose first or last point lies within 0.5 m of the level of a lake or
   sea whose surface covers it starts or ends in that water: its surface lies at
   that level there and stands still, so they meet without a seam, and a sea's
-  waves and foam lines calm down at the river's mouth.
+  waves and foam lines calm down over the river's water.
 - A waterfall makes its river's last point a lip exactly as wide as the river,
   falls along the path water takes at its speed, and makes the water it lands in
   churn and spread. White water, mist, and droplets are particle systems below
@@ -517,7 +518,8 @@ scene's water at once, because water shapes the water it meets:
   at that edge, cutting the cells the edge crosses, however the sea is moved or
   turned. Draw its outline out to that edge there.
 - A shape that is not complete, such as a waterfall without a landing or a
-  river with one point, shows nothing until it is.
+  river with one point, shows nothing until it is. A disabled shape builds
+  nothing, and what it made stays as it was.
 
 A rebuild writes a mesh only when it changes, so a rebuild without a change
 marks nothing dirty and opening a scene changes nothing. A shape keeps the mesh
@@ -536,11 +538,12 @@ The validation finds errors, which stop the collision bake, and warnings:
   marked `Batching Static`, without the water shader, or with a mesh that is
   empty or lacks the shader's data; two water bodies that overlap within 0.25 m
   in height but do not agree there; a lake or sea with fewer than three points
-  and a river with fewer than two; and a waterfall without its river or its
-  landing, a second one from the same river, one into its own river, or one
-  whose landing lies less than 0.1 m below its lip.
-- Warnings: a shape that is tilted or scaled, water outside the collision root,
-  which the bake leaves out, and unused meshes.
+  and a river with fewer than two; and a waterfall without a river or a landing
+  that makes water, such as a disabled shape, a second one from the same river,
+  one into its own river, or one whose landing lies less than 0.1 m below its
+  lip.
+- Warnings: a disabled shape, a shape that is tilted or scaled, water outside
+  the collision root, which the bake leaves out, and unused meshes.
 
 A shape, its handles, and what builds from it make one kind of shape;
 [Extension Rules](UNITY_CLIENT_ARCHITECTURE.md#extension-rules) says how a new

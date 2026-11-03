@@ -52,7 +52,7 @@ namespace Mmorpg.Client.Editor
                 WaterfallBuilder.BuildSpray(waterfall, spray);
             }
 
-            foreach (var shape in water.Incomplete)
+            foreach (var shape in water.Incomplete.Keys)
             {
                 changed |= Clear(assets, shape);
             }
@@ -61,7 +61,8 @@ namespace Mmorpg.Client.Editor
         }
 
         // An incomplete shape shows nothing until it is complete: its mesh is emptied, or let go
-        // where another shape of the build writes it, and a waterfall's spray goes.
+        // where another shape of the build writes it, and a waterfall's spray and a sea's water
+        // beyond the World go.
         private static bool Clear(WorldBuilderAssets assets, WorldBuilderShape shape)
         {
             var changed = false;
@@ -80,12 +81,12 @@ namespace Mmorpg.Client.Editor
                 changed = true;
             }
 
-            if (shape is WaterfallShape)
+            var parts = shape is WaterfallShape ? new[] { WaterfallBuilder.BoilName, WaterfallBuilder.MistName, WaterfallBuilder.SplashName }
+                : shape is SeaShape ? new[] { HorizonName, SeabedName }
+                : new string[0];
+            foreach (var name in parts)
             {
-                foreach (var name in new[] { WaterfallBuilder.BoilName, WaterfallBuilder.MistName, WaterfallBuilder.SplashName })
-                {
-                    changed |= Remove(shape.transform, name);
-                }
+                changed |= Remove(shape.transform, name);
             }
 
             return changed;

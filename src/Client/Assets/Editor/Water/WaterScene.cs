@@ -29,10 +29,11 @@ namespace Mmorpg.Client.Editor
 
         public List<WaterfallModel> Waterfalls { get; } = new List<WaterfallModel>();
 
-        // The shapes that make nothing until they are complete: a river with fewer than two
-        // points, and a waterfall without a river or a landing below its lip, or from a river that
-        // another waterfall already falls from.
-        public List<WorldBuilderShape> Incomplete { get; } = new List<WorldBuilderShape>();
+        // The shapes that make nothing until they are complete, with what each lacks: a lake or a
+        // sea with fewer than three points, a river with fewer than two, and a waterfall without a
+        // river or a landing that makes water, from a river another waterfall already falls from,
+        // or onto a landing that does not lie below its lip.
+        public Dictionary<WorldBuilderShape, string> Incomplete { get; } = new Dictionary<WorldBuilderShape, string>();
 
         // Where the World's ground ends in X and Z, or null without any ground.
         public Rect? WorldEdge { get; private set; }
@@ -61,17 +62,23 @@ namespace Mmorpg.Client.Editor
 
                 switch (shape)
                 {
-                    case LakeShape lake:
+                    case LakeShape lake when lake.Shore.Count >= 3:
                         water.Lakes.Add(new LakeModel(lake));
                         break;
-                    case SeaShape sea:
+                    case LakeShape lake:
+                        water.Incomplete.Add(lake, "A lake's shore needs at least three points.");
+                        break;
+                    case SeaShape sea when sea.Outline.Count >= 3:
                         water.Seas.Add(new SeaModel(sea));
+                        break;
+                    case SeaShape sea:
+                        water.Incomplete.Add(sea, "A sea's outline needs at least three points.");
                         break;
                     case RiverShape river when river.Points.Count >= 2:
                         water.Rivers.Add(new RiverModel(river));
                         break;
                     case RiverShape river:
-                        water.Incomplete.Add(river);
+                        water.Incomplete.Add(river, "A river needs at least two points.");
                         break;
                     case WaterfallShape waterfall:
                         waterfalls.Add(waterfall);
@@ -79,27 +86,26 @@ namespace Mmorpg.Client.Editor
                 }
             }
 
+            // A river calms a sea that it starts or ends in.
             foreach (var river in water.Rivers)
             {
                 river.Start = water.FindJunction(river.Path.ValuesAt(0f).Position);
                 river.End = water.FindJunction(river.Path.ValuesAt(river.Path.Length).Position);
-                if (river.End != null && river.End.Body is SeaModel sea)
+                foreach (var junction in new[] { river.Start, river.End })
                 {
-                    sea.Mouths.Add(river);
+                    if (junction != null && junction.Body is SeaModel sea && !sea.Rivers.Contains(river))
+                    {
+                        sea.Rivers.Add(river);
+                    }
                 }
             }
 
             foreach (var waterfall in waterfalls)
             {
-                var river = water.Rivers.Find(model => model.River == waterfall.River);
-                var landing = water.FindSurface(waterfall.Landing);
-                if (river == null
-                    || landing == null
-                    || landing == river
-                    || river.Fall != null
-                    || river.Path.ValuesAt(river.Path.Length).Position.y - landing.Level < MinimumFall)
+                var problem = water.WaterfallProblem(waterfall, out var river, out var landing);
+                if (problem != null)
                 {
-                    water.Incomplete.Add(waterfall);
+                    water.Incomplete.Add(waterfall, problem);
                     continue;
                 }
 
@@ -110,6 +116,49 @@ namespace Mmorpg.Client.Editor
             }
 
             return water;
+        }
+
+        // What keeps a waterfall from falling, or null when it falls from its river's end into
+        // the water of its landing.
+        private string WaterfallProblem(WaterfallShape waterfall, out RiverModel river, out SurfaceModel landing)
+        {
+            river = waterfall.River != null ? Rivers.Find(model => model.River == waterfall.River) : null;
+            landing = FindSurface(waterfall.Landing);
+            if (waterfall.River == null)
+            {
+                return "A waterfall falls from a river: choose its River.";
+            }
+
+            if (river == null)
+            {
+                return "Its River " + waterfall.River.name + " makes no water: its shape is disabled or inactive, "
+                    + "or has fewer than two points.";
+            }
+
+            if (waterfall.Landing == null)
+            {
+                return "A waterfall falls into a water body: choose its Landing.";
+            }
+
+            if (landing == null)
+            {
+                return "Its Landing " + waterfall.Landing.name + " makes no water to fall into: it needs an active "
+                    + "lake, river, or sea shape that is complete.";
+            }
+
+            if (landing == river)
+            {
+                return "A waterfall falls into another water body than the river it falls from.";
+            }
+
+            if (river.Fall != null)
+            {
+                return "Another waterfall already falls from " + waterfall.River.name + "; a river has one waterfall, at its end.";
+            }
+
+            return river.Path.ValuesAt(river.Path.Length).Position.y - landing.Level < MinimumFall
+                ? "The landing lies at or above the lip, so the water has nowhere to fall: lower the landing or raise the river's last point."
+                : null;
         }
 
         // The lake or sea whose surface covers a point at about its height, the highest if several do.
@@ -300,8 +349,8 @@ namespace Mmorpg.Client.Editor
 
         public SeaShape Sea { get; }
 
-        // The rivers that flow into the sea.
-        public List<RiverModel> Mouths { get; } = new List<RiverModel>();
+        // The rivers that start or end in the sea, whose water calms it.
+        public List<RiverModel> Rivers { get; } = new List<RiverModel>();
     }
 
     internal sealed class RiverModel : SurfaceModel
