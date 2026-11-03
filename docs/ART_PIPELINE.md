@@ -2671,13 +2671,18 @@ body of its own, lit the same way: the rock behind shows through clear water,
 bent by ripples that rush down, the sky and the sun glint in it, and thin
 streaks and clumps of foam fall with the water. The water slides glassy over the
 lip, breaks into streaks, and turns white at the foot. Its outline frays and
-fades where the column turns away, so it has no hard edge from any side, and
-clear water looks denser where the view passes through it at a slant. The
-column's mesh holds the meters around it from its front, the seconds the water
-has fallen, and how far down the fall the vertex lies in its texture coordinate,
-its normals facing out of the column and its tangents running around it. Because
-the pattern keeps to the seconds the water has fallen, its streaks stretch as
-the water speeds up.
+fades where the column turns away around its cross section, so it has no hard
+edge from any side, while the top of the water over the lip stays a surface
+even at a glancing view along the stream. Clear water looks denser where the
+view passes through it at a slant. The column starts on the water above it,
+with its top in that surface, and fades in over it before the lip, so the water
+above turns into the fall without a line, a bright edge, or a step in color.
+The column's mesh holds the meters around it from its front, the seconds the
+water has fallen (negative before it falls), how far down the fall the vertex
+lies, and how far the column has faded in over the water above in its four
+texture coordinates, its normals facing out of the column and its tangents
+running around it. Because the pattern keeps to the seconds the water has
+fallen, its streaks stretch as the water speeds up.
 
 | File | Content |
 | --- | --- |

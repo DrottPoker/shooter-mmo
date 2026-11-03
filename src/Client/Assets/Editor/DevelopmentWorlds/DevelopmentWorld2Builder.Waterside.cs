@@ -84,6 +84,14 @@ namespace Mmorpg.Client.Editor
         private const float PlungePoolDepth = 1f;
         private const float Gravity = 9.81f;
 
+        // The stream's surface reaches this far under the channel's walls and past the lip, where
+        // it keeps this far inside the channel; the waterfall's column fades in over the stream
+        // along this much of it before the lip.
+        private const float StreamUnderWalls = 0.1f;
+        private const float StreamPastLip = 0.05f;
+        private const float StreamInsideFall = 0.02f;
+        private const float WaterfallApproachLength = 0.6f;
+
         private static float? riverFallStart;
         private static float? riverMouth;
 
@@ -734,7 +742,9 @@ namespace Mmorpg.Client.Editor
                 AssetDatabase.CreateAsset(mesh, path);
             }
 
-            mesh.Clear();
+            // Clearing the old vertex layout too, so a fill without normals gets them computed
+            // instead of keeping the old normal channel's memory unwritten.
+            mesh.Clear(false);
             fill(mesh);
             if (!mesh.HasVertexAttribute(VertexAttribute.Normal))
             {
@@ -808,20 +818,26 @@ namespace Mmorpg.Client.Editor
                 "WATERFALL\nWade into the pool,\nramp up to the stream");
         }
 
-        // The stream from inside the spring's boulder to just past the lip, five vertices across
-        // that reach under both rock walls. It runs faster toward the lip, bubbles at the
-        // spring, and foams where it tips over.
+        // The stream from inside the spring's boulder to just past the lip, five vertices across.
+        // Up to the lip it reaches under both rock walls; past it, where the walls end, it keeps
+        // a little inside the channel, under the falling water's flat top. It runs faster toward
+        // the lip, bubbles at the spring, and foams where it tips over.
         private static Mesh BuildStreamSurface()
         {
             var surface = new WaterSurfaceMesh();
             const int columns = 5;
             var length = OutcropLength - SpringLength + 0.1f;
             var steps = Mathf.CeilToInt(length / 0.5f);
+            var rows = steps + 2;
             var downstream = -OutcropDirection;
-            for (var step = 0; step <= steps; step++)
+            for (var row = 0; row < rows; row++)
             {
-                // How far back from the lip, from 5 cm past it to inside the boulder.
-                var back = Mathf.Lerp(-0.05f, length, (float)step / steps);
+                // How far back from the lip: row 0 lies past the lip, row 1 on it, and the
+                // others up to inside the boulder.
+                var back = row == 0 ? -StreamPastLip : Mathf.Lerp(0f, length, (float)(row - 1) / steps);
+                var halfWidth = row == 0
+                    ? StreamHalfWidth - StreamInsideFall
+                    : row == 1 ? StreamHalfWidth : StreamHalfWidth + StreamUnderWalls;
                 var speed = Mathf.Lerp(1.8f, 0.5f, Smooth01(back / length));
                 var turbulence = Mathf.Max(
                     0.6f * (1f - Smooth01((length - back) / 1.2f)),
@@ -830,17 +846,17 @@ namespace Mmorpg.Client.Editor
                 for (var column = 0; column < columns; column++)
                 {
                     var side = ((2f * column) / (columns - 1)) - 1f;
-                    var point = center + (OutcropAcross * (side * (StreamHalfWidth + 0.1f)));
+                    var point = center + (OutcropAcross * (side * halfWidth));
                     var profile = 1f - (0.5f * side * side);
                     surface.Add(new Vector3(point.x, StreamSurface, point.y), downstream * (speed * profile), turbulence * profile, 0f, 0f);
                 }
             }
 
-            for (var step = 0; step < steps; step++)
+            for (var row = 0; row < rows - 1; row++)
             {
                 for (var column = 0; column < columns - 1; column++)
                 {
-                    var first = (step * columns) + column;
+                    var first = (row * columns) + column;
                     surface.Triangle(first, first + 1, first + columns + 1);
                     surface.Triangle(first, first + columns + 1, first + columns);
                 }
@@ -850,16 +866,19 @@ namespace Mmorpg.Client.Editor
         }
 
         // The falling water as a body of its own: a column whose cross section is a rounded slab,
-        // as wide as the stream and as thick as its water at the lip, that follows the path the
-        // water takes when it leaves the lip at the waterfall's speed and grows wider and thicker
-        // as it falls and breaks up, down to the lake's surface. Its outside faces outward, so
-        // it shows its body from every side. The texture coordinate holds the meters around the
-        // column from its front, the seconds the water has fallen, and how far down the fall the
-        // vertex lies; the tangents run around the column.
+        // as wide as the channel and as thick as the stream's water at the lip, that follows the
+        // path the water takes when it leaves the stream's surface at the waterfall's speed and
+        // grows wider, thicker, and rounder as it falls and breaks up, down to the lake's surface.
+        // Up to where the stream's surface ends, just past the lip, it runs straight along the
+        // channel with its top in that surface and fades in over it, so the stream turns into the
+        // fall without a line. Its outside faces outward, so it shows its body from every side.
+        // The texture coordinate holds the meters around the column from its front, the seconds
+        // the water has fallen, negative before it falls, how far down the fall the vertex lies,
+        // and how far the column has faded in; the tangents run around the column.
         private static Mesh BuildWaterfallSheet()
         {
             const int rows = 24;
-            const int around = 32;
+            const int around = 64;
             var top = StreamSurface - ((StreamSurface - StreamBedTop) * 0.5f);
             var seconds = Mathf.Sqrt(2f * (top - (LakeSurface - 0.05f)) / Gravity);
             var across3 = new Vector3(OutcropAcross.x, 0f, OutcropAcross.y);
@@ -867,40 +886,51 @@ namespace Mmorpg.Client.Editor
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
             var tangents = new List<Vector4>();
-            var sheet = new List<Vector3>();
+            var sheet = new List<Vector4>();
             var triangles = new List<int>();
             var section = new Vector3[around + 1];
             var sectionNormals = new Vector3[around + 1];
-            for (var row = 0; row <= rows; row++)
+
+            // Row -1 starts the approach up the channel; row 0 lies where the stream's surface
+            // ends and the water starts to fall.
+            for (var row = -1; row <= rows; row++)
             {
-                var fall = (float)row / rows;
-                var time = seconds * fall;
-                var flat = WaterfallLip - (OutcropDirection * ((WaterfallSpeed * time) - 0.05f));
-                var center = new Vector3(flat.x, top - (0.5f * Gravity * time * time), flat.y);
+                var fall = Mathf.Max(0f, (float)row / rows);
+                var time = row < 0 ? -(WaterfallApproachLength + StreamPastLip) / WaterfallSpeed : seconds * fall;
+                var falling = Mathf.Max(0f, time);
+                var flat = WaterfallLip - (OutcropDirection * (StreamPastLip + (WaterfallSpeed * time)));
+                var center = new Vector3(flat.x, top - (0.5f * Gravity * falling * falling), flat.y);
 
                 // The section lies square to the water's path: across the stream, and along the
                 // normal, which faces up at the lip and toward the lake once the water falls.
-                var velocity = (towardLake * WaterfallSpeed) + (Vector3.down * (Gravity * time));
+                var velocity = (towardLake * WaterfallSpeed) + (Vector3.down * (Gravity * falling));
                 var normal = Vector3.Cross(across3, velocity).normalized;
                 if (Vector3.Dot(normal, towardLake + Vector3.up) < 0f)
                 {
                     normal = -normal;
                 }
 
+                // A slab as wide as the channel it leaves and square enough that its flat top
+                // covers the stream's surface past the lip, that rounds evenly into a superellipse
+                // of exponent 4 as it falls.
                 var spread = Smooth01(fall * 1.3f);
-                var halfWidth = Mathf.Lerp(StreamHalfWidth - 0.05f, StreamHalfWidth + 0.35f, spread);
+                var halfWidth = Mathf.Lerp(StreamHalfWidth, StreamHalfWidth + 0.35f, spread);
                 var halfThickness = Mathf.Lerp((StreamSurface - StreamBedTop) * 0.5f, 0.45f, spread);
+                var roundness = Mathf.Lerp(1f / 30f, 0.5f, spread);
+                var exponent = 2f / roundness;
                 for (var index = 0; index <= around; index++)
                 {
-                    // From the back around through the front, as a superellipse of exponent 4.
+                    // From the back around through the front. The quarter turns get exact zeros,
+                    // which a small roundness would otherwise raise from rounding errors to
+                    // large offsets.
                     var angle = (-0.5f * Mathf.PI) + ((2f * Mathf.PI * index) / around);
-                    var cos = Mathf.Cos(angle);
-                    var sin = Mathf.Sin(angle);
-                    var x = halfWidth * Mathf.Sign(cos) * Mathf.Sqrt(Mathf.Abs(cos));
-                    var y = halfThickness * Mathf.Sign(sin) * Mathf.Sqrt(Mathf.Abs(sin));
+                    var cos = index % (around / 2) == 0 ? 0f : Mathf.Cos(angle);
+                    var sin = index % (around / 2) == around / 4 ? 0f : Mathf.Sin(angle);
+                    var x = halfWidth * Mathf.Sign(cos) * Mathf.Pow(Mathf.Abs(cos), roundness);
+                    var y = halfThickness * Mathf.Sign(sin) * Mathf.Pow(Mathf.Abs(sin), roundness);
                     section[index] = center + (across3 * x) + (normal * y);
-                    var gradientX = (x * x * x) / (halfWidth * halfWidth * halfWidth * halfWidth);
-                    var gradientY = (y * y * y) / (halfThickness * halfThickness * halfThickness * halfThickness);
+                    var gradientX = Mathf.Sign(x) * Mathf.Pow(Mathf.Abs(x) / halfWidth, exponent - 1f) / halfWidth;
+                    var gradientY = Mathf.Sign(y) * Mathf.Pow(Mathf.Abs(y) / halfThickness, exponent - 1f) / halfThickness;
                     sectionNormals[index] = ((across3 * gradientX) + (normal * gradientY)).normalized;
                 }
 
@@ -918,12 +948,13 @@ namespace Mmorpg.Client.Editor
                     vertices.Add(section[index]);
                     normals.Add(sectionNormals[index]);
                     tangents.Add(new Vector4(next.normalized.x, next.normalized.y, next.normalized.z, 1f));
-                    sheet.Add(new Vector3(lengths[index] - front, time, fall));
+                    sheet.Add(new Vector4(lengths[index] - front, time, fall, row < 0 ? 0f : 1f));
                 }
             }
 
+            // The rows from -1 to the last give rows + 2 rings to join.
             var ring = around + 1;
-            for (var row = 0; row < rows; row++)
+            for (var row = 0; row <= rows; row++)
             {
                 for (var index = 0; index < around; index++)
                 {
