@@ -7,7 +7,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: M_Water_Sea
+  m_Name: M_Water
   m_Shader: {fileID: 4800000, guid: 5c442f43cdf556f499c8bc29a98cf5fc, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
@@ -36,23 +36,23 @@ Material:
     - _CausticsDepth: 2.5
     - _CausticsStrength: 0.7
     - _CausticsTiling: 2.6
-    - _Clarity: 3
-    - _DepthColorDistance: 3.5
-    - _DetailStrength: 0.45
-    - _DetailTiling: 1.8
+    - _Clarity: 2.6
+    - _DepthColorDistance: 2.8
+    - _DetailStrength: 0.47
+    - _DetailTiling: 1.6
     - _EdgeFade: 0.2
-    - _FlowCycle: 3
+    - _FlowCycle: 2.2
     - _FoamSoftness: 0.18
-    - _FoamTiling: 9
+    - _FoamTiling: 7
     - _FresnelPower: 4
     - _IntersectionFoamDistance: 0.35
     - _NormalStrength: 0.85
-    - _NormalTiling: 8
+    - _NormalTiling: 6
     - _ReflectionStrength: 0.65
     - _RefractionStrength: 0.015
     - _RippleShading: 1.5
     - _SheenIntensity: 0.5
-    - _ShoreFoamDepth: 0.4
+    - _ShoreFoamDepth: 0.38
     - _ShoreWaveDepth: 1.6
     - _ShoreWaveFrequency: 1.2
     - _ShoreWaveSpeed: 0.18
@@ -60,16 +60,16 @@ Material:
     - _SpecularIntensity: 4
     - _SpecularPower: 900
     - _SurfacePattern: 0.12
-    - _SurfacePatternTiling: 6
-    - _TurbulenceFoam: 0.5
+    - _SurfacePatternTiling: 5
+    - _TurbulenceFoam: 0.8
     - _WaveAmplitude: 0.12
     - _WaveLength: 14
     - _WaveSpeed: 2
     m_Colors:
-    - _DeepColor: {r: 0.02, g: 0.18, b: 0.48, a: 1}
-    - _Drift: {r: 0.07, g: -0.05, b: 0, a: 0}
+    - _DeepColor: {r: 0.025, g: 0.19, b: 0.47, a: 1}
+    - _Drift: {r: 0.05, g: 0.02, b: 0, a: 0}
     - _FoamColor: {r: 0.92, g: 0.97, b: 1, a: 1}
     - _HorizonColor: {r: 0.62, g: 0.84, b: 0.95, a: 1}
-    - _ShallowColor: {r: 0.09, g: 0.78, b: 0.82, a: 1}
+    - _ShallowColor: {r: 0.11, g: 0.74, b: 0.78, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

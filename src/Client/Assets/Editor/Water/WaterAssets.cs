@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using Mmorpg.Client.Worlds;
 using UnityEditor;
 using UnityEngine;
 
@@ -9,11 +8,11 @@ namespace Mmorpg.Client.Editor
     // The textures and materials of the stylized water. Both are made here from code, so every
     // value of the look is reviewed with the code and a rebuild reproduces the same files: the
     // ripple normals, the masks for foam, light patterns, and sparkles, and the waterfall's
-    // streaks from tileable noise, one material per kind of water body, the waterfall's material,
-    // and the ring and the droplet of the wakes that characters leave in the water. They live in
-    // their own folder, because the import rules of the exported art own every texture below
-    // Assets/Art/Textures and import it as a color image. A zone's own water colors are material
-    // variants of these materials, which a rebuild keeps.
+    // streaks from tileable noise, one material for every water surface, so water bodies that
+    // meet draw alike, the waterfall's material, and the ring and the droplet of the wakes that
+    // characters leave in the water. They live in their own folder, because the import rules of
+    // the exported art own every texture below Assets/Art/Textures and import it as a color image.
+    // A zone's own water colors are material variants of these materials, which a rebuild keeps.
     public static class WaterAssets
     {
         public const string MenuPath = "MMORPG/Tools/Water/Create Water Textures And Materials";
@@ -26,6 +25,7 @@ namespace Mmorpg.Client.Editor
         public const string FallsTexturePath = Directory + "/T_Water_Falls.png";
         public const string RingTexturePath = Directory + "/T_Water_Ring.png";
         public const string DropletTexturePath = Directory + "/T_Water_Droplet.png";
+        public const string SurfaceMaterialPath = Directory + "/M_Water.mat";
         public const string WaterfallMaterialPath = Directory + "/M_Water_Waterfall.mat";
         public const string RingMaterialPath = Directory + "/M_Water_Ring.mat";
         public const string SprayMaterialPath = Directory + "/M_Water_Spray.mat";
@@ -41,26 +41,18 @@ namespace Mmorpg.Client.Editor
             Debug.Log("[WATER] Created the water textures and the materials of every kind of water.");
         }
 
-        public static string MaterialPath(WaterBodyKind kind)
-        {
-            return Directory + "/M_Water_" + kind + ".mat";
-        }
-
         // Writes the textures and the materials where they differ from what the code makes.
         public static void CreateOrUpdate()
         {
             EnsureFolder("Assets/Art", "Water");
             var ripples = WriteTexture(RipplesTexturePath, CreateRipplePixels(), true);
             var masks = WriteTexture(MasksTexturePath, CreateMaskPixels(), false);
-            foreach (WaterBodyKind kind in Enum.GetValues(typeof(WaterBodyKind)))
+            CreateOrUpdateMaterial(SurfaceMaterialPath, ShaderName, material =>
             {
-                CreateOrUpdateMaterial(MaterialPath(kind), ShaderName, material =>
-                {
-                    material.SetTexture("_NormalMap", ripples);
-                    material.SetTexture("_Masks", masks);
-                    ApplyLook(material, kind);
-                });
-            }
+                material.SetTexture("_NormalMap", ripples);
+                material.SetTexture("_Masks", masks);
+                ApplyLook(material);
+            });
 
             var falls = WriteTexture(FallsTexturePath, CreateFallPixels(), false);
             CreateOrUpdateMaterial(WaterfallMaterialPath, WaterfallShaderName, material =>
@@ -114,11 +106,6 @@ namespace Mmorpg.Client.Editor
             }
 
             return pixels;
-        }
-
-        public static Material LoadMaterial(WaterBodyKind kind)
-        {
-            return LoadMaterial(MaterialPath(kind));
         }
 
         public static Material LoadMaterial(string path)
@@ -373,25 +360,24 @@ namespace Mmorpg.Client.Editor
             return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         }
 
-        // Every property the material has, per kind of water body. A lake is calm and clear, a
-        // river shares its colors, runs, and foams where it is fast, and the sea is turquoise
-        // over sand, with waves and foam lines that roll in toward the shore.
-        private static void ApplyLook(Material material, WaterBodyKind kind)
+        // Every property of the water surfaces' material. The water is turquoise and clear over
+        // sand and deep blue further out. What sets a lake, a river, and the sea apart comes from
+        // their vertices: the flow, the fast water that foams, the waves, and the foam lines that
+        // roll toward a beach.
+        private static void ApplyLook(Material material)
         {
-            var river = kind == WaterBodyKind.River;
-            var sea = kind == WaterBodyKind.Sea;
-            material.SetColor("_ShallowColor", sea ? new Color(0.09f, 0.78f, 0.82f) : new Color(0.13f, 0.68f, 0.72f));
-            material.SetColor("_DeepColor", sea ? new Color(0.02f, 0.18f, 0.48f) : new Color(0.03f, 0.21f, 0.45f));
-            material.SetFloat("_DepthColorDistance", sea ? 3.5f : 2.2f);
-            material.SetFloat("_Clarity", sea ? 3f : 2.2f);
+            material.SetColor("_ShallowColor", new Color(0.11f, 0.74f, 0.78f));
+            material.SetColor("_DeepColor", new Color(0.025f, 0.19f, 0.47f));
+            material.SetFloat("_DepthColorDistance", 2.8f);
+            material.SetFloat("_Clarity", 2.6f);
             material.SetColor("_HorizonColor", new Color(0.62f, 0.84f, 0.95f));
 
-            material.SetFloat("_NormalTiling", sea ? 8f : river ? 4f : 5f);
-            material.SetFloat("_NormalStrength", sea ? 0.85f : river ? 0.9f : 0.8f);
-            material.SetFloat("_DetailTiling", sea ? 1.8f : river ? 1.2f : 1.5f);
-            material.SetFloat("_DetailStrength", sea ? 0.45f : 0.5f);
-            material.SetVector("_Drift", sea ? new Vector4(0.07f, -0.05f, 0f, 0f) : river ? Vector4.zero : new Vector4(0.05f, 0.03f, 0f, 0f));
-            material.SetFloat("_FlowCycle", river ? 1.6f : 3f);
+            material.SetFloat("_NormalTiling", 6f);
+            material.SetFloat("_NormalStrength", 0.85f);
+            material.SetFloat("_DetailTiling", 1.6f);
+            material.SetFloat("_DetailStrength", 0.47f);
+            material.SetVector("_Drift", new Vector4(0.05f, 0.02f, 0f, 0f));
+            material.SetFloat("_FlowCycle", 2.2f);
             material.SetFloat("_RefractionStrength", 0.015f);
             material.SetFloat("_ReflectionStrength", 0.65f);
             material.SetFloat("_FresnelPower", 4f);
@@ -402,22 +388,22 @@ namespace Mmorpg.Client.Editor
             material.SetFloat("_RippleShading", 1.5f);
 
             material.SetColor("_FoamColor", new Color(0.92f, 0.97f, 1f));
-            material.SetFloat("_FoamTiling", sea ? 9f : river ? 5f : 7f);
+            material.SetFloat("_FoamTiling", 7f);
             material.SetFloat("_FoamSoftness", 0.18f);
             material.SetFloat("_SurfacePattern", 0.12f);
-            material.SetFloat("_SurfacePatternTiling", sea ? 6f : 4f);
-            material.SetFloat("_ShoreFoamDepth", sea ? 0.4f : 0.35f);
+            material.SetFloat("_SurfacePatternTiling", 5f);
+            material.SetFloat("_ShoreFoamDepth", 0.38f);
             material.SetFloat("_IntersectionFoamDistance", 0.35f);
-            material.SetFloat("_ShoreWaveFrequency", sea ? 1.2f : 0f);
+            material.SetFloat("_ShoreWaveFrequency", 1.2f);
             material.SetFloat("_ShoreWaveSpeed", 0.18f);
             material.SetFloat("_ShoreWaveDepth", 1.6f);
-            material.SetFloat("_TurbulenceFoam", sea ? 0.5f : river ? 0.75f : 0.9f);
+            material.SetFloat("_TurbulenceFoam", 0.8f);
 
             material.SetFloat("_CausticsTiling", 2.6f);
             material.SetFloat("_CausticsStrength", 0.7f);
             material.SetFloat("_CausticsDepth", 2.5f);
 
-            material.SetFloat("_WaveAmplitude", sea ? 0.12f : 0f);
+            material.SetFloat("_WaveAmplitude", 0.12f);
             material.SetFloat("_WaveLength", 14f);
             material.SetFloat("_WaveSpeed", 2f);
             material.SetFloat("_EdgeFade", 0.2f);
@@ -444,7 +430,7 @@ namespace Mmorpg.Client.Editor
             material.SetFloat("_SpecularPower", 300f);
             material.SetFloat("_SpecularIntensity", 3f);
             material.SetFloat("_SparkleIntensity", 2f);
-            material.SetFloat("_EdgeSoftness", 0.3f);
+            material.SetFloat("_OutlineSoftness", 0.3f);
         }
 
         private static void EnsureFolder(string parent, string child)

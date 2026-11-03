@@ -481,7 +481,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(waterside.terrainData.size, Is.EqualTo(DevelopmentWorld2Builder.WatersideSize));
 
                 // One lake, one river, one sea, and the stream above the waterfall, each a
-                // surface mesh without a collider that draws with the material of its kind.
+                // surface mesh without a collider that draws with the shared water material.
                 var bodies = environment.GetComponentsInChildren<WaterBody>(true);
                 Assert.That(
                     bodies.Select(body => body.BodyId + ":" + body.Kind),
@@ -498,7 +498,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(body.GetComponents<Collider>(), Is.Empty, body.name);
                     Assert.That(
                         body.GetComponent<MeshRenderer>().sharedMaterial,
-                        Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.MaterialPath(body.Kind))),
+                        Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.SurfaceMaterialPath)),
                         body.name);
                 }
 
@@ -512,7 +512,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(beyond.GetComponents<Collider>(), Is.Empty);
                 Assert.That(
                     beyond.GetComponent<MeshRenderer>().sharedMaterial,
-                    Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.MaterialPath(WaterBodyKind.Sea))));
+                    Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.SurfaceMaterialPath)));
             });
         }
         [Test]

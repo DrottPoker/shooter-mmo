@@ -56,7 +56,6 @@ namespace Mmorpg.Client.Editor
         private const float RiverHalfWidth = 4f;
         private const float RiverBankWidth = 3f;
         private const float RiverDepth = 2f;
-        private const float RiverEndSurface = 3.02f;
         private const float RiverWaterHalfWidth = 5.5f;
         private const float FordDepth = 0.8f;
         private const float FordDistance = 20f;
@@ -86,6 +85,7 @@ namespace Mmorpg.Client.Editor
         private const float Gravity = 9.81f;
 
         private static float? riverFallStart;
+        private static float? riverMouth;
 
         // The river's center line in World X and Z, from inside the lake to the sea's shore.
         private static readonly Vector2[] RiverPoints =
@@ -168,7 +168,7 @@ namespace Mmorpg.Client.Editor
             var beyond = new GameObject("SeaBeyondTheWorld");
             beyond.transform.SetParent(water, false);
             beyond.AddComponent<MeshFilter>().sharedMesh = BuildOuterSeaSurface();
-            ConfigureWaterRenderer(beyond.AddComponent<MeshRenderer>(), WaterAssets.LoadMaterial(WaterBodyKind.Sea));
+            ConfigureWaterRenderer(beyond.AddComponent<MeshRenderer>(), WaterAssets.LoadMaterial(WaterAssets.SurfaceMaterialPath));
             builder.Box(water, "WestSeabed", new Vector3(SeaCorner.x - (OuterSeaExtent * 0.5f), -0.25f, SeaCorner.y),
                 new Vector3(OuterSeaExtent, 0.5f, OuterSeaExtent * 2f), palette.Sand, false);
             builder.Box(water, "NorthSeabed", new Vector3(SeaCorner.x + (OuterSeaExtent * 0.5f), -0.25f, SeaCorner.y + (OuterSeaExtent * 0.5f)),
@@ -260,12 +260,12 @@ namespace Mmorpg.Client.Editor
             return surface - (RiverDepthAt(along) * (1f - Smooth01(distance / RiverHalfWidth)));
         }
 
-        // Level with the lake until the river leaves it, then falling evenly to the sea.
+        // Level with the lake until the river leaves it, then falling evenly to the sea's level,
+        // which it reaches at its mouth, where its surface ends inside the sea's.
         private static float RiverSurfaceAt(float along)
         {
-            var length = RiverLength();
-            var amount = Mathf.Clamp01((along - RiverFallStart) / (length - RiverFallStart));
-            return LakeSurface + ((RiverEndSurface - LakeSurface) * amount);
+            var amount = Mathf.Clamp01((along - RiverFallStart) / (RiverMouth - RiverFallStart));
+            return LakeSurface + ((SeaSurface - LakeSurface) * amount);
         }
 
         private static float RiverFallStart
@@ -279,6 +279,27 @@ namespace Mmorpg.Client.Editor
 
                 return riverFallStart.Value;
             }
+        }
+
+        private static float RiverMouth
+        {
+            get
+            {
+                if (!riverMouth.HasValue)
+                {
+                    riverMouth = RiverDistanceWhere(point => Vector2.Distance(point, SeaCorner) <= SeaWaterRadius + 0.3f);
+                }
+
+                return riverMouth.Value;
+            }
+        }
+
+        // 0 within the river's width of its mouth, rising to 1 12 m further out, so the sea's
+        // waves and foam lines calm down where the river's surface meets it.
+        private static float AwayFromRiverMouth(Vector2 point)
+        {
+            var mouth = RiverPointAt(RiverMouth, out _);
+            return Smooth01((Vector2.Distance(point, mouth) - (RiverWaterHalfWidth + 0.5f)) / 12f);
         }
 
         private static float RiverDepthAt(float along)
@@ -453,7 +474,7 @@ namespace Mmorpg.Client.Editor
             var body = new GameObject(name);
             body.transform.SetParent(parent, false);
             body.AddComponent<MeshFilter>().sharedMesh = surface;
-            ConfigureWaterRenderer(body.AddComponent<MeshRenderer>(), WaterAssets.LoadMaterial(kind));
+            ConfigureWaterRenderer(body.AddComponent<MeshRenderer>(), WaterAssets.LoadMaterial(WaterAssets.SurfaceMaterialPath));
             var serialized = new SerializedObject(body.AddComponent<WaterBody>());
             serialized.FindProperty("bodyId").stringValue = bodyId;
             serialized.FindProperty("kind").enumValueIndex = (int)kind;
@@ -512,12 +533,14 @@ namespace Mmorpg.Client.Editor
             var spread = distance > 0.01f
                 ? fromPool * (0.7f * churn * Smooth01(distance) / distance)
                 : Vector2.zero;
-            surface.Add(new Vector3(point.x, LakeSurface, point.y), spread, churn, 0f);
+            surface.Add(new Vector3(point.x, LakeSurface, point.y), spread, churn, 0f, 0f);
         }
 
         // The quarter disc of sea inside the World's corner, as a grid of 2 m cells whose
-        // vertices the waves lift. The waves calm down toward the World's edge, where the flat
-        // sea beyond the World meets this one, and the jagged rim lies under the beach.
+        // vertices the waves lift, with foam lines that roll onto the beach. The waves calm down
+        // toward the World's edge, where the flat sea beyond the World meets this one, and the
+        // waves and the foam lines both calm down at the river's mouth, so the river's surface
+        // meets this one without a seam. The jagged rim lies under the beach.
         private static Mesh BuildSeaSurface()
         {
             var surface = new WaterSurfaceMesh();
@@ -530,8 +553,9 @@ namespace Mmorpg.Client.Editor
                 {
                     var x = SeaCorner.x + (column * cell);
                     var z = SeaCorner.y - (row * cell);
-                    var waves = Mathf.Clamp01(Mathf.Min(x - SeaCorner.x, SeaCorner.y - z) / 12f);
-                    indices[row, column] = surface.Add(new Vector3(x, SeaSurface, z), Vector2.zero, 0f, waves);
+                    var calm = AwayFromRiverMouth(new Vector2(x, z));
+                    var waves = Mathf.Clamp01(Mathf.Min(x - SeaCorner.x, SeaCorner.y - z) / 12f) * calm;
+                    indices[row, column] = surface.Add(new Vector3(x, SeaSurface, z), Vector2.zero, 0f, waves, calm);
                 }
             }
 
@@ -565,13 +589,14 @@ namespace Mmorpg.Client.Editor
 
         // A ribbon along the river that reaches under both banks and falls with the river, five
         // vertices across, so the water runs fastest in the middle. It starts just inside the
-        // lake's disc and ends just outside the sea's, so the surfaces barely overlap, and its
-        // flow starts still at the lake, so the ripples meet the lake's without a seam.
+        // lake's disc at the lake's level and ends just inside the sea's at the sea's level, so
+        // the surfaces barely overlap, and its flow is still at both ends, so its surface meets
+        // the lake's and the sea's without a seam.
         private static Mesh BuildRiverSurface()
         {
             var surface = new WaterSurfaceMesh();
             var start = RiverFallStart;
-            var end = RiverDistanceWhere(point => Vector2.Distance(point, SeaCorner) <= SeaWaterRadius + 0.3f);
+            var end = RiverMouth;
             var steps = Mathf.CeilToInt(end - start);
             const int columns = 5;
             for (var step = 0; step <= steps; step++)
@@ -592,6 +617,7 @@ namespace Mmorpg.Client.Editor
                         new Vector3(point.x + offset.x, height, point.y + offset.y),
                         direction * (RiverFlowSpeedAt(along, start, end) * profile),
                         RiverTurbulenceAt(along) * profile,
+                        0f,
                         0f);
                 }
             }
@@ -610,13 +636,13 @@ namespace Mmorpg.Client.Editor
         }
 
         // About 0.8 m/s in the deep river and 1.4 m/s over the shallow ford, still where the
-        // river leaves the lake and slowing where it meets the sea.
+        // river leaves the lake and where it meets the sea, as the lake and the sea are.
         private static float RiverFlowSpeedAt(float along, float start, float end)
         {
             var fordAmount = 1f - Smooth01((Mathf.Abs(along - FordDistance) - FordHalfLength) / FordTransition);
             var speed = Mathf.Lerp(0.8f, 1.4f, fordAmount);
             var fromLake = Smooth01((along - start) / 6f);
-            var toSea = Mathf.Lerp(0.4f, 1f, Smooth01((end - along) / 5f));
+            var toSea = Smooth01((end - along) / 6f);
             return speed * fromLake * toSea;
         }
 
@@ -643,7 +669,8 @@ namespace Mmorpg.Client.Editor
 
         // The vertices of a water surface with what the water shader reads from them: the flow
         // in m/s in the second texture coordinate, and in the vertex color red the fast water
-        // that foams and green how much the waves lift the vertex.
+        // that foams, green how much the waves lift the vertex, and blue how strongly foam lines
+        // roll in toward the shore.
         private sealed class WaterSurfaceMesh
         {
             private readonly List<Vector3> vertices = new List<Vector3>();
@@ -651,11 +678,11 @@ namespace Mmorpg.Client.Editor
             private readonly List<Color> colors = new List<Color>();
             private readonly List<int> triangles = new List<int>();
 
-            public int Add(Vector3 position, Vector2 flow, float turbulence, float waves)
+            public int Add(Vector3 position, Vector2 flow, float turbulence, float waves, float surf)
             {
                 vertices.Add(position);
                 flows.Add(flow);
-                colors.Add(new Color(turbulence, waves, 0f, 1f));
+                colors.Add(new Color(turbulence, waves, surf, 1f));
                 return vertices.Count - 1;
             }
 
@@ -669,12 +696,13 @@ namespace Mmorpg.Client.Editor
                 triangles.Add(up ? c : b);
             }
 
+            // A flat, still quad with the foam lines of the sea it continues.
             public void Quad(float minimumX, float maximumX, float minimumZ, float maximumZ, float height)
             {
-                var first = Add(new Vector3(minimumX, height, minimumZ), Vector2.zero, 0f, 0f);
-                Add(new Vector3(minimumX, height, maximumZ), Vector2.zero, 0f, 0f);
-                Add(new Vector3(maximumX, height, maximumZ), Vector2.zero, 0f, 0f);
-                Add(new Vector3(maximumX, height, minimumZ), Vector2.zero, 0f, 0f);
+                var first = Add(new Vector3(minimumX, height, minimumZ), Vector2.zero, 0f, 0f, 1f);
+                Add(new Vector3(minimumX, height, maximumZ), Vector2.zero, 0f, 0f, 1f);
+                Add(new Vector3(maximumX, height, maximumZ), Vector2.zero, 0f, 0f, 1f);
+                Add(new Vector3(maximumX, height, minimumZ), Vector2.zero, 0f, 0f, 1f);
                 Triangle(first, first + 1, first + 2);
                 Triangle(first, first + 2, first + 3);
             }
@@ -804,7 +832,7 @@ namespace Mmorpg.Client.Editor
                     var side = ((2f * column) / (columns - 1)) - 1f;
                     var point = center + (OutcropAcross * (side * (StreamHalfWidth + 0.1f)));
                     var profile = 1f - (0.5f * side * side);
-                    surface.Add(new Vector3(point.x, StreamSurface, point.y), downstream * (speed * profile), turbulence * profile, 0f);
+                    surface.Add(new Vector3(point.x, StreamSurface, point.y), downstream * (speed * profile), turbulence * profile, 0f, 0f);
                 }
             }
 
@@ -821,25 +849,28 @@ namespace Mmorpg.Client.Editor
             return surface.Save("M_DevelopmentWorld2_Stream");
         }
 
-        // The falling sheet from just behind the lip down to the lake's surface, along the path
-        // the water takes when it leaves the lip at the waterfall's speed, widening a little as
-        // it falls. The first texture coordinate holds meters across the sheet and the seconds
-        // the water has fallen, the second meters to the nearer side and how far down the fall
-        // the vertex lies. The normals face the lake and the tangents run across.
+        // The falling water as a body of its own: a column whose cross section is a rounded slab,
+        // as wide as the stream and as thick as its water at the lip, that follows the path the
+        // water takes when it leaves the lip at the waterfall's speed and grows wider and thicker
+        // as it falls and breaks up, down to the lake's surface. Its outside faces outward, so
+        // it shows its body from every side. The texture coordinate holds the meters around the
+        // column from its front, the seconds the water has fallen, and how far down the fall the
+        // vertex lies; the tangents run around the column.
         private static Mesh BuildWaterfallSheet()
         {
-            const int rows = 20;
-            const int columns = 9;
-            var top = StreamSurface - 0.02f;
-            var seconds = Mathf.Sqrt(2f * (top - LakeSurface) / Gravity);
+            const int rows = 24;
+            const int around = 32;
+            var top = StreamSurface - ((StreamSurface - StreamBedTop) * 0.5f);
+            var seconds = Mathf.Sqrt(2f * (top - (LakeSurface - 0.05f)) / Gravity);
             var across3 = new Vector3(OutcropAcross.x, 0f, OutcropAcross.y);
             var towardLake = new Vector3(-OutcropDirection.x, 0f, -OutcropDirection.y);
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
             var tangents = new List<Vector4>();
-            var sheet = new List<Vector2>();
-            var edges = new List<Vector2>();
+            var sheet = new List<Vector3>();
             var triangles = new List<int>();
+            var section = new Vector3[around + 1];
+            var sectionNormals = new Vector3[around + 1];
             for (var row = 0; row <= rows; row++)
             {
                 var fall = (float)row / rows;
@@ -847,37 +878,64 @@ namespace Mmorpg.Client.Editor
                 var flat = WaterfallLip - (OutcropDirection * ((WaterfallSpeed * time) - 0.05f));
                 var center = new Vector3(flat.x, top - (0.5f * Gravity * time * time), flat.y);
 
-                // The water moves along the fall; the sheet's normal is square to that and across.
+                // The section lies square to the water's path: across the stream, and along the
+                // normal, which faces up at the lip and toward the lake once the water falls.
                 var velocity = (towardLake * WaterfallSpeed) + (Vector3.down * (Gravity * time));
                 var normal = Vector3.Cross(across3, velocity).normalized;
-                if (Vector3.Dot(normal, towardLake) < 0f)
+                if (Vector3.Dot(normal, towardLake + Vector3.up) < 0f)
                 {
                     normal = -normal;
                 }
 
-                var halfWidth = Mathf.Lerp(StreamHalfWidth - 0.05f, StreamHalfWidth + 0.3f, fall);
-                for (var column = 0; column < columns; column++)
+                var spread = Smooth01(fall * 1.3f);
+                var halfWidth = Mathf.Lerp(StreamHalfWidth - 0.05f, StreamHalfWidth + 0.35f, spread);
+                var halfThickness = Mathf.Lerp((StreamSurface - StreamBedTop) * 0.5f, 0.45f, spread);
+                for (var index = 0; index <= around; index++)
                 {
-                    var across = (((2f * column) / (columns - 1)) - 1f) * halfWidth;
-                    vertices.Add(center + (across3 * across));
-                    normals.Add(normal);
-                    tangents.Add(new Vector4(across3.x, across3.y, across3.z, 1f));
-                    sheet.Add(new Vector2(across, time));
-                    edges.Add(new Vector2(halfWidth - Mathf.Abs(across), fall));
+                    // From the back around through the front, as a superellipse of exponent 4.
+                    var angle = (-0.5f * Mathf.PI) + ((2f * Mathf.PI * index) / around);
+                    var cos = Mathf.Cos(angle);
+                    var sin = Mathf.Sin(angle);
+                    var x = halfWidth * Mathf.Sign(cos) * Mathf.Sqrt(Mathf.Abs(cos));
+                    var y = halfThickness * Mathf.Sign(sin) * Mathf.Sqrt(Mathf.Abs(sin));
+                    section[index] = center + (across3 * x) + (normal * y);
+                    var gradientX = (x * x * x) / (halfWidth * halfWidth * halfWidth * halfWidth);
+                    var gradientY = (y * y * y) / (halfThickness * halfThickness * halfThickness * halfThickness);
+                    sectionNormals[index] = ((across3 * gradientX) + (normal * gradientY)).normalized;
+                }
+
+                // Meters around the section, counted from its front, so the seam lies at the back.
+                var lengths = new float[around + 1];
+                for (var index = 1; index <= around; index++)
+                {
+                    lengths[index] = lengths[index - 1] + Vector3.Distance(section[index - 1], section[index]);
+                }
+
+                var front = lengths[around / 2];
+                for (var index = 0; index <= around; index++)
+                {
+                    var next = section[Mathf.Min(index + 1, around)] - section[Mathf.Max(index - 1, 0)];
+                    vertices.Add(section[index]);
+                    normals.Add(sectionNormals[index]);
+                    tangents.Add(new Vector4(next.normalized.x, next.normalized.y, next.normalized.z, 1f));
+                    sheet.Add(new Vector3(lengths[index] - front, time, fall));
                 }
             }
 
+            var ring = around + 1;
             for (var row = 0; row < rows; row++)
             {
-                for (var column = 0; column < columns - 1; column++)
+                for (var index = 0; index < around; index++)
                 {
-                    var first = (row * columns) + column;
-                    triangles.Add(first);
-                    triangles.Add(first + columns);
-                    triangles.Add(first + columns + 1);
-                    triangles.Add(first);
-                    triangles.Add(first + columns + 1);
-                    triangles.Add(first + 1);
+                    var a = (row * ring) + index;
+                    var b = a + ring;
+                    var c = b + 1;
+                    var d = a + 1;
+
+                    // Front faces wind so their edges' cross product points out of the column.
+                    var outward = normals[a] + normals[c];
+                    var facesOut = Vector3.Dot(Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]), outward) >= 0f;
+                    triangles.AddRange(facesOut ? new[] { a, b, c, a, c, d } : new[] { a, c, b, a, d, c });
                 }
             }
 
@@ -887,7 +945,6 @@ namespace Mmorpg.Client.Editor
                 mesh.SetNormals(normals);
                 mesh.SetTangents(tangents);
                 mesh.SetUVs(0, sheet);
-                mesh.SetUVs(1, edges);
                 mesh.SetTriangles(triangles, 0);
             });
         }

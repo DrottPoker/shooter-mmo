@@ -559,13 +559,16 @@ Expected result:
   every shore and rings the character's legs, the ripples drift on the lake,
   run downstream in the river, and foam in patches over the ford, and the sea
   rolls in gentle waves with lines of foam toward the beach. Where the river
-  meets the lake and the sea, no seam or doubled color shows.
+  meets the lake and the sea, seen from above and from the beach, the water
+  runs on without an edge, a step in color, or a darker patch.
 - While the character stands in water, a ring spreads from its legs now and
   then; while it walks, rings follow it closely and droplets splash up around
   its legs and fall back. A Mob in water does the same.
 - The waterfall slides glassy over the rock's lip, falls in thin streaks that
   rush down and stretch as they fall, with the rock showing through, and turns
   white at its foot, where the pool foams, white water boils up, and mist rises.
+  From the side and from above it is a curved body of water that grows thicker
+  as it falls, with soft edges, never a flat sheet or a line.
   The pool is waded at 60 % speed, and the stream on the rock is 0.3 m deep and
   walked at full speed.
 - In shallow water `Water depth` shows less than `0.50 m, full speed`, and the

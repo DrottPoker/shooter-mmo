@@ -238,8 +238,8 @@ and the sea.
 | Lake `waterside-lake` | center `(-108, 112)`, surface at 3.6 m | The shore lies 13 m from the center and the floor falls 0.3 m per meter, so the water is 0.5 m deep at 11.3 m, 1.2 m deep at 9 m, and at most 3 m deep; the bank rises to the plateau over 2 m |
 | Waterfall outcrop | lip at `(-103.5, 124.5)` on the lake's north shore, facing the lake | Rock 10 m wide and 9 m deep with its top at 7.6 m, 4 m above the lake, and a ramp onto it from behind; a channel 3 m wide runs along its top from a spring under a boulder to the lip |
 | Stream `waterside-stream` | along the outcrop's channel, surface at 7.5 m | 0.3 m deep, flowing toward the lip ever faster and foaming where it tips over |
-| Waterfall and pool | the sheet falls 3.9 m from the lip and lands 1.4 m out, at `(-103.9, 123.2)` | The lake is 1 m deep in a pool around the landing, so it is waded under the fall; the water churns and foams there, white water boils up, mist rises, and droplets fly |
-| River `waterside-river` | from `(-113, 119)` in the lake to `(-149, 150)` at the sea | 8 m wide and 2 m deep; its surface stays level with the lake until it leaves it, then falls to the sea |
+| Waterfall and pool | the water falls 3.9 m from the lip and lands 1.4 m out, at `(-103.9, 123.2)` | A column 3 m wide and 0.3 m thick at the lip that grows to 3.7 by 0.9 m as it falls; the lake is 1 m deep in a pool around the landing, so it is waded under the fall; the water churns and foams there, white water boils up, mist rises, and droplets fly |
+| River `waterside-river` | from `(-113, 119)` in the lake to `(-149, 150)` at the sea | 8 m wide and 2 m deep; its surface stays level with the lake until it leaves it, then falls to the sea's level, which it reaches at its mouth |
 | Ford | `(-127.5, 132.8)`, 20 m down the river | 0.8 m deep for 6 m of the river, so it is waded across at the wading speed |
 | Bridge | `(-140, 142.8)`, 36 m down the river | A 16 by 4 m deck with its top at 4.2 m, 1 m above the water, from plateau to plateau |
 | Sea `waterside-sea` | a quarter disc around the corner `(-192, 192)`, surface at 3 m | The shore lies 60 m from the corner and the floor falls 0.15 m per meter, so the water is 1.2 m deep 52 m from the corner |
@@ -250,15 +250,17 @@ Terrain layers paint rock where the ground is steeper than 40 degrees, sand on
 the beds and banks of the water, and grass elsewhere; each cell of the 0.5 m
 layer map takes the share of its 16 samples that lie on a water bed, so the sand
 blends into the grass. The terrain, the water surface meshes, the waterfall's
-sheet, and the terrain layers are generated assets below
-`Assets/Art/Terrain/DevelopmentWorld2`. The surface meshes carry the data of the
-[water shader](ART_PIPELINE.md#water): the river and the stream their flow, faster
-in the middle and fastest over the ford and toward the lip, and their foam over
-the ford and at the lip; the sea its waves, which calm down toward the sea
-beyond the World so the two meet without a seam; and the lake, rings 1 m apart,
-the churn and spread around the waterfall's landing. The waterside's water uses
-the materials of its kind, `M_Water_Lake`, `M_Water_River`, and `M_Water_Sea`,
-and the sheet `M_Water_Waterfall`.
+column, and the terrain layers are generated assets below
+`Assets/Art/Terrain/DevelopmentWorld2`. All water surfaces draw with `M_Water`
+and the waterfall with `M_Water_Waterfall`, and the surface meshes carry the data
+of the [water shader](ART_PIPELINE.md#water): the river and the stream their
+flow, faster in the middle and fastest over the ford and toward the lip, and
+their foam over the ford and at the lip; the sea its waves and the foam lines
+that roll onto its beach; and the lake, rings 1 m apart, the churn and spread
+around the waterfall's landing. The river's water is still where it reaches into
+the lake and into the sea, and the sea's waves and foam lines calm down at the
+river's mouth and toward the sea beyond the World, so every pair of surfaces
+meets without a seam, as `WatersideJunctionTests` checks.
 
 ### Resource Node Placements
 
@@ -413,9 +415,9 @@ scene composition, that `PlayerSpawn` and the boundary walls match the manifest,
 that the labels are world-space text without raycasts, that every development
 World material is used, that every project material is in the form its shader's
 Inspector keeps, so selecting one never changes its file, that the waterside has
-its lake, river, sea, and stream without colliders and with the water material
-of their kind, that the waterfall's sheet and the sea beyond the World only
-show, and that the checked-in bake holds
+its lake, river, sea, and stream without colliders and with the shared water
+material, that the waterfall's column and the sea beyond the World only show,
+and that the checked-in bake holds
 exactly the scene's boxes, terrain cells, mesh triangles, and water surfaces,
 deep water edges where there is water, and one movement-only box per placed
 resource node.
@@ -466,12 +468,15 @@ Lakes, rivers, and seas follow these rules in every World scene:
 - Where water bodies overlap, the highest surface counts. Water beyond the ground
   of the World gets no edges, so a sea can reach to the horizon as a mesh
   without a `WaterBody`, which only shows.
-- Give the renderer the water material of the body's kind, or a variant of it
-  for a zone's own colors, and give the mesh the data the water shader reads:
-  the flow in the second texture coordinate, and in the vertex color red where
-  the water foams and green where waves lift it; see
+- Give the renderer `M_Water`, or one variant of it for all of a zone's water,
+  and give the mesh the data the water shader reads: the flow in the second
+  texture coordinate, and in the vertex color red where the water foams, green
+  where waves lift it, and blue where foam lines roll toward the shore; see
   [Water](ART_PIPELINE.md#water).
-- A waterfall is a sheet mesh with the waterfall material and no `WaterBody`,
+- Where two water bodies meet, overlap their surfaces a little and make their
+  vertices agree there: the same level, still water, and no waves or foam
+  lines. They then meet without a seam.
+- A waterfall is a column mesh with the waterfall material and no `WaterBody`,
   from the lip of the water above down to the surface below, where the water
   below foams and a pool lets characters wade under the fall.
 
