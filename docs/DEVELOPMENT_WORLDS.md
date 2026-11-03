@@ -528,12 +528,14 @@ water it meets:
 
 A rebuild writes a mesh only when it changes, so a rebuild without a change
 marks nothing dirty and opening a scene changes nothing. A shape keeps the mesh
-asset its MeshFilter holds while no other shape and no other scene uses it. A new
-shape in a saved scene, or one whose mesh another shape or scene uses too, such
-as a duplicated lake, a shape copied from another scene, or a scene saved under
-a new name, gets a mesh asset of its own below `Assets/Art/Worlds/<scene>`, so an
-edit never changes another scene's water; a scene that was never saved keeps its
-meshes in memory until it is saved and its water rebuilt. A removed shape leaves its mesh
+asset its MeshFilter holds while nothing else uses it: no other shape, no other
+object of its scene, such as a disabled lake, and no other scene. A new shape in
+a saved scene, or one whose mesh something else uses too, such as a duplicated
+lake, the copy of a disabled lake, a shape copied from another scene, or a scene
+saved under a new name, gets a mesh asset of its own below
+`Assets/Art/Worlds/<scene>`, so an edit never changes other water; a scene that
+was never saved keeps its meshes in memory until it is saved and its water
+rebuilt. A removed shape leaves its mesh
 behind: the validation warns about every mesh below `Assets/Art/Worlds/<scene>`
 that no scene uses any more, neither a saved one nor one that is open, and
 `Remove Unused Meshes` moves them to the trash.

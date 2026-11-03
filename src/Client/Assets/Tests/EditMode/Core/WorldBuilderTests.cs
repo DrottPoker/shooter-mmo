@@ -204,6 +204,50 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(WorldBuilder.Validate(scene), Is.Empty);
         }
 
+        // Even with coarse sea cells and an abrupt calm, the sea's triangles over a river's
+        // surface stay calm, so a river that starts in the sea meets it without a seam.
+        [Test]
+        public void ASeaWithCoarseCellsStaysCalmOverARiversWholeSurface()
+        {
+            var sea = WorldBuilderCreate.AddSea(scene, Vector3.zero);
+            var serialized = new SerializedObject(sea);
+            serialized.FindProperty("cellSize").floatValue = 2f;
+            serialized.FindProperty("calmDistance").floatValue = 0.1f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            var river = WorldBuilderCreate.AddRiver(scene, Vector3.zero);
+            SetPoints(
+                river,
+                new RiverPoint(new Vector3(0.75f, 0.1f, 10f), 4f, 1f, 1f, 0f),
+                new RiverPoint(new Vector3(0.75f, 2f, 50f), 4f, 1f, 1f, 0f));
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(WorldBuilder.Validate(scene), Is.Empty);
+        }
+
+        // A disabled lake and its enabled copy hold the same mesh; editing the copy gives it a
+        // mesh of its own, and the disabled lake keeps what it made.
+        [Test]
+        public void ADisabledShapeKeepsItsMeshWhenItsCopyChanges()
+        {
+            var lake = WorldBuilderCreate.AddLake(scene, Vector3.zero);
+            var mesh = lake.GetComponent<MeshFilter>().sharedMesh;
+            var vertexCount = mesh.vertexCount;
+            var copy = Object.Instantiate(lake.gameObject, lake.transform.parent).GetComponent<LakeShape>();
+            var body = new SerializedObject(copy.Body);
+            body.FindProperty("bodyId").stringValue = "lake-copy";
+            body.ApplyModifiedPropertiesWithoutUndo();
+            lake.enabled = false;
+            var shore = new SerializedObject(copy);
+            shore.FindProperty("shore").GetArrayElementAtIndex(0).vector2Value = new Vector2(-12f, -6f);
+            shore.ApplyModifiedPropertiesWithoutUndo();
+
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(copy.GetComponent<MeshFilter>().sharedMesh, Is.Not.EqualTo(mesh));
+            Assert.That(lake.GetComponent<MeshFilter>().sharedMesh, Is.EqualTo(mesh));
+            Assert.That(mesh.vertexCount, Is.EqualTo(vertexCount), "the disabled lake's water stays as it was");
+        }
+
         [Test]
         public void NewWaterGetsAnIdAndANameOfItsOwnBelowTheCollisionRootAndStaysOffStaticBatching()
         {

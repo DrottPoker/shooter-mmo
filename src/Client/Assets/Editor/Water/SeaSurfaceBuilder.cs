@@ -383,15 +383,18 @@ namespace Mmorpg.Client.Editor
         }
 
         // 0 on the water of a river that starts or ends in the sea, rising to 1 the calm distance
-        // beyond its surface.
+        // beyond its surface. The sea's triangles blend between their vertices, so every vertex
+        // of a triangle that reaches the river's surface stays calm: the calm reaches a cell's
+        // diagonal further.
         private static float RiverCalm(SeaModel sea, Vector2 point)
         {
             var calm = 1f;
+            var cellDiagonal = sea.Sea.CellSize * 1.4143f;
             foreach (var river in sea.Rivers)
             {
                 var path = river.Path;
                 var distance = path.DistanceTo(point, out var along);
-                var reach = (path.ValuesAt(along).Width * 0.5f) + river.Shape.BankReach + RiverMargin;
+                var reach = (path.ValuesAt(along).Width * 0.5f) + river.Shape.BankReach + RiverMargin + cellDiagonal;
                 calm *= WorldBuilderGeometry.Smooth01((distance - reach) / sea.Sea.CalmDistance);
             }
 

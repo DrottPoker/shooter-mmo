@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Worlds;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -9,10 +10,11 @@ using UnityEngine.SceneManagement;
 namespace Mmorpg.Client.Editor
 {
     // The mesh assets that hold what the World Builder makes. A shape keeps the mesh asset its
-    // MeshFilter already holds while no other shape and no other scene uses it; a new shape, or
-    // one that shares its mesh, such as a duplicated lake, a shape copied from another scene, or a
-    // scene saved under a new name, gets a mesh of its own below Assets/Art/Worlds/<scene>. A
-    // scene that was never saved keeps its meshes in itself, until it is saved and rebuilt.
+    // MeshFilter already holds while no other shape, no other object of its scene, and no other
+    // scene uses it; a new shape, or one that shares its mesh, such as a duplicated lake, the
+    // copy of a disabled lake, a shape copied from another scene, or a scene saved under a new
+    // name, gets a mesh of its own below Assets/Art/Worlds/<scene>. A scene that was never saved
+    // keeps its meshes in itself, until it is saved and rebuilt.
     internal sealed class WorldBuilderAssets
     {
         public const string Root = "Assets/Art/Worlds";
@@ -22,6 +24,7 @@ namespace Mmorpg.Client.Editor
 
         private readonly HashSet<Mesh> claimed = new HashSet<Mesh>();
         private readonly Dictionary<Scene, HashSet<string>> usedElsewhere = new Dictionary<Scene, HashSet<string>>();
+        private readonly Dictionary<Scene, HashSet<Mesh>> heldInScene = new Dictionary<Scene, HashSet<Mesh>>();
 
         // The mesh this build writes for the filter, which no other shape of the build writes.
         public Mesh MeshOf(MeshFilter filter, string name)
@@ -97,11 +100,48 @@ namespace Mmorpg.Client.Editor
             return sceneSaved && IsOwnAsset(mesh) && !usedElsewhere.Contains(AssetDatabase.GetAssetPath(mesh));
         }
 
-        // Whether this build may write into a mesh of a shape in the scene.
+        // Whether this build may write into a mesh of a shape in the scene: never into one that an
+        // object of the scene holds which the build does not write.
         public bool MayWrite(Mesh mesh, Scene scene)
         {
+            if (HeldInScene(scene).Contains(mesh))
+            {
+                return false;
+            }
+
             var saved = IsSaved(scene);
             return MayWrite(mesh, saved, saved && AssetDatabase.Contains(mesh) ? UsedElsewhere(scene) : new HashSet<string>());
+        }
+
+        // Whether the build writes a filter's mesh: a filter of an enabled shape on an active
+        // object, or the sea's water beyond the World or its seabed below such a sea.
+        public static bool IsBuilt(MeshFilter filter)
+        {
+            var shape = filter.GetComponent<WorldBuilderShape>();
+            var parent = filter.transform.parent;
+            if (shape == null && parent != null && (filter.name == WaterBuilder.HorizonName || filter.name == WaterBuilder.SeabedName))
+            {
+                shape = parent.GetComponent<SeaShape>();
+            }
+
+            return shape != null && shape.enabled && shape.gameObject.activeInHierarchy;
+        }
+
+        // The meshes that objects of the scene hold which the build does not write, such as a
+        // disabled lake's, so the build leaves them as they are.
+        private HashSet<Mesh> HeldInScene(Scene scene)
+        {
+            if (heldInScene.TryGetValue(scene, out var held))
+            {
+                return held;
+            }
+
+            held = new HashSet<Mesh>(scene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<MeshFilter>(true))
+                .Where(filter => filter.sharedMesh != null && !IsBuilt(filter))
+                .Select(filter => filter.sharedMesh));
+            heldInScene.Add(scene, held);
+            return held;
         }
 
         // The assets that the scenes other than this one use: those saved, as their files say, and
