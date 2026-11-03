@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -96,7 +97,8 @@ namespace Mmorpg.Client.Editor
             return sceneSaved && IsOwnAsset(mesh) && !usedElsewhere.Contains(AssetDatabase.GetAssetPath(mesh));
         }
 
-        private bool MayWrite(Mesh mesh, Scene scene)
+        // Whether this build may write into a mesh of a shape in the scene.
+        public bool MayWrite(Mesh mesh, Scene scene)
         {
             var saved = IsSaved(scene);
             return MayWrite(mesh, saved, saved && AssetDatabase.Contains(mesh) ? UsedElsewhere(scene) : new HashSet<string>());
@@ -166,11 +168,14 @@ namespace Mmorpg.Client.Editor
         [InitializeOnLoadMethod]
         private static void ForgetScenesWhenTheProjectChanges()
         {
-            EditorApplication.projectChanged += () =>
-            {
-                scenePaths = null;
-                SceneDependencies.Clear();
-            };
+            EditorApplication.projectChanged += ForgetScenes;
+            EditorSceneManager.sceneSaved += scene => ForgetScenes();
+        }
+
+        private static void ForgetScenes()
+        {
+            scenePaths = null;
+            SceneDependencies.Clear();
         }
 
         // The meshes below the scene's own folder that neither the scene nor another scene uses any

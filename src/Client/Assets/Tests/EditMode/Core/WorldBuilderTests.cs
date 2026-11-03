@@ -296,6 +296,28 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(shared.vertexCount, Is.EqualTo(3), "the other scene's mesh stays as it was");
         }
 
+        // A copied lake that loses its shore before its first rebuild lets go of the other
+        // scene's mesh instead of emptying it.
+        [Test]
+        public void AnIncompleteShapeLetsGoOfAnotherScenesMesh()
+        {
+            AssetDatabase.CreateFolder("Assets", MeshDirectory.Substring("Assets/".Length));
+            var shared = new Mesh { vertices = new[] { Vector3.zero, Vector3.forward, Vector3.right }, triangles = new[] { 0, 1, 2 } };
+            AssetDatabase.CreateAsset(shared, MeshDirectory + "/Shared.asset");
+            var lake = WorldBuilderCreate.AddLake(scene, Vector3.zero);
+            var ownMesh = lake.GetComponent<MeshFilter>().sharedMesh;
+            lake.GetComponent<MeshFilter>().sharedMesh = shared;
+            Object.DestroyImmediate(ownMesh);
+            var serialized = new SerializedObject(lake);
+            serialized.FindProperty("shore").arraySize = 2;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            Assert.That(WorldBuilder.Rebuild(scene), Is.True);
+
+            Assert.That(lake.GetComponent<MeshFilter>().sharedMesh, Is.Null);
+            Assert.That(shared.vertexCount, Is.EqualTo(3), "the other scene's mesh stays as it was");
+        }
+
         [Test]
         public void ABuildWritesOnlyMeshesItsSceneOwns()
         {

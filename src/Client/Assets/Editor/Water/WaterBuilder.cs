@@ -61,14 +61,14 @@ namespace Mmorpg.Client.Editor
         }
 
         // An incomplete shape shows nothing until it is complete: its mesh is emptied, or let go
-        // where another shape of the build writes it, and a waterfall's spray and a sea's water
-        // beyond the World go.
+        // where the build may not write it, such as a mesh another shape of the build writes or
+        // one another scene uses, and a waterfall's spray and a sea's water beyond the World go.
         private static bool Clear(WorldBuilderAssets assets, WorldBuilderShape shape)
         {
             var changed = false;
             var filter = shape.GetComponent<MeshFilter>();
             var mesh = filter != null ? filter.sharedMesh : null;
-            if (mesh != null && assets.IsClaimed(mesh))
+            if (mesh != null && (assets.IsClaimed(mesh) || !assets.MayWrite(mesh, shape.gameObject.scene)))
             {
                 filter.sharedMesh = null;
                 EditorUtility.SetDirty(filter);
