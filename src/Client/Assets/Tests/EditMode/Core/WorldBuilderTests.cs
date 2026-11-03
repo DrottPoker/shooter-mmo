@@ -372,6 +372,53 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A lake moved into another open scene keeps its mesh below the scene it came from; that
+        // mesh is in use while the other scene holds it, saved or not.
+        [Test]
+        public void AMeshThatAnotherOpenSceneHoldsIsNotUnused()
+        {
+            AssetDatabase.CreateFolder("Assets", MeshDirectory.Substring("Assets/".Length));
+            var moved = new Mesh();
+            AssetDatabase.CreateAsset(moved, MeshDirectory + "/Moved.asset");
+            var lake = WorldBuilderCreate.AddLake(scene, Vector3.zero);
+            var ownMesh = lake.GetComponent<MeshFilter>().sharedMesh;
+            lake.GetComponent<MeshFilter>().sharedMesh = moved;
+            Object.DestroyImmediate(ownMesh);
+
+            var unused = WorldBuilderAssets.UnusedMeshes(MeshDirectory, WorldBuilderAssets.MeshesOf(new[] { scene }), null);
+
+            Assert.That(unused, Is.Empty);
+        }
+
+        // A waterfall that lands in a river that falls ends at the river's surface where the
+        // water lands, not at the height of the river's end.
+        [Test]
+        public void AWaterfallIntoARiverEndsAtTheRiversSurfaceWhereItLands()
+        {
+            var below = WorldBuilderCreate.AddRiver(scene, Vector3.zero);
+            SetPoints(
+                below,
+                new RiverPoint(new Vector3(0f, 2f, 0f), 4f, 1f, 1f, 0f),
+                new RiverPoint(new Vector3(0f, 0f, 40f), 4f, 1f, 1f, 0f));
+            var above = WorldBuilderCreate.AddRiver(scene, Vector3.zero);
+            SetPoints(
+                above,
+                new RiverPoint(new Vector3(-10f, 5f, 20f), 2f, 0.5f, 1f, 0f),
+                new RiverPoint(new Vector3(0f, 5f, 20f), 2f, 0.5f, 1f, 0f));
+            var waterfall = WorldBuilderCreate.AddWaterfall(above);
+            var serialized = new SerializedObject(waterfall);
+            serialized.FindProperty("landing").objectReferenceValue = below.Body;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            WorldBuilder.Rebuild(scene);
+
+            // The river below lies 1 m high halfway along, where the water lands.
+            var fall = WaterScene.Collect(scene).Waterfalls.Single().Fall;
+            Assert.That(fall.LandingLevel, Is.EqualTo(1f).Within(0.01f));
+            var column = waterfall.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(column.bounds.min.y, Is.InRange(0.7f, 1f), "the fall ends at the river's surface");
+            Assert.That(WorldBuilder.Validate(scene), Is.Empty);
+        }
+
         [Test]
         public void AMeshThatNoShapeUsesAnyMoreIsUnused()
         {

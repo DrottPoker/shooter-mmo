@@ -174,7 +174,8 @@ namespace Mmorpg.Client.Editor
         }
 
         // The meshes below the scene's own folder that neither the scene nor another scene uses any
-        // more, such as the mesh of a lake that was removed again.
+        // more, such as the mesh of a lake that was removed again. What the open scenes hold
+        // counts as they hold it now, such as a lake moved into another scene not saved yet.
         public static List<Mesh> UnusedMeshes(Scene scene)
         {
             if (!IsSaved(scene))
@@ -182,11 +183,24 @@ namespace Mmorpg.Client.Editor
                 return new List<Mesh>();
             }
 
-            var used = new HashSet<Mesh>(scene.GetRootGameObjects()
+            var open = new List<Scene>();
+            for (var index = 0; index < SceneManager.sceneCount; index++)
+            {
+                open.Add(SceneManager.GetSceneAt(index));
+            }
+
+            return UnusedMeshes(DefaultDirectory(scene), MeshesOf(open), scene.path);
+        }
+
+        // The meshes that the loaded scenes' mesh filters hold now.
+        public static HashSet<Mesh> MeshesOf(IEnumerable<Scene> scenes)
+        {
+            return new HashSet<Mesh>(scenes
+                .Where(scene => scene.IsValid() && scene.isLoaded)
+                .SelectMany(scene => scene.GetRootGameObjects())
                 .SelectMany(root => root.GetComponentsInChildren<MeshFilter>(true))
                 .Select(filter => filter.sharedMesh)
                 .Where(mesh => mesh != null));
-            return UnusedMeshes(DefaultDirectory(scene), used, scene.path);
         }
 
         // The meshes below the directory that are not among the used ones and that no scene other

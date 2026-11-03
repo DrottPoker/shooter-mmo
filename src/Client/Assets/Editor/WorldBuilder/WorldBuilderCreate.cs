@@ -65,8 +65,8 @@ namespace Mmorpg.Client.Editor
             var path = model.Path;
             var end = path.ValuesAt(path.Length).Position;
             var outward = path.PlanarAt(path.Length) + (path.DirectionAt(path.Length) * 1.5f);
-            SurfaceModel best = null;
-            foreach (var body in water.Lakes.Cast<SurfaceModel>().Concat(water.Seas))
+            OpenWaterModel best = null;
+            foreach (var body in water.Lakes.Cast<OpenWaterModel>().Concat(water.Seas))
             {
                 if (body.Level < end.y - 0.1f && body.Covers(outward) && (best == null || body.Level > best.Level))
                 {

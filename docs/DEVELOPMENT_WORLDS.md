@@ -509,7 +509,8 @@ water it meets:
   that level there and stands still, so they meet without a seam, and a sea's
   waves and foam lines calm down over the river's water.
 - A waterfall makes its river's last point a lip exactly as wide as the river,
-  falls along the path water takes at its speed, and makes the water it lands in
+  falls along the path water takes at its speed down to the surface where the
+  water reaches it, also on a river that falls, and makes the water it lands in
   churn and spread. White water, mist, and droplets are particle systems below
   it.
 - On its horizon sides, a sea runs on beyond the World's ground, where the
@@ -530,7 +531,8 @@ a new name, gets a mesh asset of its own below `Assets/Art/Worlds/<scene>`, so a
 edit never changes another scene's water; a scene that was never saved keeps its
 meshes in memory until it is saved and its water rebuilt. A removed shape leaves its mesh
 behind: the validation warns about every mesh below `Assets/Art/Worlds/<scene>`
-that no scene uses any more, and `Remove Unused Meshes` moves them to the trash.
+that no scene uses any more, neither a saved one nor one that is open, and
+`Remove Unused Meshes` moves them to the trash.
 
 The validation finds errors, which stop the collision bake, and warnings:
 

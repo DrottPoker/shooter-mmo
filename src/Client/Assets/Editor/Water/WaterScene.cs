@@ -102,14 +102,14 @@ namespace Mmorpg.Client.Editor
 
             foreach (var waterfall in waterfalls)
             {
-                var problem = water.WaterfallProblem(waterfall, out var river, out var landing);
+                var problem = water.WaterfallProblem(waterfall, out var river, out var landing, out var landingLevel);
                 if (problem != null)
                 {
                     water.Incomplete.Add(waterfall, problem);
                     continue;
                 }
 
-                var model = new WaterfallModel(waterfall, river, landing);
+                var model = new WaterfallModel(waterfall, river, landing, landingLevel);
                 river.Fall = model;
                 landing.Landings.Add(model);
                 water.Waterfalls.Add(model);
@@ -119,11 +119,12 @@ namespace Mmorpg.Client.Editor
         }
 
         // What keeps a waterfall from falling, or null when it falls from its river's end into
-        // the water of its landing.
-        private string WaterfallProblem(WaterfallShape waterfall, out RiverModel river, out SurfaceModel landing)
+        // the water of its landing, with the level of that water where the fall lands.
+        private string WaterfallProblem(WaterfallShape waterfall, out RiverModel river, out SurfaceModel landing, out float landingLevel)
         {
             river = waterfall.River != null ? Rivers.Find(model => model.River == waterfall.River) : null;
             landing = FindSurface(waterfall.Landing);
+            landingLevel = 0f;
             if (waterfall.River == null)
             {
                 return "A waterfall falls from a river: choose its River.";
@@ -156,15 +157,35 @@ namespace Mmorpg.Client.Editor
                 return "Another waterfall already falls from " + waterfall.River.name + "; a river has one waterfall, at its end.";
             }
 
-            return river.Path.ValuesAt(river.Path.Length).Position.y - landing.Level < MinimumFall
+            landingLevel = LandingLevel(river, landing, waterfall.Speed);
+            return river.Path.ValuesAt(river.Path.Length).Position.y - landingLevel < MinimumFall
                 ? "The landing lies at or above the lip, so the water has nowhere to fall: lower the landing or raise the river's last point."
                 : null;
         }
 
-        // The lake or sea whose surface covers a point at about its height, the highest if several do.
-        public SurfaceModel FindBodyAt(Vector3 point)
+        // The level of the landing where the water from the river's end lands on it: a lake's or a
+        // sea's level, or a river's surface where the fall reaches it, which in turn decides how
+        // far out the water lands, found in a few steps.
+        private static float LandingLevel(RiverModel river, SurfaceModel landing, float speed)
         {
-            SurfaceModel best = null;
+            var path = river.Path;
+            var surface = path.ValuesAt(path.Length).Position.y;
+            var lip = path.PlanarAt(path.Length);
+            var downstream = path.DirectionAt(path.Length);
+            var level = landing.LevelAt(lip);
+            for (var step = 0; step < 4; step++)
+            {
+                var seconds = Mathf.Sqrt(2f * Mathf.Max(0f, surface - level) / WaterfallFall.Gravity);
+                level = landing.LevelAt(lip + (downstream * (speed * seconds)));
+            }
+
+            return level;
+        }
+
+        // The lake or sea whose surface covers a point at about its height, the highest if several do.
+        public OpenWaterModel FindBodyAt(Vector3 point)
+        {
+            OpenWaterModel best = null;
             foreach (var body in OpenWaters())
             {
                 if (Mathf.Abs(body.Level - point.y) <= JunctionLevelTolerance
@@ -219,7 +240,8 @@ namespace Mmorpg.Client.Editor
 
         private RiverJunction FindJunction(Vector3 point)
         {
-            return FindBodyAt(point) is OpenWaterModel body ? new RiverJunction(body) : null;
+            var body = FindBodyAt(point);
+            return body != null ? new RiverJunction(body) : null;
         }
 
         // The ground of a World is what its colliders cover: the collision root's, or the scene's
@@ -276,7 +298,8 @@ namespace Mmorpg.Client.Editor
         // The waterfalls that land in this water.
         public List<WaterfallModel> Landings { get; } = new List<WaterfallModel>();
 
-        public abstract float Level { get; }
+        // The height of the drawn surface at the point in X and Z.
+        public abstract float LevelAt(Vector2 point);
 
         // Whether the drawn surface, under the banks included, covers the point in X and Z.
         public abstract bool Covers(Vector2 point);
@@ -313,9 +336,15 @@ namespace Mmorpg.Client.Editor
         // The shore or the sea's outline in world X and Z.
         public Vector2[] Outline { get; }
 
-        public override float Level
+        // The height of the whole surface.
+        public float Level
         {
             get { return Shape.transform.position.y; }
+        }
+
+        public override float LevelAt(Vector2 point)
+        {
+            return Level;
         }
 
         // The grid's cells reach the bank reach beyond the outline, and their jagged rim up to
@@ -387,9 +416,24 @@ namespace Mmorpg.Client.Editor
         // The waterfall that falls from the river's end, or null.
         public WaterfallModel Fall { get; set; }
 
-        public override float Level
+        // The height of the surface's rows where the river passes nearest the point, still and at
+        // the level of the water it starts or ends in, once its junctions are known.
+        public override float LevelAt(Vector2 point)
         {
-            get { return Path.ValuesAt(Path.Length).Position.y; }
+            Path.DistanceTo(point, out var along);
+            var rows = RiverSurfaceBuilder.Rows(this);
+            for (var index = 1; index < rows.Count; index++)
+            {
+                if (rows[index].Along >= along)
+                {
+                    var from = rows[index - 1];
+                    var to = rows[index];
+                    var span = to.Along - from.Along;
+                    return span > 0f ? Mathf.Lerp(from.Height, to.Height, (along - from.Along) / span) : to.Height;
+                }
+            }
+
+            return rows[rows.Count - 1].Height;
         }
 
         public override bool Covers(Vector2 point)
@@ -412,7 +456,8 @@ namespace Mmorpg.Client.Editor
 
     internal sealed class WaterfallModel
     {
-        public WaterfallModel(WaterfallShape shape, RiverModel river, SurfaceModel landing)
+        // The landing level is the height of the landing's surface where the water lands on it.
+        public WaterfallModel(WaterfallShape shape, RiverModel river, SurfaceModel landing, float landingLevel)
         {
             Shape = shape;
             River = river;
@@ -425,7 +470,7 @@ namespace Mmorpg.Client.Editor
                 end.Width * 0.5f,
                 end.Position.y,
                 end.Depth,
-                landing.Level,
+                landingLevel,
                 shape.Speed);
         }
 
