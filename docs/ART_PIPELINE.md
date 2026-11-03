@@ -2656,8 +2656,14 @@ approves a new look from screenshots before it is merged.
   meters per second, along which the ripples and the foam move, the red of the
   vertex color how fast and foaming the water is, the green how much the waves
   lift the vertex, and the blue how strongly foam lines roll in toward the
-  shore, as on a sea's beach. A lake leaves all of them at zero and drifts with
-  the material's wind.
+  shore, as on a sea's beach. A lake leaves all of them at zero, and its foam
+  drifts slowly with the material's drift.
+- A light wind carries the large and the small ripples of all water on in two
+  directions of their own, the large ones at about 0.18 m/s and the small ones
+  at about 0.29 m/s, so still water keeps changing instead of looking like a
+  still image. The wind is the same everywhere in the World, so water bodies
+  that meet still draw alike. Its speeds are `Large ripple wind` and `Small
+  ripple wind` in `ApplyLook`.
 - Where water bodies meet, their surfaces overlap, and the overlap draws once
   per pixel through a stencil bit, so it never doubles its tint. They meet
   without a seam when their vertices agree there: the same level, still water,

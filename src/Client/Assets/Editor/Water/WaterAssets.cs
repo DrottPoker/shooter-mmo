@@ -361,9 +361,9 @@ namespace Mmorpg.Client.Editor
         }
 
         // Every property of the water surfaces' material. The water is turquoise and clear over
-        // sand and deep blue further out. What sets a lake, a river, and the sea apart comes from
-        // their vertices: the flow, the fast water that foams, the waves, and the foam lines that
-        // roll toward a beach.
+        // sand and deep blue further out, and a light wind keeps its ripples moving everywhere.
+        // What sets a lake, a river, and the sea apart comes from their vertices: the flow, the
+        // fast water that foams, the waves, and the foam lines that roll toward a beach.
         private static void ApplyLook(Material material)
         {
             material.SetColor("_ShallowColor", new Color(0.11f, 0.74f, 0.78f));
@@ -378,6 +378,8 @@ namespace Mmorpg.Client.Editor
             material.SetFloat("_DetailStrength", 0.47f);
             material.SetVector("_Drift", new Vector4(0.05f, 0.02f, 0f, 0f));
             material.SetFloat("_FlowCycle", 2.2f);
+            material.SetVector("_RippleWind", new Vector4(0.15f, 0.09f, 0f, 0f));
+            material.SetVector("_DetailWind", new Vector4(-0.13f, 0.26f, 0f, 0f));
             material.SetFloat("_RefractionStrength", 0.015f);
             material.SetFloat("_ReflectionStrength", 0.65f);
             material.SetFloat("_FresnelPower", 4f);

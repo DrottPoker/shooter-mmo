@@ -556,9 +556,11 @@ Expected result:
 
 - The water is clear and light in the shallows, with the sand and moving light
   patterns showing through, and turns deep blue further out. White foam lines
-  every shore and rings the character's legs, the ripples drift on the lake,
-  run downstream in the river, and foam in patches over the ford, and the sea
-  rolls in gentle waves with lines of foam toward the beach. Where the river
+  every shore and rings the character's legs. The ripples on the lake keep
+  moving, the large and the small ones in different directions, so the still
+  water never looks like a still image; in the river they run downstream and
+  foam in patches over the ford, and the sea rolls in gentle waves with lines
+  of foam toward the beach. Where the river
   meets the lake and the sea, seen from above and from the beach, the water
   runs on without an edge, a step in color, or a darker patch.
 - While the character stands in water, a ring spreads from its legs now and

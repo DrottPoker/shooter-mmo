@@ -2,8 +2,9 @@
 // clear and bright in the shallows, where the ground shows through with light patterns on it, and
 // deep blue further out. Foam gathers along the shore, around everything that stands in the water,
 // in lines that roll in toward the shore, and in fast water. Ripple normals scroll along the flow
-// that each vertex carries in its second texture coordinate, so a river runs downstream, and the
-// sea can lift its vertices in gentle waves. The red of the vertex color marks fast water, the
+// that each vertex carries in its second texture coordinate, so a river runs downstream, the wind
+// carries the large and the small ripples on in two directions, so still water never stands
+// still, and the sea can lift its vertices in gentle waves. The red of the vertex color marks fast water, the
 // green how much the waves move a vertex, and the blue how strongly foam lines roll in toward
 // the shore. One material serves every kind of water, so where water bodies meet, their surfaces
 // draw alike as long as their vertices agree. The water reads the camera's depth and opaque
@@ -29,6 +30,8 @@ Shader "Mmorpg/Water"
         _DetailStrength("Small ripple strength", Range(0, 2)) = 0.35
         _Drift("Drift in m/s (x, z)", Vector) = (0.06, 0.035, 0, 0)
         _FlowCycle("Flow cycle (s)", Float) = 2.5
+        _RippleWind("Large ripple wind in m/s (x, z)", Vector) = (0.15, 0.09, 0, 0)
+        _DetailWind("Small ripple wind in m/s (x, z)", Vector) = (-0.13, 0.26, 0, 0)
         _RefractionStrength("Refraction", Range(0, 0.2)) = 0.015
         _ReflectionStrength("Reflection", Range(0, 1)) = 0.65
         _FresnelPower("Fresnel power", Range(1, 8)) = 4
@@ -124,6 +127,8 @@ Shader "Mmorpg/Water"
                 half _DetailStrength;
                 float4 _Drift;
                 float _FlowCycle;
+                float4 _RippleWind;
+                float4 _DetailWind;
                 half _RefractionStrength;
                 half _ReflectionStrength;
                 half _FresnelPower;
@@ -215,16 +220,25 @@ Shader "Mmorpg/Water"
                 return output;
             }
 
+            // Turns a position in world X and Z against the large ripples, for the small ones.
+            float2 TurnForDetail(float2 position)
+            {
+                return float2(position.x * 0.8 - position.y * 0.6, position.x * 0.6 + position.y * 0.8);
+            }
+
             // Ripples at two sizes, the small ones turned against the large ones, as a slope in
-            // world X and Z.
+            // world X and Z. The wind carries each size on in its own direction, so the surface
+            // keeps changing even where the water does not flow. The wind's offset wraps at the
+            // texture's size, so it stays precise however long the game runs.
             float2 Ripples(float2 position)
             {
+                float2 largeWind = frac(_RippleWind.xy * (_Time.y / _NormalTiling));
                 half3 large = UnpackNormalScale(
-                    SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, position / _NormalTiling),
+                    SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, (position / _NormalTiling) - largeWind),
                     _NormalStrength);
-                float2 turned = float2(position.x * 0.8 - position.y * 0.6, position.x * 0.6 + position.y * 0.8);
+                float2 smallWind = frac(TurnForDetail(_DetailWind.xy) * (_Time.y / _DetailTiling));
                 half3 small = UnpackNormalScale(
-                    SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, turned / _DetailTiling),
+                    SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, (TurnForDetail(position) / _DetailTiling) - smallWind),
                     _DetailStrength);
                 return large.xy / max(large.z, 0.2) + small.xy / max(small.z, 0.2);
             }
