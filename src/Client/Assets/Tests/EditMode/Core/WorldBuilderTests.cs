@@ -428,17 +428,39 @@ namespace Mmorpg.Client.Tests.EditMode
                 new RiverPoint(new Vector3(-10f, 5f, 20f), 2f, 0.5f, 1f, 0f),
                 new RiverPoint(new Vector3(0f, 5f, 20f), 2f, 0.5f, 1f, 0f));
             var waterfall = WorldBuilderCreate.AddWaterfall(above);
-            var serialized = new SerializedObject(waterfall);
-            serialized.FindProperty("landing").objectReferenceValue = below.Body;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(waterfall.Landing, Is.EqualTo(below.Body), "the river below the end");
             WorldBuilder.Rebuild(scene);
 
-            // The river below lies 1 m high halfway along, where the water lands.
+            // The river below lies 1 m high halfway along, where the water lands, and churns there.
             var fall = WaterScene.Collect(scene).Waterfalls.Single().Fall;
             Assert.That(fall.LandingLevel, Is.EqualTo(1f).Within(0.01f));
             var column = waterfall.GetComponent<MeshFilter>().sharedMesh;
             Assert.That(column.bounds.min.y, Is.InRange(0.7f, 1f), "the fall ends at the river's surface");
+            var colors = below.GetComponent<MeshFilter>().sharedMesh.colors;
+            Assert.That(colors.Max(color => color.r), Is.EqualTo(1f).Within(0.001f), "the river churns where the water lands");
             Assert.That(WorldBuilder.Validate(scene), Is.Empty);
+        }
+
+        // A waterfall whose lip foam has no length foams only on the lip and past it.
+        [Test]
+        public void AWaterfallWithoutALipFoamLengthFoamsOnlyAtItsLip()
+        {
+            WorldBuilderCreate.AddLake(scene, Vector3.zero);
+            var river = FallingRiver();
+            var waterfall = WorldBuilderCreate.AddWaterfall(river);
+            var serialized = new SerializedObject(waterfall);
+            serialized.FindProperty("lipFoamLength").floatValue = 0f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            WorldBuilder.Rebuild(scene);
+
+            var mesh = river.GetComponent<MeshFilter>().sharedMesh;
+            var colors = mesh.colors;
+            const int columns = RiverSurfaceBuilder.Columns;
+            Assert.That(colors.All(color => !float.IsNaN(color.r)), Is.True, "foam everywhere is a number");
+            var onLip = colors.Length - (2 * columns);
+            Assert.That(colors[onLip + (columns / 2)].r, Is.EqualTo(waterfall.LipFoam).Within(0.001f), "foam on the lip");
+            Assert.That(colors[onLip - columns + (columns / 2)].r, Is.Zero, "no foam a row up the river");
+            Assert.That(WorldBuilder.Rebuild(scene), Is.False, "nothing changed since");
         }
 
         [Test]

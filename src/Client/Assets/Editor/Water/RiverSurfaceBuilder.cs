@@ -29,10 +29,13 @@ namespace Mmorpg.Client.Editor
                     var offset = row.Across * (side * row.HalfWidth);
                     var profile = 1f - (shape.EdgeSlowdown * side * side);
                     var world = new Vector3(row.Center.x + offset.x, row.Height, row.Center.y + offset.y);
+
+                    // Where a waterfall lands in the river, the water churns and spreads out too.
+                    WaterfallChurn.At(river, new Vector2(world.x, world.z), out var spread, out var churn);
                     surface.Add(
                         transform.InverseTransformPoint(world),
-                        row.Direction * (row.Speed * profile),
-                        row.Foam * profile,
+                        (row.Direction * (row.Speed * profile)) + spread,
+                        Mathf.Max(row.Foam * profile, churn),
                         0f,
                         0f);
                 }
@@ -90,13 +93,17 @@ namespace Mmorpg.Client.Editor
 
             ApplyJunction(rows, river.Start, false);
             ApplyJunction(rows, river.End, true);
+            // The water foams where it tips over the lip, fading out up the river over the lip
+            // foam length; without a length it foams only on the lip and past it.
             if (fall != null)
             {
+                var foamLength = fall.Shape.LipFoamLength;
                 for (var index = 0; index < rows.Count; index++)
                 {
                     var row = rows[index];
-                    var lip = fall.Shape.LipFoam * (1f - WorldBuilderGeometry.Smooth01((length - row.Along) / fall.Shape.LipFoamLength));
-                    rows[index] = row.WithFoam(Mathf.Max(row.Foam, lip));
+                    var upstream = length - row.Along;
+                    var reach = foamLength > 0f ? 1f - WorldBuilderGeometry.Smooth01(upstream / foamLength) : upstream <= 0f ? 1f : 0f;
+                    rows[index] = row.WithFoam(Mathf.Max(row.Foam, fall.Shape.LipFoam * reach));
                 }
             }
 

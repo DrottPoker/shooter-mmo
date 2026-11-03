@@ -67,9 +67,10 @@ namespace Mmorpg.Client.Worlds
             get { return curved; }
         }
 
+        // At least as large as the Inspector allows, also when a script sets it.
         public float RowSpacing
         {
-            get { return rowSpacing; }
+            get { return Mathf.Max(0.1f, rowSpacing); }
         }
 
         public float EdgeSlowdown

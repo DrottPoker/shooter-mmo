@@ -51,8 +51,8 @@ namespace Mmorpg.Client.Editor
             return shape;
         }
 
-        // The water body below the end of a river: the highest lake or sea under where its water
-        // lands, found from a meter or two out from the end.
+        // The water body below the end of a river: the highest lake, sea, or other river under
+        // where its water lands, found from a meter or two out from the end.
         public static WaterBody WaterBelow(RiverShape river)
         {
             var water = WaterScene.Collect(river.gameObject.scene);
@@ -65,12 +65,20 @@ namespace Mmorpg.Client.Editor
             var path = model.Path;
             var end = path.ValuesAt(path.Length).Position;
             var outward = path.PlanarAt(path.Length) + (path.DirectionAt(path.Length) * 1.5f);
-            OpenWaterModel best = null;
-            foreach (var body in water.Lakes.Cast<OpenWaterModel>().Concat(water.Seas))
+            SurfaceModel best = null;
+            var bestLevel = float.MinValue;
+            foreach (var body in water.Lakes.Cast<SurfaceModel>().Concat(water.Seas).Concat(water.Rivers))
             {
-                if (body.Level < end.y - 0.1f && body.Covers(outward) && (best == null || body.Level > best.Level))
+                if (body == model || !body.Covers(outward))
+                {
+                    continue;
+                }
+
+                var level = body.LevelAt(outward);
+                if (level < end.y - WaterScene.MinimumFall && level > bestLevel)
                 {
                     best = body;
+                    bestLevel = level;
                 }
             }
 

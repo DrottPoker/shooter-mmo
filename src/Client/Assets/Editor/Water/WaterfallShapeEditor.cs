@@ -4,7 +4,8 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Editor
 {
-    // A waterfall's values, and a button that lets it fall into the water below its river's end.
+    // A waterfall's values, and a button that lets it fall into the highest water below its
+    // river's end: a lake, a sea, or another river.
     [CustomEditor(typeof(WaterfallShape))]
     internal sealed class WaterfallShapeEditor : UnityEditor.Editor
     {

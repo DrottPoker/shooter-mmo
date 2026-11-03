@@ -395,8 +395,13 @@ namespace Mmorpg.Client.Editor
             var points = new RiverPoint[river.Points.Count];
             for (var index = 0; index < points.Length; index++)
             {
+                // Every value stays within what the Inspector allows, also when a script sets it.
                 var point = river.Points[index];
                 point.Position = river.transform.TransformPoint(point.Position);
+                point.Width = Mathf.Max(0.5f, point.Width);
+                point.Depth = Mathf.Max(0.05f, point.Depth);
+                point.Speed = Mathf.Max(0f, point.Speed);
+                point.Foam = Mathf.Clamp01(point.Foam);
                 points[index] = point;
             }
 

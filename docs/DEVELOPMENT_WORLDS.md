@@ -479,7 +479,7 @@ scene:
   creates when needed. The new water gets a name and a body id of its own, such
   as `lake-2`, the water material, and the static flags of water, without
   `Batching Static`. `Waterfall from the selected river` lets the selected river
-  fall from its last point into the highest lake or sea below it.
+  fall from its last point into the highest lake, sea, or other river below it.
 - `Shapes` lists the scene's shapes; choose one to select and frame it.
 - `Problems` lists what the validation finds; choose one to select its object.
 - `Rebuild` rebuilds the scene's water, `Validate` checks it again, and `Bake
@@ -507,7 +507,11 @@ water it meets:
 - A river whose first or last point lies within 0.5 m of the level of a lake or
   sea whose surface covers it starts or ends in that water: its surface lies at
   that level there and stands still, so they meet without a seam, and a sea's
-  waves and foam lines calm down over the river's water.
+  waves and foam lines calm down over the river's water. Rivers do not join
+  other rivers yet: let a river start or end in a lake or a sea, or fall into
+  another river as a waterfall, and keep it apart from other rivers otherwise,
+  since two flowing surfaces that overlap meet with a seam, which the
+  validation reports.
 - A waterfall makes its river's last point a lip exactly as wide as the river,
   falls along the path water takes at its speed down to the surface where the
   water reaches it, also on a river that falls, and makes the water it lands in

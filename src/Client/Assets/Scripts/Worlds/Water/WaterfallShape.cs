@@ -60,9 +60,11 @@ namespace Mmorpg.Client.Worlds
             get { return landing; }
         }
 
+        // The speed, the foot's thickness, and the churn's fade are at least as large as the
+        // Inspector allows, also when a script sets them.
         public float Speed
         {
-            get { return speed; }
+            get { return Mathf.Max(0.1f, speed); }
         }
 
         public float Approach
@@ -87,7 +89,7 @@ namespace Mmorpg.Client.Worlds
 
         public float FootHalfThickness
         {
-            get { return footHalfThickness; }
+            get { return Mathf.Max(0.01f, footHalfThickness); }
         }
 
         public float LipFoam
@@ -107,7 +109,7 @@ namespace Mmorpg.Client.Worlds
 
         public float ChurnFade
         {
-            get { return churnFade; }
+            get { return Mathf.Max(0.1f, churnFade); }
         }
 
         public float SpreadSpeed

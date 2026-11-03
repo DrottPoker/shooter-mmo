@@ -58,9 +58,10 @@ namespace Mmorpg.Client.Worlds
             get { return outline; }
         }
 
+        // At least as large as the Inspector allows, also when a script sets it.
         public float CellSize
         {
-            get { return cellSize; }
+            get { return Mathf.Max(0.5f, cellSize); }
         }
 
         public float Waves
@@ -70,7 +71,7 @@ namespace Mmorpg.Client.Worlds
 
         public float CalmDistance
         {
-            get { return calmDistance; }
+            get { return Mathf.Max(0.1f, calmDistance); }
         }
 
         public HorizonSides Horizon

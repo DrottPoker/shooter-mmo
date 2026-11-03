@@ -26,9 +26,10 @@ namespace Mmorpg.Client.Worlds
             get { return shore; }
         }
 
+        // At least as large as the Inspector allows, also when a script sets it.
         public float CellSize
         {
-            get { return cellSize; }
+            get { return Mathf.Max(0.25f, cellSize); }
         }
 
         // The lake's surface height in world space.
