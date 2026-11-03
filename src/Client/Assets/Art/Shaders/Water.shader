@@ -4,9 +4,11 @@
 // in lines that roll in toward the shore, and in fast water. Ripple normals scroll along the flow
 // that each vertex carries in its second texture coordinate, so a river runs downstream, and the
 // sea can lift its vertices in gentle waves. The red of the vertex color marks fast water, the
-// green how much the waves move a vertex. The water reads the camera's depth and opaque textures,
-// so the pipeline must provide both. Overlapping water, such as a river that reaches into a lake,
-// draws once per pixel through a stencil bit, so it never doubles its tint. See
+// green how much the waves move a vertex, and the blue how strongly foam lines roll in toward
+// the shore. One material serves every kind of water, so where water bodies meet, their surfaces
+// draw alike as long as their vertices agree. The water reads the camera's depth and opaque
+// textures, so the pipeline must provide both. Overlapping water, such as a river that reaches
+// into a lake, draws once per pixel through a stencil bit, so it never doubles its tint. See
 // docs/ART_PIPELINE.md under Water.
 Shader "Mmorpg/Water"
 {
@@ -347,7 +349,7 @@ Shader "Mmorpg/Water"
                 if (_ShoreWaveFrequency > 0)
                 {
                     float crest = 0.5 + (0.5 * sin(TWO_PI * ((verticalDepth * _ShoreWaveFrequency) + (time * _ShoreWaveSpeed))));
-                    lines = pow(crest, 6) * saturate(1 - (verticalDepth / _ShoreWaveDepth)) * 0.85;
+                    lines = pow(crest, 6) * saturate(1 - (verticalDepth / _ShoreWaveDepth)) * 0.85 * input.color.b;
                 }
 
                 // Fast water carries foam in patches that drift with it; churning water, such as

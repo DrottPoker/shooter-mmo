@@ -2651,25 +2651,33 @@ approves a new look from screenshots before it is merged.
   lines that roll in toward a sea's shore, and in drifting patches where the
   water runs fast; churning water, such as at the foot of a waterfall, foams all
   over.
-- The surface mesh tells the shader how its water moves: the second texture
-  coordinate is the flow in meters per second, along which the ripples and the
-  foam move, the red of the vertex color how fast and foaming the water is, and
-  the green how much the waves lift the vertex. A lake leaves both at zero and
-  drifts with its material.
+- Every lake, river, and sea draws with one material, so what sets them apart
+  comes from their surface meshes: the second texture coordinate is the flow in
+  meters per second, along which the ripples and the foam move, the red of the
+  vertex color how fast and foaming the water is, the green how much the waves
+  lift the vertex, and the blue how strongly foam lines roll in toward the
+  shore, as on a sea's beach. A lake leaves all of them at zero and drifts with
+  the material's wind.
+- Where water bodies meet, their surfaces overlap, and the overlap draws once
+  per pixel through a stencil bit, so it never doubles its tint. They meet
+  without a seam when their vertices agree there: the same level, still water,
+  and no waves or foam lines, as the waterside's river does where it reaches
+  into the lake and the sea.
 - The shader reads the camera's depth and opaque textures, which every quality
-  level's render pipeline asset turns on. Overlapping water, such as a river
-  that reaches into a lake, draws once per pixel through a stencil bit, so it
-  never doubles its tint.
+  level's render pipeline asset turns on.
 
-`Mmorpg/Waterfall` draws the falling sheet of a waterfall, lit the same way:
-the rock behind shows through clear water, bent by ripples that rush down, the
-sky and the sun glint in it, and thin streaks and clumps of foam fall with the
-water. The water slides glassy over the lip, breaks into streaks, and turns white
-at the foot, and its sides fray. The sheet's mesh holds meters across the sheet
-and the seconds the water has fallen in its first texture coordinate, the meters
-to the nearer side and how far down the fall the vertex lies in its second, its
-normals facing out and its tangents running across. Because the pattern keeps to
-the seconds the water has fallen, its streaks stretch as the water speeds up.
+`Mmorpg/Waterfall` draws the falling water of a waterfall as a column with a
+body of its own, lit the same way: the rock behind shows through clear water,
+bent by ripples that rush down, the sky and the sun glint in it, and thin
+streaks and clumps of foam fall with the water. The water slides glassy over the
+lip, breaks into streaks, and turns white at the foot. Its outline frays and
+fades where the column turns away, so it has no hard edge from any side, and
+clear water looks denser where the view passes through it at a slant. The
+column's mesh holds the meters around it from its front, the seconds the water
+has fallen, and how far down the fall the vertex lies in its texture coordinate,
+its normals facing out of the column and its tangents running around it. Because
+the pattern keeps to the seconds the water has fallen, its streaks stretch as
+the water speeds up.
 
 | File | Content |
 | --- | --- |
@@ -2677,8 +2685,8 @@ the seconds the water has fallen, its streaks stretch as the water speeds up.
 | `T_Water_Masks.png` | Red is the foam pattern, low where foam forms first, green the light lines of the shallows, and blue soft noise for the sparkles and the foam patches. |
 | `T_Water_Falls.png` | Red is long thin streaks down a waterfall, green clumps of foam, and blue the noise of its sparkles. |
 | `T_Water_Ring.png`, `T_Water_Droplet.png` | The ring and the droplet of the wakes in water. |
-| `M_Water_Lake.mat`, `M_Water_River.mat`, `M_Water_Sea.mat` | One material per kind of water body: a lake is calm and clear, a river runs and foams where it is fast, and the sea is turquoise over sand, with waves and foam lines. |
-| `M_Water_Waterfall.mat` | The waterfall's sheet. |
+| `M_Water.mat` | Every water surface: turquoise and clear over sand, deep blue further out. |
+| `M_Water_Waterfall.mat` | The falling water of a waterfall. |
 | `M_Water_Ring.mat`, `M_Water_Spray.mat` | URP's unlit particle shader, one step after the water in the transparent queue, for the wakes and the waterfall's spray. |
 
 The textures live in their own folder because the
@@ -2692,15 +2700,16 @@ A zone that needs other water, such as a dark mountain lake or a green bog,
 gives its water bodies a look of their own without changing the code's
 materials:
 
-1. In the Project window, right-click `M_Water_Lake`, `M_Water_River`,
-   `M_Water_Sea`, or `M_Water_Waterfall` in `Assets/Art/Water` and choose
-   `Create > Material Variant`. Name it `M_Water_<Kind>_<Look>`, such as
-   `M_Water_Lake_Mountain`, and keep it in `Assets/Art/Water`.
+1. In the Project window, right-click `M_Water` or `M_Water_Waterfall` in
+   `Assets/Art/Water` and choose `Create > Material Variant`. Name it
+   `M_Water_<Look>` or `M_Water_Waterfall_<Look>`, such as
+   `M_Water_Mountain`, and keep it in `Assets/Art/Water`.
 2. In its Inspector, change only the colors: `Shallow color`, `Deep color`,
    `Depth of the deep color (m)`, `Visibility through the water (m)`, and
    `Reflected horizon color`, or for a waterfall `Clear water color` and
    `Shaded water color`.
-3. Put the variant on the MeshRenderer of the zone's water bodies.
+3. Put the variant on the MeshRenderer of every water body of the zone that
+   meets another, so they meet without a seam.
 
 Expected result: the water shows the new colors with the same ripples, foam,
 and light, and a later run of the water command changes everything but the
@@ -2719,7 +2728,8 @@ shallow, `(0.05, 0.08, 0.03)` deep, 1.2 m, and 0.9 m.
 
 Expected result: only the changed textures and materials are written, and
 `tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter
-AuthoredGameplayAssetTests,WaterLookTests,RuntimePresentationTests` passes.
+AuthoredGameplayAssetTests,WaterLookTests,WatersideJunctionTests,RuntimePresentationTests`
+passes.
 
 ## Assets
 
