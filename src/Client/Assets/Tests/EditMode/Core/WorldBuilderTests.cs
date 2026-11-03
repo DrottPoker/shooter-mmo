@@ -218,6 +218,99 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(mesh.bounds.min.x, Is.EqualTo(-13f).Within(0.001f));
         }
 
+        // A shape copied from another scene still holds that scene's mesh asset; a rebuild gives
+        // it a mesh of its own and leaves the asset as it is.
+        [Test]
+        public void AShapeThatHoldsAnotherScenesMeshGetsAMeshOfItsOwn()
+        {
+            AssetDatabase.CreateFolder("Assets", MeshDirectory.Substring("Assets/".Length));
+            var shared = new Mesh { vertices = new[] { Vector3.zero, Vector3.forward, Vector3.right }, triangles = new[] { 0, 1, 2 } };
+            AssetDatabase.CreateAsset(shared, MeshDirectory + "/Shared.asset");
+            var lake = WorldBuilderCreate.AddLake(scene, Vector3.zero);
+            lake.GetComponent<MeshFilter>().sharedMesh = shared;
+
+            Assert.That(WorldBuilder.Rebuild(scene), Is.True);
+
+            var own = lake.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(own, Is.Not.EqualTo(shared));
+            Assert.That(own.vertexCount, Is.GreaterThan(3));
+            Assert.That(shared.vertexCount, Is.EqualTo(3), "the other scene's mesh stays as it was");
+        }
+
+        [Test]
+        public void ABuildWritesOnlyMeshesItsSceneOwns()
+        {
+            AssetDatabase.CreateFolder("Assets", MeshDirectory.Substring("Assets/".Length));
+            var asset = new Mesh();
+            AssetDatabase.CreateAsset(asset, MeshDirectory + "/Owned.asset");
+            var inMemory = new Mesh();
+            var nowhere = new HashSet<string>();
+            var elsewhere = new HashSet<string> { MeshDirectory + "/Owned.asset" };
+            try
+            {
+                Assert.That(WorldBuilderAssets.MayWrite(asset, true, nowhere), Is.True, "a saved scene's own asset");
+                Assert.That(WorldBuilderAssets.MayWrite(asset, true, elsewhere), Is.False, "an asset another scene uses too");
+                Assert.That(WorldBuilderAssets.MayWrite(asset, false, nowhere), Is.False, "an asset, from a scene never saved");
+                Assert.That(WorldBuilderAssets.MayWrite(inMemory, false, nowhere), Is.True, "a mesh of a scene never saved");
+                Assert.That(WorldBuilderAssets.MayWrite(inMemory, true, nowhere), Is.False, "a mesh that a saved scene keeps in itself");
+            }
+            finally
+            {
+                Object.DestroyImmediate(inMemory);
+            }
+        }
+
+        // The sea's grid lies 0.75 m off the World's west edge, and then also turned, so the edge
+        // crosses its cells; the surface still ends exactly at the edge, where the sea beyond the
+        // World starts.
+        [TestCase(0f)]
+        [TestCase(30f)]
+        public void ASeaEndsExactlyAtTheWorldsEdgeHoweverItsGridLies(float yaw)
+        {
+            var world = new GameObject("World");
+            SceneManager.MoveGameObjectToScene(world, scene);
+            world.AddComponent<WorldCollisionAuthoring>();
+            var ground = new GameObject("Ground");
+            ground.transform.SetParent(world.transform, false);
+            var box = ground.AddComponent<BoxCollider>();
+            box.center = new Vector3(20f, -0.5f, 0f);
+            box.size = new Vector3(40f, 1f, 60f);
+            var sea = WorldBuilderCreate.AddSea(scene, new Vector3(0.75f, -0.2f, 0f));
+            sea.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            var serialized = new SerializedObject(sea);
+            serialized.FindProperty("horizon").intValue = (int)HorizonSides.West;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            WorldBuilder.Rebuild(scene);
+
+            var mesh = sea.GetComponent<MeshFilter>().sharedMesh;
+            var westmost = mesh.vertices.Min(vertex => sea.transform.TransformPoint(vertex).x);
+            Assert.That(westmost, Is.EqualTo(0f).Within(0.0001f));
+            var colors = mesh.colors;
+            var vertices = mesh.vertices;
+            for (var index = 0; index < vertices.Length; index++)
+            {
+                if (sea.transform.TransformPoint(vertices[index]).x < 0.0001f)
+                {
+                    Assert.That(colors[index].g, Is.Zero, "no waves where the sea beyond the World starts");
+                }
+            }
+
+            var triangles = mesh.triangles;
+            for (var index = 0; index < triangles.Length; index += 3)
+            {
+                var a = vertices[triangles[index]];
+                var cross = Vector3.Cross(vertices[triangles[index + 1]] - a, vertices[triangles[index + 2]] - a);
+                Assert.That(cross.y, Is.GreaterThanOrEqualTo(0f), "every triangle faces up");
+            }
+
+            // The default outline is 40 m square around the sea's origin, so the water covers the
+            // edge from 15 m south to 15 m north of it, without a gap.
+            for (var z = -15f; z <= 15f; z += 0.5f)
+            {
+                Assert.That(Covers(mesh, sea.transform, new Vector2(0.01f, z)), Is.True, "water at the edge, " + z + " m north");
+            }
+        }
+
         [Test]
         public void AMeshThatNoShapeUsesAnyMoreIsUnused()
         {
@@ -230,6 +323,33 @@ namespace Mmorpg.Client.Tests.EditMode
             var unused = WorldBuilderAssets.UnusedMeshes(MeshDirectory, new HashSet<Mesh> { kept }, null);
 
             Assert.That(unused, Is.EqualTo(new[] { removed }));
+        }
+
+        // Whether a triangle of the mesh lies over the point in world X and Z.
+        private static bool Covers(Mesh mesh, Transform transform, Vector2 point)
+        {
+            var vertices = mesh.vertices.Select(vertex => transform.TransformPoint(vertex)).ToArray();
+            var triangles = mesh.triangles;
+            for (var index = 0; index < triangles.Length; index += 3)
+            {
+                var a = vertices[triangles[index]];
+                var b = vertices[triangles[index + 1]];
+                var c = vertices[triangles[index + 2]];
+                var determinant = ((b.z - c.z) * (a.x - c.x)) + ((c.x - b.x) * (a.z - c.z));
+                if (Mathf.Abs(determinant) < 0.000001f)
+                {
+                    continue;
+                }
+
+                var u = (((b.z - c.z) * (point.x - c.x)) + ((c.x - b.x) * (point.y - c.z))) / determinant;
+                var v = (((c.z - a.z) * (point.x - c.x)) + ((a.x - c.x) * (point.y - c.z))) / determinant;
+                if (u >= -0.0001f && v >= -0.0001f && 1f - u - v >= -0.0001f)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // A river that ends 3 m above the default lake around the origin, 2 m inside its shore.

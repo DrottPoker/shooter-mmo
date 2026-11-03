@@ -9,11 +9,16 @@ namespace Mmorpg.Client.Editor
     // lines that roll onto its beaches. The waves calm down toward the sides of the World where
     // the sea runs on to the horizon, and the waves and the foam lines both calm down at a river's
     // mouth, so the surfaces meet without a seam. Beyond the World's ground on those sides, a flat
-    // and still surface over a seabed continues the sea to the horizon; it only shows.
+    // and still surface over a seabed continues the sea to the horizon; it only shows. A cell that
+    // the World's edge crosses there is cut off at the edge, so the two meet exactly however the
+    // sea's grid lies.
     internal static class SeaSurfaceBuilder
     {
         // The river's water calms the sea within its half width and this much more of its end.
         private const float MouthMargin = 0.5f;
+
+        // A cut cell keeps a part at least this share of a whole cell.
+        private const float SmallestPart = 0.0001f;
 
         public static WaterSurfaceMesh Build(SeaModel sea, Rect? worldEdge)
         {
@@ -38,23 +43,176 @@ namespace Mmorpg.Client.Editor
                 for (var cellX = firstX; cellX < lastX; cellX++)
                 {
                     var center = new Vector2((cellX + 0.5f) * cell, (cellZ + 0.5f) * cell);
-                    if ((!WorldBuilderGeometry.Contains(outline, center)
-                            && WorldBuilderGeometry.DistanceToOutline(outline, center) > reach)
-                        || IsBeyondHorizon(shape, worldEdge, center))
+                    if (!WorldBuilderGeometry.Contains(outline, center)
+                        && WorldBuilderGeometry.DistanceToOutline(outline, center) > reach)
                     {
                         continue;
                     }
 
-                    var a = Corner(surface, corners, sea, worldEdge, cellX, cellZ, cell);
-                    var b = Corner(surface, corners, sea, worldEdge, cellX + 1, cellZ, cell);
-                    var c = Corner(surface, corners, sea, worldEdge, cellX + 1, cellZ + 1, cell);
-                    var d = Corner(surface, corners, sea, worldEdge, cellX, cellZ + 1, cell);
-                    surface.Triangle(a, d, c);
-                    surface.Triangle(a, c, b);
+                    if (!CrossesHorizon(shape, worldEdge, cellX, cellZ, cell))
+                    {
+                        var a = Corner(surface, corners, sea, worldEdge, cellX, cellZ, cell);
+                        var b = Corner(surface, corners, sea, worldEdge, cellX + 1, cellZ, cell);
+                        var c = Corner(surface, corners, sea, worldEdge, cellX + 1, cellZ + 1, cell);
+                        var d = Corner(surface, corners, sea, worldEdge, cellX, cellZ + 1, cell);
+                        surface.Triangle(a, d, c);
+                        surface.Triangle(a, c, b);
+                        continue;
+                    }
+
+                    AddCutCell(surface, corners, sea, worldEdge.Value, cellX, cellZ, cell);
                 }
             }
 
             return surface;
+        }
+
+        // The part of a cell inside the World's edge on the horizon sides, as a fan of triangles
+        // that shares the cell's corners inside with its neighbors.
+        private static void AddCutCell(
+            WaterSurfaceMesh surface,
+            Dictionary<long, int> corners,
+            SeaModel sea,
+            Rect worldEdge,
+            int cellX,
+            int cellZ,
+            float cell)
+        {
+            var shape = sea.Sea;
+            var gridCorners = new[]
+            {
+                new Vector2Int(cellX, cellZ),
+                new Vector2Int(cellX + 1, cellZ),
+                new Vector2Int(cellX + 1, cellZ + 1),
+                new Vector2Int(cellX, cellZ + 1)
+            };
+            var polygon = new List<Vector2>();
+            foreach (var corner in gridCorners)
+            {
+                polygon.Add(WorldPoint(shape, corner, cell));
+            }
+
+            foreach (var side in new[] { HorizonSides.West, HorizonSides.East, HorizonSides.South, HorizonSides.North })
+            {
+                if ((shape.Horizon & side) != 0)
+                {
+                    polygon = Clip(polygon, side, worldEdge);
+                }
+            }
+
+            if (polygon.Count < 3 || Mathf.Abs(Area(polygon)) < SmallestPart * cell * cell)
+            {
+                return;
+            }
+
+            var indices = new List<int>(polygon.Count);
+            foreach (var point in polygon)
+            {
+                var index = -1;
+                foreach (var corner in gridCorners)
+                {
+                    if (WorldPoint(shape, corner, cell) == point)
+                    {
+                        index = Corner(surface, corners, sea, worldEdge, corner.x, corner.y, cell);
+                        break;
+                    }
+                }
+
+                indices.Add(index >= 0 ? index : AddVertex(surface, sea, worldEdge, point));
+            }
+
+            for (var index = 1; index < indices.Count - 1; index++)
+            {
+                surface.Triangle(indices[0], indices[index], indices[index + 1]);
+            }
+        }
+
+        // The part of a convex polygon inside the World's edge on one side, by cutting each edge
+        // that crosses it, where the cut lies exactly on the World's edge.
+        private static List<Vector2> Clip(List<Vector2> polygon, HorizonSides side, Rect worldEdge)
+        {
+            var clipped = new List<Vector2>();
+            for (var index = 0; index < polygon.Count; index++)
+            {
+                var from = polygon[index];
+                var to = polygon[(index + 1) % polygon.Count];
+                var fromInside = InsideOf(side, worldEdge, from);
+                var toInside = InsideOf(side, worldEdge, to);
+                if (fromInside >= 0f)
+                {
+                    clipped.Add(from);
+                }
+
+                if ((fromInside >= 0f) != (toInside >= 0f))
+                {
+                    var cut = Vector2.Lerp(from, to, fromInside / (fromInside - toInside));
+                    clipped.Add(side == HorizonSides.West ? new Vector2(worldEdge.xMin, cut.y)
+                        : side == HorizonSides.East ? new Vector2(worldEdge.xMax, cut.y)
+                        : side == HorizonSides.South ? new Vector2(cut.x, worldEdge.yMin)
+                        : new Vector2(cut.x, worldEdge.yMax));
+                }
+            }
+
+            return clipped;
+        }
+
+        private static float Area(List<Vector2> polygon)
+        {
+            var twice = 0f;
+            for (int index = 0, previous = polygon.Count - 1; index < polygon.Count; previous = index++)
+            {
+                twice += (polygon[previous].x * polygon[index].y) - (polygon[index].x * polygon[previous].y);
+            }
+
+            return twice * 0.5f;
+        }
+
+        // How far inside the World's edge on one side a point lies, negative beyond it.
+        private static float InsideOf(HorizonSides side, Rect edge, Vector2 point)
+        {
+            switch (side)
+            {
+                case HorizonSides.West:
+                    return point.x - edge.xMin;
+                case HorizonSides.East:
+                    return edge.xMax - point.x;
+                case HorizonSides.South:
+                    return point.y - edge.yMin;
+                default:
+                    return edge.yMax - point.y;
+            }
+        }
+
+        // Whether a corner of the cell lies beyond the World's edge on a horizon side.
+        private static bool CrossesHorizon(SeaShape sea, Rect? worldEdge, int cellX, int cellZ, float cell)
+        {
+            if (!worldEdge.HasValue || sea.Horizon == HorizonSides.None)
+            {
+                return false;
+            }
+
+            for (var cornerZ = cellZ; cornerZ <= cellZ + 1; cornerZ++)
+            {
+                for (var cornerX = cellX; cornerX <= cellX + 1; cornerX++)
+                {
+                    var point = WorldPoint(sea, new Vector2Int(cornerX, cornerZ), cell);
+                    foreach (var side in new[] { HorizonSides.West, HorizonSides.East, HorizonSides.South, HorizonSides.North })
+                    {
+                        if ((sea.Horizon & side) != 0 && InsideOf(side, worldEdge.Value, point) < 0f)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static Vector2 WorldPoint(SeaShape sea, Vector2Int corner, float cell)
+        {
+            var world = sea.transform.TransformPoint(new Vector3(corner.x * cell, 0f, corner.y * cell));
+            return new Vector2(world.x, world.z);
         }
 
         // The still sea beyond the World's ground: one strip beyond each horizon side, the west
@@ -147,33 +305,30 @@ namespace Mmorpg.Client.Editor
                 return index;
             }
 
-            var shape = sea.Sea;
             var local = new Vector3(cornerX * cell, 0f, cornerZ * cell);
-            var world = shape.transform.TransformPoint(local);
-            var point = new Vector2(world.x, world.z);
-            var mouths = MouthCalm(sea, point);
-            var waves = shape.Waves * HorizonCalm(shape, worldEdge, point) * mouths;
-            WaterfallChurn.At(sea, point, out var flow, out var churn);
-            index = surface.Add(local, flow, churn, waves, mouths);
+            var world = sea.Sea.transform.TransformPoint(local);
+            index = AddAt(surface, sea, worldEdge, local, new Vector2(world.x, world.z));
             corners.Add(key, index);
             return index;
         }
 
-        // Beyond the World's ground on a horizon side the still sea continues this one, so this
-        // surface, which collides, stops at the edge.
-        private static bool IsBeyondHorizon(SeaShape sea, Rect? worldEdge, Vector2 localCenter)
+        // A vertex where the World's edge cuts a cell, on that edge, where the waves are calm.
+        private static int AddVertex(WaterSurfaceMesh surface, SeaModel sea, Rect worldEdge, Vector2 point)
         {
-            if (!worldEdge.HasValue || sea.Horizon == HorizonSides.None)
-            {
-                return false;
-            }
+            var local = sea.Shape.transform.InverseTransformPoint(new Vector3(point.x, sea.Level, point.y));
+            local.y = 0f;
+            return AddAt(surface, sea, worldEdge, local, point);
+        }
 
-            var world = sea.transform.TransformPoint(new Vector3(localCenter.x, 0f, localCenter.y));
-            var edge = worldEdge.Value;
-            return ((sea.Horizon & HorizonSides.West) != 0 && world.x < edge.xMin)
-                || ((sea.Horizon & HorizonSides.East) != 0 && world.x > edge.xMax)
-                || ((sea.Horizon & HorizonSides.South) != 0 && world.z < edge.yMin)
-                || ((sea.Horizon & HorizonSides.North) != 0 && world.z > edge.yMax);
+        // A vertex in the sea's space, with what the water shader reads there from the point in
+        // world X and Z.
+        private static int AddAt(WaterSurfaceMesh surface, SeaModel sea, Rect? worldEdge, Vector3 local, Vector2 point)
+        {
+            var shape = sea.Sea;
+            var mouths = MouthCalm(sea, point);
+            var waves = shape.Waves * HorizonCalm(shape, worldEdge, point) * mouths;
+            WaterfallChurn.At(sea, point, out var flow, out var churn);
+            return surface.Add(local, flow, churn, waves, mouths);
         }
 
         // 0 at the World's edge on a horizon side, rising to 1 the calm distance inside it.

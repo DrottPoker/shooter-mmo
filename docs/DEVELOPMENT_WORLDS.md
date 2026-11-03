@@ -513,17 +513,20 @@ scene's water at once, because water shapes the water it meets:
   it.
 - On its horizon sides, a sea runs on beyond the World's ground, where the
   colliders below the collision root end, as a still surface over a seabed that
-  only shows, and its waves calm down toward that edge. Draw its outline out to
-  that edge there.
+  only shows, and its waves calm down toward that edge. Its surface ends exactly
+  at that edge, cutting the cells the edge crosses, however the sea is moved or
+  turned. Draw its outline out to that edge there.
 - A shape that is not complete, such as a waterfall without a landing or a
   river with one point, shows nothing until it is.
 
 A rebuild writes a mesh only when it changes, so a rebuild without a change
 marks nothing dirty and opening a scene changes nothing. A shape keeps the mesh
-asset its MeshFilter holds. A new shape in a saved scene, or one that shares its
-mesh with another, such as a duplicated lake, gets a mesh asset of its own below
-`Assets/Art/Worlds/<scene>`; a scene that was never saved keeps its meshes in
-memory until it is saved and its water rebuilt. A removed shape leaves its mesh
+asset its MeshFilter holds while no other shape and no other scene uses it. A new
+shape in a saved scene, or one whose mesh another shape or scene uses too, such
+as a duplicated lake, a shape copied from another scene, or a scene saved under
+a new name, gets a mesh asset of its own below `Assets/Art/Worlds/<scene>`, so an
+edit never changes another scene's water; a scene that was never saved keeps its
+meshes in memory until it is saved and its water rebuilt. A removed shape leaves its mesh
 behind: the validation warns about every mesh below `Assets/Art/Worlds/<scene>`
 that no scene uses any more, and `Remove Unused Meshes` moves them to the trash.
 

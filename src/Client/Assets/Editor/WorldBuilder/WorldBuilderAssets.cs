@@ -8,21 +8,26 @@ using UnityEngine.SceneManagement;
 namespace Mmorpg.Client.Editor
 {
     // The mesh assets that hold what the World Builder makes. A shape keeps the mesh asset its
-    // MeshFilter already holds; a new shape, or one that shares its mesh with another, such as a
-    // duplicated lake, gets a mesh of its own below Assets/Art/Worlds/<scene>. A scene that was
-    // never saved keeps its meshes in itself, until it is saved and rebuilt.
+    // MeshFilter already holds while no other shape and no other scene uses it; a new shape, or
+    // one that shares its mesh, such as a duplicated lake, a shape copied from another scene, or a
+    // scene saved under a new name, gets a mesh of its own below Assets/Art/Worlds/<scene>. A
+    // scene that was never saved keeps its meshes in itself, until it is saved and rebuilt.
     internal sealed class WorldBuilderAssets
     {
         public const string Root = "Assets/Art/Worlds";
 
+        private static readonly Dictionary<string, string[]> SceneDependencies = new Dictionary<string, string[]>();
+        private static List<string> scenePaths;
+
         private readonly HashSet<Mesh> claimed = new HashSet<Mesh>();
+        private readonly Dictionary<Scene, HashSet<string>> usedElsewhere = new Dictionary<Scene, HashSet<string>>();
 
         // The mesh this build writes for the filter, which no other shape of the build writes.
         public Mesh MeshOf(MeshFilter filter, string name)
         {
             var mesh = filter.sharedMesh;
             var scene = filter.gameObject.scene;
-            if (mesh != null && (IsOwnAsset(mesh) || (!IsSaved(scene) && !AssetDatabase.Contains(mesh))) && claimed.Add(mesh))
+            if (mesh != null && MayWrite(mesh, scene) && claimed.Add(mesh))
             {
                 return mesh;
             }
@@ -45,7 +50,8 @@ namespace Mmorpg.Client.Editor
         public Mesh MeshNextTo(MeshFilter filter, Mesh owner, string suffix)
         {
             var mesh = filter.sharedMesh;
-            if (mesh != null && (IsOwnAsset(mesh) || (!AssetDatabase.Contains(owner) && !AssetDatabase.Contains(mesh))) && claimed.Add(mesh))
+            var scene = filter.gameObject.scene;
+            if (mesh != null && MayWrite(mesh, scene) && claimed.Add(mesh))
             {
                 return mesh;
             }
@@ -59,12 +65,11 @@ namespace Mmorpg.Client.Editor
                 return mesh;
             }
 
-            var ownerPath = AssetDatabase.GetAssetPath(owner);
-            var path = Path.GetDirectoryName(ownerPath).Replace('\\', '/') + "/" + owner.name + suffix + ".asset";
-            mesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            if (mesh == null || !claimed.Add(mesh))
+            var directory = Path.GetDirectoryName(AssetDatabase.GetAssetPath(owner)).Replace('\\', '/');
+            mesh = AssetDatabase.LoadAssetAtPath<Mesh>(directory + "/" + owner.name + suffix + ".asset");
+            if (mesh == null || !MayWrite(mesh, scene) || !claimed.Add(mesh))
             {
-                mesh = Create(Path.GetDirectoryName(ownerPath).Replace('\\', '/'), owner.name + suffix);
+                mesh = Create(directory, owner.name + suffix);
                 claimed.Add(mesh);
             }
 
@@ -76,6 +81,96 @@ namespace Mmorpg.Client.Editor
         public static string DefaultDirectory(Scene scene)
         {
             return Root + "/" + scene.name;
+        }
+
+        // Whether a build of a scene may write into a mesh: in a saved scene, a mesh asset of its
+        // own that no other scene uses, and in a scene that was never saved, a mesh that is no
+        // asset. A build leaves every other mesh as it is and gives the shape a mesh of its own.
+        public static bool MayWrite(Mesh mesh, bool sceneSaved, ICollection<string> usedElsewhere)
+        {
+            if (!AssetDatabase.Contains(mesh))
+            {
+                return !sceneSaved;
+            }
+
+            return sceneSaved && IsOwnAsset(mesh) && !usedElsewhere.Contains(AssetDatabase.GetAssetPath(mesh));
+        }
+
+        private bool MayWrite(Mesh mesh, Scene scene)
+        {
+            var saved = IsSaved(scene);
+            return MayWrite(mesh, saved, saved && AssetDatabase.Contains(mesh) ? UsedElsewhere(scene) : new HashSet<string>());
+        }
+
+        // The assets that the scenes other than this one use: those saved, as their files say, and
+        // those open, as they hold them now.
+        private HashSet<string> UsedElsewhere(Scene scene)
+        {
+            if (usedElsewhere.TryGetValue(scene, out var used))
+            {
+                return used;
+            }
+
+            used = DependenciesOfOtherScenes(scene.path);
+            for (var index = 0; index < SceneManager.sceneCount; index++)
+            {
+                var other = SceneManager.GetSceneAt(index);
+                if (other == scene || !other.isLoaded)
+                {
+                    continue;
+                }
+
+                foreach (var filter in other.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<MeshFilter>(true)))
+                {
+                    if (filter.sharedMesh != null && AssetDatabase.Contains(filter.sharedMesh))
+                    {
+                        used.Add(AssetDatabase.GetAssetPath(filter.sharedMesh));
+                    }
+                }
+            }
+
+            usedElsewhere.Add(scene, used);
+            return used;
+        }
+
+        // What the saved scenes other than the one at the path use, as their files say. The files
+        // change rarely, so they are read once until the project changes, which keeps a rebuild
+        // fast while a shape is dragged.
+        private static HashSet<string> DependenciesOfOtherScenes(string scenePath)
+        {
+            if (scenePaths == null)
+            {
+                scenePaths = AssetDatabase.FindAssets("t:Scene", new[] { "Assets" }).Select(AssetDatabase.GUIDToAssetPath).ToList();
+            }
+
+            var used = new HashSet<string>();
+            foreach (var path in scenePaths)
+            {
+                if (path == scenePath)
+                {
+                    continue;
+                }
+
+                if (!SceneDependencies.TryGetValue(path, out var dependencies))
+                {
+                    dependencies = AssetDatabase.GetDependencies(path, false);
+                    SceneDependencies.Add(path, dependencies);
+                }
+
+                used.UnionWith(dependencies);
+            }
+
+            return used;
+        }
+
+        [InitializeOnLoadMethod]
+        private static void ForgetScenesWhenTheProjectChanges()
+        {
+            EditorApplication.projectChanged += () =>
+            {
+                scenePaths = null;
+                SceneDependencies.Clear();
+            };
         }
 
         // The meshes below the scene's own folder that neither the scene nor another scene uses any
@@ -119,10 +214,7 @@ namespace Mmorpg.Client.Editor
             }
 
             // The scene's own file may be out of date, so only the other scenes are read from disk.
-            var elsewhere = new HashSet<string>(AssetDatabase.FindAssets("t:Scene", new[] { "Assets" })
-                .Select(AssetDatabase.GUIDToAssetPath)
-                .Where(path => path != scenePath)
-                .SelectMany(path => AssetDatabase.GetDependencies(path, false)));
+            var elsewhere = DependenciesOfOtherScenes(scenePath);
             unused.RemoveAll(mesh => elsewhere.Contains(AssetDatabase.GetAssetPath(mesh)));
             return unused;
         }
