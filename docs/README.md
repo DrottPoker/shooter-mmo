@@ -53,8 +53,8 @@ How to work on a part of the project.
 
 - [Local Development](LOCAL_DEVELOPMENT.md) and [Manual Testing](MANUAL_TESTING.md).
 - [Art Pipeline](ART_PIPELINE.md): 3D models from Blender to Unity, with every how-to.
-- [Development Worlds](DEVELOPMENT_WORLDS.md): the two development maps and how they are
-  rebuilt.
+- [Development Worlds](DEVELOPMENT_WORLDS.md): the two development maps, how they are
+  rebuilt, and the World Builder that makes a World's water from shapes.
 - [Monitoring](MONITORING.md): metrics, logs, traces, dashboards, alerts, and the local
   monitoring stack.
 - [Stack Stress Testing](STACK_STRESS_TESTING.md): repeatable load tests of a worker or the full
@@ -82,6 +82,7 @@ How to work on a part of the project.
 | How to check a feature by hand | [Manual Testing](MANUAL_TESTING.md) |
 | Setup, running the stack, checks, pull requests, Unity Editor automation, or operations | [Local Development](LOCAL_DEVELOPMENT.md) |
 | Making or changing art | [Art Pipeline](ART_PIPELINE.md) |
+| A development World's layout, World collision and water authoring, or the World Builder | [Development Worlds](DEVELOPMENT_WORLDS.md) |
 | Authoring content or adding a kind of content | [Game Content](../content/README.md) |
 | A test project, test rule, or test database | [Backend Tests](../tests/README.md) |
 | A new script or tool | [Tools](../tools/README.md) and the guide of its area |

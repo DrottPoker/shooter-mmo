@@ -106,7 +106,16 @@ namespace Mmorpg.Client.Editor
                     scenesGroup.entries.Select(entry => entry.AssetPath));
                 foreach (var plan in plans)
                 {
-                    EditorSceneManager.OpenScene(plan.ScenePath, OpenSceneMode.Single);
+                    // Water that no longer matches its shapes is rebuilt and saved, so the scene
+                    // keeps what is baked.
+                    var scene = EditorSceneManager.OpenScene(plan.ScenePath, OpenSceneMode.Single);
+                    if (WorldBuilder.Rebuild(scene))
+                    {
+                        EditorSceneManager.SaveScene(scene);
+                        AssetDatabase.SaveAssets();
+                        Debug.Log("[WORLD COLLISION] Rebuilt the water of " + plan.ScenePath + " from its shapes and saved it.");
+                    }
+
                     foreach (var worldId in plan.WorldIds)
                     {
                         BakeActiveScene(worldId, plan.WorldIds);
@@ -181,6 +190,25 @@ namespace Mmorpg.Client.Editor
                     + string.Join("', '", sceneWorldIds) + "'.");
             }
 
+            // The World Builder makes the water from its shapes, so the bake rebuilds it first and
+            // bakes what the shapes describe, and stops at any error the World Builder finds.
+            var scene = authoring.gameObject.scene;
+            if (WorldBuilder.Rebuild(scene))
+            {
+                Debug.Log("[WORLD COLLISION] Rebuilt the water of scene '" + scene.name + "' from its shapes before baking.");
+            }
+
+            var errors = WorldBuilder.Validate(scene)
+                .Where(issue => issue.Severity == WorldBuilderIssueSeverity.Error)
+                .ToArray();
+            if (errors.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "The World Builder found " + errors.Length + (errors.Length == 1 ? " error" : " errors")
+                    + " in scene '" + scene.name + "' (MMORPG > Tools > World Builder): "
+                    + string.Join(" ", errors.Select(issue => issue.ToString())));
+            }
+
             var colliders = FindBakedColliders(authoring.CollisionRoot);
             var boxes = BuildBoxEntries(authoring, colliders.OfType<BoxCollider>()).ToArray();
             var meshes = BuildMeshEntries(authoring, colliders.OfType<MeshCollider>()).ToArray();
@@ -200,8 +228,10 @@ namespace Mmorpg.Client.Editor
                 Heightfields = heightfields,
                 Water = water
             };
-            // The authoring file keeps the scene; the chunks also hold the resource nodes.
-            var authoringJson = JsonUtility.ToJson(document, true) + Environment.NewLine;
+            // The authoring file keeps the scene; the chunks also hold the resource nodes. The JSON
+            // files end in LF like the rest of them, as Git keeps them, so a bake without a change
+            // leaves them as they are.
+            var authoringJson = JsonUtility.ToJson(document, true) + "\n";
             var persistedDocument = JsonUtility.FromJson<CollisionWorldAuthoringDocument>(
                 authoringJson);
             var resourceNodes = ResourceNodeBoxes(persistedDocument.WorldId);
@@ -574,7 +604,7 @@ namespace Mmorpg.Client.Editor
 
             writes.Add(new KeyValuePair<string, byte[]>(
                 Path.Combine(outputDirectory, "manifest.json"),
-                Encoding.UTF8.GetBytes(JsonUtility.ToJson(result.Manifest, true) + Environment.NewLine)));
+                Encoding.UTF8.GetBytes(JsonUtility.ToJson(result.Manifest, true) + "\n")));
             writes.Add(new KeyValuePair<string, byte[]>(
                 authoringPath,
                 Encoding.UTF8.GetBytes(authoringJson)));

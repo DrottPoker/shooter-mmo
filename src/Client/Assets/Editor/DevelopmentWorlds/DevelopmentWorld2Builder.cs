@@ -48,18 +48,27 @@ namespace Mmorpg.Client.Editor
                 return;
             }
 
-            builder.BuildGroundAndBoundaries(GroundSize, 6f, NorthWallStartX, WestWallEndZ);
-            BuildTown(builder);
-            BuildRoads(builder);
-            BuildMovementCourse(builder);
-            BuildHighlands(builder);
-            BuildCombatRange(builder);
-            BuildInterestRoad(builder);
-            BuildWolfWoods(builder);
-            BuildQuarry(builder);
-            BuildMeadow(builder);
-            BuildWaterside(builder);
-            builder.Finish("DEVELOPMENT WORLD 2");
+            // The waterside rebuilds its water once all of its shapes stand.
+            WorldBuilderLive.Paused = true;
+            try
+            {
+                builder.BuildGroundAndBoundaries(GroundSize, 6f, NorthWallStartX, WestWallEndZ);
+                BuildTown(builder);
+                BuildRoads(builder);
+                BuildMovementCourse(builder);
+                BuildHighlands(builder);
+                BuildCombatRange(builder);
+                BuildInterestRoad(builder);
+                BuildWolfWoods(builder);
+                BuildQuarry(builder);
+                BuildMeadow(builder);
+                BuildWaterside(builder);
+                builder.Finish("DEVELOPMENT WORLD 2");
+            }
+            finally
+            {
+                WorldBuilderLive.Paused = false;
+            }
         }
 
         // The spawn is at (0, 0, -12) facing Mira at (0, 0, 6); two guards stand inside the

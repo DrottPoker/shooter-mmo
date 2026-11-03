@@ -511,7 +511,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         body.name);
                 }
 
-                // The waterfall's sheet and the sea beyond the World only show.
+                // The waterfall's sheet and the sea beyond the World and its seabed only show.
                 var sheet = FindGameObject(scene, "WaterfallSheet");
                 Assert.That(sheet.GetComponents<Collider>(), Is.Empty);
                 Assert.That(
@@ -522,6 +522,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(
                     beyond.GetComponent<MeshRenderer>().sharedMaterial,
                     Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.SurfaceMaterialPath)));
+                Assert.That(FindGameObject(scene, "Seabed").GetComponents<Collider>(), Is.Empty);
+
+                // World Builder shapes make all of it, so the water follows every rule of water
+                // authoring, junctions included, and a rebuild changes nothing.
+                Assert.That(WorldBuilder.Validate(scene).Select(issue => issue.ToString()), Is.Empty);
+                Assert.That(WorldBuilder.Rebuild(scene), Is.False);
             });
         }
         [Test]

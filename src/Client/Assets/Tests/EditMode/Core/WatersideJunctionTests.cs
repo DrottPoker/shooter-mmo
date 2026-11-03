@@ -11,7 +11,8 @@ namespace Mmorpg.Client.Tests.EditMode
     // their vertices agree there: the river lies at the level of the water it reaches, its water
     // stands still at both ends, and neither surface has waves or foam lines where they overlap.
     // The waterfall's column starts on the stream above it, so the stream turns into the fall
-    // without a line.
+    // without a line. The World Builder makes these surfaces; the river and the stream lie in world
+    // space, the lake in its own space around its center, and the sea in its own around its corner.
     public sealed class WatersideJunctionTests
     {
         private const string MeshDirectory = "Assets/Art/Terrain/DevelopmentWorld2/";
@@ -39,12 +40,13 @@ namespace Mmorpg.Client.Tests.EditMode
             var sea = AssetDatabase.LoadAssetAtPath<Mesh>(MeshDirectory + "M_DevelopmentWorld2_Sea.asset");
             Assert.That(sea, Is.Not.Null);
             var mouth = river.vertices[river.vertexCount - 1 - (RiverColumns / 2)];
+            var corner = DevelopmentWorld2Builder.SeaCorner;
             var vertices = sea.vertices;
             var colors = sea.colors;
             var near = 0;
             for (var index = 0; index < vertices.Length; index++)
             {
-                var offset = new Vector2(vertices[index].x - mouth.x, vertices[index].z - mouth.z);
+                var offset = new Vector2(vertices[index].x + corner.x - mouth.x, vertices[index].z + corner.y - mouth.z);
                 if (offset.magnitude > 6f)
                 {
                     continue;
@@ -71,16 +73,19 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(stream, Is.Not.Null);
             Assert.That(fall, Is.Not.Null);
 
-            // The stream's first row of vertices is its end past the lip, and its second row lies
-            // on the lip, as wide as the channel.
+            // The stream's rows run from its spring to the lip: its last row of vertices is its
+            // end past the lip, and the row before lies on the lip, as wide as the channel.
             var streamVertices = stream.vertices;
-            var level = streamVertices[0].y;
-            var end = streamVertices[StreamColumns / 2];
-            var across = (streamVertices[StreamColumns - 1] - streamVertices[0]).normalized;
-            var upstream = (streamVertices[StreamColumns + (StreamColumns / 2)] - end).normalized;
-            var endHalfWidth = Vector3.Dot(streamVertices[StreamColumns - 1] - end, across);
-            var lip = streamVertices[StreamColumns + (StreamColumns / 2)];
-            var channelHalfWidth = Vector3.Dot(streamVertices[(2 * StreamColumns) - 1] - lip, across);
+            var pastLip = streamVertices.Length - StreamColumns;
+            var onLip = pastLip - StreamColumns;
+            var level = streamVertices[pastLip].y;
+            var end = streamVertices[pastLip + (StreamColumns / 2)];
+            var across = (streamVertices[pastLip + StreamColumns - 1] - streamVertices[pastLip]).normalized;
+            var upstream = (streamVertices[onLip + (StreamColumns / 2)] - end).normalized;
+            var endHalfWidth = Vector3.Dot(streamVertices[pastLip + StreamColumns - 1] - end, across);
+            var lip = streamVertices[onLip + (StreamColumns / 2)];
+            var channelHalfWidth = Vector3.Dot(streamVertices[onLip + StreamColumns - 1] - lip, across);
+            Assert.That(channelHalfWidth, Is.EqualTo(1.5f).Within(0.001f), "half width on the lip");
 
             var vertices = fall.vertices;
             var column = new List<Vector4>();

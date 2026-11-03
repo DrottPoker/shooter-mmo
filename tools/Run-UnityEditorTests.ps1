@@ -147,6 +147,31 @@ function Update-EditorScripts {
     }
 }
 
+# The Test Runner asks in a modal dialog whether to save an open scene with unsaved changes, and
+# the run waits on that dialog, so such a scene stops the run before it starts.
+function Assert-OpenScenesSaved {
+    # The code has no double quotes, which Windows PowerShell loses on a native command line.
+    $code = "var dirty = new System.Collections.Generic.List<string>(); " +
+        "for (var index = 0; index < UnityEngine.SceneManagement.SceneManager.sceneCount; index++) { " +
+        "var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(index); " +
+        "if (scene.isDirty) { dirty.Add(string.IsNullOrEmpty(scene.path) ? scene.name : scene.path); } } " +
+        "return string.Join(',', dirty);"
+    $deadline = Get-Deadline
+    while ($true) {
+        $check = Invoke-EditorCommand "eval" @("--code", $code)
+        if ($check.Json -and $check.Json.success) {
+            break
+        }
+        if ([DateTime]::UtcNow -ge $deadline) {
+            Stop-Run 4 "the Editor could not report its open scenes within $TimeoutMinutes minutes: $("$($check.Text)".Trim())"
+        }
+        Start-Sleep -Seconds $PollSeconds
+    }
+    if ("$($check.Json.result)".Trim()) {
+        Stop-Run 4 "the open scene $($check.Json.result) has unsaved changes, and the Test Runner would wait on its save dialog; save or discard them in the Editor, then run the tests again"
+    }
+}
+
 function Get-EntryMessage($Entry) {
     if ($Entry.message) { "$($Entry.message)" } elseif ($Entry.Message) { "$($Entry.Message)" } else { "$Entry" }
 }
@@ -230,6 +255,7 @@ if (-not (Test-EditorRunning)) {
 $started = [Diagnostics.Stopwatch]::StartNew()
 Wait-EditorIdle "before the tests"
 Update-EditorScripts
+Assert-OpenScenesSaved
 
 $failed = $false
 $emptyFilters = New-Object System.Collections.Generic.List[string]
