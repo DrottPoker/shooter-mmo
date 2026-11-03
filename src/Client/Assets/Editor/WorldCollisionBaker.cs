@@ -503,6 +503,14 @@ namespace Mmorpg.Client.Editor
                         "Water body " + GetHierarchyPath(body.transform) + " is invalid: " + error);
                 }
 
+                if (GameObjectUtility.AreStaticEditorFlagsSet(body.gameObject, StaticEditorFlags.BatchingStatic))
+                {
+                    throw new InvalidOperationException(
+                        "Water body " + GetHierarchyPath(body.transform) + " must not be Batching Static: "
+                        + "static batching merges its surface with others, and the client reads each surface "
+                        + "to put wakes on its waves.");
+                }
+
                 var mesh = body.Surface;
                 var localToWorld = body.transform.localToWorldMatrix;
                 var vertices = new List<float>(mesh.vertexCount * 3);

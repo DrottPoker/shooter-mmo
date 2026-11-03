@@ -543,13 +543,16 @@ Open the Debug menu with F2 and keep its `Overview` tab in view.
 
 1. Walk from the town's north gate west past the movement course to the
    `WATERSIDE` sign at `(-60, 0, 60)` and up onto the plateau.
-2. Walk to the lake's sign and click the middle of the lake.
+2. Walk to the lake's sign and click the middle of the lake. Then click the far
+   side of the lake, straight across its middle.
 3. Walk around the lake to the waterfall on its north shore, wade into the pool
-   under the fall, then take the ramp behind the rock up to the stream.
+   under the fall, then take the ramp behind the rock up to the stream and look
+   down past the lip into the pool.
 4. Walk around the lake and click across the river 10 m downstream of the
    `FORD` sign, then click back across, 10 m downstream of the `BRIDGE` sign.
-5. Walk to the `SEA` sign and click toward the open corner of the World, where
-   the boundary walls end in the sea.
+5. Walk to the `SEA` sign, wade into the shallows of the beach, stand still for
+   a few seconds, then click toward the open corner of the World, where the
+   boundary walls end in the sea.
 6. Turn on `Collision around you` near the lake.
 
 Expected result:
@@ -565,7 +568,9 @@ Expected result:
   runs on without an edge, a step in color, or a darker patch.
 - While the character stands in water, a ring spreads from its legs now and
   then; while it walks, rings follow it closely and droplets splash up around
-  its legs and fall back. A Mob in water does the same.
+  its legs and fall back. A Mob in water does the same. In the sea the rings
+  ride up and down on the waves as they spread, never floating above a trough
+  or sinking into a crest.
 - The waterfall slides glassy over the rock's lip, falls in thin streaks that
   rush down and stretch as they fall, with the rock showing through, and turns
   white at its foot, where the pool foams, white water boils up, and mist rises.
@@ -574,14 +579,18 @@ Expected result:
   tips over the lip, seen from the ramp above, from the pool in front, and up
   close at the rock's corners, the stream turns into the fall without a line, a
   bright edge, or a strip of water sticking out past the fall, and the fall
-  starts exactly as wide as the channel, with no water beside the rock.
+  starts exactly as wide as the channel, with no water beside the rock. Seen
+  from above the lip, the pool's turquoise water and foam show through the
+  falling water, never a pale, dry bed.
   The pool is waded at 60 % speed, and the stream on the rock is 0.3 m deep and
   walked at full speed.
 - In shallow water `Water depth` shows less than `0.50 m, full speed`, and the
   character walks at its normal pace. From 0.5 m deep it shows `wading at 60 %
   speed`, and the character visibly slows down.
 - The click into the lake walks to where the water is about 1.1 m deep and
-  stops there, without being pushed back or snapping.
+  stops there, without being pushed back or snapping. The click across the lake
+  walks around it at full speed in the shallow edge or on the shore, and
+  `Water depth` never shows `wading at 60 % speed` on the way.
 - The route across the river wades through the ford, slower in the middle, and
   the route back crosses the bridge without touching the water; no route enters
   the deep middle of the river.

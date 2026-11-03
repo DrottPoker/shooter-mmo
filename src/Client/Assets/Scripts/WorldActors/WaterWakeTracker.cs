@@ -66,7 +66,8 @@ namespace Mmorpg.Client.WorldActors
                     collisionWorld,
                     new SimulationVector3(position.x, position.y, position.z),
                     queryBuffer,
-                    out var depth)
+                    out var depth,
+                    out var bodyId)
                 || depth < MinimumDepth)
             {
                 wader.RingTimer = 0f;
@@ -104,6 +105,7 @@ namespace Mmorpg.Client.WorldActors
 
             waders[body] = wader;
             wake = new WaterWake(
+                bodyId,
                 new Vector3(position.x, position.y + depth, position.z),
                 ringSize,
                 spray,
@@ -151,8 +153,9 @@ namespace Mmorpg.Client.WorldActors
     // any, and droplets of spray thrown along its heading.
     public readonly struct WaterWake
     {
-        public WaterWake(Vector3 surface, float ringSize, int spray, Vector3 heading, float speed)
+        public WaterWake(string bodyId, Vector3 surface, float ringSize, int spray, Vector3 heading, float speed)
         {
+            BodyId = bodyId;
             Surface = surface;
             RingSize = ringSize;
             Spray = spray;
@@ -160,7 +163,10 @@ namespace Mmorpg.Client.WorldActors
             Speed = speed;
         }
 
-        // The point on the water's surface above the body's feet.
+        // The water body the body stands in.
+        public string BodyId { get; }
+
+        // The point on the water's still surface above the body's feet, before any waves.
         public Vector3 Surface { get; }
 
         public float RingSize { get; }

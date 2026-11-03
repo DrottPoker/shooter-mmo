@@ -159,7 +159,7 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Art/Appearance` | The appearance catalog of every body model, `<Model>_Appearance.asset`; see [Unity Import Rules](#unity-import-rules). |
 | `src/Client/Assets/Art/Fonts` | TextMesh Pro font assets of the interface, such as `LiberationSans UI SDF.asset`, TextMesh Pro's default font; how it is made is in [Text And Fonts](UNITY_CLIENT_ARCHITECTURE.md#text-and-fonts). |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, `HumanLocomotion.controller` and `WolfLocomotion.controller`, and the avatar masks of their layers. |
-| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces; `Water.shader`, the water surface shader `Mmorpg/Water`, and `Waterfall.shader`, the falling water shader `Mmorpg/Waterfall`; see [Water](#water). |
+| `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces; `Water.shader`, the water surface shader `Mmorpg/Water`, `Waterfall.shader`, the falling water shader `Mmorpg/Waterfall`, and `WaterCommon.hlsl`, the water's clock and the sea's waves that both share; see [Water](#water). |
 | `src/Client/Assets/Art/Water` | The textures and materials of the water, made by code; see [Water](#water). |
 | `artifacts/art-previews`, `artifacts/human-base` | The review sheets, review files, and reports the scripts write. Git ignores `artifacts`. |
 | `tools/art/New-ArtAsset.ps1` | Creates a new static model, animation library, paint layer, garment cage, garment template, or garment texture: its folder, `asset.json`, and first `.blend` file. |
@@ -2670,11 +2670,23 @@ approves a new look from screenshots before it is merged.
   and no waves or foam lines, as the waterside's river does where it reaches
   into the lake and the sea.
 - The shader reads the camera's depth and opaque textures, which every quality
-  level's render pipeline asset turns on.
+  level's render pipeline asset turns on. The surfaces draw in a pass of their
+  own, `WaterRendererFeature` on both URP renderers, before the other
+  transparent objects, and the feature then copies the camera's color with the
+  water in it, so what draws later, such as a waterfall, shows the water behind
+  it. Without the feature no water surface draws.
+- Every animation runs on the water's clock, `_WaterClock` in
+  `WaterCommon.hlsl`, which `WaterShaderGlobals` wraps at an hour in double
+  precision before every frame, so the water moves the same after a day of play
+  as after a minute. The rate of each animation rounds to whole cycles per hour,
+  so nothing jumps when the clock wraps. The sea's mix of waves comes from
+  `WaterWaves` the same way, so the client puts the wakes on the waves where the
+  shader draws them.
 
 `Mmorpg/Waterfall` draws the falling water of a waterfall as a column with a
-body of its own, lit the same way: the rock behind shows through clear water,
-bent by ripples that rush down, the sky and the sun glint in it, and thin
+body of its own, lit the same way: the rock behind and the water of the pool
+below show through clear water, bent by ripples that rush down, the sky and the
+sun glint in it, and thin
 streaks and clumps of foam fall with the water. The water slides glassy over the
 lip, breaks into streaks, and turns white at the foot. Its outline frays and
 fades where the column turns away around its cross section, so it has no hard

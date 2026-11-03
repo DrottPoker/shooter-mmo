@@ -10,9 +10,11 @@
 // The texture coordinate holds the meters around the column from its front, the seconds the
 // water has fallen, negative before it falls, how far down the fall the vertex lies, from 0 at the
 // lip to 1 at the foot, and how far the column has faded in over the water above. The normals
-// face out of the column and the tangents run around it. It reads the camera's opaque texture and
-// draws the column's outside after the water surfaces, without writing depth. See
-// docs/ART_PIPELINE.md under Water.
+// face out of the column and the tangents run around it. It draws the column's outside after the
+// water surfaces, without writing depth, and sees through itself the scene with those surfaces,
+// which WaterRendererFeature copies after drawing them, so the pool shows through the fall as
+// water. Its streaks run on the water's clock of WaterCommon.hlsl. See docs/ART_PIPELINE.md under
+// Water.
 Shader "Mmorpg/Waterfall"
 {
     Properties
@@ -76,12 +78,21 @@ Shader "Mmorpg/Waterfall"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
+            #include "WaterCommon.hlsl"
 
             TEXTURE2D(_FallTexture);
             SAMPLER(sampler_FallTexture);
             TEXTURE2D(_NormalMap);
             SAMPLER(sampler_NormalMap);
+
+            // The scene behind the column with the water surfaces drawn into it.
+            TEXTURE2D_X(_WaterSceneColorTexture);
+            SAMPLER(sampler_WaterSceneColorTexture);
+
+            half3 SampleWaterSceneColor(float2 uv)
+            {
+                return SAMPLE_TEXTURE2D_X(_WaterSceneColorTexture, sampler_WaterSceneColorTexture, UnityStereoTransformScreenSpaceTex(uv)).rgb;
+            }
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _Color;
@@ -143,11 +154,15 @@ Shader "Mmorpg/Waterfall"
                 half fadeIn = smoothstep(0, 1, saturate(input.column.w));
 
                 // A point of the pattern keeps to the water that carries it: its coordinate down
-                // the column is the time the water left the lip.
-                float carried = (flight - _Time.y) * _PatternSpeed;
-                half3 fallA = SAMPLE_TEXTURE2D(_FallTexture, sampler_FallTexture, float2(around / _StreakWidth, carried / _StreakLength)).rgb;
+                // the column is how far the water has fallen from the lip, less how far the
+                // pattern has moved on, which the water's clock gives for each sample's scale.
+                float fallen = flight * _PatternSpeed;
+                float streakA = (fallen / _StreakLength) - WaterCycles(_PatternSpeed / _StreakLength);
+                float streakScaleB = 1.21 / (_StreakLength * 0.77);
+                float streakB = (fallen * streakScaleB) - WaterCycles(_PatternSpeed * streakScaleB);
+                half3 fallA = SAMPLE_TEXTURE2D(_FallTexture, sampler_FallTexture, float2(around / _StreakWidth, streakA)).rgb;
                 half3 fallB = SAMPLE_TEXTURE2D(_FallTexture, sampler_FallTexture,
-                    float2((around / (_StreakWidth * 0.63)) + 0.31, (carried * 1.21) / (_StreakLength * 0.77))).rgb;
+                    float2((around / (_StreakWidth * 0.63)) + 0.31, streakB)).rgb;
                 half streaks = saturate((fallA.r + fallB.r) * 0.55);
                 half clumps = max(fallA.g, fallB.g);
 
@@ -155,11 +170,13 @@ Shader "Mmorpg/Waterfall"
                 float3 surfaceNormal = normalize(input.normalWS);
                 float3 aroundWS = normalize(input.aroundWS);
                 float3 downWS = normalize(cross(surfaceNormal, aroundWS));
+                float rippleDownA = (fallen / 3.5) - WaterCycles(_PatternSpeed / 3.5);
+                float rippleDownB = (fallen * (1.3 / 2.2)) - WaterCycles(_PatternSpeed * (1.3 / 2.2));
                 half3 rippleA = UnpackNormalScale(
-                    SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, float2(around / 1.8, carried / 3.5)),
+                    SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, float2(around / 1.8, rippleDownA)),
                     _NormalStrength);
                 half3 rippleB = UnpackNormalScale(
-                    SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, float2((around / 1.1) + 0.4, (carried * 1.3) / 2.2)),
+                    SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, float2((around / 1.1) + 0.4, rippleDownB)),
                     _NormalStrength * 0.6);
                 float2 slope = rippleA.xy + rippleB.xy;
                 float3 normal = normalize(surfaceNormal + (aroundWS * slope.x) + (downWS * slope.y));
@@ -177,10 +194,10 @@ Shader "Mmorpg/Waterfall"
                 float3 viewAcrossPath = viewDirection - (downWS * dot(viewDirection, downWS));
                 half outlineFacing = saturate(dot(surfaceNormal, viewAcrossPath) * rsqrt(max(dot(viewAcrossPath, viewAcrossPath), 1e-4)));
 
-                // The rock behind shows through clear water, bent and tinted, less where the view
-                // passes through more water and where the water has broken up. A bend that would
-                // show something in front of the water, such as a character wading at its foot,
-                // looks straight through instead.
+                // The rock and the pool behind show through clear water, bent and tinted, less
+                // where the view passes through more water and where the water has broken up. A
+                // bend that would show something in front of the water, such as a character
+                // wading at its foot, looks straight through instead.
                 float2 screenUV = GetNormalizedScreenSpaceUV(input.positionCS);
                 float2 refractedUV = screenUV + (slope * _RefractionStrength);
                 float waterEyeDepth = LinearEyeDepth(input.positionCS.z, _ZBufferParams);
@@ -189,7 +206,7 @@ Shader "Mmorpg/Waterfall"
                     refractedUV = screenUV;
                 }
 
-                half3 behind = SampleSceneColor(refractedUV);
+                half3 behind = SampleWaterSceneColor(refractedUV);
                 half thickness = lerp(1, 0.6, facing) * lerp(0.6, 1, saturate(fall * 2.5));
                 half3 water = lerp(_DeepColor.rgb, _Color.rgb, streaks) * (ambient + (sunlight * 0.5));
                 half3 color = lerp(behind * lerp(half3(1, 1, 1), _Color.rgb * 1.2, 0.6), water, saturate(_Opacity * thickness * 1.3));
@@ -200,7 +217,7 @@ Shader "Mmorpg/Waterfall"
                 color = lerp(color, lerp(sky, _HorizonColor.rgb, 0.4), fresnel);
                 half sun = saturate(dot(normal, normalize(mainLight.direction + viewDirection)));
                 half glint = pow(sun, _SpecularPower) * _SpecularIntensity;
-                half sparkle = smoothstep(0.4, 0.8, pow(sun, _SpecularPower * 0.08)) * step(0.68, fallA.b) * _SparkleIntensity;
+                half sparkle = smoothstep(0.4, 0.8, pow(sun, _SpecularPower * 0.08)) * smoothstep(0.65, 0.71, fallA.b) * _SparkleIntensity;
 
                 // Glassy over the lip, breaking into streaks as it falls, white at the foot.
                 half glass = 1 - smoothstep(0, _LipGlass, fall);

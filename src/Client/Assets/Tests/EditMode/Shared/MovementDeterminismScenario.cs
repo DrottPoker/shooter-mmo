@@ -20,7 +20,7 @@ namespace Mmorpg.SharedTests
         // The planner does not affect the wire contract, because paths travel as data, so
         // its fingerprint changes without a revision bump. It still must match in both
         // runtimes, so the worker can plan for world actors with the same results.
-        public const string ExpectedPlannerFingerprint = "cebc6accf5bc34d2";
+        public const string ExpectedPlannerFingerprint = "f7c82e0fece7c161";
 
         // The pond in the bowl around (19, 19): its surface lies at 1.8 m, and its deep water
         // edge, where the depth reaches 1.2 m, at a radius of about 2.27 m.
@@ -121,8 +121,9 @@ namespace Mmorpg.SharedTests
                 states);
         }
 
-        // Plans around the wall, up the ramp, onto the step, over the mound, and around the
-        // mesh wall, and hashes every waypoint.
+        // Plans around the wall, up the ramp, onto the step, over the mound, around the mesh
+        // wall, around the wading pool, straight across it, and into the pond, and hashes
+        // every waypoint.
         public static MovementPlannerTrace ComputePlannerTrace()
         {
             var collisionWorld = CreateCollisionWorld();
@@ -137,6 +138,8 @@ namespace Mmorpg.SharedTests
                 new SimulationVector3(-12f, 0f, -12f),
                 new SimulationVector3(10f, 0f, -12f),
                 new SimulationVector3(-12f, 0f, 0f),
+                new SimulationVector3(17f, 0f, 0.5f),
+                new SimulationVector3(23f, 0f, -3f),
                 new SimulationVector3(8f, 0f, PondCenter)
             };
             var destinations = new[]
@@ -146,6 +149,8 @@ namespace Mmorpg.SharedTests
                 new SimulationVector3(-6f, 0.3f, 1f),
                 new SimulationVector3(18f, 3f, -18f),
                 new SimulationVector3(-20f, 0f, 0f),
+                new SimulationVector3(29f, 0f, 0.5f),
+                new SimulationVector3(23f, 0f, 3f),
                 new SimulationVector3(PondCenter, 0.05f, PondCenter)
             };
             var plans = new MovementPathPlan[starts.Length];
@@ -261,7 +266,7 @@ namespace Mmorpg.SharedTests
                         new[] { 0, 1, 2, 0, 2, 3 })
                 },
                 Heightfields = new[] { Mound(), Bowl() },
-                Water = new[] { Pond() }
+                Water = new[] { Pond(), Pool() }
             });
             return new ChunkedStaticCollisionWorld(
                 bake.Manifest.WorldId,
@@ -363,6 +368,26 @@ namespace Mmorpg.SharedTests
                     14.6f, PondSurface, 23.4f,
                     23.4f, PondSurface, 23.4f,
                     23.4f, PondSurface, 14.6f
+                }),
+                Triangles = CollisionAuthoringEncoding.EncodeInts(new[] { 0, 1, 2, 0, 2, 3 })
+            };
+        }
+
+        // A pool 0.8 m deep on the flat ground, 6 by 4 m around (23, 0), which no movement
+        // click reaches. Walking around its ends is faster than wading along it, and wading
+        // across it is faster than walking around it.
+        private static CollisionWaterAuthoringEntry Pool()
+        {
+            return new CollisionWaterAuthoringEntry
+            {
+                SourcePath = "MovementDeterminism/Pool#WaterBody",
+                BodyId = "movement-determinism.pool",
+                Vertices = CollisionAuthoringEncoding.EncodeFloats(new[]
+                {
+                    20f, 0.8f, -2f,
+                    20f, 0.8f, 2f,
+                    26f, 0.8f, 2f,
+                    26f, 0.8f, -2f
                 }),
                 Triangles = CollisionAuthoringEncoding.EncodeInts(new[] { 0, 1, 2, 0, 2, 3 })
             };

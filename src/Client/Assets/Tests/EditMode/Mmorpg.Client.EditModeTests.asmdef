@@ -25,7 +25,9 @@
     "Mmorpg.Client.Editor",
     "Unity.Addressables",
     "Unity.Addressables.Editor",
-    "Unity.ResourceManager"
+    "Unity.ResourceManager",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime"
   ],
   "includePlatforms": [
     "Editor"

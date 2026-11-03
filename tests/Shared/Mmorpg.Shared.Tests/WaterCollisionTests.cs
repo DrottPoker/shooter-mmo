@@ -140,6 +140,50 @@ public sealed class WaterCollisionTests
         Assert.Equal(16f, state.PositionX, 2);
     }
 
+    // A pond 0.8 m deep on flat ground between the start and the destination: wading
+    // straight through takes as long as 22.7 m of dry land, the way around it 18.5 m.
+    [Fact]
+    public void ARoutePastAWadingPondGoesAroundItOverLand()
+    {
+        var world = CompileWorld(FlatWaterAuthoring(Rectangle("Test/Pond", "test.pond", -5f, 5f, -3f, 3f, 0.8f)));
+        var start = new SimulationVector3(-8f, 0f, 0f);
+        var plan = new MovementPathPlanner(world, Settings, MovementPathPlannerSettings.Default)
+            .Plan(start, new SimulationVector3(8f, 0f, 0f));
+
+        Assert.Equal(MovementPathPlanStatus.Reached, plan.Status);
+        var deepest = FollowRoute(world, start, plan, out var end);
+        Assert.Equal(8f, end.PositionX, 2);
+        Assert.True(deepest < WaterRules.WadeDepth, $"The route waded {deepest} m deep.");
+    }
+
+    // A stream 0.8 m deep and 4 m wide runs 60 m to either side, so crossing it is far
+    // faster than walking around it.
+    [Fact]
+    public void ARouteWadesAcrossWaterWhereGoingAroundTakesLonger()
+    {
+        var world = CompileWorld(FlatWaterAuthoring(Rectangle("Test/Stream", "test.stream", -2f, 2f, -60f, 60f, 0.8f)));
+        var start = new SimulationVector3(-6f, 0f, 0f);
+        var plan = new MovementPathPlanner(world, Settings, MovementPathPlannerSettings.Default)
+            .Plan(start, new SimulationVector3(6f, 0f, 1f));
+
+        Assert.Equal(MovementPathPlanStatus.Reached, plan.Status);
+        Assert.Single(plan.Waypoints);
+        var deepest = FollowRoute(world, start, plan, out var end);
+        Assert.Equal(6f, end.PositionX, 2);
+        Assert.InRange(deepest, WaterRules.WadeDepth, WaterRules.BlockDepth);
+    }
+
+    [Fact]
+    public void TheDepthQueryNamesTheWaterBodyAboveTheFeet()
+    {
+        var buffer = new CollisionQueryBuffer();
+
+        Assert.True(WaterRules.TryGetDepth(Lake.Value, new SimulationVector3(-10f, Ground(-10f), 0f), buffer, out _, out var bodyId));
+        Assert.Equal(LakeId, bodyId);
+        Assert.False(WaterRules.TryGetDepth(Lake.Value, new SimulationVector3(-16f, 0f, 0f), buffer, out _, out bodyId));
+        Assert.Null(bodyId);
+    }
+
     [Fact]
     public void AClickIntoDeepWaterPlansToTheNearestReachableShore()
     {
@@ -333,6 +377,42 @@ public sealed class WaterCollisionTests
         return state;
     }
 
+    // Walks a planned route to its end and returns the deepest water on the way.
+    private static float FollowRoute(
+        ICollisionWorld world,
+        SimulationVector3 start,
+        MovementPathPlan plan,
+        out PlayerMovementState state)
+    {
+        var path = new MovementPath(1, plan.Waypoints.ToArray());
+        state = PlayerMovementSimulation.CreateInitialState(Settings, world, start.X, start.Y, start.Z, 0f);
+        var buffer = new CollisionQueryBuffer();
+        var deepest = 0f;
+        for (uint tick = 1; tick <= 3_000 && state.PathProgress.NextWaypointIndex < path.Count; tick++)
+        {
+            state = PlayerMovementSimulation.Step(state, new PlayerMovementInput(tick, tick, path), Settings, PlayerCarryState.Default, world);
+            if (WaterRules.TryGetDepth(world, state.Position, buffer, out var depth))
+            {
+                deepest = MathF.Max(deepest, depth);
+            }
+        }
+
+        return deepest;
+    }
+
+    // Flat ground at 0 m with the given water on it.
+    private static CollisionWorldAuthoringDocument FlatWaterAuthoring(CollisionWaterAuthoringEntry water)
+    {
+        return new CollisionWorldAuthoringDocument
+        {
+            FormatVersion = CollisionDataFormat.Version,
+            WorldId = "water-tests",
+            ChunkSize = 32f,
+            Boxes = [Box("Test/Floor", 0f, -0.25f, 0f, 30f, 0.25f, 70f)],
+            Water = [water]
+        };
+    }
+
     private static CollisionTriangle[] Edges(ICollisionWorld world)
     {
         var buffer = new CollisionQueryBuffer();
@@ -404,16 +484,28 @@ public sealed class WaterCollisionTests
     // A square surface around the origin, clockwise seen from above so it faces up.
     private static CollisionWaterAuthoringEntry Square(string sourcePath, string bodyId, float halfSize, float height)
     {
+        return Rectangle(sourcePath, bodyId, -halfSize, halfSize, -halfSize, halfSize, height);
+    }
+
+    private static CollisionWaterAuthoringEntry Rectangle(
+        string sourcePath,
+        string bodyId,
+        float minimumX,
+        float maximumX,
+        float minimumZ,
+        float maximumZ,
+        float height)
+    {
         return new CollisionWaterAuthoringEntry
         {
             SourcePath = sourcePath,
             BodyId = bodyId,
             Vertices = CollisionAuthoringEncoding.EncodeFloats(
             [
-                -halfSize, height, -halfSize,
-                -halfSize, height, halfSize,
-                halfSize, height, halfSize,
-                halfSize, height, -halfSize
+                minimumX, height, minimumZ,
+                minimumX, height, maximumZ,
+                maximumX, height, maximumZ,
+                maximumX, height, minimumZ
             ]),
             Triangles = CollisionAuthoringEncoding.EncodeInts([0, 1, 2, 0, 2, 3])
         };

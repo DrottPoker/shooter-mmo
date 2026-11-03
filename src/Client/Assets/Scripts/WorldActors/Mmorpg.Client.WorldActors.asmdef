@@ -4,6 +4,7 @@
   "references": [
     "Mmorpg.Client.Api",
     "Mmorpg.Client.Core",
+    "Mmorpg.Client.Worlds",
     "Mmorpg.Client.Networking",
     "Mmorpg.Client.Items",
     "Mmorpg.Client.Gameplay",

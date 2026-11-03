@@ -116,6 +116,7 @@ goes there too:
 | `Content > Actor Studio`, `Content > Spawn Authoring` | Edits actors and their spawns | [Unity Content Tools](../content/README.md#unity-content-tools) |
 | `Art Pipeline > Wardrobe`, `Update Appearance Catalogs`, `Create Missing Materials`, `Build Creature Presentations`, `Measure Cloth`, `Write Cloth Fixtures` | Art pipeline tools | [Art Pipeline](ART_PIPELINE.md) |
 | `UI > Build UI Fonts`, `UI > Build UI Theme` | Makes the UI font assets and fills the UI theme from its sprites | [UI Art](ART_PIPELINE.md#ui-art) |
+| `Water > Create Water Textures And Materials` | Writes the water's textures and materials | [Water](ART_PIPELINE.md#water) |
 
 ## Assemblies
 
@@ -129,11 +130,11 @@ layers from the bottom up:
 | `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothSprings`, the springs that swing the cloth on it, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
 | `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives` | Api |
-| `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring | Core |
+| `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, and the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature` | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
 | `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
-| `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, the world menu and its providers, interaction targeting, actor and corpse presentation | Api, Core, Networking, Items, Gameplay |
+| `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, the world menu and its providers, interaction targeting, actor and corpse presentation, the water wakes | Api, Core, Worlds, Networking, Items, Gameplay |
 | `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, death and projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
 | `Mmorpg.Client.Ui` | Every panel including the combat HUD, the UI kit and theme, the inventory windows, drag and drop, `ClientOperationState` | Api, Core, Worlds, Networking, Items, Gameplay, WorldActors, Combat |
 | `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | The same as Ui, and Ui |
@@ -144,7 +145,9 @@ The client assemblies also reference the shared runtime packages they use:
 `Mmorpg.WorldData.Client` so a body reads the garments of the items it wears
 without the inventory's assembly. Cloth references the packages `Unity.Burst`,
 `Unity.Collections`, and `Unity.Mathematics`; Gameplay references Cloth,
-`Unity.Mathematics`, and `Unity.Collections`. Ui references `Unity.TextMeshPro`,
+`Unity.Mathematics`, and `Unity.Collections`. Worlds references
+`Unity.RenderPipelines.Core.Runtime` and `Unity.RenderPipelines.Universal.Runtime`
+for the water's renderer feature. Ui references `Unity.TextMeshPro`,
 because every new text is TextMesh Pro, as [Text And Fonts](#text-and-fonts)
 describes.
 
@@ -214,7 +217,10 @@ that uses the package default post-processing data. Graphics settings and the
 `Mobile` quality level uses `Mobile_RPAsset` (no MSAA, no HDR, 40 m shadow
 distance). Both assets provide the camera's depth and opaque textures, without
 downsampling on PC, because the water shaders read the ground and the color
-behind their surfaces; see [Water](ART_PIPELINE.md#water). Every project
+behind their surfaces, and both renderers carry `WaterRendererFeature`, the only
+pass that draws the water surfaces: before the other transparent objects, after
+which it copies the camera's color with the water to
+`_WaterSceneColorTexture` for the waterfalls; see [Water](ART_PIPELINE.md#water). Every project
 material uses a URP shader, one of the project's shaders built on URP Lit, or one
 of the project's URP water shaders; the runtime fallback presentation sets both
 `_BaseColor` and `_Color`, so it stays correct in any pipeline. There is no
@@ -940,7 +946,14 @@ or PhysX to decide network position.
 The route planner treats the deep water edges like any wall. Because a one-sided
 wall is thin, the planner also refuses a grid step, or a sample of a straight
 segment that skipped the clearance test, when a ray between the two points at
-the height of the clearance capsule meets a wall from its front.
+the height of the clearance capsule meets a wall from its front. A route costs
+the time it takes: a step costs its length at the mean pace of its ends, and
+`WaterRules.Pace` makes a meter of wading water cost as much as 1/0.6 m of dry
+land. A straight walk is planned at once only when it never wades; one that
+wades competes with the searched route, and string pulling takes a shortcut
+through wading water only when it is at most a quarter meter of dry land
+slower than the route it replaces, the error of its samples at a water's edge.
+Over dry land every step costs its length, so a route there is the shortest.
 
 `WorldCollisionAuthoring` defines the World id, chunk size, collision root, and
 layer mask on an authored scene object, and `WorldCollisionBaker` bakes the
@@ -2454,8 +2467,19 @@ One particle system draws every ring and another every droplet, with the ring
 and spray materials of the configuration, so a crowd in the water costs two
 draws; without the materials the component shows nothing. Neither system moves
 its particles by itself, so a ring grows where it formed and only the spray gets
-a velocity. The wakes are presentation only. `WaterWakeTrackerTests` checks the
-tracker on a test pond and `WaterWakePresentationTests` the particle systems.
+a velocity.
+
+On a sea the wakes follow the waves. The depth query also names the water body
+at the feet, and `WaterSurfaces`, which the bootstrap builds from the World
+scene's `WaterBody` components when the scene loads, knows how far the waves
+lift each body's drawn surface: it finds the triangle of the body's mesh below
+a point and lifts its corners by `WaterWaves` times the green of their colors,
+as the water shader does. A wake starts at that height, and every ring on moving
+water is kept by its particle seed and moved to the lifted surface each frame
+until it fades. Still water costs nothing extra. The wakes are presentation
+only. `WaterWakeTrackerTests` checks the tracker on a test pond,
+`WaterWakePresentationTests` the particle systems, and `WaterSurfacesTests` the
+lifted surface and the water's clock.
 
 ### Gathering
 

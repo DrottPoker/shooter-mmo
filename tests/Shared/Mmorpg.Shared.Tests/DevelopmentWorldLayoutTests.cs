@@ -389,6 +389,33 @@ public sealed class DevelopmentWorldLayoutTests
         Assert.InRange(DistanceXz(final, -108f, 112f), 9f, 10.5f);
     }
 
+    // A click across the lake walks around it in the shallow edge and on the shore, which is
+    // faster than wading along the deep water, so it wades for a moment at most.
+    [Fact]
+    public void WatersideLakeIsWalkedAroundInsteadOfWadedAlong()
+    {
+        var settings = SettingsFor(TestWorld);
+        var start = new SimulationVector3(-125f, 4f, 112f);
+        var plan = Planner(DevelopmentWorld2.Value, settings).Plan(start, new SimulationVector3(-91f, 4f, 112f));
+
+        Assert.Equal(MovementPathPlanStatus.Reached, plan.Status);
+        var path = new MovementPath(1, plan.Waypoints.ToArray());
+        var state = PlayerMovementSimulation.CreateInitialState(settings, DevelopmentWorld2.Value, start.X, start.Y, start.Z, 0f);
+        var buffer = new CollisionQueryBuffer();
+        var wadingTicks = 0;
+        for (uint tick = 1; tick <= 3_000 && state.PathProgress.NextWaypointIndex < path.Count; tick++)
+        {
+            state = PlayerMovementSimulation.Step(state, new PlayerMovementInput(tick, tick, path), settings, PlayerCarryState.Default, DevelopmentWorld2.Value);
+            if (WaterRules.TryGetDepth(DevelopmentWorld2.Value, state.Position, buffer, out var depth) && depth >= WaterRules.WadeDepth)
+            {
+                wadingTicks++;
+            }
+        }
+
+        Assert.Equal(path.Count, state.PathProgress.NextWaypointIndex);
+        Assert.True(wadingTicks <= settings.TickRateHz, $"The route waded for {wadingTicks} ticks.");
+    }
+
     // The shore is waded, and the bank behind it rises from the water to the plateau, so the
     // waterline is a clean circle instead of land level with the water.
     [Fact]

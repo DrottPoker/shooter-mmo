@@ -128,6 +128,15 @@ namespace Mmorpg.Client.Editor
                 child.gameObject.isStatic = true;
             }
 
+            // Static batching would merge the water surfaces into one mesh that the client
+            // cannot read, and the client reads each surface to put wakes on its waves.
+            foreach (var body in Environment.GetComponentsInChildren<WaterBody>(true))
+            {
+                GameObjectUtility.SetStaticEditorFlags(
+                    body.gameObject,
+                    GameObjectUtility.GetStaticEditorFlags(body.gameObject) & ~StaticEditorFlags.BatchingStatic);
+            }
+
             if (!EditorSceneManager.SaveScene(Scene))
             {
                 throw new InvalidOperationException(Scene.path + " could not be saved after rebuilding.");
