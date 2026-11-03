@@ -1768,6 +1768,55 @@ Pick each body in turn in `Body`.
    pressed form under the helmet; the helmet moves with the head, and neither
    the hair nor the cloak comes through the hood or the helmet.
 
+## World Builder
+
+The [World Builder](DEVELOPMENT_WORLDS.md#world-builder) is checked in the Unity
+Editor alone, without the stack, in a new scene that is never saved, so nothing
+is written to the project.
+
+1. Exit Play Mode, select `File > New Scene`, choose `Basic (URP)`, and click
+   `Create`. Add `GameObject > 3D Object > Plane` and give it the position
+   `(0, -3, 0)` and the scale `(12, 1, 12)`.
+2. Open `MMORPG > Tools > World Builder`. Click `Lake` and give the lake the
+   position `(0, 0, 0)`. Click `Sea` and give it `(-40, -1, 0)`. Click `River`
+   and give it `(0, 1.5, -14)`.
+3. Select `Lake`. Drag a corner of its shore outward. Hold Shift and move the
+   mouse along the shore, then click once. Select `Sea`, hold Ctrl, and click
+   its points until three are left.
+4. Select `River`, click its far end over the lake, and drag the cube on one of
+   its banks outward. Hold Shift and click the + past that end, then press
+   Ctrl+Z.
+5. Click `Waterfall from the selected river`. Select `Lake`, drag it 1 m down
+   with the Move tool, and press Ctrl+Z.
+6. Select `River Waterfall`, clear its `Landing` in the Inspector, then click
+   `Fall Into The Water Below`.
+7. Open `Assets/Scenes/DevelopmentWorld2.unity`, choose `Don't Save`, and look
+   at the World Builder window. Then open `Assets/Scenes/LoginMenu.unity`, and
+   choose `Don't Save` if Unity asks.
+
+Expected result:
+
+- Each click in step 2 adds the water below a `Water` group, named `Lake`,
+  `Sea`, and `River`, with the ids `lake`, `sea`, and `river`. The window lists
+  the three shapes and `No problems found.`
+- A selected lake or sea shows its outline in light blue with a point at each
+  corner. While a point is dragged, the water follows it. With Shift held, a
+  green + follows the mouse along the shore, and the click adds a point there.
+  With Ctrl held, the sea's points turn red, a click removes one, and the last
+  three turn grey and stay.
+- A selected river shows a line along its middle, thin lines along its banks,
+  and a point at each end. The clicked point gets a position handle and a cube
+  on each bank; dragging a cube widens the river there. With Shift held, a +
+  shows past each end, and its click lengthens the river, which Ctrl+Z undoes.
+- The waterfall falls from the river's end into the lake, as wide as the river,
+  and the lake churns and foams where it lands. While the lake moves down, the
+  waterfall falls further, and Ctrl+Z brings both back.
+- Without a landing the waterfall disappears and `Problems` shows `River
+  Waterfall: A waterfall falls into a water body: choose its Landing.`; `Fall
+  Into The Water Below` brings it back.
+- For Development World 2 the window lists `Lake`, `River`, `Sea`, `Stream`,
+  and `WaterfallSheet` with `No problems found.`
+
 ## Client Project And Content Loading
 
 1. Open `src/Client` and wait for the import. Expected result: the Console

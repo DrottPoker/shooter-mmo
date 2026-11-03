@@ -2652,7 +2652,9 @@ approves a new look from screenshots before it is merged.
   water runs fast; churning water, such as at the foot of a waterfall, foams all
   over.
 - Every lake, river, and sea draws with one material, so what sets them apart
-  comes from their surface meshes: the second texture coordinate is the flow in
+  comes from their surface meshes, which the
+  [World Builder](DEVELOPMENT_WORLDS.md#world-builder) makes from their shapes:
+  the second texture coordinate is the flow in
   meters per second, along which the ripples and the foam move, the red of the
   vertex color how fast and foaming the water is, the green how much the waves
   lift the vertex, and the blue how strongly foam lines roll in toward the
@@ -2695,12 +2697,13 @@ even at a glancing view along the stream. Clear water looks denser where the
 view passes through it at a slant. The column starts on the water above it,
 with its top in that surface, and fades in over it before the lip, so the water
 above turns into the fall without a line, a bright edge, or a step in color.
-The column's mesh holds the meters around it from its front, the seconds the
-water has fallen (negative before it falls), how far down the fall the vertex
-lies, and how far the column has faded in over the water above in its four
-texture coordinates, its normals facing out of the column and its tangents
-running around it. Because the pattern keeps to the seconds the water has
-fallen, its streaks stretch as the water speeds up.
+The World Builder makes the column from a `WaterfallShape` and the river it
+falls from. The column's mesh holds the meters around it from its front, the
+seconds the water has fallen (negative before it falls), how far down the fall
+the vertex lies, and how far the column has faded in over the water above in
+its four texture coordinates, its normals facing out of the column and its
+tangents running around it. Because the pattern keeps to the seconds the water
+has fallen, its streaks stretch as the water speeds up.
 
 | File | Content |
 | --- | --- |

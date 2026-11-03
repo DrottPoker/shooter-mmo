@@ -664,9 +664,12 @@ The script talks to the Editor that has its own checkout's `src/Client` open,
 so a worktree's script never reaches the Editor of the main checkout;
 `-ProjectPath` chooses another project. It leaves Play Mode, refreshes assets so
 that changed files compile, and stops at once with the compiler errors when the
-scripts do not compile. Then it starts each run asynchronously and polls its
-status every two seconds, across the domain reloads of Play Mode, until the run
-completes. Every step has a limit of 15 minutes (`-TimeoutMinutes`), after which
+scripts do not compile. It also stops before the first run when an open scene
+has unsaved changes, because the Test Runner would wait on its save dialog;
+save or discard them in the Editor first. Then it starts each run
+asynchronously and polls its status every two seconds, across the domain reloads
+of Play Mode, until the run completes. Every step has a limit of 15 minutes
+(`-TimeoutMinutes`), after which
 the script reports the last Editor state and cancels a running test run, so it
 never waits without a report. `-Filter` takes substrings of test full names,
 such as fixture names, separated by commas, and each filter runs as its own
@@ -681,7 +684,7 @@ about 30 seconds.
 | 1 | A test failed, was skipped, or was inconclusive, or a suite has no tests; the report lists each test with its message |
 | 2 | The scripts do not compile; the report lists the compiler errors |
 | 3 | No running Editor has the project open; open it with `unity open <path>`, or run `tools/Run-UnityTests.ps1` headless |
-| 4 | The Editor did not respond or a run timed out, usually because a modal dialog blocks the Editor |
+| 4 | The Editor did not respond or a run timed out, usually because a modal dialog blocks the Editor, or an open scene has unsaved changes |
 | 5 | A filter selected no test in any selected mode |
 
 Headless, as CI runs them, while no Editor has the project open:

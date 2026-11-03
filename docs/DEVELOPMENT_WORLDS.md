@@ -3,8 +3,9 @@
 The repository has two development Worlds: a test World with a zone for every
 developed feature, and a stress arena that keeps every player and actor in one
 interest radius. This document describes what each one is for, their layouts,
-how their scenes are composed, rebuilt, and baked, and the rules for authoring
-World collision.
+how their scenes are composed, rebuilt, and baked, the World Builder, which makes
+a World's water from shapes, and the rules for authoring World collision and
+water.
 
 A World is reusable content. A shard references one World at a time and may
 change that reference only while the shard is fully offline and drained; see
@@ -249,19 +250,27 @@ and the sea.
 Terrain layers paint rock where the ground is steeper than 40 degrees, sand on
 the beds and banks of the water, and grass elsewhere; each cell of the 0.5 m
 layer map takes the share of its 16 samples that lie on a water bed, so the sand
-blends into the grass. The terrain, the water surface meshes, the waterfall's
-column, and the terrain layers are generated assets below
-`Assets/Art/Terrain/DevelopmentWorld2`. All water surfaces draw with `M_Water`
-and the waterfall with `M_Water_Waterfall`, and the surface meshes carry the data
-of the [water shader](ART_PIPELINE.md#water): the river and the stream their
-flow, faster in the middle and fastest over the ford and toward the lip, and
-their foam over the ford and at the lip; the sea its waves and the foam lines
-that roll onto its beach; and the lake, rings 1 m apart, the churn and spread
-around the waterfall's landing. The river's water is still where it reaches into
-the lake and into the sea, and the sea's waves and foam lines calm down at the
-river's mouth and toward the sea beyond the World, so every pair of surfaces
-meets without a seam, and the waterfall's column covers the end of the stream's
-surface with its flat top, as `WatersideJunctionTests` checks.
+blends into the grass. The terrain and its layers are generated assets below
+`Assets/Art/Terrain/DevelopmentWorld2`.
+
+The water is [World Builder](#world-builder) shapes below `Waterside/Water`: the
+lake a `LakeShape` with a round shore of 48 points, the river and the stream
+`RiverShape`s, the sea a `SeaShape` whose outline is the quarter disc and whose
+horizon sides are west and north, and the waterfall a `WaterfallShape` from the
+stream into the lake. The builder sets their values, and the World Builder
+writes their surface meshes, the sea beyond the World and its seabed, and the
+waterfall's column into the mesh assets next to the terrain. All water surfaces
+draw with `M_Water` and the waterfall with `M_Water_Waterfall`, and the surface
+meshes carry the data of the [water shader](ART_PIPELINE.md#water): the river
+and the stream their flow, faster in the middle and fastest over the ford and
+toward the lip, and their foam over the ford and at the lip; the sea its waves
+and the foam lines that roll onto its beach; and the lake, a grid of 1 m cells,
+the churn and spread around the waterfall's landing. The river's water is still
+where it reaches into the lake and into the sea, and the sea's waves and foam
+lines calm down at the river's mouth and toward the sea beyond the World, so
+every pair of surfaces meets without a seam, and the waterfall's column covers
+the end of the stream's surface with its flat top, as `WatersideJunctionTests`
+checks.
 
 ### Resource Node Placements
 
@@ -351,6 +360,12 @@ scene, the scene is opened once and baked once for each of those Worlds, and its
 `WorldCollisionAuthoring` World id must be one of them.
 `MMORPG > Tools > World Collision > Bake Open Scene` bakes only the open scene.
 
+Before it reads a scene, the bake rebuilds the scene's water from its
+[World Builder](#world-builder) shapes, so it bakes what the shapes describe, and
+it stops with a red error at every error the World Builder's validation finds.
+`Bake World Scenes` saves a scene whose water it had to rebuild; after `Bake Open
+Scene`, save the scene to keep the rebuilt water.
+
 The bake reads the enabled, non-trigger BoxColliders, non-convex MeshColliders,
 and TerrainColliders below the collision root; meshes and terrains bake as
 one-sided triangles that collide only from their front. It stops with a red
@@ -420,8 +435,8 @@ World material is used, that every project material is in the form its shader's
 Inspector keeps, so selecting one never changes its file, that the waterside has
 its lake, river, sea, and stream without colliders, out of static batching, and
 with the shared water material, that the waterfall's column and the sea beyond
-the World only show,
-and that the checked-in bake holds
+the World only show, that the World Builder finds no problem in the scene and a
+rebuild of its water changes nothing, and that the checked-in bake holds
 exactly the scene's boxes, terrain cells, mesh triangles, and water surfaces,
 deep water edges where there is water, and one movement-only box per placed
 resource node.
@@ -447,9 +462,92 @@ These rules apply to every World scene, including a future production map.
 - Leave the world ground box or terrain below tunnel floors, or give the tunnel
   mesh its own floor that faces up.
 
+## World Builder
+
+The World Builder makes parts of a World from shapes, a few values each, that
+the Editor turns into what the World shows and bakes. Its shapes are the water:
+lakes, rivers, seas, and waterfalls. A shape is a component in the scene that
+does nothing in the game; only what it made takes part, such as a water body's
+surface mesh. It works in every World scene, and the Development World 2 builder
+makes the waterside's water with it.
+
+Open it with `MMORPG > Tools > World Builder`. The window works on the active
+scene:
+
+- `Add` puts a new lake, river, or sea at the middle of the Scene view, at that
+  height, below the `Water` group of the scene's collision root, which it
+  creates when needed. The new water gets a name and a body id of its own, such
+  as `lake-2`, the water material, and the static flags of water, without
+  `Batching Static`. `Waterfall from the selected river` lets the selected river
+  fall from its last point into the highest lake or sea below it.
+- `Shapes` lists the scene's shapes; choose one to select and frame it.
+- `Problems` lists what the validation finds; choose one to select its object.
+- `Rebuild` rebuilds the scene's water, `Validate` checks it again, and `Bake
+  Collision` bakes the open scene, as `World Collision > Bake Open Scene` does.
+
+Shape the selected shape with its handles in the Scene view and its values in
+the Inspector:
+
+| Shape | In the Scene view | Values |
+| --- | --- | --- |
+| `LakeShape` | Drag a point of the shore, Shift+click the shore to add a point there, and Ctrl+click a point to remove it | The shore, a closed outline in the object's X and Z, and the size of the surface's cells; the lake lies at the object's height |
+| `SeaShape` | The same for its outline | The outline inside the World, the cell size, how much it waves, over how much water the waves calm down, the horizon sides, how far it runs on beyond the World, and the seabed's material and depth; the sea lies at the object's height |
+| `RiverShape` | Click a point to move it with a position handle and drag the cubes on its banks to set its width there, Shift+click the river's line to add a point there or a + past an end to lengthen it, and Ctrl+click a point to remove it | The points from its start to its end, each with the height of the surface, the width, depth, speed, and foam there; a curve or straight lines through them; the spacing of the surface's rows; and how much slower the water flows at the banks |
+| `WaterfallShape` | Follows its river's last point | The river it falls from, the water body it falls into, which `Fall Into The Water Below` chooses, the speed at which the water leaves the lip, and how the fall fades in, spreads, foams, and makes the water below churn |
+
+Every lake, river, and sea also has a bank reach: how far its surface reaches
+past the shore, under the bank that hides it. Move, turn, or lift a shape's
+object with the usual tools, but keep it level and unscaled.
+
+The water follows every change a moment later, also when a shape is moved,
+added, or removed, and after an undo. The World Builder rebuilds all of a
+scene's water at once, because water shapes the water it meets:
+
+- A river whose first or last point lies within 0.5 m of the level of a lake or
+  sea whose surface covers it starts or ends in that water: its surface lies at
+  that level there and stands still, so they meet without a seam, and a sea's
+  waves and foam lines calm down at the river's mouth.
+- A waterfall makes its river's last point a lip exactly as wide as the river,
+  falls along the path water takes at its speed, and makes the water it lands in
+  churn and spread. White water, mist, and droplets are particle systems below
+  it.
+- On its horizon sides, a sea runs on beyond the World's ground, where the
+  colliders below the collision root end, as a still surface over a seabed that
+  only shows, and its waves calm down toward that edge. Draw its outline out to
+  that edge there.
+- A shape that is not complete, such as a waterfall without a landing or a
+  river with one point, shows nothing until it is.
+
+A rebuild writes a mesh only when it changes, so a rebuild without a change
+marks nothing dirty and opening a scene changes nothing. A shape keeps the mesh
+asset its MeshFilter holds. A new shape in a saved scene, or one that shares its
+mesh with another, such as a duplicated lake, gets a mesh asset of its own below
+`Assets/Art/Worlds/<scene>`; a scene that was never saved keeps its meshes in
+memory until it is saved and its water rebuilt. A removed shape leaves its mesh
+behind: the validation warns about every mesh below `Assets/Art/Worlds/<scene>`
+that no scene uses any more, and `Remove Unused Meshes` moves them to the trash.
+
+The validation finds errors, which stop the collision bake, and warnings:
+
+- Errors: a body id that is invalid or used twice; a water body with a collider,
+  marked `Batching Static`, without the water shader, or with a mesh that is
+  empty or lacks the shader's data; two water bodies that overlap within 0.25 m
+  in height but do not agree there; a lake or sea with fewer than three points
+  and a river with fewer than two; and a waterfall without its river or its
+  landing, a second one from the same river, one into its own river, or one
+  whose landing lies less than 0.1 m below its lip.
+- Warnings: a shape that is tilted or scaled, water outside the collision root,
+  which the bake leaves out, and unused meshes.
+
+A shape, its handles, and what builds from it make one kind of shape;
+[Extension Rules](UNITY_CLIENT_ARCHITECTURE.md#extension-rules) says how a new
+kind joins the World Builder.
+
 ## Water Authoring
 
-Lakes, rivers, and seas follow these rules in every World scene:
+Make lakes, rivers, seas, and waterfalls with the [World Builder](#world-builder):
+the water it makes follows these rules in every World scene, and its validation
+checks them before every bake.
 
 - A water body is a GameObject below the collision root with a MeshFilter, a
   MeshRenderer, and a `WaterBody` component that names its body id and its kind,
@@ -486,12 +584,14 @@ Lakes, rivers, and seas follow these rules in every World scene:
   lines. They then meet without a seam.
 - A waterfall is a column mesh with the waterfall material and no `WaterBody`,
   from the lip of the water above down to the surface below, where the water
-  below foams and a pool lets characters wade under the fall. Start the column
-  on the water above, with its top in that surface, and let it fade in over the
-  last half meter or so before the lip. Make it as wide as the channel the water
-  leaves, never wider, and keep the water above's surface past the lip within
-  the column's flat top, where the column has faded in fully. The water above
-  then turns into the fall without a line; see [Water](ART_PIPELINE.md#water).
+  below foams; shape the ground so a pool lets characters wade under the fall.
+  The column starts on the water above, with its top in that surface, and fades
+  in over the last half meter or so before the lip. It is as wide as the channel
+  the water leaves, never wider, and the water above's surface past the lip lies
+  within the column's flat top, where the column has faded in fully. The water
+  above then turns into the fall without a line; see
+  [Water](ART_PIPELINE.md#water). Make the channel as wide as the river at its
+  last point.
 
 ## Post-Authoring Verification
 
