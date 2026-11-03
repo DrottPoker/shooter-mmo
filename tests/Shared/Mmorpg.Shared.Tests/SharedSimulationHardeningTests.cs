@@ -81,6 +81,15 @@ public sealed class SharedSimulationHardeningTests
         Assert.Equal(MovementDeterminismScenario.ExpectedPlannerFingerprint, trace.Fingerprint);
         Assert.All(trace.Plans.Take(trace.Plans.Count - 1), plan => Assert.Equal(MovementPathPlanStatus.Reached, plan.Status));
 
+        // Past the wading pool the route walks around its end, and across it the route wades
+        // straight through, whichever takes less time.
+        var aroundPool = trace.Plans[^3];
+        Assert.True(aroundPool.Waypoints.Count >= 2, "The route past the pool did not bend around it.");
+        Assert.All(aroundPool.Waypoints, waypoint => Assert.True(
+            MathF.Abs(waypoint.Z) >= 2f || waypoint.X <= 20f || waypoint.X >= 26f,
+            $"The route past the pool turns at ({waypoint.X}, {waypoint.Z}) in the water."));
+        Assert.Single(trace.Plans[^2].Waypoints);
+
         // The last click lands in the deep middle of the pond, so its plan ends at the edge.
         var pond = trace.Plans[^1];
         Assert.Equal(MovementPathPlanStatus.Closest, pond.Status);

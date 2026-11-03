@@ -113,12 +113,21 @@ namespace Mmorpg.GameSimulation
 
     // Plans click-to-move routes with A* on a fine internal grid sampled from the
     // collision world. A cell can hold several walkable levels, so platforms, ramps, and
-    // stairs work, and the player never sees the grid. The route is string pulled into
-    // few waypoints. The same input always gives the same route, but correctness does
-    // not depend on it, because the route travels to the worker as data. Not thread-safe.
+    // stairs work, and the player never sees the grid. A route costs the time it takes,
+    // so it wades only where going around over land would take longer. The route is
+    // string pulled into few waypoints, and a straight shortcut is taken only when it is
+    // not slower than the route it replaces. The same input always gives the same route,
+    // but correctness does not depend on it, because the route travels to the worker as
+    // data. Not thread-safe.
     public sealed class MovementPathPlanner
     {
         private const float HeightEpsilon = 0.01f;
+
+        // A wading shortcut this much slower than the route it replaces, in meters of dry
+        // land, still replaces it. The samples of a segment and the grid's steps place the
+        // water's edge differently by up to a sample, so a straight wade never keeps the
+        // grid's zigzag for that.
+        private const float CostTolerance = 0.25f;
         private const float LevelBucketSize = 0.05f;
         private const float FlatGroundNormalY = 0.999f;
         private const float StartGroundSearchDepth = 4f;
@@ -145,6 +154,9 @@ namespace Mmorpg.GameSimulation
         private readonly Dictionary<NodeKey, Probe> probes = new Dictionary<NodeKey, Probe>();
         private readonly List<OpenEntry> open = new List<OpenEntry>();
         private readonly List<RoutePoint> route = new List<RoutePoint>();
+
+        // The time each route point is reached at along the route, in meters of dry land.
+        private readonly List<float> routeCosts = new List<float>();
         private readonly List<RoutePoint> pulled = new List<RoutePoint>();
         private readonly int[] neighborNodes = new int[8];
         private ClosestCandidate closest;
@@ -226,11 +238,16 @@ namespace Mmorpg.GameSimulation
             }
 
             var reachedStatus = exact ? MovementPathPlanStatus.Reached : MovementPathPlanStatus.Closest;
-            if (destinationReachable && IsSegmentWalkable(startPoint, goalPoint, true))
+
+            // A straight walk over dry land is the fastest route. One that wades may still
+            // lose to a way around, so the search decides.
+            var directCost = 0f;
+            var directWades = false;
+            var directWalkable = destinationReachable
+                && IsSegmentWalkable(startPoint, goalPoint, true, out directCost, out directWades);
+            if (directWalkable && !directWades)
             {
-                route.Add(startPoint);
-                route.Add(goalPoint);
-                return Finish(reachedStatus, 0);
+                return FinishDirect(startPoint, goalPoint, directCost, reachedStatus, 0);
             }
 
             if (destinationReachable)
@@ -282,13 +299,32 @@ namespace Mmorpg.GameSimulation
             if (goalIndex >= 0)
             {
                 BuildRoute(goalIndex);
-                if (destinationReachable && IsSegmentWalkable(route[route.Count - 1], goalPoint, false))
+                if (destinationReachable
+                    && IsSegmentWalkable(route[route.Count - 1], goalPoint, false, out var lastCost, out _))
                 {
-                    route.Add(goalPoint);
+                    AddRoutePoint(goalPoint, (float)(routeCosts[routeCosts.Count - 1] + lastCost));
+                    var routeCost = PullRoute();
+                    if (directWalkable && directCost <= (float)(routeCost + CostTolerance))
+                    {
+                        return FinishDirect(startPoint, goalPoint, directCost, reachedStatus, expanded);
+                    }
+
                     return Finish(reachedStatus, expanded);
                 }
 
+                if (directWalkable)
+                {
+                    return FinishDirect(startPoint, goalPoint, directCost, reachedStatus, expanded);
+                }
+
+                PullRoute();
                 return Finish(MovementPathPlanStatus.Closest, expanded);
+            }
+
+            // The search ran out of nodes, but the straight walk that wades gets there.
+            if (directWalkable)
+            {
+                return FinishDirect(startPoint, goalPoint, directCost, reachedStatus, expanded);
             }
 
             // A point under cover stands in only when no open point was found at all.
@@ -299,6 +335,7 @@ namespace Mmorpg.GameSimulation
             }
 
             BuildRoute(bestIndex);
+            PullRoute();
             return Finish(MovementPathPlanStatus.Closest, expanded);
         }
 
@@ -404,13 +441,15 @@ namespace Mmorpg.GameSimulation
                 }
 
                 neighborNodes[neighbor] = index;
-                var next = nodes[index];
-                if (next.Closed)
+                if (nodes[index].Closed)
                 {
                     continue;
                 }
 
-                var cost = Distance(current.Point.Position, next.Point.Position);
+                // A step costs its length at the mean pace of its two ends.
+                var pace = (float)((float)(NodePace(currentIndex) + NodePace(index)) * 0.5f);
+                var next = nodes[index];
+                var cost = (float)(Distance(current.Point.Position, next.Point.Position) * pace);
                 var tentative = (float)(current.G + cost);
                 if (tentative >= next.G)
                 {
@@ -511,9 +550,18 @@ namespace Mmorpg.GameSimulation
 
         // Walks a straight planar segment in small samples with the same step, slope, and
         // clearance rules as the grid. The relaxed start lets a character that touches a
-        // wall leave it, because the motor allows contact closer than the margin.
-        private bool IsSegmentWalkable(RoutePoint from, RoutePoint to, bool relaxedStart)
+        // wall leave it, because the motor allows contact closer than the margin. The cost
+        // is the time the walk takes, in meters of dry land, measured as the grid's steps
+        // are, and wades tells whether any of it slows in water.
+        private bool IsSegmentWalkable(
+            RoutePoint from,
+            RoutePoint to,
+            bool relaxedStart,
+            out float cost,
+            out bool wades)
         {
+            cost = 0f;
+            wades = false;
             var distance = (float)Math.Sqrt(PlanarDistanceSquared(from.Position, to.Position));
             var sampleCount = Math.Max(1, (int)Math.Ceiling((float)(distance / sampleSpacing)));
             var stepDistance = (float)(distance / sampleCount);
@@ -525,6 +573,8 @@ namespace Mmorpg.GameSimulation
                 : 0f;
             var current = from;
             var currentRelaxed = relaxedStart;
+            var currentPace = WaterRules.Pace(collisionWorld, from.Position, queryBuffer);
+            wades = currentPace > 1f;
             for (var sample = 1; sample <= sampleCount; sample++)
             {
                 var amount = (float)((float)sample / sampleCount);
@@ -556,8 +606,13 @@ namespace Mmorpg.GameSimulation
                     return false;
                 }
 
+                var nextPace = WaterRules.Pace(collisionWorld, next.Position, queryBuffer);
+                wades = wades || nextPace > 1f;
+                var step = Distance(current.Position, next.Position);
+                cost = (float)(cost + (float)(step * (float)((float)(currentPace + nextPace) * 0.5f)));
                 current = next;
                 currentRelaxed = nextRelaxed;
+                currentPace = nextPace;
             }
 
             return Math.Abs((float)(current.Position.Y - to.Position.Y)) <= SameLevelTolerance;
@@ -724,9 +779,26 @@ namespace Mmorpg.GameSimulation
             return false;
         }
 
+        // The straight walk from the start to the goal as the whole route.
+        private MovementPathPlan FinishDirect(
+            RoutePoint start,
+            RoutePoint goal,
+            float cost,
+            MovementPathPlanStatus status,
+            int expanded)
+        {
+            route.Clear();
+            routeCosts.Clear();
+            AddRoutePoint(start, 0f);
+            AddRoutePoint(goal, cost);
+            pulled.Clear();
+            pulled.Add(goal);
+            return Finish(status, expanded);
+        }
+
+        // Turns the pulled route into the plan's waypoints.
         private MovementPathPlan Finish(MovementPathPlanStatus status, int expanded)
         {
-            PullRoute();
             var waypoints = new List<SimulationVector3>(Math.Min(pulled.Count, MovementPath.MaximumWaypoints));
             var isTruncated = false;
             var length = 0f;
@@ -756,34 +828,66 @@ namespace Mmorpg.GameSimulation
         }
 
         // Keeps a route point only where the straight segment from the previous kept point
-        // stops being walkable. The first segment is a validated grid edge.
-        private void PullRoute()
+        // stops being walkable, or where a segment that wades would be slower than the
+        // route it replaces, such as a shortcut through a pond that the route walks around.
+        // The first segment is a validated grid edge. Returns the time the pulled route takes.
+        private float PullRoute()
         {
             pulled.Clear();
+            var total = 0f;
             var anchor = 0;
             while (anchor < route.Count - 1)
             {
                 var next = anchor + 1;
+                var nextCost = (float)(routeCosts[next] - routeCosts[anchor]);
                 while (next + 1 < route.Count
-                    && IsSegmentWalkable(route[anchor], route[next + 1], anchor == 0))
+                    && IsSegmentWalkable(route[anchor], route[next + 1], anchor == 0, out var shortcutCost, out var shortcutWades)
+                    && (!shortcutWades
+                        || shortcutCost <= (float)((float)(routeCosts[next + 1] - routeCosts[anchor]) + CostTolerance)))
                 {
                     next++;
+                    nextCost = shortcutCost;
                 }
 
                 pulled.Add(route[next]);
+                total = (float)(total + nextCost);
                 anchor = next;
             }
+
+            return total;
         }
 
         private void BuildRoute(int lastIndex)
         {
             route.Clear();
+            routeCosts.Clear();
             for (var index = lastIndex; index >= 0; index = nodes[index].Parent)
             {
                 route.Add(nodes[index].Point);
+                routeCosts.Add(nodes[index].G);
             }
 
             route.Reverse();
+            routeCosts.Reverse();
+        }
+
+        private void AddRoutePoint(RoutePoint point, float cost)
+        {
+            route.Add(point);
+            routeCosts.Add(cost);
+        }
+
+        // The pace at a node, measured once.
+        private float NodePace(int index)
+        {
+            var node = nodes[index];
+            if (node.Pace <= 0f)
+            {
+                node.Pace = WaterRules.Pace(collisionWorld, node.Point.Position, queryBuffer);
+                nodes[index] = node;
+            }
+
+            return node.Pace;
         }
 
         private int AddNode(int cellX, int cellZ, RoutePoint point)
@@ -884,6 +988,7 @@ namespace Mmorpg.GameSimulation
             probes.Clear();
             open.Clear();
             route.Clear();
+            routeCosts.Clear();
             pulled.Clear();
         }
 
@@ -1022,6 +1127,7 @@ namespace Mmorpg.GameSimulation
                 Parent = -1;
                 Closed = false;
                 Clearance = 0;
+                Pace = 0f;
             }
 
             public int CellX;
@@ -1034,6 +1140,9 @@ namespace Mmorpg.GameSimulation
 
             // 0 is not yet tested, 1 is clear, and -1 is blocked.
             public sbyte Clearance;
+
+            // The time a meter takes here relative to dry land, 0 until measured.
+            public float Pace;
         }
 
         private readonly struct OpenEntry

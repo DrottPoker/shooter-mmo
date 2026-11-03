@@ -4,13 +4,15 @@
 // in lines that roll in toward the shore, and in fast water. Ripple normals scroll along the flow
 // that each vertex carries in its second texture coordinate, so a river runs downstream, the wind
 // carries the large and the small ripples on in two directions, so still water never stands
-// still, and the sea can lift its vertices in gentle waves. The red of the vertex color marks fast water, the
-// green how much the waves move a vertex, and the blue how strongly foam lines roll in toward
-// the shore. One material serves every kind of water, so where water bodies meet, their surfaces
-// draw alike as long as their vertices agree. The water reads the camera's depth and opaque
-// textures, so the pipeline must provide both. Overlapping water, such as a river that reaches
-// into a lake, draws once per pixel through a stencil bit, so it never doubles its tint. See
-// docs/ART_PIPELINE.md under Water.
+// still, and the sea can lift its vertices in gentle waves. The red of the vertex color marks fast
+// water, the green how much the waves move a vertex, and the blue how strongly foam lines roll in
+// toward the shore. One material serves every kind of water, so where water bodies meet, their
+// surfaces draw alike as long as their vertices agree. The water reads the camera's depth and
+// opaque textures, so the pipeline must provide both, and every animation runs on the water's
+// clock of WaterCommon.hlsl. WaterRendererFeature draws the surfaces before the other transparent
+// objects, the only pass that draws this shader's light mode. Overlapping water, such as a river
+// that reaches into a lake, draws once per pixel through a stencil bit, so it never doubles its
+// tint. See docs/ART_PIPELINE.md under Water.
 Shader "Mmorpg/Water"
 {
     Properties
@@ -82,7 +84,7 @@ Shader "Mmorpg/Water"
         Pass
         {
             Name "WaterForward"
-            Tags { "LightMode" = "UniversalForward" }
+            Tags { "LightMode" = "MmorpgWaterSurface" }
 
             Blend SrcAlpha OneMinusSrcAlpha
             ZWrite Off
@@ -109,6 +111,7 @@ Shader "Mmorpg/Water"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
+            #include "WaterCommon.hlsl"
 
             TEXTURE2D(_NormalMap);
             SAMPLER(sampler_NormalMap);
@@ -174,30 +177,6 @@ Shader "Mmorpg/Water"
                 half fogFactor : TEXCOORD4;
             };
 
-            // Three directional waves of falling length and height, relative to the material's.
-            static const float2 WaveDirections[3] = { float2(0.96, 0.28), float2(-0.37, 0.93), float2(0.6, -0.8) };
-            static const float WaveLengths[3] = { 1.0, 0.63, 0.41 };
-            static const float WaveHeights[3] = { 1.0, 0.55, 0.3 };
-
-            // Returns the height of the waves and puts the surface normal of their sum in normal.
-            float Waves(float2 position, out float3 normal)
-            {
-                float height = 0;
-                float2 slope = 0;
-                [unroll]
-                for (int index = 0; index < 3; index++)
-                {
-                    float waveNumber = TWO_PI / (_WaveLength * WaveLengths[index]);
-                    float phase = waveNumber * (dot(WaveDirections[index], position) - (_WaveSpeed * sqrt(WaveLengths[index]) * _Time.y));
-                    float amplitude = _WaveAmplitude * WaveHeights[index];
-                    height += amplitude * sin(phase);
-                    slope += amplitude * waveNumber * cos(phase) * WaveDirections[index];
-                }
-
-                normal = normalize(float3(-slope.x, 1, -slope.y));
-                return height;
-            }
-
             Varyings Vertex(Attributes input)
             {
                 Varyings output;
@@ -206,7 +185,7 @@ Shader "Mmorpg/Water"
                 if (_WaveAmplitude > 0)
                 {
                     float3 normal;
-                    float height = Waves(positionWS.xz, normal);
+                    float height = WaterWaveHeight(positionWS.xz, _WaveAmplitude, _WaveLength, _WaveSpeed, normal);
                     positionWS.y += height * input.color.g;
                     waveNormal = normalize(lerp(float3(0, 1, 0), normal, input.color.g));
                 }
@@ -228,15 +207,15 @@ Shader "Mmorpg/Water"
 
             // Ripples at two sizes, the small ones turned against the large ones, as a slope in
             // world X and Z. The wind carries each size on in its own direction, so the surface
-            // keeps changing even where the water does not flow. The wind's offset wraps at the
-            // texture's size, so it stays precise however long the game runs.
+            // keeps changing even where the water does not flow. The wind's offset is a share of
+            // the texture's size, which the water's clock keeps precise.
             float2 Ripples(float2 position)
             {
-                float2 largeWind = frac(_RippleWind.xy * (_Time.y / _NormalTiling));
+                float2 largeWind = WaterCycles(_RippleWind.xy / _NormalTiling);
                 half3 large = UnpackNormalScale(
                     SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, (position / _NormalTiling) - largeWind),
                     _NormalStrength);
-                float2 smallWind = frac(TurnForDetail(_DetailWind.xy) * (_Time.y / _DetailTiling));
+                float2 smallWind = WaterCycles(TurnForDetail(_DetailWind.xy) / _DetailTiling);
                 half3 small = UnpackNormalScale(
                     SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, (TurnForDetail(position) / _DetailTiling) - smallWind),
                     _DetailStrength);
@@ -247,9 +226,8 @@ Shader "Mmorpg/Water"
             // cycle, half a cycle apart, and each fades out while it restarts.
             void FlowPhases(float2 flow, out float2 offsetA, out float2 offsetB, out float weightA)
             {
-                float cycle = _Time.y / _FlowCycle;
-                float phaseA = frac(cycle);
-                float phaseB = frac(cycle + 0.5);
+                float phaseA = WaterCycles(1 / _FlowCycle);
+                float phaseB = frac(phaseA + 0.5);
                 offsetA = flow * (phaseA * _FlowCycle);
                 offsetB = flow * (phaseB * _FlowCycle) + float2(0.37, 0.61);
                 weightA = 1 - abs(1 - (2 * phaseA));
@@ -310,10 +288,9 @@ Shader "Mmorpg/Water"
                 half3 sunlight = mainLight.color * shadow;
 
                 // Light patterns on the shallow ground, where the sun reaches it.
-                float time = _Time.y;
                 float2 causticsUV = refractedGroundWS.xz / _CausticsTiling;
-                half causticsA = SAMPLE_TEXTURE2D(_Masks, sampler_Masks, causticsUV + float2(0.031, 0.019) * time).g;
-                half causticsB = SAMPLE_TEXTURE2D(_Masks, sampler_Masks, causticsUV * 1.37 + float2(-0.023, 0.034) * time).g;
+                half causticsA = SAMPLE_TEXTURE2D(_Masks, sampler_Masks, causticsUV + WaterCycles(float2(0.031, 0.019))).g;
+                half causticsB = SAMPLE_TEXTURE2D(_Masks, sampler_Masks, causticsUV * 1.37 + WaterCycles(float2(-0.023, 0.034))).g;
                 half causticsFade = saturate(1 - (refractedDepth / _CausticsDepth)) * saturate(refractedDepth * 4);
                 ground += min(causticsA, causticsB) * _CausticsStrength * causticsFade * sunlight;
 
@@ -330,8 +307,21 @@ Shader "Mmorpg/Water"
                 // drift over the surface, as in painted water.
                 half rippleLight = 1 + ((slope.x * mainLight.direction.x) + (slope.y * mainLight.direction.z)) * _RippleShading;
                 color *= max(0.5, rippleLight);
-                // Slow patches of noise decide where the lines show, so they never form a net.
-                half patches = SAMPLE_TEXTURE2D(_Masks, sampler_Masks, (positionWS.xz - (flow * time * 0.5)) / (_SurfacePatternTiling * 8)).b;
+
+                // Slow patches of noise decide where the lines show, so they never form a net. They
+                // drift with the material's drift and move along a river's flow in the same
+                // restarting phases as the ripples, so a flow that varies across a river never
+                // shears them apart.
+                float patchTiling = _SurfacePatternTiling * 8;
+                float2 patchDrift = WaterCycles(_Drift.xy * 0.5 / patchTiling);
+                float2 riverOffsetA;
+                float2 riverOffsetB;
+                float riverWeightA;
+                FlowPhases(input.flow * 0.5, riverOffsetA, riverOffsetB, riverWeightA);
+                half patches = lerp(
+                    SAMPLE_TEXTURE2D(_Masks, sampler_Masks, ((positionWS.xz - riverOffsetB) / patchTiling) - patchDrift).b,
+                    SAMPLE_TEXTURE2D(_Masks, sampler_Masks, ((positionWS.xz - riverOffsetA) / patchTiling) - patchDrift).b,
+                    riverWeightA);
                 float2 patternUV = (positionWS.xz / _SurfacePatternTiling) + (slope * 0.2);
                 half surfaceA = SAMPLE_TEXTURE2D(_Masks, sampler_Masks, patternUV - (offsetA / _SurfacePatternTiling)).g;
                 half surfaceB = SAMPLE_TEXTURE2D(_Masks, sampler_Masks, (patternUV * 0.83) - (offsetB / _SurfacePatternTiling)).g;
@@ -345,13 +335,14 @@ Shader "Mmorpg/Water"
                 half3 sky = GlossyEnvironmentReflection(reflect(-viewDirection, normalWS), 0.08, 1);
                 color = lerp(color, lerp(sky, _HorizonColor.rgb, 0.5), fresnel);
 
-                // The sun's glint, and sparkles where the ripples catch it.
+                // The sun's glint, and sparkles where the ripples catch it. A sparkle fades in
+                // over a little of the noise, so it twinkles instead of flickering on and off.
                 float3 halfway = normalize(mainLight.direction + viewDirection);
                 half facing = saturate(dot(normalWS, halfway));
                 half glint = pow(facing, _SpecularPower) * _SpecularIntensity;
                 half sheen = pow(facing, _SpecularPower * 0.05) * _SheenIntensity;
                 half sparkleNoise = SAMPLE_TEXTURE2D(_Masks, sampler_Masks, (positionWS.xz * 0.9) + (slope * 0.4)).b;
-                half sparkle = smoothstep(0.5, 0.9, pow(facing, _SpecularPower * 0.18)) * step(0.66, sparkleNoise) * _SparkleIntensity;
+                half sparkle = smoothstep(0.5, 0.9, pow(facing, _SpecularPower * 0.18)) * smoothstep(0.63, 0.69, sparkleNoise) * _SparkleIntensity;
                 color += sunlight * (glint + sheen + sparkle);
 
                 // Foam along the shore, around things in the water, in lines that roll toward the
@@ -362,7 +353,7 @@ Shader "Mmorpg/Water"
                 float lines = 0;
                 if (_ShoreWaveFrequency > 0)
                 {
-                    float crest = 0.5 + (0.5 * sin(TWO_PI * ((verticalDepth * _ShoreWaveFrequency) + (time * _ShoreWaveSpeed))));
+                    float crest = 0.5 + (0.5 * sin(TWO_PI * ((verticalDepth * _ShoreWaveFrequency) + WaterCycles(_ShoreWaveSpeed))));
                     lines = pow(crest, 6) * saturate(1 - (verticalDepth / _ShoreWaveDepth)) * 0.85 * input.color.b;
                 }
 

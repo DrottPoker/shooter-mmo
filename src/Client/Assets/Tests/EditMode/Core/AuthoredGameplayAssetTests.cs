@@ -481,7 +481,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(waterside.terrainData.size, Is.EqualTo(DevelopmentWorld2Builder.WatersideSize));
 
                 // One lake, one river, one sea, and the stream above the waterfall, each a
-                // surface mesh without a collider that draws with the shared water material.
+                // surface mesh without a collider that draws with the shared water material,
+                // static but kept out of static batching, so the client can read its surface.
                 var bodies = environment.GetComponentsInChildren<WaterBody>(true);
                 Assert.That(
                     bodies.Select(body => body.BodyId + ":" + body.Kind),
@@ -496,6 +497,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 {
                     Assert.That(body.TryValidate(out var error), Is.True, error);
                     Assert.That(body.GetComponents<Collider>(), Is.Empty, body.name);
+                    Assert.That(
+                        GameObjectUtility.AreStaticEditorFlagsSet(body.gameObject, StaticEditorFlags.BatchingStatic),
+                        Is.False,
+                        body.name);
+                    Assert.That(
+                        GameObjectUtility.AreStaticEditorFlagsSet(body.gameObject, StaticEditorFlags.ContributeGI),
+                        Is.True,
+                        body.name);
                     Assert.That(
                         body.GetComponent<MeshRenderer>().sharedMaterial,
                         Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.SurfaceMaterialPath)),
@@ -535,6 +544,21 @@ namespace Mmorpg.Client.Tests.EditMode
                 var settings = new SerializedObject(levelPipeline);
                 Assert.That(settings.FindProperty("m_RequireDepthTexture").boolValue, Is.True, QualitySettings.names[level]);
                 Assert.That(settings.FindProperty("m_RequireOpaqueTexture").boolValue, Is.True, QualitySettings.names[level]);
+
+                // Only the water feature draws the water surfaces, so every renderer needs it.
+                var renderers = settings.FindProperty("m_RendererDataList");
+                Assert.That(renderers.arraySize, Is.GreaterThan(0), QualitySettings.names[level]);
+                for (var index = 0; index < renderers.arraySize; index++)
+                {
+                    var renderer = renderers.GetArrayElementAtIndex(index).objectReferenceValue;
+                    var features = new SerializedObject(renderer).FindProperty("m_RendererFeatures");
+                    var water = Enumerable.Range(0, features.arraySize)
+                        .Select(feature => features.GetArrayElementAtIndex(feature).objectReferenceValue)
+                        .OfType<WaterRendererFeature>()
+                        .ToArray();
+                    Assert.That(water, Has.Length.EqualTo(1), renderer.name);
+                    Assert.That(water[0].isActive, Is.True, renderer.name);
+                }
             }
         }
 

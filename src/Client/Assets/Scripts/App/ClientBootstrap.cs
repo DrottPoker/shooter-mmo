@@ -432,6 +432,7 @@ namespace Mmorpg.Client.App
                     simulationClient,
                     sceneContext,
                     actorPresentation,
+                    WaterSurfaces.FromScene(scene),
                     waterRingMaterial,
                     waterSprayMaterial));
             AddSceneComponentIfMissing<WorldInteractionTargetingController>(

@@ -14,6 +14,29 @@ namespace Mmorpg.GameSimulation
             CollisionQueryBuffer queryBuffer,
             out CollisionRayHit hit)
         {
+            return TryRaycast(
+                collisionWorld,
+                origin,
+                direction,
+                maximumDistance,
+                layerMask,
+                queryBuffer,
+                out hit,
+                out _);
+        }
+
+        // The same, and also the shape the ray enters.
+        public static bool TryRaycast(
+            ICollisionWorld collisionWorld,
+            SimulationVector3 origin,
+            SimulationVector3 direction,
+            float maximumDistance,
+            uint layerMask,
+            CollisionQueryBuffer queryBuffer,
+            out CollisionRayHit hit,
+            out CollisionShape shape)
+        {
+            shape = null;
             if (collisionWorld == null)
             {
                 throw new ArgumentNullException(nameof(collisionWorld));
@@ -64,6 +87,7 @@ namespace Mmorpg.GameSimulation
                 }
 
                 hit = candidate;
+                shape = queryBuffer.Shapes[index];
                 found = true;
             }
 

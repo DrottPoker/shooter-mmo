@@ -98,6 +98,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(wake.RingSize, Is.EqualTo(WaterWakeTracker.StillRingSize));
             Assert.That(wake.Spray, Is.Zero);
             Assert.That(wake.Surface.y, Is.EqualTo(0f).Within(0.001f));
+            Assert.That(wake.BodyId, Is.EqualTo("test-pond"));
 
             // The next ring comes once the interval has passed, one frame later at most.
             var rings = 0;

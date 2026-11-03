@@ -125,9 +125,21 @@ function Update-EditorScripts {
     $refreshStarted = [DateTime]::UtcNow
     $null = Invoke-EditorCommand "eval" @("--code", "UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport); return 0;")
     Wait-EditorIdle "after the asset refresh"
-    $check = Invoke-EditorCommand "eval" @("--code", "return UnityEditor.EditorUtility.scriptCompilationFailed;")
-    if (-not $check.Json -or -not $check.Json.success) {
-        Stop-Run 4 "the Editor could not report its compile state: $("$($check.Text)".Trim())"
+
+    # The Editor reports itself ready before its main thread has finished what the refresh found,
+    # such as compiling shaders, and a request that waits for that thread times out meanwhile, so
+    # a failed read is asked again until the deadline.
+    $deadline = Get-Deadline
+    while ($true) {
+        $check = Invoke-EditorCommand "eval" @("--code", "return UnityEditor.EditorUtility.scriptCompilationFailed;")
+        if ($check.Json -and $check.Json.success) {
+            break
+        }
+        if ([DateTime]::UtcNow -ge $deadline) {
+            Stop-Run 4 "the Editor could not report its compile state within $TimeoutMinutes minutes: $("$($check.Text)".Trim())"
+        }
+        Start-Sleep -Seconds $PollSeconds
+        Wait-EditorIdle "while reading the compile state"
     }
     if ($check.Json.result -eq $true) {
         Write-CompileErrors $refreshStarted

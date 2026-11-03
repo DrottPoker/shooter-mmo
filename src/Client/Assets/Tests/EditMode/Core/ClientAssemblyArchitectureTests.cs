@@ -59,7 +59,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.GameSimulation",
                     "Mmorpg.WorldData",
                     "Unity.Addressables",
-                    "Unity.ResourceManager"
+                    "Unity.ResourceManager",
+                    "Unity.RenderPipelines.Core.Runtime",
+                    "Unity.RenderPipelines.Universal.Runtime"
                 },
                 ["Mmorpg.Client.Networking"] = new[]
                 {
@@ -99,6 +101,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 {
                     "Mmorpg.Client.Api",
                     "Mmorpg.Client.Core",
+                    "Mmorpg.Client.Worlds",
                     "Mmorpg.Client.Networking",
                     "Mmorpg.Client.Items",
                     "Mmorpg.Client.Gameplay",

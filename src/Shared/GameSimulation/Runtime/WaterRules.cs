@@ -80,7 +80,19 @@ namespace Mmorpg.GameSimulation
             CollisionQueryBuffer queryBuffer,
             out float depth)
         {
+            return TryGetDepth(collisionWorld, rootPosition, queryBuffer, out depth, out _);
+        }
+
+        // The same, and also the water body whose surface stands above the feet.
+        public static bool TryGetDepth(
+            ICollisionWorld collisionWorld,
+            SimulationVector3 rootPosition,
+            CollisionQueryBuffer queryBuffer,
+            out float depth,
+            out string bodyId)
+        {
             depth = 0f;
+            bodyId = null;
             var searchTop = new SimulationVector3(
                 rootPosition.X,
                 (float)(rootPosition.Y + SurfaceSearchHeight),
@@ -92,7 +104,8 @@ namespace Mmorpg.GameSimulation
                     SurfaceSearchHeight,
                     CollisionLayers.Water,
                     queryBuffer,
-                    out var surface))
+                    out var surface,
+                    out var surfaceShape))
             {
                 return false;
             }
@@ -118,6 +131,7 @@ namespace Mmorpg.GameSimulation
             }
 
             depth = surfaceDepth;
+            bodyId = surfaceShape is CollisionWaterSurface waterSurface ? waterSurface.BodyId : null;
             return true;
         }
 
@@ -125,6 +139,18 @@ namespace Mmorpg.GameSimulation
         public static float SpeedMultiplier(float depth)
         {
             return depth >= WadeDepth ? WadeSpeedMultiplier : 1f;
+        }
+
+        // How long a meter takes to walk where the feet stand, relative to dry land, so route
+        // planning can weigh wading against a longer way over land.
+        public static float Pace(
+            ICollisionWorld collisionWorld,
+            SimulationVector3 rootPosition,
+            CollisionQueryBuffer queryBuffer)
+        {
+            return TryGetDepth(collisionWorld, rootPosition, queryBuffer, out var depth)
+                ? (float)(1f / SpeedMultiplier(depth))
+                : 1f;
         }
     }
 }

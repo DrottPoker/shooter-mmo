@@ -235,17 +235,20 @@ revision, session, and availability for every request.
   on top of any slowdown from a heavy load. Water deeper than 1.2 m stops them
   at its edge like a wall, so a click into deep water walks to the nearest
   reachable point, and routes go around deep water, over a bridge, or through a
-  ford. A character that falls into deep water walks out of it. Water stops
-  neither sight nor arrows, and Mobs follow the same rules.
+  ford. A route walks around wading water when that is faster than wading
+  through it. A character that falls into deep water walks out of it. Water
+  stops neither sight nor arrows, and Mobs follow the same rules.
 - Water is stylized and clear: light where it is shallow, with the ground and
   light patterns showing through, and deep blue further out, with foam along the
   shores, around everything that stands in it, in lines that roll onto the
   beach, and where a river runs fast over a ford. Rivers flow downstream, the
   sea moves in gentle waves out to the horizon, and a waterfall falls from rock
-  into a pool that can be waded under it. Each zone can give its water other
-  colors, such as a dark mountain lake.
+  into a pool that can be waded under it, with the pool's water showing through
+  the falling water. Each zone can give its water other colors, such as a dark
+  mountain lake. The water moves the same however long the game runs.
 - Players and Mobs that stand in water leave rings that spread on the surface,
   often while they move, and splash droplets up around their legs as they wade.
+  On the sea the rings ride up and down on the waves.
 - A route that collision blocks for half a second ends, so the character never
   keeps pushing against a wall.
 - A small yellow disc marks the destination until the character arrives.

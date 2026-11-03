@@ -310,7 +310,8 @@ environment completely. A builder opens its scene, configures
 `WorldCollisionAuthoring` on the `Environment` root (the World id, chunk size
 `32`, the root itself as collision root, and layer mask `3`), replaces every
 child of `Environment`, moves `Gameplay/PlayerSpawn` to the spawn and facing in
-the World's `world.json`, marks the environment static, and saves the scene. It
+the World's `world.json`, marks the environment static, the water bodies without
+`Batching Static`, and saves the scene. It
 never touches other `Gameplay` content and never changes actor content. A
 builder writes a palette material only when its color, texture, or smoothness
 changes, and then in the form the shader's Inspector keeps, since URP Lit
@@ -404,7 +405,8 @@ simulation:
 - The town, bridge, maze, camera tests, arena, and highlands routes work, and the
   inside of the peak stays unreachable.
 - The waterside lake stops a walker where it gets too deep and plans a click into
-  its middle to the edge, its shore is waded at the wading speed and its bank
+  its middle to the edge, a click across it walks around it instead of wading
+  along the deep water, its shore is waded at the wading speed and its bank
   rises from the water, the river is crossed over the bridge without touching
   water and through the ford by wading, never through deep water, the sea is
   deep along the open stretch of both bounds, the waterfall's pool is waded and
@@ -416,8 +418,9 @@ scene composition, that `PlayerSpawn` and the boundary walls match the manifest,
 that the labels are world-space text without raycasts, that every development
 World material is used, that every project material is in the form its shader's
 Inspector keeps, so selecting one never changes its file, that the waterside has
-its lake, river, sea, and stream without colliders and with the shared water
-material, that the waterfall's column and the sea beyond the World only show,
+its lake, river, sea, and stream without colliders, out of static batching, and
+with the shared water material, that the waterfall's column and the sea beyond
+the World only show,
 and that the checked-in bake holds
 exactly the scene's boxes, terrain cells, mesh triangles, and water surfaces,
 deep water edges where there is water, and one movement-only box per placed
@@ -453,6 +456,10 @@ Lakes, rivers, and seas follow these rules in every World scene:
   `Lake`, `River`, or `Sea`. Give it no collider. The body id is unique in its
   World and uses lowercase letters, digits, dots, dashes, and underscores, so
   content such as fishing can refer to it.
+- Keep a water body static but out of static batching: clear `Batching Static`.
+  Static batching merges surfaces into one mesh that the client cannot read, and
+  the client reads each surface to put wakes on its waves. The bake stops with
+  an error for a water body that is Batching Static.
 - The mesh is the water surface. Every triangle faces up, tilted at most about
   26 degrees, so a river can fall toward the sea. Let the surface reach under
   the banks: the terrain hides it there, and water under terrain or inside a box

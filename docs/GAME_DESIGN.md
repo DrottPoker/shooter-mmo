@@ -277,6 +277,9 @@ controls and their values are in
   fords and bridges are the ways across a river. The depth limits are shared
   simulation rules, and the block depth is baked into every World's collision
   as walls along deep water, so the shoreline follows the terrain.
+- A route takes the fastest way, not the shortest: it walks around wading water
+  when that is quicker than wading through, and wades a ford when going around
+  takes longer.
 - Water stops neither sight nor arrows, and Mobs follow the same water rules.
 - The camera orbits the character freely and zooms, as in RuneScape. The cursor
   is always free.
