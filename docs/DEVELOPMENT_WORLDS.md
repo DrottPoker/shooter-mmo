@@ -237,8 +237,8 @@ and the sea.
 | Terrain | origin `(-192, 0, 64)`, size `(128, 8, 128)` | A 4 m plateau with one sample per meter that ramps down to the ground over 16 m at its east and south edges |
 | Lake `waterside-lake` | center `(-108, 112)`, surface at 3.6 m | The shore lies 13 m from the center and the floor falls 0.3 m per meter, so the water is 0.5 m deep at 11.3 m, 1.2 m deep at 9 m, and at most 3 m deep; the bank rises to the plateau over 2 m |
 | Waterfall outcrop | lip at `(-103.5, 124.5)` on the lake's north shore, facing the lake | Rock 10 m wide and 9 m deep with its top at 7.6 m, 4 m above the lake, and a ramp onto it from behind; a channel 3 m wide runs along its top from a spring under a boulder to the lip |
-| Stream `waterside-stream` | along the outcrop's channel, surface at 7.5 m | 0.3 m deep, flowing toward the lip ever faster and foaming where it tips over |
-| Waterfall and pool | the water falls 3.9 m from the lip and lands 1.4 m out, at `(-103.9, 123.2)` | A column 3 m wide and 0.3 m thick at the lip that grows to 3.7 by 0.9 m as it falls; the lake is 1 m deep in a pool around the landing, so it is waded under the fall; the water churns and foams there, white water boils up, mist rises, and droplets fly |
+| Stream `waterside-stream` | along the outcrop's channel, surface at 7.5 m | 0.3 m deep, flowing toward the lip ever faster and foaming where it tips over; its surface reaches 0.1 m under the walls and 5 cm past the lip |
+| Waterfall and pool | the water falls 3.9 m from the lip and lands 1.4 m out, at `(-103.9, 123.2)` | A column that starts 0.6 m before the lip with its top in the stream's surface and fades in over it, 3.3 m wide and 0.3 m thick and nearly square where the stream's surface ends, that rounds and grows to 3.7 by 0.9 m as it falls; the lake is 1 m deep in a pool around the landing, so it is waded under the fall; the water churns and foams there, white water boils up, mist rises, and droplets fly |
 | River `waterside-river` | from `(-113, 119)` in the lake to `(-149, 150)` at the sea | 8 m wide and 2 m deep; its surface stays level with the lake until it leaves it, then falls to the sea's level, which it reaches at its mouth |
 | Ford | `(-127.5, 132.8)`, 20 m down the river | 0.8 m deep for 6 m of the river, so it is waded across at the wading speed |
 | Bridge | `(-140, 142.8)`, 36 m down the river | A 16 by 4 m deck with its top at 4.2 m, 1 m above the water, from plateau to plateau |
@@ -260,7 +260,8 @@ that roll onto its beach; and the lake, rings 1 m apart, the churn and spread
 around the waterfall's landing. The river's water is still where it reaches into
 the lake and into the sea, and the sea's waves and foam lines calm down at the
 river's mouth and toward the sea beyond the World, so every pair of surfaces
-meets without a seam, as `WatersideJunctionTests` checks.
+meets without a seam, and the waterfall's column covers the end of the stream's
+surface with its flat top, as `WatersideJunctionTests` checks.
 
 ### Resource Node Placements
 
@@ -478,7 +479,12 @@ Lakes, rivers, and seas follow these rules in every World scene:
   lines. They then meet without a seam.
 - A waterfall is a column mesh with the waterfall material and no `WaterBody`,
   from the lip of the water above down to the surface below, where the water
-  below foams and a pool lets characters wade under the fall.
+  below foams and a pool lets characters wade under the fall. Start the column
+  on the water above, with its top in that surface, and let it fade in over the
+  last half meter or so before the lip; where that surface ends, the column has
+  faded in fully and its flat top reaches past the surface's end on both sides.
+  The water above then turns into the fall without a line; see
+  [Water](ART_PIPELINE.md#water).
 
 ## Post-Authoring Verification
 

@@ -1,16 +1,18 @@
 // The falling water of a waterfall, a column with a body of its own that is lit as the water
 // surfaces are: the rock behind shows through clear water, bent by ripples that rush down it, the
 // sky and the sun glint in it, and thin streaks and clumps of foam fall with the water. The water
-// slides glassy over the lip, breaks into streaks as it falls, and turns white at the foot. Its
-// outline frays and fades where it turns away, so it has no hard edge from any side, and clear
-// water looks denser where the view passes through it at a slant. The streaks keep to the water
-// that carries them, so they stretch as the water speeds up.
+// fades in over the stream above as it nears the lip, slides glassy over the lip, breaks into
+// streaks as it falls, and turns white at the foot. Its outline frays and fades where it turns
+// away around the column, so it has no hard edge from any side, and clear water looks denser
+// where the view passes through it at a slant. The streaks keep to the water that carries them,
+// so they stretch as the water speeds up.
 //
 // The texture coordinate holds the meters around the column from its front, the seconds the
-// water has fallen, and how far down the fall the vertex lies, from 0 at the lip to 1 at the
-// foot. The normals face out of the column and the tangents run around it. It reads the camera's
-// opaque texture and draws the column's outside after the water surfaces, without writing depth.
-// See docs/ART_PIPELINE.md under Water.
+// water has fallen, negative before it falls, how far down the fall the vertex lies, from 0 at the
+// lip to 1 at the foot, and how far the column has faded in over the water above. The normals
+// face out of the column and the tangents run around it. It reads the camera's opaque texture and
+// draws the column's outside after the water surfaces, without writing depth. See
+// docs/ART_PIPELINE.md under Water.
 Shader "Mmorpg/Waterfall"
 {
     Properties
@@ -107,7 +109,7 @@ Shader "Mmorpg/Waterfall"
                 float4 positionOS : POSITION;
                 float3 normalOS : NORMAL;
                 float4 tangentOS : TANGENT;
-                float3 column : TEXCOORD0;
+                float4 column : TEXCOORD0;
             };
 
             struct Varyings
@@ -116,7 +118,7 @@ Shader "Mmorpg/Waterfall"
                 float3 positionWS : TEXCOORD0;
                 float3 normalWS : TEXCOORD1;
                 float3 aroundWS : TEXCOORD2;
-                float3 column : TEXCOORD3;
+                float4 column : TEXCOORD3;
                 half fogFactor : TEXCOORD4;
             };
 
@@ -138,6 +140,7 @@ Shader "Mmorpg/Waterfall"
                 float around = input.column.x;
                 float flight = input.column.y;
                 half fall = saturate(input.column.z);
+                half fadeIn = smoothstep(0, 1, saturate(input.column.w));
 
                 // A point of the pattern keeps to the water that carries it: its coordinate down
                 // the column is the time the water left the lip.
@@ -166,9 +169,13 @@ Shader "Mmorpg/Waterfall"
                 half3 sunlight = mainLight.color * mainLight.shadowAttenuation;
 
                 // How squarely the column faces the view: the view passes through more water at a
-                // slant, and the outline fades where the column turns away.
+                // slant. The outline fades where the column turns away around its section, which
+                // the view's part across the water's path measures, so the top of the water over
+                // the lip stays a surface even at a glancing view along the stream.
                 float3 viewDirection = normalize(_WorldSpaceCameraPos - input.positionWS);
                 half facing = saturate(dot(surfaceNormal, viewDirection));
+                float3 viewAcrossPath = viewDirection - (downWS * dot(viewDirection, downWS));
+                half outlineFacing = saturate(dot(surfaceNormal, viewAcrossPath) * rsqrt(max(dot(viewAcrossPath, viewAcrossPath), 1e-4)));
 
                 // The rock behind shows through clear water, bent and tinted, less where the view
                 // passes through more water and where the water has broken up. A bend that would
@@ -201,7 +208,6 @@ Shader "Mmorpg/Waterfall"
                 half foamAmount = saturate((_Foam * (1 - glass)) + (fall * 0.1) + (foot * 0.45));
                 half coverage = smoothstep(1 - foamAmount - 0.1, 1 - foamAmount + 0.1, max(streaks, clumps));
                 color += sunlight * (glint + sparkle) * (1 - (coverage * 0.7));
-                color += sunlight * 0.3 * (1 - smoothstep(0, 0.04, fall));
 
                 // Foam is brightest in its clumps and greyer between them, so white water keeps
                 // its shape.
@@ -210,7 +216,7 @@ Shader "Mmorpg/Waterfall"
                 color = MixFog(color, input.fogFactor);
 
                 // The outline frays where clumps of foam reach past it.
-                half alpha = saturate((facing - (clumps * 0.2)) / _OutlineSoftness);
+                half alpha = saturate((outlineFacing - (clumps * 0.2)) / _OutlineSoftness) * fadeIn;
                 return half4(color, alpha);
             }
             ENDHLSL

@@ -568,7 +568,10 @@ Expected result:
   rush down and stretch as they fall, with the rock showing through, and turns
   white at its foot, where the pool foams, white water boils up, and mist rises.
   From the side and from above it is a curved body of water that grows thicker
-  as it falls, with soft edges, never a flat sheet or a line.
+  as it falls, with soft edges, never a flat sheet or a line. Where the stream
+  tips over the lip, seen from the ramp above, from the pool in front, and up
+  close at the rock's corners, the stream turns into the fall without a line, a
+  bright edge, or a strip of water sticking out past the fall.
   The pool is waded at 60 % speed, and the stream on the rock is 0.3 m deep and
   walked at full speed.
 - In shallow water `Water depth` shows less than `0.50 m, full speed`, and the
