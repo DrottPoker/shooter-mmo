@@ -1990,6 +1990,24 @@ Expected result: the status codes are `200`, `304`, `200`, `200`, and `200`.
 The catalog has an ETag, and the unchanged response has no body. Every
 character response reports `no-store`.
 
+### Quest Log HTTP Contract
+
+With `$headers` and `$character` from above:
+
+```powershell
+$questLog = Invoke-WebRequest -Uri "http://localhost:5000/api/characters/$($character.id)/quests" -Headers $headers
+$questLog.StatusCode
+$questLog.Headers.'Cache-Control'
+$questLog.Content | ConvertFrom-Json | Format-List
+```
+
+Expected result: `200` and `no-store`, and for a character without quests a
+`questLogRevision` of `0`, empty `activeQuests` and `completedQuests`, and the
+`questCatalogRevision` that GameService logged as `Mirrored quest catalog core
+revision <revision>` at its first start with that catalog. The same request
+with another account's session returns `404` with the code
+`character_quests_not_found`.
+
 ### Shard Topology And Registration
 
 1. With GameService running and no worker, call

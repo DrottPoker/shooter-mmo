@@ -128,6 +128,7 @@
           "Mmorpg.GameService.Items": "[1.0.0, )",
           "Mmorpg.GameService.Placement": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
+          "Mmorpg.GameService.Quests": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Mmorpg.Server.Telemetry": "[1.0.0, )",
           "Npgsql": "[10.0.3, )",
@@ -184,6 +185,18 @@
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Npgsql": "[10.0.3, )",
           "StackExchange.Redis": "[3.4.5, )"
+        }
+      },
+      "mmorpg.gameservice.quests": {
+        "type": "Project",
+        "dependencies": {
+          "Dapper": "[2.1.89, )",
+          "Mmorpg.GameService.Accounts": "[1.0.0, )",
+          "Mmorpg.GameService.Characters": "[1.0.0, )",
+          "Mmorpg.GameService.Platform": "[1.0.0, )",
+          "Mmorpg.Server.Common": "[1.0.0, )",
+          "Mmorpg.WorldData": "[1.0.0, )",
+          "Npgsql": "[10.0.3, )"
         }
       },
       "mmorpg.gamesimulation": {

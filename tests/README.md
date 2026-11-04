@@ -24,6 +24,7 @@ and the check before every push in
 | `Mmorpg.GameService.Accounts.Tests` | `Server/Mmorpg.GameService.Accounts.Tests` | Accounts, including PostgreSQL and Redis tests |
 | `Mmorpg.GameService.Characters.Tests` | `Server/Mmorpg.GameService.Characters.Tests` | Characters, including PostgreSQL tests of character looks |
 | `Mmorpg.GameService.Placement.Tests` | `Server/Mmorpg.GameService.Placement.Tests` | Placement |
+| `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, and the quest log read |
 | `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel boundary tests under `ItemTransactions` |
 | `Mmorpg.GameService.Tests` | `Server/Mmorpg.GameService.Tests` | The GameService host configuration and the module architecture guard tests under `Architecture` |
 | `Mmorpg.SimulationWorker.Tests` | `Server/Mmorpg.SimulationWorker.Tests` | SimulationWorker; socket and in-memory tests of `Mmorpg.SimulationWorker.Realtime` and their shared harness under `Realtime` |
@@ -299,6 +300,23 @@ checked-in game content compiles, round-trips, and fits its development
 packages, read the real catalog. How to change and recompile the fixture is in
 [Item Catalog Authoring](../content/items/README.md#test-fixture-catalog).
 
+## Quest Catalog Fixture
+
+GameService quest tests never name game quests either. The test kit runs the
+Quests module on the test-owned quest catalog in `Fixtures/Quests`: three
+`quest.fixture.*` quests that use the fixture items and the actors of the
+fixture World layout. `quest.fixture.wolves` kills two Feral Wolves and offers a
+reward choice, `quest.fixture.errand` requires it and has a gather, deliver, and
+talk-to step before it collects its start item, and `quest.fixture.ore_run` is
+a repeatable collect quest. `RepositoryPaths.QuestCatalogFixtureContent` and
+`QuestCatalogFixtureRuntimePath` name the authoring and the compiled catalog,
+and `QuestCatalogTestData.CompileFixture` compiles it.
+
+The compiled fixture is checked in, so the services load it like the real one.
+`CompiledFixtureQuestCatalogMatchesItsAuthoring` in `Mmorpg.Tools.Tests` fails
+when it is stale; after a fixture change, run that test with
+`MMORPG_UPDATE_GOLDENS=1` to rewrite it, and review the diff.
+
 ## World Layout Fixtures
 
 Simulation tests never depend on the layout of a development World, so the
@@ -376,13 +394,14 @@ Test access to `internal` types follows the production dependency direction.
   the test projects of the modules that build on it, the kit
   (`Mmorpg.GameService.Testing`), `Mmorpg.GameService.Tests`, and
   `Mmorpg.Integration.Tests`. Platform grants Accounts, Characters, Placement,
-  and Items tests; Accounts grants Characters, Placement, and Items tests;
-  Characters grants Placement and Items tests; Placement grants Items tests.
+  Quests, and Items tests; Accounts grants Characters, Placement, Quests, and
+  Items tests; Characters grants Placement, Quests, and Items tests; Placement
+  grants Quests and Items tests; Quests grants Items tests.
 - The GameService host grants the kit, `Mmorpg.GameService.Tests`, and
   `Mmorpg.Integration.Tests`.
 - SimulationWorker grants `Mmorpg.SimulationWorker.Tests`, and
   `Mmorpg.Server.Telemetry` grants `Mmorpg.Server.Telemetry.Tests`.
-- The kit keeps its types `internal` and grants all six GameService test
+- The kit keeps its types `internal` and grants all seven GameService test
   projects and `Mmorpg.Integration.Tests`.
 - No grant goes to a lower module or to a production assembly.
 

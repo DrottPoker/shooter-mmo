@@ -151,6 +151,27 @@ public sealed class ContentPipelineTests
             StrictContentJson.NormalizeLineEndings(ItemCatalogTestData.FixtureRuntimeJson));
     }
 
+    // The fixture quest catalog is checked in compiled, so GameService tests load it as the
+    // service loads the real one. MMORPG_UPDATE_GOLDENS=1 rewrites it after a fixture change.
+    [Fact]
+    public void CompiledFixtureQuestCatalogMatchesItsAuthoring()
+    {
+        var expected = QuestJson.SerializeRuntime(QuestCatalogTestData.CompileFixture());
+        if (string.Equals(
+                Environment.GetEnvironmentVariable(GoldenFiles.UpdateVariable),
+                "1",
+                StringComparison.Ordinal))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(RepositoryPaths.QuestCatalogFixtureRuntimePath)!);
+            File.WriteAllText(
+                RepositoryPaths.QuestCatalogFixtureRuntimePath,
+                expected,
+                new System.Text.UTF8Encoding(false));
+        }
+
+        Assert.Equal(expected, StrictContentJson.NormalizeLineEndings(QuestCatalogTestData.FixtureRuntimeJson));
+    }
+
     [Fact]
     public void SpawnFileMustDeclareItsWorldDirectory()
     {

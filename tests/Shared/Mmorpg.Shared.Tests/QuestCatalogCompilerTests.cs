@@ -343,6 +343,33 @@ public sealed class QuestCatalogCompilerTests
             error => error.Contains("revision does not match", StringComparison.Ordinal));
     }
 
+    // A service relies on the shape of a loaded catalog, so it is checked before the hashes.
+    [Fact]
+    public void ARuntimeCatalogOutsideTheQuestShapeFailsItsValidation()
+    {
+        var unknownKind = Compile(KillQuest());
+        unknownKind.Quests[0].Steps[0].Objectives[0].Kind = "escort";
+        var missingRequirement = Compile(KillQuest());
+        missingRequirement.Quests[0].RequiredQuestIds = ["quest.missing"];
+        var noSteps = Compile(KillQuest());
+        noSteps.Quests[0].Steps = [];
+        var duplicate = Compile(KillQuest("quest.first"), KillQuest("quest.second"));
+        duplicate.Quests[1].Id = "quest.first";
+
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(unknownKind)).Errors,
+            error => error.Contains("a known kind", StringComparison.Ordinal));
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(missingRequirement)).Errors,
+            error => error.Contains("requires a quest that the catalog does not hold", StringComparison.Ordinal));
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(noSteps)).Errors,
+            error => error.Contains("must hold between 1 and 8 steps", StringComparison.Ordinal));
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(duplicate)).Errors,
+            error => error.Contains("duplicate quest 'quest.first'", StringComparison.Ordinal));
+    }
+
     private static QuestCatalogRuntimeDocument Compile(params QuestAuthoringEntry[] quests)
     {
         return Compile(Catalog(quests));

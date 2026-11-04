@@ -1,0 +1,88 @@
+{
+    "id": "quest.fixture.errand",
+    "title": "Fixture Errand",
+    "giverActorId": "npc.city_services",
+    "turnInActorId": "npc.city_services",
+    "minimumLevel": 1,
+    "requiredQuestIds": [
+        "quest.fixture.wolves"
+    ],
+    "repeatable": false,
+    "tags": [
+        "fixture"
+    ],
+    "offerText": "Mine two ore, hand one over, tell me about it, and bring the letter back.",
+    "progressText": "Do you have the letter?",
+    "completionText": "The letter is back, and the errand is done.",
+    "startItems": [
+        {
+            "definitionId": "fixture.letter",
+            "quantity": 1
+        }
+    ],
+    "steps": [
+        {
+            "id": "work",
+            "objectives": [
+                {
+                    "id": "ore",
+                    "kind": "gather",
+                    "text": "Ore mined",
+                    "count": 2,
+                    "actorIds": [
+                        "resource.iron_vein"
+                    ],
+                    "actorTag": "",
+                    "itemId": "",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                },
+                {
+                    "id": "hand_over",
+                    "kind": "deliver",
+                    "text": "Ore handed over",
+                    "count": 1,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "fixture.ore",
+                    "npcActorId": "npc.city_services",
+                    "line": "",
+                    "dropSources": []
+                },
+                {
+                    "id": "report",
+                    "kind": "talk_to",
+                    "text": "Report the mining",
+                    "count": 1,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "",
+                    "npcActorId": "npc.city_services",
+                    "line": "Two ore mined. Well done.",
+                    "dropSources": []
+                }
+            ]
+        },
+        {
+            "id": "return",
+            "objectives": [
+                {
+                    "id": "letter",
+                    "kind": "collect",
+                    "text": "Letter returned",
+                    "count": 1,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "fixture.letter",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                }
+            ]
+        }
+    ],
+    "rewardGold": 5,
+    "rewardItems": [],
+    "rewardChoiceItems": []
+}

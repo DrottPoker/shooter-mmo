@@ -177,6 +177,7 @@ not a network authority relationship.
 - Global simulation-session leases.
 - Transactional item catalog mirroring, the constrained durable item schema,
   and complete empty character item-state bootstrap.
+- Quest catalog mirroring and every character's quest log.
 - Every durable item mutation, durable corpses, the death partition, Recovery
   Storage, and item maintenance.
 - HTTP authentication, policies, rate limiting, Problem Details, correlation
@@ -190,7 +191,7 @@ GameService is one process and one deployable, but its code is a modular
 monolith whose project references enforce one dependency order:
 
 ```text
-Platform <- Accounts <- Characters <- Placement <- Items <- host
+Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- host
 ```
 
 Each module exposes only its module class, its options, and its `Contracts`
@@ -772,6 +773,12 @@ transaction protocol stay authoritative for corpse contents.
 | `corpse_snapshots` | Non-interactive insured equipment and protected or insured Bag presentation metadata |
 | `death_events` | One row per authoritative death event with its original operation, canonical request hash, corpse, result correlation, and the optional killer kind and id |
 | `live_mob_loot_grants` | Every committed live Mob loot grant by its grant id, with the operation, character, and source corpse, so a grant commits once |
+| `quest_catalogs` | The mirrored revision of the quest catalog that GameService runs |
+| `quest_definitions` | Every quest id that a quest catalog held or retired, with the structural fingerprint of each quest this database mirrored and the retirement time of each retired one |
+| `character_quest_logs` | One quest log per character that ever had a quest, with the revision that every quest change raises |
+| `character_active_quests` | A character's active quests with their current step and acceptance time |
+| `character_quest_progress` | The progress of every counted objective of an active quest's current step |
+| `character_completed_quests` | A character's completed quests with the completion count and the last completion time |
 
 Every table belongs to exactly one GameService module, as
 [Table Ownership](GAME_SERVICE_MODULES.md#table-ownership) lists. Only the owner
