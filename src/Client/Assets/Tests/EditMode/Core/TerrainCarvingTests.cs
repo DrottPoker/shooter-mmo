@@ -301,6 +301,35 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(HeightAt(32f, 40f), Is.EqualTo(9.6f - 0.1f).Within(HeightTolerance));
         }
 
+        // Terrain data that a closed scene uses too, also through a prefab, which only the scene's
+        // file tells, stays as it is, and the validation says why.
+        [Test]
+        public void TerrainDataThatAnotherSceneUsesThroughAPrefabStaysAsItIsAndIsReported()
+        {
+            AssetDatabase.CreateFolder("Assets", AssetDirectory.Substring("Assets/".Length));
+            AssetDatabase.CreateAsset(grass, AssetDirectory + "/Grass.terrainlayer");
+            AssetDatabase.CreateAsset(sand, AssetDirectory + "/Sand.terrainlayer");
+            var data = terrain.terrainData;
+            AssetDatabase.CreateAsset(data, AssetDirectory + "/Terrain.asset");
+            var prefabTerrain = Terrain.CreateTerrainGameObject(data);
+            var prefab = PrefabUtility.SaveAsPrefabAsset(prefabTerrain, AssetDirectory + "/Terrain.prefab");
+            Object.DestroyImmediate(prefabTerrain);
+
+            var otherPath = AssetDirectory + "/Other.unity";
+            Assert.That(AssetDatabase.CopyAsset("Assets/Scenes/CharacterSelect.unity", otherPath), Is.True);
+            var other = EditorSceneManager.OpenScene(otherPath, OpenSceneMode.Additive);
+            PrefabUtility.InstantiatePrefab(prefab, other);
+            EditorSceneManager.SaveScene(other);
+            EditorSceneManager.CloseScene(other, true);
+
+            WorldBuilderCreate.AddLake(scene, new Vector3(20f, 9.6f, 20f));
+
+            AssertGroundEverywhere();
+            Assert.That(
+                WorldBuilder.Validate(scene).Where(issue => issue.Severity == WorldBuilderIssueSeverity.Error).Select(issue => issue.Target),
+                Is.EqualTo(new Object[] { terrain.GetComponent<WorldBuilderTerrain>() }));
+        }
+
         // A curve through a river's points can bulge far past them, and the channel follows the
         // curve there too.
         [Test]

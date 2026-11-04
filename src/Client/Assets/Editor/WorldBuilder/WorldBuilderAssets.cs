@@ -224,9 +224,10 @@ namespace Mmorpg.Client.Editor
             return shared;
         }
 
-        // What the saved scenes other than the one at the path use, as their files say. The files
-        // change rarely, so they are read once until the project changes, which keeps a rebuild
-        // fast while a shape is dragged.
+        // What the saved scenes other than the one at the path use, as their files say, also
+        // through the prefabs and other assets they use, such as the terrain data of a terrain in
+        // a prefab. The files change rarely, so they are read once until the project changes,
+        // which keeps a rebuild fast while a shape is dragged.
         private static HashSet<string> DependenciesOfOtherScenes(string scenePath)
         {
             if (scenePaths == null)
@@ -237,14 +238,15 @@ namespace Mmorpg.Client.Editor
             var used = new HashSet<string>();
             foreach (var path in scenePaths)
             {
-                if (path == scenePath)
+                // A scene removed since the list was made uses nothing any more.
+                if (path == scenePath || string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(path, AssetPathToGUIDOptions.OnlyExistingAssets)))
                 {
                     continue;
                 }
 
                 if (!SceneDependencies.TryGetValue(path, out var dependencies))
                 {
-                    dependencies = AssetDatabase.GetDependencies(path, false);
+                    dependencies = AssetDatabase.GetDependencies(path, true);
                     SceneDependencies.Add(path, dependencies);
                 }
 
