@@ -1,7 +1,7 @@
 {
     "FormatVersion": 3,
     "WorldId": "development-world-2",
-    "Revision": "9b2efbc29c2ab9648725b5bfd8fd652cedff50f468cdc9e8ef30c1e693b5f76f",
+    "Revision": "0d3614a3906c2a89e82c8ec12beaefa48bd9fc5cde557689caaa24d9450ab750",
     "ChunkSize": 32.0,
     "Chunks": [
         {
@@ -168,7 +168,7 @@
             "X": -5,
             "Z": 4,
             "ResourceName": "chunk_n5_p4",
-            "Sha256": "36d953c8cbf7f082f111665423f0d7e7befb821a52f3590b831491df503ba613",
+            "Sha256": "97f2d205798f19be5314022c374061874beb67fb90bdc497f1ec3b1db1934d44",
             "MinimumX": -160.0,
             "MinimumZ": 128.0,
             "MaximumX": -128.0,
@@ -278,7 +278,7 @@
             "X": -4,
             "Z": 3,
             "ResourceName": "chunk_n4_p3",
-            "Sha256": "0a85eb1668e24d27dba36b1e06471403f87261062666f584ea861080b3eddb26",
+            "Sha256": "f6f8e2a16dbdbfa8fcaccc0b73bc269bd699f42c3cf2dd6ef851a5dcb0c8bdef",
             "MinimumX": -128.0,
             "MinimumZ": 96.0,
             "MaximumX": -96.0,
@@ -288,7 +288,7 @@
             "X": -4,
             "Z": 4,
             "ResourceName": "chunk_n4_p4",
-            "Sha256": "c44f2f5211e88cd81aafb1f4c92b5f4f759d83cd8d8229b8d1a0e4de65333979",
+            "Sha256": "22579e0bc639f260ec4b3f7b670f0f2d64d5a195c8670ce67b3f753fb24b197b",
             "MinimumX": -128.0,
             "MinimumZ": 128.0,
             "MaximumX": -96.0,

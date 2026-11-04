@@ -514,8 +514,9 @@ A terrain with a `WorldBuilderTerrain` takes the beds of the water above it. The
 World Builder lowers it to the floor of every lake and sea, which falls from the
 shore by the shape's slope down to its deepest and, on a sea's horizon sides,
 keeps falling out to the World's edge; to every river's channel, as deep as the
-river in its middle and rising smoothly to the edge of its water; and to every
-waterfall's pool. A bank rises from the shore, or from the edge of a river's
+river in its middle below its surface, also where that surface lies at the level
+of the lake or sea it starts or ends in, and rising smoothly to the edge of its
+water; and to every waterfall's pool. A bank rises from the shore, or from the edge of a river's
 water, to the ground around over the shape's bank width. The World Builder never
 raises the ground, so water above it leaves it as it is. Each cell of the
 terrain's layer map takes the bed layer by the share of the cell that lies on a

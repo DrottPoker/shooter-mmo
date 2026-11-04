@@ -228,6 +228,37 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EquivalentTo(new Object[] { terrain.GetComponent<WorldBuilderTerrain>(), copyShaped }));
         }
 
+        // A river that starts in a lake lies at the lake's level where they meet, also a little
+        // past the lake's water, and its bed follows that level there instead of the height of
+        // its points, so no ground rises through the water.
+        [Test]
+        public void ARiverBedFollowsTheLevelOfTheLakeItStartsIn()
+        {
+            WorldBuilderCreate.AddLake(scene, new Vector3(32f, 9.6f, 32f));
+            var river = WorldBuilderCreate.AddRiver(scene, Vector3.zero);
+            var serialized = new SerializedObject(river);
+            var points = serialized.FindProperty("points");
+            points.arraySize = 2;
+            foreach (var index in new[] { 0, 1 })
+            {
+                var element = points.GetArrayElementAtIndex(index);
+                element.FindPropertyRelative("Position").vector3Value = new Vector3(32f, 10f, index == 0 ? 34f : 60f);
+                element.FindPropertyRelative("Width").floatValue = 4f;
+                element.FindPropertyRelative("Depth").floatValue = 0.1f;
+            }
+
+            serialized.FindProperty("curved").boolValue = false;
+            serialized.FindProperty("rowSpacing").floatValue = 1f;
+            serialized.FindProperty("bankWidth").floatValue = 0f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            WorldBuilder.Rebuild(scene);
+
+            // The river's points lie 0.4 m above the lake. The lake's water reaches 1.5 m past
+            // its shore at Z 38, so the river's rows lie at the lake's level up to the row at Z
+            // 40, past the lake's bank, where the channel lies 0.1 m below that level.
+            Assert.That(HeightAt(32f, 40f), Is.EqualTo(9.6f - 0.1f).Within(HeightTolerance));
+        }
+
         // A curve through a river's points can bulge far past them, and the channel follows the
         // curve there too.
         [Test]

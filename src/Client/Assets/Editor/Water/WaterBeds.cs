@@ -190,6 +190,8 @@ namespace Mmorpg.Client.Editor
 
     // A river: the channel is as deep as the river in its middle and rises smoothly to its
     // surface at the edge of its water, and the banks rise from there to the ground beside it.
+    // The surface lies where the river's surface rows lie, at the level of a lake or sea where the
+    // river starts or ends in one.
     internal sealed class RiverBed : WaterBed
     {
         private readonly RiverPath path;
@@ -198,6 +200,10 @@ namespace Mmorpg.Client.Editor
 
         // How far from its line the bed reaches where the river is widest.
         private readonly float reach;
+
+        // The surface's rows: how far along the river each lies, and its height.
+        private readonly float[] rowAlongs;
+        private readonly float[] rowHeights;
 
         public RiverBed(RiverModel river)
         {
@@ -208,6 +214,9 @@ namespace Mmorpg.Client.Editor
 
             // The line itself, since a curve through the points can bulge far past them.
             bounds = Expand(path.Bounds, reach);
+            var rows = RiverSurfaceBuilder.Rows(river);
+            rowAlongs = rows.Select(row => row.Along).ToArray();
+            rowHeights = rows.Select(row => row.Height).ToArray();
         }
 
         public override Rect Bounds
@@ -230,10 +239,32 @@ namespace Mmorpg.Client.Editor
 
             var values = path.ValuesAt(along);
             var halfWidth = values.Width * 0.5f;
-            var surface = values.Position.y;
+            var surface = SurfaceAt(along);
             return distance < halfWidth
                 ? surface - (values.Depth * (1f - WorldBuilderGeometry.Smooth01(distance / halfWidth)))
                 : Bank(surface, ground, distance - halfWidth, bank);
+        }
+
+        // The surface's height at a distance along the river, between the rows around it, as the
+        // surface's mesh lies there.
+        private float SurfaceAt(float along)
+        {
+            var next = System.Array.BinarySearch(rowAlongs, along);
+            if (next >= 0)
+            {
+                return rowHeights[next];
+            }
+
+            next = ~next;
+            if (next == 0 || next == rowAlongs.Length)
+            {
+                return rowHeights[next == 0 ? 0 : rowHeights.Length - 1];
+            }
+
+            var span = rowAlongs[next] - rowAlongs[next - 1];
+            return span > 0f
+                ? Mathf.Lerp(rowHeights[next - 1], rowHeights[next], (along - rowAlongs[next - 1]) / span)
+                : rowHeights[next];
         }
     }
 
