@@ -58,7 +58,13 @@ public sealed partial class TableOwnershipTests
             ["vendor_profiles"] = GameServiceSourceMap.Items,
             ["vendor_offers"] = GameServiceSourceMap.Items,
             ["vendor_sale_categories"] = GameServiceSourceMap.Items,
-            ["live_mob_loot_grants"] = GameServiceSourceMap.Items
+            ["live_mob_loot_grants"] = GameServiceSourceMap.Items,
+            ["quest_catalogs"] = GameServiceSourceMap.Quests,
+            ["quest_definitions"] = GameServiceSourceMap.Quests,
+            ["character_quest_logs"] = GameServiceSourceMap.Quests,
+            ["character_active_quests"] = GameServiceSourceMap.Quests,
+            ["character_quest_progress"] = GameServiceSourceMap.Quests,
+            ["character_completed_quests"] = GameServiceSourceMap.Quests
         };
 
     // R4: frozen migration history. Its SQL may touch any table and is pinned by

@@ -33,6 +33,12 @@ public sealed class ModulePublicSurfaceTests
                 "Mmorpg.GameService.Placement.SimulationTopologyConfig",
                 "Mmorpg.GameService.Placement.WorldManifestCatalog"
             ],
+            ["Mmorpg.GameService.Quests"] =
+            [
+                "Mmorpg.GameService.Quests.QuestCatalogSource",
+                "Mmorpg.GameService.Quests.QuestsModule",
+                "Mmorpg.GameService.Quests.QuestsModuleOptions"
+            ],
             ["Mmorpg.GameService.Items"] =
             [
                 "Mmorpg.GameService.Items.Development.DevelopmentItemPackageSource",
@@ -46,7 +52,7 @@ public sealed class ModulePublicSurfaceTests
             ]
         };
 
-    public static TheoryData<string> Modules => ["Accounts", "Characters", "Placement", "Items"];
+    public static TheoryData<string> Modules => ["Accounts", "Characters", "Placement", "Quests", "Items"];
 
     [Theory]
     [MemberData(nameof(Modules))]

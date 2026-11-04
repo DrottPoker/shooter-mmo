@@ -1,0 +1,58 @@
+{
+    "id": "quest.fixture.wolves",
+    "title": "Fixture Wolves",
+    "giverActorId": "npc.city_services",
+    "turnInActorId": "npc.city_services",
+    "minimumLevel": 1,
+    "requiredQuestIds": [],
+    "repeatable": false,
+    "tags": [
+        "fixture"
+    ],
+    "offerText": "Hunt two Feral Wolves for the fixture.",
+    "progressText": "Are the two wolves hunted?",
+    "completionText": "Two wolves fewer. Take a potion and pick a weapon.",
+    "startItems": [],
+    "steps": [
+        {
+            "id": "hunt",
+            "objectives": [
+                {
+                    "id": "wolves",
+                    "kind": "kill",
+                    "text": "Feral Wolves slain",
+                    "count": 2,
+                    "actorIds": [
+                        "mob.feral_wolf"
+                    ],
+                    "actorTag": "",
+                    "itemId": "",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                }
+            ]
+        }
+    ],
+    "rewardGold": 10,
+    "rewardItems": [
+        {
+            "definitionId": "fixture.potion",
+            "quantity": 1
+        }
+    ],
+    "rewardChoiceItems": [
+        {
+            "definitionId": "fixture.sword",
+            "quantity": 1
+        },
+        {
+            "definitionId": "fixture.shield",
+            "quantity": 1
+        },
+        {
+            "definitionId": "fixture.bow",
+            "quantity": 1
+        }
+    ]
+}

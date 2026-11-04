@@ -26,6 +26,7 @@ public sealed class RouteTableSnapshotTests
         "GET /api/characters/ auth=AccountSession rate=- sensitive=no",
         "GET /api/characters/{characterId:guid}/bank auth=AccountSession rate=- sensitive=yes",
         "GET /api/characters/{characterId:guid}/item-state auth=AccountSession rate=- sensitive=yes",
+        "GET /api/characters/{characterId:guid}/quests auth=AccountSession rate=- sensitive=yes",
         "GET /api/characters/{characterId:guid}/recovery auth=AccountSession rate=- sensitive=yes",
         "GET /api/item-catalog auth=AccountSession rate=- sensitive=no",
         "GET /api/shards/ auth=- rate=- sensitive=no",

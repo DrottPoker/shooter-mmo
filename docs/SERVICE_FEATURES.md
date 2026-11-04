@@ -34,6 +34,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot, including the currency balance |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
 | `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store unclaimed Recovery Storage deliveries |
+| `GET /api/characters/{characterId}/quests` | Owning account session | Return the no-store quest log: active quests with their current step and its progress, and completed quests |
 | `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |
 | `POST /api/characters/{characterId}/item-operations/split` | Owning offline account session | Split a stack into an exact destination slot |
 | `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session | Merge compatible stacks |
@@ -1184,6 +1185,28 @@ how to run them.
 | `--dev-items-level <characterId> <level>` | Set the character's level, because no experience exists yet |
 | `--dev-items-currency <characterId> <amount>` | Credit a positive whole amount through the wallet with a `development` ledger row |
 
+## Quests
+
+[Quest System Design](QUEST_SYSTEM_DESIGN.md) owns the quest rules; the Quests
+module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
+
+- GameService loads the compiled quest catalog from `Quests:CatalogPath`,
+  revalidates its structure, structural fingerprints, and revision, and mirrors
+  the revision and every quest id with its fingerprint into PostgreSQL before it
+  accepts traffic. It refuses to start when a quest left the catalog without
+  being listed as retired, a retired id returns, or a quest that characters have
+  active was retired or changed its steps or objectives; such a change needs an
+  explicit data migration.
+- `GET /api/characters/{characterId}/quests` verifies exact account and
+  active-character ownership and returns, from one repeatable-read snapshot,
+  the quest catalog revision, the quest log revision, every active quest with its
+  current step, acceptance time, and the progress of the step's counted
+  objectives, and every completed quest with its completion count and last
+  completion time. Collect objectives count carried items, so they carry no
+  stored progress. A character without quests has quest log revision 0. Quest
+  texts and rules are not part of the response; the client reads them from its
+  bundled quest catalog.
+
 ## Error Codes
 
 Error codes are stable contracts for programs; messages are for people and may
@@ -1223,6 +1246,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
 | Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_appearance_change`, `development_look_disabled` |
 | Item reads and requests | `item_catalog_not_found`, `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
+| Quest reads | `character_quests_not_found` |
 | Item authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `simulation_session_invalid` |
 | Item operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large` |
 | Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |
@@ -1336,6 +1360,7 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Simulation:Topology` | `local-fleet`, `local-node-1`, `local-shard-1`, `local-shard-2` | Fleets, Nodes, and Shards, as [Topology Bootstrap](#topology-bootstrap) describes |
 | `WorldData:WorldsPath` | `WorldData/Worlds` | The World manifests that seed the World definitions |
 | `Items:CatalogPath` | `WorldData/Items/core.item-catalog.json` | The compiled item catalog that GameService mirrors |
+| `Quests:CatalogPath` | `WorldData/Quests/core.quest-catalog.json` | The compiled quest catalog that GameService runs and mirrors |
 | `Items:Operations:TransactionTimeoutMilliseconds` | `10000` | Statement timeout of an item transaction, 100 to 120,000 |
 | `Items:Operations:LockTimeoutMilliseconds` | `2000` | Lock timeout of an item transaction, 10 to 120,000 and at most the transaction timeout |
 | `Items:Operations:MaximumCommandPayloadBytes` | `65536` | Largest canonical command, 1,024 to 1,048,576 |

@@ -5,10 +5,14 @@ using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.Testing.Content;
 
-// The real quest content, compiled against the real item catalog and every checked-in World.
+// The real quest content, compiled against the real item catalog and every checked-in World,
+// and the test-owned fixture catalog, compiled against the fixture items and the fixture World.
 public static class QuestCatalogTestData
 {
     public static string QuestsDirectory => ContentLayout.QuestsDirectory(RepositoryPaths.Content);
+
+    public static string FixtureQuestsDirectory =>
+        ContentLayout.QuestsDirectory(RepositoryPaths.QuestCatalogFixtureContent);
 
     public static QuestCatalogAuthoringDocument LoadAuthoring()
     {
@@ -23,6 +27,16 @@ public static class QuestCatalogTestData
         return QuestCatalogCompiler.Compile(LoadAuthoring(), ItemCatalogTestData.Compile(), worlds);
     }
 
+    public static QuestCatalogRuntimeDocument CompileFixture()
+    {
+        return QuestCatalogCompiler.Compile(
+            QuestContent.LoadCatalog(FixtureQuestsDirectory),
+            ItemCatalogTestData.CompileFixture(),
+            [WorldActorTestData.Compile()]);
+    }
+
     public static string RuntimeJson => File.ReadAllText(
         ContentLayout.GeneratedQuestCatalogPath(RepositoryPaths.Generated));
+
+    public static string FixtureRuntimeJson => File.ReadAllText(RepositoryPaths.QuestCatalogFixtureRuntimePath);
 }

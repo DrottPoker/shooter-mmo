@@ -7,6 +7,7 @@ using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Placement.Development;
 using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.GameService.Quests;
 using Mmorpg.Server.Telemetry;
 
 namespace Mmorpg.GameService.Config;
@@ -18,6 +19,7 @@ internal sealed record GameServiceConfiguration(
     AccountsModuleOptions Accounts,
     CharactersModuleOptions Characters,
     PlacementModuleOptions Placement,
+    QuestsModuleOptions Quests,
     ItemsModuleOptions Items)
 {
     // Process-level export settings; disabled unless Telemetry:OtlpEndpoint is set.
@@ -45,6 +47,7 @@ internal sealed record GameServiceConfiguration(
         var itemOperations = ItemOperationsOptions.FromConfiguration(configuration);
         var redisAcceleration = RedisAccelerationOptions.FromConfiguration(configuration);
         var itemCatalog = ItemCatalogSource.FromConfiguration(configuration);
+        var questCatalog = QuestCatalogSource.FromConfiguration(configuration);
         var telemetry = TelemetryOptions.FromConfiguration(configuration);
 
         return new GameServiceConfiguration(
@@ -57,6 +60,7 @@ internal sealed record GameServiceConfiguration(
                 DevelopmentSimulationBots = developmentSimulationBots,
                 DevelopmentLooks = environment.IsDevelopment()
             },
+            new QuestsModuleOptions(questCatalog),
             new ItemsModuleOptions(
                 itemCatalog,
                 itemOperations,

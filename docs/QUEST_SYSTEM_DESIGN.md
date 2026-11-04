@@ -25,9 +25,13 @@ Implemented:
 - Quest content in `content/quests/`, its compiler `tools/QuestCatalogCompiler`
   with the [validation](#validation) and the [limits](#limits) below, and the
   shared availability and step rules in WorldData. The checked-in quests are the
-  development chain that [Game Content](../content/README.md#quests) lists. No
-  service loads them yet.
+  development chain that [Game Content](../content/README.md#quests) lists.
 - A quest NPC is an NPC with a `quest_offer` or `quest_turn_in` capability.
+- The GameService Quests module: the quest catalog loaded at startup with the
+  checks of [Changing Released Quests](#changing-released-quests), the stored
+  [quest state](#quest-state), and the owning account's read of it, as
+  [Service Features](SERVICE_FEATURES.md#quests) describes. No command changes
+  quest state yet.
 
 Planned: everything else in this document. Quest content replaces the
 configured quest, one `quests` capability replaces both quest capability kinds,
@@ -280,10 +284,13 @@ authority that counts it, and its presentation:
 
 For every character, GameService stores:
 
-- Each active quest: its id, its current step, the progress of every objective
-  of that step, and when it was accepted.
+- Each active quest: its id, its current step, the progress of every counted
+  objective of that step, and when it was accepted. Collect objectives count the
+  carried items instead, so they store no progress.
 - Each completed quest: its id, how many times it was completed, and when it was
   last completed.
+- A quest log revision that every change raises, so a client can tell whether it
+  missed a change.
 
 Availability and readiness are derived, never stored: a quest is available by
 [Requirements And Availability](#requirements-and-availability), and an active

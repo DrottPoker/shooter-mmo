@@ -10,6 +10,7 @@ using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.GameService.Quests;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Content;
@@ -104,8 +105,9 @@ internal static class GameServiceTestComposition
                 Worlds = WorldManifestCatalog.FromManifests(
                     WorldManifestFileStore.LoadAll(RepositoryPaths.Worlds))
             },
+            // Tests run against the test-owned quest and item catalogs, not the game content.
+            new QuestsModuleOptions(new QuestCatalogSource(RepositoryPaths.QuestCatalogFixtureRuntimePath)),
             new ItemsModuleOptions(
-                // Tests run against the test-owned item catalog, not the game content.
                 new ItemCatalogSource(RepositoryPaths.ItemCatalogFixtureRuntimePath),
                 ItemOperationsOptions.CreateDefaults(),
                 FixtureNpcLifecycle,

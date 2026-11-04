@@ -3,6 +3,7 @@ using Mmorpg.GameService;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Tests.Architecture;
@@ -27,7 +28,8 @@ public sealed class ModuleCompositionTests
         (typeof(ICharacterWallet), "Mmorpg.GameService.Characters"),
         (typeof(ISimulationSessionAuthority), "Mmorpg.GameService.Placement"),
         (typeof(ISimulationWorkerAuthority), "Mmorpg.GameService.Placement"),
-        (typeof(ISimulationPresence), "Mmorpg.GameService.Placement")
+        (typeof(ISimulationPresence), "Mmorpg.GameService.Placement"),
+        (typeof(ICharacterQuestLog), "Mmorpg.GameService.Quests")
     ];
 
     [Fact]

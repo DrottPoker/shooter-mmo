@@ -4,7 +4,7 @@ using Mmorpg.GameService.Testing;
 namespace Mmorpg.GameService.Tests.Architecture;
 
 // A module reaches another module only through that module's Contracts namespace and
-// only down the order Platform, Accounts, Characters, Placement, Items, host. The
+// only down the order Platform, Accounts, Characters, Placement, Quests, Items, host. The
 // compiler enforces the order; this also keeps modules off each other's module classes
 // and options. The host composes the modules and may reference all of them.
 public sealed partial class NamespaceBoundaryTests
@@ -16,6 +16,7 @@ public sealed partial class NamespaceBoundaryTests
         ("Mmorpg.GameService.Accounts", GameServiceSourceMap.Accounts),
         ("Mmorpg.GameService.Characters", GameServiceSourceMap.Characters),
         ("Mmorpg.GameService.Placement", GameServiceSourceMap.Placement),
+        ("Mmorpg.GameService.Quests", GameServiceSourceMap.Quests),
         ("Mmorpg.GameService.Items", GameServiceSourceMap.Items),
         ("Mmorpg.GameService.Config", GameServiceSourceMap.Host),
         ("Mmorpg.GameService.Database", GameServiceSourceMap.Host),

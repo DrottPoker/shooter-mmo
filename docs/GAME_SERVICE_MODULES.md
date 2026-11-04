@@ -1,7 +1,7 @@
 # GameService Modules
 
 GameService is one ASP.NET Core process and one deployable whose code is a
-compiler-enforced modular monolith: a host and five module projects. This
+compiler-enforced modular monolith: a host and six module projects. This
 document owns the module projects, their public surface and composition, table
 ownership, the access rules, the contracts between modules, the items
 transaction kernel, the lock order, the migrations, the module configuration,
@@ -17,10 +17,10 @@ the item rules that the kernel enforces in
 ## Modules
 
 GameService keeps its process and assembly name `Mmorpg.GameService`. Its code
-is split into six projects whose references enforce one dependency order:
+is split into seven projects whose references enforce one dependency order:
 
 ```text
-Platform <- Accounts <- Characters <- Placement <- Items <- host
+Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- host
 ```
 
 | Project | Path | References | Owns |
@@ -29,6 +29,7 @@ Platform <- Accounts <- Characters <- Placement <- Items <- host
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
 | `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, character level, and character looks |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
+| `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, and every character's quest log |
 | `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, item transactions including vendor trades, gathering yields, and ammunition batches, corpses, the death partition, Recovery, policies, item operations maintenance, the stack stress fixtures, and the Development item tools |
 | `Mmorpg.GameService` (host) | `src/Server/GameService` | every module | `Program.cs`, the configuration loader, database startup, the frozen baseline migrations, health routes, and the shipped configuration and content files |
 
@@ -54,6 +55,7 @@ another module or any production assembly access to its internals.
 | Accounts | `AccountsModule`, `AccountsModuleOptions`, `SimulationWorkerCredentials`, `RedisAccelerationOptions` |
 | Characters | `CharactersModule`, `CharactersModuleOptions` |
 | Placement | `PlacementModule`, `PlacementModuleOptions`, `SimulationTopologyConfig`, `FleetBootstrapConfig`, `SimulationNodeBootstrapConfig`, `ShardBootstrapConfig`, `WorldManifestCatalog`, `DevelopmentSimulationBotOptions` |
+| Quests | `QuestsModule`, `QuestsModuleOptions`, `QuestCatalogSource` |
 | Items | `ItemsModule`, `ItemsModuleOptions`, `ItemCatalogSource`, `ItemOperationsOptions`, `NpcItemLifecycleOptions`, `StackStress.StackStressFixtureOptions`, `Development.DevelopmentItemPackageSource`, `ItemsCommandLine` |
 
 Platform is public except its middleware and exception handler.
@@ -83,7 +85,11 @@ order. Startup runs in this order:
    through `PlacementModule.SeedTopologyAsync`. Characters' seeder,
    `CharacterAppearanceVerifier`, refuses to start when
    `content/characters/appearance.json` no longer offers what a stored look
-   names, so such a content change needs a data migration first. Items' seeder
+   names, so such a content change needs a data migration first. Quests' seeder,
+   `QuestCatalogSeeder`, mirrors the quest catalog's revision and quest ids and
+   refuses to start when a quest left the catalog without being retired, a
+   retired id returns, or a quest that characters have active was retired or
+   changed its steps or objectives. Items' seeder
    mirrors the item catalog and then back-fills character item state.
 6. Run a `--dev-items-*` command through `ItemsCommandLine` and exit, if one is
    given. Hosted services never start in that mode.
@@ -104,11 +110,13 @@ inside the modules.
 | Accounts | `accounts`, `account_sessions` |
 | Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, and `character_appearances` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
+| Quests | `quest_catalogs`, `quest_definitions`, `character_quest_logs`, `character_active_quests`, `character_quest_progress`, and `character_completed_quests`; the quest catalog advisory lock `7104202611042200` |
 | Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, and `live_mob_loot_grants`; the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, and the catalog advisory lock `7104202607151230` |
 
 Foreign keys between modules follow the dependency order only: Characters to
-Accounts, Placement to Accounts and Characters, and Items to Accounts,
-Characters, and Placement (`corpses.shard_id`). For the same reason
+Accounts, Placement to Accounts and Characters, Quests to Characters
+(`character_quest_logs.character_id`), and Items to Accounts, Characters, and
+Placement (`corpses.shard_id`). For the same reason
 `character_currency_ledger.item_operation_id` names the item operation of a
 change without a foreign key to `item_operations`. Cascading deletes therefore
 cross module boundaries, but no delete path exists for accounts or characters
@@ -159,6 +167,8 @@ caller keeps its own check order, error codes, and messages.
 | `ISimulationPresence` | Placement | Items | Find a character that is in the world |
 | `PlacementSql` | Placement | Items | Shard existence and active simulation session fragments |
 | `ISimulationCharacterStateProvider` | Placement (SPI) | implemented by Items | Lock or read a character's carry state and equipment for its simulation session |
+| `IQuestDefinitions` | Quests | Items | The loaded quest catalog: its id, revision, active quest limit, and every quest definition by id |
+| `ICharacterQuestLog` | Quests | Items | Read a character's quest log, or accept, progress, advance, complete, or abandon one of its quests, each raising the log revision |
 | `IItemCatalogRevisionProvider` | Placement (SPI) | implemented by Items | Read the mirrored item catalog revision that a placed worker must run |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
 | `IDatabaseSeeder` | Platform | implemented by Characters and Items | Verify or seed module data after the migrations: Characters checks the stored looks against the appearance content, and Items mirrors the item catalog and back-fills character item state |
@@ -389,6 +399,12 @@ accounts -> account_sessions -> characters (ascending id)
   -> Items (entitlement advisory lock -> character_item_states ascending -> containers and items)
 ```
 
+`ICharacterQuestLog` takes no lock of its own. Its writes run only in
+transactions that already hold the character's lock, and the revision upsert
+that starts every write locks the quest log row of that character, so a quest
+change can wait only on another transaction of the same character, which holds
+the character lock first.
+
 Ticket consume locks `character_item_states` before
 `character_simulation_sessions`. That is safe because it first locks the
 character `FOR UPDATE`, which conflicts with the `FOR NO KEY UPDATE` lock that
@@ -453,12 +469,13 @@ topology names.
 | 29 | `202611021300_expand_permanent_inventory` | Items |
 | 30 | `202611021700_reduce_permanent_inventory` | Items |
 | 31 | `202611041800_mob_corpse_ownership` | Items |
+| 32 | `202611042200_quest_log` | Quests |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
 Each module lists its own migrations in `IGameServiceModule.Migrations`, from
-its `CharactersSchemaMigrations`, `PlacementSchemaMigrations`, or
-`ItemsSchemaMigrations` list. `GameServiceSchema` merges the host list with
+its `CharactersSchemaMigrations`, `PlacementSchemaMigrations`,
+`QuestsSchemaMigrations`, or `ItemsSchemaMigrations` list. `GameServiceSchema` merges the host list with
 every module's list, sorted by ordinal id. Startup fails when an id repeats or
 when the merged list does not start with the shipped history, so every new
 migration must sort after the last shipped one. A new migration also appends
@@ -482,6 +499,7 @@ immutable validated option records instead of reading `IConfiguration`:
 | `Auth:SessionLifetimeHours`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
 | `Game:MaxCharactersPerAccount`, `Characters:AppearancePath` | `CharactersModuleOptions` |
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
+| `Quests:CatalogPath` | `QuestsModuleOptions` |
 | `Items:*`, `StackStressFixtures:*`, `STACK_STRESS_FIXTURE_SECRET` | `ItemsModuleOptions` |
 | `Telemetry:*` | The host, through `TelemetryOptions` of `Mmorpg.Server.Telemetry` |
 
@@ -490,8 +508,8 @@ keys of every module together and throws one `GameService configuration is
 invalid:` error that lists every problem. It then reads the self-contained
 option sets in a fixed order, each with its own error message: the World
 catalog, Development simulation bots, stack stress fixtures, NPC item
-lifecycle, item operations, Redis acceleration, the item catalog source,
-telemetry, and the Development item packages. Worker credentials keep the
+lifecycle, item operations, Redis acceleration, the item catalog source, the
+quest catalog source, telemetry, and the Development item packages. Worker credentials keep the
 original key casing, so only an exact worker id matches, and the shared worker
 secret applies only when no per-worker secret exists. Items reads the worker
 heartbeat timeout through Placement's `SimulationWorkerLeasePolicy` and writes
@@ -503,7 +521,7 @@ command's idempotency payload. The keys and their defaults are in
 
 These are the SQL statements and contract calls that cross a module boundary,
 and how each one crosses. Acc is Accounts, Chr is Characters, Plc is Placement,
-and Itm is Items. R is read, W is write, and L is lock. Code comments refer to
+Qst is Quests, and Itm is Items. R is read, W is write, and L is lock. Code comments refer to
 the statement ids.
 
 | # | Statement | Foreign access | How it crosses |
@@ -559,6 +577,7 @@ the statement ids.
 | S52 | Ticket consume reads the character's look | Chr R | `ICharacterAppearances.ReadAsync` in `ShardService` |
 | S53 | The worker appearance route lowers or raises the headwear, or stores a development look | Chr L, W | `ICharacterAppearances.SetHeadwearLoweredAsync` and `SetDevelopmentLookAsync` in `SimulationAppearanceService` |
 | S54 | Durable corpse responses read the looks of their source characters, deleted ones too | Chr R | `ICharacterAppearances.ReadManyAsync` in `CorpseService` |
+| S55 | The quest log read checks character ownership | Chr R | `CharactersSql.ActiveCharacters` in `QuestLogQueryService` |
 
 Notes on specific statements:
 

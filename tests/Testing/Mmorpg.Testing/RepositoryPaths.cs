@@ -30,6 +30,17 @@ public static class RepositoryPaths
     public static string ItemCatalogFixtureRuntimePath =>
         ContentLayout.GeneratedItemCatalogPath(ItemCatalogFixtureGenerated);
 
+    // The test-owned quest catalog, compiled against the fixture items and the fixture
+    // World, so GameService quest tests never change with the game's quests.
+    public static string QuestCatalogFixtureContent =>
+        Path.Combine(Root, "tests", "Fixtures", "Quests", "content");
+
+    public static string QuestCatalogFixtureGenerated =>
+        Path.Combine(Root, "tests", "Fixtures", "Quests", "generated");
+
+    public static string QuestCatalogFixtureRuntimePath =>
+        ContentLayout.GeneratedQuestCatalogPath(QuestCatalogFixtureGenerated);
+
     // The test-owned actor spawn layout. Simulation tests use it, so the development
     // Worlds can be redesigned without breaking them; content tests read the real Worlds.
     public static string WorldActorFixtureSpawnsPath =>

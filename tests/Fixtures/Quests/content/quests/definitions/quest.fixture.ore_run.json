@@ -1,0 +1,38 @@
+{
+    "id": "quest.fixture.ore_run",
+    "title": "Fixture Ore Run",
+    "giverActorId": "npc.city_services",
+    "turnInActorId": "npc.city_services",
+    "minimumLevel": 1,
+    "requiredQuestIds": [],
+    "repeatable": true,
+    "tags": [
+        "fixture"
+    ],
+    "offerText": "Bring me three ore, as often as you like.",
+    "progressText": "Three ore, please.",
+    "completionText": "Three ore. Come back for more.",
+    "startItems": [],
+    "steps": [
+        {
+            "id": "deliver",
+            "objectives": [
+                {
+                    "id": "ore",
+                    "kind": "collect",
+                    "text": "Ore",
+                    "count": 3,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "fixture.ore",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                }
+            ]
+        }
+    ],
+    "rewardGold": 1,
+    "rewardItems": [],
+    "rewardChoiceItems": []
+}

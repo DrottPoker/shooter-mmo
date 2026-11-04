@@ -2,8 +2,8 @@ using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Tests.Architecture;
 
-// The project references enforce Platform <- Accounts <- Characters <- Placement <- Items
-// <- host. This pins the compiled graph, so a new edge is a deliberate decision.
+// The project references enforce Platform <- Accounts <- Characters <- Placement <- Quests
+// <- Items <- host. This pins the compiled graph, so a new edge is a deliberate decision.
 public sealed class ModuleDependencyGraphTests
 {
     private static readonly IReadOnlyDictionary<string, string[]> ExpectedReferences =
@@ -15,6 +15,8 @@ public sealed class ModuleDependencyGraphTests
                 ["Mmorpg.GameService.Accounts", "Mmorpg.GameService.Platform"],
             ["Mmorpg.GameService.Placement"] =
                 ["Mmorpg.GameService.Accounts", "Mmorpg.GameService.Characters", "Mmorpg.GameService.Platform"],
+            // Quests reads characters only through constant SQL fragments, which compile into it.
+            ["Mmorpg.GameService.Quests"] = ["Mmorpg.GameService.Accounts", "Mmorpg.GameService.Platform"],
             ["Mmorpg.GameService.Items"] =
             [
                 "Mmorpg.GameService.Accounts",
@@ -28,7 +30,8 @@ public sealed class ModuleDependencyGraphTests
                 "Mmorpg.GameService.Characters",
                 "Mmorpg.GameService.Items",
                 "Mmorpg.GameService.Placement",
-                "Mmorpg.GameService.Platform"
+                "Mmorpg.GameService.Platform",
+                "Mmorpg.GameService.Quests"
             ]
         };
 

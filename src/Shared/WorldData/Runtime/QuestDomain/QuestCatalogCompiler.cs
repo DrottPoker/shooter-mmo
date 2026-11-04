@@ -21,6 +21,15 @@ namespace Mmorpg.WorldData.Quests
             WorldActorCapabilityKindIds.QuestTurnIn
         };
 
+        private static readonly HashSet<string> ObjectiveKinds = new HashSet<string>(StringComparer.Ordinal)
+        {
+            QuestObjectiveKindIds.Kill,
+            QuestObjectiveKindIds.Collect,
+            QuestObjectiveKindIds.Deliver,
+            QuestObjectiveKindIds.TalkTo,
+            QuestObjectiveKindIds.Gather
+        };
+
         public static QuestCatalogRuntimeDocument Compile(
             QuestCatalogAuthoringDocument authoring,
             ItemCatalogRuntimeDocument items,
@@ -73,8 +82,9 @@ namespace Mmorpg.WorldData.Quests
             return runtime;
         }
 
-        // A loaded catalog must be exactly what the compiler wrote: its format, every structural
-        // fingerprint, and the revision are computed again and compared.
+        // A loaded catalog must be exactly what the compiler wrote: its format and structure are
+        // checked, and every structural fingerprint and the revision are computed again and
+        // compared. Its references were checked when it was compiled.
         public static void ValidateRuntime(QuestCatalogRuntimeDocument runtime)
         {
             if (runtime == null)
@@ -94,6 +104,12 @@ namespace Mmorpg.WorldData.Quests
                 throw new QuestValidationException(errors);
             }
 
+            ValidateRuntimeStructure(runtime, errors);
+            if (errors.Count > 0)
+            {
+                throw new QuestValidationException(errors);
+            }
+
             foreach (var quest in runtime.Quests)
             {
                 if (quest == null || !string.Equals(quest.StructuralFingerprint, StructuralFingerprintOf(quest), StringComparison.Ordinal))
@@ -110,6 +126,107 @@ namespace Mmorpg.WorldData.Quests
             if (errors.Count > 0)
             {
                 throw new QuestValidationException(errors);
+            }
+        }
+
+        // The shape that the services rely on: unique ids, complete lists, required quests in
+        // the catalog, and steps and objectives within the content limits.
+        private static void ValidateRuntimeStructure(QuestCatalogRuntimeDocument runtime, List<string> errors)
+        {
+            if (!IsIdentifier(runtime.CatalogId))
+            {
+                errors.Add("runtime quest catalog catalogId must be a content identifier.");
+            }
+
+            if (runtime.MaximumActiveQuests < QuestContentRules.MinimumActiveQuestLimit
+                || runtime.MaximumActiveQuests > QuestContentRules.MaximumActiveQuestLimit)
+            {
+                errors.Add("runtime quest catalog maximumActiveQuests must be between "
+                    + QuestContentRules.MinimumActiveQuestLimit
+                    + " and "
+                    + QuestContentRules.MaximumActiveQuestLimit
+                    + ".");
+            }
+
+            var retired = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var id in runtime.RetiredQuestIds)
+            {
+                if (!IsIdentifier(id) || !retired.Add(id))
+                {
+                    errors.Add("runtime quest catalog retiredQuestIds holds an invalid or duplicate id '" + id + "'.");
+                }
+            }
+
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var quest in runtime.Quests)
+            {
+                if (quest == null || !IsIdentifier(quest.Id) || retired.Contains(quest.Id) || !ids.Add(quest.Id))
+                {
+                    errors.Add("runtime quest catalog holds a missing, invalid, retired, or duplicate quest '"
+                        + quest?.Id
+                        + "'.");
+                }
+            }
+
+            foreach (var quest in runtime.Quests.Where(quest => quest != null))
+            {
+                var path = "runtime quest " + quest.Id;
+                if (quest.RequiredQuestIds == null
+                    || quest.Tags == null
+                    || quest.StartItems == null
+                    || quest.RewardItems == null
+                    || quest.RewardChoiceItems == null
+                    || quest.StartItems.Concat(quest.RewardItems).Concat(quest.RewardChoiceItems).Any(item => item == null))
+                {
+                    errors.Add(path + " is missing a list or a list entry.");
+                }
+                else if (quest.RequiredQuestIds.Any(required => required == null || !ids.Contains(required)))
+                {
+                    errors.Add(path + " requires a quest that the catalog does not hold.");
+                }
+
+                ValidateRuntimeSteps(quest, path, errors);
+            }
+        }
+
+        private static void ValidateRuntimeSteps(QuestDefinition quest, string path, List<string> errors)
+        {
+            if (quest.Steps == null || quest.Steps.Length < 1 || quest.Steps.Length > QuestContentRules.MaximumSteps)
+            {
+                errors.Add(path + " must hold between 1 and " + QuestContentRules.MaximumSteps + " steps.");
+                return;
+            }
+
+            var stepIds = new HashSet<string>(StringComparer.Ordinal);
+            var objectiveIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var step in quest.Steps)
+            {
+                if (step == null
+                    || !IsIdentifier(step.Id)
+                    || !stepIds.Add(step.Id)
+                    || step.Objectives == null
+                    || step.Objectives.Length < 1
+                    || step.Objectives.Length > QuestContentRules.MaximumObjectivesPerStep)
+                {
+                    errors.Add(path + " holds a step without a unique id or with too few or too many objectives.");
+                    continue;
+                }
+
+                foreach (var objective in step.Objectives)
+                {
+                    if (objective == null
+                        || !IsIdentifier(objective.Id)
+                        || !objectiveIds.Add(objective.Id)
+                        || !ObjectiveKinds.Contains(objective.Kind)
+                        || objective.Count < 1
+                        || objective.Count > QuestContentRules.MaximumObjectiveCount
+                        || objective.ActorIds == null
+                        || objective.DropSources == null
+                        || objective.DropSources.Any(source => source == null))
+                    {
+                        errors.Add(path + " step " + step.Id + " holds an objective without a unique id, a known kind, a valid count, or its lists.");
+                    }
+                }
             }
         }
 
