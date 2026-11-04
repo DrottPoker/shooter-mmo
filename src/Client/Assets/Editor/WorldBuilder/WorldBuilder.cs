@@ -9,10 +9,10 @@ using UnityEngine.SceneManagement;
 namespace Mmorpg.Client.Editor
 {
     // Builds the parts of a World that shapes describe, such as lakes, rivers, seas, and
-    // waterfalls, from those shapes. It rebuilds everything of a scene at once, because one shape
-    // shapes another where they meet, and writes only what changes. The World Builder window, the
-    // collision bake, and the Development World builders use it; see docs/DEVELOPMENT_WORLDS.md
-    // under World Builder.
+    // waterfalls and the beds they carve into a terrain, from those shapes. It rebuilds everything
+    // of a scene at once, because one shape shapes another where they meet, and writes only what
+    // changes. The World Builder window, the collision bake, and the Development World builders
+    // use it; see docs/DEVELOPMENT_WORLDS.md under World Builder.
     public static class WorldBuilder
     {
         // Rebuilds what the shapes of the scene make. Returns whether anything changed, and marks
@@ -24,7 +24,9 @@ namespace Mmorpg.Client.Editor
                 return false;
             }
 
-            var changed = WaterBuilder.Build(WaterScene.Collect(scene));
+            var water = WaterScene.Collect(scene);
+            var changed = WaterBuilder.Build(water);
+            changed |= TerrainCarver.Build(scene, WaterBed.Collect(scene, water));
             if (changed && !EditorApplication.isPlaying && !EditorSceneManager.IsPreviewScene(scene))
             {
                 EditorSceneManager.MarkSceneDirty(scene);
@@ -65,6 +67,19 @@ namespace Mmorpg.Client.Editor
                         shape,
                         "A shape may only turn around the vertical axis and keeps a scale of 1, so its water lies level.",
                         WorldBuilderIssueSeverity.Warning));
+                }
+            }
+
+            var shared = WorldBuilderAssets.SharedTerrainData(scene);
+            foreach (var shaped in Shapes<WorldBuilderTerrain>(scene))
+            {
+                var data = shaped.GetComponent<Terrain>().terrainData;
+                if (data != null && shared.Contains(data))
+                {
+                    issues.Add(new WorldBuilderIssue(
+                        shaped,
+                        "Another terrain uses the terrain data " + data.name + " too, so the water cannot shape this terrain: "
+                        + "each terrain would carve it at its own place. Give this terrain terrain data of its own, such as a copy."));
                 }
             }
 

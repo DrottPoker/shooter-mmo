@@ -106,14 +106,14 @@ namespace Mmorpg.Client.Editor
                     scenesGroup.entries.Select(entry => entry.AssetPath));
                 foreach (var plan in plans)
                 {
-                    // Water that no longer matches its shapes is rebuilt and saved, so the scene
-                    // keeps what is baked.
+                    // Water and beds that no longer match their shapes are rebuilt and saved, so
+                    // the scene keeps what is baked.
                     var scene = EditorSceneManager.OpenScene(plan.ScenePath, OpenSceneMode.Single);
                     if (WorldBuilder.Rebuild(scene))
                     {
                         EditorSceneManager.SaveScene(scene);
                         AssetDatabase.SaveAssets();
-                        Debug.Log("[WORLD COLLISION] Rebuilt the water of " + plan.ScenePath + " from its shapes and saved it.");
+                        Debug.Log("[WORLD COLLISION] Rebuilt the water and beds of " + plan.ScenePath + " from their shapes and saved them.");
                     }
 
                     foreach (var worldId in plan.WorldIds)
@@ -190,12 +190,13 @@ namespace Mmorpg.Client.Editor
                     + string.Join("', '", sceneWorldIds) + "'.");
             }
 
-            // The World Builder makes the water from its shapes, so the bake rebuilds it first and
-            // bakes what the shapes describe, and stops at any error the World Builder finds.
+            // The World Builder makes the water and the beds it carves from their shapes, so the
+            // bake rebuilds them first and bakes what the shapes describe, and stops at any error
+            // the World Builder finds.
             var scene = authoring.gameObject.scene;
             if (WorldBuilder.Rebuild(scene))
             {
-                Debug.Log("[WORLD COLLISION] Rebuilt the water of scene '" + scene.name + "' from its shapes before baking.");
+                Debug.Log("[WORLD COLLISION] Rebuilt the water and beds of scene '" + scene.name + "' from their shapes before baking.");
             }
 
             var errors = WorldBuilder.Validate(scene)

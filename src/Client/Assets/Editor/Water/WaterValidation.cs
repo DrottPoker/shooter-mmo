@@ -8,9 +8,10 @@ namespace Mmorpg.Client.Editor
 {
     // The rules every water body of a World follows, so it draws, bakes, and meets other water as
     // it should: a valid and unique body id, a surface mesh with the data the water shader reads,
-    // a material with the water shader, no collider, no static batching, and where two bodies
-    // overlap at about the same height, surfaces that agree: the same level, still water, and no
-    // foam, waves, or foam lines. See docs/DEVELOPMENT_WORLDS.md under Water Authoring.
+    // a material with the water shader, no collider, no static batching, no occluding, and where
+    // two bodies overlap at about the same height, surfaces that agree: the same level, still
+    // water, and no foam, waves, or foam lines. See docs/DEVELOPMENT_WORLDS.md under Water
+    // Authoring.
     internal static class WaterValidation
     {
         // Where two surfaces lie this close in height, they meet and must agree.
@@ -72,6 +73,15 @@ namespace Mmorpg.Client.Editor
                     body,
                     "A water body must not be Batching Static: static batching merges its surface with others, "
                         + "and the client reads each surface to put wakes on its waves."));
+            }
+
+            if (GameObjectUtility.AreStaticEditorFlagsSet(body.gameObject, StaticEditorFlags.OccluderStatic))
+            {
+                issues.Add(new WorldBuilderIssue(
+                    body,
+                    "A water body should not be Occluder Static: water is seen through, so once occlusion culling is "
+                        + "baked it would hide the ground below it and what lies behind it.",
+                    WorldBuilderIssueSeverity.Warning));
             }
 
             var renderer = body.GetComponent<MeshRenderer>();

@@ -85,8 +85,8 @@ largest, is split by area:
 | `Editor/Wardrobe` | The Wardrobe window and its preview |
 | `Editor/DevelopmentTools` | The Inventory Item Grants window and its process runner |
 | `Editor/DevelopmentWorlds` | The development World builders; see [Development Worlds](DEVELOPMENT_WORLDS.md) |
-| `Editor/WorldBuilder` | The [World Builder](DEVELOPMENT_WORLDS.md#world-builder): `WorldBuilder`, which rebuilds and validates a scene, its window, its live rebuild, the shapes it adds, the mesh assets it writes, and the shared handles of an outline |
-| `Editor/Water` | `WaterAssets`, which writes the water's textures and materials, and the water of the World Builder: the builders of the lake, river, sea, and waterfall meshes, the editors of their shapes, and the water validation |
+| `Editor/WorldBuilder` | The [World Builder](DEVELOPMENT_WORLDS.md#world-builder): `WorldBuilder`, which rebuilds and validates a scene, its window, its live rebuild, the shapes it adds, the mesh assets it writes, the shared handles of an outline, and `TerrainCarver`, which carves the water's beds into a terrain and keeps what it changed in a hidden part of the terrain asset |
+| `Editor/Water` | `WaterAssets`, which writes the water's textures and materials, and the water of the World Builder: the builders of the lake, river, sea, and waterfall meshes, the beds the water carves, the editors of their shapes, and the water validation |
 | `Editor/Ui` | `UiSpriteImportRules` and `UiThemeBuilder`, the import and build side of [UI Art](ART_PIPELINE.md#ui-art) |
 
 The item catalog, Actor Studio, and Spawn Authoring windows live in the shared
@@ -119,7 +119,7 @@ goes there too:
 | `Art Pipeline > Wardrobe`, `Update Appearance Catalogs`, `Create Missing Materials`, `Build Creature Presentations`, `Measure Cloth`, `Write Cloth Fixtures` | Art pipeline tools | [Art Pipeline](ART_PIPELINE.md) |
 | `UI > Build UI Fonts`, `UI > Build UI Theme` | Makes the UI font assets and fills the UI theme from its sprites | [UI Art](ART_PIPELINE.md#ui-art) |
 | `Water > Create Water Textures And Materials` | Writes the water's textures and materials | [Water](ART_PIPELINE.md#water) |
-| `World Builder` | Adds and shapes lakes, rivers, seas, and waterfalls, lists their problems, and rebuilds and bakes | [World Builder](DEVELOPMENT_WORLDS.md#world-builder) |
+| `World Builder` | Adds and shapes lakes, rivers, seas, and waterfalls, lets them shape a terrain, lists their problems, and rebuilds and bakes | [World Builder](DEVELOPMENT_WORLDS.md#world-builder) |
 
 ## Assemblies
 
@@ -133,7 +133,7 @@ layers from the bottom up:
 | `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothSprings`, the springs that swing the cloth on it, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
 | `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives` | Api |
-| `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, and `WaterfallShape` | Core |
+| `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
 | `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
@@ -2891,11 +2891,13 @@ How to run the suites, in the Editor or headless, is in
   [World Builder](DEVELOPMENT_WORLDS.md#world-builder) shape: a
   `WorldBuilderShape` in `Mmorpg.Client.Worlds` that holds only its values and
   does nothing in the game, a builder in `Mmorpg.Client.Editor` that
-  `WorldBuilder.Rebuild` runs for the whole scene and that writes a mesh only
-  when it changes, its checks in `WorldBuilder.Validate`, and an editor with its
+  `WorldBuilder.Rebuild` runs for the whole scene and that writes only what
+  changes, its checks in `WorldBuilder.Validate`, and an editor with its
   handles, such as `OutlineShapeEditor` for a closed outline. Change a shape's
   values through `SerializedObject`, so every change can be undone and the World
-  Builder follows it.
+  Builder follows it. A builder that shapes something it does not own, such as a
+  terrain, remembers what it changed with that thing and takes it back before
+  it shapes it again, as `TerrainCarver` does.
 - Keep prediction and reconciliation separate from remote interpolation.
 - Present every remote entity that moves through snapshots with
   `RemoteMovementPresenter`, so players and Mobs share one render clock, delay,

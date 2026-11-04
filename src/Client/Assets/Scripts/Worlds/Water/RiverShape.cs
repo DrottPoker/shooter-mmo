@@ -37,7 +37,8 @@ namespace Mmorpg.Client.Worlds
     // A river: water that flows from its first point to its last along a center line through
     // its points, and falls evenly in height between them. Where it starts or ends in a lake or
     // a sea, its surface lies at their level and stands still where they overlap, so they meet
-    // without a seam. A waterfall can fall from its last point.
+    // without a seam. A waterfall can fall from its last point. Below it the channel is as deep
+    // as the river in its middle, and the banks rise from the water's edge to the ground beside it.
     [DisallowMultipleComponent]
     public sealed class RiverShape : WaterSurfaceShape
     {
@@ -56,6 +57,9 @@ namespace Mmorpg.Client.Worlds
 
         [Tooltip("How much slower the water flows at the banks than in the middle, from 0 to 1.")]
         [SerializeField, Range(0f, 1f)] private float edgeSlowdown = 0.7f;
+
+        [Tooltip("Over how far past the edge of its water the bank rises to the ground beside the river (m).")]
+        [SerializeField, Min(0f)] private float bankWidth = 3f;
 
         public IReadOnlyList<RiverPoint> Points
         {
@@ -76,6 +80,11 @@ namespace Mmorpg.Client.Worlds
         public float EdgeSlowdown
         {
             get { return edgeSlowdown; }
+        }
+
+        public override float BankWidth
+        {
+            get { return Mathf.Max(0f, bankWidth); }
         }
     }
 }

@@ -14,7 +14,9 @@ namespace Mmorpg.Client.Editor
     // scene uses it; a new shape, or one that shares its mesh, such as a duplicated lake, the
     // copy of a disabled lake, a shape copied from another scene, or a scene saved under a new
     // name, gets a mesh of its own below Assets/Art/Worlds/<scene>. A scene that was never saved
-    // keeps its meshes in itself, until it is saved and rebuilt.
+    // keeps its meshes in itself, until it is saved and rebuilt. Terrain data follows the same
+    // rule, except that the World Builder never copies it: it shapes only data that one terrain
+    // uses alone.
     internal sealed class WorldBuilderAssets
     {
         public const string Root = "Assets/Art/Worlds";
@@ -175,9 +177,57 @@ namespace Mmorpg.Client.Editor
             return used;
         }
 
-        // What the saved scenes other than the one at the path use, as their files say. The files
-        // change rarely, so they are read once until the project changes, which keeps a rebuild
-        // fast while a shape is dragged.
+        // The terrains of the scene, also inactive ones, that hold terrain data.
+        public static IEnumerable<Terrain> TerrainsOf(Scene scene)
+        {
+            return scene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<Terrain>(true))
+                .Where(terrain => terrain.terrainData != null);
+        }
+
+        // The terrain data that a terrain of the scene shares with another terrain: one of the
+        // scene, one of another open scene as it holds it now, or one of another saved scene as
+        // its file says. The water shapes no such data, since each terrain would carve it at its
+        // own place.
+        public static HashSet<TerrainData> SharedTerrainData(Scene scene)
+        {
+            var own = new HashSet<TerrainData>();
+            var shared = new HashSet<TerrainData>();
+            foreach (var terrain in TerrainsOf(scene))
+            {
+                if (!own.Add(terrain.terrainData))
+                {
+                    shared.Add(terrain.terrainData);
+                }
+            }
+
+            if (own.Count == 0)
+            {
+                return shared;
+            }
+
+            for (var index = 0; index < SceneManager.sceneCount; index++)
+            {
+                var other = SceneManager.GetSceneAt(index);
+                if (other != scene && other.isLoaded)
+                {
+                    shared.UnionWith(TerrainsOf(other).Select(terrain => terrain.terrainData).Where(own.Contains));
+                }
+            }
+
+            if (own.Any(data => AssetDatabase.Contains(data)))
+            {
+                var elsewhere = DependenciesOfOtherScenes(scene.path);
+                shared.UnionWith(own.Where(data => AssetDatabase.Contains(data) && elsewhere.Contains(AssetDatabase.GetAssetPath(data))));
+            }
+
+            return shared;
+        }
+
+        // What the saved scenes other than the one at the path use, as their files say, also
+        // through the prefabs and other assets they use, such as the terrain data of a terrain in
+        // a prefab. The files change rarely, so they are read once until the project changes,
+        // which keeps a rebuild fast while a shape is dragged.
         private static HashSet<string> DependenciesOfOtherScenes(string scenePath)
         {
             if (scenePaths == null)
@@ -188,14 +238,15 @@ namespace Mmorpg.Client.Editor
             var used = new HashSet<string>();
             foreach (var path in scenePaths)
             {
-                if (path == scenePath)
+                // A scene removed since the list was made uses nothing any more.
+                if (path == scenePath || string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(path, AssetPathToGUIDOptions.OnlyExistingAssets)))
                 {
                     continue;
                 }
 
                 if (!SceneDependencies.TryGetValue(path, out var dependencies))
                 {
-                    dependencies = AssetDatabase.GetDependencies(path, false);
+                    dependencies = AssetDatabase.GetDependencies(path, true);
                     SceneDependencies.Add(path, dependencies);
                 }
 

@@ -7,14 +7,15 @@ using UnityEngine.SceneManagement;
 
 namespace Mmorpg.Client.Editor
 {
-    // Rebuilds a scene's water a moment after one of its shapes changes, in the Inspector, through
-    // a handle, by moving, adding, or removing it, or by undo, so the water follows the edit while
-    // the shape is dragged. Only an edit rebuilds: opening a scene changes nothing, because a
-    // rebuild writes only what differs.
+    // Rebuilds a scene's water and the beds it carves a moment after one of its shapes changes, in
+    // the Inspector, through a handle, by moving, adding, or removing it, or by undo, so the water
+    // and the ground follow the edit while the shape is dragged. Only an edit rebuilds: opening a
+    // scene changes nothing, because a rebuild writes only what differs.
     [InitializeOnLoad]
     internal static class WorldBuilderLive
     {
-        // At most one rebuild this often while a shape is dragged (s).
+        // While a shape is dragged, the Editor gets this long after each rebuild to draw and follow
+        // the drag before the next one (s).
         private const double Interval = 0.05d;
 
         private static readonly HashSet<Scene> pending = new HashSet<Scene>();
@@ -129,7 +130,6 @@ namespace Mmorpg.Client.Editor
                 return;
             }
 
-            nextRebuild = EditorApplication.timeSinceStartup + Interval;
             foreach (var scene in scenes)
             {
                 if (scene.IsValid() && scene.isLoaded && WorldBuilder.Shapes<WorldBuilderShape>(scene).Count > 0)
@@ -137,6 +137,8 @@ namespace Mmorpg.Client.Editor
                     WorldBuilder.Rebuild(scene);
                 }
             }
+
+            nextRebuild = EditorApplication.timeSinceStartup + Interval;
         }
     }
 }

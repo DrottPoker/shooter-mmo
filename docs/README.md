@@ -54,7 +54,8 @@ How to work on a part of the project.
 - [Local Development](LOCAL_DEVELOPMENT.md) and [Manual Testing](MANUAL_TESTING.md).
 - [Art Pipeline](ART_PIPELINE.md): 3D models from Blender to Unity, with every how-to.
 - [Development Worlds](DEVELOPMENT_WORLDS.md): the two development maps, how they are
-  rebuilt, and the World Builder that makes a World's water from shapes.
+  rebuilt, and the World Builder that makes a World's water and the beds it carves into
+  the terrain from shapes.
 - [Monitoring](MONITORING.md): metrics, logs, traces, dashboards, alerts, and the local
   monitoring stack.
 - [Stack Stress Testing](STACK_STRESS_TESTING.md): repeatable load tests of a worker or the full

@@ -94,8 +94,10 @@ namespace Mmorpg.Client.Editor
             body.transform.position = position;
 
             // Water is static, like the ground, but never batched, because the client reads
-            // each surface to put wakes on its waves.
-            GameObjectUtility.SetStaticEditorFlags(body, (StaticEditorFlags)~0 & ~StaticEditorFlags.BatchingStatic);
+            // each surface to put wakes on its waves, and no occluder, since it is seen through.
+            GameObjectUtility.SetStaticEditorFlags(
+                body,
+                (StaticEditorFlags)~0 & ~(StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccluderStatic));
             body.AddComponent<MeshFilter>();
             var renderer = body.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = WaterAssets.LoadMaterial(WaterAssets.SurfaceMaterialPath);

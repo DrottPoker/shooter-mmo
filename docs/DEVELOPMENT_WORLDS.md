@@ -4,8 +4,8 @@ The repository has two development Worlds: a test World with a zone for every
 developed feature, and a stress arena that keeps every player and actor in one
 interest radius. This document describes what each one is for, their layouts,
 how their scenes are composed, rebuilt, and baked, the World Builder, which makes
-a World's water from shapes, and the rules for authoring World collision and
-water.
+a World's water and the beds it carves into the terrain from shapes, and the
+rules for authoring World collision and water.
 
 A World is reusable content. A shard references one World at a time and may
 change that reference only while the shard is fully offline and drained; see
@@ -228,8 +228,9 @@ Trees, the resource nodes that a Woodcutting Axe chops down, at `(38, 0, -80)`,
 
 The water test area in the northwest: a Unity Terrain baked as a heightfield,
 four water bodies, a waterfall, a bridge, and the sea where the World ends. The
-builder computes every height from a fixed function of the position, so a
-rebuild reproduces the same terrain and water. A `WATERSIDE` sign stands at
+builder computes the ground from a fixed function of the position, and the World
+Builder carves the beds of the water into it, so a rebuild reproduces the same
+terrain and water. A `WATERSIDE` sign stands at
 `(-60, 0, 60)`, and signs name the lake, the waterfall, the ford, the bridge,
 and the sea.
 
@@ -240,17 +241,19 @@ and the sea.
 | Waterfall outcrop | lip at `(-103.5, 124.5)` on the lake's north shore, facing the lake | Rock 10 m wide and 9 m deep with its top at 7.6 m, 4 m above the lake, and a ramp onto it from behind; a channel 3 m wide runs along its top from a spring under a boulder to the lip |
 | Stream `waterside-stream` | along the outcrop's channel, surface at 7.5 m | 0.3 m deep, flowing toward the lip ever faster and foaming where it tips over; its surface reaches 0.1 m under the walls up to the lip and 5 cm past it, 2 cm inside the channel |
 | Waterfall and pool | the water falls 3.9 m from the lip and lands 1.4 m out, at `(-103.9, 123.2)` | A column that starts 0.6 m before the lip with its top in the stream's surface and fades in over it, as wide as the channel, 3 m, and 0.3 m thick and nearly square where the stream's surface ends, that rounds and grows to 3.7 by 0.9 m as it falls; the lake is 1 m deep in a pool around the landing, so it is waded under the fall; the water churns and foams there, white water boils up, mist rises, and droplets fly |
-| River `waterside-river` | from `(-113, 119)` in the lake to `(-149, 150)` at the sea | 8 m wide and 2 m deep; its surface stays level with the lake until it leaves it, then falls to the sea's level, which it reaches at its mouth |
+| River `waterside-river` | from `(-113, 119)` in the lake to `(-149, 150)` at the sea | 8 m wide and 2 m deep; its surface stays level with the lake until it leaves it, then falls to the sea's level, which it reaches at its mouth; its banks rise to the plateau over 3 m, and its channel runs on under the lake's and the sea's water |
 | Ford | `(-127.5, 132.8)`, 20 m down the river | 0.8 m deep for 6 m of the river, so it is waded across at the wading speed |
 | Bridge | `(-140, 142.8)`, 36 m down the river | A 16 by 4 m deck with its top at 4.2 m, 1 m above the water, from plateau to plateau |
-| Sea `waterside-sea` | a quarter disc around the corner `(-192, 192)`, surface at 3 m | The shore lies 60 m from the corner and the floor falls 0.15 m per meter, so the water is 1.2 m deep 52 m from the corner |
+| Sea `waterside-sea` | a quarter disc around the corner `(-192, 192)`, surface at 3 m | The shore lies 60 m from the corner and the floor falls 0.15 m per meter, so the water is 1.2 m deep 52 m from the corner, and keeps falling out to the World's edge, down to a height of 0.1 m; the beach rises to the plateau over 10 m |
 | Boundary walls | the north wall starts at X `-146` and the west wall ends at Z `146` | Both end out in deep water, so the sea is the edge of the World between them |
 | Sea beyond the World | west and north of the bounds, out to 400 m | Shows only, over a sand floor that does not collide |
 
-Terrain layers paint rock where the ground is steeper than 40 degrees, sand on
-the beds and banks of the water, and grass elsewhere; each cell of the 0.5 m
-layer map takes the share of its 16 samples that lie on a water bed, so the sand
-blends into the grass. The terrain and its layers are generated assets below
+The builder writes the plateau and its ramps without any water and paints rock
+where the ground is steeper than 40 degrees and grass elsewhere. The terrain is a
+[World Builder](#world-builder) terrain with sand as its bed layer, so the lake,
+the river, the sea, and the waterfall carve their floors, channel, beach, and
+pool into it from their shapes, as the table gives them, and paint them with
+sand. The terrain and its layers are generated assets below
 `Assets/Art/Terrain/DevelopmentWorld2`.
 
 The water is [World Builder](#world-builder) shapes below `Waterside/Water`: the
@@ -360,11 +363,12 @@ scene, the scene is opened once and baked once for each of those Worlds, and its
 `WorldCollisionAuthoring` World id must be one of them.
 `MMORPG > Tools > World Collision > Bake Open Scene` bakes only the open scene.
 
-Before it reads a scene, the bake rebuilds the scene's water from its
-[World Builder](#world-builder) shapes, so it bakes what the shapes describe, and
-it stops with a red error at every error the World Builder's validation finds.
-`Bake World Scenes` saves a scene whose water it had to rebuild; after `Bake Open
-Scene`, save the scene to keep the rebuilt water.
+Before it reads a scene, the bake rebuilds the scene's water and the beds it
+carves from its [World Builder](#world-builder) shapes, so it bakes what the
+shapes describe, and it stops with a red error at every error the World
+Builder's validation finds. `Bake World Scenes` saves a scene, and the assets,
+whose water it had to rebuild; after `Bake Open Scene`, save the scene with
+`File > Save` to keep the rebuilt water and terrain.
 
 The bake reads the enabled, non-trigger BoxColliders, non-convex MeshColliders,
 and TerrainColliders below the collision root; meshes and terrains bake as
@@ -436,7 +440,8 @@ Inspector keeps, so selecting one never changes its file, that the waterside has
 its lake, river, sea, and stream without colliders, out of static batching, and
 with the shared water material, that the waterfall's column and the sea beyond
 the World only show, that the World Builder finds no problem in the scene and a
-rebuild of its water changes nothing, and that the checked-in bake holds
+rebuild of its water and its terrain's beds changes nothing, and that the
+checked-in bake holds
 exactly the scene's boxes, terrain cells, mesh triangles, and water surfaces,
 deep water edges where there is water, and one movement-only box per placed
 resource node.
@@ -465,11 +470,12 @@ These rules apply to every World scene, including a future production map.
 ## World Builder
 
 The World Builder makes parts of a World from shapes, a few values each, that
-the Editor turns into what the World shows and bakes. Its shapes are the water:
-lakes, rivers, seas, and waterfalls. A shape is a component in the scene that
-does nothing in the game; only what it made takes part, such as a water body's
-surface mesh. It works in every World scene, and the Development World 2 builder
-makes the waterside's water with it.
+the Editor turns into what the World shows and bakes. Its shapes are the water,
+lakes, rivers, seas, and waterfalls, and the terrains that the water shapes. A
+shape is a component in the scene that does nothing in the game; only what it
+made takes part, such as a water body's surface mesh or the bed carved into a
+terrain. It works in every World scene, and the Development World 2 builder
+makes the waterside's water and its beds with it.
 
 Open it with `MMORPG > Tools > World Builder`. The window works on the active
 scene:
@@ -478,31 +484,65 @@ scene:
   height, below the `Water` group of the scene's collision root, which it
   creates when needed. The new water gets a name and a body id of its own, such
   as `lake-2`, the water material, and the static flags of water, without
-  `Batching Static`. `Waterfall from the selected river` lets the selected river
-  fall from its last point into the highest lake, sea, or other river below it.
+  `Batching Static` and `Occluder Static`. `Waterfall from the selected river`
+  lets the selected river fall from its last point into the highest lake, sea,
+  or other river below it. `Let water shape the selected terrain` adds a
+  `WorldBuilderTerrain` to the selected terrain; set its bed layer, such as sand.
 - `Shapes` lists the scene's shapes; choose one to select and frame it.
 - `Problems` lists what the validation finds; choose one to select its object.
-- `Rebuild` rebuilds the scene's water, `Validate` checks it again, and `Bake
-  Collision` bakes the open scene, as `World Collision > Bake Open Scene` does.
+- `Rebuild` rebuilds the scene's water and the beds it carves, `Validate` checks
+  it again, and `Bake Collision` bakes the open scene, as `World Collision > Bake
+  Open Scene` does.
 
 Shape the selected shape with its handles in the Scene view and its values in
 the Inspector:
 
 | Shape | In the Scene view | Values |
 | --- | --- | --- |
-| `LakeShape` | Drag a point of the shore, Shift+click the shore to add a point there, and Ctrl+click a point to remove it | The shore, a closed outline in the object's X and Z, and the size of the surface's cells; the lake lies at the object's height |
-| `SeaShape` | The same for its outline | The outline inside the World, the cell size, how much it waves, over how much water the waves calm down, the horizon sides, how far it runs on beyond the World, and the seabed's material and depth; the sea lies at the object's height |
-| `RiverShape` | Click a point to move it with a position handle and drag the cubes on its banks to set its width there, Shift+click the river's line to add a point there or a + past an end to lengthen it, and Ctrl+click a point to remove it | The points from its start to its end, each with the height of the surface, the width, depth, speed, and foam there; a curve or straight lines through them; the spacing of the surface's rows; and how much slower the water flows at the banks |
-| `WaterfallShape` | Follows its river's last point | The river it falls from, the water body it falls into, which `Fall Into The Water Below` chooses, the speed at which the water leaves the lip, and how the fall fades in, spreads, foams, and makes the water below churn |
+| `LakeShape` | Drag a point of the shore, Shift+click the shore to add a point there, and Ctrl+click a point to remove it | The shore, a closed outline in the object's X and Z, the size of the surface's cells, and how steeply its floor falls, to how deep, and over how wide a bank it meets the ground; the lake lies at the object's height |
+| `SeaShape` | The same for its outline | The outline inside the World, the cell size, how much it waves, over how much water the waves calm down, the horizon sides, how far it runs on beyond the World, the seabed's material and depth, and like a lake its floor and its beach |
+| `RiverShape` | Click a point to move it with a position handle and drag the cubes on its banks to set its width there, Shift+click the river's line to add a point there or a + past an end to lengthen it, and Ctrl+click a point to remove it | The points from its start to its end, each with the height of the surface, the width, depth, speed, and foam there; a curve or straight lines through them; the spacing of the surface's rows; how much slower the water flows at the banks; and over how wide a bank its channel meets the ground |
+| `WaterfallShape` | Follows its river's last point | The river it falls from, the water body it falls into, which `Fall Into The Water Below` chooses, the speed at which the water leaves the lip, how the fall fades in, spreads, foams, and makes the water below churn, and the pool it digs where it lands |
+| `WorldBuilderTerrain` | Sculpt and paint the terrain as usual | The bed layer that paints the beds and banks; `Give The Ground Back` restores what the water changed and removes the component |
 
 Every lake, river, and sea also has a bank reach: how far its surface reaches
-past the shore, under the bank that hides it. Move, turn, or lift a shape's
-object with the usual tools, but keep it level and unscaled.
+past the shore, under the bank that hides it, and `Carves Bed`, cleared for
+water that runs on rock, such as the stream above the waterfall. Move, turn, or
+lift a shape's object with the usual tools, but keep it level and unscaled.
 
-The water follows every change a moment later, also when a shape is moved,
-added, or removed, when the ground's colliders change, and after an undo. The
-World Builder rebuilds all of a scene's water at once, because water shapes the
-water it meets:
+A terrain with a `WorldBuilderTerrain` takes the beds of the water above it. The
+World Builder lowers it to the floor of every lake and sea, which falls from the
+shore by the shape's slope down to its deepest and, on a sea's horizon sides,
+keeps falling out to the World's edge; to every river's channel, as deep as the
+river in its middle below its surface, also where that surface lies at the level
+of the lake or sea it starts or ends in, and rising smoothly to the edge of its
+water; and to every waterfall's pool. A bank rises from the shore, or from the edge of a river's
+water, to the ground around over the shape's bank width. The World Builder never
+raises the ground, so water above it leaves it as it is. Each cell of the
+terrain's layer map takes the bed layer by the share of the cell that lies on a
+bed or a bank, so the bed blends into the ground around it.
+
+The World Builder remembers the ground and the layers it changed in a hidden
+part of the terrain data asset, which builds leave out, so this record is saved,
+moved, and copied together with the terrain and never out of step with it. It
+remembers the layer weights by terrain layer, so adding, removing, or moving a
+terrain layer keeps them. Moving or removing water therefore gives the ground
+back. Sculpt and paint away
+from the water as usual; where water lies, a change by hand becomes the ground
+that the water carves and paints again, so a sample sculpted below the bed
+stays there. The water shapes a terrain only while it carries the component:
+removing it, `Give The Ground Back`, or an undo of adding it gives the whole
+terrain its ground back, an undo of the removal lets the water shape it again,
+and a disabled component leaves the terrain as it is. Terrain data that another
+terrain uses too, such as after a terrain object is duplicated, which keeps its
+terrain data, is never shaped or given back, since each terrain would carve it
+at its own place; give each terrain terrain data of its own. Terrains side by
+side all reach a bed that ends at the edge they share, so they meet level there.
+
+The water and the ground follow every change a moment later, also while a shape
+is dragged, when a shape is moved, added, or removed, when the ground's
+colliders change, and after an undo. The World Builder rebuilds all of a scene's
+water at once, because water shapes the water it meets:
 
 - A river whose first or last point lies within 0.5 m of the level of a lake or
   sea whose surface covers it starts or ends in that water: its surface lies at
@@ -524,10 +564,12 @@ water it meets:
   turned. Draw its outline out to that edge there.
 - A shape that is not complete, such as a waterfall without a landing or a
   river with one point, shows nothing until it is. A disabled shape builds
-  nothing, and what it made stays as it was.
+  nothing, and what it made stays as it was: a disabled water shape keeps its
+  water, and the bed below it as its values give it.
 
-A rebuild writes a mesh only when it changes, so a rebuild without a change
-marks nothing dirty and opening a scene changes nothing. A shape keeps the mesh
+A rebuild writes a mesh only when it changes, and a terrain's heights and layers
+only where they change, so a rebuild without a change marks nothing dirty and
+opening a scene changes nothing. A shape keeps the mesh
 asset its MeshFilter holds while nothing else uses it: no other shape, no other
 object of its scene, such as a disabled lake, and no other scene. A new shape in
 a saved scene, or one whose mesh something else uses too, such as a duplicated
@@ -546,12 +588,13 @@ The validation finds errors, which stop the collision bake, and warnings:
   marked `Batching Static`, without the water shader, or with a mesh that is
   empty or lacks the shader's data; two water bodies that overlap within 0.25 m
   in height but do not agree there; a lake or sea with fewer than three points
-  and a river with fewer than two; and a waterfall without a river or a landing
+  and a river with fewer than two; a waterfall without a river or a landing
   that makes water, such as a disabled shape, a second one from the same river,
   one into its own river, or one whose landing lies less than 0.1 m below its
-  lip.
-- Warnings: a disabled shape, a shape that is tilted or scaled, water outside
-  the collision root, which the bake leaves out, and unused meshes.
+  lip; and a World Builder terrain whose terrain data another terrain uses too.
+- Warnings: a disabled shape, a shape that is tilted or scaled, a water body
+  marked `Occluder Static`, water outside the collision root, which the bake
+  leaves out, and unused meshes.
 
 A shape, its handles, and what builds from it make one kind of shape;
 [Extension Rules](UNITY_CLIENT_ARCHITECTURE.md#extension-rules) says how a new
@@ -571,14 +614,17 @@ checks them before every bake.
 - Keep a water body static but out of static batching: clear `Batching Static`.
   Static batching merges surfaces into one mesh that the client cannot read, and
   the client reads each surface to put wakes on its waves. The bake stops with
-  an error for a water body that is Batching Static.
+  an error for a water body that is Batching Static. Clear `Occluder Static` on
+  water, falling water, and the sea beyond the World too: they are seen through,
+  so once occlusion culling is baked they would hide the ground below them.
 - The mesh is the water surface. Every triangle faces up, tilted at most about
   26 degrees, so a river can fall toward the sea. Let the surface reach under
   the banks: the terrain hides it there, and water under terrain or inside a box
   counts as dry land. Water inside a cave below terrain is therefore not
   supported yet.
-- Shape the beds and banks with the terrain. The shared compiler samples the
-  water every 0.25 m, measures the depth from the surface down to the first
+- Shape the beds and banks with the terrain: let the water carve them into a
+  World Builder terrain, or sculpt them by hand on other ground. The shared
+  compiler samples the water every 0.25 m, measures the depth from the surface down to the first
   ground below it, and places one-sided walls, the deep water edges, along the
   line where the water gets deeper than 1.2 m. They face the shallow side, reach
   from 0.5 m below that line to 0.3 m above the surface, and only block
@@ -598,7 +644,8 @@ checks them before every bake.
   lines. They then meet without a seam.
 - A waterfall is a column mesh with the waterfall material and no `WaterBody`,
   from the lip of the water above down to the surface below, where the water
-  below foams; shape the ground so a pool lets characters wade under the fall.
+  below foams; its pool, carved into a World Builder terrain or sculpted, lets
+  characters wade under the fall.
   The column starts on the water above, with its top in that surface, and fades
   in over the last half meter or so before the lip. It is as wide as the channel
   the water leaves, never wider, and the water above's surface past the lip lies

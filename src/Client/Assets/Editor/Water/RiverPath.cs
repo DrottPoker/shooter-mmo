@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Mmorpg.Client.Worlds;
 using UnityEngine;
 
@@ -54,12 +55,17 @@ namespace Mmorpg.Client.Editor
                 AddLinePoint(points[index + 1].Position);
                 pointDistances.Add(lineDistances[lineDistances.Count - 1]);
             }
+
+            Bounds = WorldBuilderGeometry.Bounds(line.Select(WorldBuilderGeometry.Planar).ToList());
         }
 
         public float Length
         {
             get { return lineDistances[lineDistances.Count - 1]; }
         }
+
+        // The area in X and Z that the line covers, also where a curve bulges past its points.
+        public Rect Bounds { get; }
 
         public IReadOnlyList<float> PointDistances
         {

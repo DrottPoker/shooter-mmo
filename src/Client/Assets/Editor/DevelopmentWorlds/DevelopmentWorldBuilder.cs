@@ -121,6 +121,11 @@ namespace Mmorpg.Client.Editor
             return manifest;
         }
 
+        private static void ClearStaticFlags(GameObject owner, StaticEditorFlags flags)
+        {
+            GameObjectUtility.SetStaticEditorFlags(owner, GameObjectUtility.GetStaticEditorFlags(owner) & ~flags);
+        }
+
         public void Finish(string logTag)
         {
             foreach (var child in Environment.GetComponentsInChildren<Transform>(true))
@@ -129,12 +134,26 @@ namespace Mmorpg.Client.Editor
             }
 
             // Static batching would merge the water surfaces into one mesh that the client
-            // cannot read, and the client reads each surface to put wakes on its waves.
+            // cannot read, and the client reads each surface to put wakes on its waves. Water,
+            // falling water, and the sea beyond the World are seen through, so they hide nothing
+            // behind them and are no occluders either.
             foreach (var body in Environment.GetComponentsInChildren<WaterBody>(true))
             {
-                GameObjectUtility.SetStaticEditorFlags(
-                    body.gameObject,
-                    GameObjectUtility.GetStaticEditorFlags(body.gameObject) & ~StaticEditorFlags.BatchingStatic);
+                ClearStaticFlags(body.gameObject, StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccluderStatic);
+            }
+
+            foreach (var waterfall in Environment.GetComponentsInChildren<WaterfallShape>(true))
+            {
+                ClearStaticFlags(waterfall.gameObject, StaticEditorFlags.OccluderStatic);
+            }
+
+            foreach (var sea in Environment.GetComponentsInChildren<SeaShape>(true))
+            {
+                var horizon = sea.transform.Find(WaterBuilder.HorizonName);
+                if (horizon != null)
+                {
+                    ClearStaticFlags(horizon.gameObject, StaticEditorFlags.OccluderStatic);
+                }
             }
 
             if (!EditorSceneManager.SaveScene(Scene))

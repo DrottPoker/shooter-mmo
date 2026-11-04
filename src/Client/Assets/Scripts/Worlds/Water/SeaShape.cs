@@ -19,7 +19,9 @@ namespace Mmorpg.Client.Worlds
     // its transform inside its outline in the transform's X and Z. On the sides of the World where
     // it reaches the horizon, a still surface over a seabed continues it beyond the World's
     // ground, where nothing walks, and the waves calm down toward that edge so both meet without a
-    // seam. Where a river flows into it, its waves and foam lines calm down too.
+    // seam. Where a river starts or ends in it, its waves and foam lines calm down too. Below it
+    // the floor falls from the shore to its deepest and keeps falling toward the horizon, and the
+    // beach rises from the shore to the ground around it.
     [DisallowMultipleComponent]
     public sealed class SeaShape : WaterSurfaceShape
     {
@@ -52,6 +54,15 @@ namespace Mmorpg.Client.Worlds
 
         [Tooltip("How deep the seabed beyond the World's ground lies below the surface (m).")]
         [SerializeField, Min(0f)] private float seabedDepth = 3f;
+
+        [Tooltip("How much deeper the sea floor gets per meter from the shore (m per m).")]
+        [SerializeField, Min(0f)] private float floorSlope = 0.15f;
+
+        [Tooltip("The deepest the sea gets below its surface (m).")]
+        [SerializeField, Min(0f)] private float maximumDepth = 10f;
+
+        [Tooltip("Over how far past the shore the beach rises to the ground around the sea (m).")]
+        [SerializeField, Min(0f)] private float bankWidth = 10f;
 
         public IReadOnlyList<Vector2> Outline
         {
@@ -92,6 +103,21 @@ namespace Mmorpg.Client.Worlds
         public float SeabedDepth
         {
             get { return seabedDepth; }
+        }
+
+        public float FloorSlope
+        {
+            get { return Mathf.Max(0f, floorSlope); }
+        }
+
+        public float MaximumDepth
+        {
+            get { return Mathf.Max(0f, maximumDepth); }
+        }
+
+        public override float BankWidth
+        {
+            get { return Mathf.Max(0f, bankWidth); }
         }
 
         // The sea's surface height in world space.
