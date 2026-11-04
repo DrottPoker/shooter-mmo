@@ -222,7 +222,8 @@ namespace Mmorpg.WorldData.Quests
                 path + ".startItems",
                 errors,
                 (item, itemPath) => references.ValidateQuestItem(item, itemPath, errors));
-            ValidateSteps(quest, path, startItems, references, errors);
+            ValidateSteps(quest, path, references, errors);
+            ValidateItemConsumption(quest, path, startItems, references, errors);
             if (quest.RewardGold < 0 || quest.RewardGold > QuestContentRules.MaximumRewardGold)
             {
                 errors.Add(path + ".rewardGold must be between 0 and " + QuestContentRules.MaximumRewardGold + ".");
@@ -295,7 +296,6 @@ namespace Mmorpg.WorldData.Quests
         private static void ValidateSteps(
             QuestAuthoringEntry quest,
             string path,
-            Dictionary<string, int> startItems,
             QuestReferences references,
             List<string> errors)
         {
@@ -356,7 +356,7 @@ namespace Mmorpg.WorldData.Quests
                         errors.Add(path + " contains duplicate objective id '" + objective.Id + "'.");
                     }
 
-                    ValidateObjective(quest, objective, objectivePath, lastStep, startItems, references, errors);
+                    ValidateObjective(quest, objective, objectivePath, lastStep, references, errors);
                 }
             }
         }
@@ -366,7 +366,6 @@ namespace Mmorpg.WorldData.Quests
             QuestObjectiveAuthoringEntry objective,
             string path,
             bool lastStep,
-            Dictionary<string, int> startItems,
             QuestReferences references,
             List<string> errors)
         {
@@ -394,10 +393,10 @@ namespace Mmorpg.WorldData.Quests
                     ValidateKill(objective, actorIds, dropSources, path, references, errors);
                     break;
                 case QuestObjectiveKindIds.Collect:
-                    ValidateCollect(objective, actorIds, dropSources, path, lastStep, startItems, references, errors);
+                    ValidateCollect(objective, actorIds, dropSources, path, lastStep, references, errors);
                     break;
                 case QuestObjectiveKindIds.Deliver:
-                    ValidateDeliver(objective, actorIds, dropSources, path, startItems, references, errors);
+                    ValidateDeliver(quest, objective, actorIds, dropSources, path, lastStep, references, errors);
                     break;
                 case QuestObjectiveKindIds.TalkTo:
                     ValidateTalkTo(quest, objective, actorIds, dropSources, path, lastStep, references, errors);
@@ -447,7 +446,6 @@ namespace Mmorpg.WorldData.Quests
             QuestDropSourceAuthoringEntry[] dropSources,
             string path,
             bool lastStep,
-            Dictionary<string, int> startItems,
             QuestReferences references,
             List<string> errors)
         {
@@ -460,50 +458,130 @@ namespace Mmorpg.WorldData.Quests
             RequireNoActors(actorIds, objective.ActorTag, path, errors);
             RequireEmpty(objective.NpcActorId, path + ".npcActorId", errors);
             RequireEmpty(objective.Line, path + ".line", errors);
-            if (item == null)
+            if (item == null || dropSources.Length == 0)
             {
                 return;
             }
 
-            if (!QuestReferences.IsQuestItem(item))
+            // A quest drop is looted with the quest's lineage, which only a protected quest item keeps.
+            if (!QuestReferences.IsProtectedQuestItem(item))
             {
-                if (dropSources.Length > 0)
-                {
-                    errors.Add(path + ".dropSources may only drop quest items.");
-                }
-
+                errors.Add(path + ".dropSources may only drop protected quest items.");
                 return;
-            }
-
-            var granted = startItems.TryGetValue(item.Id, out var startQuantity) ? startQuantity : 0;
-            if (dropSources.Length == 0 && objective.Count > granted)
-            {
-                errors.Add(path + " collects quest item '" + item.Id
-                    + "', which the quest neither grants that often nor drops.");
             }
 
             ValidateDropSources(dropSources, item, path, references, errors);
         }
 
         private static void ValidateDeliver(
+            QuestAuthoringEntry quest,
             QuestObjectiveAuthoringEntry objective,
             string[] actorIds,
             QuestDropSourceAuthoringEntry[] dropSources,
+            string path,
+            bool lastStep,
+            QuestReferences references,
+            List<string> errors)
+        {
+            references.ValidateItem(objective.ItemId, path + ".itemId", errors);
+            references.ValidateQuestNpc(objective.NpcActorId, path + ".npcActorId", errors);
+            if (lastStep && string.Equals(objective.NpcActorId, quest.TurnInActorId, StringComparison.Ordinal))
+            {
+                errors.Add(path + " delivers to the turn-in NPC in the last step, where a collect objective belongs.");
+            }
+
+            RequireNoActors(actorIds, objective.ActorTag, path, errors);
+            RequireEmpty(objective.Line, path + ".line", errors);
+            RequireNoDropSources(dropSources, path, errors);
+        }
+
+        // Collect objectives count the same carried items, so every item has at most one. The
+        // quest items that deliveries and the turn-in take come from the start items, except
+        // that a collect objective may also drop its item.
+        private static void ValidateItemConsumption(
+            QuestAuthoringEntry quest,
             string path,
             Dictionary<string, int> startItems,
             QuestReferences references,
             List<string> errors)
         {
-            var item = references.ValidateItem(objective.ItemId, path + ".itemId", errors);
-            references.ValidateQuestNpc(objective.NpcActorId, path + ".npcActorId", errors);
-            RequireNoActors(actorIds, objective.ActorTag, path, errors);
-            RequireEmpty(objective.Line, path + ".line", errors);
-            RequireNoDropSources(dropSources, path, errors);
-            if (item != null
-                && QuestReferences.IsQuestItem(item)
-                && (!startItems.TryGetValue(item.Id, out var granted) || granted < objective.Count))
+            var objectives = EnumerateObjectives(quest, path).ToArray();
+            var delivered = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var entry in objectives)
             {
-                errors.Add(path + " delivers quest item '" + item.Id + "', which the quest does not grant that often.");
+                var objective = entry.Objective;
+                if (string.Equals(objective.Kind, QuestObjectiveKindIds.Deliver, StringComparison.Ordinal)
+                    && references.IsQuestItem(objective.ItemId))
+                {
+                    delivered[objective.ItemId] = (delivered.TryGetValue(objective.ItemId, out var count) ? count : 0)
+                        + objective.Count;
+                }
+            }
+
+            var collectors = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var entry in objectives)
+            {
+                var objective = entry.Objective;
+                if (string.IsNullOrEmpty(objective.ItemId))
+                {
+                    continue;
+                }
+
+                var granted = startItems.TryGetValue(objective.ItemId, out var startQuantity) ? startQuantity : 0;
+                var deliveredQuantity = delivered.TryGetValue(objective.ItemId, out var deliveries) ? deliveries : 0;
+                if (string.Equals(objective.Kind, QuestObjectiveKindIds.Collect, StringComparison.Ordinal))
+                {
+                    if (collectors.TryGetValue(objective.ItemId, out var firstCollector))
+                    {
+                        errors.Add(entry.Path + ".itemId '" + objective.ItemId + "' is already collected by objective '"
+                            + firstCollector + "', and both would count the same items.");
+                        continue;
+                    }
+
+                    collectors.Add(objective.ItemId, objective.Id);
+                    var drops = objective.DropSources != null && objective.DropSources.Length > 0;
+                    if (references.IsQuestItem(objective.ItemId) && !drops && deliveredQuantity + objective.Count > granted)
+                    {
+                        errors.Add(entry.Path + " collects quest item '" + objective.ItemId
+                            + "', which the quest neither drops nor grants as often as it takes it.");
+                    }
+                }
+                else if (string.Equals(objective.Kind, QuestObjectiveKindIds.Deliver, StringComparison.Ordinal)
+                    && references.IsQuestItem(objective.ItemId)
+                    && deliveredQuantity > granted)
+                {
+                    errors.Add(entry.Path + " delivers quest item '" + objective.ItemId
+                        + "', which the quest does not grant as often as its deliveries take it.");
+                }
+            }
+        }
+
+        private static IEnumerable<(QuestObjectiveAuthoringEntry Objective, string Path)> EnumerateObjectives(
+            QuestAuthoringEntry quest,
+            string path)
+        {
+            if (quest.Steps == null)
+            {
+                yield break;
+            }
+
+            for (var stepIndex = 0; stepIndex < quest.Steps.Length; stepIndex++)
+            {
+                var objectives = quest.Steps[stepIndex]?.Objectives;
+                if (objectives == null)
+                {
+                    continue;
+                }
+
+                for (var objectiveIndex = 0; objectiveIndex < objectives.Length; objectiveIndex++)
+                {
+                    if (objectives[objectiveIndex] != null)
+                    {
+                        yield return (
+                            objectives[objectiveIndex],
+                            path + ".steps[" + Index(stepIndex) + "].objectives[" + Index(objectiveIndex) + "]");
+                    }
+                }
             }
         }
 
@@ -989,6 +1067,20 @@ namespace Mmorpg.WorldData.Quests
                 return string.Equals(item.Category, ItemCategoryIds.QuestItem, StringComparison.Ordinal);
             }
 
+            public static bool IsProtectedQuestItem(ItemDefinition item)
+            {
+                return IsQuestItem(item)
+                    && (item.DefaultPolicies ?? Array.Empty<string>()).Contains(ItemPolicyIds.ProtectedOnDeath);
+            }
+
+            // False for a missing item, which the objective already reports.
+            public bool IsQuestItem(string definitionId)
+            {
+                return !string.IsNullOrEmpty(definitionId)
+                    && items.TryGetValue(definitionId, out var item)
+                    && IsQuestItem(item);
+            }
+
             // An NPC that takes part in quests has a quest capability and stands in some World.
             public void ValidateQuestNpc(string actorId, string path, List<string> errors)
             {
@@ -1063,8 +1155,7 @@ namespace Mmorpg.WorldData.Quests
                     return;
                 }
 
-                if (!IsQuestItem(item)
-                    || !(item.DefaultPolicies ?? Array.Empty<string>()).Contains(ItemPolicyIds.ProtectedOnDeath))
+                if (!IsProtectedQuestItem(item))
                 {
                     errors.Add(path + ".definitionId '" + item.Id + "' must be a protected quest item.");
                 }

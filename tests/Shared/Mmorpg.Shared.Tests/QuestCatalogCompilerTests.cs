@@ -54,7 +54,8 @@ public sealed class QuestCatalogCompilerTests
                 "work",
                 Objective("ore", QuestObjectiveKindIds.Gather, 5, actorIds: ["resource.iron_vein"]),
                 Objective("wild", QuestObjectiveKindIds.Kill, 2, actorTag: "wild"),
-                Objective("mira", QuestObjectiveKindIds.TalkTo, 1, npcActorId: "npc.city_services", line: "The road is safe.")),
+                Objective("mira", QuestObjectiveKindIds.TalkTo, 1, npcActorId: "npc.city_services", line: "The road is safe."),
+                Objective("logs", QuestObjectiveKindIds.Deliver, 2, itemId: "material.oak_log", npcActorId: "npc.city_services")),
             Step(
                 "report",
                 Objective("pelts", QuestObjectiveKindIds.Collect, 3, itemId: "material.wolf_pelt"),
@@ -143,10 +144,93 @@ public sealed class QuestCatalogCompilerTests
         Assert.Contains(Errors(ordinaryStart), error => error.Contains("must be a protected quest item", StringComparison.Ordinal));
         Assert.Contains(Errors(questReward), error => error.Contains("cannot be a reward", StringComparison.Ordinal));
         Assert.Contains(Errors(overStack), error => error.Contains(".quantity must be between 1 and 1, one stack.", StringComparison.Ordinal));
-        Assert.Contains(Errors(unobtainable), error => error.Contains("neither grants that often nor drops", StringComparison.Ordinal));
-        Assert.Contains(Errors(ordinaryDrop), error => error.Contains("dropSources may only drop quest items", StringComparison.Ordinal));
+        Assert.Contains(Errors(unobtainable), error => error.Contains("neither drops nor grants as often as it takes it", StringComparison.Ordinal));
+        Assert.Contains(Errors(ordinaryDrop), error => error.Contains("dropSources may only drop protected quest items", StringComparison.Ordinal));
         Assert.Contains(Errors(badChance), error => error.Contains("chanceBasisPoints must be between 1 and 10000", StringComparison.Ordinal));
         Assert.Contains(Errors(oneChoice), error => error.Contains("rewardChoiceItems must be empty or offer at least 2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void QuestDropsMustBeProtectedQuestItems()
+    {
+        var items = ItemCatalogTestData.Compile();
+        items.Definitions.Single(definition => definition.Id == "quest_item.wolf_fang").DefaultPolicies = [];
+        var fangs = KillQuest();
+        fangs.Steps[0].Objectives =
+        [
+            Objective(
+                "fangs",
+                QuestObjectiveKindIds.Collect,
+                2,
+                itemId: "quest_item.wolf_fang",
+                dropSources: [Drop("mob.feral_wolf", 5000)])
+        ];
+
+        var errors = Assert.Throws<QuestValidationException>(
+            () => QuestCatalogCompiler.Compile(Catalog(fangs), items, [World.Value])).Errors;
+
+        Assert.Contains(errors, error => error.Contains("dropSources may only drop protected quest items", StringComparison.Ordinal));
+    }
+
+    // Collect objectives count the same carried items, and every quest item that the quest
+    // takes must come from its start items or its drops.
+    [Fact]
+    public void QuestItemsAreTakenNoMoreOftenThanTheQuestSuppliesThem()
+    {
+        var twoCollectors = KillQuest();
+        twoCollectors.Steps[0].Objectives =
+        [
+            Objective("few_pelts", QuestObjectiveKindIds.Collect, 2, itemId: "material.wolf_pelt"),
+            Objective("more_pelts", QuestObjectiveKindIds.Collect, 3, itemId: "material.wolf_pelt")
+        ];
+        var deliveredThenCollected = KillQuest();
+        deliveredThenCollected.StartItems = [Item("quest_item.sealed_letter", 1)];
+        deliveredThenCollected.Steps =
+        [
+            Step(
+                "show",
+                Objective("show_letter", QuestObjectiveKindIds.Deliver, 1, itemId: "quest_item.sealed_letter", npcActorId: "npc.city_services")),
+            Step("return", Objective("letter", QuestObjectiveKindIds.Collect, 1, itemId: "quest_item.sealed_letter"))
+        ];
+        var deliveredTwice = KillQuest();
+        deliveredTwice.StartItems = [Item("quest_item.sealed_letter", 1)];
+        deliveredTwice.Steps =
+        [
+            Step(
+                "deliver",
+                Objective("first", QuestObjectiveKindIds.Deliver, 1, itemId: "quest_item.sealed_letter", npcActorId: "npc.city_services"),
+                Objective("second", QuestObjectiveKindIds.Deliver, 1, itemId: "quest_item.sealed_letter", npcActorId: "npc.city_services"))
+        ];
+        var suppliedByDrops = KillQuest();
+        suppliedByDrops.Steps[0].Objectives =
+        [
+            Objective(
+                "fangs",
+                QuestObjectiveKindIds.Collect,
+                2,
+                itemId: "quest_item.wolf_fang",
+                dropSources: [Drop("mob.feral_wolf", 5000)])
+        ];
+        var suppliedByStartItems = KillQuest();
+        suppliedByStartItems.StartItems = [Item("quest_item.sealed_letter", 1)];
+        suppliedByStartItems.Steps[0].Objectives =
+        [
+            Objective("letter", QuestObjectiveKindIds.Collect, 1, itemId: "quest_item.sealed_letter")
+        ];
+
+        Assert.Contains(Errors(twoCollectors), error => error.Contains(
+            ".itemId 'material.wolf_pelt' is already collected by objective 'few_pelts'",
+            StringComparison.Ordinal));
+        Assert.Contains(Errors(deliveredThenCollected), error => error.Contains(
+            "collects quest item 'quest_item.sealed_letter', which the quest neither drops nor grants as often as it takes it",
+            StringComparison.Ordinal));
+        Assert.Equal(
+            2,
+            Errors(deliveredTwice).Count(error => error.Contains(
+                "does not grant as often as its deliveries take it",
+                StringComparison.Ordinal)));
+        Assert.Single(Compile(suppliedByDrops).Quests);
+        Assert.Single(Compile(suppliedByStartItems).Quests);
     }
 
     [Fact]
@@ -165,6 +249,13 @@ public sealed class QuestCatalogCompilerTests
                 "report",
                 Objective("mira", QuestObjectiveKindIds.TalkTo, 1, npcActorId: "npc.city_services", line: "Here I am."))
         ];
+        var deliverToTurnIn = KillQuest();
+        deliverToTurnIn.Steps =
+        [
+            Step(
+                "report",
+                Objective("pelts", QuestObjectiveKindIds.Deliver, 2, itemId: "material.wolf_pelt", npcActorId: "npc.city_services"))
+        ];
         var longTalk = KillQuest();
         longTalk.Steps =
         [
@@ -177,6 +268,7 @@ public sealed class QuestCatalogCompilerTests
 
         Assert.Contains(Errors(earlyCollect), error => error.Contains("belongs to the last step", StringComparison.Ordinal));
         Assert.Contains(Errors(talkToTurnIn), error => error.Contains("talks to the turn-in NPC in the last step", StringComparison.Ordinal));
+        Assert.Contains(Errors(deliverToTurnIn), error => error.Contains("delivers to the turn-in NPC in the last step", StringComparison.Ordinal));
         Assert.Contains(Errors(longTalk), error => error.Contains(".count must be 1 for a conversation.", StringComparison.Ordinal));
         Assert.Contains(Errors(duplicate), error => error.Contains("contains duplicate objective id 'wolves'", StringComparison.Ordinal));
     }

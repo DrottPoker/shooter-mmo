@@ -353,16 +353,18 @@ The compiler rejects:
 - A kill objective that names both Mobs and a tag, or neither, a kill target
   that is not a Mob, and a tag that no Mob carries.
 - A gather target that is not a resource node.
-- An unknown item, start items and quest drops that are not quest items, reward
-  items that are quest items or carry default policies, and a quantity above one
-  stack.
+- An unknown item, start items and quest drops that are not protected quest
+  items, reward items that are quest items or carry default policies, and a
+  quantity above one stack.
 - A collect objective outside the last step, a quest drop source that is not a
   Mob, and a chance outside 1 to 10,000 basis points.
-- A collect objective for a quest item that the quest neither drops nor grants
-  as often as the count asks, and a deliver objective for a quest item that the
-  quest does not grant as often, because the player could never get it.
-- A talk-to objective with a count other than 1, and one for the turn-in NPC in
-  the last step.
+- Two collect objectives for the same item, which would count the same items.
+- A quest item that the quest's deliveries and its collect objective take more
+  often than its start items grant it, unless the collect objective drops the
+  item, because the player could never get it.
+- A talk-to objective with a count other than 1, and a talk-to or deliver
+  objective for the turn-in NPC in the last step, whose turn-in already talks
+  and takes the items.
 - A field that the objective's kind does not use but that is not empty.
 - An unknown required quest, a cycle of required quests, and a minimum level
   outside 1 to the character level cap.
