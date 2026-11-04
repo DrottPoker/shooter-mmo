@@ -221,6 +221,38 @@ public sealed class DurableCorpseStoreTests
         Assert.Null(Assert.Single(store.ListActive()).Look);
     }
 
+    // A boss corpse keeps its owner and loot group when it is created and after every open or
+    // loot that hands the store a new snapshot, so it never becomes open to everyone.
+    [Fact]
+    public void ACreatedCorpseAndItsSnapshotsKeepTheOwnerAndLootGroup()
+    {
+        var databaseTime = DateTime.UtcNow;
+        var corpseId = Guid.NewGuid();
+        var owner = Guid.NewGuid();
+        var group = Guid.NewGuid();
+        var store = new DurableCorpseStore(TimeProvider.System);
+
+        store.Apply(CreateCorpse(corpseId, databaseTime.AddMinutes(-1), databaseTime.AddMinutes(9), isEmpty: false) with
+        {
+            OwnerCharacterId = owner,
+            LootGroupId = group
+        });
+        var created = Assert.Single(store.ListActive());
+        store.ApplySnapshot(CreateSnapshot(corpseId, Guid.NewGuid(), revision: 2, databaseTime.AddMinutes(-1), databaseTime.AddMinutes(9)) with
+        {
+            OwnerCharacterId = owner,
+            LootGroupId = group
+        });
+        var updated = Assert.Single(store.ListActive());
+
+        Assert.Equal(owner, created.OwnerCharacterId);
+        Assert.Equal(group, created.LootGroupId);
+        Assert.Equal(2, updated.Revision);
+        Assert.Equal(owner, updated.OwnerCharacterId);
+        Assert.Equal(group, updated.LootGroupId);
+        Assert.False(CorpseLootRights.CanLoot(updated, Guid.NewGuid()));
+    }
+
     private static DurableCorpseResponse CreateCorpse(
         Guid corpseId,
         DateTime createdAt,

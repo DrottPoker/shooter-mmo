@@ -388,7 +388,10 @@ public sealed class MobCorpseLifecycleIntegrationTests
             new[] { firstCorpseId, secondCorpseId }.Order(),
             group.Select(corpse => corpse.CorpseId).Order());
         Assert.Equal(first.Character.Id, group.Single(corpse => corpse.CorpseId == firstCorpseId).OwnerCharacterId);
-        Assert.True((await OpenAsync(context, firstSession, firstCorpseId)).Succeeded);
+        var firstOpened = await OpenAsync(context, firstSession, firstCorpseId);
+        Assert.True(firstOpened.Succeeded, firstOpened.Error?.Message);
+        Assert.Equal(first.Character.Id, firstOpened.Value!.OwnerCharacterId);
+        Assert.Equal(lootGroupId, firstOpened.Value.LootGroupId);
         Assert.True((await OpenAsync(context, secondSession, secondCorpseId)).Succeeded);
         Assert.Equal("corpse_not_lootable", (await OpenAsync(context, firstSession, secondCorpseId)).Error!.Code);
         Assert.Equal("corpse_not_lootable", (await OpenAsync(context, secondSession, firstCorpseId)).Error!.Code);

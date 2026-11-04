@@ -486,6 +486,7 @@ internal sealed partial class CorpseService
                     closed_at as "ClosedAt",
                     close_reason as "CloseReason",
                     owner_character_id as "OwnerCharacterId",
+                    loot_group_id as "LootGroupId",
                     expires_at <= now() as "IsExpired"
                 from corpses
                 where id = @CorpseId;
@@ -664,7 +665,11 @@ internal sealed partial class CorpseService
             corpse.CreatedAt,
             corpse.ExpiresAt,
             sections,
-            presentations));
+            presentations)
+        {
+            OwnerCharacterId = corpse.OwnerCharacterId,
+            LootGroupId = corpse.LootGroupId
+        });
     }
 
     private static SnapshotError? ValidateSimulationRequest(
@@ -859,6 +864,8 @@ internal sealed partial class CorpseService
         public string? CloseReason { get; set; }
 
         public Guid? OwnerCharacterId { get; set; }
+
+        public Guid? LootGroupId { get; set; }
 
         public bool IsExpired { get; set; }
     }

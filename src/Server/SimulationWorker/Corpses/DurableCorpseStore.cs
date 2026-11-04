@@ -246,7 +246,8 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
     }
 
     // A view snapshot has no facing and no look of its own: the corpse keeps the facing and the
-    // body model and look it had, and wears what is left in its equipment section now.
+    // body model and look it had, and wears what is left in its equipment section now. Its owner
+    // and loot group come with the snapshot, so an update never opens a corpse to everyone.
     public void ApplySnapshot(CorpseViewSnapshotResponse snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -287,7 +288,9 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                     section.Slots.Count(slot => slot.Item is not null)))
                 .ToArray())
         {
-            Look = current?.Look is { } look ? look with { Equipment = equipment } : null
+            Look = current?.Look is { } look ? look with { Equipment = equipment } : null,
+            OwnerCharacterId = snapshot.OwnerCharacterId,
+            LootGroupId = snapshot.LootGroupId ?? Guid.Empty
         };
         ApplyState(state);
     }
@@ -320,7 +323,9 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                     section.ItemCount))
                 .ToArray())
         {
-            Look = CorpseLook.From(corpse.Look)
+            Look = CorpseLook.From(corpse.Look),
+            OwnerCharacterId = corpse.OwnerCharacterId,
+            LootGroupId = corpse.LootGroupId ?? Guid.Empty
         });
     }
 
