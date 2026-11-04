@@ -666,7 +666,9 @@ the Training Shortbow with the Bronze Arrows and the Starter Pickaxe.
 2. Walk back to the town.
 
 Expected result: on the way out, Mira and the town guards disappear from the
-client and the outpost guard appears; on the way back it reverses.
+client and the outpost guard and Sergeant Hale appear; on the way back it
+reverses. Right-clicking Sergeant Hale offers `Quests` and `Turn-in`, the quest
+options of every quest NPC.
 
 ### Open And Close An Interaction
 
