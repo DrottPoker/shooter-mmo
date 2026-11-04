@@ -197,7 +197,8 @@ transaction. A change that would take the balance below zero or above
 `CurrencyRules.MaximumBalance` (1,000,000,000,000) returns a failed
 `CurrencyChange` and leaves the balance unchanged; the caller chooses its error
 code. The source kinds in `CurrencySourceKinds` are `starting_balance`,
-`vendor_purchase`, `vendor_sale`, `insurance`, and `development`. The ledger
+`vendor_purchase`, `vendor_sale`, `insurance`, `development`, and
+`quest_reward`. The ledger
 also accepts `opening_balance`, which only the ledger migration wrote, once for
 each balance that existed before the ledger. A database check keeps the balance
 and every `balance_after` within the same range, so each character's ledger
@@ -323,6 +324,8 @@ system services.
 | `apply_item_policy`, `remove_insurance_policy` | `ApplyItemPolicyCommand`, `RemoveInsurancePolicyCommand` | `ItemPolicyCommandHandler` | Worker route, for the insurance capability |
 | `abandon_quest_items` | `AbandonQuestItemsCommand` | `QuestItemCommandHandler` | Worker route, for the quest capability |
 | `accept_quest`, `abandon_quest`, `regrant_quest_items` | `AcceptQuestCommand`, `AbandonQuestCommand`, `RegrantQuestItemsCommand` | `QuestCommandHandler` | Worker quest route |
+| `talk_to_quest_npc`, `deliver_quest_items`, `turn_in_quest` | `TalkToQuestNpcCommand`, `DeliverQuestItemsCommand`, `TurnInQuestCommand` | `QuestCommandHandler` | Worker quest route |
+| `credit_quest_kill` | `CreditQuestKillCommand` | `QuestCommandHandler` | Worker quest route, for every character a Mob's death credits |
 | `process_player_death` | `ProcessPlayerDeathCommand` | `PlayerDeathCommandHandler` | Worker player death route and the Development corpse fixture |
 | `expire_corpse` | `ExpireCorpseCommand` | `CorpseExpiryCommandHandler` | `CorpseExpiryHostedService` |
 | `loot_corpse_item`, `loot_corpse_partial_stack`, `loot_corpse_item_to_equipment` | `LootCorpseItemCommand`, `LootCorpsePartialStackCommand`, `LootCorpseItemToEquipmentCommand` | `CorpseLootCommandHandler` | Worker corpse route |
@@ -349,10 +352,11 @@ transaction and take their quest definitions from `IQuestDefinitions`:
 
 - An action at a quest NPC requires the quest access of the live session:
   `ItemTransactionLiveAccess.QuestNpcActorId` must name the NPC that the quest
-  needs, the giver for `AcceptQuestCommand` and `RegrantQuestItemsCommand`. The
-  worker sets it from the quest capability it validated, never from a client
-  value. `AbandonQuestCommand` needs only the live session, because abandoning
-  works anywhere.
+  needs: the giver for `AcceptQuestCommand` and `RegrantQuestItemsCommand`, the
+  objective's NPC for `TalkToQuestNpcCommand` and `DeliverQuestItemsCommand`, and
+  the turn-in NPC for `TurnInQuestCommand`. The worker sets it from the quest
+  capability it validated, never from a client value. `AbandonQuestCommand` and
+  `CreditQuestKillCommand` need only the live session.
 - Quest commands lock the character with
   `LockCharacterStateForIdempotentEventAsync`, without an expected character
   revision, because they only fill free carried slots or take items with the
@@ -369,6 +373,29 @@ transaction and take their quest definitions from `IQuestDefinitions`:
 - `RegrantQuestItemsCommand` grants the start items that the quest still needs
   and the character no longer owns: the start quantity less what completed
   deliveries took, less what the character owns with the lineage.
+- `QuestProgression` counts progress for the counted objectives of the current
+  steps, up to each objective's count, and moves a quest whose current step is
+  complete to its next step with zero progress. A complete last step waits for
+  the turn-in. `CreditQuestKillCommand` counts one kill for every kill objective
+  that names the Mob's actor definition or one of its tags, as the shared
+  `QuestRules.CountsKill` decides, and `GatherResourceCommand` counts the yield
+  for every gather objective of the node's actor definition,
+  `QuestRules.CountsGather`, in the gathering transaction when the worker names
+  the node's `ResourceActorId`. A credit that no current step asks for changes
+  nothing.
+- `TalkToQuestNpcCommand` completes a talk-to objective of the current step, and
+  `DeliverQuestItemsCommand` takes the objective's count from carried storage
+  and completes a deliver objective. `QuestCarriedItems` counts and takes
+  carried stacks of the permanent inventory and the equipped Bag: ordinary items
+  without an active policy, and quest items with the quest's lineage.
+- `TurnInQuestCommand` requires the last step to be current with its counted
+  objectives complete and its collect objectives covered by carried items, and
+  one of the reward choices when the quest offers them. It takes the collected
+  items, removes what is left with the quest's lineage with the
+  `quest_completed` destruction reason, places the rewards through carried
+  acquisition, credits the Gold reward with a `quest_reward` ledger row, and
+  counts the completion. Missing room for a reward rejects the whole turn-in
+  with `inventory_full`.
 - The result names the changed quests in `ItemTransactionResult.QuestLog`: the
   quest log revision afterwards and each quest's step, the progress of its
   counted objectives, and its completion count. A stored result replays it.
@@ -502,6 +529,7 @@ topology names.
 | 30 | `202611021700_reduce_permanent_inventory` | Items |
 | 31 | `202611041800_mob_corpse_ownership` | Items |
 | 32 | `202611042200_quest_log` | Quests |
+| 33 | `202611050900_quest_reward_currency` | Characters |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -612,10 +640,12 @@ the statement ids.
 | S55 | The quest log read checks character ownership | Chr R | `CharactersSql.ActiveCharacters` in `QuestLogQueryService` |
 | S56 | Quest commands read the quest catalog and the character level, and read and change the quest log | Qst R, W; Chr R | `IQuestDefinitions`, `ICharacterQuestLog`, and `CharactersSql.LevelOf` in `QuestCommandHandler` |
 | S57 | A quest command's result reports the quests it changed | Qst R | `ICharacterQuestLog.ReadAsync` in `QuestLogChanges` |
+| S58 | Kills, yields, talks, and deliveries count for the objectives of current steps | Qst R, W | `IQuestDefinitions` and `ICharacterQuestLog` in `QuestProgression` and `GatherResourceCommandHandler` |
+| S59 | A quest turn-in credits its Gold reward | Chr L, W | `ICharacterWallet.CreditAsync` with a `quest_reward` ledger row in `QuestCommandHandler` |
 
 Notes on specific statements:
 
-- The wallet's `FOR NO KEY UPDATE` lock in S30, S45, and S46 falls on a character
+- The wallet's `FOR NO KEY UPDATE` lock in S30, S45, S46, and S59 falls on a character
   row that the item transaction already locked through `ICharacterLocks`, so it
   adds no lock and keeps the lock order.
 - S12 and S14 read the carry state through `ISimulationCharacterStateProvider`
