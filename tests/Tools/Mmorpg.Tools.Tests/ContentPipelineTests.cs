@@ -2,6 +2,7 @@ using Mmorpg.Testing;
 using Mmorpg.Testing.Content;
 using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.Tools.ItemCatalogCompiler;
+using Mmorpg.Tools.QuestCatalogCompiler;
 using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Worlds;
@@ -46,6 +47,7 @@ public sealed class ContentPipelineTests
     {
         var items = ContentLayout.ListDefinitionFiles(ItemCatalogTestData.ItemsDirectory);
         var actors = ContentLayout.ListDefinitionFiles(WorldActorTestData.ActorsDirectory);
+        var quests = ContentLayout.ListDefinitionFiles(QuestCatalogTestData.QuestsDirectory);
 
         Assert.NotEmpty(items);
         Assert.Equal(items.Select(file => file.Id).Order(StringComparer.Ordinal), items.Select(file => file.Id));
@@ -56,10 +58,51 @@ public sealed class ContentPipelineTests
                 "mob.grey_wolf",
                 "npc.city_guard",
                 "npc.city_services",
+                "npc.outpost_sergeant",
                 "resource.iron_vein",
                 "resource.oak_tree"
             ],
             actors.Select(file => file.Id));
+        Assert.Equal(
+            [
+                "quest.letter_for_the_outpost",
+                "quest.pelts_and_fangs",
+                "quest.sergeants_request",
+                "quest.the_alpha",
+                "quest.wolves_at_the_gate"
+            ],
+            quests.Select(file => file.Id));
+    }
+
+    [Fact]
+    public void QuestDefinitionFileMustContainItsOwnId()
+    {
+        using var content = TemporaryContent.CopyOf(QuestCatalogTestData.QuestsDirectory);
+        var source = ContentLayout.DefinitionPath(content.Path, "quest.the_alpha");
+        File.Move(source, ContentLayout.DefinitionPath(content.Path, "quest.the_beta"));
+
+        var exception = Assert.Throws<InvalidDataException>(
+            () => QuestContent.LoadCatalog(content.Path));
+
+        Assert.Contains("must contain id 'quest.the_beta'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void QuestFilesRejectUnknownProperties()
+    {
+        using var content = TemporaryContent.CopyOf(QuestCatalogTestData.QuestsDirectory);
+        var path = ContentLayout.DefinitionPath(content.Path, "quest.the_alpha");
+        File.WriteAllText(
+            path,
+            File.ReadAllText(path).Replace(
+                "\"rewardGold\": 50,",
+                "\"rewardGold\": 50,\n    \"rewardExperience\": 100,",
+                StringComparison.Ordinal));
+
+        var exception = Assert.Throws<InvalidDataException>(
+            () => QuestContent.LoadCatalog(content.Path));
+
+        Assert.Contains("rewardExperience", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

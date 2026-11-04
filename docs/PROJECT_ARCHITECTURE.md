@@ -443,8 +443,8 @@ runs only in SimulationWorker, as
 ### WorldData
 
 Authored content and compiled data are separate. `content/` at the repository
-root is the only authored source: the item and actor catalogs with one file per
-definition, the combat rules, the character appearance content, and one
+root is the only authored source: the item, actor, and quest catalogs with one
+file per definition, the combat rules, the character appearance content, and one
 directory per World with its `world.json`, actor spawns, and collision source.
 The `src/Shared/WorldData` Unity package holds the shared domain rules and
 compilers, the Unity content tools, and the deterministic data compiled from
@@ -454,11 +454,12 @@ Unity, the .NET tools, and tests. A shard references one World and its worker
 loads that World's manifest and compiled data. [Game Content](../content/README.md)
 describes the layout and the pipeline.
 
-`tools/WorldCollisionCompiler`, `tools/ItemCatalogCompiler`, and
-`tools/WorldActorCompiler` share the `tools/ContentPipeline` library for their
-command line, strict JSON parsing, and generated-file verification. Each
-compiles every World at once and fails verification for stale or orphaned
-generated data. `tools/WorldCollisionCompiler` builds and verifies the same data
+`tools/WorldCollisionCompiler`, `tools/ItemCatalogCompiler`,
+`tools/WorldActorCompiler`, and `tools/QuestCatalogCompiler` share the
+`tools/ContentPipeline` library for their command line, strict JSON parsing, and
+generated-file verification. Each compiles every World at once and fails
+verification for stale or orphaned generated data. The quest compiler reads the
+compiled items and the compiled actors of every World, so it runs after both. `tools/WorldCollisionCompiler` builds and verifies the same data
 consumed by SimulationWorker and Unity. Static collision is deterministic and
 shared. Dynamic collision uses a mutable spatial hash behind the same
 collision-query interface, leaving room for doors, lifts, and other server-owned
@@ -482,6 +483,14 @@ deterministic runtime content at
 and tests use the same framework-neutral compiler and runtime validator. Unity
 scene authoring imports and exports that content but does not replace it as the
 source consumed by SimulationWorker.
+
+Quest definitions live below `content/quests` and compile into
+`src/Shared/WorldData/Generated/Quests/core.quest-catalog.json`.
+`tools/QuestCatalogCompiler` and the tests use the framework-neutral quest
+compiler and runtime validator in WorldData, next to the shared quest rules for
+availability and step progression. No service loads the quest catalog yet;
+[Quest System Design](QUEST_SYSTEM_DESIGN.md#authority) describes how the
+services will share the authority over quests.
 
 The pure item rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, empty and non-empty Bag locations, Bag containment-cycle rejection, item policy capabilities, unitless

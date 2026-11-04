@@ -95,6 +95,14 @@ jobs:
           --
           --verify
 
+      - name: Verify quest catalog
+        run: >-
+          dotnet run --project tools/QuestCatalogCompiler
+          --configuration Release
+          --no-build
+          --
+          --verify
+
       - name: Verify generated realtime protocol
         run: >-
           dotnet run --project tools/ProtocolGenerator

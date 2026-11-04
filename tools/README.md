@@ -37,6 +37,7 @@ is current. See [Game Content](../content/README.md).
 | --- | --- |
 | `ItemCatalogCompiler/` | Compiles the item catalog. See [Item Catalog Authoring](../content/items/README.md) |
 | `WorldActorCompiler/` | Compiles the actor definitions and the actor spawns of every World |
+| `QuestCatalogCompiler/` | Compiles the quest catalog against the compiled items and the compiled actors of every World |
 | `WorldCollisionCompiler/` | Compiles the collision chunks of every World, including the resource nodes that block movement, the water surfaces, and the deep water edges |
 | `ContentPipeline/` | The library the compilers share, also used by the Unity content tools |
 | `ProtocolGenerator/` | Generates the realtime protocol code from its schema. See [Realtime Protocol](../docs/REALTIME_PROTOCOL.md) |

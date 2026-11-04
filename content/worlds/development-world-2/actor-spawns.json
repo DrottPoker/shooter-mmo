@@ -22,6 +22,15 @@
             "patrolPathId": ""
         },
         {
+            "id": "development_world_2.outpost_sergeant",
+            "actorId": "npc.outpost_sergeant",
+            "x": -174.0,
+            "y": 0.0,
+            "z": 3.0,
+            "yawDegrees": 90.0,
+            "patrolPathId": ""
+        },
+        {
             "id": "development_world_2.feral_alpha",
             "actorId": "mob.feral_alpha",
             "x": -160.0,

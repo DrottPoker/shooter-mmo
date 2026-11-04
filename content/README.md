@@ -24,6 +24,9 @@ content/
     catalog.json                    factions, presentation, and activity, respawn, combat,
                                     brain, locomotion, loot, and resource profiles
     definitions/<actor-id>.json     one NPC, Mob, or resource node definition per file
+  quests/
+    catalog.json                    the active quest limit and the retired quest ids
+    definitions/<quest-id>.json     one quest definition per file
   worlds/<world-id>/
     world.json                      World manifest read by both services: id, display name,
                                     client scene, ground height, playable bounds, and spawn
@@ -52,22 +55,24 @@ development Worlds themselves, their scenes, and their layouts are described in
   version it implements. The item catalog format is described in
   [Item Catalog Authoring](items/README.md#authoring-contract). The actor
   catalog and every `actor-spawns.json` share one format, whose version is
-  `WorldActorDataFormat.Version` in the WorldData runtime.
+  `WorldActorDataFormat.Version` in the WorldData runtime, and the quest catalog
+  version is `QuestCatalogFormat.Version`.
 - Every directory below `worlds/` except hidden ones is a World and must contain
   `world.json`, `actor-spawns.json`, and `collision.json`. Both World compilers
   fail on an incomplete World instead of skipping it, because the
   SimulationWorker cannot start a World without all three.
 - `actor-spawns.json` must declare the `worldId` of its directory, and the World
   directory name must equal the manifest `worldId`.
-- The item and actor compilers, and the services that load `combat-rules.json`
-  and `appearance.json`, parse strictly: unknown properties, duplicate
+- The item, actor, and quest compilers, and the services that load
+  `combat-rules.json` and `appearance.json`, parse strictly: unknown properties, duplicate
   properties, comments, trailing commas, and missing required values fail.
   `collision.json` is written only by the Unity collision bake.
 - Files are written in the canonical format of the Unity content tools, so a save
   without changes produces no diff. Item files, including vendor profiles, use
   ordered DataContract JSON with two-space indentation. Actor and spawn files use
   JsonUtility JSON with four-space indentation and the shortest text for each
-  float. EditMode tests fail when a committed file is not canonical.
+  float. EditMode tests fail when a committed item, actor, or spawn file is not
+  canonical. Quest files are edited by hand in the same four-space JSON.
 - Released definition ids are permanent. Item ids that reached runtime JSON are
   locked by the Item Catalog tool, and persisted state refers to them. A released
   item id that is removed moves to the catalog's retired ids and can never be
@@ -169,6 +174,60 @@ compiled item catalog:
 - Every yield exists, is not a quest item, a Bag, or an item with default
   policies, and its quantity fits one stack.
 
+## Quests
+
+`quests/catalog.json` holds `maximumActiveQuests`, how many quests a character
+can have active at once, and `retiredQuestIds`. Every file in
+`quests/definitions` is one quest of the model in
+[Quest System Design](../docs/QUEST_SYSTEM_DESIGN.md#quest-model):
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `title` | The permanent quest id and the title |
+| `giverActorId`, `turnInActorId` | The NPC definitions that offer and complete the quest, which may be the same |
+| `minimumLevel`, `requiredQuestIds` | The character level and the quests completed first that the quest needs |
+| `repeatable` | Whether the quest can be accepted again after its turn-in |
+| `tags` | Content tags for authoring and filters |
+| `offerText`, `progressText`, `completionText` | What the giver says to offer the quest, what the turn-in NPC says while it is not ready, and what it says at the turn-in |
+| `startItems` | Quest items granted at acceptance, each a `definitionId` and a `quantity` |
+| `steps` | The steps in order, each an `id` and its `objectives` |
+| `rewardGold`, `rewardItems`, `rewardChoiceItems` | The rewards; the player picks one of the choice items |
+
+Every objective has an `id`, a `kind`, its line of `text`, a `count`, and the
+fields of its kind, and leaves every other field empty:
+
+| Kind | Fields |
+| --- | --- |
+| `kill` | `actorIds`, the Mobs that count, or `actorTag`, a tag that the Mobs carry |
+| `collect` | `itemId`, and for a quest item that Mobs drop, `dropSources`: each an `actorId`, a `chanceBasisPoints`, and a `quantity` |
+| `deliver` | `itemId` and `npcActorId`, the NPC who takes the item |
+| `talk_to` | `npcActorId` and the `line` that the NPC says; the count is 1 |
+| `gather` | `actorIds`, the resource nodes whose yields count |
+
+The compiler checks every quest against the compiled item catalog and the
+compiled actors of every World and rejects what
+[Validation](../docs/QUEST_SYSTEM_DESIGN.md#validation) lists, within the
+[limits](../docs/QUEST_SYSTEM_DESIGN.md#limits). A quest NPC is an NPC with a
+`quest_offer` or `quest_turn_in` capability. Each quest gets a structural
+fingerprint over its steps and its objectives' ids, kinds, and targets, which
+stored progress depends on, and the catalog gets a revision over everything.
+
+The checked-in quests are a development chain in Development World 2 between
+Mira the Quartermaster in the town and Sergeant Hale, `npc.outpost_sergeant`, at
+the outpost:
+
+| Quest | Giver and turn-in | Requires | Objectives | Rewards |
+| --- | --- | --- | --- | --- |
+| `quest.wolves_at_the_gate`, "Wolves at the Gate" | Mira | | Kill 5 Feral Wolves | 20 Gold |
+| `quest.pelts_and_fangs`, "Pelts and Fangs" | Mira | Wolves at the Gate | Collect 3 Wolf Pelts and 2 Wolf Fangs, which Feral Wolves drop for the quest at a 50 % chance | 10 Gold and Leather Gloves or Leather Boots |
+| `quest.letter_for_the_outpost`, "A Letter for the Outpost" | Mira to Sergeant Hale | | Bring the Sealed Letter, a start item | 15 Gold |
+| `quest.sergeants_request`, "The Sergeant's Request" | Sergeant Hale | A Letter for the Outpost | Gather 5 ore from Iron Veins, then talk to Mira | 30 Gold |
+| `quest.the_alpha`, "The Alpha" | Sergeant Hale | The Sergeant's Request and Wolves at the Gate | Kill the Feral Alpha and collect the Alpha's Fang, which it always drops for the quest | 50 Gold and a choice of the Iron Sword, the Iron Greataxe, the Oak Staff, or the Training Shortbow |
+
+The Wolf Fang and the Alpha's Fang are the quest items `quest_item.wolf_fang`
+and `quest_item.alpha_fang`. `QuestContentTests` checks that the chain keeps
+its requirements and that Development World 2 places everything it needs.
+
 ## Combat Rules
 
 `combat/combat-rules.json` holds the combat values that belong to no item or
@@ -228,6 +287,7 @@ at `src/Shared/WorldData/Generated/`:
 | `Items/core.item-catalog.json` | `items/` | `tools/ItemCatalogCompiler` |
 | `Worlds/<world-id>/world-actors.json` | `actors/` and the World's `actor-spawns.json`, with loot, vendor capabilities, and resource profiles checked against `Items/core.item-catalog.json` | `tools/WorldActorCompiler` |
 | `WorldCollision/<world-id>/` | the World's `collision.json` and the boxes of its placed resource nodes from `world-actors.json` | `tools/WorldCollisionCompiler` |
+| `Quests/core.quest-catalog.json` | `quests/`, checked against `Items/core.item-catalog.json` and every World's `world-actors.json` | `tools/QuestCatalogCompiler` |
 
 Generated data is committed, so the services and the client run without a
 content build step, and CI verifies that it matches its sources. The client
@@ -252,14 +312,16 @@ finds the repository root from the current directory, so it runs from any
 directory of the repository. Run the item catalog compiler before the actor
 compiler, because actor content refers to item content: the actor compiler reads
 `Items/core.item-catalog.json` from the generated root and checks Mob loot,
-vendor capabilities, and resource profiles against it. Run the collision
-compiler last, because it reads the compiled World actors. From the repository
-root:
+vendor capabilities, and resource profiles against it. Run the collision and
+quest compilers after the actor compiler, because they read the compiled World
+actors; the quest compiler also reads the compiled item catalog. From the
+repository root:
 
 ```powershell
 dotnet run --project tools/ItemCatalogCompiler
 dotnet run --project tools/WorldActorCompiler
 dotnet run --project tools/WorldCollisionCompiler
+dotnet run --project tools/QuestCatalogCompiler
 ```
 
 Add `-- --verify` to check that the committed generated data matches the
@@ -272,8 +334,9 @@ generated data together with its Unity `.meta` file.
 
 Expected result: the item compiler prints the catalog revision with its number
 of definitions, the actor compiler prints every World
-with its revision and its numbers of definitions and runtime instances, and the
-collision compiler prints every World with its revision and chunk count.
+with its revision and its numbers of definitions and runtime instances, the
+collision compiler prints every World with its revision and chunk count, and the
+quest compiler prints the quest catalog revision with its number of quests.
 
 `--content-root <directory>` and `--generated-root <directory>` point a compiler
 at other directories. The Unity content tools use them to validate candidate

@@ -1,0 +1,301 @@
+{
+  "formatVersion": 1,
+  "catalogId": "core",
+  "revision": "e59512805c8dfc004bf8aa9d30646f9f4a90141a8fd34e9efb033e450b639ae0",
+  "maximumActiveQuests": 25,
+  "retiredQuestIds": [],
+  "quests": [
+    {
+      "id": "quest.letter_for_the_outpost",
+      "title": "A Letter for the Outpost",
+      "giverActorId": "npc.city_services",
+      "turnInActorId": "npc.outpost_sergeant",
+      "minimumLevel": 1,
+      "requiredQuestIds": [],
+      "repeatable": false,
+      "tags": [
+        "development"
+      ],
+      "offerText": "This letter must reach the sergeant at the western outpost before nightfall. Follow the road west and hand it over yourself.",
+      "progressText": "You have a letter for me? Let me see it.",
+      "completionText": "Orders from the Quartermaster, sealed and dry. Good work, runner.",
+      "startItems": [
+        {
+          "definitionId": "quest_item.sealed_letter",
+          "quantity": 1
+        }
+      ],
+      "steps": [
+        {
+          "id": "deliver",
+          "objectives": [
+            {
+              "id": "sealed_letter",
+              "kind": "collect",
+              "text": "Sealed Letter delivered",
+              "count": 1,
+              "actorIds": [],
+              "actorTag": "",
+              "itemId": "quest_item.sealed_letter",
+              "npcActorId": "",
+              "line": "",
+              "dropSources": []
+            }
+          ]
+        }
+      ],
+      "rewardGold": 15,
+      "rewardItems": [],
+      "rewardChoiceItems": [],
+      "structuralFingerprint": "4603ca70035801525dc1a980735b807f9829cb22fcd8430c8472b7fd66d0b730"
+    },
+    {
+      "id": "quest.pelts_and_fangs",
+      "title": "Pelts and Fangs",
+      "giverActorId": "npc.city_services",
+      "turnInActorId": "npc.city_services",
+      "minimumLevel": 1,
+      "requiredQuestIds": [
+        "quest.wolves_at_the_gate"
+      ],
+      "repeatable": false,
+      "tags": [
+        "development"
+      ],
+      "offerText": "The tanner pays well for good pelts, and the healer grinds wolf fangs into her salves. Bring me three Wolf Pelts and two Wolf Fangs.",
+      "progressText": "Pelts and fangs, traveler. Have you brought them?",
+      "completionText": "Fine pelts, and sharp fangs. Choose something from my stores to keep you warm on the road.",
+      "startItems": [],
+      "steps": [
+        {
+          "id": "hunt",
+          "objectives": [
+            {
+              "id": "wolf_pelts",
+              "kind": "collect",
+              "text": "Wolf Pelts",
+              "count": 3,
+              "actorIds": [],
+              "actorTag": "",
+              "itemId": "material.wolf_pelt",
+              "npcActorId": "",
+              "line": "",
+              "dropSources": []
+            },
+            {
+              "id": "wolf_fangs",
+              "kind": "collect",
+              "text": "Wolf Fangs",
+              "count": 2,
+              "actorIds": [],
+              "actorTag": "",
+              "itemId": "quest_item.wolf_fang",
+              "npcActorId": "",
+              "line": "",
+              "dropSources": [
+                {
+                  "actorId": "mob.feral_wolf",
+                  "chanceBasisPoints": 5000,
+                  "quantity": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "rewardGold": 10,
+      "rewardItems": [],
+      "rewardChoiceItems": [
+        {
+          "definitionId": "armor.leather_gloves",
+          "quantity": 1
+        },
+        {
+          "definitionId": "armor.leather_boots",
+          "quantity": 1
+        }
+      ],
+      "structuralFingerprint": "df365a0413653ca1e567fc376f539ce63b7bb15418ac8ac01a958a1e9475062f"
+    },
+    {
+      "id": "quest.sergeants_request",
+      "title": "The Sergeant\u0027s Request",
+      "giverActorId": "npc.outpost_sergeant",
+      "turnInActorId": "npc.outpost_sergeant",
+      "minimumLevel": 1,
+      "requiredQuestIds": [
+        "quest.letter_for_the_outpost"
+      ],
+      "repeatable": false,
+      "tags": [
+        "development"
+      ],
+      "offerText": "The palisade needs iron for new hinges. Mine five Iron Ore in the quarry, then tell the Quartermaster in town that the iron is on its way.",
+      "progressText": "Did you mine the iron and speak with the Quartermaster?",
+      "completionText": "Iron for the gates and word to the town. The outpost owes you one.",
+      "startItems": [],
+      "steps": [
+        {
+          "id": "mine",
+          "objectives": [
+            {
+              "id": "iron_ore",
+              "kind": "gather",
+              "text": "Iron Ore mined",
+              "count": 5,
+              "actorIds": [
+                "resource.iron_vein"
+              ],
+              "actorTag": "",
+              "itemId": "",
+              "npcActorId": "",
+              "line": "",
+              "dropSources": []
+            }
+          ]
+        },
+        {
+          "id": "report",
+          "objectives": [
+            {
+              "id": "quartermaster",
+              "kind": "talk_to",
+              "text": "Tell the Quartermaster",
+              "count": 1,
+              "actorIds": [],
+              "actorTag": "",
+              "itemId": "",
+              "npcActorId": "npc.city_services",
+              "line": "Iron for the outpost? Tell the sergeant it is welcome, and that the road stays open.",
+              "dropSources": []
+            }
+          ]
+        }
+      ],
+      "rewardGold": 30,
+      "rewardItems": [],
+      "rewardChoiceItems": [],
+      "structuralFingerprint": "32bc2734ddc9a34919c36f7e93e695e61bbe186053ded7297c54299424d8c282"
+    },
+    {
+      "id": "quest.the_alpha",
+      "title": "The Alpha",
+      "giverActorId": "npc.outpost_sergeant",
+      "turnInActorId": "npc.outpost_sergeant",
+      "minimumLevel": 1,
+      "requiredQuestIds": [
+        "quest.sergeants_request",
+        "quest.wolves_at_the_gate"
+      ],
+      "repeatable": false,
+      "tags": [
+        "development"
+      ],
+      "offerText": "The pack follows an alpha, a scarred brute that lairs southwest of the woods. Kill it and bring me its fang as proof.",
+      "progressText": "The alpha still lives. I can hear the pack at night.",
+      "completionText": "That is the alpha\u0027s fang, no doubt about it. The woods will be quieter now. Take your pick from the armory.",
+      "startItems": [],
+      "steps": [
+        {
+          "id": "hunt",
+          "objectives": [
+            {
+              "id": "feral_alpha",
+              "kind": "kill",
+              "text": "Feral Alpha slain",
+              "count": 1,
+              "actorIds": [
+                "mob.feral_alpha"
+              ],
+              "actorTag": "",
+              "itemId": "",
+              "npcActorId": "",
+              "line": "",
+              "dropSources": []
+            },
+            {
+              "id": "alpha_fang",
+              "kind": "collect",
+              "text": "Alpha\u0027s Fang",
+              "count": 1,
+              "actorIds": [],
+              "actorTag": "",
+              "itemId": "quest_item.alpha_fang",
+              "npcActorId": "",
+              "line": "",
+              "dropSources": [
+                {
+                  "actorId": "mob.feral_alpha",
+                  "chanceBasisPoints": 10000,
+                  "quantity": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "rewardGold": 50,
+      "rewardItems": [],
+      "rewardChoiceItems": [
+        {
+          "definitionId": "weapon.iron_sword",
+          "quantity": 1
+        },
+        {
+          "definitionId": "weapon.iron_greataxe",
+          "quantity": 1
+        },
+        {
+          "definitionId": "weapon.oak_staff",
+          "quantity": 1
+        },
+        {
+          "definitionId": "weapon.training_shortbow",
+          "quantity": 1
+        }
+      ],
+      "structuralFingerprint": "6c9c315503e22a1ab530ef46a06180c5b9efdcb43077685977da0f82730497be"
+    },
+    {
+      "id": "quest.wolves_at_the_gate",
+      "title": "Wolves at the Gate",
+      "giverActorId": "npc.city_services",
+      "turnInActorId": "npc.city_services",
+      "minimumLevel": 1,
+      "requiredQuestIds": [],
+      "repeatable": false,
+      "tags": [
+        "development"
+      ],
+      "offerText": "Feral wolves prowl the woods west of town, and the traders are scared to take the road. Thin the pack: bring down five of them.",
+      "progressText": "The wolves still howl at night. Have you thinned the pack?",
+      "completionText": "Five fewer wolves. The traders will sleep better tonight, and so will I. Take this for your trouble.",
+      "startItems": [],
+      "steps": [
+        {
+          "id": "hunt",
+          "objectives": [
+            {
+              "id": "feral_wolves",
+              "kind": "kill",
+              "text": "Feral Wolves slain",
+              "count": 5,
+              "actorIds": [
+                "mob.feral_wolf"
+              ],
+              "actorTag": "",
+              "itemId": "",
+              "npcActorId": "",
+              "line": "",
+              "dropSources": []
+            }
+          ]
+        }
+      ],
+      "rewardGold": 20,
+      "rewardItems": [],
+      "rewardChoiceItems": [],
+      "structuralFingerprint": "48363aaa9c56d229d566a8e8f8b5677f8feff4765c5c25b5599a5da8526bd8a4"
+    }
+  ]
+}

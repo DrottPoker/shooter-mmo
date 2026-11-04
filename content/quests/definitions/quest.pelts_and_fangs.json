@@ -1,0 +1,67 @@
+{
+    "id": "quest.pelts_and_fangs",
+    "title": "Pelts and Fangs",
+    "giverActorId": "npc.city_services",
+    "turnInActorId": "npc.city_services",
+    "minimumLevel": 1,
+    "requiredQuestIds": [
+        "quest.wolves_at_the_gate"
+    ],
+    "repeatable": false,
+    "tags": [
+        "development"
+    ],
+    "offerText": "The tanner pays well for good pelts, and the healer grinds wolf fangs into her salves. Bring me three Wolf Pelts and two Wolf Fangs.",
+    "progressText": "Pelts and fangs, traveler. Have you brought them?",
+    "completionText": "Fine pelts, and sharp fangs. Choose something from my stores to keep you warm on the road.",
+    "startItems": [],
+    "steps": [
+        {
+            "id": "hunt",
+            "objectives": [
+                {
+                    "id": "wolf_pelts",
+                    "kind": "collect",
+                    "text": "Wolf Pelts",
+                    "count": 3,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "material.wolf_pelt",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                },
+                {
+                    "id": "wolf_fangs",
+                    "kind": "collect",
+                    "text": "Wolf Fangs",
+                    "count": 2,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "quest_item.wolf_fang",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": [
+                        {
+                            "actorId": "mob.feral_wolf",
+                            "chanceBasisPoints": 5000,
+                            "quantity": 1
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "rewardGold": 10,
+    "rewardItems": [],
+    "rewardChoiceItems": [
+        {
+            "definitionId": "armor.leather_gloves",
+            "quantity": 1
+        },
+        {
+            "definitionId": "armor.leather_boots",
+            "quantity": 1
+        }
+    ]
+}

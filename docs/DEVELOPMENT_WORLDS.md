@@ -194,11 +194,14 @@ targets in the arena when the Shard allows player versus player.
 ### Interest Road And Outpost
 
 A road leads west from the town to an outpost at `(-172, 0, 0)` with a guard at
-`(-170, 0, 0)`. Cyan markers and signs stand at 64 m (the collision streaming
-radius of two 32 m chunks), 128 m (the interest enter radius), and 144 m (the
-interest exit radius) from the town center. The outpost is more than 160 m from
-the spawn and every town actor, so walking out removes the town from the client
-and brings the guard in, and walking back reverses it.
+`(-170, 0, 0)` and Sergeant Hale at `(-174, 0, 3)`, facing the town, who gives
+and takes the outpost quests of the
+[development quest chain](../content/README.md#quests). Cyan markers and signs
+stand at 64 m (the collision streaming radius of two 32 m chunks), 128 m (the
+interest enter radius), and 144 m (the interest exit radius) from the town
+center. The outpost is more than 160 m from the spawn and every town actor, so
+walking out removes the town from the client and brings the outpost NPCs in,
+and walking back reverses it.
 
 ### Wolf Woods
 

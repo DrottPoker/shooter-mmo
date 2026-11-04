@@ -616,9 +616,11 @@ real corpse from an offline character with the development item tools; see
 ## World Actors And Interaction
 
 - NPCs offer services. Mira the Quartermaster offers dialogue, trade, the
-  Character Bank, Recovery Storage, insurance, quests, and crafting, and the City
-  Guards dialogue and training. Every NPC and resource node is invulnerable.
-- Mobs fight: the Feral Wolf and the Feral Alpha; see [Combat](#combat).
+  Character Bank, Recovery Storage, insurance, quests, and crafting, the City
+  Guards dialogue and training, and Sergeant Hale at the outpost of Development
+  World 2 quests. Every NPC and resource node is invulnerable.
+- Mobs fight: the Feral Wolf, the Grey Wolf, and the Feral Alpha; see
+  [Combat](#combat).
 - Resource nodes are gathered: Iron Veins and Oak Trees; see
   [Gathering](#gathering).
 - Choosing an option of a target walks the player to about 2.5 m from it, and
@@ -636,10 +638,10 @@ real corpse from an offline character with the development item tools; see
   inventory with that storage; `Trade` opens it with the vendor; each stays
   usable while the interaction is open.
 - `Insurance` lists the character's insurance-eligible items, each with
-  `Insure: <item>` or `Insured, remove: <item>`. `Quest item lifecycle` offers
-  to accept the quest, which grants its required item, the Sealed Letter, and to
-  abandon it, which removes that item again. The inventory and Recovery Storage
-  show the result.
+  `Insure: <item>` or `Insured, remove: <item>`. `Quest item lifecycle`, at
+  Mira and at Sergeant Hale, offers to accept the one configured quest, which
+  grants its required item, the Sealed Letter, and to abandon it, which removes
+  that item again. The inventory and Recovery Storage show the result.
 - Talk, crafting, training, and quest completion answer that they are not
   available yet; they never pretend to succeed. Quest progression and crafting
   are not implemented.

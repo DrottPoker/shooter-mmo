@@ -1,0 +1,40 @@
+{
+    "id": "quest.wolves_at_the_gate",
+    "title": "Wolves at the Gate",
+    "giverActorId": "npc.city_services",
+    "turnInActorId": "npc.city_services",
+    "minimumLevel": 1,
+    "requiredQuestIds": [],
+    "repeatable": false,
+    "tags": [
+        "development"
+    ],
+    "offerText": "Feral wolves prowl the woods west of town, and the traders are scared to take the road. Thin the pack: bring down five of them.",
+    "progressText": "The wolves still howl at night. Have you thinned the pack?",
+    "completionText": "Five fewer wolves. The traders will sleep better tonight, and so will I. Take this for your trouble.",
+    "startItems": [],
+    "steps": [
+        {
+            "id": "hunt",
+            "objectives": [
+                {
+                    "id": "feral_wolves",
+                    "kind": "kill",
+                    "text": "Feral Wolves slain",
+                    "count": 5,
+                    "actorIds": [
+                        "mob.feral_wolf"
+                    ],
+                    "actorTag": "",
+                    "itemId": "",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                }
+            ]
+        }
+    ],
+    "rewardGold": 20,
+    "rewardItems": [],
+    "rewardChoiceItems": []
+}

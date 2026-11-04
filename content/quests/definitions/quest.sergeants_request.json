@@ -1,0 +1,59 @@
+{
+    "id": "quest.sergeants_request",
+    "title": "The Sergeant's Request",
+    "giverActorId": "npc.outpost_sergeant",
+    "turnInActorId": "npc.outpost_sergeant",
+    "minimumLevel": 1,
+    "requiredQuestIds": [
+        "quest.letter_for_the_outpost"
+    ],
+    "repeatable": false,
+    "tags": [
+        "development"
+    ],
+    "offerText": "The palisade needs iron for new hinges. Mine five Iron Ore in the quarry, then tell the Quartermaster in town that the iron is on its way.",
+    "progressText": "Did you mine the iron and speak with the Quartermaster?",
+    "completionText": "Iron for the gates and word to the town. The outpost owes you one.",
+    "startItems": [],
+    "steps": [
+        {
+            "id": "mine",
+            "objectives": [
+                {
+                    "id": "iron_ore",
+                    "kind": "gather",
+                    "text": "Iron Ore mined",
+                    "count": 5,
+                    "actorIds": [
+                        "resource.iron_vein"
+                    ],
+                    "actorTag": "",
+                    "itemId": "",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                }
+            ]
+        },
+        {
+            "id": "report",
+            "objectives": [
+                {
+                    "id": "quartermaster",
+                    "kind": "talk_to",
+                    "text": "Tell the Quartermaster",
+                    "count": 1,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "",
+                    "npcActorId": "npc.city_services",
+                    "line": "Iron for the outpost? Tell the sergeant it is welcome, and that the road stays open.",
+                    "dropSources": []
+                }
+            ]
+        }
+    ],
+    "rewardGold": 30,
+    "rewardItems": [],
+    "rewardChoiceItems": []
+}
