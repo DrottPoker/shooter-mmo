@@ -9,15 +9,15 @@ namespace Mmorpg.Client.Editor
 {
     // What the World Builder changed in a terrain, so it can take that back before it shapes the
     // terrain again: for every heightmap sample it lowered, the height before and the height it
-    // wrote, and for every alphamap cell it painted, the weights before and how much of the bed
-    // it painted. A sample that no longer holds what it wrote was changed by hand since and keeps
-    // that change. Terrain data that is an asset keeps its state in a hidden part of that asset,
+    // wrote, and for every alphamap cell it painted, the weights before, by terrain layer, and how
+    // much of the bed it painted. A sample that no longer holds what it wrote was changed by hand
+    // since and keeps that change. Terrain data that is an asset keeps its state in a hidden part of that asset,
     // so the state is saved, moved, and copied together with the terrain and never out of step
     // with it; other terrain data keeps it in memory.
     internal sealed class WorldBuilderTerrainState
     {
         private const int Magic = 0x53544257;
-        private const int Version = 1;
+        private const int Version = 2;
 
         private static readonly Dictionary<TerrainData, WorldBuilderTerrainState> InMemory =
             new Dictionary<TerrainData, WorldBuilderTerrainState>();
@@ -28,6 +28,7 @@ namespace Mmorpg.Client.Editor
 
         private Dictionary<int, (float Ground, float Carved)> heights = new Dictionary<int, (float, float)>();
         private Dictionary<int, (float[] Ground, float Bed)> alphas = new Dictionary<int, (float[], float)>();
+        private string[] layerIds = new string[0];
 
         // Whether the state changed since it was last kept with its terrain.
         private bool changed;
@@ -42,7 +43,11 @@ namespace Mmorpg.Client.Editor
 
         public int AlphamapResolution { get; private set; }
 
-        public int AlphamapLayers { get; private set; }
+        // The terrain layer of each weight of a cell, as LayerIdsOf names them.
+        public IReadOnlyList<string> LayerIds
+        {
+            get { return layerIds; }
+        }
 
         // The layer the beds were painted with.
         public int BedLayerIndex { get; private set; } = -1;
@@ -104,8 +109,75 @@ namespace Mmorpg.Client.Editor
         {
             var state = Of(data);
             state.SetHeights(0, new Dictionary<int, (float, float)>());
-            state.SetAlphas(0, 0, -1, new Dictionary<int, (float[], float)>());
+            state.SetAlphas(0, new string[0], -1, new Dictionary<int, (float[], float)>());
             state.Keep(data);
+        }
+
+        // A name for each layer of the terrain's layer map, which stays the same while the layer
+        // does: its terrain layer's asset, or the terrain layer itself when it is no asset.
+        public static string[] LayerIdsOf(TerrainData data)
+        {
+            var layers = data.terrainLayers;
+            var ids = new string[data.alphamapLayers];
+            for (var index = 0; index < ids.Length; index++)
+            {
+                var layer = index < layers.Length ? layers[index] : null;
+                ids[index] = layer == null
+                    ? "none"
+                    : AssetDatabase.TryGetGUIDAndLocalFileIdentifier(layer, out var guid, out long localId)
+                        ? guid + ":" + localId
+                        : MemoryId(layer);
+            }
+
+            return ids;
+        }
+
+        // The cells remembered, with their weights in the order of the terrain's layers now, and
+        // the index of the bed layer among them, or -1 when it is gone. A layer is the same layer
+        // by its name now, or as the layer it was in memory before it was saved as an asset. A
+        // layer that is gone takes its weight along, and the other layers of the cell make up for
+        // it.
+        public IReadOnlyDictionary<int, (float[] Ground, float Bed)> AlphasFor(TerrainData data, string[] currentIds, out int bedLayerIndex)
+        {
+            if (currentIds.SequenceEqual(layerIds))
+            {
+                bedLayerIndex = BedLayerIndex;
+                return alphas;
+            }
+
+            var layers = data.terrainLayers;
+            var sources = new int[currentIds.Length];
+            for (var index = 0; index < sources.Length; index++)
+            {
+                sources[index] = System.Array.IndexOf(layerIds, currentIds[index]);
+                if (sources[index] < 0 && index < layers.Length && layers[index] != null)
+                {
+                    sources[index] = System.Array.IndexOf(layerIds, MemoryId(layers[index]));
+                }
+            }
+
+            bedLayerIndex = BedLayerIndex >= 0 ? System.Array.IndexOf(sources, BedLayerIndex) : -1;
+            var remapped = new Dictionary<int, (float[] Ground, float Bed)>(alphas.Count);
+            foreach (var cell in alphas)
+            {
+                var ground = new float[currentIds.Length];
+                var total = 0f;
+                for (var layer = 0; layer < ground.Length; layer++)
+                {
+                    var source = sources[layer];
+                    ground[layer] = source >= 0 && source < cell.Value.Ground.Length ? cell.Value.Ground[source] : 0f;
+                    total += ground[layer];
+                }
+
+                for (var layer = 0; total > 0f && layer < ground.Length; layer++)
+                {
+                    ground[layer] /= total;
+                }
+
+                remapped.Add(cell.Key, (ground, cell.Value.Bed));
+            }
+
+            return remapped;
         }
 
         // Remembers these heights instead, and keeps the dictionary. Returns whether they differ
@@ -136,10 +208,10 @@ namespace Mmorpg.Client.Editor
 
         // Remembers these cells instead, and keeps the dictionary. Returns whether they differ
         // from what it remembered.
-        public bool SetAlphas(int resolution, int layers, int bedLayerIndex, Dictionary<int, (float[] Ground, float Bed)> remembered)
+        public bool SetAlphas(int resolution, string[] layers, int bedLayerIndex, Dictionary<int, (float[] Ground, float Bed)> remembered)
         {
             var same = remembered.Count == alphas.Count
-                && (alphas.Count == 0 || (resolution == AlphamapResolution && layers == AlphamapLayers && bedLayerIndex == BedLayerIndex));
+                && (alphas.Count == 0 || (resolution == AlphamapResolution && layers.SequenceEqual(layerIds) && bedLayerIndex == BedLayerIndex));
             foreach (var cell in remembered)
             {
                 if (!same)
@@ -156,7 +228,7 @@ namespace Mmorpg.Client.Editor
             }
 
             AlphamapResolution = resolution;
-            AlphamapLayers = layers;
+            layerIds = layers;
             BedLayerIndex = bedLayerIndex;
             alphas = remembered;
             changed = true;
@@ -226,7 +298,12 @@ namespace Mmorpg.Client.Editor
                     }
 
                     writer.Write(AlphamapResolution);
-                    writer.Write(AlphamapLayers);
+                    writer.Write(layerIds.Length);
+                    foreach (var id in layerIds)
+                    {
+                        writer.Write(id);
+                    }
+
                     writer.Write(BedLayerIndex);
                     writer.Write(alphas.Count);
                     foreach (var index in Sorted(alphas.Keys))
@@ -271,12 +348,17 @@ namespace Mmorpg.Client.Editor
                 }
 
                 state.AlphamapResolution = reader.ReadInt32();
-                state.AlphamapLayers = reader.ReadInt32();
+                state.layerIds = new string[reader.ReadInt32()];
+                for (var layer = 0; layer < state.layerIds.Length; layer++)
+                {
+                    state.layerIds[layer] = reader.ReadString();
+                }
+
                 state.BedLayerIndex = reader.ReadInt32();
                 for (var count = reader.ReadInt32(); count > 0; count--)
                 {
                     var index = reader.ReadInt32();
-                    var ground = new float[state.AlphamapLayers];
+                    var ground = new float[state.layerIds.Length];
                     for (var layer = 0; layer < ground.Length; layer++)
                     {
                         ground[layer] = reader.ReadSingle();
@@ -333,6 +415,12 @@ namespace Mmorpg.Client.Editor
             }
 
             return true;
+        }
+
+        // The name of a terrain layer that is no asset: the layer itself, for as long as it lives.
+        private static string MemoryId(TerrainLayer layer)
+        {
+            return "memory:" + layer.GetHashCode();
         }
 
         private static List<int> Sorted(IEnumerable<int> keys)

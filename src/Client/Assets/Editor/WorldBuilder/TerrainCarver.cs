@@ -352,14 +352,19 @@ namespace Mmorpg.Client.Editor
         {
             var bed = bedLayer != null && beds.Count > 0 ? LayerIndex(data, bedLayer) : -1;
             var resolution = data.alphamapResolution;
-            var layers = data.alphamapLayers;
-            IReadOnlyDictionary<int, (float[] Ground, float Bed)> remembered = state.AlphamapResolution == resolution && state.AlphamapLayers <= layers
-                ? state.Alphas
+            var layerIds = WorldBuilderTerrainState.LayerIdsOf(data);
+            var layers = layerIds.Length;
+
+            // The cells painted before, with their weights in the order of the layers now, also
+            // when a layer was added, removed, or moved since.
+            var rememberedBed = -1;
+            IReadOnlyDictionary<int, (float[] Ground, float Bed)> remembered = state.AlphamapResolution == resolution
+                ? state.AlphasFor(data, layerIds, out rememberedBed)
                 : new Dictionary<int, (float[] Ground, float Bed)>();
             var painted = new Dictionary<int, (float[] Ground, float Bed)>(remembered.Count);
             if (layers == 0 || (bed < 0 && remembered.Count == 0))
             {
-                state.SetAlphas(resolution, layers, bed, painted);
+                state.SetAlphas(resolution, layerIds, bed, painted);
                 return false;
             }
 
@@ -371,7 +376,7 @@ namespace Mmorpg.Client.Editor
                 .Concat(remembered.Keys.Select(index => new RectInt(index % resolution, index / resolution, 1, 1))));
             if (block.width == 0)
             {
-                state.SetAlphas(resolution, layers, bed, painted);
+                state.SetAlphas(resolution, layerIds, bed, painted);
                 return false;
             }
 
@@ -381,7 +386,7 @@ namespace Mmorpg.Client.Editor
             {
                 var x = (cell.Key % resolution) - block.x;
                 var z = (cell.Key / resolution) - block.y;
-                if (HoldsPainted(current, z, x, cell.Value, state.BedLayerIndex))
+                if (HoldsPainted(current, z, x, cell.Value, rememberedBed))
                 {
                     for (var layer = 0; layer < layers; layer++)
                     {
@@ -445,7 +450,7 @@ namespace Mmorpg.Client.Editor
                 data.SetAlphamaps(block.x, block.y, target);
             }
 
-            state.SetAlphas(resolution, layers, bed, painted);
+            state.SetAlphas(resolution, layerIds, bed, painted);
             return changed;
         }
 

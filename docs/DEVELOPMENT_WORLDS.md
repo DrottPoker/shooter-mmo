@@ -524,8 +524,10 @@ bed or a bank, so the bed blends into the ground around it.
 
 The World Builder remembers the ground and the layers it changed in a hidden
 part of the terrain data asset, which builds leave out, so this record is saved,
-moved, and copied together with the terrain and never out of step with it.
-Moving or removing water therefore gives the ground back. Sculpt and paint away
+moved, and copied together with the terrain and never out of step with it. It
+remembers the layer weights by terrain layer, so adding, removing, or moving a
+terrain layer keeps them. Moving or removing water therefore gives the ground
+back. Sculpt and paint away
 from the water as usual; where water lies, a change by hand becomes the ground
 that the water carves and paints again, so a sample sculpted below the bed
 stays there. The water shapes a terrain only while it carries the component:

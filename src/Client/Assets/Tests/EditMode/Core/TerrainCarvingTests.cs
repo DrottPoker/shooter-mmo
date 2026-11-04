@@ -182,8 +182,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(read.HeightmapResolution, Is.EqualTo(kept.HeightmapResolution));
                 Assert.That(read.Heights, Is.EquivalentTo(kept.Heights));
                 Assert.That(
-                    new[] { read.AlphamapResolution, read.AlphamapLayers, read.BedLayerIndex },
-                    Is.EqualTo(new[] { kept.AlphamapResolution, kept.AlphamapLayers, kept.BedLayerIndex }));
+                    new[] { read.AlphamapResolution, read.BedLayerIndex },
+                    Is.EqualTo(new[] { kept.AlphamapResolution, kept.BedLayerIndex }));
+                Assert.That(read.LayerIds, Is.EqualTo(kept.LayerIds));
                 Assert.That(read.Alphas.Keys, Is.EquivalentTo(kept.Alphas.Keys));
                 foreach (var cell in kept.Alphas)
                 {
@@ -271,6 +272,26 @@ namespace Mmorpg.Client.Tests.EditMode
             // its shore at Z 38, so the river's rows lie at the lake's level up to the row at Z
             // 40, past the lake's bank, where the channel lies 0.1 m below that level.
             Assert.That(HeightAt(32f, 40f), Is.EqualTo(9.6f - 0.1f).Within(HeightTolerance));
+        }
+
+        // The World Builder remembers what it painted by terrain layer, so removing a layer that
+        // its paint does not use keeps that, and the sand still goes where the water moves away.
+        [Test]
+        public void RemovingAnUnusedLayerKeepsWhatTheWaterPainted()
+        {
+            var rock = new TerrainLayer { name = "Rock" };
+            made.Add(rock);
+            var data = terrain.terrainData;
+            data.terrainLayers = new[] { grass, sand, rock };
+            var lake = WorldBuilderCreate.AddLake(scene, new Vector3(20f, 9.6f, 20f));
+            Assert.That(SandAt(20f, 20f), Is.EqualTo(1f).Within(0.01f));
+
+            data.terrainLayers = new[] { grass, sand };
+            lake.transform.position = new Vector3(44f, 9.6f, 44f);
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(SandAt(20f, 20f), Is.Zero, "no sand where the lake was");
+            Assert.That(SandAt(44f, 44f), Is.EqualTo(1f).Within(0.01f), "sand where the lake is");
         }
 
         // Giving the ground back changes no terrain data that another terrain uses too, such as a
