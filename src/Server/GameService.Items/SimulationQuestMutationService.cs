@@ -4,9 +4,9 @@ using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Items;
 
-// Quest actions of live characters through the item transaction kernel. The worker validated
-// the interaction with the quest's NPC and names that NPC; the kernel checks it against the
-// quest.
+// Quest actions and kill credits of live characters through the item transaction kernel. The
+// worker validated the interaction with the quest's NPC and names that NPC; the kernel checks
+// it against the quest.
 internal sealed class SimulationQuestMutationService(
     ItemTransactionService transactionService,
     SimulationCharacterStates characterStates)
@@ -34,8 +34,11 @@ internal sealed class SimulationQuestMutationService(
             || string.IsNullOrWhiteSpace(request.SessionToken)
             || request.SessionToken.Length > 1024
             || string.IsNullOrWhiteSpace(request.OperationKind)
-            || !Identifiers.IsContentIdentifier(request.QuestId)
-            || (request.QuestNpcActorId is not null && !Identifiers.IsContentIdentifier(request.QuestNpcActorId)))
+            || !IsOptionalContentIdentifier(request.QuestId)
+            || !IsOptionalContentIdentifier(request.QuestNpcActorId)
+            || !IsOptionalContentIdentifier(request.ObjectiveId)
+            || !IsOptionalContentIdentifier(request.RewardChoiceDefinitionId)
+            || !IsOptionalContentIdentifier(request.MobActorId))
         {
             return Invalid("The simulation quest operation is incomplete or invalid.");
         }
@@ -49,8 +52,22 @@ internal sealed class SimulationQuestMutationService(
             request.ShardId!.Trim(),
             TokenGenerator.HashToken(request.SessionToken!.Trim()),
             new ItemTransactionLiveAccess(false, false, false, QuestNpcActorId: request.QuestNpcActorId?.Trim()));
-        var questId = request.QuestId!.Trim();
-        var operation = request.OperationKind.Trim() switch
+        var questId = request.QuestId?.Trim() ?? string.Empty;
+        var objectiveId = request.ObjectiveId?.Trim() ?? string.Empty;
+        var operationKind = request.OperationKind.Trim();
+        var named = operationKind switch
+        {
+            ItemOperationKinds.CreditQuestKill => request.MobActorId is not null && request.MobTags is not null,
+            ItemOperationKinds.TalkToQuestNpc or ItemOperationKinds.DeliverQuestItems =>
+                questId.Length > 0 && objectiveId.Length > 0,
+            _ => questId.Length > 0
+        };
+        if (!named)
+        {
+            return Invalid("The simulation quest operation does not name what it acts on.");
+        }
+
+        var operation = operationKind switch
         {
             ItemOperationKinds.AcceptQuest => transactionService.ExecuteAsync(
                 new ItemTransactionRequest<AcceptQuestCommand>(
@@ -69,6 +86,33 @@ internal sealed class SimulationQuestMutationService(
                     request.OperationId,
                     actor,
                     new RegrantQuestItemsCommand(request.CharacterId, questId)),
+                cancellationToken),
+            ItemOperationKinds.TalkToQuestNpc => transactionService.ExecuteAsync(
+                new ItemTransactionRequest<TalkToQuestNpcCommand>(
+                    request.OperationId,
+                    actor,
+                    new TalkToQuestNpcCommand(request.CharacterId, questId, objectiveId)),
+                cancellationToken),
+            ItemOperationKinds.DeliverQuestItems => transactionService.ExecuteAsync(
+                new ItemTransactionRequest<DeliverQuestItemsCommand>(
+                    request.OperationId,
+                    actor,
+                    new DeliverQuestItemsCommand(request.CharacterId, questId, objectiveId)),
+                cancellationToken),
+            ItemOperationKinds.CreditQuestKill => transactionService.ExecuteAsync(
+                new ItemTransactionRequest<CreditQuestKillCommand>(
+                    request.OperationId,
+                    actor,
+                    new CreditQuestKillCommand(
+                        request.CharacterId,
+                        request.MobActorId!.Trim(),
+                        request.MobTags!.Select(tag => tag?.Trim() ?? string.Empty).ToArray())),
+                cancellationToken),
+            ItemOperationKinds.TurnInQuest => transactionService.ExecuteAsync(
+                new ItemTransactionRequest<TurnInQuestCommand>(
+                    request.OperationId,
+                    actor,
+                    new TurnInQuestCommand(request.CharacterId, questId, request.RewardChoiceDefinitionId?.Trim())),
                 cancellationToken),
             _ => null
         };
@@ -92,6 +136,11 @@ internal sealed class SimulationQuestMutationService(
             result.ItemChanges,
             await characterStates.ReadAsync(request.CharacterId, cancellationToken),
             result.QuestLog));
+    }
+
+    private static bool IsOptionalContentIdentifier(string? value)
+    {
+        return value is null || Identifiers.IsContentIdentifier(value);
     }
 
     private static ServiceResult<SimulationQuestOperationResponse> Invalid(string message)

@@ -16,6 +16,7 @@ public static class CurrencySourceKinds
     public const string VendorSale = "vendor_sale";
     public const string Insurance = "insurance";
     public const string Development = "development";
+    public const string QuestReward = "quest_reward";
 }
 
 // SourceId names what caused the change, such as a vendor or an item policy, and

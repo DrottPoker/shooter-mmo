@@ -39,7 +39,8 @@ internal sealed record SimulationItemOperationRequest(
     long? ExpectedPrice = null,
     string? ResourceProfileId = null,
     string? ResourceNodeId = null,
-    string? RequiredToolKind = null);
+    string? RequiredToolKind = null,
+    string? ResourceActorId = null);
 
 // One batch of shots from the character's equipped ammunition stack. The operation id is
 // the worker's batch id, so a retry after a lost response replays the stored result.

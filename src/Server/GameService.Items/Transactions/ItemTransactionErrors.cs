@@ -28,6 +28,12 @@ internal static class ItemTransactionErrorCodes
     public const string QuestLevelTooLow = "quest_level_too_low";
     public const string QuestLogFull = "quest_log_full";
     public const string QuestNpcAccessRequired = "quest_npc_access_required";
+    public const string QuestObjectiveInvalid = "quest_objective_invalid";
+    public const string QuestObjectiveComplete = "quest_objective_complete";
+    public const string QuestItemsMissing = "quest_items_missing";
+    public const string QuestNotReady = "quest_not_ready";
+    public const string QuestRewardChoiceRequired = "quest_reward_choice_required";
+    public const string QuestRewardChoiceInvalid = "quest_reward_choice_invalid";
     public const string CurrencyInsufficient = "currency_insufficient";
     public const string CurrencyLimitExceeded = "currency_limit_exceeded";
     public const string VendorAccessRequired = "vendor_access_required";

@@ -55,6 +55,38 @@ public sealed class QuestRulesTests
         Assert.True(QuestRules.IsReadyToTurnIn(quest, 1, id => progress.GetValueOrDefault(id)));
     }
 
+    [Fact]
+    public void KillsCountForTheNamedMobsOrTheirTagAndYieldsForTheNamedNodes()
+    {
+        var byId = new QuestObjectiveDefinition
+        {
+            Id = "wolves", Kind = QuestObjectiveKindIds.Kill, Count = 2, ActorIds = ["mob.feral_wolf"], ActorTag = ""
+        };
+        var byTag = new QuestObjectiveDefinition
+        {
+            Id = "wild", Kind = QuestObjectiveKindIds.Kill, Count = 2, ActorIds = [], ActorTag = "wild"
+        };
+        var ore = new QuestObjectiveDefinition
+        {
+            Id = "ore", Kind = QuestObjectiveKindIds.Gather, Count = 5, ActorIds = ["resource.iron_vein"], ActorTag = ""
+        };
+        var pelts = new QuestObjectiveDefinition
+        {
+            Id = "pelts", Kind = QuestObjectiveKindIds.Collect, Count = 3, ActorIds = [], ActorTag = ""
+        };
+
+        Assert.True(QuestRules.CountsKill(byId, "mob.feral_wolf", []));
+        Assert.False(QuestRules.CountsKill(byId, "mob.grey_wolf", ["wild"]));
+        Assert.True(QuestRules.CountsKill(byTag, "mob.grey_wolf", ["wolf", "wild"]));
+        Assert.False(QuestRules.CountsKill(byTag, "mob.grey_wolf", ["wolf"]));
+        Assert.False(QuestRules.CountsKill(ore, "resource.iron_vein", []));
+        Assert.True(QuestRules.CountsGather(ore, "resource.iron_vein"));
+        Assert.False(QuestRules.CountsGather(ore, "resource.oak_tree"));
+        Assert.False(QuestRules.CountsGather(byId, "mob.feral_wolf"));
+        Assert.True(QuestRules.StoresProgress(byId));
+        Assert.False(QuestRules.StoresProgress(pelts));
+    }
+
     private static QuestAvailability Evaluate(
         QuestDefinition quest,
         int level,

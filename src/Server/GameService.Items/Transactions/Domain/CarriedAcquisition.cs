@@ -166,7 +166,7 @@ internal static class CarriedAcquisition
         context.Journal.TouchCharacter(character.CharacterId);
     }
 
-    private static Task<Guid?> FindEquippedBagContentsAsync(
+    internal static Task<Guid?> FindEquippedBagContentsAsync(
         ItemTransactionContext context,
         LockedCharacterState character,
         CancellationToken cancellationToken)

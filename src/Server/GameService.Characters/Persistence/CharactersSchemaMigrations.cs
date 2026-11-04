@@ -9,6 +9,7 @@ internal static class CharactersSchemaMigrations
     [
         new(CharacterLevelMigration.Id, CharacterLevelMigration.Sql),
         new(CharacterCurrencyLedgerMigration.Id, CharacterCurrencyLedgerMigration.Sql),
-        new(CharacterAppearanceMigration.Id, CharacterAppearanceMigration.Sql)
+        new(CharacterAppearanceMigration.Id, CharacterAppearanceMigration.Sql),
+        new(QuestRewardCurrencyMigration.Id, QuestRewardCurrencyMigration.Sql)
     ];
 }

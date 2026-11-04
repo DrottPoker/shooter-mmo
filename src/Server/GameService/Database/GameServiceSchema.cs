@@ -42,7 +42,8 @@ public sealed class GameServiceSchema
         "202611021300_expand_permanent_inventory",
         "202611021700_reduce_permanent_inventory",
         "202611041800_mob_corpse_ownership",
-        "202611042200_quest_log"
+        "202611042200_quest_log",
+        "202611050900_quest_reward_currency"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

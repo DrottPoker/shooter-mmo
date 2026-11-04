@@ -1,17 +1,26 @@
 using Dapper;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Grants one gathering yield into carried storage. SimulationWorker owns the resource node,
 // its charges, and the live interaction; GameService checks the equipped tool and places the
-// yield in the same transaction, so a removed tool can never gather.
-internal sealed class GatherResourceCommandHandler
+// yield in the same transaction, so a removed tool can never gather. The yield counts for the
+// gather objectives of the node's actor definition in the same transaction, so a retried
+// yield counts once.
+internal sealed class GatherResourceCommandHandler(
+    IQuestDefinitions questDefinitions,
+    ICharacterQuestLog questLog)
     : IItemCommandHandler<GatherResourceCommand>
 {
     private const int MaximumResourceNodeIdLength = 256;
+
+    private readonly IQuestDefinitions questDefinitions = questDefinitions;
+    private readonly ICharacterQuestLog questLog = questLog;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -24,7 +33,8 @@ internal sealed class GatherResourceCommandHandler
             || command.ResourceNodeId.Length > MaximumResourceNodeIdLength
             || !Identifiers.IsContentIdentifier(command.RequiredToolKind)
             || !Identifiers.IsContentIdentifier(command.YieldDefinitionId)
-            || command.YieldQuantity <= 0)
+            || command.YieldQuantity <= 0
+            || (command.ResourceActorId is not null && !Identifiers.IsContentIdentifier(command.ResourceActorId)))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.GatheringYieldInvalid,
@@ -104,5 +114,21 @@ internal sealed class GatherResourceCommandHandler
                 DefinitionId = definition.RuntimeDefinition.Id,
                 Quantity = command.YieldQuantity
             });
+        if (command.ResourceActorId is null)
+        {
+            return;
+        }
+
+        var changed = await QuestProgression.CreditAsync(
+            context,
+            questDefinitions,
+            questLog,
+            command.CharacterId,
+            objective => QuestRules.CountsGather(objective, command.ResourceActorId) ? command.YieldQuantity : 0,
+            cancellationToken);
+        if (changed.Count > 0)
+        {
+            await QuestLogChanges.ReportAsync(context, questLog, command.CharacterId, changed, cancellationToken);
+        }
     }
 }
