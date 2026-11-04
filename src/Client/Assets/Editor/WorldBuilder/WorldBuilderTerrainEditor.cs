@@ -14,7 +14,8 @@ namespace Mmorpg.Client.Editor
             EditorGUILayout.HelpBox(
                 "The water above this terrain carves its beds and banks into it and paints them with the bed layer. "
                 + "Where water lies, the World Builder shapes the ground anew whenever the water changes, and "
-                + "when the water moves away, the ground it had before comes back. Sculpt and paint elsewhere as usual.",
+                + "when the water moves away or this component is removed, the ground it had before comes back. "
+                + "Sculpt and paint elsewhere as usual.",
                 MessageType.None);
             DrawDefaultInspector();
             if (GUILayout.Button("Give The Ground Back"))

@@ -70,6 +70,19 @@ namespace Mmorpg.Client.Editor
                 }
             }
 
+            var shared = WorldBuilderAssets.SharedTerrainData(scene);
+            foreach (var shaped in Shapes<WorldBuilderTerrain>(scene))
+            {
+                var data = shaped.GetComponent<Terrain>().terrainData;
+                if (data != null && shared.Contains(data))
+                {
+                    issues.Add(new WorldBuilderIssue(
+                        shaped,
+                        "Another terrain uses the terrain data " + data.name + " too, so the water cannot shape this terrain: "
+                        + "each terrain would carve it at its own place. Give this terrain terrain data of its own, such as a copy."));
+                }
+            }
+
             var collisionRoot = Shapes<WorldCollisionAuthoring>(scene).Select(authoring => authoring.CollisionRoot).FirstOrDefault();
             if (collisionRoot != null)
             {

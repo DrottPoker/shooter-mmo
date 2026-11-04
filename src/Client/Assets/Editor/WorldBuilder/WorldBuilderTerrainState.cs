@@ -76,6 +76,12 @@ namespace Mmorpg.Client.Editor
             return asset != null ? asset.State : new WorldBuilderTerrainState();
         }
 
+        // Whether the World Builder changed anything in the terrain that it can take back.
+        public static bool Holds(TerrainData data)
+        {
+            return !Of(data).IsEmpty;
+        }
+
         // Forgets what the World Builder changed in the terrain, such as when a builder writes its
         // whole ground anew.
         public static void Forget(TerrainData data)

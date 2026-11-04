@@ -25,16 +25,31 @@ namespace Mmorpg.Client.Editor
         private const float HeightTolerance = 0.5f / 32766f;
         private const float WeightTolerance = 1.5f / 255f;
 
-        // Carves and paints every terrain of the scene that the water shapes.
+        // Carves and paints every terrain of the scene that the water shapes, and gives the ground
+        // back to every terrain that it shaped before and that carries no WorldBuilderTerrain any
+        // more, such as after an undo of adding one. Terrain data that another terrain uses too
+        // stays as it is, since each would carve it at its own place.
         public static bool Build(Scene scene, IReadOnlyList<WaterBed> beds)
         {
             var changed = false;
-            foreach (var shaped in WorldBuilder.Shapes<WorldBuilderTerrain>(scene))
+            var shared = WorldBuilderAssets.SharedTerrainData(scene);
+            foreach (var terrain in WorldBuilderAssets.TerrainsOf(scene))
             {
-                var terrain = shaped.GetComponent<Terrain>();
-                if (terrain != null && terrain.terrainData != null)
+                if (!terrain.gameObject.activeInHierarchy || shared.Contains(terrain.terrainData))
                 {
-                    changed |= Build(terrain, shaped.BedLayer, beds);
+                    continue;
+                }
+
+                if (terrain.TryGetComponent<WorldBuilderTerrain>(out var shaped))
+                {
+                    if (shaped.enabled)
+                    {
+                        changed |= Build(terrain, shaped.BedLayer, beds);
+                    }
+                }
+                else if (WorldBuilderTerrainState.Holds(terrain.terrainData))
+                {
+                    changed |= Restore(terrain);
                 }
             }
 

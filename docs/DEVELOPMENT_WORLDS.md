@@ -527,8 +527,13 @@ moved, and copied together with the terrain and never out of step with it.
 Moving or removing water therefore gives the ground back. Sculpt and paint away
 from the water as usual; where water lies, a change by hand becomes the ground
 that the water carves and paints again, so a sample sculpted below the bed
-stays there. `Give The Ground Back` restores the whole terrain, and an undo lets
-the water shape it again.
+stays there. The water shapes a terrain only while it carries the component:
+removing it, `Give The Ground Back`, or an undo of adding it gives the whole
+terrain its ground back, an undo of the removal lets the water shape it again,
+and a disabled component leaves the terrain as it is. Terrain data that another
+terrain uses too, such as after a terrain object is duplicated, which keeps its
+terrain data, is never shaped, since each terrain would carve it at its own
+place; give each terrain terrain data of its own.
 
 The water and the ground follow every change a moment later, also while a shape
 is dragged, when a shape is moved, added, or removed, when the ground's
@@ -578,10 +583,10 @@ The validation finds errors, which stop the collision bake, and warnings:
   marked `Batching Static`, without the water shader, or with a mesh that is
   empty or lacks the shader's data; two water bodies that overlap within 0.25 m
   in height but do not agree there; a lake or sea with fewer than three points
-  and a river with fewer than two; and a waterfall without a river or a landing
+  and a river with fewer than two; a waterfall without a river or a landing
   that makes water, such as a disabled shape, a second one from the same river,
   one into its own river, or one whose landing lies less than 0.1 m below its
-  lip.
+  lip; and a World Builder terrain whose terrain data another terrain uses too.
 - Warnings: a disabled shape, a shape that is tilted or scaled, a water body
   marked `Occluder Static`, water outside the collision root, which the bake
   leaves out, and unused meshes.

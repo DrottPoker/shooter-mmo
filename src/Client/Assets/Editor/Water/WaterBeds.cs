@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Mmorpg.Client.Worlds;
 using UnityEngine;
 
@@ -195,17 +196,11 @@ namespace Mmorpg.Client.Editor
         {
             path = river.Path;
             bank = river.River.BankWidth;
-            var points = new List<Vector2>();
-            var widest = 0f;
-            foreach (var point in river.Points)
-            {
-                points.Add(new Vector2(point.Position.x, point.Position.z));
-                widest = Mathf.Max(widest, point.Width);
-            }
-
-            // A curve through the points bulges a little past them.
+            var widest = river.Points.Max(point => point.Width);
             reach = (widest * 0.5f) + bank;
-            bounds = Expand(WorldBuilderGeometry.Bounds(points), reach + (river.River.Curved ? widest : 0f));
+
+            // The line itself, since a curve through the points can bulge far past them.
+            bounds = Expand(path.Bounds, reach);
         }
 
         public override Rect Bounds

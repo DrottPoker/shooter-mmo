@@ -188,6 +188,73 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(StateOf(data), Is.Not.Null, "the hidden part stays");
         }
 
+        // The water shapes a terrain only while it carries a WorldBuilderTerrain, so an undo of
+        // adding one gives the ground back.
+        [Test]
+        public void UndoingTheWaterShapingATerrainGivesTheGroundBack()
+        {
+            Object.DestroyImmediate(terrain.GetComponent<WorldBuilderTerrain>());
+            WorldBuilderCreate.AddLake(scene, new Vector3(20f, 9.6f, 20f));
+            Assert.That(HeightAt(20f, 20f), Is.EqualTo(Ground).Within(HeightTolerance), "without the component the water leaves the terrain as it is");
+
+            Undo.IncrementCurrentGroup();
+            Undo.AddComponent<WorldBuilderTerrain>(terrain.gameObject);
+            WorldBuilder.Rebuild(scene);
+            Assert.That(HeightAt(20f, 20f), Is.LessThan(Ground - 1f));
+
+            Undo.PerformUndo();
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(terrain.GetComponent<WorldBuilderTerrain>(), Is.Null);
+            AssertGroundEverywhere();
+        }
+
+        // Two terrains that share their terrain data would each carve it at their own place, so the
+        // water shapes neither, and the validation says why.
+        [Test]
+        public void TerrainsThatShareTheirTerrainDataStayAsTheyAreAndAreReported()
+        {
+            var copy = Terrain.CreateTerrainGameObject(terrain.terrainData);
+            copy.transform.SetParent(terrain.transform.parent, false);
+            copy.transform.localPosition = new Vector3(64f, 0f, 0f);
+            var copyShaped = copy.AddComponent<WorldBuilderTerrain>();
+
+            WorldBuilderCreate.AddLake(scene, new Vector3(20f, 9.6f, 20f));
+
+            AssertGroundEverywhere();
+            var errors = WorldBuilder.Validate(scene).Where(issue => issue.Severity == WorldBuilderIssueSeverity.Error);
+            Assert.That(
+                errors.Select(issue => issue.Target),
+                Is.EquivalentTo(new Object[] { terrain.GetComponent<WorldBuilderTerrain>(), copyShaped }));
+        }
+
+        // A curve through a river's points can bulge far past them, and the channel follows the
+        // curve there too.
+        [Test]
+        public void ACurvedRiverCarvesItsChannelWhereTheCurveBulgesPastItsPoints()
+        {
+            var river = WorldBuilderCreate.AddRiver(scene, Vector3.zero);
+            var serialized = new SerializedObject(river);
+            var points = serialized.FindProperty("points");
+            var corners = new[] { new Vector3(12f, 9.5f, 10f), new Vector3(12f, 9.5f, 50f), new Vector3(52f, 9.5f, 50f), new Vector3(52f, 9.5f, 10f) };
+            points.arraySize = corners.Length;
+            for (var index = 0; index < corners.Length; index++)
+            {
+                var element = points.GetArrayElementAtIndex(index);
+                element.FindPropertyRelative("Position").vector3Value = corners[index];
+                element.FindPropertyRelative("Width").floatValue = 1f;
+                element.FindPropertyRelative("Depth").floatValue = 1f;
+            }
+
+            serialized.FindProperty("curved").boolValue = true;
+            serialized.FindProperty("bankWidth").floatValue = 0f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            WorldBuilder.Rebuild(scene);
+
+            // The curve's middle lies 5 m past the points, at (32, 55), where the river is 1 m deep.
+            Assert.That(HeightAt(32f, 55f), Is.EqualTo(8.5f).Within(0.05f));
+        }
+
         [Test]
         public void ARiverCarvesAChannelAsDeepAsTheRiverInItsMiddle()
         {

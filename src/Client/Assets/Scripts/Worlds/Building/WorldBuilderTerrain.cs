@@ -4,7 +4,8 @@ namespace Mmorpg.Client.Worlds
 {
     // A terrain that the World Builder shapes: the water above it carves its beds and banks into
     // it and paints them with the bed layer, and what was there before comes back when the water
-    // moves away. In the game it does nothing; the terrain keeps what the World Builder made.
+    // moves away or the component is removed. In the game it does nothing; the terrain keeps
+    // what the World Builder made.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Terrain))]
     public sealed class WorldBuilderTerrain : WorldBuilderShape
