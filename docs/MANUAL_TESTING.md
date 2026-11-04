@@ -1791,8 +1791,13 @@ is written to the project.
 6. Select `River Waterfall`, clear its `Landing` in the Inspector, then click
    `Fall Into The Water Below`.
 7. Open `Assets/Scenes/DevelopmentWorld2.unity`, choose `Don't Save`, and look
-   at the World Builder window. Then open `Assets/Scenes/LoginMenu.unity`, and
-   choose `Don't Save` if Unity asks.
+   at the World Builder window.
+8. Select `Environment/Waterside/Water/Lake` and, in the Scene view, drag it
+   slowly about 5 m south with the Move tool's blue arrow. Then press Ctrl+Z.
+9. Select `Environment/Waterside/WatersideTerrain`, click `Give The Ground Back`
+   in its `World Builder Terrain` component, choose `Give It Back`, and then
+   press Ctrl+Z.
+10. Open `Assets/Scenes/LoginMenu.unity`, and choose `Don't Save` if Unity asks.
 
 Expected result:
 
@@ -1814,8 +1819,16 @@ Expected result:
 - Without a landing the waterfall disappears and `Problems` shows `River
   Waterfall: A waterfall falls into a water body: choose its Landing.`; `Fall
   Into The Water Below` brings it back.
-- For Development World 2 the window lists `Lake`, `River`, `Sea`, `Stream`,
-  and `WaterfallSheet` with `No problems found.`
+- For Development World 2 the window lists `WatersideTerrain`, `Lake`, `River`,
+  `Sea`, `Stream`, and `WaterfallSheet` with `No problems found.`
+- While the lake is dragged, its floor, its bank, and their sand follow it a
+  moment behind the mouse, and the plateau and its grass come back where it
+  was. Ctrl+Z puts the lake, its floor, and its sand back as they were.
+- `Give The Ground Back` flattens the waterside to its plateau, without beds,
+  banks, or sand, so the lake, the river, and the sea inside the terrain lie
+  hidden below it, and removes the component.
+  Ctrl+Z brings the component back, and a moment later the beds and the sand
+  are back as before.
 
 ## Client Project And Content Loading
 

@@ -10,11 +10,11 @@ using UnityEngine.UIElements;
 
 namespace Mmorpg.Client.Editor
 {
-    // The World Builder window: adds lakes, rivers, seas, and waterfalls to the open scene, lists
-    // the scene's shapes, shows the problems the World Builder finds, and rebuilds, validates, and
-    // bakes. The shapes are shaped with their handles in the Scene view and their values in the
-    // Inspector, and the water follows every change. See docs/DEVELOPMENT_WORLDS.md under World
-    // Builder.
+    // The World Builder window: adds lakes, rivers, seas, and waterfalls to the open scene, lets
+    // the water shape a terrain, lists the scene's shapes, shows the problems the World Builder
+    // finds, and rebuilds, validates, and bakes. The shapes are shaped with their handles in the
+    // Scene view and their values in the Inspector, and the water and the ground follow every
+    // change. See docs/DEVELOPMENT_WORLDS.md under World Builder.
     public sealed class WorldBuilderWindow : EditorWindow
     {
         public const string MenuPath = "MMORPG/Tools/World Builder";
@@ -23,6 +23,7 @@ namespace Mmorpg.Client.Editor
         private readonly List<WorldBuilderIssue> issues = new List<WorldBuilderIssue>();
         private Label sceneLabel;
         private Button waterfallButton;
+        private Button terrainButton;
         private Button bakeButton;
         private Button removeUnusedButton;
         private ListView shapeList;
@@ -83,9 +84,13 @@ namespace Mmorpg.Client.Editor
             add.Add(addRow);
             waterfallButton = new Button(AddWaterfall) { text = "Waterfall from the selected river" };
             add.Add(waterfallButton);
+            terrainButton = new Button(ShapeSelectedTerrain) { text = "Let water shape the selected terrain" };
+            add.Add(terrainButton);
             add.Add(ContentToolStyles.CreateHint(
                 "New water appears at the middle of the Scene view, at that height. A waterfall falls from the "
-                + "last point of the selected river into the water below it."));
+                + "last point of the selected river into the water below it. A terrain that the water shapes gets "
+                + "the beds and banks of the water above it, painted with its bed layer, and its ground back where "
+                + "the water moves away."));
             scroll.Add(add);
 
             var water = ContentToolStyles.CreateSection("Shapes");
@@ -168,6 +173,7 @@ namespace Mmorpg.Client.Editor
                 : shape is RiverShape ? "River"
                 : shape is SeaShape ? "Sea"
                 : shape is WaterfallShape ? "Waterfall"
+                : shape is WorldBuilderTerrain ? "Terrain"
                 : shape.GetType().Name;
             return shape is WaterSurfaceShape surface
                 ? shape.name + "  (" + kind + ", " + surface.Body.BodyId + ")"
@@ -187,6 +193,17 @@ namespace Mmorpg.Client.Editor
             {
                 WorldBuilderCreate.AddWaterfall(river);
                 WorldBuilder.Rebuild(river.gameObject.scene);
+                Refresh();
+            }
+        }
+
+        private void ShapeSelectedTerrain()
+        {
+            var selected = Selection.activeGameObject;
+            if (selected != null && selected.TryGetComponent<Terrain>(out var terrain) && !terrain.TryGetComponent<WorldBuilderTerrain>(out _))
+            {
+                Undo.AddComponent<WorldBuilderTerrain>(terrain.gameObject);
+                WorldBuilder.Rebuild(terrain.gameObject.scene);
                 Refresh();
             }
         }
@@ -276,8 +293,10 @@ namespace Mmorpg.Client.Editor
                 return;
             }
 
-            waterfallButton.SetEnabled(
-                Selection.activeGameObject != null && Selection.activeGameObject.GetComponent<RiverShape>() != null);
+            var selected = Selection.activeGameObject;
+            waterfallButton.SetEnabled(selected != null && selected.GetComponent<RiverShape>() != null);
+            terrainButton.SetEnabled(
+                selected != null && selected.GetComponent<Terrain>() != null && selected.GetComponent<WorldBuilderTerrain>() == null);
             bakeButton.SetEnabled(Object.FindObjectsByType<WorldCollisionAuthoring>(FindObjectsInactive.Include).Length == 1);
         }
 

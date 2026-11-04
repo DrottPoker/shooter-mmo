@@ -4,8 +4,9 @@ namespace Mmorpg.Client.Worlds
 {
     // A waterfall: the water of a river falls over its last point, the lip, as wide and as deep as
     // the river is there, along the path water takes at the waterfall's speed, into the water body
-    // below, which churns and foams where it lands. White water boils up there, mist rises, and
-    // droplets fly. The falling water only shows; it has no collision and no water body.
+    // below, which churns and foams where it lands and has a pool dug into the ground there.
+    // White water boils up there, mist rises, and droplets fly. The falling water only shows; it
+    // has no collision and no water body.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(MeshFilter))]
     [RequireComponent(typeof(MeshRenderer))]
@@ -49,6 +50,12 @@ namespace Mmorpg.Client.Worlds
 
         [Tooltip("How fast the water below spreads out from where the water lands (m/s).")]
         [SerializeField, Min(0f)] private float spreadSpeed = 0.7f;
+
+        [Tooltip("How far from where the water lands it digs a pool into a World Builder terrain below (m).")]
+        [SerializeField, Min(0f)] private float poolRadius = 3f;
+
+        [Tooltip("How deep the pool lies below the surface of the water where the water lands (m).")]
+        [SerializeField, Min(0f)] private float poolDepth = 1f;
 
         public RiverShape River
         {
@@ -115,6 +122,16 @@ namespace Mmorpg.Client.Worlds
         public float SpreadSpeed
         {
             get { return spreadSpeed; }
+        }
+
+        public float PoolRadius
+        {
+            get { return Mathf.Max(0f, poolRadius); }
+        }
+
+        public float PoolDepth
+        {
+            get { return Mathf.Max(0f, poolDepth); }
         }
     }
 }

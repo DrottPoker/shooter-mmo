@@ -405,10 +405,14 @@ namespace Mmorpg.Client.Editor
                 points[index] = point;
             }
 
+            Points = points;
             Path = new RiverPath(points, river.Curved);
         }
 
         public RiverShape River { get; }
+
+        // The river's points in world space, with their values as the river builds from them.
+        public IReadOnlyList<RiverPoint> Points { get; }
 
         public RiverPath Path { get; }
 

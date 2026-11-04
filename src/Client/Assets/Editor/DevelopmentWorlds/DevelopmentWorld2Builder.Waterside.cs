@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Mmorpg.Client.Worlds;
 using UnityEditor;
 using UnityEngine;
@@ -9,8 +10,9 @@ namespace Mmorpg.Client.Editor
     // The northwest waterside, the water test area: a plateau with a lake, a waterfall that
     // falls into the lake from a rock outcrop, a river from the lake to the sea with a ford and
     // a bridge, and the sea in the World's northwest corner, where deep water instead of the
-    // boundary walls ends the World. Every height is a pure
-    // function of the position, so every rebuild produces the same terrain and water.
+    // boundary walls ends the World. The ground is a pure function of the position, and the World
+    // Builder carves the beds of the water into it, so every rebuild produces the same terrain
+    // and water.
     public static partial class DevelopmentWorld2Builder
     {
         public static readonly Vector3 WatersideOrigin = new Vector3(-192f, 0f, 64f);
@@ -85,7 +87,6 @@ namespace Mmorpg.Client.Editor
         private const float WaterfallSpeed = 1.6f;
         private const float PlungePoolRadius = 3.2f;
         private const float PlungePoolDepth = 1f;
-        private const float Gravity = 9.81f;
 
         // The stream's surface reaches this far under the channel's walls and past the lip, where
         // it keeps this far inside the channel; the waterfall's column fades in over the stream
@@ -139,18 +140,6 @@ namespace Mmorpg.Client.Editor
             get { return new Vector2(-OutcropDirection.y, OutcropDirection.x); }
         }
 
-        // The water leaves the lip at the waterfall's speed and lands this far out, where the
-        // pool lies.
-        private static float WaterfallSeconds
-        {
-            get { return Mathf.Sqrt(2f * (StreamSurface - LakeSurface) / Gravity); }
-        }
-
-        public static Vector2 PlungePoolCenter
-        {
-            get { return WaterfallLip - (OutcropDirection * (WaterfallSpeed * WaterfallSeconds)); }
-        }
-
         private static void BuildWaterside(DevelopmentWorldBuilder builder)
         {
             var waterside = builder.Group(builder.Environment, "Waterside");
@@ -169,8 +158,14 @@ namespace Mmorpg.Client.Editor
                 terrain.materialTemplate = GraphicsSettings.currentRenderPipeline.defaultTerrainMaterial;
             }
 
+            // The water carves its beds and banks into the terrain and paints them with sand.
+            var shaped = new SerializedObject(terrainObject.AddComponent<WorldBuilderTerrain>());
+            shaped.FindProperty("bedLayer").objectReferenceValue = terrain.terrainData.terrainLayers[2];
+            shaped.ApplyModifiedPropertiesWithoutUndo();
+
             // The water is World Builder shapes, which make every surface, the sea beyond the
-            // World, and the waterfall from a few values each, once all of them stand.
+            // World, the waterfall, and the beds below them from a few values each, once all of
+            // them stand.
             var water = builder.Group(waterside, "Water");
             WaterAssets.CreateOrUpdate();
             var lake = BuildLake(water);
@@ -194,74 +189,15 @@ namespace Mmorpg.Client.Editor
             WorldBuilder.Rebuild(builder.Scene);
         }
 
-        // The ground of the waterside: a plateau that ramps down to the World's ground at its
-        // east and south edges, cut by the lake, the river, and the sea.
-        private static float WatersideHeight(float x, float z, out bool waterBed)
+        // The ground of the waterside without its water: a plateau that ramps down to the World's
+        // ground at its east and south edges. The lake, the river, the sea, and the waterfall's
+        // pool carve their beds into it.
+        private static float WatersideGround(float x, float z)
         {
             var u = x - WatersideOrigin.x;
             var v = z - WatersideOrigin.z;
             var ramp = Mathf.Clamp01(Mathf.Min(WatersideSize.x - u, v) / WatersideRampLength);
-            var plateau = WatersideBaseHeight + ((WatersidePlateauHeight - WatersideBaseHeight) * ramp);
-            var water = Mathf.Min(LakeFloor(x, z), Mathf.Min(RiverFloor(x, z), SeaFloor(x, z)));
-            waterBed = water < plateau;
-            return Mathf.Max(WatersideBaseHeight, Mathf.Min(plateau, water));
-        }
-
-        // The lake's floor, with the pool the waterfall falls into, which reaches under the
-        // outcrop's lip.
-        private static float LakeFloor(float x, float z)
-        {
-            var point = new Vector2(x, z);
-            var radius = Vector2.Distance(point, LakeCenter);
-            if (radius >= LakeShoreRadius + LakeBankWidth)
-            {
-                return float.MaxValue;
-            }
-
-            var floor = radius >= LakeShoreRadius
-                ? LakeSurface + ((WatersidePlateauHeight - LakeSurface) * (radius - LakeShoreRadius) / LakeBankWidth)
-                : Mathf.Max(LakeSurface - LakeMaximumDepth, LakeSurface - (LakeFloorSlope * (LakeShoreRadius - radius)));
-            var poolDistance = Vector2.Distance(point, PlungePoolCenter);
-            if (poolDistance >= PlungePoolRadius)
-            {
-                return floor;
-            }
-
-            return Mathf.Min(floor, LakeSurface - (PlungePoolDepth * (1f - Smooth01(poolDistance / PlungePoolRadius))));
-        }
-
-        private static float SeaFloor(float x, float z)
-        {
-            var distance = Vector2.Distance(new Vector2(x, z), SeaCorner);
-            if (distance >= SeaShoreDistance + SeaBeachWidth)
-            {
-                return float.MaxValue;
-            }
-
-            if (distance >= SeaShoreDistance)
-            {
-                return SeaSurface + ((WatersidePlateauHeight - SeaSurface) * (distance - SeaShoreDistance) / SeaBeachWidth);
-            }
-
-            return Mathf.Max(FloorHeightMinimum, SeaSurface - (SeaFloorSlope * (SeaShoreDistance - distance)));
-        }
-
-        // A smooth channel whose banks rise to the plateau over 3 m.
-        private static float RiverFloor(float x, float z)
-        {
-            var distance = DistanceToRiver(new Vector2(x, z), out var along);
-            if (distance >= RiverHalfWidth + RiverBankWidth)
-            {
-                return float.MaxValue;
-            }
-
-            var surface = RiverSurfaceAt(along);
-            if (distance >= RiverHalfWidth)
-            {
-                return surface + ((WatersidePlateauHeight - surface) * (distance - RiverHalfWidth) / RiverBankWidth);
-            }
-
-            return surface - (RiverDepthAt(along) * (1f - Smooth01(distance / RiverHalfWidth)));
+            return WatersideBaseHeight + ((WatersidePlateauHeight - WatersideBaseHeight) * ramp);
         }
 
         // Level with the lake until the river leaves it, then falling evenly to the sea's level,
@@ -321,31 +257,6 @@ namespace Mmorpg.Client.Editor
             return length;
         }
 
-        // The distance to the river's center line and how far along it the closest point lies.
-        private static float DistanceToRiver(Vector2 point, out float along)
-        {
-            var best = float.MaxValue;
-            along = 0f;
-            var start = 0f;
-            for (var index = 1; index < RiverPoints.Length; index++)
-            {
-                var from = RiverPoints[index - 1];
-                var segment = RiverPoints[index] - from;
-                var length = segment.magnitude;
-                var amount = Mathf.Clamp01(Vector2.Dot(point - from, segment) / (length * length));
-                var distance = Vector2.Distance(point, from + (segment * amount));
-                if (distance < best)
-                {
-                    best = distance;
-                    along = start + (amount * length);
-                }
-
-                start += length;
-            }
-
-            return best;
-        }
-
         private static Vector2 RiverPointAt(float along, out Vector2 direction)
         {
             var start = 0f;
@@ -366,9 +277,10 @@ namespace Mmorpg.Client.Editor
             return RiverPoints[0];
         }
 
+        // A point on the ground away from the water.
         private static Vector3 GroundPoint(Vector2 point)
         {
-            return new Vector3(point.x, WatersideHeight(point.x, point.y, out _), point.y);
+            return new Vector3(point.x, WatersideGround(point.x, point.y), point.y);
         }
 
         // The yaw that turns local +X along the direction.
@@ -394,16 +306,18 @@ namespace Mmorpg.Client.Editor
             terrainData.alphamapResolution = WatersideAlphamapResolution;
             terrainData.size = WatersideSize;
 
+            // The builder writes the whole ground anew, so the World Builder starts from it and
+            // forgets what it changed before.
+            WorldBuilderTerrainState.Forget(terrainData);
             var heights = new float[WatersideHeightmapResolution, WatersideHeightmapResolution];
             var spacing = WatersideSize.x / (WatersideHeightmapResolution - 1);
             for (var z = 0; z < WatersideHeightmapResolution; z++)
             {
                 for (var x = 0; x < WatersideHeightmapResolution; x++)
                 {
-                    heights[z, x] = WatersideHeight(
+                    heights[z, x] = WatersideGround(
                         WatersideOrigin.x + (x * spacing),
-                        WatersideOrigin.z + (z * spacing),
-                        out _) / WatersideSize.y;
+                        WatersideOrigin.z + (z * spacing)) / WatersideSize.y;
                 }
             }
 
@@ -419,15 +333,11 @@ namespace Mmorpg.Client.Editor
             return terrainData;
         }
 
-        // Rock where the ground is too steep to climb, sand on the beds and banks of the
-        // water, and grass elsewhere. Each cell takes the share of its samples that lie on a
-        // water bed, so the sand's edge blends into the grass instead of stepping from cell to
-        // cell.
+        // Rock where the ground is too steep to climb and grass elsewhere; the water paints its
+        // beds and banks with sand over them.
         private static float[,,] CreateWatersideAlphamaps(TerrainData terrainData)
         {
-            const int samplesPerSide = 4;
             var resolution = terrainData.alphamapResolution;
-            var cell = WatersideSize.x / resolution;
             var alphamaps = new float[resolution, resolution, 3];
             for (var z = 0; z < resolution; z++)
             {
@@ -437,23 +347,8 @@ namespace Mmorpg.Client.Editor
                         (x + 0.5f) / resolution,
                         (z + 0.5f) / resolution);
                     var rock = steepness >= RockSteepnessDegrees ? 1f : 0f;
-                    var bedSamples = 0;
-                    for (var sampleZ = 0; sampleZ < samplesPerSide; sampleZ++)
-                    {
-                        for (var sampleX = 0; sampleX < samplesPerSide; sampleX++)
-                        {
-                            WatersideHeight(
-                                WatersideOrigin.x + ((x + ((sampleX + 0.5f) / samplesPerSide)) * cell),
-                                WatersideOrigin.z + ((z + ((sampleZ + 0.5f) / samplesPerSide)) * cell),
-                                out var waterBed);
-                            bedSamples += waterBed ? 1 : 0;
-                        }
-                    }
-
-                    var sand = (float)bedSamples / (samplesPerSide * samplesPerSide);
-                    alphamaps[z, x, 0] = (1f - rock) * (1f - sand);
+                    alphamaps[z, x, 0] = 1f - rock;
                     alphamaps[z, x, 1] = rock;
-                    alphamaps[z, x, 2] = (1f - rock) * sand;
                 }
             }
 
@@ -484,13 +379,17 @@ namespace Mmorpg.Client.Editor
 
             serialized.FindProperty("cellSize").floatValue = 1f;
             serialized.FindProperty("bankReach").floatValue = LakeWaterRadius - LakeShoreRadius;
+            serialized.FindProperty("floorSlope").floatValue = LakeFloorSlope;
+            serialized.FindProperty("maximumDepth").floatValue = LakeMaximumDepth;
+            serialized.FindProperty("bankWidth").floatValue = LakeBankWidth;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             return lake;
         }
 
-        // The river from just inside the lake to just inside the sea along its center line, 8 m
-        // wide, with a point wherever the line turns and where the ford begins and ends, over
-        // which it runs faster, shallower, and foaming.
+        // The river from inside the lake to the sea's shore along its center line, 8 m wide, with
+        // a point wherever the line turns, where it leaves the lake and reaches the sea, and where
+        // the ford begins and ends, over which it runs faster, shallower, and foaming. Its channel
+        // runs on into the lake and the sea, under their water.
         private static void BuildRiver(Transform water)
         {
             var river = WaterShape<RiverShape>(
@@ -500,7 +399,8 @@ namespace Mmorpg.Client.Editor
                 WaterBodyKind.River,
                 "M_DevelopmentWorld2_River",
                 Vector3.zero);
-            var distances = new List<float> { RiverFallStart, RiverMouth };
+            var length = RiverLength();
+            var distances = new List<float> { 0f, RiverFallStart, RiverMouth, length };
             var corner = 0f;
             for (var index = 1; index < RiverPoints.Length - 1; index++)
             {
@@ -513,8 +413,9 @@ namespace Mmorpg.Client.Editor
                 distances.Add(FordDistance + offset);
             }
 
-            distances.RemoveAll(along => along < RiverFallStart || along > RiverMouth);
+            distances.RemoveAll(along => along < 0f || along > length);
             distances.Sort();
+            distances = distances.Distinct().ToList();
             var points = new List<RiverPoint>();
             foreach (var along in distances)
             {
@@ -527,7 +428,7 @@ namespace Mmorpg.Client.Editor
                     0.55f * FordAmount(along)));
             }
 
-            SetRiver(river, points, 1f, 0.7f, RiverWaterHalfWidth - RiverHalfWidth);
+            SetRiver(river, points, 1f, 0.7f, RiverWaterHalfWidth - RiverHalfWidth, RiverBankWidth);
         }
 
         // The quarter disc of sea inside the World's corner: its shore lies 60 m from the corner,
@@ -562,6 +463,9 @@ namespace Mmorpg.Client.Editor
             serialized.FindProperty("horizonExtent").floatValue = OuterSeaExtent;
             serialized.FindProperty("seabedMaterial").objectReferenceValue = palette.Sand;
             serialized.FindProperty("seabedDepth").floatValue = SeaSurface;
+            serialized.FindProperty("floorSlope").floatValue = SeaFloorSlope;
+            serialized.FindProperty("maximumDepth").floatValue = SeaSurface - FloorHeightMinimum;
+            serialized.FindProperty("bankWidth").floatValue = SeaBeachWidth;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -609,7 +513,8 @@ namespace Mmorpg.Client.Editor
             return body.AddComponent<T>();
         }
 
-        private static void SetRiver(RiverShape river, IReadOnlyList<RiverPoint> points, float rowSpacing, float edgeSlowdown, float bankReach)
+        // A bank width of zero leaves the ground below the river as it is.
+        private static void SetRiver(RiverShape river, IReadOnlyList<RiverPoint> points, float rowSpacing, float edgeSlowdown, float bankReach, float bankWidth)
         {
             var serialized = new SerializedObject(river);
             var list = serialized.FindProperty("points");
@@ -628,6 +533,8 @@ namespace Mmorpg.Client.Editor
             serialized.FindProperty("rowSpacing").floatValue = rowSpacing;
             serialized.FindProperty("edgeSlowdown").floatValue = edgeSlowdown;
             serialized.FindProperty("bankReach").floatValue = bankReach;
+            serialized.FindProperty("bankWidth").floatValue = bankWidth;
+            serialized.FindProperty("carvesBed").boolValue = bankWidth > 0f;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -716,6 +623,8 @@ namespace Mmorpg.Client.Editor
             waterfall.FindProperty("approach").floatValue = WaterfallApproachLength;
             waterfall.FindProperty("pastLip").floatValue = StreamPastLip;
             waterfall.FindProperty("insideFall").floatValue = StreamInsideFall;
+            waterfall.FindProperty("poolRadius").floatValue = PlungePoolRadius;
+            waterfall.FindProperty("poolDepth").floatValue = PlungePoolDepth;
             waterfall.ApplyModifiedPropertiesWithoutUndo();
 
             builder.Sign(
@@ -750,7 +659,8 @@ namespace Mmorpg.Client.Editor
                     back >= length ? 0.6f : 0f));
             }
 
-            SetRiver(stream, points, 0.5f, 0.5f, StreamUnderWalls);
+            // The stream runs on rock, so it carves no bed.
+            SetRiver(stream, points, 0.5f, 0.5f, StreamUnderWalls, 0f);
             return stream;
         }
 

@@ -480,9 +480,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(waterside.transform.position, Is.EqualTo(DevelopmentWorld2Builder.WatersideOrigin));
                 Assert.That(waterside.terrainData.size, Is.EqualTo(DevelopmentWorld2Builder.WatersideSize));
 
+                // The water carves its beds into the waterside terrain and paints them with sand.
+                Assert.That(waterside.GetComponent<WorldBuilderTerrain>(), Is.Not.Null);
+                Assert.That(waterside.GetComponent<WorldBuilderTerrain>().BedLayer.name, Is.EqualTo("TL_DevelopmentWorld2_Sand"));
+
                 // One lake, one river, one sea, and the stream above the waterfall, each a
                 // surface mesh without a collider that draws with the shared water material,
-                // static but kept out of static batching, so the client can read its surface.
+                // static but kept out of static batching, so the client can read its surface, and
+                // no occluder, since it is seen through.
                 var bodies = environment.GetComponentsInChildren<WaterBody>(true);
                 Assert.That(
                     bodies.Select(body => body.BodyId + ":" + body.Kind),
@@ -502,6 +507,10 @@ namespace Mmorpg.Client.Tests.EditMode
                         Is.False,
                         body.name);
                     Assert.That(
+                        GameObjectUtility.AreStaticEditorFlagsSet(body.gameObject, StaticEditorFlags.OccluderStatic),
+                        Is.False,
+                        body.name);
+                    Assert.That(
                         GameObjectUtility.AreStaticEditorFlagsSet(body.gameObject, StaticEditorFlags.ContributeGI),
                         Is.True,
                         body.name);
@@ -511,14 +520,17 @@ namespace Mmorpg.Client.Tests.EditMode
                         body.name);
                 }
 
-                // The waterfall's sheet and the sea beyond the World and its seabed only show.
+                // The waterfall's sheet and the sea beyond the World and its seabed only show,
+                // and the falling water and the sea beyond are seen through, so no occluders.
                 var sheet = FindGameObject(scene, "WaterfallSheet");
                 Assert.That(sheet.GetComponents<Collider>(), Is.Empty);
+                Assert.That(GameObjectUtility.AreStaticEditorFlagsSet(sheet, StaticEditorFlags.OccluderStatic), Is.False);
                 Assert.That(
                     sheet.GetComponent<MeshRenderer>().sharedMaterial,
                     Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.WaterfallMaterialPath)));
                 var beyond = FindGameObject(scene, "SeaBeyondTheWorld");
                 Assert.That(beyond.GetComponents<Collider>(), Is.Empty);
+                Assert.That(GameObjectUtility.AreStaticEditorFlagsSet(beyond, StaticEditorFlags.OccluderStatic), Is.False);
                 Assert.That(
                     beyond.GetComponent<MeshRenderer>().sharedMaterial,
                     Is.EqualTo(AssetDatabase.LoadAssetAtPath<Material>(WaterAssets.SurfaceMaterialPath)));

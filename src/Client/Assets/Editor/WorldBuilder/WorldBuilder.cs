@@ -9,10 +9,10 @@ using UnityEngine.SceneManagement;
 namespace Mmorpg.Client.Editor
 {
     // Builds the parts of a World that shapes describe, such as lakes, rivers, seas, and
-    // waterfalls, from those shapes. It rebuilds everything of a scene at once, because one shape
-    // shapes another where they meet, and writes only what changes. The World Builder window, the
-    // collision bake, and the Development World builders use it; see docs/DEVELOPMENT_WORLDS.md
-    // under World Builder.
+    // waterfalls and the beds they carve into a terrain, from those shapes. It rebuilds everything
+    // of a scene at once, because one shape shapes another where they meet, and writes only what
+    // changes. The World Builder window, the collision bake, and the Development World builders
+    // use it; see docs/DEVELOPMENT_WORLDS.md under World Builder.
     public static class WorldBuilder
     {
         // Rebuilds what the shapes of the scene make. Returns whether anything changed, and marks
@@ -24,7 +24,9 @@ namespace Mmorpg.Client.Editor
                 return false;
             }
 
-            var changed = WaterBuilder.Build(WaterScene.Collect(scene));
+            var water = WaterScene.Collect(scene);
+            var changed = WaterBuilder.Build(water);
+            changed |= TerrainCarver.Build(scene, WaterBed.Collect(water));
             if (changed && !EditorApplication.isPlaying && !EditorSceneManager.IsPreviewScene(scene))
             {
                 EditorSceneManager.MarkSceneDirty(scene);

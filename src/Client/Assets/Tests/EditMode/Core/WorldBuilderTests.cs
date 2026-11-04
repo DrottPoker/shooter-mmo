@@ -267,11 +267,28 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(lake.transform.parent.name, Is.EqualTo(WorldBuilderCreate.WaterGroupName));
                 Assert.That(lake.transform.parent.parent, Is.EqualTo(world.transform));
                 Assert.That(GameObjectUtility.AreStaticEditorFlagsSet(lake.gameObject, StaticEditorFlags.BatchingStatic), Is.False);
+                Assert.That(GameObjectUtility.AreStaticEditorFlagsSet(lake.gameObject, StaticEditorFlags.OccluderStatic), Is.False);
                 Assert.That(GameObjectUtility.AreStaticEditorFlagsSet(lake.gameObject, StaticEditorFlags.ContributeGI), Is.True);
                 Assert.That(lake.GetComponent<MeshRenderer>().sharedMaterial.shader.name, Is.EqualTo(WaterAssets.ShaderName));
             }
 
             Assert.That(WorldBuilder.Validate(scene), Is.Empty);
+        }
+
+        // Water is seen through, so the validation warns about water marked Occluder Static: once
+        // occlusion culling is baked, it would hide the ground below it.
+        [Test]
+        public void WaterMarkedOccluderStaticIsAWarning()
+        {
+            var lake = WorldBuilderCreate.AddLake(scene, Vector3.zero);
+            GameObjectUtility.SetStaticEditorFlags(
+                lake.gameObject,
+                GameObjectUtility.GetStaticEditorFlags(lake.gameObject) | StaticEditorFlags.OccluderStatic);
+
+            var issue = WorldBuilder.Validate(scene).Single();
+
+            Assert.That(issue.Target, Is.EqualTo(lake.Body));
+            Assert.That(issue.Severity, Is.EqualTo(WorldBuilderIssueSeverity.Warning));
         }
 
         [Test]
