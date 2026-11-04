@@ -15,6 +15,9 @@ namespace Mmorpg.Client.Editor
     // use it; see docs/DEVELOPMENT_WORLDS.md under World Builder.
     public static class WorldBuilder
     {
+        // After every rebuild: the scene, and whether anything changed.
+        public static event System.Action<Scene, bool> Rebuilt;
+
         // Rebuilds what the shapes of the scene make. Returns whether anything changed, and marks
         // the scene dirty when it did.
         public static bool Rebuild(Scene scene)
@@ -32,6 +35,7 @@ namespace Mmorpg.Client.Editor
                 EditorSceneManager.MarkSceneDirty(scene);
             }
 
+            Rebuilt?.Invoke(scene, changed);
             return changed;
         }
 

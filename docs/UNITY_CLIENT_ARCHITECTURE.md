@@ -85,7 +85,7 @@ largest, is split by area:
 | `Editor/Wardrobe` | The Wardrobe window and its preview |
 | `Editor/DevelopmentTools` | The Inventory Item Grants window and its process runner |
 | `Editor/DevelopmentWorlds` | The development World builders; see [Development Worlds](DEVELOPMENT_WORLDS.md) |
-| `Editor/WorldBuilder` | The [World Builder](DEVELOPMENT_WORLDS.md#world-builder): `WorldBuilder`, which rebuilds and validates a scene, its window, its live rebuild, the shapes it adds, the mesh assets it writes, the shared handles of an outline, and `TerrainCarver`, which carves the water's beds into a terrain and keeps what it changed in a hidden part of the terrain asset |
+| `Editor/WorldBuilder` | The [World Builder](DEVELOPMENT_WORLDS.md#world-builder): `WorldBuilder`, which rebuilds and validates a scene, its window, its live rebuild, the rebuild from the saved scene after its changes are thrown away, the shapes it adds, the mesh assets it writes, the shared handles of an outline, and `TerrainCarver`, which carves the water's beds into a terrain and keeps what it changed in a hidden part of the terrain asset |
 | `Editor/Water` | `WaterAssets`, which writes the water's textures and materials, and the water of the World Builder: the builders of the lake, river, sea, and waterfall meshes, the beds the water carves, the editors of their shapes, and the water validation |
 | `Editor/Ui` | `UiSpriteImportRules` and `UiThemeBuilder`, the import and build side of [UI Art](ART_PIPELINE.md#ui-art) |
 
