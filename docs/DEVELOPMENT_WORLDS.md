@@ -539,13 +539,17 @@ at its own place; give each terrain terrain data of its own. Terrains side by
 side all reach a bed that ends at the edge they share, so they meet level there.
 
 The water meshes and the terrains are assets, which a scene's `Don't Save` does
-not take back along with the scene's own changes. So when a scene closes with
-unsaved changes that changed its water or beds, the World Builder rebuilds them
-from the saved scene a moment later, opening the scene beside the open ones for
-that and closing it again, or the next time the Editor starts when it quit
-then. Changes made with Unity's terrain tools are part of the terrain data, as
-in every terrain, so `Don't Save` keeps them: undo them with Ctrl+Z before
-leaving the scene, or restore the terrain data's file.
+not take back along with the scene's own changes. So the World Builder notes
+each scene whose water or beds a rebuild changed until the scene is saved, in
+the Editor's preferences, which a compile, Play Mode, and a restart keep. A
+moment after a noted scene closes without being saved, the World Builder
+rebuilds its water and beds from the saved scene, opening the scene beside the
+open ones for that and closing it again, and when the Editor quit or stopped
+with such a scene, it does so the next time the Editor starts. After `Save As`,
+what the World Builder made belongs to the scene under its new name, so the old
+file is not rebuilt. Changes made with Unity's terrain tools are part of the
+terrain data, as in every terrain, so `Don't Save` keeps them: undo them with
+Ctrl+Z before leaving the scene, or restore the terrain data's file.
 
 The water and the ground follow every change a moment later, also while a shape
 is dragged, when a shape is moved, added, or removed, when the ground's

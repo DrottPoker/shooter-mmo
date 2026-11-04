@@ -10,75 +10,82 @@ namespace Mmorpg.Client.Editor
     // Keeps what the World Builder makes for a scene in step with the scene when the scene's
     // unsaved changes are thrown away, such as with Don't Save. The water meshes and the terrains
     // are assets, which a scene does not take back with its own changes, so after a rebuild changed
-    // them they would still show what was thrown away. A moment after such a scene closes without
-    // being saved, or the next time the Editor starts when it quit then, the World Builder rebuilds
-    // the scene's water and beds from the scene as it was saved. A terrain's changes made with
-    // Unity's terrain tools stay, as they do in every terrain.
+    // them they would still show what was thrown away. Each saved scene whose water or beds a
+    // rebuild changed is noted until it is saved, in the Editor's preferences, which a compile,
+    // Play Mode, and a restart keep. A noted scene that is no longer open with unsaved changes is
+    // rebuilt from its saved file a moment after it closes, after Play Mode, and when the Editor
+    // starts. A terrain's changes made with Unity's terrain tools stay, as they do in every terrain.
     [InitializeOnLoad]
     internal static class WorldBuilderDiscards
     {
-        // The saved scenes whose water or beds a rebuild changed since they were last saved.
-        private static readonly HashSet<string> Changed = new HashSet<string>();
-
-        // Whether a scene is being rebuilt from its saved file, which opens and closes it.
+        // Whether a noted scene is being rebuilt from its saved file.
         private static bool repairing;
 
         static WorldBuilderDiscards()
         {
             WorldBuilder.Rebuilt += OnRebuilt;
-            EditorSceneManager.sceneSaved += scene => Changed.Remove(scene.path);
+            EditorSceneManager.sceneSaving += OnSceneSaving;
+            EditorSceneManager.sceneSaved += scene => Forget(scene.path);
             EditorSceneManager.sceneClosing += OnSceneClosing;
-            EditorApplication.quitting += OnQuitting;
             EditorApplication.playModeStateChanged += state =>
             {
                 if (state == PlayModeStateChange.EnteredEditMode)
                 {
-                    EditorApplication.delayCall += RepairPending;
+                    ScheduleRepair();
                 }
             };
-            EditorApplication.delayCall += RepairPending;
+
+            // After a compile, and when the Editor starts after it quit or stopped with a noted scene.
+            ScheduleRepair();
         }
 
-        // The scenes waiting to be rebuilt from their saved files, kept across Editor sessions.
-        public static IReadOnlyList<string> Pending
+        // The saved scenes whose water or beds a rebuild changed since they were last saved.
+        public static IReadOnlyList<string> Changed
         {
-            get { return LoadPending(); }
+            get { return Load(); }
         }
 
-        private static string PendingKey
+        // Where the notes are kept, for each project.
+        internal static string PreferenceKey
         {
-            get { return "Mmorpg.WorldBuilder.PendingRepairs." + Application.dataPath; }
+            get { return "Mmorpg.WorldBuilder.ChangedScenes." + Application.dataPath; }
         }
 
-        // Rebuilds every scene waiting for it from its saved file, unless the Editor plays: a scene
-        // that is open again is rebuilt as it is, and any other is opened beside the open ones
-        // for its rebuild and closed again without being saved.
-        public static void RepairPending()
+        // Rebuilds every noted scene that is not open with unsaved changes from its saved file,
+        // unless the Editor plays: a scene open again as it was saved is rebuilt as it is, and any
+        // other is opened beside the open ones for its rebuild and closed again without being saved.
+        public static void Repair()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
                 return;
             }
 
-            foreach (var path in LoadPending())
+            foreach (var path in Load())
             {
-                RemovePending(path);
+                var scene = SceneManager.GetSceneByPath(path);
+                if (scene.isLoaded && scene.isDirty)
+                {
+                    continue;
+                }
+
+                Forget(path);
                 if (AssetDatabase.LoadAssetAtPath<SceneAsset>(path) == null)
                 {
                     continue;
                 }
 
-                var scene = SceneManager.GetSceneByPath(path);
-                if (scene.IsValid() && scene.isLoaded)
-                {
-                    WorldBuilder.Rebuild(scene);
-                    continue;
-                }
-
+                // A scene listed unloaded in the Hierarchy stays listed there.
+                var listed = scene.IsValid();
+                var opened = !scene.isLoaded;
                 repairing = true;
                 try
                 {
-                    scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Additive);
+                    if (opened)
+                    {
+                        scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Additive);
+                    }
+
                     if (WorldBuilder.Rebuild(scene))
                     {
                         Debug.Log("[WORLD BUILDER] Rebuilt the water and beds of " + path + " from the saved scene, since its unsaved changes were thrown away.");
@@ -86,9 +93,9 @@ namespace Mmorpg.Client.Editor
                 }
                 finally
                 {
-                    if (scene.IsValid() && scene.isLoaded)
+                    if (opened && scene.IsValid() && scene.isLoaded)
                     {
-                        EditorSceneManager.CloseScene(scene, true);
+                        EditorSceneManager.CloseScene(scene, !listed);
                     }
 
                     repairing = false;
@@ -96,74 +103,71 @@ namespace Mmorpg.Client.Editor
             }
         }
 
+        private static void ScheduleRepair()
+        {
+            EditorApplication.delayCall -= Repair;
+            EditorApplication.delayCall += Repair;
+        }
+
         private static void OnRebuilt(Scene scene, bool changed)
         {
             if (changed && !repairing && !string.IsNullOrEmpty(scene.path) && !EditorApplication.isPlaying)
             {
-                Changed.Add(scene.path);
-            }
-        }
-
-        // A scene that closes with unsaved changes throws them away.
-        private static void OnSceneClosing(Scene scene, bool removingScene)
-        {
-            if (!repairing && scene.isDirty && Changed.Remove(scene.path))
-            {
-                AddPending(scene.path);
-                EditorApplication.delayCall += RepairPending;
-            }
-        }
-
-        // Scenes left unsaved when the Editor quits are rebuilt the next time it starts.
-        private static void OnQuitting()
-        {
-            for (var index = 0; index < SceneManager.sceneCount; index++)
-            {
-                var scene = SceneManager.GetSceneAt(index);
-                if (scene.isDirty && Changed.Contains(scene.path))
+                var notes = Load();
+                if (!notes.Contains(scene.path))
                 {
-                    AddPending(scene.path);
+                    notes.Add(scene.path);
+                    Save(notes);
                 }
             }
         }
 
-        private static List<string> LoadPending()
+        // A scene saved under another name leaves its old file as it was, and what the World
+        // Builder made for it belongs to the scene under the new name from then on.
+        private static void OnSceneSaving(Scene scene, string path)
         {
-            return EditorPrefs.GetString(PendingKey, string.Empty)
+            if (scene.path != path)
+            {
+                Forget(scene.path);
+            }
+        }
+
+        // A noted scene that closes throws its unsaved changes away.
+        private static void OnSceneClosing(Scene scene, bool removingScene)
+        {
+            if (!repairing && Load().Contains(scene.path))
+            {
+                ScheduleRepair();
+            }
+        }
+
+        private static List<string> Load()
+        {
+            return EditorPrefs.GetString(PreferenceKey, string.Empty)
                 .Split('\n')
                 .Where(path => path.Length > 0)
                 .Distinct()
                 .ToList();
         }
 
-        private static void SavePending(List<string> pending)
+        private static void Save(List<string> notes)
         {
-            if (pending.Count == 0)
+            if (notes.Count == 0)
             {
-                EditorPrefs.DeleteKey(PendingKey);
+                EditorPrefs.DeleteKey(PreferenceKey);
             }
             else
             {
-                EditorPrefs.SetString(PendingKey, string.Join("\n", pending));
+                EditorPrefs.SetString(PreferenceKey, string.Join("\n", notes));
             }
         }
 
-        private static void AddPending(string path)
+        private static void Forget(string path)
         {
-            var pending = LoadPending();
-            if (!pending.Contains(path))
+            var notes = Load();
+            if (notes.Remove(path))
             {
-                pending.Add(path);
-                SavePending(pending);
-            }
-        }
-
-        private static void RemovePending(string path)
-        {
-            var pending = LoadPending();
-            if (pending.Remove(path))
-            {
-                SavePending(pending);
+                Save(notes);
             }
         }
     }
