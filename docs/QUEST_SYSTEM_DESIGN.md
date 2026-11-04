@@ -30,8 +30,10 @@ Implemented:
 - The GameService Quests module: the quest catalog loaded at startup with the
   checks of [Changing Released Quests](#changing-released-quests), the stored
   [quest state](#quest-state), and the owning account's read of it, as
-  [Service Features](SERVICE_FEATURES.md#quests) describes. No command changes
-  quest state yet.
+  [Service Features](SERVICE_FEATURES.md#quests) describes.
+- Accepting and abandoning quests and granting start items again, as item
+  transactions on the worker quest route. No worker calls the route yet, and
+  progress and the turn-in follow.
 
 Planned: everything else in this document. Quest content replaces the
 configured quest, one `quests` capability replaces both quest capability kinds,

@@ -54,7 +54,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
                 .Select(field => $"{type.Name}.{field.Name}"))
             .ToArray();
 
-        Assert.Equal(23, handlerTypes.Length);
+        Assert.Equal(24, handlerTypes.Length);
         Assert.True(
             mutableFields.Length == 0,
             "Item command handlers are shared across concurrent transactions and may hold only readonly injected fields:"
@@ -175,7 +175,11 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         // S41: equipment reads the character level for its level requirement.
         "GameService.Items/Transactions/Context/ItemSlotPlacement.cs",
         // S51: the result reports each touched character's balance.
-        "GameService.Items/Transactions/Context/ItemTransactionFinalizer.cs"
+        "GameService.Items/Transactions/Context/ItemTransactionFinalizer.cs",
+        // S56: quest commands read the quest catalog and the character level and change the quest log.
+        "GameService.Items/Transactions/Handlers/QuestCommandHandler.cs",
+        // S57: the result of a quest command reports the quests it changed.
+        "GameService.Items/Transactions/Domain/QuestLogChanges.cs"
     ];
 
     // The file that defines the single rejection throw, ItemTransactionRejection.
@@ -202,6 +206,6 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     [GeneratedRegex(@"\b(?:LockDeathEventKeyAsync|pg_advisory_xact_lock|LockCharacterStatesAsync|LockCharacterStateForIdempotentEventAsync|LockOpenCorpseAsync|LockMutationScopeAsync)\b")]
     private static partial Regex LockCallPattern();
 
-    [GeneratedRegex(@"\b(?:ICharacterLocks|ICharacterWallet|ICharacterProgression|ISimulationSessionAuthority|ISimulationWorkerAuthority|ISimulationPresence|AccountsSql|CharactersSql|PlacementSql)\b|Mmorpg\.GameService\.(?:Accounts|Characters|Placement)\.Contracts")]
+    [GeneratedRegex(@"\b(?:ICharacterLocks|ICharacterWallet|ICharacterProgression|ISimulationSessionAuthority|ISimulationWorkerAuthority|ISimulationPresence|IQuestDefinitions|ICharacterQuestLog|AccountsSql|CharactersSql|PlacementSql)\b|Mmorpg\.GameService\.(?:Accounts|Characters|Placement|Quests)\.Contracts")]
     private static partial Regex CrossModulePattern();
 }

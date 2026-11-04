@@ -5,6 +5,7 @@ using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Quests.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items;
@@ -24,6 +25,7 @@ internal sealed class ItemTransactionService
     private readonly RecoveryDeliveryCommandHandler recoveryDelivery = new();
     private readonly ItemPolicyCommandHandler itemPolicy;
     private readonly QuestItemCommandHandler questItem = new();
+    private readonly QuestCommandHandler quest;
     private readonly PlayerDeathCommandHandler playerDeath = new();
     private readonly CorpseExpiryCommandHandler corpseExpiry = new();
     private readonly CorpseLootCommandHandler corpseLoot = new();
@@ -46,6 +48,8 @@ internal sealed class ItemTransactionService
         ISimulationSessionAuthority simulationSessionAuthority,
         ISimulationWorkerAuthority simulationWorkerAuthority,
         ISimulationPresence simulationPresence,
+        IQuestDefinitions questDefinitions,
+        ICharacterQuestLog questLog,
         ItemOperationsMetrics? operationsMetrics = null,
         ItemOperationsOptions? itemOperationsOptions = null,
         ILogger<ItemTransactionService>? logger = null,
@@ -57,6 +61,7 @@ internal sealed class ItemTransactionService
             simulationWorkerAuthority);
         itemPolicy = new ItemPolicyCommandHandler(characterWallet);
         vendor = new VendorCommandHandler(characterWallet);
+        quest = new QuestCommandHandler(questDefinitions, questLog);
         mobCorpse = new MobCorpseCommandHandler(simulationAuthority);
         kernel = new ItemTransactionKernel(
             dataSource,
@@ -257,6 +262,42 @@ internal sealed class ItemTransactionService
             ItemOperationKinds.AbandonQuestItems,
             request.Command.CharacterId,
             questItem,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AcceptQuestCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AcceptQuest,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AbandonQuestCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AbandonQuest,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<RegrantQuestItemsCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.RegrantQuestItems,
+            request.Command.CharacterId,
+            quest,
             cancellationToken);
     }
 

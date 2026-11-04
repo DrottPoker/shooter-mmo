@@ -268,7 +268,8 @@ A GameService module declares every meter it creates in
 
 The periodic item summary log counts only committed and rejected transactions.
 Vendor trades and gathering yields show in the transaction instruments by their
-operation kinds `vendor_purchase`, `vendor_sale`, and `gather_resource`.
+operation kinds `vendor_purchase`, `vendor_sale`, and `gather_resource`, and
+quest actions by `accept_quest`, `abandon_quest`, and `regrant_quest_items`.
 GameService has no separate currency or economy instrument yet.
 
 ### Built-in .NET Metrics

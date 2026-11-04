@@ -17,6 +17,7 @@ internal sealed class ItemChangeJournal(
     private readonly List<ItemAuditChange> auditChanges = [];
     private readonly List<Guid> recoveryDeliveryIds = [];
     private bool allowInvoluntaryHardCapOverflow;
+    private ItemTransactionQuestLogChange? questLogChange;
 
     private string OperationKind => session.OperationKind;
 
@@ -35,6 +36,8 @@ internal sealed class ItemChangeJournal(
     internal IReadOnlyList<Guid> RecoveryDeliveryIds => recoveryDeliveryIds;
 
     internal bool AllowsInvoluntaryHardCapOverflow => allowInvoluntaryHardCapOverflow;
+
+    internal ItemTransactionQuestLogChange? QuestLogChange => questLogChange;
 
     public async Task<string?> CaptureItemStateJsonAsync(
         Guid itemInstanceId,
@@ -122,6 +125,13 @@ internal sealed class ItemChangeJournal(
     public void AddRecoveryDelivery(Guid recoveryDeliveryId)
     {
         recoveryDeliveryIds.Add(recoveryDeliveryId);
+    }
+
+    // The quests that the transaction changed, as the quest log holds them after it.
+    public void SetQuestLogChange(ItemTransactionQuestLogChange change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        questLogChange = change;
     }
 
     public void AllowInvoluntaryDeathHardCapOverflow()

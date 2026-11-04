@@ -48,6 +48,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel |
+| `POST /api/simulation-sessions/{id}/quest-operations` | Worker service policy | Accept or abandon a quest, or grant its start items again, for the session's character through the durable kernel |
 | `POST /api/simulation-sessions/{id}/ammunition-consumptions` | Worker service policy | Commit one idempotent batch of shots from the exact-session character's equipped ammunition stack |
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
 | `GET /api/simulation-workers/{workerId}/corpses` | Exact worker service policy | Restore open unexpired corpses for the worker's fresh runtime and active Shard assignment |
@@ -1206,6 +1207,30 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   stored progress. A character without quests has quest log revision 0. Quest
   texts and rules are not part of the response; the client reads them from its
   bundled quest catalog.
+- `POST /api/simulation-sessions/{id}/quest-operations` runs one quest action
+  of the session's character as an item transaction, with the operation id and
+  replay rules of [Item Transactions](#item-transactions). `operationKind` names
+  it, `questId` the quest, and `questNpcActorId` the NPC whose quest capability
+  the worker validated:
+  - `accept_quest` at the quest's giver checks the order of
+    [Requirements And Availability](QUEST_SYSTEM_DESIGN.md#requirements-and-availability)
+    and grants the start items into carried storage with the quest's lineage.
+    It rejects with `quest_already_active`, `quest_already_completed`,
+    `quest_requirements_not_met`, `quest_level_too_low`, `quest_log_full`, or
+    `inventory_full` and changes nothing.
+  - `abandon_quest`, anywhere, ends the quest without a completion and removes
+    every item with its lineage, also from the Bank and Recovery Storage.
+  - `regrant_quest_items` at the giver grants the start items that the quest
+    still needs and the character no longer owns, and grants nothing when it
+    owns them.
+  - A quest that the catalog does not hold returns `404` with `quest_not_found`,
+    an action at another NPC `403` with `quest_npc_access_required`, and a quest
+    that is not active `409` with `quest_not_active`.
+
+  The response carries the committed item changes, the character's carry state
+  as the item route returns it, and `questLog`: the quest log revision and, for
+  each changed quest, its current step or none once it is no longer active, the
+  progress of its counted objectives, and its completion count.
 
 ## Error Codes
 
@@ -1225,12 +1250,14 @@ results and closures, and Unity adds `item_catalog_update_required`.
   corpse routes: `401` for an invalid simulation session, `403` for missing
   authority or service access, such as `item_authority_required`,
   `wrong_simulation_worker`, `bank_access_required`, `recovery_access_required`,
-  and `vendor_access_required`, `404` for a missing item, policy, Recovery
-  delivery, or corpse, `409` for stale state and races, such as
+  `vendor_access_required`, and `quest_npc_access_required`, `404` for a missing
+  item, policy, Recovery delivery, corpse, or quest, `409` for stale state and
+  races, such as
   `item_state_conflict`, `item_operation_conflict`, `item_transaction_timeout`,
   `item_slot_occupied`, `equipment_slot_occupied`, `item_quantity_changed`,
   `bag_state_changed`, `worker_runtime_changed`, `vendor_price_changed`,
-  `inventory_full`, the corpse lifecycle codes, and on account routes
+  `inventory_full`, `quest_not_active`, `quest_already_active`, the corpse
+  lifecycle codes, and on account routes
   `item_offline_access_required`, and `422` for every other domain rejection.
   An incomplete request returns `400` with `item_operation_id_required` or
   `item_simulation_operation_invalid`.
@@ -1247,6 +1274,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_appearance_change`, `development_look_disabled` |
 | Item reads and requests | `item_catalog_not_found`, `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
 | Quest reads | `character_quests_not_found` |
+| Quest commands | `quest_not_found`, `quest_not_active`, `quest_already_active`, `quest_already_completed`, `quest_requirements_not_met`, `quest_level_too_low`, `quest_log_full`, `quest_npc_access_required` |
 | Item authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `simulation_session_invalid` |
 | Item operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large` |
 | Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |

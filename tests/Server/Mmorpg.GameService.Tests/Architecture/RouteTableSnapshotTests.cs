@@ -55,6 +55,7 @@ public sealed class RouteTableSnapshotTests
         "POST /api/simulation-sessions/{simulationSessionId:guid}/mob-loot-grants auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/mob-loot-grants/loot-all auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/player-deaths auth=SimulationWorker rate=- sensitive=yes",
+        "POST /api/simulation-sessions/{simulationSessionId:guid}/quest-operations auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/release auth=SimulationWorker rate=- sensitive=no",
         "POST /api/simulation-workers/{workerId}/heartbeat auth=SimulationWorker rate=- sensitive=no",
         "POST /api/simulation-workers/{workerId}/mob-corpses/durable auth=SimulationWorker rate=- sensitive=yes",

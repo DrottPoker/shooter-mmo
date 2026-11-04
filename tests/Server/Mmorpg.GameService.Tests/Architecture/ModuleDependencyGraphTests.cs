@@ -22,7 +22,8 @@ public sealed class ModuleDependencyGraphTests
                 "Mmorpg.GameService.Accounts",
                 "Mmorpg.GameService.Characters",
                 "Mmorpg.GameService.Placement",
-                "Mmorpg.GameService.Platform"
+                "Mmorpg.GameService.Platform",
+                "Mmorpg.GameService.Quests"
             ],
             ["Mmorpg.GameService"] =
             [

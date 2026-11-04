@@ -606,37 +606,6 @@ internal sealed class SimulationItemMutationService(
     private static ServiceResult<SimulationItemOperationResponse> MapRejection(
         ItemTransactionResult result)
     {
-        var error = result.Error
-            ?? throw new InvalidOperationException("A rejected item operation has no error.");
-        return error.Code switch
-        {
-            ItemTransactionErrorCodes.SimulationSessionInvalid =>
-                ServiceResult<SimulationItemOperationResponse>.Unauthorized(error.Code, error.Message),
-            ItemTransactionErrorCodes.AuthorityRequired or
-            ItemTransactionErrorCodes.WrongSimulationWorker or
-            ItemTransactionErrorCodes.BankAccessRequired or
-            ItemTransactionErrorCodes.RecoveryAccessRequired or
-            ItemTransactionErrorCodes.VendorAccessRequired =>
-                ServiceResult<SimulationItemOperationResponse>.Forbidden(error.Code, error.Message),
-            ItemTransactionErrorCodes.ItemNotFound or
-            ItemTransactionErrorCodes.ItemNotOwned or
-            ItemTransactionErrorCodes.RecoveryDeliveryNotFound or
-            ItemTransactionErrorCodes.ItemPolicyNotFound =>
-                ServiceResult<SimulationItemOperationResponse>.NotFound(error.Code, error.Message),
-            ItemTransactionErrorCodes.ItemStateConflict or
-            ItemTransactionErrorCodes.ItemOperationConflict or
-            ItemTransactionErrorCodes.ItemTransactionTimeout or
-            ItemTransactionErrorCodes.ItemSlotOccupied or
-            ItemTransactionErrorCodes.EquipmentSlotOccupied or
-            ItemTransactionErrorCodes.ItemQuantityChanged or
-            ItemTransactionErrorCodes.BagStateChanged or
-            ItemTransactionErrorCodes.WorkerRuntimeChanged or
-            ItemTransactionErrorCodes.VendorPriceChanged or
-            ItemTransactionErrorCodes.InventoryFull =>
-                ServiceResult<SimulationItemOperationResponse>.Conflict(error.Code, error.Message),
-            _ => ServiceResult<SimulationItemOperationResponse>.UnprocessableEntity(
-                error.Code,
-                error.Message)
-        };
+        return SimulationItemRejections.Map<SimulationItemOperationResponse>(result);
     }
 }

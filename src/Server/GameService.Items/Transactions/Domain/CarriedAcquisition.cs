@@ -10,6 +10,44 @@ namespace Mmorpg.GameService.Items.Transactions.Domain;
 // placement is all or nothing, and the finalizer enforces the carry-weight cap.
 internal static class CarriedAcquisition
 {
+    // Places new protected items that carry a lineage, such as a quest's start items, into
+    // empty carried slots in the same order. They never merge into an existing stack, so
+    // every stack keeps exactly one lineage.
+    public static async Task AcquireWithLineageAsync(
+        ItemTransactionContext context,
+        LockedCharacterState character,
+        ResolvedItemDefinition definition,
+        int quantity,
+        string policySourceKind,
+        string policySourceId,
+        string auditPrefix,
+        CancellationToken cancellationToken)
+    {
+        if (quantity <= 0 || quantity > ItemCatalogFormat.MaximumQuantity)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStackLimitExceeded,
+                "An acquired quantity must be positive.");
+        }
+
+        var bagContentsContainerId = await FindEquippedBagContentsAsync(context, character, cancellationToken);
+        Guid[] containerIds = bagContentsContainerId is null
+            ? [character.PermanentInventoryContainerId]
+            : [character.PermanentInventoryContainerId, bagContentsContainerId.Value];
+        await context.Locks.LockMutationScopeAsync([], containerIds, cancellationToken);
+        await CreateInFreeSlotsAsync(
+            context,
+            character,
+            bagContentsContainerId,
+            definition,
+            quantity,
+            policySourceKind,
+            policySourceId,
+            auditPrefix,
+            cancellationToken);
+        context.Journal.TouchCharacter(character.CharacterId);
+    }
+
     public static async Task AcquireAsync(
         ItemTransactionContext context,
         LockedCharacterState character,
@@ -33,21 +71,7 @@ internal static class CarriedAcquisition
                 "Items with default policies are never acquired into carried storage this way.");
         }
 
-        var bagContentsContainerId = await context.Connection.QuerySingleOrDefaultAsync<Guid?>(
-            new CommandDefinition(
-                """
-                select container.id
-                from item_instances bag
-                join item_containers container
-                  on container.bound_bag_item_instance_id = bag.id
-                 and container.container_type = 'bag_contents'
-                 and container.lifecycle = 'active'
-                where bag.equipped_character_id = @CharacterId
-                  and bag.equipment_slot_id = @BagSlotId;
-                """,
-                new { character.CharacterId, BagSlotId = ItemEquipmentSlotIds.Bag },
-                context.Transaction,
-                cancellationToken: cancellationToken));
+        var bagContentsContainerId = await FindEquippedBagContentsAsync(context, character, cancellationToken);
         Guid[] containerIds = bagContentsContainerId is null
             ? [character.PermanentInventoryContainerId]
             : [character.PermanentInventoryContainerId, bagContentsContainerId.Value];
@@ -127,54 +151,103 @@ internal static class CarriedAcquisition
 
         if (remaining > 0)
         {
-            var freeSlots = await ListFreeSlotsAsync(
+            await CreateInFreeSlotsAsync(
                 context,
                 character,
                 bagContentsContainerId,
                 definition,
+                remaining,
+                ItemPolicySourceKinds.CatalogDefault,
+                runtime.Id,
+                auditPrefix,
                 cancellationToken);
-            var neededSlots = (remaining + runtime.MaximumStackSize - 1) / runtime.MaximumStackSize;
-            if (freeSlots.Count < neededSlots)
-            {
-                ItemTransactionContext.Reject(
-                    ItemTransactionErrorCodes.InventoryFull,
-                    "Carried storage has no room for the items.");
-            }
-
-            foreach (var slot in freeSlots)
-            {
-                if (remaining == 0)
-                {
-                    break;
-                }
-
-                var stackQuantity = Math.Min(remaining, runtime.MaximumStackSize);
-                var itemInstanceId = Guid.NewGuid();
-                await NewItemInstances.CreateAsync(
-                    context,
-                    itemInstanceId,
-                    definition,
-                    stackQuantity,
-                    slot.ContainerId,
-                    slot.SlotIndex,
-                    ItemPolicySourceKinds.CatalogDefault,
-                    runtime.Id,
-                    cancellationToken);
-                var afterState = await context.Journal.CaptureItemStateJsonAsync(
-                    itemInstanceId,
-                    cancellationToken);
-                context.Journal.AddItemAudit(
-                    auditPrefix + "_item_created",
-                    itemInstanceId,
-                    null,
-                    afterState);
-                context.Journal.TouchContainer(slot.ContainerId);
-                context.Journal.IncludeResultItem(itemInstanceId);
-                remaining -= stackQuantity;
-            }
         }
 
         context.Journal.TouchCharacter(character.CharacterId);
+    }
+
+    private static Task<Guid?> FindEquippedBagContentsAsync(
+        ItemTransactionContext context,
+        LockedCharacterState character,
+        CancellationToken cancellationToken)
+    {
+        return context.Connection.QuerySingleOrDefaultAsync<Guid?>(
+            new CommandDefinition(
+                """
+                select container.id
+                from item_instances bag
+                join item_containers container
+                  on container.bound_bag_item_instance_id = bag.id
+                 and container.container_type = 'bag_contents'
+                 and container.lifecycle = 'active'
+                where bag.equipped_character_id = @CharacterId
+                  and bag.equipment_slot_id = @BagSlotId;
+                """,
+                new { character.CharacterId, BagSlotId = ItemEquipmentSlotIds.Bag },
+                context.Transaction,
+                cancellationToken: cancellationToken));
+    }
+
+    // Creates full stacks in free slots until the quantity is placed, or rejects first when
+    // the free slots cannot hold it.
+    private static async Task CreateInFreeSlotsAsync(
+        ItemTransactionContext context,
+        LockedCharacterState character,
+        Guid? bagContentsContainerId,
+        ResolvedItemDefinition definition,
+        int quantity,
+        string policySourceKind,
+        string policySourceId,
+        string auditPrefix,
+        CancellationToken cancellationToken)
+    {
+        var runtime = definition.RuntimeDefinition;
+        var remaining = quantity;
+        var freeSlots = await ListFreeSlotsAsync(
+            context,
+            character,
+            bagContentsContainerId,
+            definition,
+            cancellationToken);
+        var neededSlots = (remaining + runtime.MaximumStackSize - 1) / runtime.MaximumStackSize;
+        if (freeSlots.Count < neededSlots)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.InventoryFull,
+                "Carried storage has no room for the items.");
+        }
+
+        foreach (var slot in freeSlots)
+        {
+            if (remaining == 0)
+            {
+                break;
+            }
+
+            var stackQuantity = Math.Min(remaining, runtime.MaximumStackSize);
+            var itemInstanceId = Guid.NewGuid();
+            await NewItemInstances.CreateAsync(
+                context,
+                itemInstanceId,
+                definition,
+                stackQuantity,
+                slot.ContainerId,
+                slot.SlotIndex,
+                policySourceKind,
+                policySourceId,
+                cancellationToken);
+            var afterState = await context.Journal.CaptureItemStateJsonAsync(
+                itemInstanceId,
+                cancellationToken);
+            context.Journal.AddItemAudit(
+                auditPrefix + "_item_created",
+                itemInstanceId,
+                null,
+                afterState);
+            context.Journal.TouchContainer(slot.ContainerId);
+            context.Journal.IncludeResultItem(itemInstanceId);
+            remaining -= stackQuantity;
+        }
     }
 
     private static async Task<IReadOnlyList<CarriedSlot>> ListFreeSlotsAsync(

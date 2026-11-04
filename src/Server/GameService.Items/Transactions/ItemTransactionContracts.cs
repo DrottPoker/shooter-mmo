@@ -68,12 +68,15 @@ internal sealed record SimulationItemTransactionAuthority(
 
 // VendorProfileId names the vendor profile of the NPC whose vendor capability the worker
 // validated for this operation, or is null without vendor access.
+// QuestNpcActorId is the actor definition id of the NPC whose quest capability the worker
+// validated for this operation.
 internal sealed record ItemTransactionLiveAccess(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
     bool QuestNpc = false,
-    string? VendorProfileId = null)
+    string? VendorProfileId = null,
+    string? QuestNpcActorId = null)
 {
     public static ItemTransactionLiveAccess None { get; } = new(false, false, false, false);
 }
@@ -223,6 +226,24 @@ internal sealed record AbandonQuestItemsCommand(
     Guid CharacterId,
     long? ExpectedCharacterRevision,
     string QuestGrantId);
+
+// Accepts an available quest at its giver and grants its start items with the quest's
+// lineage into carried storage.
+internal sealed record AcceptQuestCommand(
+    Guid CharacterId,
+    string QuestId);
+
+// Ends an active quest without completing it and removes every item with its lineage,
+// wherever the character owns it.
+internal sealed record AbandonQuestCommand(
+    Guid CharacterId,
+    string QuestId);
+
+// Grants an active quest's start items again, as far as the character no longer owns them
+// and the quest still needs them.
+internal sealed record RegrantQuestItemsCommand(
+    Guid CharacterId,
+    string QuestId);
 
 internal sealed record ProcessPlayerDeathCommand(
     Guid DeathEventId,
@@ -457,7 +478,23 @@ internal sealed record ItemTransactionResult(
     IReadOnlyList<ItemTransactionContainerRevision> ContainerRevisions,
     IReadOnlyList<ItemTransactionItemRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
-    IReadOnlyList<ItemTransactionItemChange>? ItemChanges = null);
+    IReadOnlyList<ItemTransactionItemChange>? ItemChanges = null,
+    ItemTransactionQuestLogChange? QuestLog = null);
+
+// The quests a transaction changed, with the quest log revision after it. A quest without a
+// step is no longer active; its completion count says whether it was completed.
+internal sealed record ItemTransactionQuestLogChange(
+    Guid CharacterId,
+    long Revision,
+    IReadOnlyList<ItemTransactionQuestChange> Quests);
+
+internal sealed record ItemTransactionQuestChange(
+    string QuestId,
+    string? StepId,
+    IReadOnlyList<ItemTransactionQuestObjectiveProgress> Objectives,
+    int CompletionCount);
+
+internal sealed record ItemTransactionQuestObjectiveProgress(string ObjectiveId, int Progress);
 
 internal sealed record ItemTransactionError(
     string Code,
@@ -514,6 +551,9 @@ internal static class ItemOperationKinds
     public const string ApplyItemPolicy = "apply_item_policy";
     public const string RemoveInsurancePolicy = "remove_insurance_policy";
     public const string AbandonQuestItems = "abandon_quest_items";
+    public const string AcceptQuest = "accept_quest";
+    public const string AbandonQuest = "abandon_quest";
+    public const string RegrantQuestItems = "regrant_quest_items";
     public const string ProcessPlayerDeath = "process_player_death";
     public const string CreatePersistentMobCorpse = "create_persistent_mob_corpse";
     public const string GrantMobLoot = "grant_mob_loot";
