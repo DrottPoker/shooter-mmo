@@ -59,9 +59,9 @@ public sealed class ItemTransactionRoutingTests
             })
             .ToArray();
 
-        Assert.Equal(34, overloads.Length);
-        Assert.Equal(34, requestTypes.Distinct().Count());
-        Assert.Equal(34, Routes.Count);
+        Assert.Equal(37, overloads.Length);
+        Assert.Equal(37, requestTypes.Distinct().Count());
+        Assert.Equal(37, Routes.Count);
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -166,6 +166,21 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new AbandonQuestItemsCommand(Id, 1, "routing"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AcceptQuest] = (service, actor) => Run(
+                service,
+                actor,
+                new AcceptQuestCommand(Id, "quest.fixture.wolves"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AbandonQuest] = (service, actor) => Run(
+                service,
+                actor,
+                new AbandonQuestCommand(Id, "quest.fixture.wolves"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.RegrantQuestItems] = (service, actor) => Run(
+                service,
+                actor,
+                new RegrantQuestItemsCommand(Id, "quest.fixture.errand"),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.ProcessPlayerDeath] = (service, actor) => Run(
                 service,

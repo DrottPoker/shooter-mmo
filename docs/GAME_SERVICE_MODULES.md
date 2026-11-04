@@ -322,6 +322,7 @@ system services.
 | `add_recovery_delivery`, `claim_recovery_delivery` | `AddRecoveryDeliveryCommand`, `ClaimRecoveryDeliveryCommand` | `RecoveryDeliveryCommandHandler` | Development item packages add deliveries; the worker route claims them |
 | `apply_item_policy`, `remove_insurance_policy` | `ApplyItemPolicyCommand`, `RemoveInsurancePolicyCommand` | `ItemPolicyCommandHandler` | Worker route, for the insurance capability |
 | `abandon_quest_items` | `AbandonQuestItemsCommand` | `QuestItemCommandHandler` | Worker route, for the quest capability |
+| `accept_quest`, `abandon_quest`, `regrant_quest_items` | `AcceptQuestCommand`, `AbandonQuestCommand`, `RegrantQuestItemsCommand` | `QuestCommandHandler` | Worker quest route |
 | `process_player_death` | `ProcessPlayerDeathCommand` | `PlayerDeathCommandHandler` | Worker player death route and the Development corpse fixture |
 | `expire_corpse` | `ExpireCorpseCommand` | `CorpseExpiryCommandHandler` | `CorpseExpiryHostedService` |
 | `loot_corpse_item`, `loot_corpse_partial_stack`, `loot_corpse_item_to_equipment` | `LootCorpseItemCommand`, `LootCorpsePartialStackCommand`, `LootCorpseItemToEquipmentCommand` | `CorpseLootCommandHandler` | Worker corpse route |
@@ -340,6 +341,37 @@ operations, whose rejections roll back completely instead of being stored, and
 `ItemOperationAdmission` checks the operation id rule and the payload limit
 before any database access. [Item Transactions](SERVICE_FEATURES.md#item-transactions)
 describes both rules as clients see them.
+
+### Quest Commands
+
+Quest commands change the quest log through `ICharacterQuestLog` in the item
+transaction and take their quest definitions from `IQuestDefinitions`:
+
+- An action at a quest NPC requires the quest access of the live session:
+  `ItemTransactionLiveAccess.QuestNpcActorId` must name the NPC that the quest
+  needs, the giver for `AcceptQuestCommand` and `RegrantQuestItemsCommand`. The
+  worker sets it from the quest capability it validated, never from a client
+  value. `AbandonQuestCommand` needs only the live session, because abandoning
+  works anywhere.
+- Quest commands lock the character with
+  `LockCharacterStateForIdempotentEventAsync`, without an expected character
+  revision, because they only fill free carried slots or take items with the
+  quest's lineage.
+- `AcceptQuestCommand` checks availability with the shared `QuestRules`, the
+  character level, and the quest log, and grants every start item as a new
+  protected stack with the quest's lineage, the `quest_grant` policy source with
+  the quest id, through `CarriedAcquisition.AcquireWithLineageAsync`, which never
+  merges into an existing stack. Missing room rejects the acceptance with
+  `inventory_full`.
+- `AbandonQuestCommand` removes every item with the quest's lineage wherever the
+  character owns it, with the `quest_abandoned` destruction reason, through
+  `QuestLineageItems`, which `AbandonQuestItemsCommand` shares.
+- `RegrantQuestItemsCommand` grants the start items that the quest still needs
+  and the character no longer owns: the start quantity less what completed
+  deliveries took, less what the character owns with the lineage.
+- The result names the changed quests in `ItemTransactionResult.QuestLog`: the
+  quest log revision afterwards and each quest's step, the progress of its
+  counted objectives, and its completion count. A stored result replays it.
 
 ### Vendor, Gathering, And Ammunition Commands
 
@@ -578,6 +610,8 @@ the statement ids.
 | S53 | The worker appearance route lowers or raises the headwear, or stores a development look | Chr L, W | `ICharacterAppearances.SetHeadwearLoweredAsync` and `SetDevelopmentLookAsync` in `SimulationAppearanceService` |
 | S54 | Durable corpse responses read the looks of their source characters, deleted ones too | Chr R | `ICharacterAppearances.ReadManyAsync` in `CorpseService` |
 | S55 | The quest log read checks character ownership | Chr R | `CharactersSql.ActiveCharacters` in `QuestLogQueryService` |
+| S56 | Quest commands read the quest catalog and the character level, and read and change the quest log | Qst R, W; Chr R | `IQuestDefinitions`, `ICharacterQuestLog`, and `CharactersSql.LevelOf` in `QuestCommandHandler` |
+| S57 | A quest command's result reports the quests it changed | Qst R | `ICharacterQuestLog.ReadAsync` in `QuestLogChanges` |
 
 Notes on specific statements:
 

@@ -42,6 +42,7 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddScoped<AccountItemMutationService>();
         services.AddSingleton<SimulationCharacterStates>();
         services.AddScoped<SimulationItemMutationService>();
+        services.AddScoped<SimulationQuestMutationService>();
         services.AddScoped<CorpseService>();
         services.AddScoped<ItemOperationsMaintenanceService>();
         services.AddSingleton(options.DevelopmentItemPackages);

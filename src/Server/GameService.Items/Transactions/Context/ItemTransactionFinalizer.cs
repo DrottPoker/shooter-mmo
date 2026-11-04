@@ -187,7 +187,8 @@ internal sealed class ItemTransactionFinalizer(
             containerResults,
             resultItems,
             journal.RecoveryDeliveryIds.Order().ToArray(),
-            itemChanges);
+            itemChanges,
+            journal.QuestLogChange);
     }
 
     // The final state of every changed item, so the simulation client can patch its

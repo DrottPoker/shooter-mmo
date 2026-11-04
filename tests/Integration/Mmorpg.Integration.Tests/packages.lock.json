@@ -259,6 +259,7 @@
           "Mmorpg.GameService.Characters": "[1.0.0, )",
           "Mmorpg.GameService.Placement": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",
+          "Mmorpg.GameService.Quests": "[1.0.0, )",
           "Mmorpg.WorldData": "[1.0.0, )",
           "Npgsql": "[10.0.3, )"
         }

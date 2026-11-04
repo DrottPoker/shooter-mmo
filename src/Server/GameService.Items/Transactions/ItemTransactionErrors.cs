@@ -20,6 +20,14 @@ internal static class ItemTransactionErrorCodes
     public const string ItemPolicyRestricted = "item_policy_restricted";
     public const string ItemPolicyNotFound = "item_policy_not_found";
     public const string QuestGrantInvalid = "quest_grant_invalid";
+    public const string QuestNotFound = "quest_not_found";
+    public const string QuestNotActive = "quest_not_active";
+    public const string QuestAlreadyActive = "quest_already_active";
+    public const string QuestAlreadyCompleted = "quest_already_completed";
+    public const string QuestRequirementsNotMet = "quest_requirements_not_met";
+    public const string QuestLevelTooLow = "quest_level_too_low";
+    public const string QuestLogFull = "quest_log_full";
+    public const string QuestNpcAccessRequired = "quest_npc_access_required";
     public const string CurrencyInsufficient = "currency_insufficient";
     public const string CurrencyLimitExceeded = "currency_limit_exceeded";
     public const string VendorAccessRequired = "vendor_access_required";
