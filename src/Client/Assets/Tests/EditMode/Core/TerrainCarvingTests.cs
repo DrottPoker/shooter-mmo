@@ -303,9 +303,11 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // On its north side too, the sea's floor reaches the World's edge, the terrain's last row
-        // of samples, at the depth it falls to there, instead of stopping short of it.
-        [Test]
-        public void ASeaFloorReachesTheWorldsEdgeOnItsNorthSide()
+        // of samples, at the depth it falls to there, instead of stopping short of it, also
+        // without a beach, where the bed's bounds end at that row.
+        [TestCase(10f)]
+        [TestCase(0f)]
+        public void ASeaFloorReachesTheWorldsEdgeOnItsNorthSide(float beachWidth)
         {
             var sea = WorldBuilderCreate.AddSea(scene, new Vector3(32f, 9.5f, 64f));
             var serialized = new SerializedObject(sea);
@@ -316,6 +318,7 @@ namespace Mmorpg.Client.Tests.EditMode
             outline.GetArrayElementAtIndex(2).vector2Value = new Vector2(20f, 0f);
             outline.GetArrayElementAtIndex(3).vector2Value = new Vector2(20f, -20f);
             serialized.FindProperty("horizon").intValue = (int)HorizonSides.North;
+            serialized.FindProperty("bankWidth").floatValue = beachWidth;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             WorldBuilder.Rebuild(scene);
 

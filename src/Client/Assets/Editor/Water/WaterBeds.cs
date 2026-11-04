@@ -89,6 +89,13 @@ namespace Mmorpg.Client.Editor
             return Rect.MinMaxRect(rect.xMin - amount, rect.yMin - amount, rect.xMax + amount, rect.yMax + amount);
         }
 
+        // Whether a point lies within the bounds, also on their far edges, which Rect.Contains
+        // leaves out, so a bed reaches the last row and column of a terrain that it ends at.
+        protected static bool Within(Rect bounds, Vector2 point)
+        {
+            return point.x >= bounds.xMin && point.x <= bounds.xMax && point.y >= bounds.yMin && point.y <= bounds.yMax;
+        }
+
         // The ground between the shore, at the water's level, and the end of the bank, at the
         // ground around the water.
         protected static float Bank(float level, float ground, float distance, float width)
@@ -133,7 +140,7 @@ namespace Mmorpg.Client.Editor
         // point lies inside the outline.
         public override float HeightAt(Vector2 point, float ground)
         {
-            if (!bounds.Contains(point))
+            if (!Within(bounds, point))
             {
                 return float.PositiveInfinity;
             }
@@ -210,7 +217,7 @@ namespace Mmorpg.Client.Editor
 
         public override float HeightAt(Vector2 point, float ground)
         {
-            if (!bounds.Contains(point))
+            if (!Within(bounds, point))
             {
                 return float.PositiveInfinity;
             }
