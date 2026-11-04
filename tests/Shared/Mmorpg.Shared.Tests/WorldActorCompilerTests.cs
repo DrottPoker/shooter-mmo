@@ -491,13 +491,15 @@ public sealed class WorldActorCompilerTests
     }
 
     [Fact]
-    public void TheCheckedInMobsCreditTheirTagger()
+    public void TheCheckedInMobsCreditTheirTaggerAndTheBossItsContributors()
     {
         var runtime = WorldActorTestData.Compile();
 
         Assert.All(
             runtime.Actors.Where(actor => actor.Kind == WorldActorKindIds.Mob),
-            actor => Assert.Equal(WorldActorKillCreditIds.Tag, actor.KillCredit));
+            actor => Assert.Equal(
+                actor.Id == "mob.feral_alpha" ? WorldActorKillCreditIds.Contributors : WorldActorKillCreditIds.Tag,
+                actor.KillCredit));
         Assert.All(
             runtime.Actors.Where(actor => actor.Kind != WorldActorKindIds.Mob),
             actor => Assert.Equal(string.Empty, actor.KillCredit));

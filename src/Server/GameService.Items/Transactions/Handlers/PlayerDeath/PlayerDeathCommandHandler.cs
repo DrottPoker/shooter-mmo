@@ -124,6 +124,7 @@ internal sealed class PlayerDeathCommandHandler
             CorpseTransformRules.PlayerCorpseLifetime.TotalSeconds,
             expiryOperationId,
             null,
+            null,
             cancellationToken);
 
         var sourceRows = (await context.Connection.QueryAsync<DeathItemSourceRow>(

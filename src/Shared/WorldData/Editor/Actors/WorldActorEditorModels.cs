@@ -304,7 +304,7 @@ namespace Mmorpg.WorldData.Editor.Actors
         public string locomotionProfileId;
         public string lootProfileId;
 
-        // Who a Mob credits and lets loot: the player who tagged it.
+        // Who a Mob credits and lets loot: its tagger or, for a world boss, every contributor.
         public string killCredit;
 
         public WorldActorAuthoringEntry ToDomain()

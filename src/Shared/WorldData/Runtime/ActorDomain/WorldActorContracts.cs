@@ -50,11 +50,12 @@ namespace Mmorpg.WorldData.Actors
         public const string Durable = "durable";
     }
 
-    // Who a Mob credits when it dies: the player who tagged it by damaging it first. Credited
-    // players own its loot.
+    // Who a Mob credits when it dies: the player who tagged it by damaging it first, or, for a
+    // world boss, every player who damaged it in the fight. Credited players own its loot.
     public static class WorldActorKillCreditIds
     {
         public const string Tag = "tag";
+        public const string Contributors = "contributors";
     }
 
     // An aggressive Mob attacks a player it detects; a defensive Mob fights only once damaged.

@@ -62,15 +62,14 @@ internal sealed class CorpsePresenceReplicator(
             }
 
             var state = entity.Movement.State;
-            var nearbyCorpses = activeCorpses
-                .Where(corpse => IsWithinCorpseDiscoveryRange(
+            var characterId = context.Session.CharacterId;
+            var nearbyCorpses = CorpseLootRights.SelectForViewer(
+                activeCorpses.Where(corpse => IsWithinCorpseDiscoveryRange(
                     corpse,
                     state.PositionX,
                     state.PositionY,
-                    state.PositionZ))
-                .OrderBy(corpse => corpse.CorpseId)
-                .ToArray();
-            var characterId = context.Session.CharacterId;
+                    state.PositionZ)),
+                characterId);
             var signature = CreateCorpsePresenceSignature(nearbyCorpses, characterId);
             if (string.Equals(
                     context.CorpsePresenceSignature,

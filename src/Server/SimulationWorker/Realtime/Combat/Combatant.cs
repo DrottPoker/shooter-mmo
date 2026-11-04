@@ -81,6 +81,9 @@ internal sealed class Combatant
 
     public Guid TagCharacterId { get; private set; }
 
+    // Every character whose hit damaged a Mob with contributor credit in this fight.
+    public HashSet<Guid> Contributors { get; } = [];
+
     // Owner-only state of a player.
     public long OwnerStateRevision { get; private set; } = 1;
 
@@ -182,8 +185,10 @@ internal sealed class Combatant
         MarkStateChanged();
     }
 
-    public void ClearTag()
+    // The fight ended, so no one owns the Mob any more.
+    public void ClearCredit()
     {
+        Contributors.Clear();
         if (TagEntityId == 0)
         {
             return;

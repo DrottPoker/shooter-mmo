@@ -22,6 +22,9 @@ public interface ICorpseRuntimePresence
     CorpseLook? Look { get; }
     // The character that alone may loot a Mob's corpse, or null when everyone may.
     Guid? OwnerCharacterId { get; }
+    // The corpses of one Mob death share it, so a viewer sees one body; every other corpse is
+    // its own group.
+    Guid LootGroupId { get; }
 }
 
 // Who may loot a corpse: its owner, or everyone when it has none, as a player corpse.
@@ -31,6 +34,23 @@ public static class CorpseLootRights
     {
         ArgumentNullException.ThrowIfNull(corpse);
         return corpse.OwnerCharacterId is not { } owner || owner == characterId;
+    }
+
+    // One body for every Mob death: of the corpses that a world boss left for each player it
+    // credited, a viewer sees its own, or else the first of them as a body it may not loot.
+    public static IReadOnlyList<ICorpseRuntimePresence> SelectForViewer(
+        IEnumerable<ICorpseRuntimePresence> corpses,
+        Guid characterId)
+    {
+        ArgumentNullException.ThrowIfNull(corpses);
+        return corpses
+            .GroupBy(corpse => corpse.LootGroupId)
+            .Select(group => group
+                .OrderBy(corpse => CanLoot(corpse, characterId) ? 0 : 1)
+                .ThenBy(corpse => corpse.CorpseId)
+                .First())
+            .OrderBy(corpse => corpse.CorpseId)
+            .ToArray();
     }
 }
 
@@ -75,6 +95,14 @@ public sealed record DurableCorpseState(
     public CorpseLook? Look { get; init; }
 
     public Guid? OwnerCharacterId { get; init; }
+
+    public Guid LootGroupId
+    {
+        get => lootGroupId == Guid.Empty ? CorpseId : lootGroupId;
+        init => lootGroupId = value;
+    }
+
+    private readonly Guid lootGroupId;
 }
 
 public static class CorpseFacing
@@ -151,7 +179,8 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                     .ToArray())
             {
                 Look = CorpseLook.From(corpse.Look),
-                OwnerCharacterId = corpse.OwnerCharacterId
+                OwnerCharacterId = corpse.OwnerCharacterId,
+                LootGroupId = corpse.LootGroupId ?? Guid.Empty
             };
             if (!replacement.TryAdd(state.CorpseId, state))
             {

@@ -64,6 +64,9 @@ internal sealed record CreatePersistentMobCorpseRequest(
 {
     // The player the Mob credited, who alone may loot the corpse, or null when everyone may.
     public Guid? OwnerCharacterId { get; init; }
+
+    // The corpses of one Mob death share it, so a viewer sees one body.
+    public Guid? LootGroupId { get; init; }
 }
 
 internal sealed record PersistentMobCorpseResponse(
@@ -138,6 +141,9 @@ internal sealed record DurableCorpseResponse(
 
     // The character that alone may loot a Mob's corpse, or null when everyone may.
     public Guid? OwnerCharacterId { get; init; }
+
+    // The corpses of one Mob death share it; null for every other corpse.
+    public Guid? LootGroupId { get; init; }
 }
 
 // The dead character's body model, look, and headwear, and the items still in the corpse's

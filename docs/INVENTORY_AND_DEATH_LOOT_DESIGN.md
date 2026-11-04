@@ -18,7 +18,7 @@ Every rule in this document is implemented unless it is marked as planned or
 listed in [Planned](#planned), [Proposed](#proposed), or
 [Open Questions](#open-questions). The main planned work is consume and use
 intents for potions and food, combat data for armor, resistances, and healing,
-the personal loot of world bosses with contributor credit, quests as
+quests as
 [Quest System Design](QUEST_SYSTEM_DESIGN.md) plans them, and the final
 inventory and corpse loot interface, which is temporary uGUI today.
 
@@ -796,17 +796,16 @@ changing the topology model.
 
 A Mob corpse belongs to the player the Mob credits by the tagging rules of
 [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters): only that player
-may open and loot it, while everyone sees the body. A Mob that credits no one
-leaves a corpse that everyone may loot. Live and durable corpses follow the same
-rule, and player corpses stay full loot for everyone.
+may open and loot it, while everyone sees the body. A world boss with contributor
+credit rolls its loot once for every credited player and leaves each a corpse of
+their own, and every player sees one body: their own corpse, or else one of the
+others, which they cannot loot. A Mob that credits no one leaves a corpse that
+everyone may loot. Live and durable corpses follow the same rules, and player
+corpses stay full loot for everyone.
 
-Planned:
-
-- A world boss with contributor credit rolls its loot once for every credited
-  player, and each player sees and loots only their own loot in the corpse.
-- A quest drop joins the loot of the player it drops for, as
-  [Quest Drops](QUEST_SYSTEM_DESIGN.md#quest-drops) describes, and loot that
-  holds only a quest drop still creates the corpse.
+Planned: a quest drop joins the loot of the player it drops for, as
+[Quest Drops](QUEST_SYSTEM_DESIGN.md#quest-drops) describes, and loot that holds
+only a quest drop still creates the corpse.
 
 A Mob corpse shows its Mob's own model lying in the last pose of its Death clip,
 turned as the Mob died. A Mob without a model of its own shows a generic
@@ -964,8 +963,6 @@ These rules are decided and wait for later work, mostly the combat work in
   [Quest System Design](QUEST_SYSTEM_DESIGN.md) plans: start items, quest drops,
   deliveries, and rewards. Today one configured quest grants its protected quest
   item.
-- Loot of their own for the players a world boss with contributor credit
-  credits, described in [Mob Corpse Lifecycle](#mob-corpse-lifecycle).
 - Saved equipment loadouts, proposed in
   [Attacks And Abilities](GAME_DESIGN.md#attacks-and-abilities), which swap as
   one equipment change.

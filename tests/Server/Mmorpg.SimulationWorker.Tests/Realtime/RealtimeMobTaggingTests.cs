@@ -133,6 +133,75 @@ public sealed class RealtimeMobTaggingTests
             value => Assert.Equal(0ul, value.TaggedByEntityId));
     }
 
+    // A world boss credits every player who damaged it and leaves each a corpse of its own,
+    // while a bystander sees one body it may not loot.
+    [Fact]
+    public async Task AWorldBossGivesEveryContributorACorpseOfTheirOwn()
+    {
+        var document = WolfNextToTheSpawn(respawnSeconds: 30f, x: 1f);
+        document.Actors.Single(actor => actor.Id == "mob.feral_wolf").KillCredit = WorldActorKillCreditIds.Contributors;
+        await using var harness = Create(document, minimumDamage: 20);
+        var first = AddArcher(harness, "First Contributor");
+        var second = AddArcher(harness, "Second Contributor");
+        var bystander = AddArcher(harness, "Idle Bystander");
+        await harness.StartAsync();
+        var firstClient = await harness.JoinAsync(first);
+        var secondClient = await harness.JoinAsync(second);
+        var bystanderClient = await harness.JoinAsync(bystander);
+        var wolf = await WaitForWolfAsync(harness, firstClient);
+        var secondEntityId = secondClient.JoinAccepted!.ControlledEntityId;
+
+        firstClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+        secondClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+        await harness.PollUntilAsync(
+            () => harness.LiveMobCorpseStore!.ListActive().Count(corpse => corpse.SourceActorRuntimeId == wolf.RuntimeActorId) == 2,
+            "a corpse for each contributor");
+
+        var corpses = harness.LiveMobCorpseStore!.ListActive()
+            .Where(corpse => corpse.SourceActorRuntimeId == wolf.RuntimeActorId)
+            .ToArray();
+        Assert.Equal(
+            new[] { first.CharacterId, second.CharacterId }.Order(),
+            corpses.Select(corpse => corpse.OwnerCharacterId!.Value).Order());
+        Assert.Single(corpses.Select(corpse => corpse.LootGroupId).Distinct());
+        Assert.Contains(Events(firstClient), value => value.Kind == RealtimeCombatEventKind.Hit
+            && value.SourceEntityId == secondEntityId
+            && value.TargetEntityId == wolf.EntityId);
+        Assert.All(
+            States(firstClient).Where(value => value.EntityId == wolf.EntityId),
+            value => Assert.Equal(0ul, value.TaggedByEntityId));
+
+        await harness.PollUntilAsync(
+            () => LatestPresence(firstClient).Count == 1
+                && LatestPresence(secondClient).Count == 1
+                && LatestPresence(bystanderClient).Count == 1,
+            "one body for every player");
+        var seenByFirst = Assert.Single(LatestPresence(firstClient));
+        var seenBySecond = Assert.Single(LatestPresence(secondClient));
+        var seenByBystander = Assert.Single(LatestPresence(bystanderClient));
+        Assert.Equal(corpses.Single(corpse => corpse.OwnerCharacterId == first.CharacterId).CorpseId, seenByFirst.CorpseId);
+        Assert.Equal(corpses.Single(corpse => corpse.OwnerCharacterId == second.CharacterId).CorpseId, seenBySecond.CorpseId);
+        Assert.True(seenByFirst.IsLootable);
+        Assert.True(seenBySecond.IsLootable);
+        Assert.False(seenByBystander.IsLootable);
+    }
+
+    // The corpses a client sees now: the chunks of its newest presence snapshot.
+    private static IReadOnlyList<RealtimeCorpsePresence> LatestPresence(RealtimeRecordingClient client)
+    {
+        var chunks = client.CorpsePresence;
+        if (chunks.Count == 0)
+        {
+            return [];
+        }
+
+        var sequence = chunks[^1].SnapshotSequence;
+        var latest = chunks.Where(chunk => chunk.SnapshotSequence == sequence).ToArray();
+        return latest.Length == latest[0].ChunkCount
+            ? latest.SelectMany(chunk => chunk.Corpses).ToArray()
+            : [];
+    }
+
     private static RealtimeServerHarness Create(
         WorldActorRuntimeDocument document,
         int minimumDamage,

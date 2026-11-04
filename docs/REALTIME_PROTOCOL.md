@@ -489,7 +489,7 @@ the carry state and the result of the operation that caused it.
   to `MaximumCorpsePresencePerChunk` (6) `CorpsePresence` structs, each with its
   id, position, facing, absolute expiry, whether it is empty, whether the
   recipient may loot it, source name, presentation key, and optional look. A
-  Mob's corpse belongs to the player who tagged the Mob, so `IsLootable` differs
+  Mob's corpse belongs to the player the Mob credited, so `IsLootable` differs
   between recipients.
 - `CorpseInteractionIntent` (16) carries an operation id, a
   `CorpseInteractionKind`, the corpse, its expected revision, and the variant

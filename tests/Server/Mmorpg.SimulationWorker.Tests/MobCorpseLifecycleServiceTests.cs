@@ -48,8 +48,11 @@ public sealed class MobCorpseLifecycleServiceTests
             identity,
             timeProvider);
         var deathEventId = Guid.NewGuid();
+        var corpseId = Guid.NewGuid();
         var request = new CreateMobCorpseRequest(
             deathEventId,
+            corpseId,
+            corpseId,
             wolf.RuntimeActorId,
             [new MobCorpseLootSeed("fixture.ore", 2)]);
 
@@ -62,6 +65,7 @@ public sealed class MobCorpseLifecycleServiceTests
         Assert.Null(first.DurableCorpse);
         Assert.Equal(TimeSpan.FromSeconds(120),
             first.LiveCorpse.ExpiresAt - first.LiveCorpse.CreatedAt);
+        Assert.Equal(corpseId, first.LiveCorpse.CorpseId);
         Assert.Equal(first.LiveCorpse.CorpseId, replay.LiveCorpse!.CorpseId);
         Assert.Equal(
             Assert.Single(first.LiveCorpse.Loot).GrantId,
@@ -72,7 +76,7 @@ public sealed class MobCorpseLifecycleServiceTests
         Assert.Equal(137f, first.LiveCorpse.YawDegrees);
     }
 
-    // A durable corpse, as a boss keeps, goes to GameService with the tagger as its owner.
+    // A durable corpse, as a boss keeps, goes to GameService with its owner and loot group.
     [Fact]
     public async Task ADurableMobCorpseNamesItsOwnerToGameService()
     {
@@ -100,9 +104,13 @@ public sealed class MobCorpseLifecycleServiceTests
             timeProvider);
         var tagger = Guid.NewGuid();
 
+        var lootGroupId = Guid.NewGuid();
+
         await service.CreateAsync(
             new CreateMobCorpseRequest(
                 Guid.NewGuid(),
+                Guid.NewGuid(),
+                lootGroupId,
                 wolf.RuntimeActorId,
                 [new MobCorpseLootSeed("fixture.ore", 2)],
                 tagger),
@@ -110,6 +118,7 @@ public sealed class MobCorpseLifecycleServiceTests
 
         using var body = System.Text.Json.JsonDocument.Parse(Assert.Single(handler.Bodies));
         Assert.Equal(tagger, body.RootElement.GetProperty("ownerCharacterId").GetGuid());
+        Assert.Equal(lootGroupId, body.RootElement.GetProperty("lootGroupId").GetGuid());
     }
 
     private static SimulationWorkerConfig LoadConfig()

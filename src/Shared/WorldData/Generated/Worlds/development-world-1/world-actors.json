@@ -2,7 +2,7 @@
   "formatVersion": 7,
   "catalogId": "core",
   "worldId": "development-world-1",
-  "revision": "1392fea47f71e0276d14379d25f53c89bb4f6268a2a7e56b07400ff42ed5146e",
+  "revision": "f0a349f2e61ce1a0cb3f836a3ba5915c55f97610829f89cd976a4f2f74df3991",
   "factions": [
     {
       "id": "city",
@@ -254,8 +254,8 @@
       "brainProfileId": "mob.aggressive_boss",
       "locomotionProfileId": "mob.large_quadruped",
       "lootProfileId": "mob.feral_alpha",
-      "killCredit": "tag",
-      "structuralFingerprint": "2b958c5a0624ebd6f9a253e11a42bad933e6de71765e13a0e9a32e1a5e361865"
+      "killCredit": "contributors",
+      "structuralFingerprint": "45163e5284090d795d1f75de70661949f571ac5a0371d37ef29892b185a57151"
     },
     {
       "id": "mob.feral_wolf",

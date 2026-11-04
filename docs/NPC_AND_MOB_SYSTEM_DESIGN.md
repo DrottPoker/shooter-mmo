@@ -26,14 +26,16 @@ Implemented:
 - Shared resource nodes with live charges, depletion, respawn, and collision
   bounds that block movement.
 - Mob combat, brains, loot, live and durable corpses, and respawn, with the
-  tag that gives the first player who damages a Mob its credit and its loot.
+  tag that gives the first player who damages a Mob its credit and its loot,
+  and the contributor credit that gives every player who damaged a world boss a
+  corpse of their own.
 - Central scheduling of NPCs and Mobs without per-actor tasks or durable rows.
 
 Planned: the dialogue, crafting, and trainer capabilities, which answer with an
 explicit deferred result today; quests, with one `quests` capability that
 replaces the quest offer and quest turn-in kinds, as
-[Quest System Design](QUEST_SYSTEM_DESIGN.md) describes; contributor credit for
-world bosses; threat tables, Mob abilities and groups,
+[Quest System Design](QUEST_SYSTEM_DESIGN.md) describes; threat tables, Mob
+abilities and groups,
 durable unique actor state, and the final actor art and interaction UI; see
 [Deferred Work](#deferred-work). The Unity presentation of actors and the
 interaction panel is temporary. The content, runtime, protocol, client state,
@@ -168,10 +170,11 @@ Every actor definition contains at least:
   respawn, combat, brain, locomotion, and loot profile references, and its
   corpse persistence and lifetime. NPCs and resource nodes leave every Mob field
   empty and the level at 0.
-- For a Mob: its kill credit, `tag`, by which the first player who damages it
-  gets the credit and the loot, as
-  [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) decides. A
-  `contributors` kill credit for world bosses is planned.
+- For a Mob: its kill credit, as
+  [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) decides: `tag`, by
+  which the first player who damages it gets the credit and the loot, or
+  `contributors` for a world boss, which credits every player who damaged it
+  nearby.
 - Content tags used by authoring, queries, and future rule systems.
 
 The text and bounds limits are in
@@ -640,11 +643,11 @@ but never an interaction. The combat system produces its death, as
   worker restart returns with full health, like every other actor.
 - Each Mob life has its own runtime id, and its death event id derives from it,
   so the id is stable for retries and unique per death.
-- The loot profile is rolled once, at the death. An empty roll leaves no
-  corpse. Planned: a Mob with contributor credit rolls it once for every
-  credited player, and quest drops add personal entries, as
+- The loot profile is rolled once at the death, and a Mob with contributor
+  credit rolls it once for every credited player, as
   [Mob Corpse Lifecycle](INVENTORY_AND_DEATH_LOOT_DESIGN.md#mob-corpse-lifecycle)
-  describes.
+  describes. An empty roll leaves no corpse. Quest drops that add personal
+  entries are planned.
 - The actor despawns once its corpse exists or its death has reached the
   viewers. Its respawn profile recreates the same compiled spawn instance with
   a fresh runtime id and network entity id through the central timer queue, and

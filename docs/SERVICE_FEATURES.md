@@ -779,8 +779,15 @@ the actor catalog. The combat model is in
   clears when the Mob gives up the fight and evades. When the Mob dies, it
   credits its tagger only while the tagger is in the world within the combat
   rules' kill credit range, 100 m, of the Mob, dead or alive; otherwise it
-  credits no one. The corpse of a crediting Mob belongs to the credited
-  character, and the corpse of a Mob that credits no one belongs to everyone.
+  credits no one. A Mob with `contributors` kill credit, the Feral Alpha, is
+  never tagged: it remembers every character whose hit damaged it in the fight,
+  forgets them when it evades, and credits each one in the world within the same
+  range. The corpse of a tagged Mob belongs to the credited character. A Mob with
+  contributor credit rolls its loot once for every credited character, in
+  character id order, and leaves each its own corpse, whose id derives from the
+  death and the character. The corpses of one death share a loot group, and a
+  Mob that credits no one leaves one corpse that belongs to everyone. The Mob
+  despawns once every corpse exists or can never be created.
 - A disconnect does not cancel combat work. The session stays until the death
   and the last arrow batch committed and is released afterwards, and a leave
   waits for the same work. A worker that stops commits the uncommitted shots it
@@ -1112,8 +1119,11 @@ Seen from outside:
   exact-session, Shard, and lifetime authority inside the transaction boundary.
 - The corpse of a Mob that credited a character belongs to that character, as
   [Target-Based Combat](#target-based-combat) describes, and so does a durable
-  boss corpse, whose `corpses.owner_character_id` names its owner. Each corpse
-  presence tells its recipient in `IsLootable` whether it may loot the corpse.
+  boss corpse, whose `corpses.owner_character_id` names its owner and
+  `corpses.loot_group_id` the loot group of its death. Of the corpses of one
+  loot group, a recipient's presence holds one: its own, or else the one with
+  the smallest id. Each corpse presence tells its recipient in `IsLootable`
+  whether it may loot the corpse.
   Every open and mutation of another character's corpse is rejected with
   `corpse_not_lootable`, which closes the view, first by the worker and again
   by GameService when it opens a durable corpse and when it locks the corpse in

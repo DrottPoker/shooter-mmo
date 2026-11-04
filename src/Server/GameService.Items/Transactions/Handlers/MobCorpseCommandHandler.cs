@@ -75,6 +75,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             command.LifetimeSeconds,
             expiryOperationId,
             command.OwnerCharacterId,
+            command.LootGroupId,
             cancellationToken);
 
         await CreateMobCorpseContainersAsync(

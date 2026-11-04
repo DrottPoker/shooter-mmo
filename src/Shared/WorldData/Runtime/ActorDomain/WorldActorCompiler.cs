@@ -76,7 +76,8 @@ namespace Mmorpg.WorldData.Actors
         private static readonly HashSet<string> SupportedKillCredits =
             new HashSet<string>(StringComparer.Ordinal)
             {
-                WorldActorKillCreditIds.Tag
+                WorldActorKillCreditIds.Tag,
+                WorldActorKillCreditIds.Contributors
             };
 
         private static readonly HashSet<string> SupportedCapabilityKinds =

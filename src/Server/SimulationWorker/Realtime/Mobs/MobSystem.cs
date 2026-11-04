@@ -430,7 +430,7 @@ internal sealed class MobSystem
         mob.TargetEntityId = 0;
         mob.LifeState = RealtimeCombatLifeState.Evading;
         // A fight given up frees the Mob for everyone.
-        mob.ClearTag();
+        mob.ClearCredit();
         mob.MarkStateChanged();
         StopPath(agent);
         planning.Request(agent, agent.Home);
@@ -478,7 +478,7 @@ internal sealed class MobSystem
         mob.TargetEntityId = 0;
         mob.NextAttackTick = 0;
         mob.DamageLedger.Clear();
-        mob.ClearTag();
+        mob.ClearCredit();
         mob.MarkStateChanged();
         agent.State = agent.Patrol.Count > 0 ? MobBrainState.Patrol : MobBrainState.Idle;
         agent.WaitUntilTick = 0;

@@ -52,7 +52,8 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         private static readonly (string Value, string Label)[] KillCredits =
         {
-            (WorldActorKillCreditIds.Tag, "Tagger")
+            (WorldActorKillCreditIds.Tag, "Tagger"),
+            (WorldActorKillCreditIds.Contributors, "Contributors")
         };
 
         private static readonly (string Value, string Label)[] CapabilityKinds =
@@ -669,7 +670,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 "Live corpses remain worker-owned and may disappear on restart. Durable corpses use PostgreSQL custody and restart restoration."));
             section.Add(form.Choice("Kill Credit", "killCredit", () => KillCredits, actor => actor.killCredit, (actor, value) => actor.killCredit = value, isMob));
             section.Add(ContentToolStyles.CreateHint(
-                "Tagger: the first player who damages the Mob gets the credit and alone may loot its corpse."));
+                "Tagger: the first player who damages the Mob gets the credit and alone may loot its corpse. Contributors, for world bosses: every player who damaged it nearby gets the credit and a loot roll of their own."));
             return section;
         }
 

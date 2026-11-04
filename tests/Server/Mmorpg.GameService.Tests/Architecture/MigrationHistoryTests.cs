@@ -50,7 +50,7 @@ public sealed class MigrationHistoryTests
         "202611021200_remove_cloak_equipment ef7117c99b3036e8d6c13b0a77acd9288e6c48b66a475d2e7cf56bd7db571bd1",
         "202611021300_expand_permanent_inventory 473ae7002a820d3b7930e486569754e52960fca2eeeaa15416bf2d6da2195e1c",
         "202611021700_reduce_permanent_inventory 8adf70388be6ba9201c8ca9bf963aa01ba382f22e81c2db66525285e49c5e0e1",
-        "202611041800_mob_corpse_owner ae5f96884d2a166400cf4efbdba584b089e33a4477b5f088df1d5e1ab6454801"
+        "202611041800_mob_corpse_ownership 81caf0d88f2a9d455fcd1c1b91edff964910c1875137d345db65dedd999e7a8d"
     ];
 
     [Fact]

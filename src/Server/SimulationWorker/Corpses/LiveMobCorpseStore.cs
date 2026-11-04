@@ -39,6 +39,16 @@ public sealed record LiveMobCorpseState(
 
     // The player the Mob credited, who alone may loot it, or null when everyone may.
     public Guid? OwnerCharacterId { get; init; }
+
+    // The corpses of one Mob death share it, so a viewer sees one body; a corpse without a
+    // group is its own.
+    public Guid LootGroupId
+    {
+        get => lootGroupId == Guid.Empty ? CorpseId : lootGroupId;
+        init => lootGroupId = value;
+    }
+
+    private readonly Guid lootGroupId;
 }
 
 public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
@@ -378,7 +388,8 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             corpse.BagContainerId.ToString("N"),
             corpse.CreatedAt.Ticks.ToString(CultureInfo.InvariantCulture),
             corpse.ExpiresAt.Ticks.ToString(CultureInfo.InvariantCulture),
-            corpse.OwnerCharacterId?.ToString("N") ?? string.Empty
+            corpse.OwnerCharacterId?.ToString("N") ?? string.Empty,
+            corpse.LootGroupId.ToString("N")
         };
         foreach (var loot in corpse.Loot.OrderBy(entry => entry.SlotIndex))
         {

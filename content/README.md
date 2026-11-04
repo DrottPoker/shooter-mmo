@@ -355,9 +355,11 @@ for a `gathering` capability.
 3. For a Mob, set its `Level`, which its nameplate shows, and choose the
    profiles under `Combat And Lifecycle`: damage policy, activity, respawn,
    combat, brain, locomotion, and loot profile, corpse persistence (`Live` or
-   `Durable`), corpse lifetime, and `Kill Credit`, `Tagger` for every Mob today,
-   whose first attacker alone gets the credit and the loot. NPCs and resource
-   nodes show a note instead, because they are always invulnerable.
+   `Durable`), corpse lifetime, and `Kill Credit`: `Tagger`, whose first
+   attacker alone gets the credit and the loot, or `Contributors` for a world
+   boss, such as the Feral Alpha, which credits everyone who damaged it nearby
+   and gives each a corpse of their own. NPCs and resource nodes show a note
+   instead, because they are always invulnerable.
 4. Set the `Authoritative Interaction Bounds`, `Local Center` and `Size`, which
    a front-view preview draws. For a resource node also set `Collision Center`
    and `Collision Size`, the box that blocks walking; for NPCs and Mobs both stay

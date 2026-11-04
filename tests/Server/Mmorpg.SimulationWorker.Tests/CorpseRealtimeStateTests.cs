@@ -7,6 +7,64 @@ namespace Mmorpg.SimulationWorker.Tests;
 
 public sealed class CorpseRealtimeStateTests
 {
+    // A world boss leaves a corpse for every player it credited; each viewer sees one body, its
+    // own when it has one, and every other corpse as it is.
+    [Fact]
+    public void AViewerSeesOneBodyOfEveryMobDeath()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var bystander = Guid.NewGuid();
+        var group = Guid.NewGuid();
+        var firstCorpse = LiveCorpse(group, first);
+        var secondCorpse = LiveCorpse(group, second);
+        var wolfCorpse = LiveCorpse(Guid.Empty, null);
+        IReadOnlyList<ICorpseRuntimePresence> corpses = [firstCorpse, secondCorpse, wolfCorpse];
+
+        var seenByFirst = CorpseLootRights.SelectForViewer(corpses, first);
+        var seenBySecond = CorpseLootRights.SelectForViewer(corpses, second);
+        var seenByBystander = CorpseLootRights.SelectForViewer(corpses, bystander);
+
+        Assert.Equal(wolfCorpse.CorpseId, wolfCorpse.LootGroupId);
+        Assert.Equal(
+            new[] { firstCorpse.CorpseId, wolfCorpse.CorpseId }.Order(),
+            seenByFirst.Select(corpse => corpse.CorpseId));
+        Assert.Equal(
+            new[] { secondCorpse.CorpseId, wolfCorpse.CorpseId }.Order(),
+            seenBySecond.Select(corpse => corpse.CorpseId));
+        var body = Assert.Single(seenByBystander, corpse => corpse.LootGroupId == group);
+        Assert.Equal(new[] { firstCorpse.CorpseId, secondCorpse.CorpseId }.Min(), body.CorpseId);
+        Assert.False(CorpseLootRights.CanLoot(body, bystander));
+        Assert.Contains(seenByBystander, corpse => corpse.CorpseId == wolfCorpse.CorpseId);
+    }
+
+    private static LiveMobCorpseState LiveCorpse(Guid lootGroupId, Guid? owner)
+    {
+        var now = DateTime.UtcNow;
+        return new LiveMobCorpseState(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "mob.feral_alpha",
+            "Feral Alpha",
+            "local-shard-1",
+            1d,
+            0d,
+            -1d,
+            0f,
+            MobCorpseLifecycleService.DefaultPresentationKey,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            1,
+            now,
+            now.AddMinutes(10),
+            [new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.ore", 1, 0)])
+        {
+            OwnerCharacterId = owner,
+            LootGroupId = lootGroupId
+        };
+    }
+
     [Fact]
     public void ViewerRegistryAllowsSharedCorpseButOnlyOnePerPeer()
     {

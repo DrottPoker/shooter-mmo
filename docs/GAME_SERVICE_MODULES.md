@@ -452,7 +452,7 @@ topology names.
 | 28 | `202611021200_remove_cloak_equipment` | Items |
 | 29 | `202611021300_expand_permanent_inventory` | Items |
 | 30 | `202611021700_reduce_permanent_inventory` | Items |
-| 31 | `202611041800_mob_corpse_owner` | Items |
+| 31 | `202611041800_mob_corpse_ownership` | Items |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.

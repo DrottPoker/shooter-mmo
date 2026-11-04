@@ -1363,9 +1363,12 @@ Arrows, and walk both to the Feral Wolves in the wolf woods of Development World
 3. Shoot a wolf with the first character and run away until the wolf gives up
    and walks home. Expected result: the grey bar in the second client turns red
    again as the wolf turns home, and the next player to hit it tags it.
-4. Kill the Feral Alpha with the first character while the second watches.
-   Expected result: only the first character may loot the durable corpse, also
-   after a SimulationWorker restart.
+4. Fight the Feral Alpha with both characters until it dies; `Invulnerable`
+   from the Admin menu helps. Expected result: the Alpha's nameplate never turns
+   grey, and each character finds one Alpha corpse that it may loot, with its
+   own loot. A third character that did not fight sees one corpse that offers
+   only `Examine`. After a SimulationWorker restart, each character still finds
+   its own corpse.
 
 ### Loot All
 

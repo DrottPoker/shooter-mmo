@@ -535,7 +535,10 @@ loot the Mob's corpse, and other players see the Mob's nameplate grey while the
 tag lasts. They may still fight it, but its corpse offers them only `Examine`.
 The tag clears when the Mob gives up the fight and walks home. The tagger must be
 within 100 m when the Mob dies; a Mob whose tagger left or is too far away leaves
-a corpse that anyone may loot. Player corpses are open to everyone.
+a corpse that anyone may loot. The Feral Alpha is never tagged: every character
+that damaged it and is within 100 m when it dies gets a corpse of its own with
+its own loot, and everyone sees one body, their own when they have one. Player
+corpses are open to everyone.
 
 Left-click a corpse, or choose `Loot Corpse of <name>`, to walk to it and open
 it. An open corpse shows in the storage window beside Inventory, which opens with
