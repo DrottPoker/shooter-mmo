@@ -46,7 +46,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 #   blender-python   the art pipeline's Python tests in tools/art/blender/tests, without Blender
 #   deps             tools/Verify-DependencyPolicy.ps1
 #   observability    tools/Verify-Observability.ps1
-#   verify-content   the item catalog, world collision, and world actor verifiers
+#   verify-content   the item catalog, world collision, world actor, and quest catalog verifiers
 #   verify-protocol  the realtime protocol verifier
 # A content compiler's verifier also runs whenever its tool project is selected, and every
 # changed PowerShell script gets a syntax check.

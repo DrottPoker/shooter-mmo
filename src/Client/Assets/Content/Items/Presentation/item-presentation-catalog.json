@@ -1,7 +1,7 @@
 {
     "formatVersion": 4,
-    "sourceCatalogRevision": "6fd5a31562190ee5051e01f485bd7cd26cfaca6edfd7492a12153c5404c1ed62",
-    "presentationRevision": "4e66825fd05927583a76c9cfc8006279353be541b11c54954af1bd57509850fe",
+    "sourceCatalogRevision": "592ba26fbd987ce37671f8e96d91f16138b64fb33bff129cdb6b0305343db5c0",
+    "presentationRevision": "b3ce37ac8f3e58bf788ad7844ec3f514ce11d97e3a3ba490adcf9258a32e9d0e",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
@@ -332,10 +332,32 @@
             "attachment": ""
         },
         {
+            "definitionId": "quest_item.alpha_fang",
+            "iconAddress": "",
+            "localizationKey": "items.quest_item.alpha_fang.name",
+            "fallbackDisplayName": "Alpha's Fang",
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": [],
+            "attachment": ""
+        },
+        {
             "definitionId": "quest_item.sealed_letter",
             "iconAddress": "",
             "localizationKey": "items.quest_item.sealed_letter.name",
             "fallbackDisplayName": "Sealed Letter",
+            "prefabPresentationKey": "",
+            "garments": [],
+            "loweredGarments": [],
+            "dyes": [],
+            "attachment": ""
+        },
+        {
+            "definitionId": "quest_item.wolf_fang",
+            "iconAddress": "",
+            "localizationKey": "items.quest_item.wolf_fang.name",
+            "fallbackDisplayName": "Wolf Fang",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
