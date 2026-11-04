@@ -61,19 +61,35 @@ namespace Mmorpg.Client.Editor
         // The terrain's state, empty while the World Builder changed nothing in it.
         public static WorldBuilderTerrainState Of(TerrainData data)
         {
+            // Terrain data that was destroyed has nothing left to take back.
+            foreach (var gone in InMemory.Keys.Where(key => key == null).ToList())
+            {
+                InMemory.Remove(gone);
+            }
+
+            InMemory.TryGetValue(data, out var inMemory);
             if (!AssetDatabase.Contains(data))
             {
-                // Terrain data that was destroyed has nothing left to take back.
-                foreach (var gone in InMemory.Keys.Where(key => key == null).ToList())
-                {
-                    InMemory.Remove(gone);
-                }
-
-                return InMemory.TryGetValue(data, out var state) ? state : new WorldBuilderTerrainState();
+                return inMemory ?? new WorldBuilderTerrainState();
             }
 
             var asset = AssetOf(data);
-            return asset != null ? asset.State : new WorldBuilderTerrainState();
+            if (asset != null)
+            {
+                return asset.State;
+            }
+
+            // Terrain data saved as an asset since the water shaped it, such as with CreateAsset,
+            // takes its state along into a hidden part of the asset.
+            if (inMemory != null)
+            {
+                InMemory.Remove(data);
+                inMemory.changed = true;
+                inMemory.Keep(data);
+                return inMemory;
+            }
+
+            return new WorldBuilderTerrainState();
         }
 
         // Whether the World Builder changed anything in the terrain that it can take back.

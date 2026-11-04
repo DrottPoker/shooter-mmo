@@ -328,6 +328,27 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(HeightAt(32f, 55f), Is.EqualTo(8.5f).Within(0.05f));
         }
 
+        // Terrain data saved as an asset after the water shaped it takes what the water changed
+        // along, so the ground still comes back where the water moves away.
+        [Test]
+        public void TerrainDataSavedAfterTheWaterShapedItStillGivesTheGroundBack()
+        {
+            var lake = WorldBuilderCreate.AddLake(scene, new Vector3(20f, 9.6f, 20f));
+            Assert.That(HeightAt(20f, 20f), Is.LessThan(Ground - 1f));
+            AssetDatabase.CreateFolder("Assets", AssetDirectory.Substring("Assets/".Length));
+            AssetDatabase.CreateAsset(grass, AssetDirectory + "/Grass.terrainlayer");
+            AssetDatabase.CreateAsset(sand, AssetDirectory + "/Sand.terrainlayer");
+            AssetDatabase.CreateAsset(terrain.terrainData, AssetDirectory + "/Terrain.asset");
+
+            lake.transform.position = new Vector3(44f, 9.6f, 44f);
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(HeightAt(20f, 20f), Is.EqualTo(Ground).Within(HeightTolerance), "where the lake was");
+            Assert.That(SandAt(20f, 20f), Is.Zero, "no sand where the lake was");
+            Assert.That(HeightAt(44f, 44f), Is.LessThan(Ground - 1f), "where the lake is");
+            Assert.That(StateOf(terrain.terrainData), Is.Not.Null, "the state is a hidden part of the asset now");
+        }
+
         [Test]
         public void ARiverCarvesAChannelAsDeepAsTheRiverInItsMiddle()
         {
