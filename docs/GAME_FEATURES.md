@@ -625,8 +625,8 @@ real corpse from an offline character with the development item tools; see
   inventory with that storage; `Trade` opens it with the vendor; each stays
   usable while the interaction is open.
 - `Insurance` lists the character's insurance-eligible items, each with
-  `Insure: <item>` or `Insured, remove: <item>`. `Available Quests` offers to
-  accept the quest, which grants its required item, the Sealed Letter, and to
+  `Insure: <item>` or `Insured, remove: <item>`. `Quest item lifecycle` offers
+  to accept the quest, which grants its required item, the Sealed Letter, and to
   abandon it, which removes that item again. The inventory and Recovery Storage
   show the result.
 - Talk, crafting, training, and quest completion answer that they are not

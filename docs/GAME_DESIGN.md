@@ -4,9 +4,10 @@ This document is the product source of truth: what the game is, its setting and
 world, progression, movement, combat, PvP and crime, professions and economy,
 UI principles, and the MVP with its slices. Item, inventory, currency, vendor,
 and death rules are in
-[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), and the
+[Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), the
 world actor model of NPCs, Mobs, and resource nodes is in
-[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md). What is implemented
+[NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md), and quests are in
+[Quest System Design](QUEST_SYSTEM_DESIGN.md). What is implemented
 is described from the player's side in [Game Features](GAME_FEATURES.md) and
 from the server's side in [Service Features](SERVICE_FEATURES.md).
 
@@ -42,9 +43,11 @@ triangle with armor and misses, elemental damage and resistances, threat,
 healing abilities, potions, food, and drinking, movement impairments,
 experience and talents, profession levels and crafting, the other gathering
 professions, gameplay rule areas with the logout risk timer, the hostile flag
-and criminal reputation, achievements and the cloaks they reward, quests, player
-trading, and social systems. The status
-of the whole project is in [Project Overview](PROJECT_OVERVIEW.md).
+and criminal reputation, achievements and the cloaks they reward, Mob tagging
+with the loot rights it gives, quests as
+[Quest System Design](QUEST_SYSTEM_DESIGN.md) plans them, player trading, and
+social systems. The status of the whole project is in
+[Project Overview](PROJECT_OVERVIEW.md).
 
 Each section says what of it is implemented. Its rules are grouped as
 **Decided** product rules, **Proposed** baselines that fit the decisions and
@@ -710,7 +713,9 @@ with drinking for mana, no style gets free recovery during a fight.
 ## Mobs And Encounters
 
 Implemented: the Feral Wolf, the Feral Alpha boss, and the defensive Grey Wolf
-with the Mob rules below, one attack each, and no abilities. How a Mob is defined, scheduled, and
+with the Mob rules below, one attack each, and no abilities. Tagging, with the
+kill credit and loot rights it gives, is planned; today everyone may loot a Mob
+corpse. How a Mob is defined, scheduled, and
 respawned is in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md), and
 the wolves' behavior in [Combat](GAME_FEATURES.md#combat).
 
@@ -736,12 +741,26 @@ the wolves' behavior in [Combat](GAME_FEATURES.md#combat).
   to the valid attacker that dealt it the most damage, then to the nearest
   player it detects, and otherwise walks home.
 - Mob loot is rolled from the Mob's loot table at each death and lies in its
-  corpse, where everyone may loot it. Loot feeds the economy, such as the wolf
-  pelts that the vendor buys. Normal Mob corpses are short-lived, and a
+  corpse for the players the Mob credits. Loot feeds the economy, such as the
+  wolf pelts that the vendor buys. Normal Mob corpses are short-lived, and a
   boss can keep a durable corpse like a player's; the corpse rules are in
   [Mob Corpse Lifecycle](INVENTORY_AND_DEATH_LOOT_DESIGN.md#mob-corpse-lifecycle).
-- The Feral Alpha is the first boss: stronger than a wolf, slower to return, and
-  with a durable corpse.
+- The first player who damages a Mob tags it, as in World of Warcraft Classic.
+  Only the tagger gets credit for the kill, which counts for quests and later for
+  experience, and only the tagger may loot the corpse. Other players see that
+  someone else tagged the Mob because its nameplate turns grey, and they may
+  still fight it. Until groups exist, a tag belongs to one player; with groups,
+  it belongs to the group.
+- A tag lasts until the Mob dies or gives up and walks home, so a Mob that
+  resets is free for everyone again. The tagger gets credit only within 100 m
+  of the Mob when it dies. A Mob that credits no one, because its tagger left or
+  is too far away, leaves a corpse that everyone may loot.
+- Selected world bosses give contributor credit instead, set in their content:
+  every player who damaged the boss during the fight and is within 100 m when
+  it dies gets credit, and each of them gets a loot roll of their own, which
+  only that player sees in the corpse. Such a boss is never tagged.
+- The Feral Alpha is the first boss: stronger than a wolf, slower to return,
+  with a durable corpse, and with contributor credit once tagging exists.
 - Player and Mob values are tuned together: the starting weapon values keep a
   duel between equally equipped characters inside the PvP time-to-kill target,
   and an ordinary Mob dies to a few attacks.
@@ -1167,7 +1186,7 @@ These do not block the first playable MVP:
 - An auction house, direct player trading, and regional markets.
 - Crafting and professions beyond the first gathering loop.
 - Advanced Mobs and bosses beyond the first boss.
-- Complex quests.
+- Quests, which [Quest System Design](QUEST_SYSTEM_DESIGN.md) plans.
 - Insured stack quantities.
 - Armor types and armor stats.
 

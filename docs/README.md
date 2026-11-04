@@ -23,6 +23,8 @@ planned.
   storage, carry weight, currency, vendor trade, death loot, corpses, and Recovery Storage.
 - [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md): the world actor model, NPC
   capabilities, Mobs, resource nodes, spawns, and interaction.
+- [Quest System Design](QUEST_SYSTEM_DESIGN.md): quests, their objectives and chains, the
+  quest log, turn-in and rewards, quest authoring, and the quest authority.
 - [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md): how bodies, garments, hair, cloth,
   and carried equipment look.
 
