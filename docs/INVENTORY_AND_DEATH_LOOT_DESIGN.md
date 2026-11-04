@@ -18,8 +18,9 @@ Every rule in this document is implemented unless it is marked as planned or
 listed in [Planned](#planned), [Proposed](#proposed), or
 [Open Questions](#open-questions). The main planned work is consume and use
 intents for potions and food, combat data for armor, resistances, and healing,
-quest progression, and the final inventory and corpse loot interface, which is
-temporary uGUI today.
+the loot rights of Mob tagging, quests as
+[Quest System Design](QUEST_SYSTEM_DESIGN.md) plans them, and the final
+inventory and corpse loot interface, which is temporary uGUI today.
 
 ## Canonical Item Terminology
 
@@ -793,8 +794,22 @@ use durable corpse custody and restart restoration. Persistent Mob corpse
 behavior reuses the player-corpse transaction and expiry foundation without
 changing the topology model.
 
-Everyone may loot a Mob corpse. The player who dealt the most damage has no
-loot right, because the open world is full loot anyway.
+Today everyone may loot a Mob corpse. Planned: a Mob corpse belongs to the
+players the Mob credits by the tagging rules of
+[Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters):
+
+- The corpse holds one loot set per credited player, rolled at the death, and a
+  player sees and loots only their own set. A tagged Mob credits its tagger, so
+  its corpse holds one set for the tagger. A world boss with contributor credit
+  rolls one set for every credited player.
+- A quest drop joins the set of the player it drops for, as
+  [Quest Drops](QUEST_SYSTEM_DESIGN.md#quest-drops) describes, and a set that
+  holds only a quest drop still creates the corpse.
+- A Mob that credits no one leaves one set that everyone may loot.
+- Live and durable corpses follow the same rule, so a boss's durable corpse
+  keeps every player's set until it expires.
+
+Player corpses stay full loot for everyone.
 
 A Mob corpse shows its Mob's own model lying in the last pose of its Death clip,
 turned as the Mob died. A Mob without a model of its own shows a generic
@@ -948,8 +963,12 @@ These rules are decided and wait for later work, mostly the combat work in
   resistances, and healing multipliers.
 - Consume and use intents for potions, food, and other consumables, with the
   consumable cooldowns from the combat design.
-- Quest progression as a producer that calls the existing item boundaries.
-  Today one configured quest grants its protected quest item.
+- Quests as a producer that calls the existing item boundaries, as
+  [Quest System Design](QUEST_SYSTEM_DESIGN.md) plans: start items, quest drops,
+  deliveries, and rewards. Today one configured quest grants its protected quest
+  item.
+- Mob corpse loot sets for the players a Mob credits, described in
+  [Mob Corpse Lifecycle](#mob-corpse-lifecycle).
 - Saved equipment loadouts, proposed in
   [Attacks And Abilities](GAME_DESIGN.md#attacks-and-abilities), which swap as
   one equipment change.

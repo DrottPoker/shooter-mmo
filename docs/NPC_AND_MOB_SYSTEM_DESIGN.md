@@ -28,10 +28,12 @@ Implemented:
 - Mob combat, brains, loot, live and durable corpses, and respawn.
 - Central scheduling of NPCs and Mobs without per-actor tasks or durable rows.
 
-Planned: the dialogue, crafting, trainer, and quest completion capabilities,
-which answer with an explicit deferred or unavailable result today, quest
-progression, threat tables, Mob abilities and groups, durable unique actor
-state, and the final actor art and interaction UI; see
+Planned: the dialogue, crafting, and trainer capabilities, which answer with an
+explicit deferred result today; quests, with one `quests` capability that
+replaces the quest offer and quest turn-in kinds, as
+[Quest System Design](QUEST_SYSTEM_DESIGN.md) describes; Mob tagging with the
+kill credit and loot rights it gives; threat tables, Mob abilities and groups,
+durable unique actor state, and the final actor art and interaction UI; see
 [Deferred Work](#deferred-work). The Unity presentation of actors and the
 interaction panel is temporary. The content, runtime, protocol, client state,
 and tooling are permanent foundations. The checked-in actor definitions are in
@@ -165,6 +167,9 @@ Every actor definition contains at least:
   respawn, combat, brain, locomotion, and loot profile references, and its
   corpse persistence and lifetime. NPCs and resource nodes leave every Mob field
   empty and the level at 0.
+- Planned for a Mob: its kill credit, `tag` by default or `contributors` for a
+  world boss, as [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters)
+  decides.
 - Content tags used by authoring, queries, and future rule systems.
 
 The text and bounds limits are in
@@ -235,7 +240,10 @@ registry. The capability kinds are:
 - Recovery Storage.
 - Gathering, which only a resource node may have.
 
-An NPC may contain any valid combination of the NPC kinds. The compiled
+The planned `quests` kind replaces quest offer and quest turn-in with one quest
+dialog, as
+[Quest NPCs And The Quest Dialog](QUEST_SYSTEM_DESIGN.md#quest-npcs-and-the-quest-dialog)
+describes. An NPC may contain any valid combination of the NPC kinds. The compiled
 definition keeps the authored capability order, which is the order of the
 world menu, so the first capability is the left-click action; the order never
 changes authority. Each capability has a stable capability id, kind, display
@@ -273,8 +281,8 @@ capability discovery logic:
   describes.
 - Gathering starts a gathering activity, as
   [Resource Nodes And Gathering](#resource-nodes-and-gathering) describes.
-- Quest turn-in answers that quest completion is unavailable until quest
-  definitions exist.
+- Quest turn-in answers that quest completion is unavailable until the quest
+  content of [Quest System Design](QUEST_SYSTEM_DESIGN.md) exists.
 - Dialogue, crafting, and trainer have an explicit deferred handler until their
   business systems exist. The client never turns a deferred result into
   success.
@@ -631,7 +639,10 @@ but never an interaction. The combat system produces its death, as
 - Each Mob life has its own runtime id, and its death event id derives from it,
   so the id is stable for retries and unique per death.
 - The loot profile is rolled once, at the death. An empty roll leaves no
-  corpse.
+  corpse. Planned: a Mob with contributor credit rolls it once for every
+  credited player, and quest drops add personal entries, as
+  [Mob Corpse Lifecycle](INVENTORY_AND_DEATH_LOOT_DESIGN.md#mob-corpse-lifecycle)
+  describes.
 - The actor despawns once its corpse exists or its death has reached the
   viewers. Its respawn profile recreates the same compiled spawn instance with
   a fresh runtime id and network entity id through the central timer queue, and
@@ -679,9 +690,9 @@ compose existing NPC capabilities, place and verify spawns visually, and
 exercise authoritative targeted interaction without adding a new runtime actor
 class or a database row per actor. It stops before the following:
 
-- Dialogue, crafting, and trainer business operations, quest progression and
-  turn-in, and trainer and profession progression, including Mining and
-  Woodcutting experience.
+- Dialogue, crafting, and trainer business operations, and trainer and
+  profession progression, including Mining and Woodcutting experience. Quests
+  are planned in [Quest System Design](QUEST_SYSTEM_DESIGN.md).
 - Threat tables, Mob abilities beyond one attack, Mob groups that assist each
   other, and an `Investigate` brain state.
 - Mob combat data for defense, elemental weaknesses, and movement impairment
