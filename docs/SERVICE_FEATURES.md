@@ -1276,8 +1276,8 @@ results and closures, and Unity adds `item_catalog_update_required`.
   `item_state_conflict`, `item_operation_conflict`, `item_transaction_timeout`,
   `item_slot_occupied`, `equipment_slot_occupied`, `item_quantity_changed`,
   `bag_state_changed`, `worker_runtime_changed`, `vendor_price_changed`,
-  `inventory_full`, `quest_not_active`, `quest_already_active`, the corpse
-  lifecycle codes, and on account routes
+  `inventory_full`, `quest_not_active`, `quest_already_active`,
+  `quest_objective_complete`, the corpse lifecycle codes, and on account routes
   `item_offline_access_required`, and `422` for every other domain rejection.
   An incomplete request returns `400` with `item_operation_id_required` or
   `item_simulation_operation_invalid`.

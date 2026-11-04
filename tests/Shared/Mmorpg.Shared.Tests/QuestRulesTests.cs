@@ -60,19 +60,35 @@ public sealed class QuestRulesTests
     {
         var byId = new QuestObjectiveDefinition
         {
-            Id = "wolves", Kind = QuestObjectiveKindIds.Kill, Count = 2, ActorIds = ["mob.feral_wolf"], ActorTag = ""
+            Id = "wolves",
+            Kind = QuestObjectiveKindIds.Kill,
+            Count = 2,
+            ActorIds = ["mob.feral_wolf"],
+            ActorTag = ""
         };
         var byTag = new QuestObjectiveDefinition
         {
-            Id = "wild", Kind = QuestObjectiveKindIds.Kill, Count = 2, ActorIds = [], ActorTag = "wild"
+            Id = "wild",
+            Kind = QuestObjectiveKindIds.Kill,
+            Count = 2,
+            ActorIds = [],
+            ActorTag = "wild"
         };
         var ore = new QuestObjectiveDefinition
         {
-            Id = "ore", Kind = QuestObjectiveKindIds.Gather, Count = 5, ActorIds = ["resource.iron_vein"], ActorTag = ""
+            Id = "ore",
+            Kind = QuestObjectiveKindIds.Gather,
+            Count = 5,
+            ActorIds = ["resource.iron_vein"],
+            ActorTag = ""
         };
         var pelts = new QuestObjectiveDefinition
         {
-            Id = "pelts", Kind = QuestObjectiveKindIds.Collect, Count = 3, ActorIds = [], ActorTag = ""
+            Id = "pelts",
+            Kind = QuestObjectiveKindIds.Collect,
+            Count = 3,
+            ActorIds = [],
+            ActorTag = ""
         };
 
         Assert.True(QuestRules.CountsKill(byId, "mob.feral_wolf", []));
