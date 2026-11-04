@@ -33,13 +33,14 @@ namespace Mmorpg.GameProtocol
             }
         }
 
-        // A dead combatant has no health and no target.
+        // A dead combatant has no health and no target, and nobody targets or tags itself.
         private static bool SatisfiesRules(RealtimeCombatantState value)
         {
             return value.Health <= value.MaximumHealth
                 && (value.LifeState != RealtimeCombatLifeState.Dead
                     || (value.Health == 0 && value.TargetEntityId == 0))
-                && value.TargetEntityId != value.EntityId;
+                && value.TargetEntityId != value.EntityId
+                && value.TaggedByEntityId != value.EntityId;
         }
 
         // A character is never evading; while dead it waits for its respawn tick.

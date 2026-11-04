@@ -60,7 +60,14 @@ internal sealed record CreatePersistentMobCorpseRequest(
     double RotationW,
     string PresentationKey,
     double LifetimeSeconds,
-    IReadOnlyList<MobCorpseLootEntryRequest> Loot);
+    IReadOnlyList<MobCorpseLootEntryRequest> Loot)
+{
+    // The player the Mob credited, who alone may loot the corpse, or null when everyone may.
+    public Guid? OwnerCharacterId { get; init; }
+
+    // The corpses of one Mob death share it, so a viewer sees one body.
+    public Guid? LootGroupId { get; init; }
+}
 
 internal sealed record PersistentMobCorpseResponse(
     Guid OperationId,
@@ -131,6 +138,12 @@ internal sealed record DurableCorpseResponse(
 {
     // How a player corpse looks; null for a Mob corpse.
     public CorpseLookResponse? Look { get; init; }
+
+    // The character that alone may loot a Mob's corpse, or null when everyone may.
+    public Guid? OwnerCharacterId { get; init; }
+
+    // The corpses of one Mob death share it; null for every other corpse.
+    public Guid? LootGroupId { get; init; }
 }
 
 // The dead character's body model, look, and headwear, and the items still in the corpse's
@@ -211,7 +224,14 @@ internal sealed record CorpseViewSnapshotResponse(
     DateTime CreatedAt,
     DateTime ExpiresAt,
     IReadOnlyList<CorpseViewSectionResponse> Sections,
-    IReadOnlyList<CorpsePresentationSnapshotResponse> PresentationSnapshots);
+    IReadOnlyList<CorpsePresentationSnapshotResponse> PresentationSnapshots)
+{
+    // The character that alone may loot a Mob's corpse, or null when everyone may.
+    public Guid? OwnerCharacterId { get; init; }
+
+    // The corpses of one Mob death share it; null for every other corpse.
+    public Guid? LootGroupId { get; init; }
+}
 
 internal sealed record CorpseViewSectionResponse(
     string SectionKind,

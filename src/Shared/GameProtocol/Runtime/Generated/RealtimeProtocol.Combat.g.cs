@@ -250,7 +250,8 @@ namespace Mmorpg.GameProtocol
             int maximumHealth,
             RealtimeCombatLifeState lifeState,
             bool inCombat,
-            ulong targetEntityId)
+            ulong targetEntityId,
+            ulong taggedByEntityId)
         {
             EntityId = entityId;
             StateRevision = stateRevision;
@@ -259,6 +260,7 @@ namespace Mmorpg.GameProtocol
             LifeState = lifeState;
             InCombat = inCombat;
             TargetEntityId = targetEntityId;
+            TaggedByEntityId = taggedByEntityId;
         }
 
         /// <summary>
@@ -295,6 +297,11 @@ namespace Mmorpg.GameProtocol
         /// The combatant's attack target, or 0 for none.
         /// </summary>
         public ulong TargetEntityId { get; }
+
+        /// <summary>
+        /// The player who tagged the Mob and alone gets its credit and loot, or 0 when no one has.
+        /// </summary>
+        public ulong TaggedByEntityId { get; }
     }
 
     /// <summary>
@@ -723,7 +730,7 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Combatant state is invalid.", nameof(state));
             }
 
-            var writer = StartPacket(RealtimeMessageType.CombatantState, 34);
+            var writer = StartPacket(RealtimeMessageType.CombatantState, 42);
             WriteCombatantState(ref writer, state);
             return writer.Finish();
         }
@@ -757,6 +764,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteByte((byte)value.LifeState);
             writer.WriteBoolean(value.InCombat);
             writer.WriteUInt64(value.TargetEntityId);
+            writer.WriteUInt64(value.TaggedByEntityId);
         }
 
         private static bool TryReadCombatantState(ref PacketReader reader, out RealtimeCombatantState value, out string error)
@@ -799,7 +807,12 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeCombatantState(entityId, stateRevision, health, maximumHealth, lifeState, inCombat, targetEntityId);
+            if (!reader.TryReadUInt64(out var taggedByEntityId, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeCombatantState(entityId, stateRevision, health, maximumHealth, lifeState, inCombat, targetEntityId, taggedByEntityId);
             return true;
         }
 

@@ -187,6 +187,7 @@ public sealed class RealtimeCorpseProtocolTests
                     index * 30,
                     DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds(),
                     index == 2,
+                    index != 1,
                     "Corpse " + index,
                     "player_corpse",
                     index == 1
@@ -210,6 +211,8 @@ public sealed class RealtimeCorpseProtocolTests
         Assert.Equal(expected.SnapshotSequence, actual.SnapshotSequence);
         Assert.Equal(expected.Corpses.Select(corpse => corpse.CorpseId),
             actual.Corpses.Select(corpse => corpse.CorpseId));
+        Assert.Equal(expected.Corpses.Select(corpse => corpse.IsLootable),
+            actual.Corpses.Select(corpse => corpse.IsLootable));
         // A player corpse carries its look; a Mob corpse has none.
         Assert.Null(actual.Corpses[1].Appearance);
         Assert.Equal("Human_Female", actual.Corpses[0].Appearance.BodyModel);

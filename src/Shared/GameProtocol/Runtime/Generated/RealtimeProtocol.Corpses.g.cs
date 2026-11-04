@@ -47,6 +47,7 @@ namespace Mmorpg.GameProtocol
             float yawDegrees,
             long expiresAtUnixMilliseconds,
             bool isEmpty,
+            bool isLootable,
             string sourceDisplayName,
             string presentationKey,
             RealtimeCharacterAppearance appearance)
@@ -58,6 +59,7 @@ namespace Mmorpg.GameProtocol
             YawDegrees = yawDegrees;
             ExpiresAtUnixMilliseconds = expiresAtUnixMilliseconds;
             IsEmpty = isEmpty;
+            IsLootable = isLootable;
             SourceDisplayName = sourceDisplayName;
             PresentationKey = presentationKey;
             Appearance = appearance;
@@ -97,6 +99,11 @@ namespace Mmorpg.GameProtocol
         /// Whether the corpse holds no items.
         /// </summary>
         public bool IsEmpty { get; }
+
+        /// <summary>
+        /// Whether the recipient may loot the corpse; a Mob's corpse belongs to the players it credits.
+        /// </summary>
+        public bool IsLootable { get; }
 
         /// <summary>
         /// The name of whoever left the corpse.
@@ -2169,6 +2176,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteSingle(value.YawDegrees);
             writer.WriteInt64(value.ExpiresAtUnixMilliseconds);
             writer.WriteBoolean(value.IsEmpty);
+            writer.WriteBoolean(value.IsLootable);
             writer.WriteString(value.SourceDisplayName);
             writer.WriteString(value.PresentationKey);
             var hasAppearance = value.Appearance != null;
@@ -2181,7 +2189,7 @@ namespace Mmorpg.GameProtocol
 
         private static int SizeOfCorpsePresence(RealtimeCorpsePresence value)
         {
-            var size = 42;
+            var size = 43;
             size += StringSize(value.SourceDisplayName);
             size += StringSize(value.PresentationKey);
             if (value.Appearance != null)
@@ -2230,6 +2238,11 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
+            if (!reader.TryReadBoolean(out var isLootable, out error))
+            {
+                return false;
+            }
+
             if (!reader.TryReadString(MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
             {
                 return false;
@@ -2254,7 +2267,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, yawDegrees, expiresAtUnixMilliseconds, isEmpty, sourceDisplayName, presentationKey, appearance);
+            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, yawDegrees, expiresAtUnixMilliseconds, isEmpty, isLootable, sourceDisplayName, presentationKey, appearance);
             return true;
         }
 

@@ -5,7 +5,7 @@ namespace Mmorpg.WorldData.Combat
 {
     public static class CombatRulesFormat
     {
-        public const int Version = 2;
+        public const int Version = 3;
         public const string FileName = "combat-rules.json";
         public const string DirectoryName = "combat";
 
@@ -16,19 +16,23 @@ namespace Mmorpg.WorldData.Combat
         public const float MaximumEquipmentLockoutSeconds = 30f;
         public const float MinimumAmmunitionBatchIntervalSeconds = 0.5f;
         public const float MaximumAmmunitionBatchIntervalSeconds = 60f;
+        public const float MinimumKillCreditRangeMeters = 1f;
+        public const float MaximumKillCreditRangeMeters = 1000f;
         public const int MaximumRuleSets = 64;
         public const int MaximumRuleSetIdLength = 128;
     }
 
     // The worker-side combat rules that are not item or actor data: the character's health,
-    // mana, and death timing, regeneration, the equipment lockout, ammunition batching, and what
-    // each Shard rule set allows. The worker reads this file next to world.json.
+    // mana, and death timing, regeneration, the equipment lockout, ammunition batching, the
+    // range of a Mob's kill credit, and what each Shard rule set allows. The worker reads this
+    // file next to world.json.
     [Serializable]
     public sealed class CombatRulesDocument
     {
         public int formatVersion;
         public PlayerCombatRulesDocument player = new PlayerCombatRulesDocument();
         public AmmunitionRulesDocument ammunition = new AmmunitionRulesDocument();
+        public MobRulesDocument mobs = new MobRulesDocument();
         public List<ShardRuleSetDocument> ruleSets = new List<ShardRuleSetDocument>();
     }
 
@@ -59,6 +63,13 @@ namespace Mmorpg.WorldData.Combat
     {
         // Spent arrows commit at most this long after the first uncommitted shot.
         public float batchIntervalSeconds;
+    }
+
+    [Serializable]
+    public sealed class MobRulesDocument
+    {
+        // A dying Mob credits its tagger or contributors only within this distance of it.
+        public float killCreditRangeMeters;
     }
 
     [Serializable]
@@ -116,6 +127,20 @@ namespace Mmorpg.WorldData.Combat
                 CombatRulesFormat.MinimumAmmunitionBatchIntervalSeconds,
                 CombatRulesFormat.MaximumAmmunitionBatchIntervalSeconds,
                 "Ammunition.BatchIntervalSeconds");
+            var mobs = document.mobs
+                ?? throw new CombatRulesValidationException("Mob rules are required.");
+            if (!CombatContentRules.IsFinite(mobs.killCreditRangeMeters)
+                || mobs.killCreditRangeMeters < CombatRulesFormat.MinimumKillCreditRangeMeters
+                || mobs.killCreditRangeMeters > CombatRulesFormat.MaximumKillCreditRangeMeters)
+            {
+                throw new CombatRulesValidationException(
+                    "Mobs.KillCreditRangeMeters must be between "
+                    + CombatRulesFormat.MinimumKillCreditRangeMeters
+                    + " and "
+                    + CombatRulesFormat.MaximumKillCreditRangeMeters
+                    + " meters.");
+            }
+
             ValidateRuleSets(document.ruleSets);
         }
 

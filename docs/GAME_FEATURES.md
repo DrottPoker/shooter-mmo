@@ -176,7 +176,8 @@ Every world action goes through one menu, as in RuneScape:
 - A living Mob offers `Attack`, and so does another character when the Shard
   allows player versus player. A Mob walking home after a fight offers no
   `Attack`, so a left click on it walks there.
-- A corpse offers `Loot Corpse of <name>`.
+- A corpse offers `Loot Corpse of <name>`, but the corpse of a Mob that another
+  player tagged offers only `Examine`.
 - `Walk here` is always offered and walks to the ground under the pointer.
 - `Examine` shows the target's short description from the actor content in the
   message area in the bottom left corner, such as "A lean, hungry wolf. It eyes
@@ -529,6 +530,16 @@ corpse without a model of its own is a capsule. A player corpse lasts 5 minutes,
 also when it is empty, a Feral Wolf's 2 minutes, and the Feral Alpha's 10
 minutes.
 
+The first character whose hit damages a Mob tags it: only that character may
+loot the Mob's corpse, and other players see the Mob's nameplate grey while the
+tag lasts. They may still fight it, but its corpse offers them only `Examine`.
+The tag clears when the Mob gives up the fight and walks home. The tagger must be
+within 100 m when the Mob dies; a Mob whose tagger left or is too far away leaves
+a corpse that anyone may loot. The Feral Alpha is never tagged: every character
+that damaged it and is within 100 m when it dies gets a corpse of its own with
+its own loot, and everyone sees one body, their own when they have one. Player
+corpses are open to everyone.
+
 Left-click a corpse, or choose `Loot Corpse of <name>`, to walk to it and open
 it. An open corpse shows in the storage window beside Inventory, which opens with
 it; the window's close button or `Escape` closes the corpse. The window's title
@@ -789,7 +800,8 @@ Combat is target based and server authoritative:
   has a nameplate, also at full health: its name over a thin health bar with the
   health as numbers in it, such as `32/50`, and its level to the right of the
   bar, as tall as the bar. The bar is red for an aggressive Mob and yellow for a
-  defensive one. When the health changes, the bar and its numbers slide to the
+  defensive one, and grey while another player has tagged the Mob. When the
+  health changes, the bar and its numbers slide to the
   new value in 0.3 seconds. A nameplate is full size within 10 m and shrinks to
   a little over half size at 40 m. It disappears when the Mob dies or walks out
   of range, and the nearest nameplate draws over farther ones. Nameplates and

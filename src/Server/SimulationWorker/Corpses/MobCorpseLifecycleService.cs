@@ -9,10 +9,16 @@ namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed record MobCorpseLootSeed(string DefinitionId, int Quantity);
 
+// One corpse of a Mob death. Every corpse of the death shares the loot group, so a viewer sees
+// one body. The owner is the player the Mob credited, who alone may loot the corpse, or null
+// when everyone may.
 public sealed record CreateMobCorpseRequest(
     Guid DeathEventId,
+    Guid CorpseId,
+    Guid LootGroupId,
     Guid SourceActorRuntimeId,
-    IReadOnlyList<MobCorpseLootSeed> Loot);
+    IReadOnlyList<MobCorpseLootSeed> Loot,
+    Guid? OwnerCharacterId = null);
 
 public sealed record MobCorpseCreationResult(
     LiveMobCorpseState? LiveCorpse,
@@ -74,11 +80,11 @@ public sealed class MobCorpseLifecycleService(
                 "The Mob corpse source is not owned by this worker runtime and Shard."));
         }
 
-        var corpseId = ScopedGuid.Create("mob-corpse", request.DeathEventId);
+        var corpseId = request.CorpseId;
         var loot = request.Loot
             .Select((seed, index) => new ResolvedLoot(
-                CreateIndexedScopedGuid("mob-loot-entry", request.DeathEventId, index),
-                CreateIndexedScopedGuid("mob-loot-grant", request.DeathEventId, index),
+                CreateIndexedScopedGuid("mob-loot-entry", corpseId, index),
+                CreateIndexedScopedGuid("mob-loot-grant", corpseId, index),
                 seed.DefinitionId.Trim(),
                 seed.Quantity,
                 index))
@@ -115,7 +121,11 @@ public sealed class MobCorpseLifecycleService(
                     value.DefinitionId,
                     value.Quantity,
                     value.SlotIndex))
-                    .ToArray()));
+                    .ToArray())
+            {
+                OwnerCharacterId = request.OwnerCharacterId,
+                LootGroupId = request.LootGroupId
+            });
             return MobCorpseCreationResult.Live(liveCorpse);
         }
 
@@ -130,7 +140,7 @@ public sealed class MobCorpseLifecycleService(
         }
 
         var halfYawRadians = actor.YawDegrees * Math.PI / 360d;
-        var operationId = ScopedGuid.Create("mob-corpse-create", request.DeathEventId);
+        var operationId = ScopedGuid.Create("mob-corpse-create", corpseId);
         var durableResult = await gameServiceClient.CreatePersistentMobCorpseAsync(
             new CreatePersistentMobCorpseRequest(
                 operationId,
@@ -153,7 +163,11 @@ public sealed class MobCorpseLifecycleService(
                     value.GrantId,
                     value.DefinitionId,
                     value.Quantity))
-                    .ToArray()),
+                    .ToArray())
+            {
+                OwnerCharacterId = request.OwnerCharacterId,
+                LootGroupId = request.LootGroupId
+            },
             cancellationToken);
         if (!durableResult.Succeeded)
         {
@@ -168,6 +182,9 @@ public sealed class MobCorpseLifecycleService(
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.DeathEventId == Guid.Empty
+            || request.CorpseId == Guid.Empty
+            || request.LootGroupId == Guid.Empty
+            || request.OwnerCharacterId == Guid.Empty
             || request.SourceActorRuntimeId == Guid.Empty
             || request.Loot is null
             || request.Loot.Count is < 1 or > WorldActorCorpseRules.MaximumLootEntries

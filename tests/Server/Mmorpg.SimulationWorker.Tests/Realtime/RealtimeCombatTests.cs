@@ -1107,7 +1107,8 @@ public sealed class RealtimeCombatTests
         int maximumMana = 100,
         float combatTimeoutSeconds = 10f,
         int healthRegenerationPerSecond = 0,
-        int manaRegenerationPerSecond = 0)
+        int manaRegenerationPerSecond = 0,
+        float killCreditRangeMeters = 100f)
     {
         return CombatRules.FromDocument(new CombatRulesDocument
         {
@@ -1123,6 +1124,7 @@ public sealed class RealtimeCombatTests
                 equipmentLockoutSeconds = 0.5f
             },
             ammunition = new AmmunitionRulesDocument { batchIntervalSeconds = batchIntervalSeconds },
+            mobs = new MobRulesDocument { killCreditRangeMeters = killCreditRangeMeters },
             ruleSets = [new ShardRuleSetDocument { id = "test", playerVersusPlayer = true }]
         });
     }

@@ -45,7 +45,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 new RealtimeError(code, message));
         }
 
-        internal static RealtimeCorpsePresence CreatePresence(Guid corpseId, string name)
+        internal static RealtimeCorpsePresence CreatePresence(Guid corpseId, string name, bool isLootable = true)
         {
             return new RealtimeCorpsePresence(
                 corpseId,
@@ -55,6 +55,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 45f,
                 ExpiresAtUnixMilliseconds,
                 false,
+                isLootable,
                 name,
                 "corpse.remains",
                 null);

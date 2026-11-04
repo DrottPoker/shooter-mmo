@@ -1,5 +1,5 @@
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "player": {
     "maximumHealth": 100,
     "maximumMana": 100,
@@ -11,6 +11,9 @@
   },
   "ammunition": {
     "batchIntervalSeconds": 5
+  },
+  "mobs": {
+    "killCreditRangeMeters": 100
   },
   "ruleSets": [
     {

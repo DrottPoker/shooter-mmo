@@ -37,5 +37,6 @@
     "combatProfileId": "mob.feral_alpha",
     "brainProfileId": "mob.aggressive_boss",
     "locomotionProfileId": "mob.large_quadruped",
-    "lootProfileId": "mob.feral_alpha"
+    "lootProfileId": "mob.feral_alpha",
+    "killCredit": "contributors"
 }

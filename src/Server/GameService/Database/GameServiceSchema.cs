@@ -40,7 +40,8 @@ public sealed class GameServiceSchema
         "202611011200_remove_secure_container",
         "202611021200_remove_cloak_equipment",
         "202611021300_expand_permanent_inventory",
-        "202611021700_reduce_permanent_inventory"
+        "202611021700_reduce_permanent_inventory",
+        "202611041800_mob_corpse_ownership"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

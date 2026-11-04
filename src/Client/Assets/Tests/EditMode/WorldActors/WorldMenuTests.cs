@@ -197,6 +197,28 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(targeting.ExecuteWorldMenuOption(menu.Options[4]), Is.False);
         }
 
+        // Another player tagged the wolf, so its corpse is theirs to loot.
+        [Test]
+        public void ACorpseTheLocalPlayerMayNotLootOffersNoLoot()
+        {
+            var actors = Create<WorldActorClientController>("Actors");
+            var targeting = Create<WorldInteractionTargetingController>("Targeting");
+            targeting.Initialize(null, actors, null, null);
+            var menu = new WorldMenuBuilder();
+
+            menu.Begin(default(Ray), new[]
+            {
+                new WorldPointerCandidate(Corpse("Feral Wolf", isLootable: false), 1f),
+                new WorldPointerCandidate(Corpse("Grey Wolf"), 2f)
+            });
+            targeting.AddWorldMenuOptions(menu);
+            menu.Finish();
+
+            Assert.That(
+                menu.Options.Select(option => option.Label),
+                Is.EqualTo(new[] { "Loot Corpse of Grey Wolf" }));
+        }
+
         [Test]
         public void WalkHereIsAlwaysOfferedAndExamineShowsTheContentText()
         {
@@ -392,7 +414,7 @@ namespace Mmorpg.Client.Tests.EditMode
             return view;
         }
 
-        private CorpseInteractionTarget Corpse(string sourceName)
+        private CorpseInteractionTarget Corpse(string sourceName, bool isLootable = true)
         {
             var corpse = Create<CorpseInteractionTarget>("Corpse");
             corpse.Apply(new CorpsePresenceEntry(new RealtimeCorpsePresence(
@@ -403,6 +425,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 90f,
                 2_000_000_000_000L,
                 false,
+                isLootable,
                 sourceName,
                 "corpse.remains",
                 null)));

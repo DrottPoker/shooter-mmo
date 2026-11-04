@@ -20,6 +20,38 @@ public interface ICorpseRuntimePresence
     bool IsEmpty { get; }
     // How a player corpse looks; null for a Mob corpse.
     CorpseLook? Look { get; }
+    // The character that alone may loot a Mob's corpse, or null when everyone may.
+    Guid? OwnerCharacterId { get; }
+    // The corpses of one Mob death share it, so a viewer sees one body; every other corpse is
+    // its own group.
+    Guid LootGroupId { get; }
+}
+
+// Who may loot a corpse: its owner, or everyone when it has none, as a player corpse.
+public static class CorpseLootRights
+{
+    public static bool CanLoot(ICorpseRuntimePresence corpse, Guid characterId)
+    {
+        ArgumentNullException.ThrowIfNull(corpse);
+        return corpse.OwnerCharacterId is not { } owner || owner == characterId;
+    }
+
+    // One body for every Mob death: of the corpses that a world boss left for each player it
+    // credited, a viewer sees its own, or else the first of them as a body it may not loot.
+    public static IReadOnlyList<ICorpseRuntimePresence> SelectForViewer(
+        IEnumerable<ICorpseRuntimePresence> corpses,
+        Guid characterId)
+    {
+        ArgumentNullException.ThrowIfNull(corpses);
+        return corpses
+            .GroupBy(corpse => corpse.LootGroupId)
+            .Select(group => group
+                .OrderBy(corpse => CanLoot(corpse, characterId) ? 0 : 1)
+                .ThenBy(corpse => corpse.CorpseId)
+                .First())
+            .OrderBy(corpse => corpse.CorpseId)
+            .ToArray();
+    }
 }
 
 // The dead character's body model, look, and headwear, and the items still in the corpse's
@@ -61,6 +93,16 @@ public sealed record DurableCorpseState(
     public float YawDegrees => CorpseFacing.YawDegrees(RotationX, RotationY, RotationZ, RotationW);
 
     public CorpseLook? Look { get; init; }
+
+    public Guid? OwnerCharacterId { get; init; }
+
+    public Guid LootGroupId
+    {
+        get => lootGroupId == Guid.Empty ? CorpseId : lootGroupId;
+        init => lootGroupId = value;
+    }
+
+    private readonly Guid lootGroupId;
 }
 
 public static class CorpseFacing
@@ -136,7 +178,9 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                         section.ItemCount))
                     .ToArray())
             {
-                Look = CorpseLook.From(corpse.Look)
+                Look = CorpseLook.From(corpse.Look),
+                OwnerCharacterId = corpse.OwnerCharacterId,
+                LootGroupId = corpse.LootGroupId ?? Guid.Empty
             };
             if (!replacement.TryAdd(state.CorpseId, state))
             {
@@ -202,7 +246,8 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
     }
 
     // A view snapshot has no facing and no look of its own: the corpse keeps the facing and the
-    // body model and look it had, and wears what is left in its equipment section now.
+    // body model and look it had, and wears what is left in its equipment section now. Its owner
+    // and loot group come with the snapshot, so an update never opens a corpse to everyone.
     public void ApplySnapshot(CorpseViewSnapshotResponse snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -243,7 +288,9 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                     section.Slots.Count(slot => slot.Item is not null)))
                 .ToArray())
         {
-            Look = current?.Look is { } look ? look with { Equipment = equipment } : null
+            Look = current?.Look is { } look ? look with { Equipment = equipment } : null,
+            OwnerCharacterId = snapshot.OwnerCharacterId,
+            LootGroupId = snapshot.LootGroupId ?? Guid.Empty
         };
         ApplyState(state);
     }
@@ -276,7 +323,9 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                     section.ItemCount))
                 .ToArray())
         {
-            Look = CorpseLook.From(corpse.Look)
+            Look = CorpseLook.From(corpse.Look),
+            OwnerCharacterId = corpse.OwnerCharacterId,
+            LootGroupId = corpse.LootGroupId ?? Guid.Empty
         });
     }
 

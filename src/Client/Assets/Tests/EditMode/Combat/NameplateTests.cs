@@ -34,6 +34,27 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(yellow.b, Is.LessThan(0.3f));
         }
 
+        // A Mob that another player tagged is grey whatever its aggression; the local player's
+        // own tag and an untagged Mob keep their color.
+        [Test]
+        public void AMobTaggedByAnotherPlayerIsGrey()
+        {
+            const ulong localEntityId = 7;
+            Assert.That(NameplatePresentation.IsTaggedByOther(0, localEntityId), Is.False);
+            Assert.That(NameplatePresentation.IsTaggedByOther(localEntityId, localEntityId), Is.False);
+            Assert.That(NameplatePresentation.IsTaggedByOther(8, localEntityId), Is.True);
+            Assert.That(
+                NameplatePresentation.MobHealthColor(RealtimeWorldActorAggression.Aggressive, taggedByOther: true),
+                Is.EqualTo(NameplatePresentation.TaggedColor));
+            Assert.That(
+                NameplatePresentation.MobHealthColor(RealtimeWorldActorAggression.Defensive, taggedByOther: true),
+                Is.EqualTo(NameplatePresentation.TaggedColor));
+
+            var grey = NameplatePresentation.TaggedColor;
+            Assert.That(Mathf.Abs(grey.r - grey.g), Is.LessThan(0.05f));
+            Assert.That(Mathf.Abs(grey.g - grey.b), Is.LessThan(0.05f));
+        }
+
         [Test]
         public void TextsShowCurrentAndMaximumHealthAndTheLevel()
         {

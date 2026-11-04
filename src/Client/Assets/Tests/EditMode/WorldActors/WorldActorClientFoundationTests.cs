@@ -343,6 +343,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     90f,
                     2_000_000_000_000L,
                     false,
+                    true,
                     "Fallen Hero",
                     "corpse.remains",
                     null)));

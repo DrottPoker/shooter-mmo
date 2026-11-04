@@ -96,5 +96,8 @@ namespace Mmorpg.GameProtocol
 
         // The worker or GameService no longer knows the corpse.
         public const string NotFound = "corpse_not_found";
+
+        // The corpse belongs to the player who tagged its Mob, and the viewer is someone else.
+        public const string NotLootable = "corpse_not_lootable";
     }
 }

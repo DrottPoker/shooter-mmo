@@ -680,7 +680,7 @@ values out of range, and rule set ids that are not sorted, lowercase, and
 unique. The rules, described in [Combat Rules](../content/README.md#combat-rules),
 hold the player maximum health and mana, the respawn delay, the combat timeout,
 health and mana regeneration, the equipment lockout, the arrow batch interval,
-and the Shard rule sets. Weapon values, weapon family windups and projectile
+the kill credit range of Mobs, and the Shard rule sets. Weapon values, weapon family windups and projectile
 speeds, and ammunition bonuses come from the item catalog, and Mob values from
 the actor catalog. The combat model is in
 [Game Design](GAME_DESIGN.md#combat-model).
@@ -762,8 +762,9 @@ the actor catalog. The combat model is in
   id, so the id is stable for retries and unique per death. The Mob rolls its
   loot profile in entry order, where each entry drops with its chance in basis
   points and a quantity between its bounds. A non-empty roll becomes the Mob's
-  corpse: a live corpse in worker memory, or for a Mob whose content selects
-  durable custody a durable corpse in GameService, which retries with the same
+  corpse, owned by the player the Mob credits as the next item describes: a
+  live corpse in worker memory, or for a Mob whose content selects durable
+  custody a durable corpse in GameService, which retries with the same
   death event id and a backoff from 0.5 seconds that doubles up to 10 seconds
   until it commits. When GameService answers that the corpse can never be
   created, the Mob leaves without one. The Mob then leaves every view with the
@@ -771,6 +772,22 @@ the actor catalog. The combat model is in
   after its death reached the viewers, and its spawn instance returns after its
   respawn profile's delay with a new runtime and entity id. Respawn timers reset
   on a worker restart.
+- A Mob whose content gives `tag` kill credit, every Mob today, is tagged by the
+  first character whose hit damages it; a later hit by someone else never takes
+  the tag over. `CombatantState.TaggedByEntityId` names the tagger to every
+  viewer, and a tagger that rejoins keeps the tag under its new entity. The tag
+  clears when the Mob gives up the fight and evades. When the Mob dies, it
+  credits its tagger only while the tagger is in the world within the combat
+  rules' kill credit range, 100 m, of the Mob, dead or alive; otherwise it
+  credits no one. A Mob with `contributors` kill credit, the Feral Alpha, is
+  never tagged: it remembers every character whose hit damaged it in the fight,
+  forgets them when it evades, and credits each one in the world within the same
+  range. The corpse of a tagged Mob belongs to the credited character. A Mob with
+  contributor credit rolls its loot once for every credited character, in
+  character id order, and leaves each its own corpse, whose id derives from the
+  death and the character. The corpses of one death share a loot group, and a
+  Mob that credits no one leaves one corpse that belongs to everyone. The Mob
+  despawns once every corpse exists or can never be created.
 - A disconnect does not cancel combat work. The session stays until the death
   and the last arrow batch committed and is released afterwards, and a leave
   waits for the same work. A worker that stops commits the uncommitted shots it
@@ -1100,6 +1117,17 @@ Seen from outside:
   refresh, or mutation, and rejects with `corpse_out_of_range`,
   `corpse_view_not_open`, or `corpse_interaction_active`. GameService repeats
   exact-session, Shard, and lifetime authority inside the transaction boundary.
+- The corpse of a Mob that credited a character belongs to that character, as
+  [Target-Based Combat](#target-based-combat) describes, and so does a durable
+  boss corpse, whose `corpses.owner_character_id` names its owner and
+  `corpses.loot_group_id` the loot group of its death. Of the corpses of one
+  loot group, a recipient's presence holds one: its own, or else the one with
+  the smallest id. Each corpse presence tells its recipient in `IsLootable`
+  whether it may loot the corpse.
+  Every open and mutation of another character's corpse is rejected with
+  `corpse_not_lootable`, which closes the view, first by the worker and again
+  by GameService when it opens a durable corpse and when it locks the corpse in
+  any corpse transaction; only expiry, as the system, empties an owned corpse.
 - Corpse reads use short read-only snapshots. Full and partial transfers,
   internal corpse moves, ordinary occupied-slot swaps, and atomic Bag aggregate
   swaps reuse the kernel with targeted item, container, and Bag-root revisions.
@@ -1204,7 +1232,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Vendors and acquisition | `vendor_access_required`, `vendor_unavailable`, `vendor_offer_unavailable`, `vendor_price_changed`, `vendor_will_not_buy`, `inventory_full` |
 | Gathering | `gathering_tool_required`, `gathering_yield_invalid` |
 | Bank and Recovery | `bank_access_required`, `recovery_access_required`, `recovery_delivery_not_found`, `recovery_delivery_not_expired` |
-| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `item_already_looted` |
+| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `corpse_not_lootable`, `item_already_looted` |
 | Development tools | `development_simulation_bots_disabled`, `development_bot_loopback_required`, `invalid_development_bot_authority`, `invalid_development_bot_index`, `invalid_development_bot_instance_id`, `development_bot_already_active`, `development_bot_identity_changed`, `development_bot_placement_unavailable`, `development_bot_worker_capacity_reached`, `invalid_shard_id`, `invalid_join_ticket`, `invalid_stack_stress_fixture_authority`, `stack_stress_fixture_loopback_required`, `stack_stress_fixture_invalid`, `stack_stress_fixture_not_empty` |
 
 ### Realtime Codes
@@ -1217,7 +1245,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Movement | `movement_unavailable`, `unknown_movement_path` |
 | Items | `item_operation_queue_full`, `item_operation_failed`, `item_operation_unavailable`, `item_state_diverged` |
 | Corpses | `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active`, `corpse_interaction_invalid`, `corpse_interaction_unavailable`, `corpse_operation_failed`, `live_mob_corpse_operation_unsupported` |
-| Corpse view closures | `corpse_view_closed` when the viewer closed the view, `corpse_emptied` when the last item of a live Mob corpse was taken, `corpse_expired` at the deadline, `corpse_invalidated` when the corpse disappeared or its state can no longer be trusted, and `corpse_not_found` when the worker or GameService no longer knows it; a view also closes with `combat_character_dead` when its viewer dies, and with the code of a rejection that ends it, such as `wrong_simulation_worker` |
+| Corpse view closures | `corpse_view_closed` when the viewer closed the view, `corpse_emptied` when the last item of a live Mob corpse was taken, `corpse_expired` at the deadline, `corpse_invalidated` when the corpse disappeared or its state can no longer be trusted, `corpse_not_found` when the worker or GameService no longer knows it, and `corpse_not_lootable` when the corpse belongs to the player who tagged its Mob; a view also closes with `combat_character_dead` when its viewer dies, and with the code of a rejection that ends it, such as `wrong_simulation_worker` |
 | World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `world_interaction_closed`, `world_interaction_failed`, `world_interaction_unavailable`, `world_interaction_queue_full`, `world_interaction_rate_limited`, `npc_lifecycle_action_invalid`, `npc_lifecycle_unavailable`, `quest_turn_in_unavailable` |
 | Gathering | `resource_node_depleted`, `gathering_interrupted`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_failed`, and the GameService rejection of a yield, such as `gathering_tool_required` |
 | Combat | `combat_target_not_found`, `combat_target_not_attackable`, `combat_target_dead`, `combat_target_self`, `combat_player_versus_player_disabled`, `combat_character_dead`, `combat_intent_invalid`, `combat_intent_rate_limited`, `combat_unavailable` |

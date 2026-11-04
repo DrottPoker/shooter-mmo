@@ -62,15 +62,15 @@ internal sealed class CorpsePresenceReplicator(
             }
 
             var state = entity.Movement.State;
-            var nearbyCorpses = activeCorpses
-                .Where(corpse => IsWithinCorpseDiscoveryRange(
+            var characterId = context.Session.CharacterId;
+            var nearbyCorpses = CorpseLootRights.SelectForViewer(
+                activeCorpses.Where(corpse => IsWithinCorpseDiscoveryRange(
                     corpse,
                     state.PositionX,
                     state.PositionY,
-                    state.PositionZ))
-                .OrderBy(corpse => corpse.CorpseId)
-                .ToArray();
-            var signature = CreateCorpsePresenceSignature(nearbyCorpses);
+                    state.PositionZ)),
+                characterId);
+            var signature = CreateCorpsePresenceSignature(nearbyCorpses, characterId);
             if (string.Equals(
                     context.CorpsePresenceSignature,
                     signature,
@@ -83,6 +83,7 @@ internal sealed class CorpsePresenceReplicator(
             foreach (var chunk in CorpseRealtimePacketBuilder.BuildPresence(
                          corpsePresenceSequence,
                          nearbyCorpses,
+                         characterId,
                          VisibleEquipmentSlots))
             {
                 sender.SendControl(
@@ -107,11 +108,12 @@ internal sealed class CorpsePresenceReplicator(
     }
 
     private static string CreateCorpsePresenceSignature(
-        IReadOnlyList<ICorpseRuntimePresence> corpses)
+        IReadOnlyList<ICorpseRuntimePresence> corpses,
+        Guid characterId)
     {
         return string.Join(
             '|',
             corpses.Select(corpse =>
-                $"{corpse.CorpseId:N}:{corpse.Revision}:{corpse.IsEmpty}:{corpse.Look is not null}"));
+                $"{corpse.CorpseId:N}:{corpse.Revision}:{corpse.IsEmpty}:{corpse.Look is not null}:{CorpseLootRights.CanLoot(corpse, characterId)}"));
     }
 }

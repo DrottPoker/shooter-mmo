@@ -25,6 +25,8 @@ internal static class DurableCorpseRecords
         long initialRevision,
         double lifetimeSeconds,
         Guid expiryOperationId,
+        Guid? ownerCharacterId,
+        Guid? lootGroupId,
         CancellationToken cancellationToken)
     {
         return context.Connection.QuerySingleAsync<CreatedCorpseTimes>(
@@ -48,7 +50,9 @@ internal static class DurableCorpseRecords
                     presentation_key,
                     revision,
                     expires_at,
-                    expiry_operation_id)
+                    expiry_operation_id,
+                    owner_character_id,
+                    loot_group_id)
                 values (
                     @CorpseId,
                     @SourceType,
@@ -67,7 +71,9 @@ internal static class DurableCorpseRecords
                     @PresentationKey,
                     @InitialRevision,
                     now() + make_interval(secs => @LifetimeSeconds),
-                    @ExpiryOperationId)
+                    @ExpiryOperationId,
+                    @OwnerCharacterId,
+                    @LootGroupId)
                 returning
                     created_at as "CreatedAt",
                     expires_at as "ExpiresAt";
@@ -90,7 +96,9 @@ internal static class DurableCorpseRecords
                     PresentationKey = presentationKey,
                     InitialRevision = initialRevision,
                     LifetimeSeconds = lifetimeSeconds,
-                    ExpiryOperationId = expiryOperationId
+                    ExpiryOperationId = expiryOperationId,
+                    OwnerCharacterId = ownerCharacterId,
+                    LootGroupId = lootGroupId
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));

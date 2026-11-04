@@ -28,6 +28,13 @@ public sealed class LiveMobCorpseInteractionService(
                 "Synthetic development sessions cannot interact with live Mob corpses."));
         }
 
+        if (corpseStore.TryGetActive(intent.CorpseId, out var owned)
+            && owned is not null
+            && !CorpseLootRights.CanLoot(owned, session.CharacterId))
+        {
+            return Task.FromResult(NotLootable(intent));
+        }
+
         var snapshot = corpseStore.CreateSnapshot(intent.CorpseId);
         if (snapshot is not null
             && !string.Equals(snapshot.ShardId, session.ShardId, StringComparison.Ordinal))
@@ -103,6 +110,11 @@ public sealed class LiveMobCorpseInteractionService(
                 "wrong_simulation_worker",
                 "The live Mob corpse belongs to another Shard.",
                 shouldCloseView: true);
+        }
+
+        if (!CorpseLootRights.CanLoot(corpse, session.CharacterId))
+        {
+            return NotLootable(intent);
         }
 
         if (intent.ExpectedCorpseRevision != corpse.Revision
@@ -211,6 +223,11 @@ public sealed class LiveMobCorpseInteractionService(
                 shouldCloseView: true);
         }
 
+        if (!CorpseLootRights.CanLoot(corpse, session.CharacterId))
+        {
+            return NotLootable(intent);
+        }
+
         if (intent.ExpectedCorpseRevision != corpse.Revision)
         {
             return SimulationCorpseInteractionResult.Rejected(
@@ -260,6 +277,16 @@ public sealed class LiveMobCorpseInteractionService(
         return SimulationCorpseInteractionResult.Committed(
             intent,
             new CorpseMutationResponse(response.Value.Transaction, snapshot));
+    }
+
+    // Only the player the Mob credited may see or take its loot.
+    private static SimulationCorpseInteractionResult NotLootable(RealtimeCorpseInteractionIntent intent)
+    {
+        return SimulationCorpseInteractionResult.Rejected(
+            intent,
+            RealtimeCorpseViewClosureCodes.NotLootable,
+            "Another player tagged this Mob, so only they may loot it.",
+            shouldCloseView: true);
     }
 
     private static SimulationCorpseInteractionResult FromError(

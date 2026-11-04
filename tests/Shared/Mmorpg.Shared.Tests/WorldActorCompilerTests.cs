@@ -472,6 +472,40 @@ public sealed class WorldActorCompilerTests
     }
 
     [Fact]
+    public void AMobNeedsAKillCreditAndOtherActorsHaveNone()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        var wolf = actors.Actors.Single(value => value.Id == "mob.feral_wolf");
+        var alpha = actors.Actors.Single(value => value.Id == "mob.feral_alpha");
+        var npc = actors.Actors.Single(value => value.Id == "npc.city_guard");
+        wolf.KillCredit = string.Empty;
+        alpha.KillCredit = "everyone";
+        npc.KillCredit = WorldActorKillCreditIds.Tag;
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns()));
+
+        Assert.Contains(exception.Errors, value => value.EndsWith(".killCredit is required.", StringComparison.Ordinal));
+        Assert.Contains(exception.Errors, value => value.Contains("killCredit has unsupported value 'everyone'", StringComparison.Ordinal));
+        Assert.Contains(exception.Errors, value => value.Contains("killCredit must be empty", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheCheckedInMobsCreditTheirTaggerAndTheBossItsContributors()
+    {
+        var runtime = WorldActorTestData.Compile();
+
+        Assert.All(
+            runtime.Actors.Where(actor => actor.Kind == WorldActorKindIds.Mob),
+            actor => Assert.Equal(
+                actor.Id == "mob.feral_alpha" ? WorldActorKillCreditIds.Contributors : WorldActorKillCreditIds.Tag,
+                actor.KillCredit));
+        Assert.All(
+            runtime.Actors.Where(actor => actor.Kind != WorldActorKindIds.Mob),
+            actor => Assert.Equal(string.Empty, actor.KillCredit));
+    }
+
+    [Fact]
     public void DuplicateContentAndSpawnIdsFailValidation()
     {
         var actors = WorldActorTestData.LoadActors();

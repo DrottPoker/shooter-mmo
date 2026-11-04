@@ -274,7 +274,9 @@ internal sealed record CreatePersistentMobCorpseCommand(
     string PresentationKey,
     double LifetimeSeconds,
     int WorkerHeartbeatTimeoutSeconds,
-    IReadOnlyList<MobCorpseLootEntryRequest> Loot);
+    IReadOnlyList<MobCorpseLootEntryRequest> Loot,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? OwnerCharacterId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? LootGroupId = null);
 
 internal sealed record GrantMobLootCommand(
     Guid CharacterId,

@@ -58,7 +58,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 | Death and corpses | Death partition, durable player corpses, live and durable Mob corpses, concurrent looting, Loot all | Final corpse presentation |
 | Economy | Gold with a ledger, one NPC vendor with fixed prices | More vendors, player trading, auction house |
 | Gathering and professions | Mining and woodcutting on shared nodes | Profession levels, crafting |
-| Combat and Mobs | Target-based combat with four weapon families, windups, arrows, mana, wolves with brains, death events, respawn | Mob tagging with kill credit and loot rights, abilities, the combat triangle, threat, Mob abilities |
+| Combat and Mobs | Target-based combat with four weapon families, windups, arrows, mana, wolves with brains, death events, respawn, Mob tagging with loot rights, world bosses that give every contributor their own loot | Abilities, the combat triangle, threat, Mob abilities |
 | Quests | One configured quest that grants and removes a protected quest item | Quest content with steps, objectives, chains, and rewards, the quest log, and Quest Studio, as [Quest System Design](QUEST_SYSTEM_DESIGN.md) plans |
 | Character visuals | Human bodies with looks, garments, hair, cloth, and carried weapons and tools, all from the art pipeline | More races and body types, final art |
 | Operations | OpenTelemetry metrics, logs, and traces, local monitoring stack, stress tools, active bots | Alert notifications, staging and production deployment |

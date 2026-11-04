@@ -62,6 +62,7 @@ internal sealed partial class CorpseService
                 transaction,
                 corpseId,
                 request.ShardId,
+                request.CharacterId,
                 cancellationToken);
             if (loaded.Snapshot is null)
             {
@@ -396,6 +397,7 @@ internal sealed partial class CorpseService
                 transaction,
                 corpseId,
                 shardId,
+                null,
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return result.Snapshot;
@@ -456,11 +458,14 @@ internal sealed partial class CorpseService
                 "The simulation worker no longer owns the requested Shard assignment.");
     }
 
+    // A viewer may only see a corpse it may loot; the committed view after a mutation that
+    // already passed that check names no viewer.
     private static async Task<SnapshotLoadResult> LoadSnapshotAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid corpseId,
         string shardId,
+        Guid? viewerCharacterId,
         CancellationToken cancellationToken)
     {
         var corpse = await connection.QuerySingleOrDefaultAsync<CorpseViewRow>(
@@ -480,6 +485,8 @@ internal sealed partial class CorpseService
                     expires_at as "ExpiresAt",
                     closed_at as "ClosedAt",
                     close_reason as "CloseReason",
+                    owner_character_id as "OwnerCharacterId",
+                    loot_group_id as "LootGroupId",
                     expires_at <= now() as "IsExpired"
                 from corpses
                 where id = @CorpseId;
@@ -514,6 +521,15 @@ internal sealed partial class CorpseService
             return SnapshotLoadResult.Failed(
                 ItemTransactionErrorCodes.CorpseInvalidated,
                 "The corpse is no longer available for interaction.");
+        }
+
+        if (viewerCharacterId is { } viewer
+            && corpse.OwnerCharacterId is { } owner
+            && owner != viewer)
+        {
+            return SnapshotLoadResult.Failed(
+                ItemTransactionErrorCodes.CorpseNotLootable,
+                "Another player tagged this Mob, so only they may loot it.");
         }
 
         var rows = (await connection.QueryAsync<CorpseViewSlotRow>(new CommandDefinition(
@@ -649,7 +665,11 @@ internal sealed partial class CorpseService
             corpse.CreatedAt,
             corpse.ExpiresAt,
             sections,
-            presentations));
+            presentations)
+        {
+            OwnerCharacterId = corpse.OwnerCharacterId,
+            LootGroupId = corpse.LootGroupId
+        });
     }
 
     private static SnapshotError? ValidateSimulationRequest(
@@ -776,7 +796,8 @@ internal sealed partial class CorpseService
                 ServiceResult<CorpseViewSnapshotResponse>.Unauthorized(
                     error.Code,
                     error.Message),
-            ItemTransactionErrorCodes.WrongSimulationWorker =>
+            ItemTransactionErrorCodes.WrongSimulationWorker or
+            ItemTransactionErrorCodes.CorpseNotLootable =>
                 ServiceResult<CorpseViewSnapshotResponse>.Forbidden(
                     error.Code,
                     error.Message),
@@ -841,6 +862,10 @@ internal sealed partial class CorpseService
         public DateTime? ClosedAt { get; set; }
 
         public string? CloseReason { get; set; }
+
+        public Guid? OwnerCharacterId { get; set; }
+
+        public Guid? LootGroupId { get; set; }
 
         public bool IsExpired { get; set; }
     }

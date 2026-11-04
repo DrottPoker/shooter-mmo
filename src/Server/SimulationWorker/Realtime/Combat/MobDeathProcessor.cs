@@ -9,15 +9,36 @@ using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-internal sealed record MobCorpseCreated(MobDeath Death, MobCorpseCreationResult Result)
+internal sealed record MobCorpseCreated(MobDeath Death, MobDeathCorpse Corpse, MobCorpseCreationResult Result)
     : RealtimeOperationResult(RealtimePeerContext.System);
+
+// One corpse that a Mob death leaves: the loot of one credited player, or loot for everyone.
+internal sealed class MobDeathCorpse(
+    Guid corpseId,
+    Guid? ownerCharacterId,
+    IReadOnlyList<MobCorpseLootSeed> loot)
+{
+    public Guid CorpseId { get; } = corpseId;
+
+    public Guid? OwnerCharacterId { get; } = ownerCharacterId;
+
+    public IReadOnlyList<MobCorpseLootSeed> Loot { get; } = loot;
+
+    public int Attempts { get; set; }
+
+    public uint? RetryAtTick { get; set; }
+
+    // Created, or never to be created.
+    public bool Finished { get; set; }
+}
 
 // One Mob death between its lethal hit and its despawn.
 internal sealed class MobDeath(
     Combatant combatant,
     WorldActorRuntimeState actor,
     Guid deathEventId,
-    IReadOnlyList<MobCorpseLootSeed> loot)
+    IReadOnlyList<MobKillCredit> credits,
+    IReadOnlyList<MobDeathCorpse> corpses)
 {
     public Combatant Combatant { get; } = combatant;
 
@@ -25,18 +46,24 @@ internal sealed class MobDeath(
 
     public Guid DeathEventId { get; } = deathEventId;
 
-    public IReadOnlyList<MobCorpseLootSeed> Loot { get; } = loot;
+    // The players the Mob credits with its kill.
+    public IReadOnlyList<MobKillCredit> Credits { get; } = credits;
 
-    public int Attempts { get; set; }
+    // Every corpse of the death shares it, so every viewer sees one body.
+    public Guid LootGroupId => MobDeathProcessor.LootGroupIdOf(DeathEventId);
 
-    public uint? RetryAtTick { get; set; }
+    public IReadOnlyList<MobDeathCorpse> Corpses { get; } = corpses;
+
+    public bool IsFinished => Corpses.All(corpse => corpse.Finished);
 }
 
-// Turns a dead Mob into its corpse and its respawn: the loot profile is rolled, the
-// corpse is created with that loot (a live corpse on the worker or a durable one in
-// GameService, which retries with the same death event id until it commits), the actor
-// despawns, and its spawn instance respawns after the respawn profile's delay. A Mob
-// whose roll is empty leaves no corpse. Loop-confined; corpse creation runs off the loop.
+// Turns a dead Mob into its corpses and its respawn. A tagged Mob leaves one corpse for the
+// player it credits, a world boss with contributor credit one for every credited player, each
+// with a roll of its own, and a Mob that credits no one one for everyone. A corpse is live on
+// the worker or durable in GameService, which retries with the same corpse id until it
+// commits. Once every corpse exists, the actor despawns, and its spawn instance respawns after
+// the respawn profile's delay. A death whose rolls are empty leaves no corpse. Loop-confined;
+// corpse creation runs off the loop.
 internal sealed class MobDeathProcessor(
     SimulationWorkerConfig config,
     RealtimeSimulationClock clock,
@@ -69,7 +96,13 @@ internal sealed class MobDeathProcessor(
 
     public int PendingDeaths => deaths.Count;
 
-    public void Begin(Combatant combatant, SimulationDeathKillerRequest? killer)
+    // The corpse of a death that leaves one, and the id that every corpse of the death shares.
+    public static Guid LootGroupIdOf(Guid deathEventId)
+    {
+        return ScopedGuid.Create("mob-corpse", deathEventId);
+    }
+
+    public void Begin(Combatant combatant, IReadOnlyList<MobKillCredit> credits)
     {
         var actor = combatant.Actor!;
         if (deaths.ContainsKey(actor.RuntimeActorId))
@@ -77,15 +110,14 @@ internal sealed class MobDeathProcessor(
             return;
         }
 
-        var lootProfile = string.IsNullOrEmpty(actor.Definition.LootProfileId)
-            ? null
-            : loot.GetValueOrDefault(actor.Definition.LootProfileId);
+        var deathEventId = ScopedGuid.Create("mob-death", actor.RuntimeActorId);
         var death = new MobDeath(
             combatant,
             actor,
-            ScopedGuid.Create("mob-death", actor.RuntimeActorId),
-            MobLootRoller.Roll(lootProfile, random));
-        if (death.Loot.Count == 0 || corpses is null)
+            deathEventId,
+            credits,
+            PlanCorpses(actor, deathEventId, credits));
+        if (death.Corpses.Count == 0 || corpses is null)
         {
             // Viewers receive the lethal hit and the death before the despawn.
             despawnsAfterFlush.Add(death);
@@ -93,7 +125,10 @@ internal sealed class MobDeathProcessor(
         }
 
         deaths.Add(actor.RuntimeActorId, death);
-        Create(death);
+        foreach (var corpse in death.Corpses)
+        {
+            Create(death, corpse);
+        }
     }
 
     // Retries durable corpses that did not commit yet.
@@ -108,10 +143,15 @@ internal sealed class MobDeathProcessor(
         deathBuffer.AddRange(deaths.Values);
         foreach (var death in deathBuffer)
         {
-            if (death.RetryAtTick is { } retry && CombatTicks.IsReached(clock.ServerTick, retry))
+            foreach (var corpse in death.Corpses)
             {
-                death.RetryAtTick = null;
-                Create(death);
+                if (!corpse.Finished
+                    && corpse.RetryAtTick is { } retry
+                    && CombatTicks.IsReached(clock.ServerTick, retry))
+                {
+                    corpse.RetryAtTick = null;
+                    Create(death, corpse);
+                }
             }
         }
     }
@@ -148,29 +188,37 @@ internal sealed class MobDeathProcessor(
             return;
         }
 
+        var corpse = created.Corpse;
         if (created.Result.Succeeded)
         {
-            deaths.Remove(death.Actor.RuntimeActorId);
-            Despawn(death);
-            return;
+            corpse.Finished = true;
         }
-
-        var error = created.Result.Error!;
-        logger.LogWarning(
-            "[SIMULATION] The corpse of Mob {ActorDefinitionId} ({RuntimeActorId}) was not created on attempt {Attempt}: {Code}.",
-            death.Actor.Definition.Id,
-            death.Actor.RuntimeActorId,
-            death.Attempts,
-            error.Code);
-        if (error.Code is "mob_corpse_source_invalid" or "mob_corpse_authority_invalid" or "mob_corpse_persistence_invalid")
+        else
         {
-            // The Mob can never get this corpse, so it leaves without one.
-            deaths.Remove(death.Actor.RuntimeActorId);
-            Despawn(death);
-            return;
+            var error = created.Result.Error!;
+            logger.LogWarning(
+                "[SIMULATION] Corpse {CorpseId} of Mob {ActorDefinitionId} ({RuntimeActorId}) was not created on attempt {Attempt}: {Code}.",
+                corpse.CorpseId,
+                death.Actor.Definition.Id,
+                death.Actor.RuntimeActorId,
+                corpse.Attempts,
+                error.Code);
+            if (error.Code is "mob_corpse_source_invalid" or "mob_corpse_authority_invalid" or "mob_corpse_persistence_invalid")
+            {
+                // The Mob can never get this corpse, so it leaves without it.
+                corpse.Finished = true;
+            }
+            else
+            {
+                corpse.RetryAtTick = clock.ServerTick + Backoff(corpse.Attempts);
+            }
         }
 
-        death.RetryAtTick = clock.ServerTick + Backoff(death.Attempts);
+        if (death.IsFinished)
+        {
+            deaths.Remove(death.Actor.RuntimeActorId);
+            Despawn(death);
+        }
     }
 
     public void Clear()
@@ -180,19 +228,65 @@ internal sealed class MobDeathProcessor(
         pendingRespawns.Clear();
     }
 
-    private void Create(MobDeath death)
+    // A tagged Mob, and a Mob that credits no one, leave one corpse with the id of the death's
+    // loot group. A world boss with contributor credit leaves one for every credited player, in
+    // character id order, so the rolls are reproducible.
+    private IReadOnlyList<MobDeathCorpse> PlanCorpses(
+        WorldActorRuntimeState actor,
+        Guid deathEventId,
+        IReadOnlyList<MobKillCredit> credits)
     {
-        death.Attempts++;
-        operationTracker.Track(CreateAsync(death));
+        var lootProfile = string.IsNullOrEmpty(actor.Definition.LootProfileId)
+            ? null
+            : loot.GetValueOrDefault(actor.Definition.LootProfileId);
+        var personal = credits.Count > 0
+            && string.Equals(actor.Definition.KillCredit, WorldActorKillCreditIds.Contributors, StringComparison.Ordinal);
+        if (!personal)
+        {
+            var shared = MobLootRoller.Roll(lootProfile, random);
+            return shared.Count == 0
+                ? []
+                : [new MobDeathCorpse(
+                    LootGroupIdOf(deathEventId),
+                    credits.Count == 1 ? credits[0].CharacterId : null,
+                    shared)];
+        }
+
+        var planned = new List<MobDeathCorpse>(credits.Count);
+        foreach (var credit in credits)
+        {
+            var own = MobLootRoller.Roll(lootProfile, random);
+            if (own.Count > 0)
+            {
+                planned.Add(new MobDeathCorpse(
+                    ScopedGuid.Create("mob-corpse:" + credit.CharacterId.ToString("N"), deathEventId),
+                    credit.CharacterId,
+                    own));
+            }
+        }
+
+        return planned;
     }
 
-    private async Task CreateAsync(MobDeath death)
+    private void Create(MobDeath death, MobDeathCorpse corpse)
+    {
+        corpse.Attempts++;
+        operationTracker.Track(CreateAsync(death, corpse));
+    }
+
+    private async Task CreateAsync(MobDeath death, MobDeathCorpse corpse)
     {
         MobCorpseCreationResult result;
         try
         {
             result = await corpses!.CreateAsync(
-                new CreateMobCorpseRequest(death.DeathEventId, death.Actor.RuntimeActorId, death.Loot),
+                new CreateMobCorpseRequest(
+                    death.DeathEventId,
+                    corpse.CorpseId,
+                    death.LootGroupId,
+                    death.Actor.RuntimeActorId,
+                    corpse.Loot,
+                    corpse.OwnerCharacterId),
                 CancellationToken.None);
         }
         catch (Exception exception)
@@ -206,7 +300,7 @@ internal sealed class MobDeathProcessor(
                 "SimulationWorker could not create the Mob corpse."));
         }
 
-        completions.Post(this, new MobCorpseCreated(death, result));
+        completions.Post(this, new MobCorpseCreated(death, corpse, result));
     }
 
     // The actor leaves every view, and its spawn instance returns after the delay.

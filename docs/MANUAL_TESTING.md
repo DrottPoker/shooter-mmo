@@ -1346,6 +1346,30 @@ Seconds` of each Mob.
    Alpha's corpse lies where it died with the same loot, and it expires 10
    minutes after the kill.
 
+### Tagged Mobs
+
+Join one character in the Editor and another in the
+[second client](#add-a-second-client), both with a Training Shortbow and Bronze
+Arrows, and walk both to the Feral Wolves in the wolf woods of Development World
+2.
+
+1. Shoot a wolf with the first character. Expected result: in the second client
+   the wolf's nameplate bar turns grey, while it stays red in the first.
+2. Shoot the same wolf with the second character too, until it dies. Expected
+   result: the first character's corpse menu offers `Loot Corpse of Feral Wolf`,
+   while the second client's right-click menu on the corpse offers only
+   `Examine Corpse of Feral Wolf` and `Walk here`. The first character opens and
+   loots the corpse as usual.
+3. Shoot a wolf with the first character and run away until the wolf gives up
+   and walks home. Expected result: the grey bar in the second client turns red
+   again as the wolf turns home, and the next player to hit it tags it.
+4. Fight the Feral Alpha with both characters until it dies; `Invulnerable`
+   from the Admin menu helps. Expected result: the Alpha's nameplate never turns
+   grey, and each character finds one Alpha corpse that it may loot, with its
+   own loot. A third character that did not fight sees one corpse that offers
+   only `Examine`. After a SimulationWorker restart, each character still finds
+   its own corpse.
+
 ### Loot All
 
 Create a durable corpse at `(0, 0, -10)` from a second offline character, as

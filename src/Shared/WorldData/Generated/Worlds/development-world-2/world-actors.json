@@ -1,8 +1,8 @@
 {
-  "formatVersion": 6,
+  "formatVersion": 7,
   "catalogId": "core",
   "worldId": "development-world-2",
-  "revision": "ffc87fb76498ae7bd57e505f84aac93c5208da9c6f20d633c742b45a8c6caba6",
+  "revision": "ac4fdb9575126f941322a7a54c70ebb49015972f6f7601b4a1d9f1e684dd5643",
   "factions": [
     {
       "id": "city",
@@ -254,7 +254,8 @@
       "brainProfileId": "mob.aggressive_boss",
       "locomotionProfileId": "mob.large_quadruped",
       "lootProfileId": "mob.feral_alpha",
-      "structuralFingerprint": "457b8e733360dd7a3695566daaa7e919f7d076164f5147640690655b8b72aad5"
+      "killCredit": "contributors",
+      "structuralFingerprint": "45163e5284090d795d1f75de70661949f571ac5a0371d37ef29892b185a57151"
     },
     {
       "id": "mob.feral_wolf",
@@ -295,7 +296,8 @@
       "brainProfileId": "mob.aggressive",
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
-      "structuralFingerprint": "e64f2e1b5bb740c6031305ac5d7e6a10be58f42e25aa27e93c67e17545da3812"
+      "killCredit": "tag",
+      "structuralFingerprint": "921c0af7133920fa66eda50121717836c6dd5d2b2ad2bcce83434b349717eb41"
     },
     {
       "id": "mob.grey_wolf",
@@ -336,7 +338,8 @@
       "brainProfileId": "mob.defensive",
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
-      "structuralFingerprint": "f62794d1b71ccfb48a7c9b176ddf0a5769c673a2959a4473dfd75d0be70ae034"
+      "killCredit": "tag",
+      "structuralFingerprint": "9237f0aeaabf5b4299c3fee7b948ac017319c6f0581768e58d31189efc19b792"
     },
     {
       "id": "npc.city_guard",
@@ -394,7 +397,8 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "c1b497fbeec69d7566220d7076f3b8fe17d52548df8c79aad69fe28579573383"
+      "killCredit": "",
+      "structuralFingerprint": "2067ecda82a8231257be27fbbed8fd2822abd3006d8c1716dd78139dcdf2c4b4"
     },
     {
       "id": "npc.city_services",
@@ -500,7 +504,8 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "1df8c9a6ea03c76b2179ac5af3bb912c163ff243280f5b507f48a9e6ee6ec763"
+      "killCredit": "",
+      "structuralFingerprint": "a09f2f95f7870b1a821743175840f95095f9003101366ef5f77a9308575ba981"
     },
     {
       "id": "resource.iron_vein",
@@ -550,7 +555,8 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "38c01fcc01c97f23523960feb5bf0353f7587d097ab7c145ff171ebe6cc18c2e"
+      "killCredit": "",
+      "structuralFingerprint": "ffb85eca774bdef58d9af6b3db792e686152489793842f6eba4fbf9bf8f145d2"
     },
     {
       "id": "resource.oak_tree",
@@ -600,7 +606,8 @@
       "brainProfileId": "",
       "locomotionProfileId": "",
       "lootProfileId": "",
-      "structuralFingerprint": "8007e6f2d8d10c1c6e70c0a0f08ca816d4004ae9b5d3529984c9bf0868b96140"
+      "killCredit": "",
+      "structuralFingerprint": "37f443ad659c891a336d7f121ab19ce8db72728c628f9198acd882bdc0873ec0"
     }
   ],
   "spawnSources": [

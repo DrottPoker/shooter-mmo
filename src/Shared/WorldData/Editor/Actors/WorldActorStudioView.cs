@@ -50,6 +50,12 @@ namespace Mmorpg.WorldData.Editor.Actors
             (WorldActorCorpsePersistenceModeIds.Durable, "Durable")
         };
 
+        private static readonly (string Value, string Label)[] KillCredits =
+        {
+            (WorldActorKillCreditIds.Tag, "Tagger"),
+            (WorldActorKillCreditIds.Contributors, "Contributors")
+        };
+
         private static readonly (string Value, string Label)[] CapabilityKinds =
         {
             (WorldActorCapabilityKindIds.Dialogue, "Dialogue"),
@@ -662,6 +668,9 @@ namespace Mmorpg.WorldData.Editor.Actors
             section.Add(lifetime);
             section.Add(ContentToolStyles.CreateHint(
                 "Live corpses remain worker-owned and may disappear on restart. Durable corpses use PostgreSQL custody and restart restoration."));
+            section.Add(form.Choice("Kill Credit", "killCredit", () => KillCredits, actor => actor.killCredit, (actor, value) => actor.killCredit = value, isMob));
+            section.Add(ContentToolStyles.CreateHint(
+                "Tagger: the first player who damages the Mob gets the credit and alone may loot its corpse. Contributors, for world bosses: every player who damaged it nearby gets the credit and a loot roll of their own."));
             return section;
         }
 
@@ -887,6 +896,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 actor.brainProfileId = string.Empty;
                 actor.locomotionProfileId = string.Empty;
                 actor.lootProfileId = string.Empty;
+                actor.killCredit = string.Empty;
                 actor.collisionBounds = kind == WorldActorKindIds.ResourceNode
                     ? DefaultResourceNodeCollision()
                     : WorldActorEditorBounds.None();
@@ -924,6 +934,9 @@ namespace Mmorpg.WorldData.Editor.Actors
                     ? workspace.Catalog.locomotionProfiles?.FirstOrDefault()?.id ?? string.Empty
                     : actor.locomotionProfileId;
                 actor.lootProfileId = actor.lootProfileId ?? string.Empty;
+                actor.killCredit = string.IsNullOrEmpty(actor.killCredit)
+                    ? WorldActorKillCreditIds.Tag
+                    : actor.killCredit;
             }
 
             var presentationKind = workspace.Catalog.presentationArchetypes?.FirstOrDefault(value =>
@@ -1020,7 +1033,8 @@ namespace Mmorpg.WorldData.Editor.Actors
                 combatProfileId = npc ? string.Empty : workspace.Catalog.combatProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 brainProfileId = npc ? string.Empty : workspace.Catalog.brainProfiles?.FirstOrDefault()?.id ?? string.Empty,
                 locomotionProfileId = npc ? string.Empty : workspace.Catalog.locomotionProfiles?.FirstOrDefault()?.id ?? string.Empty,
-                lootProfileId = string.Empty
+                lootProfileId = string.Empty,
+                killCredit = npc ? string.Empty : WorldActorKillCreditIds.Tag
             };
         }
 
@@ -1057,7 +1071,8 @@ namespace Mmorpg.WorldData.Editor.Actors
                 combatProfileId = string.Empty,
                 brainProfileId = string.Empty,
                 locomotionProfileId = string.Empty,
-                lootProfileId = string.Empty
+                lootProfileId = string.Empty,
+                killCredit = string.Empty
             };
             node.capabilities = new[] { CreateGatheringCapability(node) };
             return node;

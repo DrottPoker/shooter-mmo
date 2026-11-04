@@ -10,17 +10,22 @@ public static class CorpseRealtimePacketBuilder
     private const int MaximumTargetedSlots = 8;
 
     // A player corpse carries its look with the items of its visible equipment slots, in their
-    // order; without visible slots it wears nothing.
+    // order; without visible slots it wears nothing. Every corpse says whether the viewer may
+    // loot it.
     public static IReadOnlyList<RealtimeCorpsePresenceSnapshotChunk> BuildPresence(
         uint sequence,
         IReadOnlyList<ICorpseRuntimePresence> corpses,
+        Guid viewerCharacterId,
         IReadOnlyList<string>? visibleEquipmentSlots = null)
     {
         ArgumentNullException.ThrowIfNull(corpses);
         var visible = visibleEquipmentSlots ?? [];
         var entries = corpses
             .OrderBy(corpse => corpse.CorpseId)
-            .Select(corpse => Presence(corpse, AppearanceOf(corpse.Look, visible)))
+            .Select(corpse => Presence(
+                corpse,
+                AppearanceOf(corpse.Look, visible),
+                CorpseLootRights.CanLoot(corpse, viewerCharacterId)))
             .Select(entry => FitsPresencePacket(sequence, [entry])
                 ? entry
                 : WithoutAppearance(entry))
@@ -62,7 +67,10 @@ public static class CorpseRealtimePacketBuilder
         return chunks;
     }
 
-    private static RealtimeCorpsePresence Presence(ICorpseRuntimePresence corpse, RealtimeCharacterAppearance? appearance)
+    private static RealtimeCorpsePresence Presence(
+        ICorpseRuntimePresence corpse,
+        RealtimeCharacterAppearance? appearance,
+        bool isLootable)
     {
         return new RealtimeCorpsePresence(
             corpse.CorpseId,
@@ -72,6 +80,7 @@ public static class CorpseRealtimePacketBuilder
             corpse.YawDegrees,
             ToUnixMilliseconds(corpse.ExpiresAt),
             corpse.IsEmpty,
+            isLootable,
             corpse.SourceDisplayName,
             corpse.PresentationKey,
             appearance);
@@ -88,6 +97,7 @@ public static class CorpseRealtimePacketBuilder
             entry.YawDegrees,
             entry.ExpiresAtUnixMilliseconds,
             entry.IsEmpty,
+            entry.IsLootable,
             entry.SourceDisplayName,
             entry.PresentationKey,
             null);

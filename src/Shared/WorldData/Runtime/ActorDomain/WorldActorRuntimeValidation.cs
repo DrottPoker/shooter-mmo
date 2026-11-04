@@ -650,6 +650,11 @@ namespace Mmorpg.WorldData.Actors
                         SupportedCorpsePersistenceModes,
                         "runtime actor corpsePersistenceMode",
                         errors);
+                    ValidateSupported(
+                        value.KillCredit,
+                        SupportedKillCredits,
+                        "runtime actor killCredit",
+                        errors);
                     if (!IsFinite(value.CorpseLifetimeSeconds)
                         || value.CorpseLifetimeSeconds
                             < WorldActorCorpseRules.MinimumLifetimeSeconds
@@ -679,6 +684,10 @@ namespace Mmorpg.WorldData.Actors
                     ValidateOptionalEmpty(
                         value.CorpsePersistenceMode,
                         "runtime actor corpsePersistenceMode",
+                        errors);
+                    ValidateOptionalEmpty(
+                        value.KillCredit,
+                        "runtime actor killCredit",
                         errors);
                     ValidateOptionalEmpty(
                         value.CombatProfileId,

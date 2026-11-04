@@ -48,8 +48,11 @@ public sealed class MobCorpseLifecycleServiceTests
             identity,
             timeProvider);
         var deathEventId = Guid.NewGuid();
+        var corpseId = Guid.NewGuid();
         var request = new CreateMobCorpseRequest(
             deathEventId,
+            corpseId,
+            corpseId,
             wolf.RuntimeActorId,
             [new MobCorpseLootSeed("fixture.ore", 2)]);
 
@@ -62,6 +65,7 @@ public sealed class MobCorpseLifecycleServiceTests
         Assert.Null(first.DurableCorpse);
         Assert.Equal(TimeSpan.FromSeconds(120),
             first.LiveCorpse.ExpiresAt - first.LiveCorpse.CreatedAt);
+        Assert.Equal(corpseId, first.LiveCorpse.CorpseId);
         Assert.Equal(first.LiveCorpse.CorpseId, replay.LiveCorpse!.CorpseId);
         Assert.Equal(
             Assert.Single(first.LiveCorpse.Loot).GrantId,
@@ -70,6 +74,51 @@ public sealed class MobCorpseLifecycleServiceTests
         // The corpse lies as the wolf fell: its own model, turned as it died.
         Assert.Equal("corpse." + wolf.Definition.PresentationArchetypeId, first.LiveCorpse.PresentationKey);
         Assert.Equal(137f, first.LiveCorpse.YawDegrees);
+    }
+
+    // A durable corpse, as a boss keeps, goes to GameService with its owner and loot group.
+    [Fact]
+    public async Task ADurableMobCorpseNamesItsOwnerToGameService()
+    {
+        var runtime = WorldActorTestData.Compile();
+        runtime.Actors.Single(actor => actor.Id == "mob.feral_wolf").CorpsePersistenceMode = "durable";
+        var actorStore = new WorldActorStore(runtime, new SimulationEntityRegistry(), Guid.NewGuid);
+        var identity = new SimulationWorkerIdentity("tagging-runtime", DateTime.UtcNow);
+        var actors = actorStore.ActivateAssignment(
+            "development-world-1",
+            "local-shard-1",
+            identity.RuntimeId);
+        var wolf = actors.First(actor => actor.Definition.Id == "mob.feral_wolf");
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        var handler = new RecordingHttpHandler();
+        var service = new MobCorpseLifecycleService(
+            actorStore,
+            new LiveMobCorpseStore(timeProvider),
+            new DurableCorpseStore(timeProvider),
+            new GameServiceClient(new HttpClient(handler)
+            {
+                BaseAddress = new Uri("http://localhost")
+            }),
+            LoadConfig(),
+            identity,
+            timeProvider);
+        var tagger = Guid.NewGuid();
+
+        var lootGroupId = Guid.NewGuid();
+
+        await service.CreateAsync(
+            new CreateMobCorpseRequest(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                lootGroupId,
+                wolf.RuntimeActorId,
+                [new MobCorpseLootSeed("fixture.ore", 2)],
+                tagger),
+            CancellationToken.None);
+
+        using var body = System.Text.Json.JsonDocument.Parse(Assert.Single(handler.Bodies));
+        Assert.Equal(tagger, body.RootElement.GetProperty("ownerCharacterId").GetGuid());
+        Assert.Equal(lootGroupId, body.RootElement.GetProperty("lootGroupId").GetGuid());
     }
 
     private static SimulationWorkerConfig LoadConfig()
@@ -92,6 +141,19 @@ public sealed class MobCorpseLifecycleServiceTests
         public override DateTimeOffset GetUtcNow()
         {
             return utcNow;
+        }
+    }
+
+    private sealed class RecordingHttpHandler : HttpMessageHandler
+    {
+        public List<string> Bodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Bodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
         }
     }
 

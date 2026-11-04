@@ -9,9 +9,10 @@ using UnityEngine.UI;
 namespace Mmorpg.Client.Ui
 {
     // The nameplates over the Mobs near the local character: the Mob's name over a health bar,
-    // red for an aggressive Mob and yellow for a defensive one, with its health as numbers in
-    // the bar and its level, as tall as the bar, to the right of it. The bar and the numbers
-    // slide to every new health value, and a farther nameplate is smaller. It reads the combat
+    // red for an aggressive Mob, yellow for a defensive one, and grey for one another player
+    // tagged, with its health as numbers in the bar and its level, as tall as the bar, to the
+    // right of it. The bar and the numbers slide to every new health value, and a farther
+    // nameplate is smaller. It reads the combat
     // state and the actor views and decides nothing. Its texts are TextMesh Pro world labels.
     // Nameplates have a canvas of their own below the combat HUD, so damage numbers and frames
     // draw over them, and nothing on it takes a raycast. Nearer nameplates draw over farther
@@ -184,6 +185,9 @@ namespace Mmorpg.Client.Ui
             nameplate.Root.gameObject.SetActive(true);
             nameplate.Root.anchoredPosition = local;
             nameplate.Scale(NameplatePresentation.MobNameplateScale(Mathf.Sqrt(sqrDistance)));
+            nameplate.Tint(NameplatePresentation.IsTaggedByOther(
+                state.TaggedByEntityId,
+                combatController.LocalEntityId));
             nameplate.Show(state.Health, state.MaximumHealth, now);
             nameplate.SqrDistance = sqrDistance;
             nameplate.ShownThisFrame = true;
@@ -319,6 +323,8 @@ namespace Mmorpg.Client.Ui
             private int shownMaximum = -1;
             private float shownFraction = -1f;
             private float shownScale = -1f;
+            private RealtimeWorldActorAggression aggression;
+            private bool shownTagged;
 
             public Nameplate(
                 RectTransform root,
@@ -349,16 +355,28 @@ namespace Mmorpg.Client.Ui
             public bool ShownThisFrame { get; set; }
 
             // A pooled nameplate starts over for another Mob.
-            public void Bind(string displayName, int level, RealtimeWorldActorAggression aggression)
+            public void Bind(string displayName, int level, RealtimeWorldActorAggression mobAggression)
             {
                 Name.text = displayName ?? string.Empty;
                 Level.text = NameplatePresentation.LevelText(level);
+                aggression = mobAggression;
+                shownTagged = false;
                 Fill.color = NameplatePresentation.MobHealthColor(aggression);
                 slide.Reset();
                 shownHealth = -1;
                 shownMaximum = -1;
                 shownFraction = -1f;
                 shownScale = -1f;
+            }
+
+            // The bar turns grey while another player owns the Mob's tag.
+            public void Tint(bool taggedByOther)
+            {
+                if (taggedByOther != shownTagged)
+                {
+                    shownTagged = taggedByOther;
+                    Fill.color = NameplatePresentation.MobHealthColor(aggression, taggedByOther);
+                }
             }
 
             // The scale changes only when it does, so a resting nameplate dirties nothing.
