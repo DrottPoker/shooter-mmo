@@ -1,0 +1,43 @@
+{
+    "id": "quest.letter_for_the_outpost",
+    "title": "A Letter for the Outpost",
+    "giverActorId": "npc.city_services",
+    "turnInActorId": "npc.outpost_sergeant",
+    "minimumLevel": 1,
+    "requiredQuestIds": [],
+    "repeatable": false,
+    "tags": [
+        "development"
+    ],
+    "offerText": "This letter must reach the sergeant at the western outpost before nightfall. Follow the road west and hand it over yourself.",
+    "progressText": "You have a letter for me? Let me see it.",
+    "completionText": "Orders from the Quartermaster, sealed and dry. Good work, runner.",
+    "startItems": [
+        {
+            "definitionId": "quest_item.sealed_letter",
+            "quantity": 1
+        }
+    ],
+    "steps": [
+        {
+            "id": "deliver",
+            "objectives": [
+                {
+                    "id": "sealed_letter",
+                    "kind": "collect",
+                    "text": "Sealed Letter delivered",
+                    "count": 1,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "quest_item.sealed_letter",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                }
+            ]
+        }
+    ],
+    "rewardGold": 15,
+    "rewardItems": [],
+    "rewardChoiceItems": []
+}

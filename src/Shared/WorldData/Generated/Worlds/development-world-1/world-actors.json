@@ -2,7 +2,7 @@
   "formatVersion": 7,
   "catalogId": "core",
   "worldId": "development-world-1",
-  "revision": "f0a349f2e61ce1a0cb3f836a3ba5915c55f97610829f89cd976a4f2f74df3991",
+  "revision": "acd8a9e0c72e49a1eece25af29ba921aac2964a5117223c7bb9ee484ae4c95b5",
   "factions": [
     {
       "id": "city",
@@ -506,6 +506,65 @@
       "lootProfileId": "",
       "killCredit": "",
       "structuralFingerprint": "a09f2f95f7870b1a821743175840f95095f9003101366ef5f77a9308575ba981"
+    },
+    {
+      "id": "npc.outpost_sergeant",
+      "displayName": "Sergeant Hale",
+      "examineText": "The sergeant of the western outpost, weathered and watchful.",
+      "kind": "npc",
+      "factionId": "city",
+      "disposition": "friendly",
+      "presentationArchetypeId": "npc.city_guard",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "guard",
+        "outpost"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 1,
+        "centerZ": 0,
+        "sizeX": 0.8,
+        "sizeY": 2,
+        "sizeZ": 0.8
+      },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 0,
+        "centerZ": 0,
+        "sizeX": 0,
+        "sizeY": 0,
+        "sizeZ": 0
+      },
+      "capabilities": [
+        {
+          "id": "sergeant.quest_offer",
+          "kind": "quest_offer",
+          "displayName": "Available Quests",
+          "menuOption": "Quests",
+          "profileId": "",
+          "structuralFingerprint": "e48041ea8c20a2cdd806b1363c125ecf17dff7077eba5dd60b5f83882913ba63"
+        },
+        {
+          "id": "sergeant.quest_turn_in",
+          "kind": "quest_turn_in",
+          "displayName": "Complete Quest",
+          "menuOption": "Turn-in",
+          "profileId": "",
+          "structuralFingerprint": "94a3f8e8538605769fb376c7eda55f8146bb23072022c94d4244a162051af295"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": "",
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0,
+      "level": 0,
+      "combatProfileId": "",
+      "brainProfileId": "",
+      "locomotionProfileId": "",
+      "lootProfileId": "",
+      "killCredit": "",
+      "structuralFingerprint": "81dd3c00158e6baec7ed8220c58a823285c3590e9ce03adf19b5fdc8a1283ce3"
     },
     {
       "id": "resource.iron_vein",

@@ -201,6 +201,7 @@
           "Mmorpg.GameSimulation": "[1.0.0, )",
           "Mmorpg.Testing": "[1.0.0, )",
           "Mmorpg.Tools.ItemCatalogCompiler": "[1.0.0, )",
+          "Mmorpg.Tools.QuestCatalogCompiler": "[1.0.0, )",
           "Mmorpg.Tools.WorldActorCompiler": "[1.0.0, )",
           "Mmorpg.WorldData": "[1.0.0, )",
           "xunit.v3.assert": "[4.0.2, )",
@@ -230,6 +231,13 @@
       },
       "mmorpg.tools.protocolgenerator": {
         "type": "Project"
+      },
+      "mmorpg.tools.questcatalogcompiler": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.Tools.ContentPipeline": "[1.0.0, )",
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
       },
       "mmorpg.tools.simulationbotclient": {
         "type": "Project",

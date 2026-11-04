@@ -1,0 +1,78 @@
+{
+    "id": "quest.the_alpha",
+    "title": "The Alpha",
+    "giverActorId": "npc.outpost_sergeant",
+    "turnInActorId": "npc.outpost_sergeant",
+    "minimumLevel": 1,
+    "requiredQuestIds": [
+        "quest.sergeants_request",
+        "quest.wolves_at_the_gate"
+    ],
+    "repeatable": false,
+    "tags": [
+        "development"
+    ],
+    "offerText": "The pack follows an alpha, a scarred brute that lairs southwest of the woods. Kill it and bring me its fang as proof.",
+    "progressText": "The alpha still lives. I can hear the pack at night.",
+    "completionText": "That is the alpha's fang, no doubt about it. The woods will be quieter now. Take your pick from the armory.",
+    "startItems": [],
+    "steps": [
+        {
+            "id": "hunt",
+            "objectives": [
+                {
+                    "id": "feral_alpha",
+                    "kind": "kill",
+                    "text": "Feral Alpha slain",
+                    "count": 1,
+                    "actorIds": [
+                        "mob.feral_alpha"
+                    ],
+                    "actorTag": "",
+                    "itemId": "",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": []
+                },
+                {
+                    "id": "alpha_fang",
+                    "kind": "collect",
+                    "text": "Alpha's Fang",
+                    "count": 1,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "quest_item.alpha_fang",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": [
+                        {
+                            "actorId": "mob.feral_alpha",
+                            "chanceBasisPoints": 10000,
+                            "quantity": 1
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "rewardGold": 50,
+    "rewardItems": [],
+    "rewardChoiceItems": [
+        {
+            "definitionId": "weapon.iron_sword",
+            "quantity": 1
+        },
+        {
+            "definitionId": "weapon.iron_greataxe",
+            "quantity": 1
+        },
+        {
+            "definitionId": "weapon.oak_staff",
+            "quantity": 1
+        },
+        {
+            "definitionId": "weapon.training_shortbow",
+            "quantity": 1
+        }
+    ]
+}

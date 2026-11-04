@@ -79,6 +79,13 @@
           "Mmorpg.WorldData": "[1.0.0, )"
         }
       },
+      "mmorpg.tools.questcatalogcompiler": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.Tools.ContentPipeline": "[1.0.0, )",
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
       "mmorpg.tools.worldactorcompiler": {
         "type": "Project",
         "dependencies": {

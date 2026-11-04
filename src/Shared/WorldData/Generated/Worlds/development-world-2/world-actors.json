@@ -2,7 +2,7 @@
   "formatVersion": 7,
   "catalogId": "core",
   "worldId": "development-world-2",
-  "revision": "ac4fdb9575126f941322a7a54c70ebb49015972f6f7601b4a1d9f1e684dd5643",
+  "revision": "11cc6da4236ad3c30418202882ecb637f2bfb0f72de73653fe01058ad225c75d",
   "factions": [
     {
       "id": "city",
@@ -508,6 +508,65 @@
       "structuralFingerprint": "a09f2f95f7870b1a821743175840f95095f9003101366ef5f77a9308575ba981"
     },
     {
+      "id": "npc.outpost_sergeant",
+      "displayName": "Sergeant Hale",
+      "examineText": "The sergeant of the western outpost, weathered and watchful.",
+      "kind": "npc",
+      "factionId": "city",
+      "disposition": "friendly",
+      "presentationArchetypeId": "npc.city_guard",
+      "damagePolicy": "invulnerable",
+      "tags": [
+        "guard",
+        "outpost"
+      ],
+      "interactionBounds": {
+        "centerX": 0,
+        "centerY": 1,
+        "centerZ": 0,
+        "sizeX": 0.8,
+        "sizeY": 2,
+        "sizeZ": 0.8
+      },
+      "collisionBounds": {
+        "centerX": 0,
+        "centerY": 0,
+        "centerZ": 0,
+        "sizeX": 0,
+        "sizeY": 0,
+        "sizeZ": 0
+      },
+      "capabilities": [
+        {
+          "id": "sergeant.quest_offer",
+          "kind": "quest_offer",
+          "displayName": "Available Quests",
+          "menuOption": "Quests",
+          "profileId": "",
+          "structuralFingerprint": "e48041ea8c20a2cdd806b1363c125ecf17dff7077eba5dd60b5f83882913ba63"
+        },
+        {
+          "id": "sergeant.quest_turn_in",
+          "kind": "quest_turn_in",
+          "displayName": "Complete Quest",
+          "menuOption": "Turn-in",
+          "profileId": "",
+          "structuralFingerprint": "94a3f8e8538605769fb376c7eda55f8146bb23072022c94d4244a162051af295"
+        }
+      ],
+      "activityProfileId": "",
+      "respawnProfileId": "",
+      "corpsePersistenceMode": "",
+      "corpseLifetimeSeconds": 0,
+      "level": 0,
+      "combatProfileId": "",
+      "brainProfileId": "",
+      "locomotionProfileId": "",
+      "lootProfileId": "",
+      "killCredit": "",
+      "structuralFingerprint": "81dd3c00158e6baec7ed8220c58a823285c3590e9ce03adf19b5fdc8a1283ce3"
+    },
+    {
       "id": "resource.iron_vein",
       "displayName": "Iron Vein",
       "examineText": "A seam of iron ore runs through the rock. A pickaxe would free it.",
@@ -792,6 +851,26 @@
       "structuralFingerprint": "1058465df7b414aad63efb15d3c04c11527ebf639753ea3a2722c1beb46967f4"
     },
     {
+      "id": "development_world_2.outpost_sergeant",
+      "kind": "point",
+      "actorId": "npc.outpost_sergeant",
+      "instanceCount": 1,
+      "patrolPathId": "",
+      "originX": -174,
+      "originY": 0,
+      "originZ": 3,
+      "minimumX": -174,
+      "minimumZ": 3,
+      "maximumX": -174,
+      "maximumZ": 3,
+      "yawDegrees": 90,
+      "rows": 1,
+      "columns": 1,
+      "spacing": 0,
+      "seed": 0,
+      "structuralFingerprint": "e7977d4c898a35532e691c7487f5dc360935539c70ac55871b319f16e105b2c6"
+    },
+    {
       "id": "development_world_2.quarry_vein_far",
       "kind": "point",
       "actorId": "resource.iron_vein",
@@ -1057,6 +1136,17 @@
       "yawDegrees": 90,
       "patrolPathId": "",
       "structuralFingerprint": "6a0be5e2a86272c623bf88f4588efbab38c22f3dbbef8cd138752160fc5b5cc8"
+    },
+    {
+      "id": "development_world_2.outpost_sergeant:0000",
+      "spawnDefinitionId": "development_world_2.outpost_sergeant",
+      "actorId": "npc.outpost_sergeant",
+      "x": -174,
+      "y": 0,
+      "z": 3,
+      "yawDegrees": 90,
+      "patrolPathId": "",
+      "structuralFingerprint": "2277372a212f3c26c2e924d94ca2b5eacee13cf089388da18f734093f732952a"
     },
     {
       "id": "development_world_2.quarry_vein_far:0000",

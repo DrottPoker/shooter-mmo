@@ -18,13 +18,20 @@ Implemented:
 - The `quest_offer` and `quest_turn_in` capability kinds of NPCs and the
   `quest_item` item category.
 - Protected quest items with a quest-grant lineage. One quest that GameService
-  configuration names grants one Sealed Letter when it is accepted at Mira and
-  removes it again when it is abandoned, as
+  configuration names grants one Sealed Letter when it is accepted at any NPC
+  with a `quest_offer` capability and removes it again when it is abandoned, as
   [Protected On Death](INVENTORY_AND_DEATH_LOOT_DESIGN.md#protected-on-death)
   describes. Quest turn-in answers that it is unavailable.
+- Quest content in `content/quests/`, its compiler `tools/QuestCatalogCompiler`
+  with the [validation](#validation) and the [limits](#limits) below, and the
+  shared availability and step rules in WorldData. The checked-in quests are the
+  development chain that [Game Content](../content/README.md#quests) lists. No
+  service loads them yet.
+- A quest NPC is an NPC with a `quest_offer` or `quest_turn_in` capability.
 
 Planned: everything else in this document. Quest content replaces the
-configured quest, and kill credit follows Mob tagging.
+configured quest, one `quests` capability replaces both quest capability kinds,
+and quest kill credit follows Mob tagging.
 
 ## Goals
 
@@ -158,11 +165,13 @@ tracker, and keep every quest message within the realtime packet limit:
 | Steps | 1 to 8 |
 | Objectives per step | 1 to 8 |
 | Required count of an objective | 1 to 1,000 |
+| Actors that an objective names, and its quest drop sources | Up to 8 each |
 | Start items and reward items | Up to 4 each |
 | Reward choices | None, or 2 to 6 |
 | Gold reward | 0 to 1,000,000 |
 | Required quests | Up to 8 |
-| Active quests per character | 25, a setting of the quest catalog |
+| Content tags | Up to 16 |
+| Active quests per character | 25, a setting of the quest catalog from 1 to 100 |
 
 Texts are one paragraph of plain text without control characters, trimmed, and
 written in English like the other content.
@@ -341,14 +350,20 @@ The compiler rejects:
   use.
 - A giver, turn-in NPC, talk-to NPC, or deliver NPC that is not an NPC with a
   `quests` capability.
-- A kill target that is not a Mob, and a tag that no Mob carries.
+- A kill objective that names both Mobs and a tag, or neither, a kill target
+  that is not a Mob, and a tag that no Mob carries.
 - A gather target that is not a resource node.
 - An unknown item, start items and quest drops that are not quest items, reward
   items that are quest items or carry default policies, and a quantity above one
   stack.
 - A collect objective outside the last step, a quest drop source that is not a
   Mob, and a chance outside 1 to 10,000 basis points.
-- A talk-to objective for the turn-in NPC in the last step.
+- A collect objective for a quest item that the quest neither drops nor grants
+  as often as the count asks, and a deliver objective for a quest item that the
+  quest does not grant as often, because the player could never get it.
+- A talk-to objective with a count other than 1, and one for the turn-in NPC in
+  the last step.
+- A field that the objective's kind does not use but that is not empty.
 - An unknown required quest, a cycle of required quests, and a minimum level
   outside 1 to the character level cap.
 - Every NPC, Mob, and resource node a quest needs that no World places, because

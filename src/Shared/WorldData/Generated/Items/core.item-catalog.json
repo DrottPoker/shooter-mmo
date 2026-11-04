@@ -1,7 +1,7 @@
 {
   "formatVersion": 8,
   "catalogId": "core",
-  "revision": "6fd5a31562190ee5051e01f485bd7cd26cfaca6edfd7492a12153c5404c1ed62",
+  "revision": "592ba26fbd987ce37671f8e96d91f16138b64fb33bff129cdb6b0305343db5c0",
   "character": {
     "baseCarryCapacity": 2000,
     "inventorySlotCount": 20,
@@ -723,6 +723,24 @@
       "structuralFingerprint": "18e8cf6b700e269bdf5c485fa5e2d60623be81928cc02c4928b590989e519863"
     },
     {
+      "id": "quest_item.alpha_fang",
+      "displayName": "Alpha\u0027s Fang",
+      "category": "quest_item",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 5,
+      "value": 0,
+      "maximumStackSize": 1,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": false,
+      "defaultPolicies": [
+        "protected_on_death"
+      ],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "aea612748bdcd03bb9070070c45a4a9286cfca201ee83d1feacf7931a1d6e3fd"
+    },
+    {
       "id": "quest_item.sealed_letter",
       "displayName": "Sealed Letter",
       "category": "quest_item",
@@ -739,6 +757,24 @@
       ],
       "requiredCharacterLevel": 1,
       "structuralFingerprint": "822d9e7fa96830059a71513c833d663bdc0f8d9de361bea762aff418bb11b444"
+    },
+    {
+      "id": "quest_item.wolf_fang",
+      "displayName": "Wolf Fang",
+      "category": "quest_item",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 2,
+      "value": 0,
+      "maximumStackSize": 10,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": false,
+      "defaultPolicies": [
+        "protected_on_death"
+      ],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "3e385b5482bca51a4d61872fcb5a60df8cd124fb125b0542ccadf99b5446218b"
     },
     {
       "id": "tool.starter_pickaxe",

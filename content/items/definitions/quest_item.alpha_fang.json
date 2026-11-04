@@ -1,0 +1,20 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "quest_item",
+  "defaultPolicies": [
+    "protected_on_death"
+  ],
+  "displayName": "Alpha's Fang",
+  "equipmentSlots": [ ],
+  "id": "quest_item.alpha_fang",
+  "maximumStackSize": 1,
+  "playerDestroyable": false,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 5,
+  "value": 0,
+  "weapon": null
+}

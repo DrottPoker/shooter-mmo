@@ -103,6 +103,11 @@ namespace Mmorpg.WorldData.Content
             return Path.Combine(contentRoot, "actors");
         }
 
+        public static string QuestsDirectory(string contentRoot)
+        {
+            return Path.Combine(contentRoot, Quests.QuestCatalogFormat.QuestsDirectoryName);
+        }
+
         // The character appearance content: the kinds of a look and what every body model offers.
         public static string CharacterAppearancePath(string contentRoot)
         {
@@ -150,6 +155,11 @@ namespace Mmorpg.WorldData.Content
         public static string GeneratedWorldsDirectory(string generatedRoot)
         {
             return Path.Combine(generatedRoot, "Worlds");
+        }
+
+        public static string GeneratedQuestCatalogPath(string generatedRoot)
+        {
+            return Path.Combine(generatedRoot, "Quests", Quests.QuestCatalogFormat.CatalogFileName);
         }
 
         public static string GeneratedWorldActorsPath(string generatedRoot, string worldId)

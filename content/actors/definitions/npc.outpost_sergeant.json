@@ -1,0 +1,56 @@
+{
+    "id": "npc.outpost_sergeant",
+    "displayName": "Sergeant Hale",
+    "examineText": "The sergeant of the western outpost, weathered and watchful.",
+    "kind": "npc",
+    "factionId": "city",
+    "disposition": "friendly",
+    "presentationArchetypeId": "npc.city_guard",
+    "damagePolicy": "invulnerable",
+    "tags": [
+        "guard",
+        "outpost"
+    ],
+    "interactionBounds": {
+        "centerX": 0.0,
+        "centerY": 1.0,
+        "centerZ": 0.0,
+        "sizeX": 0.8,
+        "sizeY": 2.0,
+        "sizeZ": 0.8
+    },
+    "collisionBounds": {
+        "centerX": 0.0,
+        "centerY": 0.0,
+        "centerZ": 0.0,
+        "sizeX": 0.0,
+        "sizeY": 0.0,
+        "sizeZ": 0.0
+    },
+    "capabilities": [
+        {
+            "id": "sergeant.quest_offer",
+            "kind": "quest_offer",
+            "displayName": "Available Quests",
+            "menuOption": "Quests",
+            "profileId": ""
+        },
+        {
+            "id": "sergeant.quest_turn_in",
+            "kind": "quest_turn_in",
+            "displayName": "Complete Quest",
+            "menuOption": "Turn-in",
+            "profileId": ""
+        }
+    ],
+    "activityProfileId": "",
+    "respawnProfileId": "",
+    "corpsePersistenceMode": "",
+    "corpseLifetimeSeconds": 0.0,
+    "level": 0,
+    "combatProfileId": "",
+    "brainProfileId": "",
+    "locomotionProfileId": "",
+    "lootProfileId": "",
+    "killCredit": ""
+}

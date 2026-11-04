@@ -6,6 +6,7 @@
     <ProjectReference Include="..\..\..\src\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
     <ProjectReference Include="..\..\..\src\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
     <ProjectReference Include="..\..\..\tools\ItemCatalogCompiler\Mmorpg.Tools.ItemCatalogCompiler.csproj" />
+    <ProjectReference Include="..\..\..\tools\QuestCatalogCompiler\Mmorpg.Tools.QuestCatalogCompiler.csproj" />
     <ProjectReference Include="..\..\..\tools\WorldActorCompiler\Mmorpg.Tools.WorldActorCompiler.csproj" />
   </ItemGroup>
 </Project>

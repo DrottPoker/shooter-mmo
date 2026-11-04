@@ -99,6 +99,7 @@ $verifiers = @(
     @{ Name = "item catalog"; Tool = "Mmorpg.Tools.ItemCatalogCompiler"; Token = "verify-content" },
     @{ Name = "world collision"; Tool = "Mmorpg.Tools.WorldCollisionCompiler"; Token = "verify-content" },
     @{ Name = "world actors"; Tool = "Mmorpg.Tools.WorldActorCompiler"; Token = "verify-content" },
+    @{ Name = "quest catalog"; Tool = "Mmorpg.Tools.QuestCatalogCompiler"; Token = "verify-content" },
     @{ Name = "realtime protocol"; Tool = "Mmorpg.Tools.ProtocolGenerator"; Token = "verify-protocol" }
 )
 
