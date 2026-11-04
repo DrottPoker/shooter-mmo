@@ -8,7 +8,8 @@ internal static class QuestLogMigration
     // log: the active quests with the progress of their current step, and the completed
     // quests with how often they were completed. Collect objectives count carried items, so
     // they store no progress. Quest ids are never removed, so stored state always names a
-    // mirrored quest.
+    // mirrored quest. Every retired id has a row, without a fingerprint when this database
+    // never ran the quest, so a retired id can never return.
     public const string Sql = """
         create table quest_catalogs (
             catalog_id text primary key,
@@ -19,10 +20,13 @@ internal static class QuestLogMigration
 
         create table quest_definitions (
             id text primary key,
-            structural_fingerprint text not null,
+            structural_fingerprint text null,
             retired_at timestamptz null,
             mirrored_at timestamptz not null default now(),
-            constraint ck_quest_definitions_fingerprint check (structural_fingerprint ~ '^[0-9a-f]{64}$')
+            constraint ck_quest_definitions_fingerprint check (
+                structural_fingerprint is null or structural_fingerprint ~ '^[0-9a-f]{64}$'),
+            constraint ck_quest_definitions_tombstone check (
+                structural_fingerprint is not null or retired_at is not null)
         );
 
         create table character_quest_logs (

@@ -98,6 +98,26 @@ public sealed class QuestCatalogSeederIntegrationTests
         Assert.Contains("'quest.fixture.ore_run' is retired while characters have it active", exception.Message, StringComparison.Ordinal);
     }
 
+    // A database that first sees a quest after its retirement keeps a tombstone, so the id
+    // can never return there either.
+    [PostgresIntegrationFact]
+    public async Task ARetiredIdThatWasNeverMirroredBecomesATombstone()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var retiredBeforeThisDatabase = FixtureCatalog();
+        retiredBeforeThisDatabase.RetiredQuestIds = ["quest.fixture.legacy"];
+        var returning = FixtureCatalog();
+        var legacy = Quest(FixtureCatalog(), "quest.fixture.wolves");
+        legacy.Id = "quest.fixture.legacy";
+        returning.Quests = [.. returning.Quests, legacy];
+
+        await SeedAsync(context, retiredBeforeThisDatabase);
+        var reused = await Assert.ThrowsAsync<QuestCatalogCompatibilityException>(() => SeedAsync(context, returning));
+
+        Assert.Contains("quest.fixture.legacy - retired", await MirroredQuestsAsync(context));
+        Assert.Contains("Retired quest id 'quest.fixture.legacy' cannot be reused", reused.Message, StringComparison.Ordinal);
+    }
+
     private static QuestCatalogRuntimeDocument FixtureCatalog()
     {
         return QuestCatalogFileLoader.Load(RepositoryPaths.QuestCatalogFixtureRuntimePath);
@@ -134,7 +154,7 @@ public sealed class QuestCatalogSeederIntegrationTests
         await using var connection = await context.DataSource.OpenConnectionAsync();
         return (await connection.QueryAsync<string>(
                 """
-                select id || ' ' || structural_fingerprint || ' '
+                select id || ' ' || coalesce(structural_fingerprint, '-') || ' '
                        || case when retired_at is null then 'active' else 'retired' end
                 from quest_definitions
                 order by id;

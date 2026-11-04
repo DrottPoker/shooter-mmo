@@ -1192,8 +1192,8 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
 
 - GameService loads the compiled quest catalog from `Quests:CatalogPath`,
   revalidates its structure, structural fingerprints, and revision, and mirrors
-  the revision and every quest id with its fingerprint into PostgreSQL before it
-  accepts traffic. It refuses to start when a quest left the catalog without
+  the revision, every quest id with its fingerprint, and every retired id into
+  PostgreSQL before it accepts traffic. It refuses to start when a quest left the catalog without
   being listed as retired, a retired id returns, or a quest that characters have
   active was retired or changed its steps or objectives; such a change needs an
   explicit data migration.

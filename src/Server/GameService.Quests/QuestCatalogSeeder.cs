@@ -128,11 +128,15 @@ internal sealed class QuestCatalogSeeder(
             on conflict (id) do update
             set structural_fingerprint = excluded.structural_fingerprint,
                 mirrored_at = now()
-            where quest_definitions.structural_fingerprint <> excluded.structural_fingerprint;
+            where quest_definitions.structural_fingerprint is distinct from excluded.structural_fingerprint;
 
-            update quest_definitions
+            -- A retired id that this database never mirrored becomes a tombstone.
+            insert into quest_definitions (id, structural_fingerprint, retired_at)
+            select id, null, now()
+            from unnest(@RetiredQuestIds) as retired(id)
+            on conflict (id) do update
             set retired_at = now()
-            where id = any(@RetiredQuestIds) and retired_at is null;
+            where quest_definitions.retired_at is null;
             """,
             new
             {
@@ -146,5 +150,5 @@ internal sealed class QuestCatalogSeeder(
             cancellationToken: cancellationToken));
     }
 
-    private sealed record MirroredQuestRow(string Id, string StructuralFingerprint, bool Retired, bool Active);
+    private sealed record MirroredQuestRow(string Id, string? StructuralFingerprint, bool Retired, bool Active);
 }

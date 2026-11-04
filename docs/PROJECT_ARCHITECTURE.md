@@ -774,7 +774,7 @@ transaction protocol stay authoritative for corpse contents.
 | `death_events` | One row per authoritative death event with its original operation, canonical request hash, corpse, result correlation, and the optional killer kind and id |
 | `live_mob_loot_grants` | Every committed live Mob loot grant by its grant id, with the operation, character, and source corpse, so a grant commits once |
 | `quest_catalogs` | The mirrored revision of the quest catalog that GameService runs |
-| `quest_definitions` | Every quest id that a quest catalog ever held, with its structural fingerprint and, once removed, its retirement time |
+| `quest_definitions` | Every quest id that a quest catalog held or retired, with the structural fingerprint of each quest this database mirrored and the retirement time of each retired one |
 | `character_quest_logs` | One quest log per character that ever had a quest, with the revision that every quest change raises |
 | `character_active_quests` | A character's active quests with their current step and acceptance time |
 | `character_quest_progress` | The progress of every counted objective of an active quest's current step |
