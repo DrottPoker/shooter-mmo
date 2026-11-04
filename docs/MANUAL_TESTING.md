@@ -1771,8 +1771,10 @@ Pick each body in turn in `Body`.
 ## World Builder
 
 The [World Builder](DEVELOPMENT_WORLDS.md#world-builder) is checked in the Unity
-Editor alone, without the stack, in a new scene that is never saved, so nothing
-is written to the project.
+Editor alone, without the stack, in a new scene that is never saved and in
+Development World 2, whose changes the check throws away again, so nothing is
+written to the project. The check does not sculpt or paint the terrain by hand,
+which changes the terrain data itself, and which `Don't Save` keeps.
 
 1. Exit Play Mode, select `File > New Scene`, choose `Basic (URP)`, and click
    `Create`. Add `GameObject > 3D Object > Plane` and give it the position
@@ -1797,7 +1799,10 @@ is written to the project.
 9. Select `Environment/Waterside/WatersideTerrain`, click `Give The Ground Back`
    in its `World Builder Terrain` component, choose `Give It Back`, and then
    press Ctrl+Z.
-10. Open `Assets/Scenes/LoginMenu.unity`, and choose `Don't Save` if Unity asks.
+10. Select `Environment/Waterside/Water/Lake` and drag it about 5 m south again.
+    Then open `Assets/Scenes/LoginMenu.unity` and choose `Don't Save`.
+11. Open `Assets/Scenes/DevelopmentWorld2.unity`, look at the lake, and open
+    `Assets/Scenes/LoginMenu.unity` again.
 
 Expected result:
 
@@ -1829,6 +1834,11 @@ Expected result:
   hidden below it, and removes the component.
   Ctrl+Z brings the component back, and a moment later the beds and the sand
   are back as before.
+- After `Don't Save` in step 10 the Console shows `[WORLD BUILDER] Rebuilt the
+  water and beds of Assets/Scenes/DevelopmentWorld2.unity from the saved scene,
+  since its unsaved changes were thrown away.`, and in step 11 the lake, its
+  floor, its sand, and the foam where the waterfall lands are where they were
+  before step 8. `git status` shows no changed file.
 
 ## Client Project And Content Loading
 

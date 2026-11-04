@@ -527,10 +527,9 @@ part of the terrain data asset, which builds leave out, so this record is saved,
 moved, and copied together with the terrain and never out of step with it. It
 remembers the layer weights by terrain layer, so adding, removing, or moving a
 terrain layer keeps them. Moving or removing water therefore gives the ground
-back. Sculpt and paint away
-from the water as usual; where water lies, a change by hand becomes the ground
-that the water carves and paints again, so a sample sculpted below the bed
-stays there. The water shapes a terrain only while it carries the component:
+back. Sculpt and paint away from the water as usual; where water lies, a change
+by hand becomes the ground that the water carves and paints again, so a sample
+sculpted below the bed stays there. The water shapes a terrain only while it carries the component:
 removing it, `Give The Ground Back`, or an undo of adding it gives the whole
 terrain its ground back, an undo of the removal lets the water shape it again,
 and a disabled component leaves the terrain as it is. Terrain data that another
@@ -538,6 +537,15 @@ terrain uses too, such as after a terrain object is duplicated, which keeps its
 terrain data, is never shaped or given back, since each terrain would carve it
 at its own place; give each terrain terrain data of its own. Terrains side by
 side all reach a bed that ends at the edge they share, so they meet level there.
+
+The water meshes and the terrains are assets, which a scene's `Don't Save` does
+not take back along with the scene's own changes. So when a scene closes with
+unsaved changes that changed its water or beds, the World Builder rebuilds them
+from the saved scene a moment later, opening the scene beside the open ones for
+that and closing it again, or the next time the Editor starts when it quit
+then. Changes made with Unity's terrain tools are part of the terrain data, as
+in every terrain, so `Don't Save` keeps them: undo them with Ctrl+Z before
+leaving the scene, or restore the terrain data's file.
 
 The water and the ground follow every change a moment later, also while a shape
 is dragged, when a shape is moved, added, or removed, when the ground's
