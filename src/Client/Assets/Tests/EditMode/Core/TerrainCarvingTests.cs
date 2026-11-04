@@ -109,6 +109,48 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(SandAt(32f, 20f), Is.Zero, "grass beyond the bank");
         }
 
+        // Without a bank, the floor still meets the surface all around the shore, also on its north
+        // and east edges, which a test of whether a point lies inside the shore counts as outside.
+        [Test]
+        public void ALakeWithoutABankMeetsItsSurfaceAllAroundItsShore()
+        {
+            var lake = WorldBuilderCreate.AddLake(scene, new Vector3(32f, 9.6f, 32f));
+            var serialized = new SerializedObject(lake);
+            serialized.FindProperty("bankWidth").floatValue = 0f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            WorldBuilder.Rebuild(scene);
+
+            foreach (var shore in new[] { new Vector2(32f, 26f), new Vector2(32f, 38f), new Vector2(24f, 32f), new Vector2(40f, 32f) })
+            {
+                Assert.That(HeightAt(shore.x, shore.y), Is.EqualTo(9.6f).Within(HeightTolerance), "the shore at " + shore);
+            }
+        }
+
+        // Without a bank, a river's channel still meets its surface at both edges of its water.
+        [Test]
+        public void ARiverWithoutABankMeetsItsSurfaceAtBothEdges()
+        {
+            var river = WorldBuilderCreate.AddRiver(scene, Vector3.zero);
+            var serialized = new SerializedObject(river);
+            var points = serialized.FindProperty("points");
+            points.arraySize = 2;
+            foreach (var index in new[] { 0, 1 })
+            {
+                var element = points.GetArrayElementAtIndex(index);
+                element.FindPropertyRelative("Position").vector3Value = new Vector3(32f, 9.5f, index == 0 ? 4f : 60f);
+                element.FindPropertyRelative("Width").floatValue = 8f;
+                element.FindPropertyRelative("Depth").floatValue = 1f;
+            }
+
+            serialized.FindProperty("curved").boolValue = false;
+            serialized.FindProperty("bankWidth").floatValue = 0f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(HeightAt(28f, 32f), Is.EqualTo(9.5f).Within(HeightTolerance), "the west edge");
+            Assert.That(HeightAt(36f, 32f), Is.EqualTo(9.5f).Within(HeightTolerance), "the east edge");
+        }
+
         [Test]
         public void MovingOrRemovingTheWaterGivesTheGroundBack()
         {

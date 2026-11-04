@@ -110,6 +110,9 @@ namespace Mmorpg.Client.Editor
     // open edge than to any shore.
     internal sealed class OpenWaterBed : WaterBed
     {
+        // A point this close to the shore lies on it (m).
+        private const float OnShore = 0.0001f;
+
         private readonly Vector2[] outline;
         private readonly bool[] open;
         private readonly float level;
@@ -169,7 +172,10 @@ namespace Mmorpg.Client.Editor
                 }
             }
 
-            inside |= openEdge < shore;
+            // A point on the shore lies on the floor, where it meets the surface, also on the edges
+            // that the crossing test counts as outside, so even a lake without a bank meets its
+            // surface all around its shore.
+            inside |= openEdge < shore || shore <= OnShore * OnShore;
             shore = Mathf.Sqrt(shore);
             return inside ? level - Mathf.Min(deepest, slope * shore) : Bank(level, ground, shore, bank);
         }
@@ -232,7 +238,7 @@ namespace Mmorpg.Client.Editor
             }
 
             var distance = path.DistanceTo(point, out var along);
-            if (distance >= reach)
+            if (distance > reach)
             {
                 return float.PositiveInfinity;
             }
@@ -240,7 +246,10 @@ namespace Mmorpg.Client.Editor
             var values = path.ValuesAt(along);
             var halfWidth = values.Width * 0.5f;
             var surface = SurfaceAt(along);
-            return distance < halfWidth
+
+            // The edge of the water belongs to the channel, which meets the surface there, so a
+            // river without a bank reaches its surface at both edges too.
+            return distance <= halfWidth
                 ? surface - (values.Depth * (1f - WorldBuilderGeometry.Smooth01(distance / halfWidth)))
                 : Bank(surface, ground, distance - halfWidth, bank);
         }
