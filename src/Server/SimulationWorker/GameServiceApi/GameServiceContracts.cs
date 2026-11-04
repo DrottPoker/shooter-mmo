@@ -456,7 +456,14 @@ public sealed record CorpseViewSnapshotResponse(
     DateTime CreatedAt,
     DateTime ExpiresAt,
     IReadOnlyList<CorpseViewSectionResponse> Sections,
-    IReadOnlyList<CorpsePresentationSnapshotResponse> PresentationSnapshots);
+    IReadOnlyList<CorpsePresentationSnapshotResponse> PresentationSnapshots)
+{
+    // The character that alone may loot a Mob's corpse, or null when everyone may.
+    public Guid? OwnerCharacterId { get; init; }
+
+    // The corpses of one Mob death share it; null for every other corpse.
+    public Guid? LootGroupId { get; init; }
+}
 
 public sealed record CorpseViewSectionResponse(
     string SectionKind,
