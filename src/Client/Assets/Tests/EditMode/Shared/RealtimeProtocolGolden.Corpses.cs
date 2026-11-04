@@ -49,7 +49,11 @@ namespace Mmorpg.SharedTests
                     chunkIndex: 255,
                     chunkCount: 256,
                     corpses: Enumerable.Range(10, 6)
-                        .Select(seed => CorpsePresenceModel(G(seed), isEmpty: seed % 2 == 0, expiresAt: long.MaxValue - seed))
+                        .Select(seed => CorpsePresenceModel(
+                            G(seed),
+                            isEmpty: seed % 2 == 0,
+                            expiresAt: long.MaxValue - seed,
+                            isLootable: seed % 3 != 0))
                         .ToArray())));
 
             RegisterCorpseIntentVectors(r);
@@ -249,6 +253,13 @@ namespace Mmorpg.SharedTests
                 "Corpses/CorpsePresenceSnapshotChunk/empty byte 2 reads as true",
                 PresenceWire(corpses: new[] { PresenceEntryWire(isEmpty: 2) }),
                 PresenceWire(corpses: new[] { PresenceEntryWire(isEmpty: 1) }));
+            r.Accepts(
+                "Corpses/CorpsePresenceSnapshotChunk/not lootable",
+                PresenceWire(corpses: new[] { PresenceEntryWire(isLootable: 0) }));
+            r.AcceptsAs(
+                "Corpses/CorpsePresenceSnapshotChunk/lootable byte 2 reads as true",
+                PresenceWire(corpses: new[] { PresenceEntryWire(isLootable: 2) }),
+                PresenceWire(corpses: new[] { PresenceEntryWire(isLootable: 1) }));
 
             r.RejectsEncode("Corpses/CorpsePresenceSnapshotChunk/null", () => RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(null));
             r.RejectsEncode(
@@ -628,7 +639,8 @@ namespace Mmorpg.SharedTests
             bool isEmpty = false,
             long expiresAt = CorpseExpiresAt,
             RealtimeCharacterAppearance appearance = null,
-            string sourceDisplayName = "Grön Ödla")
+            string sourceDisplayName = "Grön Ödla",
+            bool isLootable = true)
         {
             return new RealtimeCorpsePresence(
                 corpseId: corpseId,
@@ -638,6 +650,7 @@ namespace Mmorpg.SharedTests
                 yawDegrees: 123.5f,
                 expiresAtUnixMilliseconds: expiresAt,
                 isEmpty: isEmpty,
+                isLootable: isLootable,
                 sourceDisplayName: sourceDisplayName,
                 presentationKey: "corpse.player",
                 appearance: appearance);
@@ -755,7 +768,8 @@ namespace Mmorpg.SharedTests
             WireText sourceDisplayName = null,
             WireText presentationKey = null,
             Wire appearance = null,
-            bool withoutLookFlag = false)
+            bool withoutLookFlag = false,
+            byte isLootable = 1)
         {
             var wire = Wire.Fragment()
                 .Guid(corpseId ?? G(10))
@@ -765,6 +779,7 @@ namespace Mmorpg.SharedTests
                 .F32Or(123.5f, yawBits)
                 .I64(expiresAt)
                 .U8(isEmpty)
+                .U8(isLootable)
                 .Text(sourceDisplayName ?? "Grön Ödla")
                 .Text(presentationKey ?? "corpse.player");
             if (withoutLookFlag)

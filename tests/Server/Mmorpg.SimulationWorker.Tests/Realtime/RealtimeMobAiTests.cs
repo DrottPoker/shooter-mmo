@@ -238,6 +238,7 @@ public sealed class RealtimeMobAiTests
                 equipmentLockoutSeconds = 0.5f
             },
             ammunition = new AmmunitionRulesDocument { batchIntervalSeconds = 5f },
+            mobs = new MobRulesDocument { killCreditRangeMeters = 100f },
             ruleSets = [new ShardRuleSetDocument { id = "test", playerVersusPlayer = true }]
         });
     }

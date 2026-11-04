@@ -15,6 +15,11 @@ namespace Mmorpg.Client.Combat
 
         public CombatClientState State { get; } = new CombatClientState();
 
+        // The entity the local player controls, or 0 outside a session.
+        public ulong LocalEntityId => simulationClient != null && simulationClient.MovementSession != null
+            ? simulationClient.MovementSession.ControlledEntityId
+            : 0;
+
         public void Initialize(RealtimeSimulationClient realtimeClient)
         {
             if (realtimeClient == null)

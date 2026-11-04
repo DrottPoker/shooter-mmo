@@ -17,6 +17,7 @@ internal sealed class MobDeath(
     Combatant combatant,
     WorldActorRuntimeState actor,
     Guid deathEventId,
+    IReadOnlyList<MobKillCredit> credits,
     IReadOnlyList<MobCorpseLootSeed> loot)
 {
     public Combatant Combatant { get; } = combatant;
@@ -25,7 +26,13 @@ internal sealed class MobDeath(
 
     public Guid DeathEventId { get; } = deathEventId;
 
+    // The players the Mob credits with its kill.
+    public IReadOnlyList<MobKillCredit> Credits { get; } = credits;
+
     public IReadOnlyList<MobCorpseLootSeed> Loot { get; } = loot;
+
+    // The tagger owns the corpse; a Mob that credits no one leaves it to everyone.
+    public Guid? CorpseOwnerCharacterId => Credits.Count == 1 ? Credits[0].CharacterId : null;
 
     public int Attempts { get; set; }
 
@@ -33,10 +40,11 @@ internal sealed class MobDeath(
 }
 
 // Turns a dead Mob into its corpse and its respawn: the loot profile is rolled, the
-// corpse is created with that loot (a live corpse on the worker or a durable one in
-// GameService, which retries with the same death event id until it commits), the actor
-// despawns, and its spawn instance respawns after the respawn profile's delay. A Mob
-// whose roll is empty leaves no corpse. Loop-confined; corpse creation runs off the loop.
+// corpse is created with that loot for the player the Mob credits (a live corpse on the
+// worker or a durable one in GameService, which retries with the same death event id until
+// it commits), the actor despawns, and its spawn instance respawns after the respawn
+// profile's delay. A Mob whose roll is empty leaves no corpse. Loop-confined; corpse
+// creation runs off the loop.
 internal sealed class MobDeathProcessor(
     SimulationWorkerConfig config,
     RealtimeSimulationClock clock,
@@ -69,7 +77,7 @@ internal sealed class MobDeathProcessor(
 
     public int PendingDeaths => deaths.Count;
 
-    public void Begin(Combatant combatant, SimulationDeathKillerRequest? killer)
+    public void Begin(Combatant combatant, IReadOnlyList<MobKillCredit> credits)
     {
         var actor = combatant.Actor!;
         if (deaths.ContainsKey(actor.RuntimeActorId))
@@ -84,6 +92,7 @@ internal sealed class MobDeathProcessor(
             combatant,
             actor,
             ScopedGuid.Create("mob-death", actor.RuntimeActorId),
+            credits,
             MobLootRoller.Roll(lootProfile, random));
         if (death.Loot.Count == 0 || corpses is null)
         {
@@ -192,7 +201,11 @@ internal sealed class MobDeathProcessor(
         try
         {
             result = await corpses!.CreateAsync(
-                new CreateMobCorpseRequest(death.DeathEventId, death.Actor.RuntimeActorId, death.Loot),
+                new CreateMobCorpseRequest(
+                    death.DeathEventId,
+                    death.Actor.RuntimeActorId,
+                    death.Loot,
+                    death.CorpseOwnerCharacterId),
                 CancellationToken.None);
         }
         catch (Exception exception)

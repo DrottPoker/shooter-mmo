@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 6;
+        public const int Version = 7;
     }
 
     // Collision bounds block character movement. Only resource nodes have them: they never move,
@@ -48,6 +48,13 @@ namespace Mmorpg.WorldData.Actors
     {
         public const string Live = "live";
         public const string Durable = "durable";
+    }
+
+    // Who a Mob credits when it dies: the player who tagged it by damaging it first. Credited
+    // players own its loot.
+    public static class WorldActorKillCreditIds
+    {
+        public const string Tag = "tag";
     }
 
     // An aggressive Mob attacks a player it detects; a defensive Mob fights only once damaged.
@@ -365,6 +372,7 @@ namespace Mmorpg.WorldData.Actors
         public string BrainProfileId;
         public string LocomotionProfileId;
         public string LootProfileId;
+        public string KillCredit;
     }
 
     [Serializable]
@@ -601,6 +609,7 @@ namespace Mmorpg.WorldData.Actors
         public string BrainProfileId;
         public string LocomotionProfileId;
         public string LootProfileId;
+        public string KillCredit;
         public string StructuralFingerprint;
     }
 

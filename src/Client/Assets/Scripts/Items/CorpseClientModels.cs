@@ -63,6 +63,7 @@ namespace Mmorpg.Client.Items
             YawDegrees = source.YawDegrees;
             ExpiresAtUnixMilliseconds = source.ExpiresAtUnixMilliseconds;
             IsEmpty = source.IsEmpty;
+            IsLootable = source.IsLootable;
             SourceDisplayName = source.SourceDisplayName ?? string.Empty;
             PresentationKey = source.PresentationKey ?? string.Empty;
             Appearance = source.Appearance;
@@ -82,6 +83,9 @@ namespace Mmorpg.Client.Items
         public long ExpiresAtUnixMilliseconds { get; }
 
         public bool IsEmpty { get; }
+
+        // Whether the local player may loot the corpse; a Mob's corpse belongs to its tagger.
+        public bool IsLootable { get; }
 
         public string SourceDisplayName { get; }
 

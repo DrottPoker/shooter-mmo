@@ -25,14 +25,15 @@ Implemented:
   the vendor, and gathering.
 - Shared resource nodes with live charges, depletion, respawn, and collision
   bounds that block movement.
-- Mob combat, brains, loot, live and durable corpses, and respawn.
+- Mob combat, brains, loot, live and durable corpses, and respawn, with the
+  tag that gives the first player who damages a Mob its credit and its loot.
 - Central scheduling of NPCs and Mobs without per-actor tasks or durable rows.
 
 Planned: the dialogue, crafting, and trainer capabilities, which answer with an
 explicit deferred result today; quests, with one `quests` capability that
 replaces the quest offer and quest turn-in kinds, as
-[Quest System Design](QUEST_SYSTEM_DESIGN.md) describes; Mob tagging with the
-kill credit and loot rights it gives; threat tables, Mob abilities and groups,
+[Quest System Design](QUEST_SYSTEM_DESIGN.md) describes; contributor credit for
+world bosses; threat tables, Mob abilities and groups,
 durable unique actor state, and the final actor art and interaction UI; see
 [Deferred Work](#deferred-work). The Unity presentation of actors and the
 interaction panel is temporary. The content, runtime, protocol, client state,
@@ -167,9 +168,10 @@ Every actor definition contains at least:
   respawn, combat, brain, locomotion, and loot profile references, and its
   corpse persistence and lifetime. NPCs and resource nodes leave every Mob field
   empty and the level at 0.
-- Planned for a Mob: its kill credit, `tag` by default or `contributors` for a
-  world boss, as [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters)
-  decides.
+- For a Mob: its kill credit, `tag`, by which the first player who damages it
+  gets the credit and the loot, as
+  [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) decides. A
+  `contributors` kill credit for world bosses is planned.
 - Content tags used by authoring, queries, and future rule systems.
 
 The text and bounds limits are in

@@ -149,6 +149,11 @@ namespace Mmorpg.SharedTests
             r.Accepts("Combat/CombatantState/full health", CombatantStateWire(health: 50));
             r.Accepts("Combat/CombatantState/evading", CombatantStateWire(lifeState: 3));
             r.Accepts("Combat/CombatantState/dead", CombatantStateWire(health: 0, lifeState: 2, inCombat: 0, targetEntityId: 0));
+            r.Accepts("Combat/CombatantState/tagged by its target", CombatantStateWire(taggedByEntityId: CombatTargetEntityId));
+            r.Accepts(
+                "Combat/CombatantState/dead and still tagged",
+                CombatantStateWire(health: 0, lifeState: 2, inCombat: 0, targetEntityId: 0, taggedByEntityId: CombatTargetEntityId));
+            r.Rejects("Combat/CombatantState/tagged by itself", CombatantStateWire(taggedByEntityId: CombatAttackerEntityId));
             r.Rejects("Combat/CombatantState/entity zero", CombatantStateWire(entityId: 0));
             r.Rejects("Combat/CombatantState/state revision 0", CombatantStateWire(stateRevision: 0));
             r.Rejects("Combat/CombatantState/negative health", CombatantStateWire(health: -1));
@@ -305,7 +310,8 @@ namespace Mmorpg.SharedTests
             int health = 37,
             RealtimeCombatLifeState lifeState = RealtimeCombatLifeState.Alive,
             bool inCombat = true,
-            ulong targetEntityId = CombatTargetEntityId)
+            ulong targetEntityId = CombatTargetEntityId,
+            ulong taggedByEntityId = CombatTargetEntityId)
         {
             return new RealtimeCombatantState(
                 CombatAttackerEntityId,
@@ -314,7 +320,8 @@ namespace Mmorpg.SharedTests
                 50,
                 lifeState,
                 inCombat,
-                targetEntityId);
+                targetEntityId,
+                taggedByEntityId);
         }
 
         private static RealtimeCombatEvent AttackReleasedModel()
@@ -429,7 +436,8 @@ namespace Mmorpg.SharedTests
             int maximumHealth = 50,
             byte lifeState = 1,
             byte inCombat = 1,
-            ulong targetEntityId = CombatTargetEntityId)
+            ulong targetEntityId = CombatTargetEntityId,
+            ulong taggedByEntityId = 0)
         {
             return Wire.Message(RealtimeMessageType.CombatantState)
                 .U64(entityId)
@@ -438,7 +446,8 @@ namespace Mmorpg.SharedTests
                 .I32(maximumHealth)
                 .U8(lifeState)
                 .U8(inCombat)
-                .U64(targetEntityId);
+                .U64(targetEntityId)
+                .U64(taggedByEntityId);
         }
 
         private static Wire CombatEventBatchWire(params Wire[] events)

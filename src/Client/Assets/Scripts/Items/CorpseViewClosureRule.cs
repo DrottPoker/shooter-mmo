@@ -45,6 +45,8 @@ namespace Mmorpg.Client.Items
                     return Expected(NoticeOrDefault(message, "The corpse is empty."));
                 case RealtimeCorpseViewClosureCodes.Expired:
                     return Expected(NoticeOrDefault(message, "The corpse expired."));
+                case RealtimeCorpseViewClosureCodes.NotLootable:
+                    return Expected(NoticeOrDefault(message, "Another player tagged this Mob, so only they may loot it."));
                 case RealtimeCombatErrorCodes.CharacterDead:
                     return Expected(NoticeOrDefault(message, "The character died."));
                 default:

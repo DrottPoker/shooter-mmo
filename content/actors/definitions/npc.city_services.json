@@ -93,5 +93,6 @@
     "combatProfileId": "",
     "brainProfileId": "",
     "locomotionProfileId": "",
-    "lootProfileId": ""
+    "lootProfileId": "",
+    "killCredit": ""
 }

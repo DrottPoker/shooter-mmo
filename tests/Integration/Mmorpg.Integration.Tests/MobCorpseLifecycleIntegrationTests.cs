@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Testing;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.Testing;
@@ -284,6 +285,117 @@ public sealed class MobCorpseLifecycleIntegrationTests
                 "select expires_at from corpses where id = @CorpseId;",
                 new { CorpseId = corpseId }),
             replayAfterExpiry.Value.Corpse.ExpiresAt);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task ATaggedBossCorpseOpensAndLootsOnlyForItsOwner()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var owner = await context.RegisterPlayerAsync(
+            "boss-tagger@example.com",
+            "boss_tagger",
+            "Boss Tagger");
+        var other = await context.RegisterPlayerAsync(
+            "boss-bystander@example.com",
+            "boss_bystander",
+            "Boss Bystander");
+        var ownerSession = await JoinAsync(context, owner);
+        var otherSession = await JoinAsync(context, other);
+        var corpseId = Guid.NewGuid();
+        var created = await context.CorpseService.CreatePersistentMobCorpseAsync(
+            WorkerId,
+            new CreatePersistentMobCorpseRequest(
+                Guid.NewGuid(),
+                corpseId,
+                WorkerId,
+                WorkerRuntimeId,
+                ShardId,
+                "mob.feral_alpha",
+                "Feral Alpha",
+                4d,
+                0d,
+                -3d,
+                0d,
+                0d,
+                0d,
+                1d,
+                MobCorpseLifecycleService.DefaultPresentationKey,
+                600d,
+                [new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", 5)])
+            {
+                OwnerCharacterId = owner.Character.Id
+            },
+            CancellationToken.None);
+        Assert.True(created.Succeeded, created.Error?.Message);
+        Assert.Equal(owner.Character.Id, created.Value!.Corpse.OwnerCharacterId);
+        var restored = await context.CorpseService.ListForWorkerAsync(
+            WorkerId,
+            WorkerRuntimeId,
+            ShardId,
+            CancellationToken.None);
+        Assert.Equal(
+            owner.Character.Id,
+            Assert.Single(restored.Value!.Corpses, corpse => corpse.CorpseId == corpseId).OwnerCharacterId);
+
+        var refusedOpen = await OpenAsync(context, otherSession, corpseId);
+        var opened = await OpenAsync(context, ownerSession, corpseId);
+        var refusedLoot = await LootAllAsync(context, otherSession, corpseId, opened.Value!.Revision);
+        var looted = await LootAllAsync(context, ownerSession, corpseId, opened.Value.Revision);
+
+        Assert.False(refusedOpen.Succeeded);
+        Assert.Equal("corpse_not_lootable", refusedOpen.Error!.Code);
+        Assert.True(opened.Succeeded, opened.Error?.Message);
+        Assert.False(refusedLoot.Succeeded);
+        Assert.Equal("corpse_not_lootable", refusedLoot.Error!.Code);
+        Assert.True(looted.Succeeded, looted.Error?.Message);
+        Assert.Contains(
+            (await GetSnapshotAsync(context, owner)).PermanentInventory.Slots,
+            slot => slot.Item?.DefinitionId == "fixture.ore");
+        Assert.DoesNotContain(
+            (await GetSnapshotAsync(context, other)).PermanentInventory.Slots,
+            slot => slot.Item?.DefinitionId == "fixture.ore");
+    }
+
+    private static Task<ServiceResult<CorpseViewSnapshotResponse>> OpenAsync(
+        PostgresIntegrationTestContext context,
+        ConsumedSimulationJoinTicketResponse session,
+        Guid corpseId)
+    {
+        return context.CorpseService.OpenForSimulationAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            corpseId,
+            new SimulationCorpseOpenRequest(
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken),
+            CancellationToken.None);
+    }
+
+    private static Task<ServiceResult<CorpseMutationResponse>> LootAllAsync(
+        PostgresIntegrationTestContext context,
+        ConsumedSimulationJoinTicketResponse session,
+        Guid corpseId,
+        long expectedCorpseRevision)
+    {
+        return context.CorpseService.MutateForSimulationAsync(
+            WorkerId,
+            session.SimulationSessionId,
+            corpseId,
+            new SimulationCorpseMutationRequest(
+                Guid.NewGuid(),
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                "loot_all",
+                expectedCorpseRevision),
+            CancellationToken.None);
     }
 
     private static async Task<ConsumedSimulationJoinTicketResponse> JoinAsync(

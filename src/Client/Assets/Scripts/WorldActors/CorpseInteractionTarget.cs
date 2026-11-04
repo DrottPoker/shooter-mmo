@@ -29,6 +29,9 @@ namespace Mmorpg.Client.WorldActors
 
         public string TargetDisplayName { get; private set; } = string.Empty;
 
+        // Whether the local player may loot the corpse; the world menu offers Loot only then.
+        public bool IsLootable { get; private set; } = true;
+
         public Vector3 TargetPosition
         {
             get { return transform.position; }
@@ -43,6 +46,7 @@ namespace Mmorpg.Client.WorldActors
 
             TargetRuntimeId = corpse.CorpseId;
             TargetDisplayName = corpse.SourceDisplayName;
+            IsLootable = corpse.IsLootable;
             IsTargetActive = true;
         }
     }

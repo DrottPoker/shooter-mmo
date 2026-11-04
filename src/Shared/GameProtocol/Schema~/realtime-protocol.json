@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 32,
+    "version": 33,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -1007,6 +1007,11 @@
           "description": "When the corpse decays."
         },
         { "name": "IsEmpty", "type": "bool", "description": "Whether the corpse holds no items." },
+        {
+          "name": "IsLootable",
+          "type": "bool",
+          "description": "Whether the recipient may loot the corpse; a Mob's corpse belongs to the players it credits."
+        },
         {
           "name": "SourceDisplayName",
           "type": "string",
@@ -2675,7 +2680,12 @@
         { "name": "MaximumHealth", "type": "i32", "minimum": 1, "description": "The maximum health." },
         { "name": "LifeState", "type": "CombatLifeState", "description": "Whether the combatant lives." },
         { "name": "InCombat", "type": "bool", "description": "Whether the combatant fought recently." },
-        { "name": "TargetEntityId", "type": "u64", "description": "The combatant's attack target, or 0 for none." }
+        { "name": "TargetEntityId", "type": "u64", "description": "The combatant's attack target, or 0 for none." },
+        {
+          "name": "TaggedByEntityId",
+          "type": "u64",
+          "description": "The player who tagged the Mob and alone gets its credit and loot, or 0 when no one has."
+        }
       ]
     },
     {

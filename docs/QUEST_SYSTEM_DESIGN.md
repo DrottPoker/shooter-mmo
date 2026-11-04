@@ -24,7 +24,8 @@ Implemented:
   describes. Quest turn-in answers that it is unavailable.
 
 Planned: everything else in this document. Quest content replaces the
-configured quest, and kill credit follows Mob tagging, which is planned as well.
+configured quest, and kill credit follows Mob tagging, whose contributor credit
+for world bosses is planned as well.
 
 ## Goals
 

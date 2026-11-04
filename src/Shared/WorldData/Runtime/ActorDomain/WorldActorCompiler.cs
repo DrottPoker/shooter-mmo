@@ -73,6 +73,12 @@ namespace Mmorpg.WorldData.Actors
                 WorldActorCorpsePersistenceModeIds.Durable
             };
 
+        private static readonly HashSet<string> SupportedKillCredits =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                WorldActorKillCreditIds.Tag
+            };
+
         private static readonly HashSet<string> SupportedCapabilityKinds =
             new HashSet<string>(StringComparer.Ordinal)
             {
@@ -1018,6 +1024,11 @@ namespace Mmorpg.WorldData.Actors
                         SupportedCorpsePersistenceModes,
                         path + ".corpsePersistenceMode",
                         errors);
+                    ValidateSupported(
+                        actor.KillCredit,
+                        SupportedKillCredits,
+                        path + ".killCredit",
+                        errors);
                     if (!IsFinite(actor.CorpseLifetimeSeconds)
                         || actor.CorpseLifetimeSeconds
                             < WorldActorCorpseRules.MinimumLifetimeSeconds
@@ -1056,6 +1067,7 @@ namespace Mmorpg.WorldData.Actors
                         actor.CorpsePersistenceMode,
                         path + ".corpsePersistenceMode",
                         errors);
+                    ValidateOptionalEmpty(actor.KillCredit, path + ".killCredit", errors);
                     if (actor.CorpseLifetimeSeconds != 0f)
                     {
                         errors.Add(path + ".corpseLifetimeSeconds must be zero for an NPC or resource node.");
@@ -1698,7 +1710,8 @@ namespace Mmorpg.WorldData.Actors
                 CombatProfileId = value.CombatProfileId ?? string.Empty,
                 BrainProfileId = value.BrainProfileId ?? string.Empty,
                 LocomotionProfileId = value.LocomotionProfileId ?? string.Empty,
-                LootProfileId = value.LootProfileId ?? string.Empty
+                LootProfileId = value.LootProfileId ?? string.Empty,
+                KillCredit = value.KillCredit ?? string.Empty
             };
             compiled.StructuralFingerprint = ActorFingerprint(
                 compiled,
@@ -1756,7 +1769,8 @@ namespace Mmorpg.WorldData.Actors
                 value.CombatProfileId,
                 value.BrainProfileId,
                 value.LocomotionProfileId,
-                value.LootProfileId);
+                value.LootProfileId,
+                value.KillCredit);
         }
 
         private static WorldActorPatrolPathDefinition CompilePatrolPath(

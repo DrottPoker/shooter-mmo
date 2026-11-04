@@ -9,10 +9,13 @@ namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed record MobCorpseLootSeed(string DefinitionId, int Quantity);
 
+// The owner is the player the Mob credited, who alone may loot the corpse, or null when
+// everyone may.
 public sealed record CreateMobCorpseRequest(
     Guid DeathEventId,
     Guid SourceActorRuntimeId,
-    IReadOnlyList<MobCorpseLootSeed> Loot);
+    IReadOnlyList<MobCorpseLootSeed> Loot,
+    Guid? OwnerCharacterId = null);
 
 public sealed record MobCorpseCreationResult(
     LiveMobCorpseState? LiveCorpse,
@@ -115,7 +118,10 @@ public sealed class MobCorpseLifecycleService(
                     value.DefinitionId,
                     value.Quantity,
                     value.SlotIndex))
-                    .ToArray()));
+                    .ToArray())
+            {
+                OwnerCharacterId = request.OwnerCharacterId
+            });
             return MobCorpseCreationResult.Live(liveCorpse);
         }
 
@@ -153,7 +159,10 @@ public sealed class MobCorpseLifecycleService(
                     value.GrantId,
                     value.DefinitionId,
                     value.Quantity))
-                    .ToArray()),
+                    .ToArray())
+            {
+                OwnerCharacterId = request.OwnerCharacterId
+            },
             cancellationToken);
         if (!durableResult.Succeeded)
         {
@@ -168,6 +177,7 @@ public sealed class MobCorpseLifecycleService(
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.DeathEventId == Guid.Empty
+            || request.OwnerCharacterId == Guid.Empty
             || request.SourceActorRuntimeId == Guid.Empty
             || request.Loot is null
             || request.Loot.Count is < 1 or > WorldActorCorpseRules.MaximumLootEntries

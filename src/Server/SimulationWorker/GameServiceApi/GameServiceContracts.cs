@@ -197,7 +197,11 @@ public sealed record CreatePersistentMobCorpseRequest(
     double RotationW,
     string PresentationKey,
     double LifetimeSeconds,
-    IReadOnlyList<MobCorpseLootEntryRequest> Loot);
+    IReadOnlyList<MobCorpseLootEntryRequest> Loot)
+{
+    // The player the Mob credited, who alone may loot the corpse, or null when everyone may.
+    public Guid? OwnerCharacterId { get; init; }
+}
 
 public sealed record PersistentMobCorpseResponse(
     Guid OperationId,
@@ -373,6 +377,9 @@ public sealed record DurableCorpseResponse(
 {
     // How a player corpse looks; null for a Mob corpse.
     public CorpseLookResponse? Look { get; init; }
+
+    // The character that alone may loot a Mob's corpse, or null when everyone may.
+    public Guid? OwnerCharacterId { get; init; }
 }
 
 // The dead character's body model, look, and headwear, and the items still in the corpse's

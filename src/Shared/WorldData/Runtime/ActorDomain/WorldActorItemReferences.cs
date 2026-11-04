@@ -8,9 +8,9 @@ namespace Mmorpg.WorldData.Actors
     // Actor content refers to the separately compiled item catalog: Mob loot names item
     // definitions, a vendor capability names a vendor profile, and a resource profile names a
     // tool kind and the definition it yields. The actor compiler checks the shapes; this checks
-    // every reference against one catalog. SimulationWorker never loads the item catalog, and
-    // GameService validates the same ids again when it commits a loot grant, a trade, or a
-    // gathered yield.
+    // every reference against one catalog. SimulationWorker runs it at startup against the item
+    // catalog it loads, and GameService validates the same ids again when it commits a loot
+    // grant, a trade, or a gathered yield.
     public static class WorldActorItemReferences
     {
         public static void Validate(

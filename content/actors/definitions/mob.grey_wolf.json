@@ -36,5 +36,6 @@
     "combatProfileId": "mob.feral_wolf",
     "brainProfileId": "mob.defensive",
     "locomotionProfileId": "mob.quadruped",
-    "lootProfileId": "mob.feral_wolf"
+    "lootProfileId": "mob.feral_wolf",
+    "killCredit": "tag"
 }

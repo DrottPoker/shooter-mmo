@@ -195,7 +195,7 @@ public sealed class CorpseRealtimeStateTests
                 Array.Empty<CorpseSectionState>()))
             .ToArray();
 
-        var chunks = CorpseRealtimePacketBuilder.BuildPresence(3, corpses);
+        var chunks = CorpseRealtimePacketBuilder.BuildPresence(3, corpses, Guid.NewGuid());
 
         Assert.Equal(8, chunks.Sum(chunk => chunk.Corpses.Length));
         Assert.All(chunks, chunk => Assert.True(
@@ -233,7 +233,7 @@ public sealed class CorpseRealtimeStateTests
             false,
             Array.Empty<CorpseSectionState>());
 
-        var presence = CorpseRealtimePacketBuilder.BuildPresence(1, [corpse]).Single().Corpses.Single();
+        var presence = CorpseRealtimePacketBuilder.BuildPresence(1, [corpse], Guid.NewGuid()).Single().Corpses.Single();
 
         Assert.Equal(yawDegrees, presence.YawDegrees, 3);
         Assert.Equal(0f, CorpseFacing.YawDegrees(0, 0, 0, 1));
@@ -275,7 +275,7 @@ public sealed class CorpseRealtimeStateTests
         var mob = player with { CorpseId = Guid.NewGuid(), SourceCharacterId = null, Look = null };
 
         var presence = CorpseRealtimePacketBuilder
-            .BuildPresence(1, [player, mob], ["head", "body", "back"])
+            .BuildPresence(1, [player, mob], Guid.NewGuid(), ["head", "body", "back"])
             .Single()
             .Corpses
             .ToDictionary(corpse => corpse.CorpseId);

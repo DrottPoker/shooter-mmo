@@ -196,6 +196,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     90f,
                     2_000_000_000_000L,
                     false,
+                    true,
                     "Feral Wolf",
                     "corpse.remains",
                     null)));
@@ -592,7 +593,7 @@ namespace Mmorpg.Client.Tests.EditMode
             RealtimeCombatLifeState lifeState = RealtimeCombatLifeState.Alive)
         {
             var dead = lifeState == RealtimeCombatLifeState.Dead;
-            return new RealtimeCombatantState(entityId, 1, dead ? 0 : 40, 50, lifeState, false, 0);
+            return new RealtimeCombatantState(entityId, 1, dead ? 0 : 40, 50, lifeState, false, 0, 0);
         }
 
         private static RealtimeOwnerCombatState Owner(

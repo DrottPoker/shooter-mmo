@@ -304,6 +304,9 @@ namespace Mmorpg.WorldData.Editor.Actors
         public string locomotionProfileId;
         public string lootProfileId;
 
+        // Who a Mob credits and lets loot: the player who tagged it.
+        public string killCredit;
+
         public WorldActorAuthoringEntry ToDomain()
         {
             return new WorldActorAuthoringEntry
@@ -330,7 +333,8 @@ namespace Mmorpg.WorldData.Editor.Actors
                 CombatProfileId = combatProfileId,
                 BrainProfileId = brainProfileId,
                 LocomotionProfileId = locomotionProfileId,
-                LootProfileId = lootProfileId
+                LootProfileId = lootProfileId,
+                KillCredit = killCredit
             };
         }
     }

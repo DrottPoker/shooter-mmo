@@ -20,16 +20,28 @@ namespace Mmorpg.Client.Ui
         public const float FarScale = 0.55f;
 
         // Red for a Mob that attacks the players it detects, yellow for one that fights only once
-        // it is damaged.
+        // it is damaged, and grey for one another player tagged, whose credit and loot are theirs.
         public static readonly Color AggressiveColor = new Color(0.86f, 0.16f, 0.12f, 1f);
         public static readonly Color DefensiveColor = new Color(0.95f, 0.78f, 0.12f, 1f);
+        public static readonly Color TaggedColor = new Color(0.55f, 0.55f, 0.55f, 1f);
 
         // A Mob without a known aggression shows as aggressive, the safe assumption.
-        public static Color MobHealthColor(RealtimeWorldActorAggression aggression)
+        public static Color MobHealthColor(RealtimeWorldActorAggression aggression, bool taggedByOther = false)
         {
+            if (taggedByOther)
+            {
+                return TaggedColor;
+            }
+
             return aggression == RealtimeWorldActorAggression.Defensive
                 ? DefensiveColor
                 : AggressiveColor;
+        }
+
+        // A Mob that a player other than the local one tagged.
+        public static bool IsTaggedByOther(ulong taggedByEntityId, ulong localEntityId)
+        {
+            return taggedByEntityId != 0 && taggedByEntityId != localEntityId;
         }
 
         public static string HealthText(int health, int maximumHealth)

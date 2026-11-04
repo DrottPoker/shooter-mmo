@@ -55,6 +55,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
     private readonly ICollisionWorld collisionWorld;
     private readonly PriorityQueue<Projectile, (uint ImpactTick, long Sequence)> projectiles = new();
     private readonly List<Combatant> combatantBuffer = [];
+    private readonly List<Combatant> retagBuffer = [];
     private readonly List<Combatant> deaths = [];
     private readonly Dictionary<string, WorldActorCombatProfileDefinition> combatProfiles;
     private readonly uint combatTimeoutTicks;
@@ -163,6 +164,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
 
         // The owner state follows at the end of the next combat phase, after the baseline.
         combatant.MarkOwnerStateChanged();
+        RetagMobsOf(entity);
     }
 
     public void OnPlayerEntityRemoved(RealtimePeerContext context, ActiveSimulationSession session, ulong entityId)
@@ -647,15 +649,21 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         metrics?.RecordHit(target.Kind);
         target.Health = Math.Max(0, target.Health - damage.Amount);
         target.LastAttackerEntityId = attackerEntityId;
+        var hasAttacker = combatants.TryGet(attackerEntityId, out var attacker);
         if (target.Kind == CombatantKind.Mob)
         {
             target.DamageLedger[attackerEntityId] =
                 target.DamageLedger.GetValueOrDefault(attackerEntityId) + damage.Amount;
+            if (hasAttacker)
+            {
+                MobKillCredits.RecordDamage(target, attacker);
+            }
+
             mobs.OnEngaged(target.EntityId, serverTick);
         }
 
         EnterCombat(target, serverTick);
-        if (combatants.TryGet(attackerEntityId, out var attacker))
+        if (hasAttacker)
         {
             EnterCombat(attacker, serverTick);
         }
@@ -682,7 +690,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             }
             else
             {
-                mobDeaths.Begin(dead, KillerOf(dead));
+                mobDeaths.Begin(dead, MobKillCredits.Resolve(dead, entityRegistry, rules.KillCreditRangeMeters));
             }
         }
 
@@ -871,6 +879,19 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             && combatants.TryGet(entity!.NetworkEntityId, out var combatant))
         {
             combatant.MarkOwnerStateChanged();
+        }
+    }
+
+    // Mobs that a rejoining character tagged before stay its own under its new entity.
+    private void RetagMobsOf(PlayerSimulationEntity entity)
+    {
+        combatants.CopyTo(retagBuffer);
+        foreach (var mob in retagBuffer)
+        {
+            if (mob.Kind == CombatantKind.Mob && mob.TagCharacterId == entity.Session.CharacterId)
+            {
+                mob.RetagEntity(entity.NetworkEntityId);
+            }
         }
     }
 

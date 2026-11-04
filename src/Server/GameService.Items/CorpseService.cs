@@ -141,7 +141,8 @@ internal sealed partial class CorpseService(
                     request.PresentationKey.Trim(),
                     request.LifetimeSeconds,
                     checked((int)workerLeasePolicy.HeartbeatTimeout.TotalSeconds),
-                    request.Loot)),
+                    request.Loot,
+                    request.OwnerCharacterId)),
             cancellationToken);
         if (!result.Succeeded)
         {
@@ -490,6 +491,7 @@ internal sealed partial class CorpseService(
                         coalesce(event.character_id, corpse.source_character_id) as "CharacterId",
                         corpse.id as "CorpseId",
                         corpse.source_character_id as "SourceCharacterId",
+                        corpse.owner_character_id as "OwnerCharacterId",
                         corpse.source_display_name as "SourceDisplayName",
                         corpse.shard_id as "ShardId",
                         corpse.position_x as "PositionX",
@@ -577,6 +579,7 @@ internal sealed partial class CorpseService(
             select
                 corpse.id as "CorpseId",
                 corpse.source_character_id as "SourceCharacterId",
+                corpse.owner_character_id as "OwnerCharacterId",
                 corpse.source_display_name as "SourceDisplayName",
                 corpse.shard_id as "ShardId",
                 corpse.position_x as "PositionX",
@@ -636,6 +639,7 @@ internal sealed partial class CorpseService(
                     select
                         corpse.id as "CorpseId",
                         corpse.source_character_id as "SourceCharacterId",
+                        corpse.owner_character_id as "OwnerCharacterId",
                         corpse.source_display_name as "SourceDisplayName",
                         corpse.shard_id as "ShardId",
                         corpse.position_x as "PositionX",
@@ -815,7 +819,10 @@ internal sealed partial class CorpseService(
             row.CreatedAt,
             row.ExpiresAt,
             sections.Sum(section => section.ItemCount) == 0,
-            sections);
+            sections)
+        {
+            OwnerCharacterId = row.OwnerCharacterId
+        };
     }
 
     private static ServiceResult<T> MapTransactionResult<T>(
@@ -834,7 +841,8 @@ internal sealed partial class CorpseService(
             ItemTransactionErrorCodes.SimulationSessionInvalid =>
                 ServiceResult<T>.Unauthorized(error.Code, error.Message),
             ItemTransactionErrorCodes.AuthorityRequired or
-            ItemTransactionErrorCodes.WrongSimulationWorker =>
+            ItemTransactionErrorCodes.WrongSimulationWorker or
+            ItemTransactionErrorCodes.CorpseNotLootable =>
                 ServiceResult<T>.Forbidden(error.Code, error.Message),
             ItemTransactionErrorCodes.ItemNotFound or
             ItemTransactionErrorCodes.ItemNotOwned or
@@ -910,6 +918,7 @@ internal sealed partial class CorpseService(
     {
         return request.OperationId != Guid.Empty
             && request.CorpseId != Guid.Empty
+            && request.OwnerCharacterId != Guid.Empty
             && Identifiers.IsServiceIdentifier(request.WorkerId)
             && Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
             && Identifiers.IsServiceIdentifier(request.ShardId)
@@ -1032,6 +1041,8 @@ internal sealed partial class CorpseService(
         DateTime CreatedAt { get; }
 
         DateTime ExpiresAt { get; }
+
+        Guid? OwnerCharacterId { get; }
     }
 
     private class OpenCorpseRow : ICorpseRow
@@ -1065,6 +1076,8 @@ internal sealed partial class CorpseService(
         public DateTime CreatedAt { get; set; }
 
         public DateTime ExpiresAt { get; set; }
+
+        public Guid? OwnerCharacterId { get; set; }
     }
 
     private sealed class DeathPartitionRow : OpenCorpseRow

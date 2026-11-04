@@ -176,6 +176,7 @@ public sealed class SimulationCorpseInteractionService(GameServiceClient gameSer
         return code is "corpse_expired"
             or "corpse_invalidated"
             or "corpse_not_found"
+            or RealtimeCorpseViewClosureCodes.NotLootable
             or "wrong_simulation_worker";
     }
 }

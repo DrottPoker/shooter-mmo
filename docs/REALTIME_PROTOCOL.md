@@ -487,8 +487,10 @@ the carry state and the result of the operation that caused it.
 
 - `CorpsePresenceSnapshotChunk` (15) carries the nearby corpses in chunks of up
   to `MaximumCorpsePresencePerChunk` (6) `CorpsePresence` structs, each with its
-  id, position, facing, absolute expiry, whether it is empty, source name,
-  presentation key, and optional look.
+  id, position, facing, absolute expiry, whether it is empty, whether the
+  recipient may loot it, source name, presentation key, and optional look. A
+  Mob's corpse belongs to the player who tagged the Mob, so `IsLootable` differs
+  between recipients.
 - `CorpseInteractionIntent` (16) carries an operation id, a
   `CorpseInteractionKind`, the corpse, its expected revision, and the variant
   fields of the kind; `CorpseInteractionResult` (17) correlates it and says
@@ -658,11 +660,12 @@ item-state revision that holds the yield.
   `CombatIntentResult` (30) answers it with the target afterwards and, on
   failure, one of the stable codes in `RealtimeCombatErrorCodes`.
 - `CombatantState` (31) carries the health, maximum health, life state
-  (`Alive`, `Dead`, or `Evading`), combat flag, and attack target of a visible
-  combatant with a revision that only grows. It follows every `EntitySpawn` and
-  `WorldActorSpawn` of a combatant, so a client never shows a combatant without
-  health. A dead combatant has 0 health and no target, and nobody targets
-  itself.
+  (`Alive`, `Dead`, or `Evading`), combat flag, attack target, and
+  `TaggedByEntityId` of a visible combatant with a revision that only grows.
+  `TaggedByEntityId` names the player who tagged a Mob, or is 0. It follows every
+  `EntitySpawn` and `WorldActorSpawn` of a combatant, so a client never shows a
+  combatant without health. A dead combatant has 0 health and no target, and
+  nobody targets or tags itself.
 - `CombatEventBatch` (32) carries the events of one server tick that involve a
   combatant the recipient sees or controls, in simulation order. Every
   `CombatEvent` has a kind, source, target, `Tick`, damage, damage type, health

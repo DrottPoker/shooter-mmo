@@ -20,6 +20,18 @@ public interface ICorpseRuntimePresence
     bool IsEmpty { get; }
     // How a player corpse looks; null for a Mob corpse.
     CorpseLook? Look { get; }
+    // The character that alone may loot a Mob's corpse, or null when everyone may.
+    Guid? OwnerCharacterId { get; }
+}
+
+// Who may loot a corpse: its owner, or everyone when it has none, as a player corpse.
+public static class CorpseLootRights
+{
+    public static bool CanLoot(ICorpseRuntimePresence corpse, Guid characterId)
+    {
+        ArgumentNullException.ThrowIfNull(corpse);
+        return corpse.OwnerCharacterId is not { } owner || owner == characterId;
+    }
 }
 
 // The dead character's body model, look, and headwear, and the items still in the corpse's
@@ -61,6 +73,8 @@ public sealed record DurableCorpseState(
     public float YawDegrees => CorpseFacing.YawDegrees(RotationX, RotationY, RotationZ, RotationW);
 
     public CorpseLook? Look { get; init; }
+
+    public Guid? OwnerCharacterId { get; init; }
 }
 
 public static class CorpseFacing
@@ -136,7 +150,8 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                         section.ItemCount))
                     .ToArray())
             {
-                Look = CorpseLook.From(corpse.Look)
+                Look = CorpseLook.From(corpse.Look),
+                OwnerCharacterId = corpse.OwnerCharacterId
             };
             if (!replacement.TryAdd(state.CorpseId, state))
             {

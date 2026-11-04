@@ -758,7 +758,7 @@ transaction protocol stay authoritative for corpse contents.
 | `recovery_deliveries`, `recovery_delivery_items` | Per-character system deliveries with source, availability, expiry, and claim state, and their items |
 | `item_operations` | Global idempotency id, canonical request hash, status, and replayable result |
 | `item_operation_changes`, `item_destructions` | The append-only change audit and the destruction records |
-| `corpses` | Durable player and persistent Mob corpses: source snapshot, Shard transform, presentation key, revision, absolute expiry, and close lifecycle |
+| `corpses` | Durable player and persistent Mob corpses: source snapshot, Shard transform, presentation key, revision, absolute expiry, close lifecycle, and the owner of a tagged Mob's corpse |
 | `corpse_sections` | Bindings of the general inventory, equipment, and Bag sections to real item containers |
 | `corpse_snapshots` | Non-interactive insured equipment and protected or insured Bag presentation metadata |
 | `death_events` | One row per authoritative death event with its original operation, canonical request hash, corpse, result correlation, and the optional killer kind and id |

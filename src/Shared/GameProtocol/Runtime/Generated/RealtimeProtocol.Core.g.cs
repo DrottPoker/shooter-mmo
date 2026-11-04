@@ -377,7 +377,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 32;
+        public const ushort Version = 33;
 
         /// <summary>
         /// The LiteNetLib connection key.

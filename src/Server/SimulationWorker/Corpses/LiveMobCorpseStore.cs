@@ -36,6 +36,9 @@ public sealed record LiveMobCorpseState(
 
     // A Mob corpse has no character look.
     public CorpseLook? Look => null;
+
+    // The player the Mob credited, who alone may loot it, or null when everyone may.
+    public Guid? OwnerCharacterId { get; init; }
 }
 
 public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
@@ -374,7 +377,8 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             corpse.EquipmentContainerId.ToString("N"),
             corpse.BagContainerId.ToString("N"),
             corpse.CreatedAt.Ticks.ToString(CultureInfo.InvariantCulture),
-            corpse.ExpiresAt.Ticks.ToString(CultureInfo.InvariantCulture)
+            corpse.ExpiresAt.Ticks.ToString(CultureInfo.InvariantCulture),
+            corpse.OwnerCharacterId?.ToString("N") ?? string.Empty
         };
         foreach (var loot in corpse.Loot.OrderBy(entry => entry.SlotIndex))
         {

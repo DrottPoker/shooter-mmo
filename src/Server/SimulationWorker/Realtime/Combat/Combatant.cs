@@ -75,6 +75,12 @@ internal sealed class Combatant
     // Damage dealt to a Mob by attacker, which a threat table replaces later.
     public Dictionary<ulong, long> DamageLedger { get; } = [];
 
+    // The player whose damage tagged the Mob in this fight, or 0. Only the tagger gets the
+    // kill credit and the loot; the tag clears when the Mob gives up the fight.
+    public ulong TagEntityId { get; private set; }
+
+    public Guid TagCharacterId { get; private set; }
+
     // Owner-only state of a player.
     public long OwnerStateRevision { get; private set; } = 1;
 
@@ -151,6 +157,43 @@ internal sealed class Combatant
         OwnerStateChanged = false;
     }
 
+    // The first player to damage an untagged Mob tags it.
+    public void Tag(ulong entityId, Guid characterId)
+    {
+        if (TagEntityId != 0)
+        {
+            return;
+        }
+
+        TagEntityId = entityId;
+        TagCharacterId = characterId;
+        MarkStateChanged();
+    }
+
+    // The tagger rejoined with a new entity, so viewers keep seeing the Mob as its.
+    public void RetagEntity(ulong entityId)
+    {
+        if (TagEntityId == 0 || TagEntityId == entityId)
+        {
+            return;
+        }
+
+        TagEntityId = entityId;
+        MarkStateChanged();
+    }
+
+    public void ClearTag()
+    {
+        if (TagEntityId == 0)
+        {
+            return;
+        }
+
+        TagEntityId = 0;
+        TagCharacterId = Guid.Empty;
+        MarkStateChanged();
+    }
+
     public RealtimeCombatantState ToState()
     {
         return new RealtimeCombatantState(
@@ -160,7 +203,8 @@ internal sealed class Combatant
             MaximumHealth,
             LifeState,
             InCombat,
-            IsAlive ? TargetEntityId : 0);
+            IsAlive ? TargetEntityId : 0,
+            TagEntityId);
     }
 }
 

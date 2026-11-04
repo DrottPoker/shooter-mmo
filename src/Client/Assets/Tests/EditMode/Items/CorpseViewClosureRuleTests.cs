@@ -9,6 +9,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [TestCase("corpse_emptied", "The corpse is empty.")]
         [TestCase("corpse_expired", "The corpse expired and is no longer available.")]
         [TestCase("combat_character_dead", "The character died.")]
+        [TestCase("corpse_not_lootable", "Another player tagged this Mob, so only they may loot it.")]
         public void IntendedClosureShowsTheWorkerMessageAsANeutralNotice(string code, string message)
         {
             var closure = CorpseViewClosureRule.Classify(code, message);
@@ -21,6 +22,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [TestCase("corpse_emptied", "The corpse is empty.")]
         [TestCase("corpse_expired", "The corpse expired.")]
         [TestCase("combat_character_dead", "The character died.")]
+        [TestCase("corpse_not_lootable", "Another player tagged this Mob, so only they may loot it.")]
         public void IntendedClosureWithoutAMessageFallsBackToItsOwnNotice(string code, string notice)
         {
             var closure = CorpseViewClosureRule.Classify(code, " ");

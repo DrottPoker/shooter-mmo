@@ -23,6 +23,7 @@ internal static class ItemsSchemaMigrations
         new(SecureContainerRemovalMigration.Id, SecureContainerRemovalMigration.Sql),
         new(CloakEquipmentRemovalMigration.Id, CloakEquipmentRemovalMigration.Sql),
         new(PermanentInventoryExpansionMigration.Id, PermanentInventoryExpansionMigration.Sql),
-        new(PermanentInventoryReductionMigration.Id, PermanentInventoryReductionMigration.Sql)
+        new(PermanentInventoryReductionMigration.Id, PermanentInventoryReductionMigration.Sql),
+        new(MobCorpseOwnerMigration.Id, MobCorpseOwnerMigration.Sql)
     ];
 }

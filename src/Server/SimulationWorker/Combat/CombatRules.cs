@@ -23,6 +23,7 @@ public sealed class CombatRules
         ManaRegenerationPerSecond = document.player.manaRegenerationPerSecond;
         EquipmentLockoutSeconds = document.player.equipmentLockoutSeconds;
         AmmunitionBatchIntervalSeconds = document.ammunition.batchIntervalSeconds;
+        KillCreditRangeMeters = document.mobs.killCreditRangeMeters;
         ruleSets = document.ruleSets.ToDictionary(
             ruleSet => ruleSet.id,
             ruleSet => new ShardRuleSet(ruleSet.id, ruleSet.playerVersusPlayer),
@@ -44,6 +45,9 @@ public sealed class CombatRules
     public float EquipmentLockoutSeconds { get; }
 
     public float AmmunitionBatchIntervalSeconds { get; }
+
+    // A dying Mob credits its tagger or contributors only within this distance of it.
+    public float KillCreditRangeMeters { get; }
 
     public IReadOnlyCollection<ShardRuleSet> RuleSets => ruleSets.Values;
 
@@ -67,6 +71,7 @@ public sealed class CombatRules
             equipmentLockoutSeconds = 1f
         },
         ammunition = new AmmunitionRulesDocument { batchIntervalSeconds = 5f },
+        mobs = new MobRulesDocument { killCreditRangeMeters = 100f },
         ruleSets = [new ShardRuleSetDocument { id = "default", playerVersusPlayer = false }]
     });
 

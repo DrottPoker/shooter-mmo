@@ -395,6 +395,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 50,
                 lifeState,
                 health < 50,
+                0,
                 0);
         }
 

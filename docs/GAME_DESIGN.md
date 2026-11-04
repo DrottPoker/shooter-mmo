@@ -32,7 +32,7 @@ Implemented:
   follows the Shard's rule set. All damage is Normal.
 - Mobs that patrol, detect players, chase, attack, and walk home past their
   leash, with loot, corpses, and respawn: the Feral Wolf and the Feral Alpha
-  boss.
+  boss. The first player who damages a Mob tags it and alone may loot it.
 - A durable character level that gates equipment. Every character is level 1.
 - Worn clothes, armor, weapons, and shields show on the body, and a gathering
   tool shows in the hands while it is used, as
@@ -43,8 +43,8 @@ triangle with armor and misses, elemental damage and resistances, threat,
 healing abilities, potions, food, and drinking, movement impairments,
 experience and talents, profession levels and crafting, the other gathering
 professions, gameplay rule areas with the logout risk timer, the hostile flag
-and criminal reputation, achievements and the cloaks they reward, Mob tagging
-with the loot rights it gives, quests as
+and criminal reputation, achievements and the cloaks they reward, contributor
+credit for world bosses, quests as
 [Quest System Design](QUEST_SYSTEM_DESIGN.md) plans them, player trading, and
 social systems. The status of the whole project is in
 [Project Overview](PROJECT_OVERVIEW.md).
@@ -713,9 +713,9 @@ with drinking for mana, no style gets free recovery during a fight.
 ## Mobs And Encounters
 
 Implemented: the Feral Wolf, the Feral Alpha boss, and the defensive Grey Wolf
-with the Mob rules below, one attack each, and no abilities. Tagging, with the
-kill credit and loot rights it gives, is planned; today everyone may loot a Mob
-corpse. How a Mob is defined, scheduled, and
+with the Mob rules below, one attack each, and no abilities. Contributor credit
+for world bosses is planned; every other rule below is implemented. How a Mob is
+defined, scheduled, and
 respawned is in [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md), and
 the wolves' behavior in [Combat](GAME_FEATURES.md#combat).
 
@@ -760,7 +760,8 @@ the wolves' behavior in [Combat](GAME_FEATURES.md#combat).
   it dies gets credit, and each of them gets a loot roll of their own, which
   only that player sees in the corpse. Such a boss is never tagged.
 - The Feral Alpha is the first boss: stronger than a wolf, slower to return,
-  with a durable corpse, and with contributor credit once tagging exists.
+  and with a durable corpse. It is planned to be the first boss with
+  contributor credit.
 - Player and Mob values are tuned together: the starting weapon values keep a
   duel between equally equipped characters inside the PvP time-to-kill target,
   and an ordinary Mob dies to a few attacks.

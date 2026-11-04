@@ -21,6 +21,7 @@ internal static class CorpseCustody
                     expires_at as "ExpiresAt",
                     closed_at as "ClosedAt",
                     close_reason as "CloseReason",
+                    owner_character_id as "OwnerCharacterId",
                     expires_at <= now() as "IsExpired"
                 from corpses
                 where id = @CorpseId
@@ -60,6 +61,17 @@ internal static class CorpseCustody
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.WrongSimulationWorker,
                 "The corpse belongs to another Shard.");
+        }
+
+        // A Mob's corpse belongs to the player who tagged it; only expiry, as the system, may
+        // take what the owner left.
+        if (corpse.OwnerCharacterId is { } owner
+            && context.Actor.Authority != ItemTransactionAuthority.System
+            && context.Actor.Simulation?.CharacterId != owner)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.CorpseNotLootable,
+                "Another player tagged this Mob, so only they may loot it.");
         }
 
         return corpse;
@@ -158,6 +170,8 @@ internal sealed class LockedCorpseRow
     public DateTime? ClosedAt { get; set; }
 
     public string? CloseReason { get; set; }
+
+    public Guid? OwnerCharacterId { get; set; }
 
     public bool IsExpired { get; set; }
 }

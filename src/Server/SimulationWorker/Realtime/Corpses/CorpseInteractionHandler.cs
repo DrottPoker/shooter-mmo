@@ -169,6 +169,20 @@ internal sealed class CorpseInteractionHandler(
             return;
         }
 
+        if (!CorpseLootRights.CanLoot(corpse, session.CharacterId))
+        {
+            completions.Post(finalizer, new CorpseOperationCompleted(
+                context,
+                session,
+                SimulationCorpseInteractionResult.Rejected(
+                    intent,
+                    RealtimeCorpseViewClosureCodes.NotLootable,
+                    "Another player tagged this Mob, so only they may loot it.",
+                    shouldCloseView: true),
+                false));
+            return;
+        }
+
         if (!IsWithinCorpseInteractionRange(
                 corpse!,
                 positionX,

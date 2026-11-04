@@ -187,6 +187,7 @@ strictly at startup. Edit it by hand and restart the worker.
 | `player.manaRegenerationPerSecond` | 1, the mana a character out of combat regains every second | 0 to `maximumMana` |
 | `player.equipmentLockoutSeconds` | 1 | 0 to 30 |
 | `ammunition.batchIntervalSeconds` | 5, the time after the first uncommitted shot until the worker commits the spent arrows | 0.5 to 60 |
+| `mobs.killCreditRangeMeters` | 100, the distance from a dying Mob within which its tagger gets the kill credit and the loot | 1 to 1,000 |
 | `ruleSets` | `mvp-open-risk` with `playerVersusPlayer` `true` | 1 to 64 rule sets with unique, lowercase, sorted ids |
 
 Every Shard in the GameService topology names a rule set, and the worker stops
@@ -354,8 +355,9 @@ for a `gathering` capability.
 3. For a Mob, set its `Level`, which its nameplate shows, and choose the
    profiles under `Combat And Lifecycle`: damage policy, activity, respawn,
    combat, brain, locomotion, and loot profile, corpse persistence (`Live` or
-   `Durable`), and corpse lifetime. NPCs and resource nodes show a note instead,
-   because they are always invulnerable.
+   `Durable`), corpse lifetime, and `Kill Credit`, `Tagger` for every Mob today,
+   whose first attacker alone gets the credit and the loot. NPCs and resource
+   nodes show a note instead, because they are always invulnerable.
 4. Set the `Authoritative Interaction Bounds`, `Local Center` and `Size`, which
    a front-view preview draws. For a resource node also set `Collision Center`
    and `Collision Size`, the box that blocks walking; for NPCs and Mobs both stay

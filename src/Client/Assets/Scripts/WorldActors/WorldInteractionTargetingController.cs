@@ -112,6 +112,12 @@ namespace Mmorpg.Client.WorldActors
 
                 if (target.TargetKind == RealtimeWorldInteractionTargetKind.Corpse)
                 {
+                    // Another player's tagged kill offers only Examine.
+                    if (target is CorpseInteractionTarget { IsLootable: false })
+                    {
+                        continue;
+                    }
+
                     worldMenu.Add(WorldMenuOption.ForTarget(
                         this,
                         LootCorpseAction,
