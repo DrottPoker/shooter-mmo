@@ -294,6 +294,45 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(SandAt(44f, 44f), Is.EqualTo(1f).Within(0.01f), "sand where the lake is");
         }
 
+        // Removing a layer that lies under the paint too keeps what the World Builder painted, as
+        // a share of what is left, so the sand still goes where the water moves away, also on the
+        // bank, where the sand shares the cells with the ground.
+        [Test]
+        public void RemovingALayerUnderThePaintKeepsWhatTheWaterPainted()
+        {
+            var rock = new TerrainLayer { name = "Rock" };
+            made.Add(rock);
+            var data = terrain.terrainData;
+            data.terrainLayers = new[] { grass, sand, rock };
+            var maps = new float[128, 128, 3];
+            for (var z = 0; z < 128; z++)
+            {
+                for (var x = 0; x < 128; x++)
+                {
+                    maps[z, x, 0] = 0.5f;
+                    maps[z, x, 2] = 0.5f;
+                }
+            }
+
+            data.SetAlphamaps(0, 0, maps);
+            var lake = WorldBuilderCreate.AddLake(scene, new Vector3(20f, 9.6f, 20f));
+            Assert.That(SandAt(20f, 20f), Is.EqualTo(1f).Within(0.01f));
+
+            data.terrainLayers = new[] { grass, sand };
+            lake.transform.position = new Vector3(44f, 9.6f, 44f);
+            WorldBuilder.Rebuild(scene);
+
+            // The lake's floor and bank reached from 10 m to 30 m along X and from 12 m to 28 m
+            // along Z, away from where the lake lies now.
+            for (var z = 8f; z < 32f; z += 0.5f)
+            {
+                for (var x = 8f; x < 32f; x += 0.5f)
+                {
+                    Assert.That(SandAt(x, z), Is.LessThan(0.01f), "no sand at " + x + ", " + z);
+                }
+            }
+        }
+
         // Giving the ground back changes no terrain data that another terrain uses too, such as a
         // terrain duplicated after the water shaped it.
         [Test]

@@ -505,21 +505,40 @@ namespace Mmorpg.Client.Editor
             return layers.Length;
         }
 
-        // Whether a cell still holds the bed painted over its ground weights.
+        // Whether a cell still holds the bed painted over its ground weights. The weights compare
+        // as shares of the cell's whole, since removing a terrain layer may leave the others as
+        // they were or make them up to a whole again.
         private static bool HoldsPainted(float[,,] alphamaps, int z, int x, (float[] Ground, float Bed) cell, int bedLayer)
         {
             var layers = alphamaps.GetLength(2);
+            float paintedTotal = 0f, currentTotal = 0f;
             for (var layer = 0; layer < layers; layer++)
             {
-                var weight = layer < cell.Ground.Length ? cell.Ground[layer] : 0f;
-                var painted = (weight * (1f - cell.Bed)) + (layer == bedLayer ? cell.Bed : 0f);
-                if (Mathf.Abs(alphamaps[z, x, layer] - painted) > WeightTolerance)
+                paintedTotal += Painted(cell, layer, bedLayer);
+                currentTotal += alphamaps[z, x, layer];
+            }
+
+            if (paintedTotal <= 0f || currentTotal <= 0f)
+            {
+                return false;
+            }
+
+            for (var layer = 0; layer < layers; layer++)
+            {
+                if (Mathf.Abs((alphamaps[z, x, layer] / currentTotal) - (Painted(cell, layer, bedLayer) / paintedTotal)) > WeightTolerance)
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        // The weight of a layer that the World Builder painted into a cell over its ground weights.
+        private static float Painted((float[] Ground, float Bed) cell, int layer, int bedLayer)
+        {
+            var weight = layer < cell.Ground.Length ? cell.Ground[layer] : 0f;
+            return (weight * (1f - cell.Bed)) + (layer == bedLayer ? cell.Bed : 0f);
         }
 
         private static bool SameWeights(float[,,] first, float[,,] second)

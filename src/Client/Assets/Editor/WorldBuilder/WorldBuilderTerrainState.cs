@@ -135,8 +135,10 @@ namespace Mmorpg.Client.Editor
         // The cells remembered, with their weights in the order of the terrain's layers now, and
         // the index of the bed layer among them, or -1 when it is gone. A layer is the same layer
         // by its name now, or as the layer it was in memory before it was saved as an asset. A
-        // layer that is gone takes its weight along, and the other layers of the cell make up for
-        // it.
+        // layer that is gone takes its weight along, from the ground and from the paint, and the
+        // other layers of the cell make up for it, so the bed's share of the paint grows by as
+        // much as the paint's other layers shrink; the cell paints over the ground as before. A
+        // cell whose ground lay only on layers that are gone has nothing left to give back.
         public IReadOnlyDictionary<int, (float[] Ground, float Bed)> AlphasFor(TerrainData data, string[] currentIds, out int bedLayerIndex)
         {
             if (currentIds.SequenceEqual(layerIds))
@@ -157,24 +159,34 @@ namespace Mmorpg.Client.Editor
             }
 
             bedLayerIndex = BedLayerIndex >= 0 ? System.Array.IndexOf(sources, BedLayerIndex) : -1;
+            var bedGone = BedLayerIndex >= 0 && bedLayerIndex < 0;
             var remapped = new Dictionary<int, (float[] Ground, float Bed)>(alphas.Count);
             foreach (var cell in alphas)
             {
                 var ground = new float[currentIds.Length];
-                var total = 0f;
+                var kept = 0f;
                 for (var layer = 0; layer < ground.Length; layer++)
                 {
                     var source = sources[layer];
                     ground[layer] = source >= 0 && source < cell.Value.Ground.Length ? cell.Value.Ground[source] : 0f;
-                    total += ground[layer];
+                    kept += ground[layer];
                 }
 
-                for (var layer = 0; total > 0f && layer < ground.Length; layer++)
+                if (kept <= 0f)
                 {
-                    ground[layer] /= total;
+                    continue;
                 }
 
-                remapped.Add(cell.Key, (ground, cell.Value.Bed));
+                for (var layer = 0; layer < ground.Length; layer++)
+                {
+                    ground[layer] /= kept;
+                }
+
+                // The paint kept the bed's weight b and the kept ground's weight kept * (1 - b);
+                // made whole again, the bed's share is b over their sum.
+                var bed = cell.Value.Bed;
+                var share = bedGone ? 0f : bed / ((kept * (1f - bed)) + bed);
+                remapped.Add(cell.Key, (ground, share));
             }
 
             return remapped;
