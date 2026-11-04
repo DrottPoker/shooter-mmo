@@ -49,13 +49,14 @@ namespace Mmorpg.Client.Editor
             return Collect(shapes, GroundEdge(scene));
         }
 
-        public static WaterScene Collect(IEnumerable<WorldBuilderShape> shapes, Rect? worldEdge)
+        // The water of the enabled shapes, or of the disabled ones too, as though they were enabled.
+        public static WaterScene Collect(IEnumerable<WorldBuilderShape> shapes, Rect? worldEdge, bool disabledToo = false)
         {
             var water = new WaterScene { WorldEdge = worldEdge };
             var waterfalls = new List<WaterfallShape>();
             foreach (var shape in shapes)
             {
-                if (shape == null || !shape.enabled || !shape.gameObject.activeInHierarchy)
+                if (shape == null || (!shape.enabled && !disabledToo) || !shape.gameObject.activeInHierarchy)
                 {
                     continue;
                 }

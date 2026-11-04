@@ -26,7 +26,7 @@ namespace Mmorpg.Client.Editor
 
             var water = WaterScene.Collect(scene);
             var changed = WaterBuilder.Build(water);
-            changed |= TerrainCarver.Build(scene, WaterBed.Collect(water));
+            changed |= TerrainCarver.Build(scene, WaterBed.Collect(scene, water));
             if (changed && !EditorApplication.isPlaying && !EditorSceneManager.IsPreviewScene(scene))
             {
                 EditorSceneManager.MarkSceneDirty(scene);

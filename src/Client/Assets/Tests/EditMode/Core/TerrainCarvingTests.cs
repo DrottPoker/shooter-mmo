@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Editor;
 using Mmorpg.Client.Worlds;
@@ -21,7 +22,9 @@ namespace Mmorpg.Client.Tests.EditMode
         private const float HeightTolerance = 0.002f;
         private const string AssetDirectory = "Assets/TerrainCarvingTestAssets";
 
+        private readonly List<Object> made = new List<Object>();
         private Scene scene;
+        private GameObject world;
         private Terrain terrain;
         private TerrainLayer grass;
         private TerrainLayer sand;
@@ -32,48 +35,15 @@ namespace Mmorpg.Client.Tests.EditMode
             scene = EditorSceneManager.NewPreviewScene();
             grass = new TerrainLayer { name = "Grass" };
             sand = new TerrainLayer { name = "Sand" };
-            var data = new TerrainData
-            {
-                heightmapResolution = 65,
-                alphamapResolution = 128
-            };
-            data.size = new Vector3(64f, 20f, 64f);
-            var heights = new float[65, 65];
-            for (var z = 0; z < 65; z++)
-            {
-                for (var x = 0; x < 65; x++)
-                {
-                    heights[z, x] = Ground / 20f;
-                }
-            }
-
-            data.SetHeights(0, 0, heights);
-            data.terrainLayers = new[] { grass, sand };
-            var maps = new float[128, 128, 2];
-            for (var z = 0; z < 128; z++)
-            {
-                for (var x = 0; x < 128; x++)
-                {
-                    maps[z, x, 0] = 1f;
-                }
-            }
-
-            data.SetAlphamaps(0, 0, maps);
-            var world = new GameObject("World");
+            world = new GameObject("World");
             SceneManager.MoveGameObjectToScene(world, scene);
             world.AddComponent<WorldCollisionAuthoring>();
-            var terrainObject = Terrain.CreateTerrainGameObject(data);
-            terrainObject.transform.SetParent(world.transform, false);
-            terrain = terrainObject.GetComponent<Terrain>();
-            var shaped = new SerializedObject(terrainObject.AddComponent<WorldBuilderTerrain>());
-            shaped.FindProperty("bedLayer").objectReferenceValue = sand;
-            shaped.ApplyModifiedPropertiesWithoutUndo();
+            terrain = CreateTerrain(Vector3.zero);
         }
 
         [TearDown]
         public void CloseScene()
         {
-            var data = terrain.terrainData;
             TerrainCarver.Restore(terrain);
             foreach (var filter in scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<MeshFilter>(true)))
             {
@@ -85,13 +55,15 @@ namespace Mmorpg.Client.Tests.EditMode
 
             EditorSceneManager.ClosePreviewScene(scene);
             AssetDatabase.DeleteAsset(AssetDirectory);
-            foreach (var made in new Object[] { data, grass, sand })
+            foreach (var item in made.Concat(new Object[] { grass, sand }))
             {
-                if (made != null && !AssetDatabase.Contains(made))
+                if (item != null && !AssetDatabase.Contains(item))
                 {
-                    Object.DestroyImmediate(made);
+                    Object.DestroyImmediate(item);
                 }
             }
+
+            made.Clear();
         }
 
         [Test]
@@ -301,6 +273,55 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(HeightAt(32f, 40f), Is.EqualTo(9.6f - 0.1f).Within(HeightTolerance));
         }
 
+        // Giving the ground back changes no terrain data that another terrain uses too, such as a
+        // terrain duplicated after the water shaped it.
+        [Test]
+        public void GivingTheGroundBackLeavesSharedTerrainDataAsItIs()
+        {
+            WorldBuilderCreate.AddLake(scene, new Vector3(20f, 9.6f, 20f));
+            var carved = HeightAt(20f, 20f);
+            Assert.That(carved, Is.LessThan(Ground - 1f));
+            var copy = Terrain.CreateTerrainGameObject(terrain.terrainData);
+            copy.transform.SetParent(terrain.transform.parent, false);
+
+            Assert.That(TerrainCarver.MayShape(terrain), Is.False);
+            Assert.That(TerrainCarver.Restore(terrain), Is.False);
+            Assert.That(HeightAt(20f, 20f), Is.EqualTo(carved).Within(HeightTolerance));
+        }
+
+        // A disabled lake keeps its water as it was, so it keeps its bed below that water too.
+        [Test]
+        public void ADisabledLakeKeepsItsBedBelowItsWater()
+        {
+            var lake = WorldBuilderCreate.AddLake(scene, new Vector3(32f, 9.6f, 32f));
+            var carved = HeightAt(32f, 32f);
+            Assert.That(carved, Is.LessThan(Ground - 1f));
+
+            lake.enabled = false;
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(HeightAt(32f, 32f), Is.EqualTo(carved).Within(HeightTolerance), "the floor");
+            Assert.That(SandAt(32f, 32f), Is.EqualTo(1f).Within(0.01f), "the sand");
+        }
+
+        // Two terrains side by side both reach a bed that ends at the edge they share, so their
+        // edges stay level with each other at the water.
+        [Test]
+        public void TerrainsSideBySideBothReachABedThatEndsAtTheirSharedEdge()
+        {
+            var east = CreateTerrain(new Vector3(64f, 0f, 0f));
+
+            // The default shore is 16 by 12 m, so it runs from X 64 to X 80.
+            var lake = WorldBuilderCreate.AddLake(scene, new Vector3(72f, 9.6f, 32f));
+            var serialized = new SerializedObject(lake);
+            serialized.FindProperty("bankWidth").floatValue = 0f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            WorldBuilder.Rebuild(scene);
+
+            Assert.That(terrain.terrainData.GetHeight(64, 32), Is.EqualTo(9.6f).Within(HeightTolerance), "the west terrain's last column");
+            Assert.That(east.terrainData.GetHeight(0, 32), Is.EqualTo(9.6f).Within(HeightTolerance), "the east terrain's first column");
+        }
+
         // Terrain data that a closed scene uses too, also through a prefab, which only the scene's
         // file tells, stays as it is, and the validation says why.
         [Test]
@@ -480,6 +501,47 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             Assert.That(WorldBuilder.Rebuild(scene), Is.False);
             AssertGroundEverywhere();
+        }
+
+        // A 64 m terrain at the position below the World with flat ground at 10 m and grass, that
+        // the water shapes and paints with sand.
+        private Terrain CreateTerrain(Vector3 position)
+        {
+            var data = new TerrainData
+            {
+                heightmapResolution = 65,
+                alphamapResolution = 128
+            };
+            data.size = new Vector3(64f, 20f, 64f);
+            made.Add(data);
+            var heights = new float[65, 65];
+            for (var z = 0; z < 65; z++)
+            {
+                for (var x = 0; x < 65; x++)
+                {
+                    heights[z, x] = Ground / 20f;
+                }
+            }
+
+            data.SetHeights(0, 0, heights);
+            data.terrainLayers = new[] { grass, sand };
+            var maps = new float[128, 128, 2];
+            for (var z = 0; z < 128; z++)
+            {
+                for (var x = 0; x < 128; x++)
+                {
+                    maps[z, x, 0] = 1f;
+                }
+            }
+
+            data.SetAlphamaps(0, 0, maps);
+            var terrainObject = Terrain.CreateTerrainGameObject(data);
+            terrainObject.transform.SetParent(world.transform, false);
+            terrainObject.transform.localPosition = position;
+            var shaped = new SerializedObject(terrainObject.AddComponent<WorldBuilderTerrain>());
+            shaped.FindProperty("bedLayer").objectReferenceValue = sand;
+            shaped.ApplyModifiedPropertiesWithoutUndo();
+            return terrainObject.GetComponent<Terrain>();
         }
 
         private static WorldBuilderTerrainStateAsset StateOf(TerrainData data)

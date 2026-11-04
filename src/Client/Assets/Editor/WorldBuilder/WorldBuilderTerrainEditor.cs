@@ -21,14 +21,23 @@ namespace Mmorpg.Client.Editor
             if (GUILayout.Button("Give The Ground Back"))
             {
                 var shaped = (WorldBuilderTerrain)target;
-                if (EditorUtility.DisplayDialog(
+                var terrain = shaped.GetComponent<Terrain>();
+                if (terrain.terrainData != null && !TerrainCarver.MayShape(terrain))
+                {
+                    EditorUtility.DisplayDialog(
+                        "Give The Ground Back",
+                        "Another terrain uses the terrain data of " + shaped.name + " too, so the World Builder leaves it as it is. "
+                        + "Give this terrain terrain data of its own first.",
+                        "OK");
+                }
+                else if (EditorUtility.DisplayDialog(
                         "Give The Ground Back",
                         "Give " + shaped.name + " back the ground it had before the water shaped it, and stop the water "
                         + "from shaping it? Undo lets the water shape it again.",
                         "Give It Back",
                         "Cancel"))
                 {
-                    TerrainCarver.Restore(shaped.GetComponent<Terrain>());
+                    TerrainCarver.Restore(terrain);
                     Undo.DestroyObjectImmediate(shaped);
                     GUIUtility.ExitGUI();
                 }

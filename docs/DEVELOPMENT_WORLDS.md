@@ -533,8 +533,9 @@ removing it, `Give The Ground Back`, or an undo of adding it gives the whole
 terrain its ground back, an undo of the removal lets the water shape it again,
 and a disabled component leaves the terrain as it is. Terrain data that another
 terrain uses too, such as after a terrain object is duplicated, which keeps its
-terrain data, is never shaped, since each terrain would carve it at its own
-place; give each terrain terrain data of its own.
+terrain data, is never shaped or given back, since each terrain would carve it
+at its own place; give each terrain terrain data of its own. Terrains side by
+side all reach a bed that ends at the edge they share, so they meet level there.
 
 The water and the ground follow every change a moment later, also while a shape
 is dragged, when a shape is moved, added, or removed, when the ground's
@@ -561,7 +562,8 @@ water at once, because water shapes the water it meets:
   turned. Draw its outline out to that edge there.
 - A shape that is not complete, such as a waterfall without a landing or a
   river with one point, shows nothing until it is. A disabled shape builds
-  nothing, and what it made stays as it was.
+  nothing, and what it made stays as it was: a disabled water shape keeps its
+  water, and the bed below it as its values give it.
 
 A rebuild writes a mesh only when it changes, and a terrain's heights and layers
 only where they change, so a rebuild without a change marks nothing dirty and

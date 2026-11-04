@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Worlds;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Mmorpg.Client.Editor
 {
@@ -19,13 +20,29 @@ namespace Mmorpg.Client.Editor
         // the given height, or infinity where the bed does not reach.
         public abstract float HeightAt(Vector2 point, float ground);
 
-        // The beds of every complete water shape of the scene that carves its bed.
-        public static List<WaterBed> Collect(WaterScene water)
+        // The beds below the water of the scene: of every complete shape that carves its bed, and
+        // of every disabled one too, as though it were enabled, since its water stays as it was,
+        // so the ground stays below that water.
+        public static List<WaterBed> Collect(Scene scene, WaterScene water)
+        {
+            var beds = Collect(water, shape => true);
+            var shapes = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<WorldBuilderShape>(false)).ToList();
+            var disabled = new HashSet<WorldBuilderShape>(shapes.Where(shape => !shape.enabled && (shape is WaterSurfaceShape || shape is WaterfallShape)));
+            if (disabled.Count > 0)
+            {
+                beds.AddRange(Collect(WaterScene.Collect(shapes, water.WorldEdge, true), disabled.Contains));
+            }
+
+            return beds;
+        }
+
+        // The beds of the water's complete shapes that carve their beds and that the filter takes.
+        private static List<WaterBed> Collect(WaterScene water, System.Func<WorldBuilderShape, bool> takes)
         {
             var beds = new List<WaterBed>();
             foreach (var lake in water.Lakes)
             {
-                if (lake.Lake.CarvesBed && lake.Outline.Length >= 3)
+                if (takes(lake.Lake) && lake.Lake.CarvesBed && lake.Outline.Length >= 3)
                 {
                     beds.Add(new OpenWaterBed(lake.Outline, new bool[lake.Outline.Length], lake.Level, lake.Lake.FloorSlope, lake.Lake.MaximumDepth, lake.Lake.BankWidth));
                 }
@@ -33,7 +50,7 @@ namespace Mmorpg.Client.Editor
 
             foreach (var sea in water.Seas)
             {
-                if (sea.Sea.CarvesBed && sea.Outline.Length >= 3)
+                if (takes(sea.Sea) && sea.Sea.CarvesBed && sea.Outline.Length >= 3)
                 {
                     beds.Add(new OpenWaterBed(sea.Outline, OpenEdgesOf(sea, water.WorldEdge), sea.Level, sea.Sea.FloorSlope, sea.Sea.MaximumDepth, sea.Sea.BankWidth));
                 }
@@ -41,7 +58,7 @@ namespace Mmorpg.Client.Editor
 
             foreach (var river in water.Rivers)
             {
-                if (river.River.CarvesBed)
+                if (takes(river.River) && river.River.CarvesBed)
                 {
                     beds.Add(new RiverBed(river));
                 }
@@ -50,7 +67,7 @@ namespace Mmorpg.Client.Editor
             foreach (var waterfall in water.Waterfalls)
             {
                 var shape = waterfall.Shape;
-                if (shape.PoolRadius > 0f && shape.PoolDepth > 0f)
+                if (takes(shape) && shape.PoolRadius > 0f && shape.PoolDepth > 0f)
                 {
                     beds.Add(new PoolBed(waterfall.Fall.Landing, waterfall.Fall.LandingLevel, shape.PoolRadius, shape.PoolDepth));
                 }

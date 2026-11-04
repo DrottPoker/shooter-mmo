@@ -49,17 +49,27 @@ namespace Mmorpg.Client.Editor
                 }
                 else if (WorldBuilderTerrainState.Holds(terrain.terrainData))
                 {
-                    changed |= Restore(terrain);
+                    changed |= Build(terrain, null, new WaterBed[0]);
                 }
             }
 
             return changed;
         }
 
-        // Takes back everything the World Builder changed in the terrain and forgets it.
+        // Whether the water may shape the terrain: whether it has terrain data that no other
+        // terrain uses.
+        public static bool MayShape(Terrain terrain)
+        {
+            return terrain != null
+                && terrain.terrainData != null
+                && !WorldBuilderAssets.SharedTerrainData(terrain.gameObject.scene).Contains(terrain.terrainData);
+        }
+
+        // Takes back everything the World Builder changed in the terrain and forgets it, unless
+        // another terrain uses its terrain data too. Returns whether anything changed.
         public static bool Restore(Terrain terrain)
         {
-            return terrain != null && terrain.terrainData != null && Build(terrain, null, new WaterBed[0]);
+            return MayShape(terrain) && Build(terrain, null, new WaterBed[0]);
         }
 
         private static bool Build(Terrain terrain, TerrainLayer bedLayer, IReadOnlyList<WaterBed> beds)
@@ -67,7 +77,7 @@ namespace Mmorpg.Client.Editor
             var data = terrain.terrainData;
             var origin = terrain.GetPosition();
             var area = new Rect(origin.x, origin.z, data.size.x, data.size.z);
-            var reaching = beds.Where(bed => bed.Bounds.Overlaps(area)).ToList();
+            var reaching = beds.Where(bed => Touches(bed.Bounds, area)).ToList();
             var state = WorldBuilderTerrainState.Of(data);
             var heights = new HeightBlock(data, origin, reaching, state);
             var changed = heights.Carve(reaching, state);
@@ -447,6 +457,13 @@ namespace Mmorpg.Client.Editor
             var firstZ = Mathf.Clamp(Mathf.FloorToInt((bounds.yMin - origin.z) / cellZ), 0, resolution);
             var lastZ = Mathf.Clamp(Mathf.FloorToInt((bounds.yMax - origin.z) / cellZ) + 1, 0, resolution);
             return new RectInt(firstX, firstZ, Mathf.Max(0, lastX - firstX), Mathf.Max(0, lastZ - firstZ));
+        }
+
+        // Whether two rects overlap or touch, so a bed that ends at a terrain's edge reaches the
+        // terrain's last samples there, as it reaches the first samples of the terrain beside it.
+        private static bool Touches(Rect first, Rect second)
+        {
+            return first.xMin <= second.xMax && first.xMax >= second.xMin && first.yMin <= second.yMax && first.yMax >= second.yMin;
         }
 
         // The smallest block that holds every rect, empty without any.
