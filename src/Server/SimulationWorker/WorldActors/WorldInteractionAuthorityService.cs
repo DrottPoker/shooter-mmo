@@ -307,7 +307,7 @@ public sealed class WorldInteractionAuthorityService(
                 ? new GatheringStart(intent.InteractionSessionId, intent.CapabilityId, dispatch.GatheringNode)
                 : null,
             dispatch.Succeeded ? dispatch.ItemStateChange : null,
-            dispatch.Succeeded ? dispatch.QuestLogChange : null);
+            dispatch.QuestLogChange);
     }
 
     private WorldInteractionAuthorityResult Open(

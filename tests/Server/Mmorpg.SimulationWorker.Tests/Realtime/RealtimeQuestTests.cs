@@ -271,6 +271,54 @@ public sealed class RealtimeQuestTests
         Assert.Equal("Quest accepted.", result.Message);
     }
 
+    // A failed action at the NPC still tells the client to read the quest log the worker read again.
+    [Fact]
+    public async Task AnUncertainQuestActionAtTheQuestNpcStillTellsTheClientToReload()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableWorldActors = true,
+            EnableQuests = true
+        });
+        var character = harness.AddCharacter("Quest Lost Answer");
+        var logRevision = 0L;
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, Interlocked.Read(ref logRevision)));
+        harness.GameService.OnQuestOperation = (_, _, _) => throw new HttpRequestException("The answer was lost.");
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+        var services = await RealtimeWorldActorInteractionTests.WaitForServicesAsync(harness, client);
+        client.SendWorldIntent(RealtimeWorldActorInteractionTests.CreateOpen(character.SimulationSessionId, services));
+        await harness.PollUntilAsync(() => client.WorldOpened.Count == 1, "the open");
+        var opened = client.WorldOpened[0];
+        var quests = opened.Capabilities.Single(value => value.Kind == RealtimeWorldActorCapabilityKind.Quests);
+
+        Interlocked.Exchange(ref logRevision, 1);
+        client.SendWorldIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+            Guid.NewGuid(),
+            character.SimulationSessionId,
+            opened.InteractionSessionId,
+            RealtimeWorldInteractionTargetKind.WorldActor,
+            services.EntityId,
+            services.RuntimeActorId,
+            services.InteractionRevision,
+            quests.Id,
+            quests.Kind,
+            quests.Revision,
+            RealtimeCapabilityActionKind.AcceptQuest,
+            questId: Wolves));
+        await harness.PollUntilAsync(() => client.WorldResults.Count == 1, "the uncertain accept");
+
+        var result = Assert.Single(client.WorldResults);
+        Assert.False(result.Succeeded);
+        Assert.Equal("auth_service_unavailable", result.Error!.Code);
+        var reload = Assert.Single(QuestChanges(client));
+        Assert.Equal((0L, 1L, true), (reload.PreviousQuestLogRevision, reload.QuestLogRevision, reload.ReloadRequired));
+        Assert.True(
+            client.IndexOfFirst(RealtimeMessageType.QuestLogChanged)
+                < client.IndexOfFirst(RealtimeMessageType.WorldInteractionResult));
+    }
+
     private static SimulationActiveQuest ActiveWolves(int progress)
     {
         return new SimulationActiveQuest(

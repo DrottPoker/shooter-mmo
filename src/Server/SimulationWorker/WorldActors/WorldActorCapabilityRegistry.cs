@@ -46,7 +46,7 @@ public sealed record WorldActorCapabilityOperationContext(
 // GatheringNode names the resource node whose gathering the realtime loop starts once the
 // interaction result is final. ItemStateChange is the committed item change the client patches
 // its inventory with, when the transaction describes all of it, and QuestLogChange the committed
-// quest log change.
+// quest log change, or after a failed quest action the notice to read the quest log again.
 public sealed record WorldActorCapabilityDispatchResult(
     bool Succeeded,
     string Code,
