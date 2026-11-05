@@ -127,7 +127,7 @@ internal sealed class SimulationQuestDropService(
             && !string.IsNullOrWhiteSpace(request.SessionToken)
             && request.SessionToken.Length <= 1024
             && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
-            && request.Drops is { Count: >= 1 and <= WorldActorCorpseRules.MaximumLootEntries }
+            && request.Drops is { Count: >= 1 and <= WorldActorCorpseRules.MaximumQuestDropCandidates }
             && request.Drops.All(drop =>
                 drop is not null
                 && Identifiers.IsContentIdentifier(drop.QuestId)

@@ -184,6 +184,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 LiveMobCorpseStore!,
                 CorpseStore,
                 GameServiceClient,
+                SessionStore,
                 Config,
                 Identity,
                 TimeProvider.System)

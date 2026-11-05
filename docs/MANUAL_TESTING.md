@@ -769,7 +769,7 @@ and run:
 dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests|FullyQualifiedName~QuestDropIntegrationTests"
 ```
 
-Expected result: 22 tests pass. Each one joins a character to the Shard and
+Expected result: 23 tests pass. Each one joins a character to the Shard and
 checks one outcome:
 
 - Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the
@@ -796,7 +796,10 @@ checks one outcome:
   corpse. A durable Mob corpse keeps the letter its owner needs, which the owner
   then loots, and is not created when its only loot is a letter nobody needs.
   Three letters in one durable corpse keep only the two the quest needs, and
-  Loot all then takes only the one still needed.
+  Loot all then takes only the one still needed. A durable corpse with 23
+  entries of its own loot keeps one needed letter in its last entry, and
+  neither a letter for a quest that is not active nor a second needed letter
+  takes that place.
 - The worker's quest drop read for three rolled letters answers the two the
   quest needs, and after one letter was looted only one; before the acceptance
   and for a Grey Wolf it answers none, and another session token is refused
@@ -856,9 +859,12 @@ a Feral Wolf, and its corpse holds the wolf's own loot and then a
 the grant. A wolf without loot of its own leaves a corpse with only the letter,
 and none when GameService answers that the quest needs no more letters. A
 player without the quest gets no letter, and the worker asks GameService
-nothing. A lost answer of the quest drop read fails the corpse, which the Mob
-retries, an owner whose session ended gets no letter, and a durable corpse
-sends its letter to GameService with the quest.
+nothing. The read uses the owner's session token after a reconnect, and when
+the wolf's own loot leaves one free entry, only a letter that GameService says
+the quest needs takes it. A lost answer of the quest drop read fails the
+corpse, which the Mob retries, an owner whose session ended or who has none
+on the worker gets no letter, and a durable corpse sends every rolled letter
+to GameService with the quest.
 
 The in-game checks of the quest dialog replace this section once the quest
 windows exist.

@@ -942,9 +942,11 @@ internal sealed partial class CorpseService(
                 is >= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MinimumLifetimeSeconds
                 and <= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MaximumLifetimeSeconds
             && request.Loot is not null
-            && request.Loot.Count
-                is >= 1
-                and <= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MaximumLootEntries
+            && request.Loot.Count >= 1
+            && request.Loot.Count(loot => loot.QuestId is null)
+                <= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MaximumLootEntries
+            && request.Loot.Count(loot => loot.QuestId is not null)
+                <= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MaximumQuestDropCandidates
             && request.Loot.All(loot =>
                 loot.GrantId != Guid.Empty
                 && Identifiers.IsContentIdentifier(loot.DefinitionId)

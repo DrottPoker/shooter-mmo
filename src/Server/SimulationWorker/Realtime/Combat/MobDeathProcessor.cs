@@ -15,13 +15,12 @@ internal sealed record MobCorpseCreated(MobDeath Death, MobDeathCorpse Corpse, M
     : RealtimeOperationResult(RealtimePeerContext.System);
 
 // One corpse that a Mob death leaves: the loot of one credited player, or loot for everyone,
-// and the quest drops rolled for its owner, whose session asks GameService what they need.
+// and the quest drops rolled for its owner.
 internal sealed class MobDeathCorpse(
     Guid corpseId,
     Guid? ownerCharacterId,
     IReadOnlyList<MobCorpseLootSeed> loot,
-    IReadOnlyList<MobCorpseQuestDropSeed> questDrops,
-    ActiveSimulationSession? ownerSession)
+    IReadOnlyList<MobCorpseQuestDropSeed> questDrops)
 {
     public Guid CorpseId { get; } = corpseId;
 
@@ -30,8 +29,6 @@ internal sealed class MobDeathCorpse(
     public IReadOnlyList<MobCorpseLootSeed> Loot { get; } = loot;
 
     public IReadOnlyList<MobCorpseQuestDropSeed> QuestDrops { get; } = questDrops;
-
-    public ActiveSimulationSession? OwnerSession { get; } = ownerSession;
 
     public int Attempts { get; set; }
 
@@ -279,8 +276,9 @@ internal sealed class MobDeathProcessor(
         return planned;
     }
 
-    // The owner's quest drops fill the room that the Mob's own loot leaves in the corpse. A
-    // corpse without either is not created.
+    // The owner rolls the Mob's quest drops while the Mob's own loot leaves room in the corpse.
+    // GameService keeps the ones the owner still needs before they fill that room, so a drop that
+    // is not needed never takes the place of one that is. A corpse without either is not created.
     private MobDeathCorpse? PlanCorpse(
         Guid corpseId,
         WorldActorRuntimeState actor,
@@ -293,19 +291,15 @@ internal sealed class MobDeathProcessor(
             && session.CharacterId == credit.CharacterId
                 ? session
                 : null;
-        IReadOnlyList<MobCorpseQuestDropSeed> questDrops = ownerSession is null || questDropRoller is null
-            ? []
-            : questDropRoller.Roll(ownerSession, actor.Definition.Id, random)
-                .Take(WorldActorCorpseRules.MaximumLootEntries - loot.Count)
-                .ToArray();
+        IReadOnlyList<MobCorpseQuestDropSeed> questDrops =
+            ownerSession is null || questDropRoller is null || loot.Count >= WorldActorCorpseRules.MaximumLootEntries
+                ? []
+                : questDropRoller.Roll(ownerSession, actor.Definition.Id, random)
+                    .Take(WorldActorCorpseRules.MaximumQuestDropCandidates)
+                    .ToArray();
         return loot.Count == 0 && questDrops.Count == 0
             ? null
-            : new MobDeathCorpse(
-                corpseId,
-                owner?.CharacterId,
-                loot,
-                questDrops,
-                questDrops.Count == 0 ? null : ownerSession);
+            : new MobDeathCorpse(corpseId, owner?.CharacterId, loot, questDrops);
     }
 
     private void Create(MobDeath death, MobDeathCorpse corpse)
@@ -328,8 +322,7 @@ internal sealed class MobDeathProcessor(
                     corpse.Loot,
                     corpse.OwnerCharacterId)
                 {
-                    QuestDrops = corpse.QuestDrops,
-                    OwnerSession = corpse.OwnerSession
+                    QuestDrops = corpse.QuestDrops
                 },
                 CancellationToken.None);
         }

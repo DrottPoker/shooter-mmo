@@ -1036,9 +1036,11 @@ Seen from outside:
   is rejected with `quest_item_not_needed`. Ordinary Mob loot stays policy-free,
   and loot that names no quest is never a quest item. Loot all leaves a quest
   drop that is not needed in the corpse, and drops of one quest item share what
-  the quest still needs. A durable Mob corpse needs an owner for its quest drops,
-  keeps only what that owner needs, and is not created, with
-  `mob_corpse_empty`, when no loot is left. A quest drop leaves a durable Mob
+  the quest still needs. A durable Mob corpse names up to 24 entries of the
+  Mob's own loot and up to 64 quest drops, needs an owner for its quest drops,
+  keeps only what that owner needs in the entries that its own loot leaves of
+  24, in request order, and is not created, with `mob_corpse_empty`, when no
+  loot is left. A quest drop leaves a durable Mob
   corpse only into its owner's carried storage, and only while the owner's quest
   needs all of what moves; the corpse's expiry destroys it like any other loot.
 - Every worker mutation response, from item operations, ammunition batches,
@@ -1284,7 +1286,7 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   `questLog`.
 - `POST /api/simulation-sessions/{id}/quest-drops` answers how much of the quest
   drops that a dying Mob rolled for the session's character, named by
-  `sourceActorDefinitionId` and up to 24 `drops` of `questId`, `definitionId`,
+  `sourceActorDefinitionId` and up to 64 `drops` of `questId`, `definitionId`,
   and `quantity`, the character's quests still need, by the rules of a quest
   drop in [Item Transactions](#item-transactions): the needed drops in request
   order, each at most what its quest still needs after the drops before it, and
@@ -1342,17 +1344,20 @@ the quest actions of the realtime protocol through these routes:
   with the corpse's loot roll: once for every collect objective of a current
   step that names the Mob as a drop source, with the source's chance and
   quantity, by the quest log the worker keeps, or for every quest that the Mob
-  drops for while that log is stale. A development bot rolls none. The drops
-  follow the Mob's own loot and fill the room that it leaves in the corpse's 24
-  entries. Before it lays out a live corpse, the worker asks the quest drop route
-  through the owner's session how much of them the owner still needs, and a
-  corpse whose only loot is quest drops that the owner no longer needs is not
-  created. A timeout, an unreachable GameService, or a 5xx answer retries the
-  corpse; any other answer, such as an owner whose session ended, lays it out
-  without the quest drops. A durable corpse sends them with its creation, as
-  [Item Transactions](#item-transactions) describes. Looting a quest drop, alone
-  or with Loot all, names its quest, so GameService grants it with the quest's
-  lineage.
+  drops for while that log is stale, up to 64 drops and only while the Mob's
+  own loot leaves room in the corpse. A development bot rolls none. Before it
+  lays out a live corpse, the worker asks the quest drop route through the
+  owner's current session, which a reconnect keeps up to date, how much of them
+  the owner still needs. The needed drops then follow the Mob's own loot and
+  fill the room that it leaves in the corpse's 24 entries, so a drop that is
+  not needed never takes the place of one that is, and a corpse whose only loot
+  is quest drops that the owner no longer needs is not created. A timeout, an
+  unreachable GameService, or a 5xx answer retries the corpse; an owner without
+  a session on the worker, or any other answer, such as a session that ended,
+  lays it out without the quest drops. A durable corpse sends them all with its
+  creation, as [Item Transactions](#item-transactions) describes. Looting a
+  quest drop, alone or with Loot all, names its quest, so GameService grants it
+  with the quest's lineage.
 - A gathering yield names the node's actor definition as `resourceActorId`
   when a current step holds an unfinished gather objective for it, or the quest
   log is stale, and a retry after an uncertain answer sends the same request.

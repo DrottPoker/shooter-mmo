@@ -236,9 +236,10 @@ written in English like the other content.
   character to the Mob's corpse, at most the quantity the character still
   needs, and none when it needs no more. Only that character sees and loots the
   entry, as [Mob Corpse Lifecycle](INVENTORY_AND_DEATH_LOOT_DESIGN.md#mob-corpse-lifecycle)
-  describes. The entries follow the Mob's own loot and fill the room it leaves
-  in the corpse's 24 entries. A quest drop leaves a corpse even when the Mob's
-  own loot roll is empty.
+  describes. The entries follow the Mob's own loot, and only the ones the
+  character still needs fill the room that the loot leaves in the corpse's 24
+  entries, so a drop that is not needed never takes the place of one that is.
+  A quest drop leaves a corpse even when the Mob's own loot roll is empty.
 - The looted item is a protected quest item with the quest's grant lineage, so
   abandoning the quest removes it. An entry left in the corpse disappears with
   the corpse.

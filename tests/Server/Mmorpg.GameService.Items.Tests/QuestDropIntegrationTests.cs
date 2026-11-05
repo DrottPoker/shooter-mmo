@@ -158,6 +158,34 @@ public sealed class QuestDropIntegrationTests
         Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId));
     }
 
+    // A corpse almost full of the Mob's own loot keeps the letter the owner needs in its last
+    // entry: a letter that no active quest needs does not take that place, and a second needed
+    // letter finds no room.
+    [PostgresIntegrationFact]
+    public async Task NeededQuestDropsFillTheRoomThatTheMobsOwnLootLeaves()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("quest_drop_crowd");
+        var characterId = player.Character.Id;
+        var session = await world.JoinAsync(player);
+        ItemScenarioWorld.AssertCommitted(
+            await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
+        var corpseId = Guid.NewGuid();
+        MobCorpseLootEntryRequest[] loot =
+        [
+            .. Enumerable.Range(0, 23).Select(_ => new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 1)),
+            new(Guid.NewGuid(), Letter, 1, "quest.fixture.wolves"),
+            new(Guid.NewGuid(), Letter, 1, Trophies),
+            new(Guid.NewGuid(), Letter, 1, Trophies)
+        ];
+
+        ItemScenarioWorld.AssertCommitted(await CreateCorpseAsync(world, corpseId, characterId, loot));
+
+        Assert.Equal(24, await CountCorpseItemsAsync(world, corpseId));
+        Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId, Letter));
+    }
+
     // The worker's read before it lays out a live corpse: the drops that the owner's quests still
     // need, shared between drops of one item, with the checks of every worker read.
     [PostgresIntegrationFact]
@@ -214,7 +242,7 @@ public sealed class QuestDropIntegrationTests
             CancellationToken.None);
     }
 
-    private static async Task<int> CountCorpseItemsAsync(ItemScenarioWorld world, Guid corpseId)
+    private static async Task<int> CountCorpseItemsAsync(ItemScenarioWorld world, Guid corpseId, string? definitionId = null)
     {
         await using var connection = await world.Context.DataSource.OpenConnectionAsync();
         return await connection.QuerySingleAsync<int>(
@@ -222,9 +250,10 @@ public sealed class QuestDropIntegrationTests
             select count(*)::integer
             from corpse_sections section
             join item_instances item on item.container_id = section.container_id
-            where section.corpse_id = @CorpseId;
+            where section.corpse_id = @CorpseId
+                and (@DefinitionId::text is null or item.definition_id = @DefinitionId);
             """,
-            new { CorpseId = corpseId });
+            new { CorpseId = corpseId, DefinitionId = definitionId });
     }
 
     private static async Task<ItemTransactionResult> GrantAsync(

@@ -48,6 +48,7 @@ public sealed class MobCorpseLifecycleServiceTests
             {
                 BaseAddress = new Uri("http://localhost")
             }),
+            new ActiveSimulationSessionStore(),
             LoadConfig(),
             identity,
             timeProvider);
@@ -95,6 +96,7 @@ public sealed class MobCorpseLifecycleServiceTests
         var wolf = actors.First(actor => actor.Definition.Id == "mob.feral_wolf");
         var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
         var handler = new RecordingHttpHandler();
+        var sessions = new ActiveSimulationSessionStore();
         var service = new MobCorpseLifecycleService(
             actorStore,
             new LiveMobCorpseStore(timeProvider),
@@ -103,6 +105,7 @@ public sealed class MobCorpseLifecycleServiceTests
             {
                 BaseAddress = new Uri("http://localhost")
             }),
+            sessions,
             LoadConfig(),
             identity,
             timeProvider);
@@ -126,18 +129,21 @@ public sealed class MobCorpseLifecycleServiceTests
     }
 
     // The owner's quest drops follow the Mob's own loot, as much of them as GameService says the
-    // owner's quests still need, asked through the owner's session.
+    // owner's quests still need, asked through the owner's current session.
     [Fact]
     public async Task ALiveCorpseHoldsTheQuestDropsItsOwnerStillNeeds()
     {
         var handler = new ScriptedHttpHandler(_ => Json(new SimulationQuestDropResponse(
             [new SimulationQuestDrop(Trophies, Letter, 1)])));
-        var (service, wolf, liveStore) = CreateService(handler, "live");
+        var (service, wolf, liveStore, sessions) = CreateService(handler, "live");
         var owner = RealtimeTestSessions.Create();
+        sessions.Register(owner);
+        // A reconnect of the same session brings a new token.
+        sessions.Register(owner with { SimulationSessionToken = "reconnected-session-token" });
         var corpseId = Guid.NewGuid();
 
         var result = await service.CreateAsync(
-            OwnedRequest(corpseId, wolf, owner, [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
+            OwnedRequest(corpseId, wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
@@ -150,31 +156,54 @@ public sealed class MobCorpseLifecycleServiceTests
         Assert.Equal(owner.CharacterId, result.LiveCorpse.OwnerCharacterId);
         var (path, body) = Assert.Single(handler.Requests);
         Assert.Equal($"/api/simulation-sessions/{owner.SimulationSessionId}/quest-drops", path);
-        var read = System.Text.Json.JsonSerializer.Deserialize<SimulationQuestDropRequest>(
-            body,
-            System.Text.Json.JsonSerializerOptions.Web)!;
+        var read = ReadQuestDrops(body);
         Assert.Equal(
-            (owner.AccountId, owner.CharacterId, owner.WorkerId, owner.WorkerRuntimeId, owner.ShardId, owner.SimulationSessionToken, "mob.feral_wolf"),
+            (owner.AccountId, owner.CharacterId, owner.WorkerId, owner.WorkerRuntimeId, owner.ShardId, "reconnected-session-token", "mob.feral_wolf"),
             (read.AccountId, read.CharacterId, read.WorkerId, read.WorkerRuntimeId, read.ShardId, read.SessionToken, read.SourceActorDefinitionId));
         Assert.Equal(Letters(2).Select(drop => new SimulationQuestDrop(drop.QuestId, drop.DefinitionId, drop.Quantity)), read.Drops);
 
         // A replay finds the corpse as it was laid out and asks nothing.
         var replay = await service.CreateAsync(
-            OwnedRequest(corpseId, wolf, owner, [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
+            OwnedRequest(corpseId, wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
             CancellationToken.None);
         Assert.Same(result.LiveCorpse, replay.LiveCorpse);
         Assert.Single(handler.Requests);
         Assert.Same(result.LiveCorpse, Assert.Single(liveStore.ListActive()));
     }
 
+    // GameService first keeps the quest drops that the owner still needs, and only those take the
+    // entries that the Mob's own loot leaves, in request order.
+    [Fact]
+    public async Task NeededQuestDropsFillTheRoomThatTheMobsOwnLootLeaves()
+    {
+        var handler = new ScriptedHttpHandler(_ => Json(new SimulationQuestDropResponse(
+            [new SimulationQuestDrop(Trophies, Letter, 1), new SimulationQuestDrop(Trophies, Letter, 1)])));
+        var (service, wolf, _, sessions) = CreateService(handler, "live");
+        var owner = RealtimeTestSessions.Create();
+        sessions.Register(owner);
+        var ownLoot = Enumerable.Range(0, 23).Select(_ => new MobCorpseLootSeed("fixture.ore", 1)).ToArray();
+        MobCorpseQuestDropSeed[] rolled = [new("quest.fixture.wolves", Letter, 1), .. Letters(2)];
+
+        var result = await service.CreateAsync(
+            OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, ownLoot, rolled),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Equal(24, result.LiveCorpse!.Loot.Count);
+        Assert.Equal((Letter, Trophies, 23), (result.LiveCorpse.Loot[23].DefinitionId, result.LiveCorpse.Loot[23].QuestId, result.LiveCorpse.Loot[23].SlotIndex));
+        Assert.Equal(3, ReadQuestDrops(Assert.Single(handler.Requests).Body).Drops.Count);
+    }
+
     [Fact]
     public async Task QuestDropsThatTheOwnerNoLongerNeedsLeaveNoCorpse()
     {
         var handler = new ScriptedHttpHandler(_ => Json(new SimulationQuestDropResponse([])));
-        var (service, wolf, liveStore) = CreateService(handler, "live");
+        var (service, wolf, liveStore, sessions) = CreateService(handler, "live");
+        var owner = RealtimeTestSessions.Create();
+        sessions.Register(owner);
 
         var result = await service.CreateAsync(
-            OwnedRequest(Guid.NewGuid(), wolf, RealtimeTestSessions.Create(), [], Letters(1)),
+            OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [], Letters(1)),
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
@@ -184,9 +213,10 @@ public sealed class MobCorpseLifecycleServiceTests
     }
 
     // The read changes nothing, so a lost answer fails the creation, which the Mob retries. An
-    // owner whose session ended gets no quest drops, and the Mob's own loot stays.
+    // owner whose session ended, or who has none on the worker, gets no quest drops, and the Mob's
+    // own loot stays.
     [Fact]
-    public async Task ALostQuestDropReadFailsTheCreationAndAnEndedOwnerGetsNone()
+    public async Task ALostQuestDropReadFailsTheCreationAndAnOwnerWithoutASessionGetsNone()
     {
         var answers = new Queue<Func<HttpResponseMessage>>(
         [
@@ -197,20 +227,28 @@ public sealed class MobCorpseLifecycleServiceTests
             }
         ]);
         var handler = new ScriptedHttpHandler(_ => answers.Dequeue()());
-        var (service, wolf, liveStore) = CreateService(handler, "live");
-        var request = OwnedRequest(Guid.NewGuid(), wolf, RealtimeTestSessions.Create(), [new MobCorpseLootSeed("fixture.ore", 1)], Letters(1));
+        var (service, wolf, _, sessions) = CreateService(handler, "live");
+        var owner = RealtimeTestSessions.Create();
+        sessions.Register(owner);
+        var request = OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 1)], Letters(1));
 
         var lost = await service.CreateAsync(request, CancellationToken.None);
         var ended = await service.CreateAsync(request, CancellationToken.None);
+        sessions.Remove(owner.CharacterId, owner.SimulationSessionId, owner.SimulationSessionToken);
+        var left = await service.CreateAsync(
+            OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 1)], Letters(1)),
+            CancellationToken.None);
 
         Assert.Equal("auth_service_unavailable", lost.Error?.Code);
         Assert.True(ended.Succeeded, ended.Error?.Message);
         Assert.Equal(["fixture.ore"], ended.LiveCorpse!.Loot.Select(entry => entry.DefinitionId));
-        Assert.Same(ended.LiveCorpse, Assert.Single(liveStore.ListActive()));
+        Assert.True(left.Succeeded, left.Error?.Message);
+        Assert.Equal(["fixture.ore"], left.LiveCorpse!.Loot.Select(entry => entry.DefinitionId));
+        Assert.Equal(2, handler.Requests.Count);
     }
 
-    // A durable corpse hands its quest drops to GameService, which keeps what the owner needs
-    // and creates no corpse when nothing is left.
+    // A durable corpse hands every rolled quest drop to GameService, which keeps what the owner
+    // needs in the room the Mob's own loot leaves, and creates no corpse when nothing is left.
     [Fact]
     public async Task ADurableCorpseHandsItsQuestDropsToGameService()
     {
@@ -218,11 +256,12 @@ public sealed class MobCorpseLifecycleServiceTests
         {
             Content = JsonContent.Create(new { code = "mob_corpse_empty", detail = "No loot is left for the durable Mob corpse." })
         });
-        var (service, wolf, _) = CreateService(handler, "durable");
-        var owner = RealtimeTestSessions.Create();
+        var (service, wolf, _, _) = CreateService(handler, "durable");
+        var owner = Guid.NewGuid();
+        var ownLoot = Enumerable.Range(0, 23).Select(_ => new MobCorpseLootSeed("fixture.ore", 1)).ToArray();
 
         var result = await service.CreateAsync(
-            OwnedRequest(Guid.NewGuid(), wolf, owner, [new MobCorpseLootSeed("fixture.ore", 1)], Letters(1)),
+            OwnedRequest(Guid.NewGuid(), wolf, owner, ownLoot, Letters(3)),
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
@@ -231,11 +270,11 @@ public sealed class MobCorpseLifecycleServiceTests
         Assert.EndsWith("/mob-corpses/durable", path);
         using var document = System.Text.Json.JsonDocument.Parse(body);
         var loot = document.RootElement.GetProperty("loot").EnumerateArray().ToArray();
-        Assert.Equal(2, loot.Length);
-        Assert.False(loot[0].TryGetProperty("questId", out _));
-        Assert.Equal(Trophies, loot[1].GetProperty("questId").GetString());
-        Assert.Equal(Letter, loot[1].GetProperty("definitionId").GetString());
-        Assert.Equal(owner.CharacterId, document.RootElement.GetProperty("ownerCharacterId").GetGuid());
+        Assert.Equal(26, loot.Length);
+        Assert.False(loot[22].TryGetProperty("questId", out _));
+        Assert.All(loot[23..], entry => Assert.Equal(Trophies, entry.GetProperty("questId").GetString()));
+        Assert.Equal(Letter, loot[23].GetProperty("definitionId").GetString());
+        Assert.Equal(owner, document.RootElement.GetProperty("ownerCharacterId").GetGuid());
     }
 
     private const string Trophies = "quest.fixture.trophies";
@@ -249,20 +288,26 @@ public sealed class MobCorpseLifecycleServiceTests
     private static CreateMobCorpseRequest OwnedRequest(
         Guid corpseId,
         WorldActorRuntimeState wolf,
-        ActiveSimulationSession owner,
+        Guid ownerCharacterId,
         IReadOnlyList<MobCorpseLootSeed> loot,
         IReadOnlyList<MobCorpseQuestDropSeed> questDrops)
     {
-        return new CreateMobCorpseRequest(Guid.NewGuid(), corpseId, corpseId, wolf.RuntimeActorId, loot, owner.CharacterId)
+        return new CreateMobCorpseRequest(Guid.NewGuid(), corpseId, corpseId, wolf.RuntimeActorId, loot, ownerCharacterId)
         {
-            QuestDrops = questDrops,
-            OwnerSession = owner
+            QuestDrops = questDrops
         };
     }
 
+    private static SimulationQuestDropRequest ReadQuestDrops(string body)
+    {
+        return System.Text.Json.JsonSerializer.Deserialize<SimulationQuestDropRequest>(
+            body,
+            System.Text.Json.JsonSerializerOptions.Web)!;
+    }
+
     // A wolf of the test World with the given corpse persistence, on a service that talks to the
-    // handler.
-    private static (MobCorpseLifecycleService Service, WorldActorRuntimeState Wolf, LiveMobCorpseStore LiveStore)
+    // handler and finds owners in the session store.
+    private static (MobCorpseLifecycleService Service, WorldActorRuntimeState Wolf, LiveMobCorpseStore LiveStore, ActiveSimulationSessionStore Sessions)
         CreateService(HttpMessageHandler handler, string persistenceMode)
     {
         var runtime = WorldActorTestData.Compile();
@@ -274,6 +319,7 @@ public sealed class MobCorpseLifecycleServiceTests
             .First(actor => actor.Definition.Id == "mob.feral_wolf");
         var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
         var liveStore = new LiveMobCorpseStore(timeProvider);
+        var sessions = new ActiveSimulationSessionStore();
         var service = new MobCorpseLifecycleService(
             actorStore,
             liveStore,
@@ -282,10 +328,11 @@ public sealed class MobCorpseLifecycleServiceTests
             {
                 BaseAddress = new Uri("http://localhost")
             }),
+            sessions,
             LoadConfig(),
             identity,
             timeProvider);
-        return (service, wolf, liveStore);
+        return (service, wolf, liveStore, sessions);
     }
 
     private static HttpResponseMessage Json<T>(T value)

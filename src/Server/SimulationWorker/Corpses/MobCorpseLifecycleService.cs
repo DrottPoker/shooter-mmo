@@ -25,12 +25,11 @@ public sealed record CreateMobCorpseRequest(
     IReadOnlyList<MobCorpseLootSeed> Loot,
     Guid? OwnerCharacterId = null)
 {
-    // The quest drops rolled for the owner, after the Mob's own loot. A live corpse asks
+    // The quest drops rolled for the owner, which follow the Mob's own loot. A live corpse asks
     // GameService through the owner's session how much of them the owner still needs; a durable
-    // corpse hands them to GameService, which keeps that much.
+    // corpse hands them to GameService, which keeps that much. The needed ones then fill the
+    // entries that the Mob's own loot leaves.
     public IReadOnlyList<MobCorpseQuestDropSeed> QuestDrops { get; init; } = [];
-
-    public ActiveSimulationSession? OwnerSession { get; init; }
 }
 
 public sealed record MobCorpseCreationResult(
@@ -64,6 +63,7 @@ public sealed class MobCorpseLifecycleService(
     LiveMobCorpseStore liveCorpseStore,
     DurableCorpseStore durableCorpseStore,
     GameServiceClient gameServiceClient,
+    ActiveSimulationSessionStore sessionStore,
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity,
     TimeProvider timeProvider)
@@ -118,7 +118,10 @@ public sealed class MobCorpseLifecycleService(
                 return MobCorpseCreationResult.Rejected(neededQuestDrops.Error);
             }
 
-            var liveLoot = Resolve(corpseId, request.Loot, neededQuestDrops.Drops);
+            var liveLoot = Resolve(
+                corpseId,
+                request.Loot,
+                neededQuestDrops.Drops.Take(WorldActorCorpseRules.MaximumLootEntries - request.Loot.Count));
             if (liveLoot.Length == 0)
             {
                 return MobCorpseCreationResult.Empty;
@@ -213,16 +216,20 @@ public sealed class MobCorpseLifecycleService(
         return MobCorpseCreationResult.Durable(durableResult.Value.Corpse);
     }
 
-    // The quest drops that a live corpse's owner still needs. A timeout or a server error fails
-    // the creation, which the Mob retries, since the read changes nothing. Any other answer,
-    // such as an owner who left the world, leaves the quest drops out.
+    // The quest drops that a live corpse's owner still needs, asked through the owner's current
+    // session, so a reconnect's new token holds. A timeout or a server error fails the creation,
+    // which the Mob retries, since the read changes nothing. An owner without a session on this
+    // worker, or any other answer, such as a session that ended, leaves the quest drops out.
     private async Task<(IReadOnlyList<SimulationQuestDrop> Drops, SimulationWorkerErrorResponse? Error)>
         ResolveQuestDropsAsync(
             CreateMobCorpseRequest request,
             string sourceActorDefinitionId,
             CancellationToken cancellationToken)
     {
-        if (request.QuestDrops.Count == 0 || request.OwnerSession is not { } owner)
+        if (request.QuestDrops.Count == 0
+            || request.OwnerCharacterId is not { } ownerCharacterId
+            || !sessionStore.TryGet(ownerCharacterId, out var owner)
+            || owner is null)
         {
             return ([], null);
         }
@@ -281,7 +288,9 @@ public sealed class MobCorpseLifecycleService(
             || request.SourceActorRuntimeId == Guid.Empty
             || request.Loot is null
             || request.QuestDrops is null
-            || (request.Loot.Count + request.QuestDrops.Count) is < 1 or > WorldActorCorpseRules.MaximumLootEntries
+            || request.Loot.Count > WorldActorCorpseRules.MaximumLootEntries
+            || request.QuestDrops.Count > WorldActorCorpseRules.MaximumQuestDropCandidates
+            || request.Loot.Count + request.QuestDrops.Count == 0
             || request.Loot.Any(seed =>
                 !Identifiers.IsContentIdentifier(seed.DefinitionId)
                 || seed.Quantity <= 0)
@@ -290,8 +299,7 @@ public sealed class MobCorpseLifecycleService(
                 || !Identifiers.IsContentIdentifier(drop.QuestId)
                 || !Identifiers.IsContentIdentifier(drop.DefinitionId)
                 || drop.Quantity <= 0)
-            || (request.QuestDrops.Count > 0 && request.OwnerCharacterId is null)
-            || (request.OwnerSession is not null && request.OwnerSession.CharacterId != request.OwnerCharacterId))
+            || (request.QuestDrops.Count > 0 && request.OwnerCharacterId is null))
         {
             throw new ArgumentException(
                 "The Mob corpse creation request is incomplete or invalid.",
