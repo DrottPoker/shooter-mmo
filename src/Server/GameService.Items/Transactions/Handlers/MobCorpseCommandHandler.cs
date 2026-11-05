@@ -151,6 +151,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                     ItemPolicySourceKinds.QuestGrant,
                     loot.QuestId,
                     cancellationToken);
+                context.Journal.AddQuestDrop(loot.QuestId, definition.RuntimeDefinition.Id, quantity);
             }
             else
             {

@@ -16,6 +16,7 @@ internal sealed class ItemChangeJournal(
     private readonly HashSet<Guid> changedItemIds = [];
     private readonly List<ItemAuditChange> auditChanges = [];
     private readonly List<Guid> recoveryDeliveryIds = [];
+    private readonly List<ItemTransactionQuestDrop> questDrops = [];
     private bool allowInvoluntaryHardCapOverflow;
     private ItemTransactionQuestLogChange? questLogChange;
 
@@ -38,6 +39,8 @@ internal sealed class ItemChangeJournal(
     internal bool AllowsInvoluntaryHardCapOverflow => allowInvoluntaryHardCapOverflow;
 
     internal ItemTransactionQuestLogChange? QuestLogChange => questLogChange;
+
+    internal IReadOnlyList<ItemTransactionQuestDrop> QuestDrops => questDrops;
 
     public async Task<string?> CaptureItemStateJsonAsync(
         Guid itemInstanceId,
@@ -132,6 +135,13 @@ internal sealed class ItemChangeJournal(
     {
         ArgumentNullException.ThrowIfNull(change);
         questLogChange = change;
+    }
+
+    // A quest drop that a durable Mob corpse keeps for its owner, which the result reports so
+    // the worker can tell the owner.
+    public void AddQuestDrop(string questId, string definitionId, int quantity)
+    {
+        questDrops.Add(new ItemTransactionQuestDrop(questId, definitionId, quantity));
     }
 
     public void AllowInvoluntaryDeathHardCapOverflow()

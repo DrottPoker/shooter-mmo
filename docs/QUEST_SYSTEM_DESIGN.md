@@ -45,7 +45,8 @@ Implemented:
 - The worker rolls [quest drops](#quest-drops) into the corpses of dying Mobs,
   and GameService grants them from live Mob loot and keeps them in durable Mob
   corpses with the quest's lineage, up to what the quest still needs, as
-  [Service Features](SERVICE_FEATURES.md#quests) describes.
+  [Service Features](SERVICE_FEATURES.md#quests) describes. The worker tells
+  the owner about every quest drop in a new corpse.
 - The client keeps the quest log of the joined character and opens the quest
   dialog at a quest NPC, where the player accepts, talks, hands over, asks for
   lost start items, and turns in with a reward choice. The quest log on `L`
@@ -55,8 +56,7 @@ Implemented:
   committed quest change, as
   [Quest Client](UNITY_CLIENT_ARCHITECTURE.md#quest-client) describes.
 
-Planned: everything else in this document, next the game message for a quest
-drop in a corpse and the Admin menu's quest tools.
+Planned: everything else in this document, next the Admin menu's quest tools.
 
 ## Goals
 

@@ -14,6 +14,13 @@ namespace Mmorpg.SimulationWorker.Realtime;
 internal sealed record MobCorpseCreated(MobDeath Death, MobDeathCorpse Corpse, MobCorpseCreationResult Result)
     : RealtimeOperationResult(RealtimePeerContext.System);
 
+// The quest items that a new corpse holds for its owner, which the owner is told about.
+internal sealed record MobCorpseQuestDrops(
+    Guid OwnerCharacterId,
+    Guid CorpseId,
+    string SourceDisplayName,
+    IReadOnlyList<MobCorpseQuestDropSeed> Drops);
+
 // One corpse that a Mob death leaves: the loot of one credited player, or loot for everyone,
 // and the quest drops rolled for its owner.
 internal sealed class MobDeathCorpse(
@@ -101,6 +108,9 @@ internal sealed class MobDeathProcessor(
 
     // Hears every Mob that left the world, so its brain stops.
     public Action<ulong>? Despawned { get; set; }
+
+    // Hears every created corpse that holds quest items for its owner.
+    public Action<MobCorpseQuestDrops>? QuestDropsPlaced { get; set; }
 
     public int PendingDeaths => deaths.Count;
 
@@ -200,6 +210,14 @@ internal sealed class MobDeathProcessor(
         if (created.Result.Succeeded)
         {
             corpse.Finished = true;
+            if (corpse.OwnerCharacterId is Guid ownerCharacterId && created.Result.QuestDrops.Count > 0)
+            {
+                QuestDropsPlaced?.Invoke(new MobCorpseQuestDrops(
+                    ownerCharacterId,
+                    corpse.CorpseId,
+                    death.Actor.Definition.DisplayName,
+                    created.Result.QuestDrops));
+            }
         }
         else
         {

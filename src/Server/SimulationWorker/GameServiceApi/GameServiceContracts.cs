@@ -209,9 +209,13 @@ public sealed record CreatePersistentMobCorpseRequest(
     public Guid? LootGroupId { get; init; }
 }
 
+// QuestDrops are the quest drops that the corpse keeps for its owner, in corpse order.
 public sealed record PersistentMobCorpseResponse(
     Guid OperationId,
-    DurableCorpseResponse Corpse);
+    DurableCorpseResponse Corpse)
+{
+    public IReadOnlyList<SimulationQuestDrop>? QuestDrops { get; init; }
+}
 
 public sealed record SimulationMobLootGrantRequest(
     Guid GrantId,

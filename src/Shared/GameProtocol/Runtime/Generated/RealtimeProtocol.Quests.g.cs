@@ -197,6 +197,51 @@ namespace Mmorpg.GameProtocol
         public RealtimeQuestChange[] Quests { get; }
     }
 
+    /// <summary>
+    /// A quest item that a dying Mob left in its corpse for the recipient's quest, which only the recipient sees and loots. The worker sends one for every quest drop once the corpse exists.
+    /// </summary>
+    public sealed partial class RealtimeQuestDropInCorpse
+    {
+        public RealtimeQuestDropInCorpse(
+            Guid corpseId,
+            string sourceDisplayName,
+            string questId,
+            string definitionId,
+            int quantity)
+        {
+            CorpseId = corpseId;
+            SourceDisplayName = sourceDisplayName;
+            QuestId = questId;
+            DefinitionId = definitionId;
+            Quantity = quantity;
+        }
+
+        /// <summary>
+        /// The corpse that holds the item.
+        /// </summary>
+        public Guid CorpseId { get; }
+
+        /// <summary>
+        /// The name of the Mob that left the corpse.
+        /// </summary>
+        public string SourceDisplayName { get; }
+
+        /// <summary>
+        /// The quest that needs the item.
+        /// </summary>
+        public string QuestId { get; }
+
+        /// <summary>
+        /// The quest item.
+        /// </summary>
+        public string DefinitionId { get; }
+
+        /// <summary>
+        /// How many of the item the corpse holds for the quest.
+        /// </summary>
+        public int Quantity { get; }
+    }
+
     // Encoding, decoding, and validation of the Quests family.
     public static partial class RealtimeProtocol
     {
@@ -538,6 +583,109 @@ namespace Mmorpg.GameProtocol
             }
 
             return SatisfiesRules(value);
+        }
+
+        /// <summary>
+        /// A quest item that a dying Mob left in its corpse for the recipient's quest, which only the recipient sees and loots. The worker sends one for every quest drop once the corpse exists.
+        /// </summary>
+        public static byte[] EncodeQuestDropInCorpse(RealtimeQuestDropInCorpse drop)
+        {
+            if (!IsValidQuestDropInCorpse(drop))
+            {
+                throw new ArgumentException("Quest drop in corpse is invalid.", nameof(drop));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.QuestDropInCorpse, SizeOfQuestDropInCorpse(drop));
+            WriteQuestDropInCorpse(ref writer, drop);
+            return writer.Finish();
+        }
+
+        public static bool TryDecodeQuestDropInCorpse(byte[] data, out RealtimeQuestDropInCorpse drop, out string error)
+        {
+            drop = null;
+            if (!TryStartPacket(data, RealtimeMessageType.QuestDropInCorpse, out var reader, out error)
+                || !TryReadQuestDropInCorpse(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidQuestDropInCorpse(decoded))
+            {
+                error = "Quest drop in corpse is invalid.";
+                return false;
+            }
+
+            drop = decoded;
+            return true;
+        }
+
+        private static void WriteQuestDropInCorpse(ref PacketWriter writer, RealtimeQuestDropInCorpse value)
+        {
+            writer.WriteGuid(value.CorpseId);
+            writer.WriteString(value.SourceDisplayName);
+            writer.WriteString(value.QuestId);
+            writer.WriteString(value.DefinitionId);
+            writer.WriteInt32(value.Quantity);
+        }
+
+        private static int SizeOfQuestDropInCorpse(RealtimeQuestDropInCorpse value)
+        {
+            var size = 20;
+            size += StringSize(value.SourceDisplayName);
+            size += StringSize(value.QuestId);
+            size += StringSize(value.DefinitionId);
+            return size;
+        }
+
+        private static bool TryReadQuestDropInCorpse(ref PacketReader reader, out RealtimeQuestDropInCorpse value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadGuid(out var corpseId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadString(MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadString(MaximumIdentifierLength, out var questId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadString(MaximumDefinitionIdLength, out var definitionId, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadInt32(out var quantity, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeQuestDropInCorpse(corpseId, sourceDisplayName, questId, definitionId, quantity);
+            return true;
+        }
+
+        private static bool IsValidQuestDropInCorpse(RealtimeQuestDropInCorpse value)
+        {
+            if (value == null
+                || value.CorpseId == Guid.Empty
+                || string.IsNullOrWhiteSpace(value.SourceDisplayName)
+                || value.SourceDisplayName.Length > MaximumCorpseSourceNameLength
+                || string.IsNullOrWhiteSpace(value.QuestId)
+                || value.QuestId.Length > MaximumIdentifierLength
+                || string.IsNullOrWhiteSpace(value.DefinitionId)
+                || value.DefinitionId.Length > MaximumDefinitionIdLength
+                || value.Quantity < 1)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private static void WriteQuestObjectiveProgress(ref PacketWriter writer, RealtimeQuestObjectiveProgress value)

@@ -228,7 +228,12 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// Every quest that one committed change of the owner touched, so the client patches its quest log without reading it again. The worker sends it before the result of the operation that caused it.
         /// </summary>
-        QuestLogChanged = 44
+        QuestLogChanged = 44,
+
+        /// <summary>
+        /// A quest item that a dying Mob left in its corpse for the recipient's quest, which only the recipient sees and loots. The worker sends one for every quest drop once the corpse exists.
+        /// </summary>
+        QuestDropInCorpse = 45
     }
 
     /// <summary>
@@ -407,7 +412,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 34;
+        public const ushort Version = 35;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -547,7 +552,8 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.AdminStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.QuestLogChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestLogChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestDropInCorpse, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>

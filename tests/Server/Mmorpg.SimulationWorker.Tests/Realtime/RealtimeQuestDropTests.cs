@@ -8,8 +8,8 @@ using static Mmorpg.SimulationWorker.Tests.Realtime.RealtimeCombatTests;
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 // A Feral Wolf drops a stolen letter for quest.fixture.trophies into its tagger's corpse, after
-// its own loot, once GameService says the tagger's quest still needs it. Looting the letter
-// names the quest, so GameService grants it with the quest's lineage.
+// its own loot, once GameService says the tagger's quest still needs it, and the tagger hears
+// of it. Looting the letter names the quest, so GameService grants it with the quest's lineage.
 public sealed class RealtimeQuestDropTests
 {
     private const string Trophies = "quest.fixture.trophies";
@@ -49,6 +49,11 @@ public sealed class RealtimeQuestDropTests
             (archer.CharacterId, archer.SimulationSessionToken, "mob.feral_wolf"),
             (read.CharacterId, read.SessionToken, read.SourceActorDefinitionId));
         Assert.Equal([new SimulationQuestDrop(Trophies, Letter, 1)], read.Drops);
+        await harness.PollUntilAsync(() => QuestDrops(client).Count == 1, "the quest drop notice");
+        var notice = Assert.Single(QuestDrops(client));
+        Assert.Equal(
+            (corpse.CorpseId, "Feral Wolf", Trophies, Letter, 1),
+            (notice.CorpseId, notice.SourceDisplayName, notice.QuestId, notice.DefinitionId, notice.Quantity));
 
         client.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpse.CorpseId));
         await harness.PollUntilAsync(() => client.CorpseResults.Count == 1, "the open");
@@ -102,10 +107,12 @@ public sealed class RealtimeQuestDropTests
         {
             var entry = Assert.Single(Corpse(harness, wolf)!.Loot);
             Assert.Equal((Letter, Trophies, 0), (entry.DefinitionId, entry.QuestId, entry.SlotIndex));
+            await harness.PollUntilAsync(() => QuestDrops(client).Count == 1, "the quest drop notice");
         }
         else
         {
             Assert.Null(Corpse(harness, wolf));
+            Assert.Empty(QuestDrops(client));
         }
     }
 
@@ -124,6 +131,14 @@ public sealed class RealtimeQuestDropTests
 
         Assert.All(Corpse(harness, wolf)!.Loot, entry => Assert.Null(entry.QuestId));
         Assert.Empty(harness.GameService.QuestDropReads);
+        Assert.Empty(QuestDrops(client));
+    }
+
+    private static IReadOnlyList<RealtimeQuestDropInCorpse> QuestDrops(RealtimeRecordingClient client)
+    {
+        return client.Decode<RealtimeQuestDropInCorpse>(
+            RealtimeMessageType.QuestDropInCorpse,
+            RealtimeProtocol.TryDecodeQuestDropInCorpse);
     }
 
     private static LiveMobCorpseState? Corpse(RealtimeServerHarness harness, RealtimeWorldActorSpawn wolf)

@@ -674,7 +674,9 @@ personal, and its progress survives death, leaving, and Shard switches.
   such as `Feral Wolves slain 3/5` or, for carried items, `Wolf Pelts 2/3`,
   `Quest updated: <quest>` when a quest moves to its next step,
   `<quest> is ready to turn in.` once a quest is done, also when looting its last
-  item finishes it, and `Quest completed: <quest>` or `Quest abandoned: <quest>`.
+  item finishes it, `Quest completed: <quest>` or `Quest abandoned: <quest>`,
+  and `<Mob> dropped <item> for <quest>.` when a Mob leaves a quest item in its
+  corpse for the player.
 - `L` opens the quest log beside the quest dialog. It lists the active quests
   by title with `ACTIVE n / 25`, a quest that is done marked `(Ready)`.
   Choosing one shows the current objectives with their progress, `Ready to turn

@@ -172,6 +172,21 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void AQuestDropInACorpseNamesTheMobTheItemAndTheQuest()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+            Func<string, string> names = id => id == "fixture.letter" ? "Stolen Letter" : null;
+
+            Assert.That(
+                QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "Feral Wolf", FixtureQuestCatalog.Trophies, "fixture.letter", 1), catalog, names),
+                Is.EqualTo("Feral Wolf dropped Stolen Letter for Fixture Trophies."));
+            Assert.That(
+                QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "Feral Alpha", "quest.unknown", "fixture.fang", 2), catalog, names),
+                Is.EqualTo("Feral Alpha dropped 2 x fixture.fang for quest.unknown."),
+                "An unknown item or quest shows its id.");
+        }
+
+        [Test]
         public void ACommittedChangeTellsTheProgressAndTheOutcome()
         {
             var catalog = FixtureQuestCatalog.Load();

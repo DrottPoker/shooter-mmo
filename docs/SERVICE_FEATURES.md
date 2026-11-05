@@ -1043,7 +1043,9 @@ Seen from outside:
   Mob's own loot and up to 64 quest drops, needs an owner for its quest drops,
   keeps only what that owner needs in the entries that its own loot leaves of
   24, in request order, and is not created, with `mob_corpse_empty`, when no
-  loot is left. A quest drop leaves a durable Mob
+  loot is left. Its response lists the quest drops it kept, in corpse order, as
+  `questDrops`, also when the worker asks again with the same operation. A
+  quest drop leaves a durable Mob
   corpse only into its owner's carried storage, and only while the owner's quest
   needs all of what moves; the corpse's expiry destroys it like any other loot.
 - Every worker mutation response, from item operations, ammunition batches,
@@ -1358,9 +1360,10 @@ the quest actions of the realtime protocol through these routes:
   unreachable GameService, or a 5xx answer retries the corpse; an owner without
   a session on the worker, or any other answer, such as a session that ended,
   lays it out without the quest drops. A durable corpse sends them all with its
-  creation, as [Item Transactions](#item-transactions) describes. Looting a
-  quest drop, alone or with Loot all, names its quest, so GameService grants it
-  with the quest's lineage.
+  creation, as [Item Transactions](#item-transactions) describes. Once the
+  corpse exists, the worker sends its connected owner a `QuestDropInCorpse` for
+  every quest drop the corpse holds. Looting a quest drop, alone or with Loot
+  all, names its quest, so GameService grants it with the quest's lineage.
 - A gathering yield names the node's actor definition as `resourceActorId`
   when a current step holds an unfinished gather objective for it, or the quest
   log is stale, and a retry after an uncertain answer sends the same request.

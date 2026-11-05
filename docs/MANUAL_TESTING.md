@@ -824,6 +824,19 @@ The EditMode tests `QuestClientTests` and `WorldQuestMarkerTests` cover the
 marker rules, including the grey `!` of a quest that needs a higher level,
 which Development World 2 has none of.
 
+### Quest Drop Messages
+
+Continue with a character that completed Wolves at the Gate, as
+[The Quest Dialog](#the-quest-dialog) describes.
+
+1. Accept `Pelts and Fangs` at Mira and kill Feral Wolves at the gate.
+   Expected result: about every other wolf, the game messages say
+   `Feral Wolf dropped Wolf Fang for Pelts and Fangs.`, and that wolf's corpse
+   holds the Wolf Fang. Loot it. Expected result: the game messages say
+   `Wolf Fangs 1/2`.
+2. Once you carry two Wolf Fangs, kill another Feral Wolf. Expected result: no
+   drop message, because the quest needs no more fangs.
+
 ### Quest Commands On The Worker Quest Route
 
 The worker runs the quest actions through the quest dialog, and the same routes
@@ -868,7 +881,8 @@ checks one outcome:
   Loot all then takes only the one still needed. A durable corpse with 23
   entries of its own loot keeps one needed letter in its last entry, and
   neither a letter for a quest that is not active nor a second needed letter
-  takes that place.
+  takes that place. The durable corpse's answer lists the two letters it kept,
+  also when the worker asks again, and none for a corpse of ore alone.
 - The worker's quest drop read for three rolled letters answers the two the
   quest needs, and after one letter was looted only one; before the acceptance
   and for a Grey Wolf it answers none, and another session token is refused
@@ -924,8 +938,8 @@ dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release -
 
 Expected result: every test passes. An archer on `quest.fixture.trophies` kills
 a Feral Wolf, and its corpse holds the wolf's own loot and then a
-`fixture.letter` that names the quest; looting the letter sends the quest with
-the grant. A wolf without loot of its own leaves a corpse with only the letter,
+`fixture.letter` that names the quest; the archer gets a `QuestDropInCorpse`
+for the letter, and looting it sends the quest with the grant. A wolf without loot of its own leaves a corpse with only the letter,
 and none when GameService answers that the quest needs no more letters. A
 player without the quest gets no letter, and the worker asks GameService
 nothing. The read uses the owner's session token after a reconnect, and when
@@ -933,7 +947,9 @@ the wolf's own loot leaves one free entry, only a letter that GameService says
 the quest needs takes it. A lost answer of the quest drop read fails the
 corpse, which the Mob retries, an owner whose session ended or who has none
 on the worker gets no letter, and a durable corpse sends every rolled letter
-to GameService with the quest.
+to GameService with the quest. The quest drops that GameService says a durable
+corpse kept become the drops its owner hears of, and an answer that names a
+drop the worker never asked for is refused.
 
 Then run the client's quest state and dialog rules in the Unity Editor:
 

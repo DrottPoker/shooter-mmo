@@ -509,7 +509,14 @@ internal sealed record ItemTransactionResult(
     IReadOnlyList<ItemTransactionItemRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     IReadOnlyList<ItemTransactionItemChange>? ItemChanges = null,
-    ItemTransactionQuestLogChange? QuestLog = null);
+    ItemTransactionQuestLogChange? QuestLog = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<ItemTransactionQuestDrop>? QuestDrops = null);
+
+// A quest drop that a durable Mob corpse keeps for its owner. Results stored before quest
+// drops, and the results of every other operation, have none, so their payloads stay as they
+// were.
+internal sealed record ItemTransactionQuestDrop(string QuestId, string DefinitionId, int Quantity);
 
 // The quests a transaction changed, with the quest log revision after it. A quest without a
 // step is no longer active; its completion count says whether it was completed.

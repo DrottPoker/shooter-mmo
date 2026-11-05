@@ -151,6 +151,7 @@ namespace Mmorpg.Client.Ui
                 quests.State.Changed += OnQuestStateChanged;
                 quests.State.QuestsChanged += OnQuestsChanged;
                 quests.IntentChanged += RefreshLog;
+                quests.QuestDropped += OnQuestDropped;
             }
 
             if (inventory != null)
@@ -172,6 +173,7 @@ namespace Mmorpg.Client.Ui
                 quests.State.Changed -= OnQuestStateChanged;
                 quests.State.QuestsChanged -= OnQuestsChanged;
                 quests.IntentChanged -= RefreshLog;
+                quests.QuestDropped -= OnQuestDropped;
             }
 
             if (inventory != null)
@@ -313,6 +315,11 @@ namespace Mmorpg.Client.Ui
         {
             Say(QuestNotices.For(changes, quests.State.Catalog));
             Say(progressWatcher.Update(quests.State, QuestCarriedItems.Counter(inventory?.State)));
+        }
+
+        private void OnQuestDropped(RealtimeQuestDropInCorpse drop)
+        {
+            Say(new[] { QuestNotices.ForDrop(drop, quests.State.Catalog, ItemName) });
         }
 
         // Carried items move collect objectives, and they can make a quest ready.
@@ -617,11 +624,16 @@ namespace Mmorpg.Client.Ui
 
         private string ItemText(QuestItemQuantityDefinition item)
         {
-            var catalog = inventory?.State.Catalog;
-            var name = catalog != null && catalog.TryGetDefinition(item.DefinitionId, out var definition)
-                ? definition.DisplayName
-                : item.DefinitionId;
+            var name = ItemName(item.DefinitionId);
             return item.Quantity > 1 ? item.Quantity + " x " + name : name;
+        }
+
+        private string ItemName(string definitionId)
+        {
+            var catalog = inventory?.State.Catalog;
+            return catalog != null && catalog.TryGetDefinition(definitionId, out var definition)
+                ? definition.DisplayName
+                : definitionId;
         }
 
         private static string StatusText(QuestClientState state)

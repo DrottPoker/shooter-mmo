@@ -398,6 +398,9 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.QuestLogChanged:
                 Decode<RealtimeQuestLogChanged>(packet, "invalid_quest_log_change", RealtimeProtocol.TryDecodeQuestLogChanged, out _);
                 break;
+            case RealtimeMessageType.QuestDropInCorpse:
+                Decode<RealtimeQuestDropInCorpse>(packet, "invalid_quest_drop", RealtimeProtocol.TryDecodeQuestDropInCorpse, out _);
+                break;
             case RealtimeMessageType.WorldInteractionOpened:
                 Decode<RealtimeWorldInteractionOpened>(packet, "invalid_world_interaction_opened", RealtimeProtocol.TryDecodeWorldInteractionOpened, out _);
                 break;

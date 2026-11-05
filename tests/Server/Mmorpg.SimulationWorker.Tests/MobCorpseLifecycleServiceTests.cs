@@ -154,6 +154,7 @@ public sealed class MobCorpseLifecycleServiceTests
             ScopedGuid.Create("mob-loot-grant:1", corpseId),
             result.LiveCorpse.Loot[1].GrantId);
         Assert.Equal(owner.CharacterId, result.LiveCorpse.OwnerCharacterId);
+        Assert.Equal([new MobCorpseQuestDropSeed(Trophies, Letter, 1)], result.QuestDrops);
         var (path, body) = Assert.Single(handler.Requests);
         Assert.Equal($"/api/simulation-sessions/{owner.SimulationSessionId}/quest-drops", path);
         var read = ReadQuestDrops(body);
@@ -167,6 +168,7 @@ public sealed class MobCorpseLifecycleServiceTests
             OwnedRequest(corpseId, wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
             CancellationToken.None);
         Assert.Same(result.LiveCorpse, replay.LiveCorpse);
+        Assert.Equal(result.QuestDrops, replay.QuestDrops);
         Assert.Single(handler.Requests);
         Assert.Same(result.LiveCorpse, Assert.Single(liveStore.ListActive()));
     }
@@ -277,8 +279,80 @@ public sealed class MobCorpseLifecycleServiceTests
         Assert.Equal(owner, document.RootElement.GetProperty("ownerCharacterId").GetGuid());
     }
 
+    // GameService names the quest drops that a durable corpse kept, which its owner is then told
+    // about. An answer that names a drop the worker never asked for is refused.
+    [Theory]
+    [InlineData(Trophies, Letter, true)]
+    [InlineData("quest.fixture.wolves", Letter, false)]
+    [InlineData(Trophies, "fixture.ore", false)]
+    public async Task ADurableCorpseReportsTheQuestDropsGameServiceKept(string questId, string definitionId, bool valid)
+    {
+        ScriptedHttpHandler handler = null!;
+        handler = new ScriptedHttpHandler(_ => Json(DurableAnswer(
+            handler.Requests[^1].Body,
+            [new SimulationQuestDrop(questId, definitionId, 1)])));
+        var (service, wolf, _, _) = CreateService(handler, "durable");
+
+        var result = await service.CreateAsync(
+            OwnedRequest(Guid.NewGuid(), wolf, Guid.NewGuid(), [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
+            CancellationToken.None);
+
+        if (valid)
+        {
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.NotNull(result.DurableCorpse);
+            Assert.Equal([new MobCorpseQuestDropSeed(Trophies, Letter, 1)], result.QuestDrops);
+        }
+        else
+        {
+            Assert.False(result.Succeeded);
+            Assert.Empty(result.QuestDrops);
+        }
+    }
+
     private const string Trophies = "quest.fixture.trophies";
     private const string Letter = "fixture.letter";
+
+    // GameService's answer to a durable corpse request: the corpse as asked for, holding every
+    // requested entry, and the given kept quest drops.
+    private static PersistentMobCorpseResponse DurableAnswer(string body, IReadOnlyList<SimulationQuestDrop> kept)
+    {
+        var request = System.Text.Json.JsonSerializer.Deserialize<CreatePersistentMobCorpseRequest>(
+            body,
+            System.Text.Json.JsonSerializerOptions.Web)!;
+        var createdAt = DateTime.UtcNow;
+        return new PersistentMobCorpseResponse(
+            request.OperationId,
+            new DurableCorpseResponse(
+                request.CorpseId,
+                null,
+                request.SourceDisplayName,
+                request.ShardId,
+                request.PositionX,
+                request.PositionY,
+                request.PositionZ,
+                request.RotationX,
+                request.RotationY,
+                request.RotationZ,
+                request.RotationW,
+                request.PresentationKey,
+                1,
+                createdAt,
+                createdAt.AddSeconds(request.LifetimeSeconds),
+                false,
+                [
+                    new CorpseSectionResponse("general_inventory", Guid.NewGuid(), 1, request.Loot.Count),
+                    new CorpseSectionResponse("equipment", Guid.NewGuid(), 1, 0),
+                    new CorpseSectionResponse("bag", Guid.NewGuid(), 1, 0)
+                ])
+            {
+                OwnerCharacterId = request.OwnerCharacterId,
+                LootGroupId = request.LootGroupId
+            })
+        {
+            QuestDrops = kept
+        };
+    }
 
     private static MobCorpseQuestDropSeed[] Letters(int count)
     {

@@ -43,6 +43,9 @@ namespace Mmorpg.Client.Quests
         // Raised when an abandon is sent or answered, so the quest log shows its state.
         public event Action IntentChanged;
 
+        // A quest item that a dying Mob left in its corpse for one of the character's quests.
+        public event Action<RealtimeQuestDropInCorpse> QuestDropped;
+
         public bool HasPendingIntent
         {
             get { return pendingIntentId != Guid.Empty; }
@@ -77,6 +80,7 @@ namespace Mmorpg.Client.Quests
 
             simulationClient.QuestLogChanged += OnQuestLogChanged;
             simulationClient.QuestIntentCompleted += OnQuestIntentCompleted;
+            simulationClient.QuestDropInCorpse += OnQuestDropInCorpse;
             simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
             observedJoin = simulationClient.IsJoined;
@@ -175,6 +179,7 @@ namespace Mmorpg.Client.Quests
             {
                 simulationClient.QuestLogChanged -= OnQuestLogChanged;
                 simulationClient.QuestIntentCompleted -= OnQuestIntentCompleted;
+                simulationClient.QuestDropInCorpse -= OnQuestDropInCorpse;
                 simulationClient.SessionEnded -= OnSessionEnded;
             }
         }
@@ -215,6 +220,11 @@ namespace Mmorpg.Client.Quests
             }
 
             IntentChanged?.Invoke();
+        }
+
+        private void OnQuestDropInCorpse(RealtimeQuestDropInCorpse drop)
+        {
+            QuestDropped?.Invoke(drop);
         }
 
         private void OnSessionEnded(RealtimeClientError error)
