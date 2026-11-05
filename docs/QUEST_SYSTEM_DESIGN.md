@@ -50,12 +50,13 @@ Implemented:
   dialog at a quest NPC, where the player accepts, talks, hands over, asks for
   lost start items, and turns in with a reward choice. The quest log on `L`
   lists the active and completed quests and abandons a quest after a
-  confirmation, the tracker shows the active quests' objectives, and the game
-  messages report every committed quest change, as
+  confirmation, the tracker shows the active quests' objectives, markers over
+  the quest NPCs tell what waits there, and the game messages report every
+  committed quest change, as
   [Quest Client](UNITY_CLIENT_ARCHITECTURE.md#quest-client) describes.
 
-Planned: everything else in this document, next the NPC markers and the Admin
-menu's quest tools.
+Planned: everything else in this document, next the game message for a quest
+drop in a corpse and the Admin menu's quest tools.
 
 ## Goals
 
@@ -342,9 +343,11 @@ quest is ready to turn in when its last step is complete.
   [Authoritative Interaction Validation](NPC_AND_MOB_SYSTEM_DESIGN.md#authoritative-interaction-validation)
   apply.
 - A marker over an NPC tells the player what waits there: a yellow `!` for an
-  available quest, a grey `!` for a quest that only needs a higher level, a
-  yellow `?` for something to turn in, talk about, or hand over, and a grey `?`
-  for an active quest that it completes once the quest is ready. The client
+  available quest or lost start items to ask for again, a grey `!` for a quest
+  that only needs a higher level, a yellow `?` for something to turn in, talk
+  about, or hand over once the player carries all of it, and a grey `?` for an
+  active quest that it completes once the quest is ready or a delivery the
+  player does not carry enough for yet. The most urgent one shows. The client
   derives the marker from the quest catalog, the actor definition of the NPC, and
   its own quest state, so the actor spawn carries nothing new.
 

@@ -95,18 +95,21 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        // Characters move in Update, the camera follows in LateUpdate, and the health bars and
-        // nameplates are placed after the camera, so a bar never trails the head it belongs to.
+        // Characters move in Update, the camera follows in LateUpdate, and the health bars,
+        // nameplates, and quest markers are placed after the camera, so a bar never trails the
+        // head it belongs to.
         [Test]
         public void HealthBarsArePlacedAfterTheCameraFollowedThePlayer()
         {
             var cameraOrder = ExecutionOrder(typeof(OrbitCameraController));
             var hudOrder = ExecutionOrder(typeof(TemporaryCombatHud));
             var nameplateOrder = ExecutionOrder(typeof(WorldNameplates));
+            var questMarkerOrder = ExecutionOrder(typeof(WorldQuestMarkers));
 
             Assert.That(cameraOrder, Is.GreaterThan(0));
             Assert.That(hudOrder, Is.GreaterThan(cameraOrder));
             Assert.That(nameplateOrder, Is.GreaterThan(cameraOrder));
+            Assert.That(questMarkerOrder, Is.GreaterThan(cameraOrder));
         }
 
         private static int ExecutionOrder(Type type)

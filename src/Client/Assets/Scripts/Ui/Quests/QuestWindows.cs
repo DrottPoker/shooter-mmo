@@ -456,7 +456,7 @@ namespace Mmorpg.Client.Ui
                 case QuestDialogEntryKind.Deliver:
                     AddAction(
                         "Hand over",
-                        idle && carried(entry.Objective.ItemId) >= entry.Objective.Count,
+                        idle && QuestDialogEntries.CanHandOver(entry, carried),
                         () => Send(RealtimeCapabilityActionKind.DeliverQuestItems, entry.Objective.Id, string.Empty));
                     break;
                 case QuestDialogEntryKind.LostStartItems:

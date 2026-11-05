@@ -484,6 +484,8 @@ namespace Mmorpg.Client.App
                 presentation => presentation.Initialize(combatController, combatantViews));
             AddSceneComponentIfMissing<WorldNameplates>(
                 nameplates => nameplates.Initialize(combatController, combatantViews));
+            AddSceneComponentIfMissing<WorldQuestMarkers>(
+                markers => markers.Initialize(questController, inventoryController, actorPresentation, combatantViews));
             AddSceneComponentIfMissing<TemporaryCombatHud>(
                 hud => hud.Initialize(
                     combatController,
