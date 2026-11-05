@@ -500,8 +500,9 @@ internal sealed class SimulationItemMutationService(
             : null;
     }
 
-    // The worker resolved the yield and the tool kind from the node's resource profile;
-    // the handler checks the equipped tool and the item rules.
+    // The worker resolved the yield and the tool kind from the node's resource profile and
+    // names the node's actor definition for gather objectives; the handler checks the
+    // equipped tool and the item rules.
     private Task<ItemTransactionResult>? ExecuteGatherAsync(
         ItemTransactionActor actor,
         SimulationItemOperationRequest request,
@@ -513,6 +514,7 @@ internal sealed class SimulationItemMutationService(
             && Identifiers.IsContentIdentifier(request.RequiredToolKind)
             && Identifiers.IsContentIdentifier(request.DefinitionId)
             && request.Quantity > 0
+            && (request.ResourceActorId is null || Identifiers.IsContentIdentifier(request.ResourceActorId))
             ? transactionService.ExecuteAsync(
                 new ItemTransactionRequest<GatherResourceCommand>(
                     request.OperationId,
@@ -523,7 +525,8 @@ internal sealed class SimulationItemMutationService(
                         request.ResourceNodeId!.Trim(),
                         request.RequiredToolKind!.Trim(),
                         request.DefinitionId!.Trim(),
-                        request.Quantity!.Value)),
+                        request.Quantity!.Value,
+                        request.ResourceActorId?.Trim())),
                 cancellationToken)
             : null;
     }

@@ -36,7 +36,8 @@ namespace Mmorpg.WorldData.Actors
         private const int MaximumSpawnSources = 8192;
         private const int MaximumPatrolPoints = 256;
         private const int MaximumCapabilitiesPerActor = 16;
-        private const int MaximumTagsPerActor = 32;
+        // Shared with the services that receive an actor's tags, such as a kill credit.
+        public const int MaximumTagsPerActor = 32;
         private const float MaximumWorldCoordinateMagnitude = 1_000_000f;
         private const float MaximumInteractionBoundsSize = 1_000_000f;
         private const float MaximumActivityRange = 2000f;

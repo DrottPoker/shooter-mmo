@@ -39,7 +39,8 @@ internal sealed record SimulationItemOperationRequest(
     long? ExpectedPrice = null,
     string? ResourceProfileId = null,
     string? ResourceNodeId = null,
-    string? RequiredToolKind = null);
+    string? RequiredToolKind = null,
+    string? ResourceActorId = null);
 
 // One batch of shots from the character's equipped ammunition stack. The operation id is
 // the worker's batch id, so a retry after a lost response replays the stored result.
@@ -65,7 +66,8 @@ internal sealed record SimulationCharacterStateResponse(
     long CarryCapacity,
     IReadOnlyList<SimulationEquippedItem> Equipment);
 
-// A committed item transaction together with the acting character's state afterwards.
+// A committed item transaction together with the acting character's state afterwards. A
+// gathering yield that counted for quest objectives names the changed quests.
 internal sealed record SimulationItemOperationResponse(
     Guid OperationId,
     string OperationKind,
@@ -76,7 +78,8 @@ internal sealed record SimulationItemOperationResponse(
     IReadOnlyList<ItemTransactionItemRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     SimulationCharacterStateResponse? CharacterState,
-    IReadOnlyList<ItemTransactionItemChange>? ItemChanges)
+    IReadOnlyList<ItemTransactionItemChange>? ItemChanges,
+    ItemTransactionQuestLogChange? QuestLog = null)
 {
     public static SimulationItemOperationResponse From(
         ItemTransactionResult result,
@@ -93,6 +96,7 @@ internal sealed record SimulationItemOperationResponse(
             result.ItemRevisions,
             result.RecoveryDeliveryIds,
             characterState,
-            result.ItemChanges);
+            result.ItemChanges,
+            result.QuestLog);
     }
 }

@@ -45,10 +45,30 @@ internal static class QuestLineageItems
 
     // Removes every item with the lineage of an abandoned quest and returns how many items it
     // removed.
-    public static async Task<int> RemoveAbandonedAsync(
+    public static Task<int> RemoveAbandonedAsync(
         ItemTransactionContext context,
         Guid characterId,
         string lineageId,
+        CancellationToken cancellationToken)
+    {
+        return RemoveAllAsync(context, characterId, lineageId, DestroyAbandonedSql, cancellationToken);
+    }
+
+    // Removes what is left with the lineage of a turned-in quest, such as spare quest drops.
+    public static Task<int> RemoveCompletedAsync(
+        ItemTransactionContext context,
+        Guid characterId,
+        string lineageId,
+        CancellationToken cancellationToken)
+    {
+        return RemoveAllAsync(context, characterId, lineageId, DestroyCompletedSql, cancellationToken);
+    }
+
+    private static async Task<int> RemoveAllAsync(
+        ItemTransactionContext context,
+        Guid characterId,
+        string lineageId,
+        string destroySql,
         CancellationToken cancellationToken)
     {
         var parameters = new
@@ -81,23 +101,7 @@ internal static class QuestLineageItems
                 item.ItemInstanceId,
                 cancellationToken);
             await context.Connection.ExecuteAsync(new CommandDefinition(
-                """
-                insert into item_destructions (
-                    item_instance_id,
-                    definition_id,
-                    source_operation_id,
-                    quantity,
-                    reason)
-                values (
-                    @ItemInstanceId,
-                    @DefinitionId,
-                    @OperationId,
-                    @Quantity,
-                    'quest_abandoned');
-
-                delete from item_instances
-                where id = @ItemInstanceId;
-                """,
+                destroySql,
                 new
                 {
                     item.ItemInstanceId,
@@ -140,6 +144,45 @@ internal static class QuestLineageItems
 
         return itemIds.Length;
     }
+
+    // The destruction reason is part of the statement text, so every reason has its own.
+    private const string DestroyAbandonedSql =
+        """
+        insert into item_destructions (
+            item_instance_id,
+            definition_id,
+            source_operation_id,
+            quantity,
+            reason)
+        values (
+            @ItemInstanceId,
+            @DefinitionId,
+            @OperationId,
+            @Quantity,
+            'quest_abandoned');
+
+        delete from item_instances
+        where id = @ItemInstanceId;
+        """;
+
+    private const string DestroyCompletedSql =
+        """
+        insert into item_destructions (
+            item_instance_id,
+            definition_id,
+            source_operation_id,
+            quantity,
+            reason)
+        values (
+            @ItemInstanceId,
+            @DefinitionId,
+            @OperationId,
+            @Quantity,
+            'quest_completed');
+
+        delete from item_instances
+        where id = @ItemInstanceId;
+        """;
 
     private const string QuestGrantItemIdsSql =
         $"""

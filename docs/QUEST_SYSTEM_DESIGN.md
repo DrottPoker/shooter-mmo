@@ -31,9 +31,10 @@ Implemented:
   checks of [Changing Released Quests](#changing-released-quests), the stored
   [quest state](#quest-state), and the owning account's read of it, as
   [Service Features](SERVICE_FEATURES.md#quests) describes.
-- Accepting and abandoning quests and granting start items again, as item
-  transactions on the worker quest route. No worker calls the route yet, and
-  progress and the turn-in follow.
+- Every quest command as an item transaction on the worker quest route:
+  accepting, abandoning, granting start items again, talking, delivering,
+  counting credited kills, and the turn-in with its rewards, and the count of
+  gathering yields in the gathering transaction. No worker calls them yet.
 
 Planned: everything else in this document. Quest content replaces the
 configured quest, one `quests` capability replaces both quest capability kinds,
@@ -445,10 +446,12 @@ fit. GameService, SimulationWorker, and Unity run the same rules.
 
 - It keeps the active quests of every character in its sessions, loaded when the
   character joins and updated from committed results.
-- It counts credited kills and committed gathering yields for the objectives of
-  current steps and commits the progress to GameService with operation ids
-  derived from the event, so a retry never counts twice. Pending progress
-  commits before a leave and retries until it commits, like a death.
+- It commits every credited kill to GameService as a kill credit, which counts
+  for the kill objectives of current steps, with one operation id per credited
+  character that it keeps for retries, so a retry never counts twice. Pending
+  credits commit before a leave and retry until they commit, like a death. A
+  gathering yield names the node's actor definition, and GameService counts it
+  for gather objectives in the same transaction that places the yield.
 - It rolls quest drops at a Mob's death for every credited character that needs
   them.
 - It handles the `quests` capability: accepting, talking, delivering, and

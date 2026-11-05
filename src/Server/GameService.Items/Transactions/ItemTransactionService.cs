@@ -38,7 +38,7 @@ internal sealed class ItemTransactionService
     private readonly MobLootAllGrantCommandHandler mobLootAllGrant = new();
     private readonly RecoveryExpiryCommandHandler recoveryExpiry = new();
     private readonly VendorCommandHandler vendor;
-    private readonly GatherResourceCommandHandler gatherResource = new();
+    private readonly GatherResourceCommandHandler gatherResource;
     private readonly ItemTransactionKernel kernel;
 
     public ItemTransactionService(
@@ -61,7 +61,8 @@ internal sealed class ItemTransactionService
             simulationWorkerAuthority);
         itemPolicy = new ItemPolicyCommandHandler(characterWallet);
         vendor = new VendorCommandHandler(characterWallet);
-        quest = new QuestCommandHandler(questDefinitions, questLog);
+        quest = new QuestCommandHandler(questDefinitions, questLog, characterWallet);
+        gatherResource = new GatherResourceCommandHandler(questDefinitions, questLog);
         mobCorpse = new MobCorpseCommandHandler(simulationAuthority);
         kernel = new ItemTransactionKernel(
             dataSource,
@@ -296,6 +297,54 @@ internal sealed class ItemTransactionService
         return kernel.ExecuteAsync(
             request,
             ItemOperationKinds.RegrantQuestItems,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<TalkToQuestNpcCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.TalkToQuestNpc,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<DeliverQuestItemsCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.DeliverQuestItems,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<CreditQuestKillCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.CreditQuestKill,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<TurnInQuestCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.TurnInQuest,
             request.Command.CharacterId,
             quest,
             cancellationToken);

@@ -59,9 +59,9 @@ public sealed class ItemTransactionRoutingTests
             })
             .ToArray();
 
-        Assert.Equal(37, overloads.Length);
-        Assert.Equal(37, requestTypes.Distinct().Count());
-        Assert.Equal(37, Routes.Count);
+        Assert.Equal(41, overloads.Length);
+        Assert.Equal(41, requestTypes.Distinct().Count());
+        Assert.Equal(41, Routes.Count);
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -181,6 +181,26 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new RegrantQuestItemsCommand(Id, "quest.fixture.errand"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.TalkToQuestNpc] = (service, actor) => Run(
+                service,
+                actor,
+                new TalkToQuestNpcCommand(Id, "quest.fixture.errand", "report"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.DeliverQuestItems] = (service, actor) => Run(
+                service,
+                actor,
+                new DeliverQuestItemsCommand(Id, "quest.fixture.errand", "hand_over"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.CreditQuestKill] = (service, actor) => Run(
+                service,
+                actor,
+                new CreditQuestKillCommand(Id, "mob.feral_wolf", []),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.TurnInQuest] = (service, actor) => Run(
+                service,
+                actor,
+                new TurnInQuestCommand(Id, "quest.fixture.wolves", "fixture.sword"),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.ProcessPlayerDeath] = (service, actor) => Run(
                 service,

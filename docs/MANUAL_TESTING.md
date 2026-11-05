@@ -759,6 +759,46 @@ Expected result: the worker logs `Activated <n> world actors from revision
 <revision>`, the actors come back from the compiled World data with new runtime
 identities, and no old actor or interaction survives.
 
+## Quests
+
+### Quest Commands On The Worker Quest Route
+
+No client or worker calls the quest route yet, so its commands are checked
+against a real PostgreSQL database through the GameService services, the way
+the worker will call them, with the test quests of
+[Quest Catalog Fixture](../tests/README.md#quest-catalog-fixture). Start the
+test containers with `docker compose -f docker-compose.test.yml up -d --wait`,
+set `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` to their values in `.env`,
+and run:
+
+```powershell
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests"
+```
+
+Expected result: 17 tests pass. Each one joins a character to the Shard and
+checks one outcome:
+
+- Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the
+  `wolves` objective at 0, and accepting `quest.fixture.errand` grants one
+  `fixture.letter` with the quest's lineage. The wrong NPC, a missing required
+  quest, a full inventory, and a second acceptance are refused and change
+  nothing.
+- Two credited Feral Wolf kills bring `wolves` to 2, and a third changes
+  nothing; a kill credit takes the up to 32 tags an actor may carry. Two
+  gathering yields of an Iron Vein bring the errand's `ore` to 2.
+- Talking to Mira and handing over one `fixture.ore` complete the errand's
+  first step, take the ore, and move the quest to step `return`.
+- Turning in the errand takes the letter, removes a spare letter with the
+  lineage from the Bank with the `quest_completed` reason, credits 5 Gold with
+  a `quest_reward` ledger row, and counts one completion. Turning in the wolves
+  needs both kills and one of the three reward choices, and places the potion
+  and the chosen item; without room for them, nothing changes.
+- Abandoning the errand removes its letter with the `quest_abandoned` reason,
+  and Mira grants a lost start item again, never a second one.
+
+The in-game checks of the quest dialog replace this section once the worker
+calls the quest route.
+
 ## Debug Menu (F2)
 
 1. Join and press F2. Expected result: the Debug menu opens in the top-right

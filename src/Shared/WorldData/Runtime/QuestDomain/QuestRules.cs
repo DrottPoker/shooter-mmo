@@ -118,6 +118,80 @@ namespace Mmorpg.WorldData.Quests
                 && IsStepComplete(quest.Steps[currentStepIndex], progressOf);
         }
 
+        // A credited kill of a Mob counts for a kill objective that names the Mob's actor
+        // definition or one of its tags.
+        public static bool CountsKill(QuestObjectiveDefinition objective, string mobActorId, IReadOnlyCollection<string> mobTags)
+        {
+            if (objective == null)
+            {
+                throw new ArgumentNullException(nameof(objective));
+            }
+
+            if (!string.Equals(objective.Kind, QuestObjectiveKindIds.Kill, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            foreach (var actorId in objective.ActorIds)
+            {
+                if (string.Equals(actorId, mobActorId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            if (string.IsNullOrEmpty(objective.ActorTag) || mobTags == null)
+            {
+                return false;
+            }
+
+            foreach (var tag in mobTags)
+            {
+                if (string.Equals(tag, objective.ActorTag, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // A committed yield of a resource node counts for a gather objective that names the
+        // node's actor definition.
+        public static bool CountsGather(QuestObjectiveDefinition objective, string resourceActorId)
+        {
+            if (objective == null)
+            {
+                throw new ArgumentNullException(nameof(objective));
+            }
+
+            if (!string.Equals(objective.Kind, QuestObjectiveKindIds.Gather, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            foreach (var actorId in objective.ActorIds)
+            {
+                if (string.Equals(actorId, resourceActorId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Collect objectives count the carried items, so only the other kinds store progress.
+        public static bool StoresProgress(QuestObjectiveDefinition objective)
+        {
+            if (objective == null)
+            {
+                throw new ArgumentNullException(nameof(objective));
+            }
+
+            return !string.Equals(objective.Kind, QuestObjectiveKindIds.Collect, StringComparison.Ordinal);
+        }
+
         // The objectives a quest asks for at a step: only the current step counts.
         public static IReadOnlyList<QuestObjectiveDefinition> CurrentObjectives(QuestDefinition quest, int currentStepIndex)
         {

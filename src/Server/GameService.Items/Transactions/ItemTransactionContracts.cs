@@ -245,6 +245,32 @@ internal sealed record RegrantQuestItemsCommand(
     Guid CharacterId,
     string QuestId);
 
+// Completes a talk-to objective of the current step at its NPC.
+internal sealed record TalkToQuestNpcCommand(
+    Guid CharacterId,
+    string QuestId,
+    string ObjectiveId);
+
+// Hands over the items of a deliver objective of the current step at its NPC.
+internal sealed record DeliverQuestItemsCommand(
+    Guid CharacterId,
+    string QuestId,
+    string ObjectiveId);
+
+// Counts one credited kill of a Mob for every matching kill objective of the character's
+// current quest steps.
+internal sealed record CreditQuestKillCommand(
+    Guid CharacterId,
+    string MobActorId,
+    IReadOnlyList<string> MobTags);
+
+// Completes a ready quest at its turn-in NPC: takes the collected items, removes what is left
+// with the quest's lineage, and grants the rewards with the chosen one.
+internal sealed record TurnInQuestCommand(
+    Guid CharacterId,
+    string QuestId,
+    string? RewardChoiceDefinitionId);
+
 internal sealed record ProcessPlayerDeathCommand(
     Guid DeathEventId,
     Guid CharacterId,
@@ -461,13 +487,16 @@ internal sealed record SellToVendorCommand(
 // profile and validates the live interaction;
 // GameService checks the equipped tool in the same transaction. No expected character
 // revision applies, because gathering must not fail when the player moves an item meanwhile.
+// ResourceActorId is the actor definition of the gathered node, whose yields count for gather
+// objectives; a command without it counts for none.
 internal sealed record GatherResourceCommand(
     Guid CharacterId,
     string ResourceProfileId,
     string ResourceNodeId,
     string RequiredToolKind,
     string YieldDefinitionId,
-    int YieldQuantity);
+    int YieldQuantity,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ResourceActorId = null);
 
 internal sealed record ItemTransactionResult(
     Guid OperationId,
@@ -554,6 +583,10 @@ internal static class ItemOperationKinds
     public const string AcceptQuest = "accept_quest";
     public const string AbandonQuest = "abandon_quest";
     public const string RegrantQuestItems = "regrant_quest_items";
+    public const string TalkToQuestNpc = "talk_to_quest_npc";
+    public const string DeliverQuestItems = "deliver_quest_items";
+    public const string CreditQuestKill = "credit_quest_kill";
+    public const string TurnInQuest = "turn_in_quest";
     public const string ProcessPlayerDeath = "process_player_death";
     public const string CreatePersistentMobCorpse = "create_persistent_mob_corpse";
     public const string GrantMobLoot = "grant_mob_loot";

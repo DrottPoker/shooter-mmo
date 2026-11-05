@@ -103,7 +103,8 @@ internal sealed class CharacterWallet : ICharacterWallet
                 or CurrencySourceKinds.VendorPurchase
                 or CurrencySourceKinds.VendorSale
                 or CurrencySourceKinds.Insurance
-                or CurrencySourceKinds.Development))
+                or CurrencySourceKinds.Development
+                or CurrencySourceKinds.QuestReward))
         {
             throw new ArgumentException("The currency source kind is unknown.", nameof(source));
         }

@@ -179,7 +179,11 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         // S56: quest commands read the quest catalog and the character level and change the quest log.
         "GameService.Items/Transactions/Handlers/QuestCommandHandler.cs",
         // S57: the result of a quest command reports the quests it changed.
-        "GameService.Items/Transactions/Domain/QuestLogChanges.cs"
+        "GameService.Items/Transactions/Domain/QuestLogChanges.cs",
+        // S58: kills, yields, talks, and deliveries count for the objectives of current steps.
+        "GameService.Items/Transactions/Domain/QuestProgression.cs",
+        // S58: a gathering yield counts for gather objectives.
+        "GameService.Items/Transactions/Handlers/GatherResourceCommandHandler.cs"
     ];
 
     // The file that defines the single rejection throw, ItemTransactionRejection.
