@@ -86,6 +86,11 @@ namespace Mmorpg.Client.Tests.PlayMode
             var nameplateCanvas = nameplates.GetComponentInChildren<Canvas>(true);
             Assert.That(nameplateCanvas, Is.Not.Null);
             Assert.That(nameplateCanvas.sortingOrder, Is.LessThan(combatHud.GetComponentInChildren<Canvas>(true).sortingOrder));
+            var questMarkers = Object.FindAnyObjectByType<WorldQuestMarkers>();
+            Assert.That(questMarkers, Is.Not.Null);
+            var questMarkerCanvas = questMarkers.GetComponentInChildren<Canvas>(true);
+            Assert.That(questMarkerCanvas, Is.Not.Null);
+            Assert.That(questMarkerCanvas.sortingOrder, Is.LessThan(combatHud.GetComponentInChildren<Canvas>(true).sortingOrder));
 
             // The death overlay sorts above every panel, so an open inventory or corpse view
             // never hides a death and its countdown.
@@ -108,14 +113,16 @@ namespace Mmorpg.Client.Tests.PlayMode
                 panelCanvases.Select(canvas => canvas.sortingOrder),
                 Has.All.LessThan(deathOverlayCanvas.sortingOrder));
 
-            // Without a joined session the HUD and the nameplates show nothing and never take a
-            // raycast.
+            // Without a joined session the HUD, the nameplates, and the quest markers show
+            // nothing and never take a raycast.
             Assert.That(combatHud.IsOwnerFrameVisible, Is.False);
             Assert.That(combatHud.IsDeathOverlayVisible, Is.False);
             Assert.That(nameplates.VisibleCount, Is.Zero);
+            Assert.That(questMarkers.VisibleCount, Is.Zero);
             Assert.That(
                 combatHud.GetComponentsInChildren<UnityEngine.UI.Graphic>(true)
                     .Concat(nameplates.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
+                    .Concat(questMarkers.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
                     .Where(graphic => graphic.raycastTarget)
                     .Select(graphic => graphic.name),
                 Is.Empty);

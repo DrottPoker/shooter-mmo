@@ -2833,6 +2833,14 @@ windows in `Mmorpg.Client.Ui` present it.
   that `QuestRules.Evaluate` allows, start items of its quests that the player
   owns nowhere the inventory shows, carried, equipped, in the Bank, or in
   Recovery Storage, and active quests it completes later.
+  `QuestDialogEntries.CanHandOver` holds a delivery back until the player
+  carries the whole count, which the dialog's `Hand over` hands over at once.
+- `QuestMarkers` derives the marker over an NPC from its dialog entries, the
+  most urgent first: a yellow `?` for a ready quest, a talk-to objective, or a
+  delivery the player can hand over, a yellow `!` for an offer or lost start
+  items, and a grey `?` for a quest in progress or a delivery without enough
+  carried. When none of these waits, a quest that the NPC gives and that
+  `QuestRules.Evaluate` holds back only for the level shows a grey `!`.
 - `QuestNotices` writes the game messages of a committed change: an accepted
   quest, counted progress such as `Feral Wolves slain 3/5`, a step that moved on,
   and a completed or abandoned quest. `QuestProgressWatcher` follows every
@@ -2869,6 +2877,15 @@ takes no raycasts. `Abandon` asks through a `UiDialog`, and its
 windows see the key. Otherwise an Escape closes the log with the other windows.
 The quest windows run right after the inventory windows, so an Escape that an
 inventory dialog took reaches them as taken.
+
+`WorldQuestMarkers` draws the markers over the NPCs within 40 m as TextMesh
+Pro world labels on a canvas of its own with the nameplates' sorting order,
+and nothing on it takes a raycast. It runs at `ScreenAnchoredInterface`, after
+the camera moved, places each marker 0.3 m above the NPC's interaction bounds,
+and shrinks it with distance like a nameplate. It reads the actor definition id
+from each `NpcView`, derives that NPC's marker once, and keeps it until the
+quest state or the inventory changes, so a frame derives nothing and rebuilds
+no text mesh.
 
 ## Test Architecture
 

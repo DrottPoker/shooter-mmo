@@ -135,6 +135,16 @@ namespace Mmorpg.Client.Quests
             return entries;
         }
 
+        // A delivery hands over the whole count at once, so the player must carry all of it.
+        public static bool CanHandOver(QuestDialogEntry entry, Func<string, int> carriedCount)
+        {
+            return entry != null
+                && entry.Kind == QuestDialogEntryKind.Deliver
+                && entry.Objective != null
+                && carriedCount != null
+                && carriedCount(entry.Objective.ItemId) >= entry.Objective.Count;
+        }
+
         // A start item that the character owns fewer of than the quest gave, which GameService
         // grants again.
         public static bool MissesStartItems(QuestDefinition quest, Func<string, int> ownedCount)

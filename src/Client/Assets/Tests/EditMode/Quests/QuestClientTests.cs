@@ -114,6 +114,64 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void AnErrandDeliveryWaitsForTheWholeCount()
+        {
+            var state = Ready(Active(FixtureQuestCatalog.Errand, "work", ("ore", 2), ("hand_over", 0), ("report", 0)));
+            var delivery = Entries(state, _ => 0).Single(entry => entry.Kind == QuestDialogEntryKind.Deliver);
+
+            Assert.That(QuestDialogEntries.CanHandOver(delivery, _ => 0), Is.False);
+            Assert.That(QuestDialogEntries.CanHandOver(delivery, id => id == "fixture.ore" ? 1 : 0), Is.True);
+            Assert.That(QuestDialogEntries.CanHandOver(Entries(state, _ => 0).First(entry => entry.Kind == QuestDialogEntryKind.TalkTo), _ => 1), Is.False);
+        }
+
+        // Mira's marker shows the most urgent of what waits at her: a quest to turn in over an
+        // offer, and an offer over a quest in progress.
+        [Test]
+        public void MiraShowsTheMostUrgentOfWhatWaitsThere()
+        {
+            Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, Ready(), _ => 0), Is.EqualTo(QuestMarker.Available));
+            Assert.That(
+                QuestMarkers.For(FixtureQuestCatalog.Mira, Ready(Active(FixtureQuestCatalog.Wolves, "hunt", ("wolves", 2))), _ => 0),
+                Is.EqualTo(QuestMarker.Ready));
+
+            var busy = Ready(
+                Active(FixtureQuestCatalog.Wolves, "hunt", ("wolves", 1)),
+                Active(FixtureQuestCatalog.OreRun, "deliver"),
+                Active(FixtureQuestCatalog.Trophies, "collect"));
+            Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, busy, _ => 0), Is.EqualTo(QuestMarker.InProgress));
+            Assert.That(
+                QuestMarkers.For(FixtureQuestCatalog.Mira, busy, id => id == "fixture.letter" ? 2 : 0),
+                Is.EqualTo(QuestMarker.Ready),
+                "Two carried letters make the trophies ready to turn in.");
+            Assert.That(QuestMarkers.For("npc.outpost_sergeant", busy, _ => 0), Is.EqualTo(QuestMarker.None));
+            Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, Prepared(), _ => 0), Is.EqualTo(QuestMarker.None), "No marker shows before the log loads.");
+
+            // The errand's report and lost letter wait at Mira as well as its turn-in.
+            var errand = Ready(Active(FixtureQuestCatalog.Errand, "work", ("ore", 2), ("hand_over", 0), ("report", 0)));
+            Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, errand, _ => 0), Is.EqualTo(QuestMarker.Ready));
+        }
+
+        [Test]
+        public void AQuestThatOnlyNeedsAHigherLevelShowsAGreyExclamationMark()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+            foreach (var quest in catalog.Quests)
+            {
+                quest.MinimumLevel = 5;
+            }
+
+            var state = new QuestClientState();
+            state.SetCatalog(catalog);
+            state.PrepareCharacter(CharacterId, 4);
+            Assert.That(state.TryApplyLog(Log(3), out var error), Is.True, error);
+            Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, state, _ => 0), Is.EqualTo(QuestMarker.HigherLevelQuest));
+
+            state.PrepareCharacter(CharacterId, 5);
+            Assert.That(state.TryApplyLog(Log(3), out error), Is.True, error);
+            Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, state, _ => 0), Is.EqualTo(QuestMarker.Available));
+        }
+
+        [Test]
         public void ACommittedChangeTellsTheProgressAndTheOutcome()
         {
             var catalog = FixtureQuestCatalog.Load();

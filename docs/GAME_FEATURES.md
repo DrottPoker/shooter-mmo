@@ -688,7 +688,14 @@ personal, and its progress survives death, leaving, and Shard switches.
 - The tracker at the right edge of the screen shows up to six active quests by
   title with their current objectives, or `Ready to turn in`, and how many more
   the quest log holds. It hides without active quests and takes no clicks.
-- The markers over NPCs are not in the client yet.
+- A marker over each quest NPC within 40 m tells what waits there: a yellow `!`
+  for a quest to accept or lost start items to ask for again, a grey `!` for a
+  quest that only needs a higher level, a yellow `?` for a quest to turn in,
+  something to talk about, or items to hand over once the player carries all of
+  them, and a grey `?` for an active quest the NPC completes later or a
+  hand-over the player does not carry enough for yet. The most urgent one
+  shows, in that order from a yellow `?` down to a grey `!`. A farther marker
+  is smaller, and markers take no clicks.
 
 ## Currency And Vendor Trade
 

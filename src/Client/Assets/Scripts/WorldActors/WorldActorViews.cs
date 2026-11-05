@@ -29,6 +29,7 @@ namespace Mmorpg.Client.WorldActors
         public long TargetRevision { get; private set; }
         public bool IsTargetActive { get; private set; }
         public string TargetDisplayName { get; private set; } = string.Empty;
+        public string ActorDefinitionId { get; private set; } = string.Empty;
         public string PresentationArchetypeId { get; private set; } = string.Empty;
 
         // A Mob's level and whether it attacks on sight, which its nameplate shows; 0 and None
@@ -58,6 +59,7 @@ namespace Mmorpg.Client.WorldActors
             TargetEntityId = actor.EntityId;
             TargetRuntimeId = actor.RuntimeActorId;
             TargetDisplayName = actor.DisplayName;
+            ActorDefinitionId = actor.ActorDefinitionId;
             PresentationArchetypeId = actor.PresentationArchetypeId;
             Level = actor.Level;
             Aggression = actor.Aggression;

@@ -667,8 +667,8 @@ the Training Shortbow with the Bronze Arrows and the Starter Pickaxe.
 
 Expected result: on the way out, Mira and the town guards disappear from the
 client and the outpost guard and Sergeant Hale appear; on the way back it
-reverses. Right-clicking Sergeant Hale offers `Quests` and `Turn-in`, the quest
-options of every quest NPC.
+reverses. Right-clicking Sergeant Hale offers `Quests` first, the option of
+every quest NPC.
 
 ### Open And Close An Interaction
 
@@ -801,6 +801,28 @@ Join Development World 2 with a new character, as
     Letter leaves the inventory, the quest leaves the log, the tracker hides,
     and Mira offers the quest again. Press `L` again. Expected result: the log
     closes.
+
+### Quest Markers
+
+Join Development World 2 with a new character, as
+[Join With The Unity Client](#join-with-the-unity-client) describes.
+
+1. Look at Mira the Quartermaster beside the spawn. Expected result: a yellow
+   `!` floats over her head. It grows as you walk closer, and a click on it
+   goes through to the world behind it.
+2. Accept `Wolves at the Gate` at Mira. Expected result: the yellow `!` stays,
+   because she still offers `A Letter for the Outpost`. Accept that quest too.
+   Expected result: Mira shows a grey `?`, because the wolves are not done.
+3. Walk to Sergeant Hale at the outpost at `(-172, 0, 0)`. Expected result: a
+   yellow `?` over him, because the Sealed Letter is ready to hand in. Turn the
+   quest in. Expected result: his marker turns into a yellow `!` for
+   `The Sergeant's Request`.
+4. Kill five Feral Wolves and walk back to Mira. Expected result: a yellow `?`
+   over her for `Wolves at the Gate`.
+
+The EditMode tests `QuestClientTests` and `WorldQuestMarkerTests` cover the
+marker rules, including the grey `!` of a quest that needs a higher level,
+which Development World 2 has none of.
 
 ### Quest Commands On The Worker Quest Route
 
