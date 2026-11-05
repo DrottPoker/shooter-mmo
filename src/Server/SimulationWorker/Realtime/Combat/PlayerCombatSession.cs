@@ -125,14 +125,13 @@ internal sealed class PlayerCombatSession(ActiveSimulationSession session, Realt
     // client intent computed on one of them is forwarded with the newest.
     public List<long> BatchRevisionChain { get; } = [];
 
-    // Credited kills that count for the character's quests, in kill order.
-    public Queue<QuestKillCredit> QuestCredits { get; } = new();
-
-    public bool QuestCreditQueued { get; set; }
+    // Credited kills that count for the character's quests and wait for their turn in the lane,
+    // in kill order.
+    public List<QuestKillCredit> QuestCredits { get; } = [];
 
     public QuestKillCredit? InFlightQuestCredit { get; set; }
 
-    public bool HasQuestCredits => QuestCredits.Count > 0 || QuestCreditQueued || InFlightQuestCredit is not null;
+    public bool HasQuestCredits => QuestCredits.Count > 0 || InFlightQuestCredit is not null;
 
     public bool HasDurableWork => PendingShots > 0
         || BatchQueued

@@ -65,10 +65,16 @@ internal sealed class PlayerCombatAuthority(
     {
         if (sessions.TryGetValue(session.SimulationSessionId, out var existing))
         {
+            var previousContext = existing.Context;
             existing.Context = context;
             existing.Session = session;
             existing.Detached = false;
             existing.LeaveRequested = false;
+            if (!ReferenceEquals(previousContext, context))
+            {
+                MoveLane(existing);
+            }
+
             return existing;
         }
 
@@ -162,7 +168,9 @@ internal sealed class PlayerCombatAuthority(
     }
 
     // A dying Mob credited these players. Each one whose quest log asks for the kill gets a
-    // credit in its lane, which counts the kill for every quest that it advances.
+    // credit in its lane, which counts the kill for every quest that it advances. The credit
+    // takes its place in the lane at the kill, so no operation that the player sends after the
+    // kill, such as abandoning and accepting the quest again, overtakes it.
     public void CreditQuestKills(WorldActorRuntimeState mob, IReadOnlyList<MobKillCredit> credits)
     {
         ArgumentNullException.ThrowIfNull(mob);
@@ -183,16 +191,15 @@ internal sealed class PlayerCombatAuthority(
                 continue;
             }
 
-            combatSession.QuestCredits.Enqueue(new QuestKillCredit(
-                Guid.NewGuid(),
-                mob.Definition.Id,
-                mob.Definition.Tags.ToArray()));
-            EnqueueQuestCredit(combatSession);
+            var questCredit = new QuestKillCredit(Guid.NewGuid(), mob.Definition.Id, mob.Definition.Tags.ToArray());
+            combatSession.QuestCredits.Add(questCredit);
+            scheduler.Enqueue(combatSession.Context, new QueuedQuestKillCredit(this, combatSession, questCredit));
         }
     }
 
     // A character died: every waiting client operation is rejected, and the death runs
-    // next in its lane with the shots that are still uncommitted.
+    // next in its lane with the shots that are still uncommitted. The kill credits and a
+    // requested leave wait behind it in their order.
     public void BeginDeath(
         PlayerCombatSession combatSession,
         SimulationDeathKillerRequest? killer,
@@ -211,6 +218,7 @@ internal sealed class PlayerCombatAuthority(
             position.PositionZ,
             position.YawDegrees);
         var context = combatSession.Context;
+        var kept = new List<IRealtimeAuthorityOperation>();
         while (context.AuthorityOperationQueue.TryDequeue(out var waiting))
         {
             if (waiting is QueuedAmmunitionBatch)
@@ -219,9 +227,9 @@ internal sealed class PlayerCombatAuthority(
                 continue;
             }
 
-            if (waiting is QueuedQuestKillCredit)
+            if (waiting is QueuedQuestKillCredit or QueuedLeave)
             {
-                combatSession.QuestCreditQueued = false;
+                kept.Add(waiting);
                 continue;
             }
 
@@ -229,7 +237,10 @@ internal sealed class PlayerCombatAuthority(
         }
 
         QueueDeath(combatSession);
-        EnqueueQuestCredit(combatSession);
+        foreach (var operation in kept)
+        {
+            scheduler.Enqueue(context, operation);
+        }
     }
 
     public void ClearDeath(PlayerCombatSession combatSession)
@@ -309,7 +320,6 @@ internal sealed class PlayerCombatAuthority(
 
         combatSession.Detached = true;
         combatSession.BatchQueued = false;
-        combatSession.QuestCreditQueued = false;
         itemStateStore.TryGetItemState(session.CharacterId, session.SimulationSessionId, out var itemState);
         combatSession.DetachedItemState = itemState;
         if (combatSession.Death is { InFlight: false, RetryAtTick: null } death)
@@ -334,7 +344,6 @@ internal sealed class PlayerCombatAuthority(
             EnqueueBatch(combatSession);
         }
 
-        EnqueueQuestCredit(combatSession);
         scheduler.Enqueue(context, new QueuedLeave(this, combatSession));
         return true;
     }
@@ -497,25 +506,10 @@ internal sealed class PlayerCombatAuthority(
         scheduler.Enqueue(combatSession.Context, new QueuedAmmunitionBatch(this, combatSession));
     }
 
-    private void EnqueueQuestCredit(PlayerCombatSession combatSession)
+    private void StartQuestCredit(PlayerCombatSession combatSession, QuestKillCredit credit)
     {
-        if (combatSession.QuestCredits.Count == 0
-            || combatSession.QuestCreditQueued
-            || combatSession.InFlightQuestCredit is not null
-            || combatSession.Detached)
-        {
-            return;
-        }
-
-        combatSession.QuestCreditQueued = true;
-        scheduler.Enqueue(combatSession.Context, new QueuedQuestKillCredit(this, combatSession));
-    }
-
-    private void StartQuestCredit(PlayerCombatSession combatSession)
-    {
-        combatSession.QuestCreditQueued = false;
-        if (combatSession.InFlightQuestCredit is not null
-            || !combatSession.QuestCredits.TryDequeue(out var credit))
+        // A credit that a disconnect already sent has left the session's credits.
+        if (!combatSession.QuestCredits.Remove(credit))
         {
             ReleaseLane(combatSession);
             return;
@@ -576,7 +570,6 @@ internal sealed class PlayerCombatAuthority(
 
         combatSession.InFlightQuestCredit = null;
         ReleaseLane(combatSession);
-        EnqueueQuestCredit(combatSession);
     }
 
     private void SendQuestLogChange(PlayerCombatSession combatSession, RealtimeQuestLogChanged? change)
@@ -593,6 +586,31 @@ internal sealed class PlayerCombatAuthority(
     {
         combatSession.Death!.Queued = true;
         scheduler.Enqueue(combatSession.Context, new QueuedPlayerDeath(this, combatSession));
+    }
+
+    // A reconnect gives the session a new peer, whose lane starts empty. Durable work that is in
+    // flight or waits for a retry keeps holding the lane, so the new peer's operations wait for
+    // it, and the work that waited in the old peer's lane takes its place in the new one: the
+    // death first, then the kill credits in kill order. A batch is queued again when it is due.
+    private void MoveLane(PlayerCombatSession combatSession)
+    {
+        combatSession.BatchQueued = false;
+        if (combatSession.InFlightBatch is not null
+            || combatSession.Death is { InFlight: true } or { RetryAtTick: not null }
+            || combatSession.InFlightQuestCredit is not null)
+        {
+            combatSession.Context.AuthorityOperationInFlight = true;
+        }
+
+        if (combatSession.Death is { Committed: false, InFlight: false, RetryAtTick: null })
+        {
+            QueueDeath(combatSession);
+        }
+
+        foreach (var credit in combatSession.QuestCredits)
+        {
+            scheduler.Enqueue(combatSession.Context, new QueuedQuestKillCredit(this, combatSession, credit));
+        }
     }
 
     private void StartBatch(RealtimePeerContext context, PlayerCombatSession combatSession)
@@ -915,9 +933,10 @@ internal sealed class PlayerCombatAuthority(
             DropPendingShots(combatSession, "ammunition_missing");
         }
 
-        combatSession.QuestCreditQueued = false;
-        if (combatSession.QuestCredits.TryDequeue(out var credit))
+        if (combatSession.QuestCredits.Count > 0)
         {
+            var credit = combatSession.QuestCredits[0];
+            combatSession.QuestCredits.RemoveAt(0);
             context.AuthorityOperationInFlight = true;
             combatSession.InFlightQuestCredit = credit;
             SendQuestCredit(combatSession, credit);
@@ -936,7 +955,6 @@ internal sealed class PlayerCombatAuthority(
         {
             // A death that waits for a retry, or a kill credited while the leave waited, keeps
             // the leave behind it.
-            EnqueueQuestCredit(combatSession);
             scheduler.Enqueue(context, new QueuedLeave(this, combatSession));
             return;
         }
@@ -1083,11 +1101,12 @@ internal sealed class PlayerCombatAuthority(
 
     private sealed record QueuedQuestKillCredit(
         PlayerCombatAuthority Owner,
-        PlayerCombatSession CombatSession) : IRealtimeAuthorityOperation
+        PlayerCombatSession CombatSession,
+        QuestKillCredit Credit) : IRealtimeAuthorityOperation
     {
         public void Start(RealtimePeerContext context, PlayerSimulationEntity entity, PlayerMovementState state)
         {
-            Owner.StartQuestCredit(CombatSession);
+            Owner.StartQuestCredit(CombatSession, Credit);
         }
     }
 

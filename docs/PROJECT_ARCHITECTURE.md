@@ -981,7 +981,11 @@ starts its input sequence from the beginning.
    session the same way. As a safety net, the worker releases any local session
    that no peer has owned for twice the join handshake timeout.
 6. A leave or disconnect never cancels durable combat work: the session is
-   released only after the character's death and last arrow batch committed.
+   released only after the character's death, its last arrow batch, and the
+   quest credits of its kills committed. A death keeps a requested leave behind
+   it, and a reconnect moves the work that holds or waits in the old peer's
+   lane to the new peer's lane, so the new client's operations still wait for
+   it.
 7. An unexpected failure while processing one packet or one completed
    operation disconnects only that peer. The simulation loop and every other
    player keep running. GameService error codes and messages are normalized to

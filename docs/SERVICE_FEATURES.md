@@ -1298,7 +1298,10 @@ the quest actions of the realtime protocol through these routes:
   Mob, or whose quest log is stale, the worker queues a `credit_quest_kill` with
   a random operation id behind the player's other authority work, in kill
   order, and sends the changed quests as a `QuestLogChanged` without an
-  operation id. A kill that no quest asks for costs no GameService call. An
+  operation id. The credit takes its place in the lane at the kill, so an
+  operation that the player sends after the kill, such as abandoning and
+  accepting the quest again, never overtakes it. A kill that no quest asks for
+  costs no GameService call. An
   uncertain answer keeps the player's lane and asks again with the same
   operation id, after 0.5 s doubling up to 10 s, until the credit commits, like
   a death; a rejection drops the credit with a warning, and a code that ends the

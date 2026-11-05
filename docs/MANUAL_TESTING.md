@@ -819,9 +819,11 @@ Expected result: every test passes. An archer on the wolves hunt kills a Feral
 Wolf, and the worker sends one `credit_quest_kill` for `mob.feral_wolf` with its
 tags; the player gets a `QuestLogChanged` without an operation id that moves
 `wolves` to 1. A kill that no quest asks for sends nothing. A credit whose
-answers are lost asks again with the same operation id until it commits, a
-leave waits for the credit of the last kill, and a stopping worker counts the
-kill that still waits in the lane. An Iron Vein yield names `resource.iron_vein`
+answers are lost asks again with the same operation id until it commits, and an
+abandon sent after two kills waits for both credits, also after a reconnect
+from another client. A leave waits for the credit of the last kill and survives
+a death while it waits, and a stopping worker counts the kill that still waits
+in the lane. An Iron Vein yield names `resource.iron_vein`
 while the errand needs ore and none once the ore is done, a retry sends the same
 request, and a lost answer makes the worker read the quest log again.
 
