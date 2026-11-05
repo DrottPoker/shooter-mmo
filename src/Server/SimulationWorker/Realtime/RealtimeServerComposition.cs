@@ -14,6 +14,7 @@ using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -55,12 +56,14 @@ internal sealed record RealtimeServerDependencies(
     DevelopmentAdminOptions? DevelopmentAdmin = null,
     QuestDependencies? Quests = null);
 
-// What quests need beyond the realtime services: the quest logs of the active characters and
-// the executor that runs quest actions through GameService. Without an executor no quest intent
-// runs.
+// What quests need beyond the realtime services: the quest logs of the active characters, the
+// executor that runs quest actions through GameService, and the quest catalog that decides which
+// kills and yields count. Without an executor no quest intent runs, and without the catalog no
+// kill or yield counts for a quest.
 internal sealed record QuestDependencies(
     CharacterQuestLogStore QuestLogs,
-    QuestOperationExecutor? Executor);
+    QuestOperationExecutor? Executor,
+    QuestCatalogRuntimeDocument? Catalog = null);
 
 // What looks need beyond the realtime services: the looks of the active characters, the
 // appearance content's defaults, and GameService for changes. Without it no player has a look
@@ -148,6 +151,9 @@ internal static class RealtimeServerComposition
         var appearanceDependencies = dependencies.Appearance
             ?? new AppearanceDependencies(new CharacterLookStore(), AppearanceReplicationSettings.Default, null);
         var questDependencies = dependencies.Quests ?? new QuestDependencies(new CharacterQuestLogStore(), null);
+        var questProgress = questDependencies.Catalog is null
+            ? null
+            : new QuestProgressFilter(questDependencies.QuestLogs, questDependencies.Catalog);
         var teardown = new RealtimeSessionTeardown(
             peers,
             sender,
@@ -208,7 +214,9 @@ internal static class RealtimeServerComposition
                 completions,
                 logger),
             combatDependencies.Metrics,
-            logger);
+            logger,
+            questDependencies.Executor,
+            questProgress);
         var itemOperations = new ItemOperationHandler(
             peers,
             sender,
@@ -302,8 +310,10 @@ internal static class RealtimeServerComposition
             new GatheringAuthorityOperations(
                 dependencies.GatheringService,
                 completions,
-                logger),
-            dependencies.WorldActorMetrics);
+                logger,
+                questDependencies.Executor),
+            dependencies.WorldActorMetrics,
+            questProgress);
         var worldInteractions = new WorldInteractionHandler(
             worldInteractionAuthority,
             peers,

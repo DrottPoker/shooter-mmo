@@ -1,3 +1,4 @@
+using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
@@ -41,11 +42,13 @@ internal sealed record WorldInteractionOperationCompleted(
     WorldInteractionAuthorityResult Result)
     : RealtimeOperationResult(PeerContext);
 
+// QuestLogChange is what the client patches its quest log with after the yield, if anything.
 internal sealed record GatheringCycleCompleted(
     RealtimePeerContext PeerContext,
     ActiveSimulationSession Session,
     WorldActorRuntimeState Node,
     long Generation,
     SimulationGatheringRequest Request,
-    SimulationGatheringResult Result)
+    SimulationGatheringResult Result,
+    RealtimeQuestLogChanged? QuestLogChange = null)
     : RealtimeOperationResult(PeerContext);

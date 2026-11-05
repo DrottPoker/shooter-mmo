@@ -1292,6 +1292,26 @@ the quest actions of the realtime protocol through these routes:
   cannot be read stays stale: the next quest action reads it first and fails
   with `quest_log_unavailable` while GameService cannot answer, so no change
   builds on a log that misses one.
+- A Mob's death credits its kill to the players that
+  [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) names. For every
+  credited player whose current steps hold an unfinished kill objective for the
+  Mob, or whose quest log is stale, the worker queues a `credit_quest_kill` with
+  a random operation id behind the player's other authority work, in kill
+  order, and sends the changed quests as a `QuestLogChanged` without an
+  operation id. A kill that no quest asks for costs no GameService call. An
+  uncertain answer keeps the player's lane and asks again with the same
+  operation id, after 0.5 s doubling up to 10 s, until the credit commits, like
+  a death; a rejection drops the credit with a warning, and a code that ends the
+  session ends it. A leave or a disconnect waits for the pending credits, and a
+  stopping worker gives every credit that has not committed one more attempt.
+- A gathering yield names the node's actor definition as `resourceActorId`
+  when a current step holds an unfinished gather objective for it, or the quest
+  log is stale, and a retry after an uncertain answer sends the same request.
+  The changed quests follow the yield's item change as a `QuestLogChanged`
+  without an operation id. An answer that may have been lost after such a yield
+  committed makes the log stale, and the worker reads it again; every committed
+  yield also reads a stale log again, so a player who only gathers still learns
+  the progress the lost answer held.
 
 ## Error Codes
 

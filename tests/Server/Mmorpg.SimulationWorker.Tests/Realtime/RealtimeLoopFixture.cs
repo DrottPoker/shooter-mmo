@@ -5,6 +5,7 @@ using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
@@ -192,7 +193,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
             gathering ?? CreateGatheringHandler());
     }
 
-    public GatheringHandler CreateGatheringHandler(SimulationGatheringService? gatheringService = null)
+    public GatheringHandler CreateGatheringHandler(
+        SimulationGatheringService? gatheringService = null,
+        CharacterQuestLogStore? questLogs = null)
     {
         return new GatheringHandler(
             Config,
@@ -210,7 +213,8 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Scheduler,
             OperationTracker,
             new GatheringAuthorityOperations(gatheringService, Completions, NullLogger.Instance),
-            WorldActorMetrics);
+            WorldActorMetrics,
+            questLogs is null ? null : new QuestProgressFilter(questLogs, RealtimeServerHarness.QuestCatalog));
     }
 
     public WorldInteractionAuthorityOperations CreateWorldInteractionOperations()

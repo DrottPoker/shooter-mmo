@@ -16,6 +16,7 @@ using Mmorpg.SimulationWorker.WorldCollision;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Characters;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -65,7 +66,8 @@ public sealed class RealtimeSimulationService(
     CharacterAppearanceCatalog? appearanceCatalog = null,
     DevelopmentAdminOptions? developmentAdmin = null,
     CharacterQuestLogStore? questLogs = null,
-    QuestOperationExecutor? questOperations = null)
+    QuestOperationExecutor? questOperations = null,
+    QuestCatalogRuntimeDocument? questCatalog = null)
     : BackgroundService
 {
     private readonly RealtimeServer server = RealtimeServerComposition.Create(
@@ -116,7 +118,7 @@ public sealed class RealtimeSimulationService(
                     : new AppearanceReplicationSettings(appearanceCatalog.DefaultBodyModel, appearanceCatalog.VisibleEquipmentSlots),
                 gameServiceClient),
             developmentAdmin,
-            new QuestDependencies(questLogs ?? new CharacterQuestLogStore(), questOperations)),
+            new QuestDependencies(questLogs ?? new CharacterQuestLogStore(), questOperations, questCatalog)),
         logger);
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)

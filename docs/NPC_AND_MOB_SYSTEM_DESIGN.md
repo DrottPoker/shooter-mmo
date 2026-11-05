@@ -21,8 +21,8 @@ Implemented:
 - The authoritative interaction session with exact-session, target, revision,
   range, line-of-sight, capability, rate, and one-active-lease checks, shared
   with the corpse view.
-- Capability handlers for insurance, quest offers, the Bank, Recovery Storage,
-  the vendor, and gathering.
+- Capability handlers for insurance, quests, the Bank, Recovery Storage, the
+  vendor, and gathering.
 - Shared resource nodes with live charges, depletion, respawn, and collision
   bounds that block movement.
 - Mob combat, brains, loot, live and durable corpses, and respawn, with the
@@ -32,8 +32,7 @@ Implemented:
 - Central scheduling of NPCs and Mobs without per-actor tasks or durable rows.
 
 Planned: the dialogue, crafting, and trainer capabilities, which answer with an
-explicit deferred result today; quests, with one `quests` capability that
-replaces the quest offer and quest turn-in kinds, as
+explicit deferred result today; the quest dialog of the `quests` capability, as
 [Quest System Design](QUEST_SYSTEM_DESIGN.md) describes; threat tables, Mob
 abilities and groups,
 durable unique actor state, and the final actor art and interaction UI; see
@@ -270,12 +269,14 @@ Capability handlers bridge the validated interaction session to the business
 authority behind it, without repeating target, range, line-of-sight, or
 capability discovery logic:
 
-- Insurance, quest offers, and vendor purchases and sales cross to GameService
-  with the exact session, worker runtime, Shard, interaction session,
-  capability, operation, and revision identity, and for a vendor trade the
-  capability's vendor profile, offer, quantity, and the price the client
-  showed. GameService then commits the server-owned price, policy, grant
-  lineage, or trade transaction.
+- Insurance and vendor purchases and sales cross to GameService with the exact
+  session, worker runtime, Shard, interaction session, capability, operation,
+  and revision identity, and for a vendor trade the capability's vendor
+  profile, offer, quantity, and the price the client showed. GameService then
+  commits the server-owned price, policy, or trade transaction.
+- Quest actions cross to GameService with the exact session and the NPC's actor
+  definition, which GameService checks against the quest, as
+  [Quests](SERVICE_FEATURES.md#quests) describes.
 - Opening a vendor only confirms it, so the client shows the offers from its
   bundled item catalog without a listing message.
 - The Bank and Recovery Storage handlers only confirm the capability. Item
@@ -439,9 +440,9 @@ The player chooses an interaction in the right-click world menu, or with a left
 click on its top option. The menu lists every capability of every target under
 the pointer, nearest first. Choosing one walks the player into range, asks the
 worker to open the interaction, and then starts that capability: a vendor,
-bank, Recovery Storage, quest turn-in, crafting, or trainer capability runs at
-once, gathering starts, and dialogue, insurance, and quest offers leave the
-interaction panel open for their choices. Escape closes it. Target selection
+bank, Recovery Storage, crafting, or trainer capability runs at once,
+gathering starts, and dialogue, insurance, and quests leave the interaction
+panel open for their choices. Escape closes it. Target selection
 is advisory because a client cannot be trusted as a security boundary. The
 menu's behavior is described in [World Menu](GAME_FEATURES.md#world-menu).
 

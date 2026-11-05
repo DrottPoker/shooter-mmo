@@ -104,7 +104,7 @@ public sealed class CharacterQuestLogStore
     }
 
     // Applies a committed change that is newer than the log and returns the revision it
-    // applied to.
+    // applied to. A stale log takes none, because it may miss a change before it.
     public bool TryApply(
         Guid characterId,
         Guid simulationSessionId,
@@ -116,6 +116,7 @@ public sealed class CharacterQuestLogStore
         {
             if (logsByCharacterId.TryGetValue(characterId, out var entry)
                 && entry.SimulationSessionId == simulationSessionId
+                && !entry.Stale
                 && change.CharacterId == characterId
                 && change.Revision > entry.Log.Revision)
             {

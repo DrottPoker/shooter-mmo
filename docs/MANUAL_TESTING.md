@@ -801,9 +801,29 @@ Expected result: every test passes. The worker reads the joining character's
 quest log, refuses the errand at the guard with `quest_npc_access_required`,
 accepts it at Mira, which grants the letter, and abandons it, which takes the
 letter back; each action reaches the player as a `QuestLogChanged` from the
-revision before it, sent before the action's result. A join whose quest log
-cannot be read, or that GameService answers with another quest catalog, is
-rejected and released, and a development bot never reads a quest log.
+revision before it, sent before the action's result. Through the same routes, a
+credited Feral Wolf kill brings the hunt's `wolves` to 1 once, also when the
+worker asks again with the same operation, a Grey Wolf counts for nothing, and
+an Iron Vein yield with the pickaxe brings the errand's `ore` to 1. A join whose
+quest log cannot be read, or that GameService answers with another quest
+catalog, is rejected and released, and a development bot never reads a quest
+log.
+
+Then run the worker's kill and gathering credits:
+
+```powershell
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~RealtimeQuestCreditTests|FullyQualifiedName~GatheringQuestLogTests|FullyQualifiedName~QuestProgressFilterTests|FullyQualifiedName~RealtimeGatheringTests"
+```
+
+Expected result: every test passes. An archer on the wolves hunt kills a Feral
+Wolf, and the worker sends one `credit_quest_kill` for `mob.feral_wolf` with its
+tags; the player gets a `QuestLogChanged` without an operation id that moves
+`wolves` to 1. A kill that no quest asks for sends nothing. A credit whose
+answers are lost asks again with the same operation id until it commits, a
+leave waits for the credit of the last kill, and a stopping worker counts the
+kill that still waits in the lane. An Iron Vein yield names `resource.iron_vein`
+while the errand needs ore and none once the ore is done, a retry sends the same
+request, and a lost answer makes the worker read the quest log again.
 
 The in-game checks of the quest dialog replace this section once the quest
 windows exist.

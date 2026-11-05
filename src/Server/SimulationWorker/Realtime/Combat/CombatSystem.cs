@@ -690,7 +690,9 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             }
             else
             {
-                mobDeaths.Begin(dead, MobKillCredits.Resolve(dead, entityRegistry, rules.KillCreditRangeMeters));
+                var credits = MobKillCredits.Resolve(dead, entityRegistry, rules.KillCreditRangeMeters);
+                authority.CreditQuestKills(dead.Actor!, credits);
+                mobDeaths.Begin(dead, credits);
             }
         }
 

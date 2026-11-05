@@ -238,7 +238,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             appearanceCatalog: AppearanceCatalog,
             developmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null,
             questLogs: QuestLogs,
-            questOperations: QuestOperations);
+            questOperations: QuestOperations,
+            questCatalog: options.EnableQuests ? QuestCatalog : null);
     }
 
     // The fixture quest catalog that the quest tests run.

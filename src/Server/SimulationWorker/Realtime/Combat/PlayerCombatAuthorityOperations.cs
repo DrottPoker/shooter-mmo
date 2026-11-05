@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Quests;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -18,8 +19,15 @@ internal sealed record PlayerDeathCompleted(
     GameServiceResult<PlayerDeathPartitionResponse> Result)
     : RealtimeOperationResult(PeerContext);
 
-// Ammunition batches and player deaths that continue off the realtime loop. It calls
-// GameService and posts the completion; it never reads loop-confined state.
+internal sealed record QuestKillCreditCompleted(
+    RealtimePeerContext PeerContext,
+    PlayerCombatSession CombatSession,
+    QuestKillCredit Credit,
+    QuestOperationOutcome Outcome)
+    : RealtimeOperationResult(PeerContext);
+
+// Ammunition batches, player deaths, and quest kill credits that continue off the realtime
+// loop. It calls GameService and posts the completion; it never reads loop-confined state.
 internal sealed class PlayerCombatAuthorityOperations(
     GameServiceClient? gameServiceClient,
     RealtimeCompletionQueue completions,
@@ -81,6 +89,35 @@ internal sealed class PlayerCombatAuthorityOperations(
         }
 
         completions.Post(handler, new PlayerDeathCompleted(context, combatSession, attempt, request, result));
+    }
+
+    public async Task CreditQuestKillAsync(
+        IRealtimeCompletionHandler handler,
+        RealtimePeerContext context,
+        PlayerCombatSession combatSession,
+        QuestKillCredit credit,
+        QuestOperationExecutor executor)
+    {
+        QuestOperationOutcome outcome;
+        try
+        {
+            outcome = await executor.ExecuteAsync(combatSession.Session, credit.ToOperation(), CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "[SIMULATION] Unhandled error while crediting a quest kill of simulation session {SimulationSessionId}.",
+                combatSession.Session.SimulationSessionId);
+            outcome = QuestOperationOutcome.Rejected(
+                "quest_credit_failed",
+                "SimulationWorker could not complete the quest kill credit.") with
+            {
+                Uncertain = true
+            };
+        }
+
+        completions.Post(handler, new QuestKillCreditCompleted(context, combatSession, credit, outcome));
     }
 
     private static GameServiceResult<T> Unavailable<T>()

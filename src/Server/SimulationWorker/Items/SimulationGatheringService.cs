@@ -6,7 +6,9 @@ namespace Mmorpg.SimulationWorker.Items;
 
 // Requests one gathering yield from GameService for a validated gathering cycle. The
 // worker resolves the yield and the required tool kind from the node's resource profile;
-// GameService checks the equipped tool and places the yield in carried storage.
+// GameService checks the equipped tool and places the yield in carried storage. A yield that
+// counts for a quest names the node's actor definition, and GameService counts it in the same
+// transaction.
 public sealed class SimulationGatheringService(GameServiceClient gameServiceClient)
 {
     public const string OperationKind = "gather_resource";
@@ -36,14 +38,15 @@ public sealed class SimulationGatheringService(GameServiceClient gameServiceClie
             DefinitionId: profile.YieldDefinitionId,
             ResourceProfileId: profile.Id,
             ResourceNodeId: gathering.ResourceNodeId,
-            RequiredToolKind: profile.RequiredToolKind);
+            RequiredToolKind: profile.RequiredToolKind,
+            ResourceActorId: gathering.ResourceActorId);
         var result = await gameServiceClient.MutateSimulationItemsAsync(
             session.SimulationSessionId,
             request,
             cancellationToken);
         return result.Succeeded
             ? new SimulationGatheringResult(result.Value, null)
-            : new SimulationGatheringResult(null, result.Error);
+            : new SimulationGatheringResult(null, result.Error, result.StatusCode);
     }
 }
 
@@ -52,11 +55,16 @@ public sealed record SimulationGatheringRequest(
     Guid InteractionSessionId,
     string CapabilityId,
     string ResourceNodeId,
-    WorldActorResourceProfileDefinition Profile);
+    WorldActorResourceProfileDefinition Profile,
+    string? ResourceActorId = null);
 
+// A failed yield carries GameService's HTTP status, which tells whether it may have committed.
 public sealed record SimulationGatheringResult(
     SimulationItemTransactionResponse? Transaction,
-    SimulationWorkerErrorResponse? Error)
+    SimulationWorkerErrorResponse? Error,
+    int StatusCode = 0)
 {
     public bool Succeeded => Transaction is not null && Error is null;
+
+    public bool MayHaveCommitted => Error is not null && GameServiceOutcome.MayHaveCommitted(Error.Code, StatusCode);
 }

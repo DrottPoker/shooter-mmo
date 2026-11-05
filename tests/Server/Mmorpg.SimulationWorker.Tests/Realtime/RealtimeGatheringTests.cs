@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.WorldData.Actors;
@@ -59,6 +60,54 @@ public sealed class RealtimeGatheringTests
 
         var next = RunCycle(fixture, gathering, out _);
         Assert.NotEqual(cycle.Request.OperationId, next.Request.OperationId);
+    }
+
+    // A yield that the quest log asks for names the vein's actor definition. A retry after an
+    // uncertain answer sends the same request although the quest log changed since, and the
+    // quest change of a yield or of a lost answer reaches the client.
+    [Fact]
+    public void AYieldThatCountsForAQuestNamesTheNodeAndSendsItsQuestChange()
+    {
+        using var fixture = new RealtimeLoopFixture(enableWorldActors: true);
+        var questLogs = new CharacterQuestLogStore();
+        var gathering = fixture.CreateGatheringHandler(questLogs: questLogs);
+        var player = fixture.ConnectPlayer(1);
+        RegisterErrand(questLogs, player, 5, ore: 0);
+        var vein = Vein(fixture);
+        Begin(fixture, gathering, player, vein);
+
+        var cycle = RunCycle(fixture, gathering, out _);
+        Assert.Equal(vein.Definition.Id, cycle.Request.ResourceActorId);
+
+        // The worker read the quest log again after the lost answer, which shows the ore done.
+        var reload = new RealtimeQuestLogChanged(Guid.Empty, 5, 6, true, []);
+        RegisterErrand(questLogs, player, 6, ore: 2);
+        gathering.Complete(Failed(cycle, "auth_service_timeout") with { QuestLogChange = reload });
+        Assert.True(Assert.Single(QuestChanges(player)).ReloadRequired);
+
+        var retry = RunCycle(fixture, gathering, out _);
+        Assert.Same(cycle.Request, retry.Request);
+        var counted = new RealtimeQuestLogChanged(
+            Guid.Empty,
+            6,
+            7,
+            false,
+            [new RealtimeQuestChange("quest.fixture.errand", "work", [new RealtimeQuestObjectiveProgress("ore", 2)], 0)]);
+        gathering.Complete(Yielded(retry, player, 1) with { QuestLogChange = counted });
+
+        // The quest change goes out before the yield's gathering state, which ends the cycle.
+        var sent = player.Peer.Sent.Select(message => message.Data).ToArray();
+        var questChange = Array.FindLastIndex(sent, data => RealtimeProtocol.TryDecodeQuestLogChanged(data, out _, out _));
+        var yieldedState = Array.FindLastIndex(
+            sent,
+            data => RealtimeProtocol.TryDecodeGatheringState(data, out var state, out _)
+                && state.Kind == RealtimeGatheringStateKind.Yielded);
+        Assert.InRange(questChange, 0, yieldedState - 1);
+        var last = QuestChanges(player)[^1];
+        Assert.Equal((6L, 7L, false), (last.PreviousQuestLogRevision, last.QuestLogRevision, last.ReloadRequired));
+
+        // The next yield is a new operation, and the done objective does not ask for it.
+        Assert.Null(RunCycle(fixture, gathering, out _).Request.ResourceActorId);
     }
 
     [Fact]
@@ -423,6 +472,37 @@ public sealed class RealtimeGatheringTests
                 null,
                 new SimulationWorkerErrorResponse(code, "Test outcome."))
         };
+    }
+
+    private static void RegisterErrand(CharacterQuestLogStore questLogs, ConnectedPlayer player, long revision, int ore)
+    {
+        questLogs.Register(
+            player.Session.CharacterId,
+            player.Session.SimulationSessionId,
+            CharacterQuestLog.From(new SimulationQuestLogResponse(
+                player.Session.CharacterId,
+                RealtimeServerHarness.QuestCatalog.Revision,
+                revision,
+                [new SimulationActiveQuest(
+                    "quest.fixture.errand",
+                    "work",
+                    DateTime.UtcNow,
+                    [new SimulationQuestObjectiveProgress("ore", ore)])],
+                [])));
+    }
+
+    private static List<RealtimeQuestLogChanged> QuestChanges(ConnectedPlayer player)
+    {
+        var changes = new List<RealtimeQuestLogChanged>();
+        foreach (var sent in player.Peer.Sent)
+        {
+            if (RealtimeProtocol.TryDecodeQuestLogChanged(sent.Data, out var change, out _))
+            {
+                changes.Add(change);
+            }
+        }
+
+        return changes;
     }
 
     private static List<RealtimeGatheringState> States(ConnectedPlayer player)

@@ -2345,7 +2345,7 @@ nothing ends nothing either.
   range plus the waypoint arrival tolerance. When the interaction opens,
   `WorldInteractionClientController.ActivateCapability` starts that capability as
   its panel button would: gathering starts after the advisory tool check,
-  dialogue, insurance, and quest offers only open, and every other kind executes.
+  dialogue, insurance, and quests only open, and every other kind executes.
   A rejected open drops the follow-up. When the target's interaction is already
   open, the capability starts without a walk. A newer option or stop cancels the
   approach. A target without a route gives up at once, and an approach that ends

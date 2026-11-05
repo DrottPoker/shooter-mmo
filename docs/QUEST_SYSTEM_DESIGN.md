@@ -39,10 +39,12 @@ Implemented:
   and the turn-in at a quest NPC through the open interaction, and abandoning
   from anywhere as a quest intent, and sends every committed quest change to the
   client, as [Service Features](SERVICE_FEATURES.md#quests) describes.
+- The worker counts the credited kills and the gathering yields that the
+  current steps ask for, as [Service Features](SERVICE_FEATURES.md#quests)
+  describes.
 
-Planned: everything else in this document. The worker does not count kills,
-gathering yields, or quest drops for quests yet, and the client receives the
-quest messages but shows no quest window yet.
+Planned: everything else in this document. The worker does not roll quest drops
+yet, and the client receives the quest messages but shows no quest window yet.
 
 ## Goals
 
@@ -449,12 +451,15 @@ fit. GameService, SimulationWorker, and Unity run the same rules.
 
 - It keeps the active quests of every character in its sessions, loaded when the
   character joins and updated from committed results.
-- It commits every credited kill to GameService as a kill credit, which counts
-  for the kill objectives of current steps, with one operation id per credited
-  character that it keeps for retries, so a retry never counts twice. Pending
-  credits commit before a leave and retry until they commit, like a death. A
-  gathering yield names the node's actor definition, and GameService counts it
-  for gather objectives in the same transaction that places the yield.
+- It commits every credited kill that a current step asks for to GameService as
+  a kill credit, which counts for the kill objectives of current steps, with one
+  operation id per credited character that it keeps for retries, so a retry
+  never counts twice. Pending credits commit before a leave and retry until they
+  commit, like a death. A gathering yield that a current step asks for names the
+  node's actor definition, and GameService counts it for gather objectives in
+  the same transaction that places the yield. While the worker's quest log may
+  miss a change, it sends every credited kill and names every node, and
+  GameService decides what counts.
 - It rolls quest drops at a Mob's death for every credited character that needs
   them.
 - It handles the `quests` capability: accepting, talking, delivering, and
