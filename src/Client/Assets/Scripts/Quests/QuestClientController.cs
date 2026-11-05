@@ -13,7 +13,8 @@ namespace Mmorpg.Client.Quests
     // Keeps the joined character's quest log: it reads GameService's log when the character
     // joins and applies the realtime quest changes in revision order. Changes that arrive while
     // a read is in flight wait and follow it. A change that does not follow the log, or a reload
-    // notice after an uncertain answer, reads the log again.
+    // notice after an uncertain answer, reads the log again. A read that failed is tried again,
+    // as QuestLogRetry decides.
     [DisallowMultipleComponent]
     public sealed class QuestClientController : MonoBehaviour
     {
@@ -21,6 +22,7 @@ namespace Mmorpg.Client.Quests
         private const float LoadRetryDelaySeconds = 0.5f;
 
         private readonly List<RealtimeQuestLogChanged> waitingChanges = new List<RealtimeQuestLogChanged>();
+        private readonly QuestLogRetry retry = new QuestLogRetry();
         private ApiClient apiClient;
         private RealtimeSimulationClient simulationClient;
         private bool initialized;
@@ -61,6 +63,15 @@ namespace Mmorpg.Client.Quests
             ObserveSessionIdentity();
         }
 
+        // Reads the quest log at once when a read failed, such as for a quest window that needs it.
+        public void EnsureLoaded()
+        {
+            if (State.Status == QuestClientStatus.Failed)
+            {
+                Reload();
+            }
+        }
+
         // Reads GameService's quest log again, after the read in flight when there is one.
         public void Reload()
         {
@@ -97,6 +108,13 @@ namespace Mmorpg.Client.Quests
             {
                 Reload();
             }
+            else if (joined
+                && !loading
+                && State.Status == QuestClientStatus.Failed
+                && retry.IsDue(Time.unscaledTime))
+            {
+                Reload();
+            }
 
             observedJoin = joined;
         }
@@ -115,6 +133,13 @@ namespace Mmorpg.Client.Quests
             if (loading || State.Status == QuestClientStatus.Loading)
             {
                 waitingChanges.Add(change);
+                return;
+            }
+
+            // The log moved on while it could not be read, so it is read again now.
+            if (State.Status == QuestClientStatus.Failed)
+            {
+                Reload();
                 return;
             }
 
@@ -170,6 +195,7 @@ namespace Mmorpg.Client.Quests
                 else if (State.TryApplyLog(response, out var applyError))
                 {
                     lastError = null;
+                    retry.Reset();
                     ApplyWaitingChanges();
                     break;
                 }
@@ -197,6 +223,7 @@ namespace Mmorpg.Client.Quests
             if (lastError != null)
             {
                 State.SetFailed(lastError.Code, lastError.Message);
+                retry.Failed(Time.unscaledTime);
             }
 
             loading = false;
@@ -240,6 +267,7 @@ namespace Mmorpg.Client.Quests
             loading = false;
             reloadQueued = false;
             waitingChanges.Clear();
+            retry.Reset();
             State.PrepareCharacter(
                 Guid.TryParse(characterId, out var parsed) ? parsed : Guid.Empty,
                 character?.level ?? 1);

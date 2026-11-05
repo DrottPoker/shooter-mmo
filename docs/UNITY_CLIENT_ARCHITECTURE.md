@@ -2814,7 +2814,9 @@ windows in `Mmorpg.Client.Ui` present it.
   `QuestLogChanged` whose previous revision is the log's; a change the log
   already holds is stale, and one after a gap, or one with `ReloadRequired`,
   reads the log again. Changes that arrive during a read wait and follow it in
-  revision order.
+  revision order. When all three tries of a read fail, `QuestLogRetry` reads it
+  again after 2 s, doubling up to 30 s; a quest change or an opened quest dialog
+  reads it at once.
 - `QuestClientState` keeps the active quests with their current step and the
   stored progress of the step's counted objectives, the completion counts, and
   the character's level from the character list. It raises `QuestsChanged` with

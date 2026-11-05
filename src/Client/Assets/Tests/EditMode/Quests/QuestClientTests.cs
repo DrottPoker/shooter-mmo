@@ -138,6 +138,30 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(new[] { "Quest abandoned: Fixture Wolves" }));
         }
 
+        // A failed read of the quest log is tried again after 2 s, then 4 s, up to 30 s, and a
+        // read that succeeds starts over.
+        [Test]
+        public void AFailedQuestLogReadIsTriedAgainWithAGrowingDelay()
+        {
+            var retry = new QuestLogRetry();
+            Assert.That(retry.IsDue(1000f), Is.False);
+
+            retry.Failed(10f);
+            Assert.That(new[] { retry.IsDue(11.9f), retry.IsDue(12f) }, Is.EqualTo(new[] { false, true }));
+            retry.Failed(12f);
+            Assert.That(new[] { retry.IsDue(15.9f), retry.IsDue(16f) }, Is.EqualTo(new[] { false, true }));
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                retry.Failed(100f);
+            }
+
+            Assert.That(new[] { retry.IsDue(129.9f), retry.IsDue(130f) }, Is.EqualTo(new[] { false, true }));
+            retry.Reset();
+            Assert.That(retry.IsDue(1000f), Is.False);
+            retry.Failed(200f);
+            Assert.That(retry.IsDue(202f), Is.True);
+        }
+
         private static IReadOnlyList<QuestDialogEntry> Entries(QuestClientState state, Func<string, int> carried)
         {
             return QuestDialogEntries.For(FixtureQuestCatalog.Mira, state, carried);

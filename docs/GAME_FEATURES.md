@@ -164,15 +164,15 @@ Every world action goes through one menu, as in RuneScape:
   front of an Iron Vein gives `Attack Feral Wolf`, `Mine Iron Vein`, `Walk here`,
   `Examine Feral Wolf`, `Examine Iron Vein`, and `Cancel`.
 - An NPC or resource node offers one option per capability, in the order its
-  content lists them, with the verb from the content, such as `Talk-to`,
-  `Trade`, `Bank`, `Recover`, `Insure`, `Quests`, `Turn-in`, and `Craft` for Mira
-  the Quartermaster, `Mine` for an Iron Vein, or `Chop down` for an Oak Tree. The
+  content lists them, with the verb from the content, such as `Quests`,
+  `Talk-to`, `Trade`, `Bank`, `Recover`, `Insure`, and `Craft` for Mira the
+  Quartermaster, `Mine` for an Iron Vein, or `Chop down` for an Oak Tree. The
   first is the left-click action. Choosing one walks into range, opens the
-  interaction, and starts that service: `Trade` opens the vendor, `Bank` the
-  Character Bank, `Recover` Recovery Storage, and `Mine` starts mining.
-  `Talk-to`, `Insure`, and `Quests` open the interaction panel, where their
-  choices are. When the interaction is already open, the service starts without
-  walking.
+  interaction, and starts that service: `Quests` opens the
+  [quest dialog](#quests), `Trade` the vendor, `Bank` the Character Bank,
+  `Recover` Recovery Storage, and `Mine` starts mining. `Talk-to` and `Insure`
+  open the interaction panel, where their choices are. When the interaction is
+  already open, the service starts without walking.
 - A living Mob offers `Attack`, and so does another character when the Shard
   allows player versus player. A Mob walking home after a fight offers no
   `Attack`, so a left click on it walks there.
@@ -640,10 +640,41 @@ real corpse from an offline character with the development item tools; see
 - `Insurance` lists the character's insurance-eligible items, each with
   `Insure: <item>` or `Insured, remove: <item>`. The inventory and Recovery
   Storage show the result. `Quests`, the first option at Mira and Sergeant Hale,
-  says that the quest dialog is not available yet.
-- Talk, crafting, training, and quest completion answer that they are not
-  available yet; they never pretend to succeed. Quest progression and crafting
-  are not implemented.
+  opens the [quest dialog](#quests) again.
+- Talk, crafting, and training answer that they are not available yet; they
+  never pretend to succeed. Crafting is not implemented.
+
+## Quests
+
+Mira the Quartermaster and Sergeant Hale give the quests of Development World 2,
+which [Game Content](../content/README.md#quests) lists. Every quest is
+personal, and its progress survives death, leaving, and Shard switches.
+
+- Left-clicking a quest NPC opens the quest dialog at the left edge of the
+  screen, titled with the NPC's name. It lists what the NPC has for the player
+  now: `? <quest> (Complete)` for a quest ready to turn in there, a talk-to or
+  hand-over objective that names the NPC, `! <quest>` for each quest the player
+  may accept, `<quest>: lost items` when the player no longer has a start item
+  of a quest the NPC gave, and `? <quest> (in progress)` for a quest the NPC
+  completes later. A quest that needs another quest first, or a higher level,
+  is not offered.
+- Choosing an entry shows the quest's text, the current objectives with their
+  progress, such as `Feral Wolves slain 3/5`, and the rewards: Gold, items, and
+  the items to choose one of. `Accept` takes the quest and gives its start items,
+  `Complete` turns it in once a reward is chosen, `Continue` finishes a talk,
+  `Hand over` gives the asked-for items once the player carries them, and
+  `Ask again` gives back lost start items. `Back` returns to the list. A refused
+  action shows its reason in red, and the dialog closes when the interaction
+  ends.
+- Credited kills and gathering yields count for the objectives that ask for
+  them, and collect objectives count the carried items. A quest item that a Mob
+  drops lies in the corpse of the player whose quest needs it.
+- The game messages report every change: `Quest accepted: <quest>`, progress
+  such as `Feral Wolves slain 3/5`, `Quest updated: <quest>` when a quest moves to
+  its next step, `<quest> is ready to turn in.`, and
+  `Quest completed: <quest>` or `Quest abandoned: <quest>`.
+- The quest log, the tracker, the markers over NPCs, and abandoning a quest are
+  not in the client yet.
 
 ## Currency And Vendor Trade
 

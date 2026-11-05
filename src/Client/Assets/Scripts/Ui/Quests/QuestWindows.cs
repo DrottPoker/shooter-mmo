@@ -79,6 +79,7 @@ namespace Mmorpg.Client.Ui
             rewardChoice = string.Empty;
             dialog.SetTitle(active.DisplayName);
             dialog.SetOpen(true);
+            quests?.EnsureLoaded();
             Refresh();
         }
 
