@@ -42,13 +42,13 @@ Implemented:
 - The worker counts the credited kills and the gathering yields that the
   current steps ask for, as [Service Features](SERVICE_FEATURES.md#quests)
   describes.
-- GameService grants [quest drops](#quest-drops) from live Mob loot and keeps
-  them in durable Mob corpses with the quest's lineage, up to what the quest
-  still needs, as
-  [Service Features](SERVICE_FEATURES.md#item-transactions) describes.
+- The worker rolls [quest drops](#quest-drops) into the corpses of dying Mobs,
+  and GameService grants them from live Mob loot and keeps them in durable Mob
+  corpses with the quest's lineage, up to what the quest still needs, as
+  [Service Features](SERVICE_FEATURES.md#quests) describes.
 
-Planned: everything else in this document. The worker does not roll quest drops
-yet, and the client receives the quest messages but shows no quest window yet.
+Planned: everything else in this document. The client receives the quest
+messages but shows no quest window yet.
 
 ## Goals
 
@@ -232,12 +232,14 @@ written in English like the other content.
 - A collect objective for a quest item lists its drop sources: Mob actor
   definition ids, each with a chance in basis points and a quantity.
 - When a source Mob dies, every character it credits whose current step holds
-  the objective and who still needs the item rolls the chance once. A success
-  adds a personal entry for that character to the Mob's corpse, at most the
-  quantity the character still needs. Only that character sees and loots the
+  the objective rolls the chance once. A success adds a personal entry for that
+  character to the Mob's corpse, at most the quantity the character still
+  needs, and none when it needs no more. Only that character sees and loots the
   entry, as [Mob Corpse Lifecycle](INVENTORY_AND_DEATH_LOOT_DESIGN.md#mob-corpse-lifecycle)
-  describes. A quest drop leaves a corpse even when the Mob's own loot roll is
-  empty.
+  describes. The entries follow the Mob's own loot, and only the ones the
+  character still needs fill the room that the loot leaves in the corpse's 24
+  entries, so a drop that is not needed never takes the place of one that is.
+  A quest drop leaves a corpse even when the Mob's own loot roll is empty.
 - The looted item is a protected quest item with the quest's grant lineage, so
   abandoning the quest removes it. An entry left in the corpse disappears with
   the corpse.
@@ -466,8 +468,10 @@ fit. GameService, SimulationWorker, and Unity run the same rules.
   the same transaction that places the yield. While the worker's quest log may
   miss a change, it sends every credited kill and names every node, and
   GameService decides what counts.
-- It rolls quest drops at a Mob's death for every credited character that needs
-  them.
+- It rolls quest drops at a Mob's death for the owner of each corpse, by the
+  quest log it keeps, and GameService decides how much of them the owner still
+  needs: for a live corpse in a read before the worker lays it out, for a
+  durable corpse in its creation.
 - It handles the `quests` capability: accepting, talking, delivering, and
   turning in, each validated through the open interaction. Abandoning from the
   quest log is an intent outside any interaction.

@@ -186,6 +186,57 @@ public sealed class GameServiceClientTests
         Assert.Equal("invalid_auth_response", rejected.Error!.Code);
     }
 
+    // The needed drops keep the requested order and never grow, so an answer that adds a drop,
+    // grows one, or names another quest is refused.
+    [Theory]
+    [InlineData("needed", true)]
+    [InlineData("none", true)]
+    [InlineData("grown", false)]
+    [InlineData("added", false)]
+    [InlineData("reordered", false)]
+    [InlineData("other quest", false)]
+    public async Task TheQuestDropReadAcceptsOnlyTheNeededPartOfTheRequestedDrops(string variant, bool accepted)
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var requestBody = new SimulationQuestDropRequest(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token",
+            "mob.feral_wolf",
+            [new("quest.trophies", "quest_item.letter", 2), new("quest.trophies", "quest_item.seal", 1)]);
+        object[] drops = variant switch
+        {
+            "needed" => [new { questId = "quest.trophies", definitionId = "quest_item.seal", quantity = 1 }],
+            "none" => [],
+            "grown" => [new { questId = "quest.trophies", definitionId = "quest_item.letter", quantity = 3 }],
+            "added" =>
+            [
+                new { questId = "quest.trophies", definitionId = "quest_item.letter", quantity = 1 },
+                new { questId = "quest.trophies", definitionId = "quest_item.letter", quantity = 1 }
+            ],
+            "reordered" =>
+            [
+                new { questId = "quest.trophies", definitionId = "quest_item.seal", quantity = 1 },
+                new { questId = "quest.trophies", definitionId = "quest_item.letter", quantity = 1 }
+            ],
+            _ => [new { questId = "quest.wolves", definitionId = "quest_item.letter", quantity = 1 }]
+        };
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new { drops }));
+
+        var read = await CreateClient(handler).ResolveQuestDropsAsync(simulationSessionId, requestBody, CancellationToken.None);
+
+        Assert.Equal(accepted, read.Succeeded);
+        Assert.Equal(accepted ? null : "invalid_auth_response", read.Error?.Code);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal($"/api/simulation-sessions/{simulationSessionId}/quest-drops", request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal("mob.feral_wolf", body.RootElement.GetProperty("sourceActorDefinitionId").GetString());
+        Assert.Equal(2, body.RootElement.GetProperty("drops").GetArrayLength());
+    }
+
     private static SimulationQuestOperationRequest QuestOperation(Guid characterId)
     {
         return new SimulationQuestOperationRequest(

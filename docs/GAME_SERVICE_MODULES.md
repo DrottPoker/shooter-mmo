@@ -648,6 +648,7 @@ the statement ids.
 | S60 | Join and reconnect compare the worker's quest catalog revision with the mirrored one | Qst R | `IQuestCatalogRevisionProvider.GetCurrentRevisionAsync` in `ShardService` |
 | S61 | The worker quest log read checks session, worker, and assignment | Plc R, Acc R | `ISimulationSessionAuthority.GetReadAuthorityAsync` in `SimulationQuestLogService` |
 | S62 | A quest drop reads the quest catalog and the quest log for what its quest still needs | Qst R | `IQuestDefinitions` and `ICharacterQuestLog.ReadAsync` in `QuestDrops` |
+| S63 | The worker quest drop read checks session, worker, and assignment, and reads what the quests still need | Plc R, Acc R, Qst R | `ISimulationSessionAuthority.GetReadAuthorityAsync`, then S62's reads, in `SimulationQuestDropService` |
 
 Notes on specific statements:
 

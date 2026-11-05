@@ -191,6 +191,21 @@ public sealed class GameServiceClient(HttpClient httpClient)
             cancellationToken);
     }
 
+    // The part of the quest drops rolled for a live corpse's owner that the owner's quests still
+    // need. It only reads, so every call may be repeated.
+    public Task<GameServiceResult<SimulationQuestDropResponse>> ResolveQuestDropsAsync(
+        Guid simulationSessionId,
+        SimulationQuestDropRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationQuestDropRequest, SimulationQuestDropResponse>(
+            "GameService.ResolveQuestDrops",
+            $"/api/simulation-sessions/{simulationSessionId}/quest-drops",
+            request,
+            response => IsValidQuestDrops(response, request),
+            cancellationToken);
+    }
+
     public Task<GameServiceResult<CorpseViewSnapshotResponse>> OpenCorpseAsync(
         Guid simulationSessionId,
         Guid corpseId,
@@ -713,6 +728,43 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 && quest.CompletionCount > 0)
             && response.CompletedQuests.Select(quest => quest.QuestId).Distinct(StringComparer.Ordinal).Count()
                 == response.CompletedQuests.Count;
+    }
+
+    // The answer keeps the requested order and never grows a drop, so each needed drop is a
+    // requested one in turn.
+    private static bool IsValidQuestDrops(SimulationQuestDropResponse response, SimulationQuestDropRequest request)
+    {
+        if (response.Drops is null || response.Drops.Count > request.Drops.Count)
+        {
+            return false;
+        }
+
+        var next = 0;
+        foreach (var drop in response.Drops)
+        {
+            while (next < request.Drops.Count && !IsNeededPart(request.Drops[next], drop))
+            {
+                next++;
+            }
+
+            if (next == request.Drops.Count)
+            {
+                return false;
+            }
+
+            next++;
+        }
+
+        return true;
+
+        static bool IsNeededPart(SimulationQuestDrop requested, SimulationQuestDrop? needed)
+        {
+            return needed is not null
+                && string.Equals(needed.QuestId, requested.QuestId, StringComparison.Ordinal)
+                && string.Equals(needed.DefinitionId, requested.DefinitionId, StringComparison.Ordinal)
+                && needed.Quantity >= 1
+                && needed.Quantity <= requested.Quantity;
+        }
     }
 
     private static bool IsValidQuestLogChange(SimulationQuestLogChange? change, Guid characterId)

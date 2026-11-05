@@ -8,14 +8,17 @@ using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Quests;
 using Mmorpg.GameService.Testing;
 using ServerItemOperationRequest = Mmorpg.GameService.Items.SimulationItemOperationRequest;
+using ServerMobLootGrantRequest = Mmorpg.GameService.Items.SimulationMobLootGrantRequest;
+using ServerQuestDropRequest = Mmorpg.GameService.Items.SimulationQuestDropRequest;
 using ServerQuestLogRequest = Mmorpg.GameService.Quests.SimulationQuestLogRequest;
 using ServerQuestOperationRequest = Mmorpg.GameService.Items.SimulationQuestOperationRequest;
 
 namespace Mmorpg.Integration.Tests;
 
-// Serves the worker's item operations, quest log read, and quest operations with the GameService
-// services, the routes' request types, and their HTTP result mapping, without a web host, so the
-// worker's own requests and response validation meet the real routes.
+// Serves the worker's item operations, quest log read, quest operations, quest drop read, and
+// live Mob loot grants with the GameService services, the routes' request types, and their HTTP
+// result mapping, without a web host, so the worker's own requests and response validation meet
+// the real routes.
 internal sealed class InProcessWorkerRoutes(PostgresIntegrationTestContext context, string workerId)
     : HttpMessageHandler
 {
@@ -48,6 +51,16 @@ internal sealed class InProcessWorkerRoutes(PostgresIntegrationTestContext conte
                 workerId,
                 simulationSessionId,
                 JsonSerializer.Deserialize<ServerQuestOperationRequest>(body, WebJson)!,
+                cancellationToken)).ToHttpResult(),
+            "quest-drops" => (await scope.ServiceProvider.GetRequiredService<SimulationQuestDropService>().ResolveAsync(
+                workerId,
+                simulationSessionId,
+                JsonSerializer.Deserialize<ServerQuestDropRequest>(body, WebJson)!,
+                cancellationToken)).ToHttpResult(),
+            "mob-loot-grants" => (await scope.ServiceProvider.GetRequiredService<CorpseService>().GrantLiveMobLootAsync(
+                workerId,
+                simulationSessionId,
+                JsonSerializer.Deserialize<ServerMobLootGrantRequest>(body, WebJson)!,
                 cancellationToken)).ToHttpResult(),
             _ => throw new InvalidOperationException("The worker flow tests call no other route: " + segments[3])
         };

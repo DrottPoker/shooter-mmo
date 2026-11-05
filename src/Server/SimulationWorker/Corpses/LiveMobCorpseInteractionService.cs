@@ -174,7 +174,8 @@ public sealed class LiveMobCorpseInteractionService(
                 toEquipment ? -1 : intent.DestinationSlotIndex,
                 toEquipment ? intent.EquipmentSlotId : null,
                 intent.TargetItemInstanceId == Guid.Empty ? null : intent.TargetItemInstanceId,
-                intent.TargetItemInstanceId == Guid.Empty ? null : intent.ExpectedTargetItemRevision),
+                intent.TargetItemInstanceId == Guid.Empty ? null : intent.ExpectedTargetItemRevision,
+                lootEntry.QuestId),
             cancellationToken);
         if (!response.Succeeded)
         {
@@ -265,7 +266,11 @@ public sealed class LiveMobCorpseInteractionService(
                 corpse.SourceActorDefinitionId,
                 corpse.Loot
                     .OrderBy(entry => entry.SlotIndex)
-                    .Select(entry => new MobCorpseLootEntryRequest(entry.GrantId, entry.DefinitionId, entry.Quantity))
+                    .Select(entry => new MobCorpseLootEntryRequest(
+                        entry.GrantId,
+                        entry.DefinitionId,
+                        entry.Quantity,
+                        entry.QuestId))
                     .ToArray()),
             cancellationToken);
         if (!response.Succeeded)

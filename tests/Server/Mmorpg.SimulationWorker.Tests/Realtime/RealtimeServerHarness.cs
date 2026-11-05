@@ -184,6 +184,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 LiveMobCorpseStore!,
                 CorpseStore,
                 GameServiceClient,
+                SessionStore,
                 Config,
                 Identity,
                 TimeProvider.System)
@@ -242,7 +243,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             developmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null,
             questLogs: QuestLogs,
             questOperations: QuestOperations,
-            questCatalog: options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null);
+            questCatalog: options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null,
+            combatRandom: options.CombatRandom);
     }
 
     // The fixture quest catalog that the quest tests run.
@@ -578,7 +580,15 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         OnQuestLog = (_, request, _) => Task.FromResult(QuestLog(request.CharacterId, 0));
         OnQuestOperation = (_, _, _) => Task.FromResult(
             Problem(HttpStatusCode.NotFound, "quest_not_found", "The quest catalog holds no such quest."));
+        OnQuestDrops = (_, request, _) => Task.FromResult(Json(new SimulationQuestDropResponse(request.Drops)));
     }
+
+    // Answers the quest drops of a live corpse; by default the owner still needs all of them.
+    public Func<Guid, SimulationQuestDropRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnQuestDrops
+    { get; set; }
+
+    public List<(Guid SimulationSessionId, SimulationQuestDropRequest Request)> QuestDropReads { get; } = [];
 
     public Func<Guid, SimulationQuestLogRequest, CancellationToken, Task<HttpResponseMessage>>
         OnQuestLog
@@ -1000,6 +1010,18 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 }
 
                 return await OnQuestLog(simulationSessionId, read!, cancellationToken);
+            }
+
+            if (segments.Length == 4 && segments[3] == "quest-drops")
+            {
+                var read = await request.Content!
+                    .ReadFromJsonAsync<SimulationQuestDropRequest>(cancellationToken);
+                lock (sync)
+                {
+                    QuestDropReads.Add((simulationSessionId, read!));
+                }
+
+                return await OnQuestDrops(simulationSessionId, read!, cancellationToken);
             }
 
             if (segments.Length == 4 && segments[3] == "quest-operations")

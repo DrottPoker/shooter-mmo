@@ -15,6 +15,9 @@ using Mmorpg.Testing;
 using Mmorpg.WorldData.Actors;
 using ServerJoinTicket = Mmorpg.GameService.Placement.ConsumedSimulationJoinTicketResponse;
 using WorkerJoinTicket = Mmorpg.SimulationWorker.GameServiceApi.ConsumedSimulationJoinTicketResponse;
+using WorkerMobLootGrantRequest = Mmorpg.SimulationWorker.GameServiceApi.SimulationMobLootGrantRequest;
+using WorkerQuestDrop = Mmorpg.SimulationWorker.GameServiceApi.SimulationQuestDrop;
+using WorkerQuestDropRequest = Mmorpg.SimulationWorker.GameServiceApi.SimulationQuestDropRequest;
 using WorkerQuestLog = Mmorpg.SimulationWorker.Quests.CharacterQuestLog;
 using WorkerQuestLogRequest = Mmorpg.SimulationWorker.GameServiceApi.SimulationQuestLogRequest;
 using WorkerQuestLogResponse = Mmorpg.SimulationWorker.GameServiceApi.SimulationQuestLogResponse;
@@ -33,6 +36,8 @@ public sealed class QuestFlowIntegrationTests
     private const string WorkerRuntimeId = "integration-worker-runtime";
     private const string Errand = "quest.fixture.errand";
     private const string Wolves = "quest.fixture.wolves";
+    private const string Trophies = "quest.fixture.trophies";
+    private const string Letter = "fixture.letter";
     private const string Mira = "npc.city_services";
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
 
@@ -189,6 +194,77 @@ public sealed class QuestFlowIntegrationTests
         var kept = worker.Log();
         Assert.Equal(1, kept.ActiveQuests[Errand].Progress["ore"]);
         Assert.Equal(await QuestLogRevisionAsync(context, session.CharacterId), kept.Revision);
+    }
+
+    // The worker asks which of three rolled letters the trophies still need, gets the two the
+    // quest asks for, and loots one with the quest's lineage, so the next wolf's letters come
+    // down to the one still missing.
+    [PostgresIntegrationFact]
+    public async Task TheWorkerLearnsWhichLettersTheTrophiesStillNeedAndLootsOne()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync("quest-drop@example.com", "quest_drop", "Quest Drop");
+        using var httpClient = Routes(context);
+        var client = new GameServiceClient(httpClient);
+        var worker = await ConnectAsync(context, player, client);
+        var session = worker.Session;
+        var accepted = await worker.Executor.ExecuteAsync(
+            session,
+            new QuestOperation(Guid.NewGuid(), QuestOperationKinds.Accept, Trophies, Mira),
+            cancellationToken);
+        Assert.True(accepted.Succeeded, accepted.Code + ": " + accepted.Message);
+        WorkerQuestDrop[] rolled = [new(Trophies, Letter, 1), new(Trophies, Letter, 1), new(Trophies, Letter, 1)];
+
+        var needed = await client.ResolveQuestDropsAsync(
+            session.SimulationSessionId,
+            QuestDrops(session, rolled),
+            cancellationToken);
+        Assert.True(needed.Succeeded, needed.Error?.Code + ": " + needed.Error?.Message);
+        Assert.Equal([new WorkerQuestDrop(Trophies, Letter, 1), new WorkerQuestDrop(Trophies, Letter, 1)], needed.Value!.Drops);
+
+        var snapshot = await SnapshotAsync(context, player);
+        var looted = await client.GrantLiveMobLootAsync(
+            session.SimulationSessionId,
+            new WorkerMobLootGrantRequest(
+                Guid.NewGuid(),
+                session.AccountId,
+                session.CharacterId,
+                snapshot.ItemStateRevision,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                Guid.NewGuid(),
+                "mob.feral_wolf",
+                Letter,
+                1,
+                snapshot.PermanentInventory.ContainerId,
+                snapshot.PermanentInventory.Revision,
+                snapshot.PermanentInventory.Slots.First(slot => slot.Item is null).SlotIndex,
+                QuestId: Trophies),
+            cancellationToken);
+        Assert.True(looted.Succeeded, looted.Error?.Code + ": " + looted.Error?.Message);
+
+        var stillNeeded = await client.ResolveQuestDropsAsync(
+            session.SimulationSessionId,
+            QuestDrops(session, rolled),
+            cancellationToken);
+        Assert.True(stillNeeded.Succeeded, stillNeeded.Error?.Code + ": " + stillNeeded.Error?.Message);
+        Assert.Equal([new WorkerQuestDrop(Trophies, Letter, 1)], stillNeeded.Value!.Drops);
+    }
+
+    private static WorkerQuestDropRequest QuestDrops(ActiveSimulationSession session, IReadOnlyList<WorkerQuestDrop> drops)
+    {
+        return new WorkerQuestDropRequest(
+            session.AccountId,
+            session.CharacterId,
+            session.WorkerId,
+            session.WorkerRuntimeId,
+            session.ShardId,
+            session.SimulationSessionToken,
+            "mob.feral_wolf",
+            drops);
     }
 
     private static HttpClient Routes(PostgresIntegrationTestContext context)

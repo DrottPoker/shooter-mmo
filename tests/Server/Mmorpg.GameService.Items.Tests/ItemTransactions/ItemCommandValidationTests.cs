@@ -1,6 +1,7 @@
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Items.Transactions.Handlers;
+using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
@@ -11,6 +12,11 @@ public sealed class ItemCommandValidationTests
     public void ValidPersistentMobCorpseCommandPasses()
     {
         MobCorpseCommandHandler.ValidatePersistentMobCorpseCommand(MobCorpse());
+        // A full corpse may still name every rolled quest drop, which only fill what is left.
+        MobCorpseCommandHandler.ValidatePersistentMobCorpseCommand(MobCorpse() with
+        {
+            Loot = [.. Loot(WorldActorCorpseRules.MaximumLootEntries, null), .. Loot(WorldActorCorpseRules.MaximumQuestDropCandidates, "quest.fixture.trophies")]
+        });
     }
 
     [Fact]
@@ -43,6 +49,18 @@ public sealed class ItemCommandValidationTests
         {
             Loot = [new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", 0)]
         });
+        AssertMobCorpseInvalid(MobCorpse() with { Loot = Loot(WorldActorCorpseRules.MaximumLootEntries + 1, null) });
+        AssertMobCorpseInvalid(MobCorpse() with
+        {
+            Loot = Loot(WorldActorCorpseRules.MaximumQuestDropCandidates + 1, "quest.fixture.trophies")
+        });
+    }
+
+    private static MobCorpseLootEntryRequest[] Loot(int count, string? questId)
+    {
+        return Enumerable.Range(0, count)
+            .Select(_ => new MobCorpseLootEntryRequest(Guid.NewGuid(), questId is null ? "fixture.ore" : "fixture.letter", 1, questId))
+            .ToArray();
     }
 
     [Fact]

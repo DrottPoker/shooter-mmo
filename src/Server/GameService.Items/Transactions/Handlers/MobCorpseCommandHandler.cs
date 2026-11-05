@@ -46,6 +46,10 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
 
         var kept = new List<KeptLoot>(command.Loot.Count);
         var questDropPlan = questDrops.Plan();
+        // The quest drops that the owner needs fill the entries that the Mob's own loot leaves,
+        // in request order, so a drop that is not needed never takes the place of one that is.
+        var questDropRoom = WorldActorCorpseRules.MaximumLootEntries
+            - command.Loot.Count(loot => loot.QuestId is null);
         foreach (var loot in command.Loot)
         {
             var definition = await context.State.LoadDefinitionAsync(
@@ -68,6 +72,11 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                     "A quest drop must be a protected quest item within its stack limit for the corpse's owner.");
             }
 
+            if (questDropRoom == 0)
+            {
+                continue;
+            }
+
             var needed = await questDropPlan.TakeAsync(
                 context,
                 ownerId!.Value,
@@ -79,6 +88,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             if (needed > 0)
             {
                 kept.Add(new KeptLoot(loot, definition, needed));
+                questDropRoom--;
             }
         }
 
@@ -266,7 +276,9 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                 command.RotationZ,
                 command.RotationW)
             || command.Loot is null
-            || command.Loot.Count is < 1 or > WorldActorCorpseRules.MaximumLootEntries
+            || command.Loot.Count < 1
+            || command.Loot.Count(loot => loot.QuestId is null) > WorldActorCorpseRules.MaximumLootEntries
+            || command.Loot.Count(loot => loot.QuestId is not null) > WorldActorCorpseRules.MaximumQuestDropCandidates
             || command.Loot.Any(loot =>
                 loot.GrantId == Guid.Empty
                 || !Identifiers.IsContentIdentifier(loot.DefinitionId)

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json.Serialization;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
 
@@ -175,10 +176,12 @@ public sealed record PlayerDeathPartitionResponse(
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     SimulationCharacterState? CharacterState = null);
 
+// QuestId names the quest whose lineage a quest drop gets; ordinary loot names none.
 public sealed record MobCorpseLootEntryRequest(
     Guid GrantId,
     string DefinitionId,
-    int Quantity);
+    int Quantity,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuestId = null);
 
 public sealed record CreatePersistentMobCorpseRequest(
     Guid OperationId,
@@ -228,7 +231,25 @@ public sealed record SimulationMobLootGrantRequest(
     int DestinationSlotIndex,
     string? EquipmentSlotId = null,
     Guid? TargetItemInstanceId = null,
-    long? ExpectedTargetItemRevision = null);
+    long? ExpectedTargetItemRevision = null,
+    string? QuestId = null);
+
+// The quest drops that a dying Mob rolled for the owner of a live corpse.
+public sealed record SimulationQuestDropRequest(
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    string SourceActorDefinitionId,
+    IReadOnlyList<SimulationQuestDrop> Drops);
+
+public sealed record SimulationQuestDrop(string QuestId, string DefinitionId, int Quantity);
+
+// The drops that the owner's quests still need, each at most what they need, in request order;
+// a drop that no quest needs is left out.
+public sealed record SimulationQuestDropResponse(IReadOnlyList<SimulationQuestDrop> Drops);
 
 // Loot all on a live Mob corpse: every loot entry still in the corpse, in its slot order.
 public sealed record SimulationMobLootAllRequest(

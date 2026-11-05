@@ -4,6 +4,8 @@ using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Quests;
+using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.WorldData.Actors;
 
@@ -12,17 +14,21 @@ namespace Mmorpg.SimulationWorker.Realtime;
 internal sealed record MobCorpseCreated(MobDeath Death, MobDeathCorpse Corpse, MobCorpseCreationResult Result)
     : RealtimeOperationResult(RealtimePeerContext.System);
 
-// One corpse that a Mob death leaves: the loot of one credited player, or loot for everyone.
+// One corpse that a Mob death leaves: the loot of one credited player, or loot for everyone,
+// and the quest drops rolled for its owner.
 internal sealed class MobDeathCorpse(
     Guid corpseId,
     Guid? ownerCharacterId,
-    IReadOnlyList<MobCorpseLootSeed> loot)
+    IReadOnlyList<MobCorpseLootSeed> loot,
+    IReadOnlyList<MobCorpseQuestDropSeed> questDrops)
 {
     public Guid CorpseId { get; } = corpseId;
 
     public Guid? OwnerCharacterId { get; } = ownerCharacterId;
 
     public IReadOnlyList<MobCorpseLootSeed> Loot { get; } = loot;
+
+    public IReadOnlyList<MobCorpseQuestDropSeed> QuestDrops { get; } = questDrops;
 
     public int Attempts { get; set; }
 
@@ -59,11 +65,12 @@ internal sealed class MobDeath(
 
 // Turns a dead Mob into its corpses and its respawn. A tagged Mob leaves one corpse for the
 // player it credits, a world boss with contributor credit one for every credited player, each
-// with a roll of its own, and a Mob that credits no one one for everyone. A corpse is live on
-// the worker or durable in GameService, which retries with the same corpse id until it
-// commits. Once every corpse exists, the actor despawns, and its spawn instance respawns after
-// the respawn profile's delay. A death whose rolls are empty leaves no corpse. Loop-confined;
-// corpse creation runs off the loop.
+// with a roll of its own, and a Mob that credits no one one for everyone. The owner of a corpse
+// also rolls the Mob's quest drops, which follow its own loot. A corpse is live on the worker or
+// durable in GameService, and its creation retries with the same corpse id until it succeeds.
+// Once every corpse exists, the actor despawns, and its spawn instance respawns after the
+// respawn profile's delay. A death whose rolls are empty, or whose quest drops its owner no
+// longer needs, leaves no corpse. Loop-confined; corpse creation runs off the loop.
 internal sealed class MobDeathProcessor(
     SimulationWorkerConfig config,
     RealtimeSimulationClock clock,
@@ -77,7 +84,8 @@ internal sealed class MobDeathProcessor(
     RealtimeCompletionQueue completions,
     RealtimeOperationTracker operationTracker,
     ICombatRandom random,
-    ILogger logger) : IRealtimeCompletionHandler
+    ILogger logger,
+    QuestDropRoller? questDropRoller = null) : IRealtimeCompletionHandler
 {
     private readonly Dictionary<string, WorldActorLootProfileDefinition> loot = lootProfiles
         .ToDictionary(profile => profile.Id, StringComparer.Ordinal);
@@ -243,29 +251,55 @@ internal sealed class MobDeathProcessor(
             && string.Equals(actor.Definition.KillCredit, WorldActorKillCreditIds.Contributors, StringComparison.Ordinal);
         if (!personal)
         {
-            var shared = MobLootRoller.Roll(lootProfile, random);
-            return shared.Count == 0
-                ? []
-                : [new MobDeathCorpse(
-                    LootGroupIdOf(deathEventId),
-                    credits.Count == 1 ? credits[0].CharacterId : null,
-                    shared)];
+            var shared = PlanCorpse(
+                LootGroupIdOf(deathEventId),
+                actor,
+                credits.Count == 1 ? credits[0] : null,
+                MobLootRoller.Roll(lootProfile, random));
+            return shared is null ? [] : [shared];
         }
 
         var planned = new List<MobDeathCorpse>(credits.Count);
         foreach (var credit in credits)
         {
-            var own = MobLootRoller.Roll(lootProfile, random);
-            if (own.Count > 0)
+            var own = PlanCorpse(
+                ScopedGuid.Create("mob-corpse:" + credit.CharacterId.ToString("N"), deathEventId),
+                actor,
+                credit,
+                MobLootRoller.Roll(lootProfile, random));
+            if (own is not null)
             {
-                planned.Add(new MobDeathCorpse(
-                    ScopedGuid.Create("mob-corpse:" + credit.CharacterId.ToString("N"), deathEventId),
-                    credit.CharacterId,
-                    own));
+                planned.Add(own);
             }
         }
 
         return planned;
+    }
+
+    // The owner rolls the Mob's quest drops while the Mob's own loot leaves room in the corpse.
+    // GameService keeps the ones the owner still needs before they fill that room, so a drop that
+    // is not needed never takes the place of one that is. A corpse without either is not created.
+    private MobDeathCorpse? PlanCorpse(
+        Guid corpseId,
+        WorldActorRuntimeState actor,
+        MobKillCredit? owner,
+        IReadOnlyList<MobCorpseLootSeed> loot)
+    {
+        var ownerSession = owner is { } credit
+            && combatants.TryGet(credit.EntityId, out var combatant)
+            && combatant.Player?.Session is { } session
+            && session.CharacterId == credit.CharacterId
+                ? session
+                : null;
+        IReadOnlyList<MobCorpseQuestDropSeed> questDrops =
+            ownerSession is null || questDropRoller is null || loot.Count >= WorldActorCorpseRules.MaximumLootEntries
+                ? []
+                : questDropRoller.Roll(ownerSession, actor.Definition.Id, random)
+                    .Take(WorldActorCorpseRules.MaximumQuestDropCandidates)
+                    .ToArray();
+        return loot.Count == 0 && questDrops.Count == 0
+            ? null
+            : new MobDeathCorpse(corpseId, owner?.CharacterId, loot, questDrops);
     }
 
     private void Create(MobDeath death, MobDeathCorpse corpse)
@@ -286,7 +320,10 @@ internal sealed class MobDeathProcessor(
                     death.LootGroupId,
                     death.Actor.RuntimeActorId,
                     corpse.Loot,
-                    corpse.OwnerCharacterId),
+                    corpse.OwnerCharacterId)
+                {
+                    QuestDrops = corpse.QuestDrops
+                },
                 CancellationToken.None);
         }
         catch (Exception exception)

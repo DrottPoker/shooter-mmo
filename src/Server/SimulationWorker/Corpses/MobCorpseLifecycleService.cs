@@ -2,12 +2,17 @@ using Mmorpg.Server.Common.Identity;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Registry;
+using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.SimulationWorker.Corpses;
 
 public sealed record MobCorpseLootSeed(string DefinitionId, int Quantity);
+
+// A quest drop that a dying Mob rolled for its corpse's owner, which GameService grants with the
+// quest's lineage up to what the quest still needs.
+public sealed record MobCorpseQuestDropSeed(string QuestId, string DefinitionId, int Quantity);
 
 // One corpse of a Mob death. Every corpse of the death shares the loot group, so a viewer sees
 // one body. The owner is the player the Mob credited, who alone may loot the corpse, or null
@@ -18,7 +23,14 @@ public sealed record CreateMobCorpseRequest(
     Guid LootGroupId,
     Guid SourceActorRuntimeId,
     IReadOnlyList<MobCorpseLootSeed> Loot,
-    Guid? OwnerCharacterId = null);
+    Guid? OwnerCharacterId = null)
+{
+    // The quest drops rolled for the owner, which follow the Mob's own loot. A live corpse asks
+    // GameService through the owner's session how much of them the owner still needs; a durable
+    // corpse hands them to GameService, which keeps that much. The needed ones then fill the
+    // entries that the Mob's own loot leaves.
+    public IReadOnlyList<MobCorpseQuestDropSeed> QuestDrops { get; init; } = [];
+}
 
 public sealed record MobCorpseCreationResult(
     LiveMobCorpseState? LiveCorpse,
@@ -26,6 +38,9 @@ public sealed record MobCorpseCreationResult(
     SimulationWorkerErrorResponse? Error)
 {
     public bool Succeeded => Error is null;
+
+    // The Mob rolled only quest drops, and its owner needs none of them, so it leaves no corpse.
+    public static MobCorpseCreationResult Empty { get; } = new(null, null, null);
 
     public static MobCorpseCreationResult Live(LiveMobCorpseState corpse)
     {
@@ -48,6 +63,7 @@ public sealed class MobCorpseLifecycleService(
     LiveMobCorpseStore liveCorpseStore,
     DurableCorpseStore durableCorpseStore,
     GameServiceClient gameServiceClient,
+    ActiveSimulationSessionStore sessionStore,
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity,
     TimeProvider timeProvider)
@@ -56,6 +72,8 @@ public sealed class MobCorpseLifecycleService(
     // corpse.mob.feral_wolf, and keeps the yaw it died at, so the client lays the Mob down as it
     // fell. Player corpses use corpse.remains, which the client lays down as a body.
     public const string DefaultPresentationKey = WorldActorCorpseRules.MobCorpsePresentationKey;
+
+    private const string MobCorpseEmptyCode = "mob_corpse_empty";
 
     public async Task<MobCorpseCreationResult> CreateAsync(
         CreateMobCorpseRequest request,
@@ -81,23 +99,35 @@ public sealed class MobCorpseLifecycleService(
         }
 
         var corpseId = request.CorpseId;
-        var loot = request.Loot
-            .Select((seed, index) => new ResolvedLoot(
-                CreateIndexedScopedGuid("mob-loot-entry", corpseId, index),
-                CreateIndexedScopedGuid("mob-loot-grant", corpseId, index),
-                seed.DefinitionId.Trim(),
-                seed.Quantity,
-                index))
-            .ToArray();
         var definition = actor.Definition;
         if (string.Equals(
                 definition.CorpsePersistenceMode,
                 WorldActorCorpsePersistenceModeIds.Live,
                 StringComparison.Ordinal))
         {
-            var createdAt = liveCorpseStore.TryGetForReplay(corpseId, out var existing)
-                ? existing!.CreatedAt
-                : timeProvider.GetUtcNow().UtcDateTime;
+            // A corpse is laid out once, so a replay finds it as it is and asks GameService
+            // nothing.
+            if (liveCorpseStore.TryGetForReplay(corpseId, out var existing))
+            {
+                return MobCorpseCreationResult.Live(existing!);
+            }
+
+            var neededQuestDrops = await ResolveQuestDropsAsync(request, definition.Id, cancellationToken);
+            if (neededQuestDrops.Error is not null)
+            {
+                return MobCorpseCreationResult.Rejected(neededQuestDrops.Error);
+            }
+
+            var liveLoot = Resolve(
+                corpseId,
+                request.Loot,
+                neededQuestDrops.Drops.Take(WorldActorCorpseRules.MaximumLootEntries - request.Loot.Count));
+            if (liveLoot.Length == 0)
+            {
+                return MobCorpseCreationResult.Empty;
+            }
+
+            var createdAt = timeProvider.GetUtcNow().UtcDateTime;
             var liveCorpse = liveCorpseStore.CreateOrGet(new LiveMobCorpseState(
                 corpseId,
                 actor.RuntimeActorId,
@@ -115,12 +145,13 @@ public sealed class MobCorpseLifecycleService(
                 1,
                 createdAt,
                 createdAt.AddSeconds(definition.CorpseLifetimeSeconds),
-                loot.Select(value => new LiveMobCorpseLootEntry(
+                liveLoot.Select(value => new LiveMobCorpseLootEntry(
                     value.LootEntryId,
                     value.GrantId,
                     value.DefinitionId,
                     value.Quantity,
-                    value.SlotIndex))
+                    value.SlotIndex,
+                    value.QuestId))
                     .ToArray())
             {
                 OwnerCharacterId = request.OwnerCharacterId,
@@ -139,6 +170,10 @@ public sealed class MobCorpseLifecycleService(
                 "The Mob content does not define a supported corpse persistence mode."));
         }
 
+        var loot = Resolve(
+            corpseId,
+            request.Loot,
+            request.QuestDrops.Select(drop => new SimulationQuestDrop(drop.QuestId, drop.DefinitionId, drop.Quantity)));
         var halfYawRadians = actor.YawDegrees * Math.PI / 360d;
         var operationId = ScopedGuid.Create("mob-corpse-create", corpseId);
         var durableResult = await gameServiceClient.CreatePersistentMobCorpseAsync(
@@ -162,7 +197,8 @@ public sealed class MobCorpseLifecycleService(
                 loot.Select(value => new MobCorpseLootEntryRequest(
                     value.GrantId,
                     value.DefinitionId,
-                    value.Quantity))
+                    value.Quantity,
+                    value.QuestId))
                     .ToArray())
             {
                 OwnerCharacterId = request.OwnerCharacterId,
@@ -171,11 +207,75 @@ public sealed class MobCorpseLifecycleService(
             cancellationToken);
         if (!durableResult.Succeeded)
         {
-            return MobCorpseCreationResult.Rejected(durableResult.Error!);
+            return durableResult.Error!.Code == MobCorpseEmptyCode
+                ? MobCorpseCreationResult.Empty
+                : MobCorpseCreationResult.Rejected(durableResult.Error);
         }
 
         durableCorpseStore.Apply(durableResult.Value!.Corpse);
         return MobCorpseCreationResult.Durable(durableResult.Value.Corpse);
+    }
+
+    // The quest drops that a live corpse's owner still needs, asked through the owner's current
+    // session, so a reconnect's new token holds. A timeout or a server error fails the creation,
+    // which the Mob retries, since the read changes nothing. An owner without a session on this
+    // worker, or any other answer, such as a session that ended, leaves the quest drops out.
+    private async Task<(IReadOnlyList<SimulationQuestDrop> Drops, SimulationWorkerErrorResponse? Error)>
+        ResolveQuestDropsAsync(
+            CreateMobCorpseRequest request,
+            string sourceActorDefinitionId,
+            CancellationToken cancellationToken)
+    {
+        if (request.QuestDrops.Count == 0
+            || request.OwnerCharacterId is not { } ownerCharacterId
+            || !sessionStore.TryGet(ownerCharacterId, out var owner)
+            || owner is null)
+        {
+            return ([], null);
+        }
+
+        var result = await gameServiceClient.ResolveQuestDropsAsync(
+            owner.SimulationSessionId,
+            new SimulationQuestDropRequest(
+                owner.AccountId,
+                owner.CharacterId,
+                owner.WorkerId,
+                owner.WorkerRuntimeId,
+                owner.ShardId,
+                owner.SimulationSessionToken,
+                sourceActorDefinitionId,
+                request.QuestDrops
+                    .Select(drop => new SimulationQuestDrop(drop.QuestId, drop.DefinitionId, drop.Quantity))
+                    .ToArray()),
+            cancellationToken);
+        if (result.Succeeded)
+        {
+            return (result.Value!.Drops, null);
+        }
+
+        return GameServiceOutcome.IsTransient(result.Error!.Code, result.StatusCode)
+            ? ([], result.Error)
+            : ([], null);
+    }
+
+    // The Mob's own loot first and the quest drops after it, each with ids derived from the
+    // corpse and its place in the corpse.
+    private static ResolvedLoot[] Resolve(
+        Guid corpseId,
+        IEnumerable<MobCorpseLootSeed> loot,
+        IEnumerable<SimulationQuestDrop> questDrops)
+    {
+        return loot
+            .Select(seed => (DefinitionId: seed.DefinitionId.Trim(), seed.Quantity, QuestId: (string?)null))
+            .Concat(questDrops.Select(drop => (drop.DefinitionId, drop.Quantity, QuestId: (string?)drop.QuestId)))
+            .Select((value, index) => new ResolvedLoot(
+                CreateIndexedScopedGuid("mob-loot-entry", corpseId, index),
+                CreateIndexedScopedGuid("mob-loot-grant", corpseId, index),
+                value.DefinitionId,
+                value.Quantity,
+                index,
+                value.QuestId))
+            .ToArray();
     }
 
     private static void ValidateRequest(CreateMobCorpseRequest request)
@@ -187,17 +287,25 @@ public sealed class MobCorpseLifecycleService(
             || request.OwnerCharacterId == Guid.Empty
             || request.SourceActorRuntimeId == Guid.Empty
             || request.Loot is null
-            || request.Loot.Count is < 1 or > WorldActorCorpseRules.MaximumLootEntries
+            || request.QuestDrops is null
+            || request.Loot.Count > WorldActorCorpseRules.MaximumLootEntries
+            || request.QuestDrops.Count > WorldActorCorpseRules.MaximumQuestDropCandidates
+            || request.Loot.Count + request.QuestDrops.Count == 0
             || request.Loot.Any(seed =>
                 !Identifiers.IsContentIdentifier(seed.DefinitionId)
-                || seed.Quantity <= 0))
+                || seed.Quantity <= 0)
+            || request.QuestDrops.Any(drop =>
+                drop is null
+                || !Identifiers.IsContentIdentifier(drop.QuestId)
+                || !Identifiers.IsContentIdentifier(drop.DefinitionId)
+                || drop.Quantity <= 0)
+            || (request.QuestDrops.Count > 0 && request.OwnerCharacterId is null))
         {
             throw new ArgumentException(
                 "The Mob corpse creation request is incomplete or invalid.",
                 nameof(request));
         }
     }
-
 
     private static Guid CreateIndexedScopedGuid(string scope, Guid sourceId, int index)
     {
@@ -209,5 +317,6 @@ public sealed class MobCorpseLifecycleService(
         Guid GrantId,
         string DefinitionId,
         int Quantity,
-        int SlotIndex);
+        int SlotIndex,
+        string? QuestId);
 }

@@ -67,7 +67,8 @@ public sealed class RealtimeSimulationService(
     DevelopmentAdminOptions? developmentAdmin = null,
     CharacterQuestLogStore? questLogs = null,
     QuestOperationExecutor? questOperations = null,
-    QuestCatalogRuntimeDocument? questCatalog = null)
+    QuestCatalogRuntimeDocument? questCatalog = null,
+    ICombatRandom? combatRandom = null)
     : BackgroundService
 {
     private readonly RealtimeServer server = RealtimeServerComposition.Create(
@@ -110,7 +111,8 @@ public sealed class RealtimeSimulationService(
                 shardRules ?? new SimulationShardRules(),
                 gameServiceClient,
                 mobCorpses,
-                combatMetrics),
+                combatMetrics,
+                combatRandom),
             new AppearanceDependencies(
                 lookStore ?? new CharacterLookStore(),
                 appearanceCatalog is null

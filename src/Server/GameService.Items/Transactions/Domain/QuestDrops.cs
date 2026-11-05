@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Quests;
@@ -17,7 +18,7 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
 
     // The part of a dropped quantity that the character still needs, or 0 when its quest does
     // not ask for the drop.
-    public async Task<int> NeededAsync(
+    public Task<int> NeededAsync(
         ItemTransactionContext context,
         Guid characterId,
         string questId,
@@ -26,18 +27,41 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
         int quantity,
         CancellationToken cancellationToken)
     {
-        if (!IsQuestDropItem(definition) || questDefinitions.Find(questId) is not { } quest)
+        return IsQuestDropItem(definition)
+            ? NeededAsync(
+                context.Scope,
+                characterId,
+                questId,
+                sourceActorDefinitionId,
+                definition.RuntimeDefinition.Id,
+                quantity,
+                cancellationToken)
+            : Task.FromResult(0);
+    }
+
+    // The same, read in the caller's transaction, for an item definition that the quest catalog
+    // already names as a quest drop.
+    public async Task<int> NeededAsync(
+        PostgresTransactionScope scope,
+        Guid characterId,
+        string questId,
+        string sourceActorDefinitionId,
+        string definitionId,
+        int quantity,
+        CancellationToken cancellationToken)
+    {
+        if (questDefinitions.Find(questId) is not { } quest)
         {
             return 0;
         }
 
-        var log = await questLog.ReadAsync(context.Scope, characterId, cancellationToken);
+        var log = await questLog.ReadAsync(scope, characterId, cancellationToken);
         var active = log.ActiveQuests.FirstOrDefault(value =>
             string.Equals(value.QuestId, quest.Id, StringComparison.Ordinal));
         var objective = active is null
             ? null
             : QuestProgression.CurrentStep(quest, active).Objectives.FirstOrDefault(value =>
-                string.Equals(value.ItemId, definition.RuntimeDefinition.Id, StringComparison.Ordinal)
+                string.Equals(value.ItemId, definitionId, StringComparison.Ordinal)
                 && QuestRules.FindDropSource(value, sourceActorDefinitionId) is not null);
         if (objective is null)
         {
@@ -45,10 +69,10 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
         }
 
         var owned = await QuestLineageItems.CountOwnedAsync(
-            context,
+            scope,
             characterId,
             quest.Id,
-            definition.RuntimeDefinition.Id,
+            definitionId,
             cancellationToken);
         return Math.Clamp(objective.Count - owned, 0, quantity);
     }
@@ -177,16 +201,37 @@ internal sealed class QuestDropPlan(QuestDrops questDrops)
         int quantity,
         CancellationToken cancellationToken)
     {
-        var key = (questId, definition.RuntimeDefinition.Id);
+        return QuestDrops.IsQuestDropItem(definition)
+            ? await TakeAsync(
+                context.Scope,
+                characterId,
+                questId,
+                sourceActorDefinitionId,
+                definition.RuntimeDefinition.Id,
+                quantity,
+                cancellationToken)
+            : 0;
+    }
+
+    public async Task<int> TakeAsync(
+        PostgresTransactionScope scope,
+        Guid characterId,
+        string questId,
+        string sourceActorDefinitionId,
+        string definitionId,
+        int quantity,
+        CancellationToken cancellationToken)
+    {
+        var key = (questId, definitionId);
         var before = planned.GetValueOrDefault(key);
         var needed = Math.Max(
             0,
             await questDrops.NeededAsync(
-                context,
+                scope,
                 characterId,
                 questId,
                 sourceActorDefinitionId,
-                definition,
+                definitionId,
                 quantity + before,
                 cancellationToken) - before);
         planned[key] = before + needed;

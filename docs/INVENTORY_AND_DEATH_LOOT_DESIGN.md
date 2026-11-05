@@ -803,11 +803,11 @@ others, which they cannot loot. A Mob that credits no one leaves a corpse that
 everyone may loot. Live and durable corpses follow the same rules, and player
 corpses stay full loot for everyone.
 
-GameService grants a quest drop with its quest's lineage from live Mob loot, and
-keeps it in a durable Mob corpse for the corpse's owner, as
-[Quest Drops](QUEST_SYSTEM_DESIGN.md#quest-drops) describes. Planned: the worker
-rolls quest drops, so they join the loot of the player they drop for, and loot
-that holds only a quest drop still creates the corpse.
+The worker rolls the quest drops of a corpse's owner after the Mob's own loot,
+so they join the loot of the player they drop for, and loot that holds only a
+quest drop still creates the corpse. GameService grants a quest drop with its
+quest's lineage from live Mob loot, and keeps it in a durable Mob corpse for the
+corpse's owner, as [Quest Drops](QUEST_SYSTEM_DESIGN.md#quest-drops) describes.
 
 A Mob corpse shows its Mob's own model lying in the last pose of its Death clip,
 turned as the Mob died. A Mob without a model of its own shows a generic
@@ -818,8 +818,9 @@ grant id from one authoritative death event and materializes a claimed whole
 item through the exact-session item transaction boundary. Selected durable Mobs
 use the same durable corpse record, three-section custody, restoration,
 interaction, and expiry paths as players. The corpse is created from loot that
-SimulationWorker already rolled from the Mob's loot profile when combat killed
-it, and an empty roll creates no corpse.
+SimulationWorker already rolled from the Mob's loot profile and its owner's
+quest drops when combat killed it, and an empty roll, or quest drops that the
+owner no longer needs, create no corpse.
 
 ## Corpse Container Transfers And Bag Swaps
 

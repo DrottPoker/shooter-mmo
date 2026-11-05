@@ -1,6 +1,8 @@
 using Dapper;
+using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Items.Tests.ItemTransactions;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.Testing;
@@ -156,7 +158,91 @@ public sealed class QuestDropIntegrationTests
         Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId));
     }
 
-    private static async Task<int> CountCorpseItemsAsync(ItemScenarioWorld world, Guid corpseId)
+    // A corpse almost full of the Mob's own loot keeps the letter the owner needs in its last
+    // entry: a letter that no active quest needs does not take that place, and a second needed
+    // letter finds no room.
+    [PostgresIntegrationFact]
+    public async Task NeededQuestDropsFillTheRoomThatTheMobsOwnLootLeaves()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("quest_drop_crowd");
+        var characterId = player.Character.Id;
+        var session = await world.JoinAsync(player);
+        ItemScenarioWorld.AssertCommitted(
+            await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
+        var corpseId = Guid.NewGuid();
+        MobCorpseLootEntryRequest[] loot =
+        [
+            .. Enumerable.Range(0, 23).Select(_ => new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 1)),
+            new(Guid.NewGuid(), Letter, 1, "quest.fixture.wolves"),
+            new(Guid.NewGuid(), Letter, 1, Trophies),
+            new(Guid.NewGuid(), Letter, 1, Trophies)
+        ];
+
+        ItemScenarioWorld.AssertCommitted(await CreateCorpseAsync(world, corpseId, characterId, loot));
+
+        Assert.Equal(24, await CountCorpseItemsAsync(world, corpseId));
+        Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId, Letter));
+    }
+
+    // The worker's read before it lays out a live corpse: the drops that the owner's quests still
+    // need, shared between drops of one item, with the checks of every worker read.
+    [PostgresIntegrationFact]
+    public async Task TheWorkerLearnsWhichRolledDropsTheOwnerStillNeeds()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("quest_drop_reader");
+        var characterId = player.Character.Id;
+        var session = await world.JoinAsync(player);
+        var inventoryId = (await world.LoadStateAsync(characterId)).PermanentInventoryContainerId;
+        SimulationQuestDrop[] letters =
+        [
+            new(Trophies, Letter, 1),
+            new(Trophies, Letter, 1),
+            new(Trophies, Letter, 1)
+        ];
+
+        var beforeAccepting = await ResolveAsync(context, session, Wolf, letters);
+        ItemScenarioWorld.AssertCommitted(
+            await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
+        var accepted = await ResolveAsync(context, session, Wolf, letters);
+        var otherMob = await ResolveAsync(context, session, "mob.grey_wolf", letters);
+        ItemScenarioWorld.AssertCommitted(await GrantAsync(world, session, characterId, Wolf, Trophies, inventoryId, 0));
+        var afterOne = await ResolveAsync(context, session, Wolf, letters);
+        var stranger = await ResolveAsync(context, session with { SimulationSessionToken = "not-the-token" }, Wolf, letters);
+
+        Assert.Empty(beforeAccepting.Value!.Drops);
+        Assert.Equal([new(Trophies, Letter, 1), new(Trophies, Letter, 1)], accepted.Value!.Drops);
+        Assert.Empty(otherMob.Value!.Drops);
+        Assert.Equal([new(Trophies, Letter, 1)], afterOne.Value!.Drops);
+        Assert.Equal(("simulation_session_invalid", 401), (stranger.Error!.Code, stranger.StatusCode));
+    }
+
+    private static async Task<ServiceResult<SimulationQuestDropResponse>> ResolveAsync(
+        PostgresIntegrationTestContext context,
+        ConsumedSimulationJoinTicketResponse session,
+        string sourceActorDefinitionId,
+        IReadOnlyList<SimulationQuestDrop> drops)
+    {
+        await using var scope = context.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<SimulationQuestDropService>().ResolveAsync(
+            session.WorkerId,
+            session.SimulationSessionId,
+            new SimulationQuestDropRequest(
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken,
+                sourceActorDefinitionId,
+                drops),
+            CancellationToken.None);
+    }
+
+    private static async Task<int> CountCorpseItemsAsync(ItemScenarioWorld world, Guid corpseId, string? definitionId = null)
     {
         await using var connection = await world.Context.DataSource.OpenConnectionAsync();
         return await connection.QuerySingleAsync<int>(
@@ -164,9 +250,10 @@ public sealed class QuestDropIntegrationTests
             select count(*)::integer
             from corpse_sections section
             join item_instances item on item.container_id = section.container_id
-            where section.corpse_id = @CorpseId;
+            where section.corpse_id = @CorpseId
+                and (@DefinitionId::text is null or item.definition_id = @DefinitionId);
             """,
-            new { CorpseId = corpseId });
+            new { CorpseId = corpseId, DefinitionId = definitionId });
     }
 
     private static async Task<ItemTransactionResult> GrantAsync(

@@ -89,6 +89,10 @@ namespace Mmorpg.WorldData.Actors
         public const float MaximumLifetimeSeconds = 86400f;
         public const int MaximumLootEntries = 24;
 
+        // The most quest drops that a dying Mob rolls for one corpse's owner. GameService keeps the
+        // ones the owner still needs, and those fill the entries that the Mob's own loot leaves.
+        public const int MaximumQuestDropCandidates = 64;
+
         // A Mob corpse's presentation key: corpse.mob, the remains of any Mob, followed by the rest
         // of the Mob's presentation archetype, so the client lays down the Mob's own model, such as
         // corpse.mob.feral_wolf for mob.feral_wolf. Every such key takes whole items only.
