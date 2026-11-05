@@ -13,6 +13,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
     : IItemCommandHandler<CreatePersistentMobCorpseCommand>
 {
     private readonly ItemSimulationAuthority simulationAuthority = simulationAuthority;
+    private readonly QuestDrops questDrops = questDrops;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,

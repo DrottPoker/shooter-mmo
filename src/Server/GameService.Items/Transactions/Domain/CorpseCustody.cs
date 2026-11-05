@@ -22,8 +22,6 @@ internal static class CorpseCustody
                     closed_at as "ClosedAt",
                     close_reason as "CloseReason",
                     owner_character_id as "OwnerCharacterId",
-                    source_type as "SourceType",
-                    source_npc_definition_id as "SourceNpcDefinitionId",
                     expires_at <= now() as "IsExpired"
                 from corpses
                 where id = @CorpseId
@@ -174,10 +172,6 @@ internal sealed class LockedCorpseRow
     public string? CloseReason { get; set; }
 
     public Guid? OwnerCharacterId { get; set; }
-
-    public string SourceType { get; set; } = string.Empty;
-
-    public string? SourceNpcDefinitionId { get; set; }
 
     public bool IsExpired { get; set; }
 }

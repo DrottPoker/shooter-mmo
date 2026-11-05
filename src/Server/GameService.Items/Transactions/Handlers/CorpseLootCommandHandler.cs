@@ -11,6 +11,8 @@ internal sealed class CorpseLootCommandHandler(QuestDrops questDrops)
     IItemCommandHandler<LootCorpsePartialStackCommand>,
     IItemCommandHandler<LootCorpseItemToEquipmentCommand>
 {
+    private readonly QuestDrops questDrops = questDrops;
+
     // An equipped stack of the same stackable definition takes the loot as a top-up, or the loot
     // is rejected. Otherwise the loot equips under the normal equip rules, and an equipped item in
     // the slot swaps into the corpse slot the loot came from, as a deposit into that slot would.
@@ -653,7 +655,10 @@ internal sealed class CorpseLootCommandHandler(QuestDrops questDrops)
         CancellationToken cancellationToken)
     {
         var questId = QuestDrops.LineageQuestId(policies);
-        if (questId is null || !QuestDrops.IsOwnMobCorpse(corpse, characterId))
+        var sourceActorDefinitionId = questId is null
+            ? null
+            : await QuestDrops.OwnMobCorpseSourceAsync(context, corpse.CorpseId, characterId, cancellationToken);
+        if (questId is null || sourceActorDefinitionId is null)
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.ItemPolicyRestricted,
@@ -664,7 +669,7 @@ internal sealed class CorpseLootCommandHandler(QuestDrops questDrops)
             context,
             characterId,
             questId!,
-            corpse.SourceNpcDefinitionId!,
+            sourceActorDefinitionId!,
             definition,
             movedQuantity,
             cancellationToken);

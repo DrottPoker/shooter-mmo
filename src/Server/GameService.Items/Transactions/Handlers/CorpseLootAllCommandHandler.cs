@@ -10,6 +10,8 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // corpse moves only while the looter's quest needs all of it, and otherwise stays.
 internal sealed class CorpseLootAllCommandHandler(QuestDrops questDrops) : IItemCommandHandler<LootAllCorpseItemsCommand>
 {
+    private readonly QuestDrops questDrops = questDrops;
+
     public async Task ExecuteAsync(
         ItemTransactionContext context,
         LootAllCorpseItemsCommand command,
@@ -337,12 +339,13 @@ internal sealed class CorpseLootAllCommandHandler(QuestDrops questDrops) : IItem
         CancellationToken cancellationToken)
     {
         return QuestDrops.LineageQuestId(policies) is { } questId
-            && QuestDrops.IsOwnMobCorpse(corpse, characterId)
+            && await QuestDrops.OwnMobCorpseSourceAsync(context, corpse.CorpseId, characterId, cancellationToken)
+                is { } sourceActorDefinitionId
             && await questDrops.NeededAsync(
                 context,
                 characterId,
                 questId,
-                corpse.SourceNpcDefinitionId!,
+                sourceActorDefinitionId,
                 definition,
                 quantity,
                 cancellationToken) == quantity;

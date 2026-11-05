@@ -647,6 +647,7 @@ the statement ids.
 | S59 | A quest turn-in credits its Gold reward | Chr L, W | `ICharacterWallet.CreditAsync` with a `quest_reward` ledger row in `QuestCommandHandler` |
 | S60 | Join and reconnect compare the worker's quest catalog revision with the mirrored one | Qst R | `IQuestCatalogRevisionProvider.GetCurrentRevisionAsync` in `ShardService` |
 | S61 | The worker quest log read checks session, worker, and assignment | Plc R, Acc R | `ISimulationSessionAuthority.GetReadAuthorityAsync` in `SimulationQuestLogService` |
+| S62 | A quest drop reads the quest catalog and the quest log for what its quest still needs | Qst R | `IQuestDefinitions` and `ICharacterQuestLog.ReadAsync` in `QuestDrops` |
 
 Notes on specific statements:
 

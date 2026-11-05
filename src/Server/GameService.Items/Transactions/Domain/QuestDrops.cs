@@ -1,3 +1,4 @@
+using Dapper;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Quests;
@@ -11,8 +12,8 @@ namespace Mmorpg.GameService.Items.Transactions.Domain;
 // anywhere.
 internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQuestLog questLog)
 {
-    // The source type of a durable Mob corpse.
-    private const string MobCorpseSourceType = "persistent_npc";
+    private readonly IQuestDefinitions questDefinitions = questDefinitions;
+    private readonly ICharacterQuestLog questLog = questLog;
 
     // The part of a dropped quantity that the character still needs, or 0 when its quest does
     // not ask for the drop.
@@ -62,12 +63,24 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
     }
 
     // A quest drop lies in the durable corpse of the Mob that dropped it, which belongs to the
-    // character it dropped for.
-    public static bool IsOwnMobCorpse(LockedCorpseRow corpse, Guid characterId)
+    // character it dropped for. Returns the Mob's actor definition, or null for any other corpse.
+    public static Task<string?> OwnMobCorpseSourceAsync(
+        ItemTransactionContext context,
+        Guid corpseId,
+        Guid characterId,
+        CancellationToken cancellationToken)
     {
-        return string.Equals(corpse.SourceType, MobCorpseSourceType, StringComparison.Ordinal)
-            && corpse.OwnerCharacterId == characterId
-            && !string.IsNullOrEmpty(corpse.SourceNpcDefinitionId);
+        return context.Connection.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            """
+            select source_npc_definition_id
+            from corpses
+            where id = @CorpseId
+              and source_type = 'persistent_npc'
+              and owner_character_id = @CharacterId;
+            """,
+            new { CorpseId = corpseId, CharacterId = characterId },
+            context.Transaction,
+            cancellationToken: cancellationToken));
     }
 
     // The quest whose lineage an item carries: its active protected policy that a quest granted.

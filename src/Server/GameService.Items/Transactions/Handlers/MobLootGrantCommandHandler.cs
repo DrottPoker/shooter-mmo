@@ -12,6 +12,8 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 internal sealed class MobLootGrantCommandHandler(QuestDrops questDrops)
     : IItemCommandHandler<GrantMobLootCommand>
 {
+    private readonly QuestDrops questDrops = questDrops;
+
     public async Task ExecuteAsync(
         ItemTransactionContext context,
         GrantMobLootCommand command,

@@ -183,7 +183,9 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         // S58: kills, yields, talks, and deliveries count for the objectives of current steps.
         "GameService.Items/Transactions/Domain/QuestProgression.cs",
         // S58: a gathering yield counts for gather objectives.
-        "GameService.Items/Transactions/Handlers/GatherResourceCommandHandler.cs"
+        "GameService.Items/Transactions/Handlers/GatherResourceCommandHandler.cs",
+        // S62: a quest drop reads the quest catalog and the quest log for what its quest still needs.
+        "GameService.Items/Transactions/Domain/QuestDrops.cs"
     ];
 
     // The file that defines the single rejection throw, ItemTransactionRejection.

@@ -13,6 +13,8 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // quest no longer needs stays in the corpse.
 internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IItemCommandHandler<GrantMobLootAllCommand>
 {
+    private readonly QuestDrops questDrops = questDrops;
+
     public async Task ExecuteAsync(
         ItemTransactionContext context,
         GrantMobLootAllCommand command,
