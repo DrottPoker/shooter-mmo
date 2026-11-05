@@ -53,26 +53,8 @@ internal sealed class QuestLogQueryService(
                 characterId,
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return ServiceResult<CharacterQuestLogResponse>.Ok(new CharacterQuestLogResponse(
-                characterId,
-                questDefinitions.Revision,
-                state.Revision,
-                state.ActiveQuests
-                    .Select(quest => new ActiveQuestResponse(
-                        quest.QuestId,
-                        quest.StepId,
-                        quest.AcceptedAt,
-                        quest.Progress
-                            .OrderBy(entry => entry.Key, StringComparer.Ordinal)
-                            .Select(entry => new QuestObjectiveProgressResponse(entry.Key, entry.Value))
-                            .ToArray()))
-                    .ToArray(),
-                state.CompletedQuests
-                    .Select(quest => new CompletedQuestResponse(
-                        quest.QuestId,
-                        quest.CompletionCount,
-                        quest.LastCompletedAt))
-                    .ToArray()));
+            return ServiceResult<CharacterQuestLogResponse>.Ok(
+                QuestLogResponses.From(characterId, questDefinitions.Revision, state));
         }
         catch
         {

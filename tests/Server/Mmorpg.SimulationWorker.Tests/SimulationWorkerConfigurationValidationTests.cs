@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Mmorpg.Server.Common.Items;
+using Mmorpg.Server.Common.Quests;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
@@ -92,6 +93,31 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(
             Path.GetFullPath(RepositoryPaths.ItemCatalogFixtureRuntimePath),
             configured.ItemCatalogPath);
+    }
+
+    [Fact]
+    public void SimulationWorkerReadsTheQuestCatalogCopiedToItsOutputUnlessConfigured()
+    {
+        var defaults = SimulationWorkerConfig.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(WorkerSettings())
+            .Build());
+        var settings = WorkerSettings();
+        settings["SimulationWorker:QuestCatalogPath"] = RepositoryPaths.QuestCatalogFixtureRuntimePath;
+        var configured = SimulationWorkerConfig.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build());
+
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory,
+                SimulationWorkerConfig.DefaultQuestCatalogPath)),
+            defaults.QuestCatalogPath);
+        Assert.Equal(
+            QuestCatalogTestData.Compile().Revision,
+            QuestCatalogFileLoader.Load(defaults.QuestCatalogPath).Revision);
+        Assert.Equal(
+            Path.GetFullPath(RepositoryPaths.QuestCatalogFixtureRuntimePath),
+            configured.QuestCatalogPath);
     }
 
     [Fact]

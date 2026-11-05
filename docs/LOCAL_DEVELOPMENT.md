@@ -199,9 +199,11 @@ describes.
 - After a content change, compile it as
   [Game Content](../content/README.md#compile-and-verify) describes, then
   restart the services that read it; `dotnet run` builds them first. Restart
-  both after an item catalog change: GameService places characters only on a
-  worker whose catalog revision equals the catalog it mirrors, and otherwise a
-  join fails with `simulation_worker_item_catalog_mismatch`. A catalog change
+  both after an item or quest catalog change: GameService places characters
+  only on a worker whose item and quest catalog revisions equal the catalogs it
+  mirrors, and otherwise a join fails with
+  `simulation_worker_item_catalog_mismatch` or
+  `simulation_worker_quest_catalog_mismatch`. A catalog change
   that would invalidate live item state stops GameService; see
   [Reset The Local Development Database](#reset-the-local-development-database).
 - A worker stops with `shard_rule_set_unknown` when the rule set that

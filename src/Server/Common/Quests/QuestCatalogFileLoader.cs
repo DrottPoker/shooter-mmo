@@ -6,7 +6,8 @@ namespace Mmorpg.Server.Common.Quests;
 
 // Loads the compiled quest catalog strictly and checks its revision and fingerprints
 // against its own content, so a service trusts them instead of the file. GameService
-// mirrors the quest identities into PostgreSQL and runs the quest commands with it.
+// mirrors the quest identities into PostgreSQL and runs the quest commands with it, and
+// SimulationWorker counts quest progress with it.
 public static class QuestCatalogFileLoader
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()

@@ -55,6 +55,7 @@ public sealed record SimulationWorkerConfig(
     public ItemInteractionConfig ItemInteraction { get; init; } = ItemInteractionConfig.Empty;
 
     public const string DefaultItemCatalogPath = "WorldData/Items/core.item-catalog.json";
+    public const string DefaultQuestCatalogPath = "WorldData/Quests/core.quest-catalog.json";
     public const string DefaultCombatRulesPath = "WorldData/Combat/combat-rules.json";
     public const string DefaultCharacterAppearancePath = "WorldData/Characters/appearance.json";
 
@@ -62,6 +63,9 @@ public sealed record SimulationWorkerConfig(
 
     // The compiled item catalog that combat data and Mob loot come from.
     public string ItemCatalogPath { get; init; } = string.Empty;
+
+    // The compiled quest catalog that the worker counts quest progress with.
+    public string QuestCatalogPath { get; init; } = string.Empty;
 
     // The player combat rules and the meaning of every Shard rule set.
     public string CombatRulesPath { get; init; } = string.Empty;
@@ -604,6 +608,7 @@ public sealed record SimulationWorkerConfig(
                 worldDataPath!,
                 worldId!),
             ItemCatalogPath = ResolveOutputPath(section["ItemCatalogPath"], DefaultItemCatalogPath),
+            QuestCatalogPath = ResolveOutputPath(section["QuestCatalogPath"], DefaultQuestCatalogPath),
             CombatRulesPath = ResolveOutputPath(section["CombatRulesPath"], DefaultCombatRulesPath),
             CharacterAppearancePath = ResolveOutputPath(section["CharacterAppearancePath"], DefaultCharacterAppearancePath)
         };

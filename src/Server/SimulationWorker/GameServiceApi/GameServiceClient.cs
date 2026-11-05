@@ -99,6 +99,10 @@ public sealed class GameServiceClient(HttpClient httpClient)
                     response.ItemCatalogRevision,
                     request.ItemCatalogRevision,
                     StringComparison.Ordinal)
+                && string.Equals(
+                    response.QuestCatalogRevision,
+                    request.QuestCatalogRevision,
+                    StringComparison.Ordinal)
                 && response.LastHeartbeatAt != default
                 && response.OnlineUntil > response.LastHeartbeatAt,
             cancellationToken);

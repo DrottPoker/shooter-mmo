@@ -18,6 +18,7 @@ internal sealed class ShardService(
     ICharacterLocks characterLocks,
     ISimulationCharacterStateProvider characterStateProvider,
     IItemCatalogRevisionProvider itemCatalogRevisionProvider,
+    IQuestCatalogRevisionProvider questCatalogRevisionProvider,
     ICharacterAppearances characterAppearances,
     DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
@@ -236,6 +237,19 @@ internal sealed class ShardService(
             return ServiceResult<JoinShardResponse>.Conflict(
                 "simulation_worker_item_catalog_mismatch",
                 "The simulation worker runs another item catalog revision than GameService.");
+        }
+
+        // Quest progress is counted by the worker and committed by GameService, so both run the
+        // same quests.
+        var questCatalogRevision = await questCatalogRevisionProvider.GetCurrentRevisionAsync(
+            new PostgresTransactionScope(connection, transaction),
+            cancellationToken);
+        if (!string.Equals(placement.QuestCatalogRevision, questCatalogRevision, StringComparison.Ordinal))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<JoinShardResponse>.Conflict(
+                "simulation_worker_quest_catalog_mismatch",
+                "The simulation worker runs another quest catalog revision than GameService.");
         }
 
         const string insertTicketSql = """
@@ -504,7 +518,8 @@ internal sealed class ShardService(
                    worker.protocol_version as "ProtocolVersion",
                    worker.simulation_revision as "SimulationRevision",
                    worker.collision_revision as "CollisionRevision",
-                   worker.item_catalog_revision as "ItemCatalogRevision"
+                   worker.item_catalog_revision as "ItemCatalogRevision",
+                   worker.quest_catalog_revision as "QuestCatalogRevision"
             from shards shard
             join fleets fleet on fleet.id = shard.fleet_id and fleet.is_enabled
             join simulation_assignments assignment
@@ -621,7 +636,8 @@ internal sealed class ShardService(
                    worker.protocol_version as "ProtocolVersion",
                    worker.simulation_revision as "SimulationRevision",
                    worker.collision_revision as "CollisionRevision",
-                   worker.item_catalog_revision as "ItemCatalogRevision"
+                   worker.item_catalog_revision as "ItemCatalogRevision",
+                   worker.quest_catalog_revision as "QuestCatalogRevision"
             from shards shard
             join fleets fleet on fleet.id = shard.fleet_id and fleet.is_enabled
             join simulation_workers worker
@@ -942,7 +958,8 @@ internal sealed class ShardService(
         int ProtocolVersion,
         string SimulationRevision,
         string CollisionRevision,
-        string ItemCatalogRevision)
+        string ItemCatalogRevision,
+        string QuestCatalogRevision)
     {
         public ShardResponse ToShardResponse()
         {

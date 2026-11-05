@@ -18,7 +18,8 @@ public sealed class ModuleCompositionTests
         (typeof(IAccountSessionLifecycleHandler), "Mmorpg.GameService.Placement"),
         (typeof(ICharacterLifecycleHandler), "Mmorpg.GameService.Items"),
         (typeof(ISimulationCharacterStateProvider), "Mmorpg.GameService.Items"),
-        (typeof(IShardWorldLocalStateProbe), "Mmorpg.GameService.Items")
+        (typeof(IShardWorldLocalStateProbe), "Mmorpg.GameService.Items"),
+        (typeof(IQuestCatalogRevisionProvider), "Mmorpg.GameService.Quests")
     ];
 
     private static readonly (Type Contract, string ImplementingModule)[] Contracts =

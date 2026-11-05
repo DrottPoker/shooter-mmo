@@ -33,6 +33,10 @@
              Link="WorldData\Items\core.item-catalog.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Quests\core.quest-catalog.json"
+             Link="WorldData\Quests\core.quest-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\..\content\characters\appearance.json"
              Link="WorldData\Characters\appearance.json"
              CopyToOutputDirectory="PreserveNewest"

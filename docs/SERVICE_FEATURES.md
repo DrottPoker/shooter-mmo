@@ -48,6 +48,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel |
+| `POST /api/simulation-sessions/{id}/quest-log` | Worker service policy | Read the exact-session character's quest log when it joins the worker's Shard |
 | `POST /api/simulation-sessions/{id}/quest-operations` | Worker service policy | Run one quest action of the session's character through the durable kernel: accept, abandon, grant start items again, talk, deliver, turn in, or count a credited kill |
 | `POST /api/simulation-sessions/{id}/ammunition-consumptions` | Worker service policy | Commit one idempotent batch of shots from the exact-session character's equipped ammunition stack |
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
@@ -191,7 +192,7 @@ Each SimulationWorker has:
 - Fleet, Node, Shard, and World configuration.
 - An advertised UDP endpoint.
 - Maximum and active connection counts.
-- Protocol, simulation, collision, and item catalog revisions.
+- Protocol, simulation, collision, item catalog, and quest catalog revisions.
 - A process start timestamp.
 
 GameService validates identifiers, topology consistency, endpoint metadata,
@@ -254,7 +255,10 @@ Join placement:
    `simulation_worker_item_catalog_mismatch` when the worker's last heartbeat
    reported another item catalog revision than the one GameService mirrors.
    Combat data and Mob loot come from the worker's catalog and item custody
-   from GameService's, so both must be the same catalog.
+   from GameService's, so both must be the same catalog. In the same way it
+   rejects them with `409` `simulation_worker_quest_catalog_mismatch` when the
+   worker reported another quest catalog revision, because the worker counts
+   quest progress that GameService commits with its own catalog.
 9. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
    account session.
 10. Computes expiry with `clock_timestamp()` after placement locks are acquired.
@@ -537,6 +541,9 @@ SimulationWorker loads its World content before binding UDP:
 - The compiled item catalog from `SimulationWorker:ItemCatalogPath`, verified
   strictly. Every actor item reference must resolve against it, and the worker
   reports its revision in each heartbeat.
+- The compiled quest catalog from `SimulationWorker:QuestCatalogPath`, verified
+  strictly like GameService's copy, whose revision the worker also reports in
+  each heartbeat.
 - The combat rules and the character appearance content, as
   [Target-Based Combat](#target-based-combat) and
   [Character Looks](#character-looks) describe.
@@ -1211,6 +1218,16 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   stored progress. A character without quests has quest log revision 0. Quest
   texts and rules are not part of the response; the client reads them from its
   bundled quest catalog.
+- `POST /api/simulation-sessions/{id}/quest-log` returns the same quest log to
+  the worker that hosts the character's live simulation session, for the quest
+  state the worker keeps while the character plays. The account, character,
+  Shard, worker, runtime, and session token must name that session, with the
+  checks and codes of the worker's corpse view: `400`
+  `invalid_simulation_session_request` for an incomplete request, `401`
+  `simulation_session_invalid` for a released, expired, or other session, `409`
+  `worker_runtime_changed` for another runtime or a stale registry lease, and
+  `403` `wrong_simulation_worker` for another authenticated worker or a lost
+  Shard assignment.
 - `POST /api/simulation-sessions/{id}/quest-operations` runs one quest action
   of the session's character as an item transaction, with the operation id and
   replay rules of [Item Transactions](#item-transactions). `operationKind` names
@@ -1289,7 +1306,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Requests and platform | `invalid_request`, `internal_server_error`, `database_unavailable`, `rate_limit_exceeded`, `session_cache_invalidation_unavailable` |
 | Accounts and sessions | `invalid_email`, `invalid_username`, `invalid_password`, `invalid_login`, `invalid_credentials`, `email_already_used`, `username_already_used`, `account_already_exists`, `account_not_found`, `invalid_session_token`, `account_session_replaced` |
 | Characters | `invalid_character_name`, `character_name_taken`, `character_limit_reached`, `invalid_character_appearance`, `character_not_found` |
-| Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
+| Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `simulation_worker_quest_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
 | Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
 | Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_appearance_change`, `development_look_disabled` |
 | Item reads and requests | `item_catalog_not_found`, `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
@@ -1462,7 +1479,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `Movement:Gravity`, `MaximumFallSpeed`, `GroundedVerticalVelocity` | `-24`, `55`, `-2` | Falling |
 | `Movement:CharacterRadius`, `CharacterHeight`, `StepHeight`, `MaximumSlopeDegrees`, `GroundSnapDistance` | `0.35`, `2`, `0.35`, `45`, `0.4` | Character capsule and ground handling |
 | `Movement:MaximumSubstepDistance`, `MaximumPenetrationIterations` | `0.1`, `6` | Motor substep length and collision resolution |
-| `ItemCatalogPath`, `CombatRulesPath`, `CharacterAppearancePath` | `WorldData/Items/core.item-catalog.json`, `WorldData/Combat/combat-rules.json`, `WorldData/Characters/appearance.json` | Content files in the output; the actor runtime and collision come from the World directory |
+| `ItemCatalogPath`, `QuestCatalogPath`, `CombatRulesPath`, `CharacterAppearancePath` | `WorldData/Items/core.item-catalog.json`, `WorldData/Quests/core.quest-catalog.json`, `WorldData/Combat/combat-rules.json`, `WorldData/Characters/appearance.json` | Content files in the output; the actor runtime and collision come from the World directory |
 | `ConnectionStrings:Redis`, `HealthChecks:TimeoutMilliseconds` | `127.0.0.1:6379`, `1000` | Redis for the health check and its timeout |
 | `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess` | `true` in `appsettings.Development.json` | Development only: Bank and Recovery access from anywhere |
 | `DevelopmentAdmin:Enabled` | `true` in `appsettings.Development.json` | Development only: the admin tools |

@@ -2107,12 +2107,13 @@ queries:
 ```text
 select catalog_id, revision, is_current from item_catalog_revisions order by applied_at;
 select count(*) as active_characters_missing_item_state from characters c left join character_item_states s on s.character_id = c.id where c.deleted_at is null and s.character_id is null;
+select worker.id, worker.quest_catalog_revision = catalog.revision as runs_mirrored_quests from simulation_workers worker cross join quest_catalogs catalog where worker.is_online;
 ```
 
 Expected result: catalog `core` has exactly one row with `is_current` true, and
 `active_characters_missing_item_state` is `0`. After a change to the item
 catalog, GameService logs one entry when it applies the new catalog revision at
-startup.
+startup. Every online worker shows `runs_mirrored_quests` as true.
 
 ### Logs
 

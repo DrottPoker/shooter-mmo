@@ -9,6 +9,7 @@ internal static class PlacementSchemaMigrations
     [
         new(DevelopmentWorldIdentityMigration.Id, DevelopmentWorldIdentityMigration.Sql),
         new(WorkerSelectedWorldBindingMigration.Id, WorkerSelectedWorldBindingMigration.Sql),
-        new(WorkerItemCatalogRevisionMigration.Id, WorkerItemCatalogRevisionMigration.Sql)
+        new(WorkerItemCatalogRevisionMigration.Id, WorkerItemCatalogRevisionMigration.Sql),
+        new(WorkerQuestCatalogRevisionMigration.Id, WorkerQuestCatalogRevisionMigration.Sql)
     ];
 }

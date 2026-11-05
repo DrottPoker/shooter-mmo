@@ -13,7 +13,8 @@ public sealed record StressWorkerHeartbeatRequest(
     int ProtocolVersion,
     string SimulationRevision,
     string CollisionRevision,
-    string ItemCatalogRevision);
+    string ItemCatalogRevision,
+    string QuestCatalogRevision);
 
 public sealed record StressWorkerHeartbeatResponse(
     string WorkerId,
@@ -31,6 +32,7 @@ public sealed record StressWorkerHeartbeatResponse(
     string SimulationRevision,
     string CollisionRevision,
     string ItemCatalogRevision,
+    string QuestCatalogRevision,
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil);
 
@@ -173,8 +175,9 @@ public sealed record StressWorkerRegistration(
     DateTime StartedAt,
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil,
-    // Null in full-stack runs: GameService gates placement on it and does not expose it.
-    string? ItemCatalogRevision = null);
+    // Null in full-stack runs: GameService gates placement on them and does not expose them.
+    string? ItemCatalogRevision = null,
+    string? QuestCatalogRevision = null);
 
 public sealed record StressAuthorityCounters(
     long WorkerHeartbeats,

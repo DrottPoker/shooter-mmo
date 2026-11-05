@@ -7,6 +7,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Characters;
 using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Items;
+using Mmorpg.Server.Common.Quests;
 using Mmorpg.Server.Telemetry;
 using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Combat;
@@ -64,6 +65,7 @@ var worldActorRuntime = WorldActorLoader.Load(config);
 WorldActorProtocolCompatibility.Validate(worldActorRuntime);
 var itemCatalog = ItemCatalogFileLoader.Load(config.ItemCatalogPath);
 WorldActorItemReferences.Validate(worldActorRuntime, itemCatalog);
+var questCatalog = QuestCatalogFileLoader.Load(config.QuestCatalogPath);
 var combatRules = CombatRulesLoader.Load(config.CombatRulesPath);
 var appearanceCatalog = CharacterAppearanceFileLoader.Load(config.CharacterAppearancePath);
 var developmentItemInteractionOptions =
@@ -95,6 +97,7 @@ var collisionWorld = new CompositeCollisionWorld(
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(worldActorRuntime);
 builder.Services.AddSingleton(itemCatalog);
+builder.Services.AddSingleton(questCatalog);
 builder.Services.AddSingleton(combatRules);
 builder.Services.AddSingleton(appearanceCatalog);
 builder.Services.AddSingleton<CharacterLookStore>();

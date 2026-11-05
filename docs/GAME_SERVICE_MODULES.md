@@ -29,7 +29,7 @@ Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- host
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
 | `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, character level, and character looks |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
-| `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, and every character's quest log |
+| `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, Placement, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, and every character's quest log with its owner and worker reads |
 | `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, item transactions including vendor trades, gathering yields, and ammunition batches, corpses, the death partition, Recovery, policies, item operations maintenance, the stack stress fixtures, and the Development item tools |
 | `Mmorpg.GameService` (host) | `src/Server/GameService` | every module | `Program.cs`, the configuration loader, database startup, the frozen baseline migrations, health routes, and the shipped configuration and content files |
 
@@ -162,7 +162,7 @@ caller keeps its own check order, error codes, and messages.
 | `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state and credit the starting balance for a new character |
 | `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, the character level fragment, and the currency balance fragment |
 | `SimulationWorkerLeasePolicy` | Placement | Items | The worker heartbeat timeout |
-| `ISimulationSessionAuthority` | Placement | Items | Lock a simulation session for an item mutation, or read it with its worker lease and assignment |
+| `ISimulationSessionAuthority` | Placement | Quests, Items | Lock a simulation session for an item mutation, or read it with its worker lease and assignment |
 | `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment |
 | `ISimulationPresence` | Placement | Items | Find a character that is in the world |
 | `PlacementSql` | Placement | Items | Shard existence and active simulation session fragments |
@@ -170,6 +170,7 @@ caller keeps its own check order, error codes, and messages.
 | `IQuestDefinitions` | Quests | Items | The loaded quest catalog: its id, revision, active quest limit, and every quest definition by id |
 | `ICharacterQuestLog` | Quests | Items | Read a character's quest log, or accept, progress, advance, complete, or abandon one of its quests, each raising the log revision |
 | `IItemCatalogRevisionProvider` | Placement (SPI) | implemented by Items | Read the mirrored item catalog revision that a placed worker must run |
+| `IQuestCatalogRevisionProvider` | Placement (SPI) | implemented by Quests | Read the mirrored quest catalog revision that a placed worker must run |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
 | `IDatabaseSeeder` | Platform | implemented by Characters and Items | Verify or seed module data after the migrations: Characters checks the stored looks against the appearance content, and Items mirrors the item catalog and back-fills character item state |
 
@@ -530,6 +531,7 @@ topology names.
 | 31 | `202611041800_mob_corpse_ownership` | Items |
 | 32 | `202611042200_quest_log` | Quests |
 | 33 | `202611050900_quest_reward_currency` | Characters |
+| 34 | `202611051200_worker_quest_catalog_revision` | Placement |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -642,6 +644,8 @@ the statement ids.
 | S57 | A quest command's result reports the quests it changed | Qst R | `ICharacterQuestLog.ReadAsync` in `QuestLogChanges` |
 | S58 | Kills, yields, talks, and deliveries count for the objectives of current steps | Qst R, W | `IQuestDefinitions` and `ICharacterQuestLog` in `QuestProgression` and `GatherResourceCommandHandler` |
 | S59 | A quest turn-in credits its Gold reward | Chr L, W | `ICharacterWallet.CreditAsync` with a `quest_reward` ledger row in `QuestCommandHandler` |
+| S60 | Join and reconnect compare the worker's quest catalog revision with the mirrored one | Qst R | `IQuestCatalogRevisionProvider.GetCurrentRevisionAsync` in `ShardService` |
+| S61 | The worker quest log read checks session, worker, and assignment | Plc R, Acc R | `ISimulationSessionAuthority.GetReadAuthorityAsync` in `SimulationQuestLogService` |
 
 Notes on specific statements:
 
