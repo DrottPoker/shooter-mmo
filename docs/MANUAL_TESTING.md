@@ -823,8 +823,9 @@ answers are lost asks again with the same operation id until it commits, and an
 abandon sent after two kills waits for both credits, also after a reconnect
 from another client. A kill while the hunt's accept is in flight counts once the
 accept committed. A leave waits for the credit of the last kill and survives
-a death while it waits, and a stopping worker counts the kill that still waits
-in the lane. An Iron Vein yield names `resource.iron_vein`
+a death while it waits, and a stopping worker counts the kills that still wait
+in the lane, deciding each one after the one before it, so a Grey Wolf behind
+the Feral Wolf that finishes a step counts for the next step. An Iron Vein yield names `resource.iron_vein`
 while the errand needs ore and none once the ore is done, a retry sends the same
 request, and a lost answer makes the worker read the quest log again.
 

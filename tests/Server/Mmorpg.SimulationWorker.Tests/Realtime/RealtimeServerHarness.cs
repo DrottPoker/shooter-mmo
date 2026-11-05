@@ -66,6 +66,9 @@ internal sealed class RealtimeServerHarnessOptions
     // Players get their quest log at join, and quest actions run through the quests capability
     // and quest intents against the fixture quest catalog.
     public bool EnableQuests { get; init; }
+
+    // Replaces the fixture quest catalog when quests run.
+    public QuestCatalogRuntimeDocument? QuestCatalog { get; init; }
 }
 
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
@@ -197,7 +200,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 Looks,
                 new DevelopmentBotLooks(AppearanceCatalog, options.ItemCatalog ?? ItemCatalogTestData.CompileFixture()),
                 QuestLogs,
-                options.EnableQuests ? QuestCatalog : null),
+                options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null),
             new SimulationSessionReleaseService(
                 GameServiceClient,
                 SessionStore,
@@ -239,7 +242,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             developmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null,
             questLogs: QuestLogs,
             questOperations: QuestOperations,
-            questCatalog: options.EnableQuests ? QuestCatalog : null);
+            questCatalog: options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null);
     }
 
     // The fixture quest catalog that the quest tests run.

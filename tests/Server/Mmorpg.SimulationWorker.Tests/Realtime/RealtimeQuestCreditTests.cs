@@ -1,5 +1,8 @@
+using System.Net;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Quests;
 using static Mmorpg.SimulationWorker.Tests.Realtime.RealtimeCombatTests;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
@@ -385,6 +388,182 @@ public sealed class RealtimeQuestCreditTests
         {
             gate.Release();
         }
+    }
+
+    // A stopping worker decides each waiting credit by the quest log that the credits before it
+    // left: the Feral Wolf finishes the chain's first step, so the Grey Wolf behind it counts for
+    // the second.
+    [Fact]
+    public async Task AStoppingWorkerDecidesEachWaitingCreditAfterTheOneBefore()
+    {
+        var chain = ChainCatalog();
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableWorldActors = true,
+            EnableQuests = true,
+            QuestCatalog = chain,
+            WorldActorDocument = WolvesNextToTheSpawn(),
+            ItemCatalog = TestCatalog(minimumDamage: 100, maximumDamage: 100),
+            CombatRules = TestRules(respawnSeconds: 30f),
+            CombatRandom = new LowestRoll()
+        });
+        var archer = AddArcher(harness, "Chain Hunter");
+        var gate = new TestGate();
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(ScriptedGameServiceHandler.Json(
+            new SimulationQuestLogResponse(
+                request.CharacterId,
+                chain.Revision,
+                3,
+                [new SimulationActiveQuest(Chain, "first", DateTime.UtcNow, [new SimulationQuestObjectiveProgress("feral", 0)])],
+                [])));
+        harness.GameService.OnQuestOperation = async (_, request, _) =>
+        {
+            if (request.OperationKind == "abandon_quest")
+            {
+                await gate.WaitAsync();
+                return ScriptedGameServiceHandler.Problem(HttpStatusCode.Conflict, "quest_not_active", "The quest is not active.");
+            }
+
+            return request.MobActorId == "mob.feral_wolf"
+                ? ScriptedGameServiceHandler.CommittedQuestOperation(
+                    request,
+                    0,
+                    4,
+                    new SimulationQuestChange(Chain, "second", [new SimulationQuestObjectiveProgress("grey", 0)], 0))
+                : ScriptedGameServiceHandler.CommittedQuestOperation(
+                    request,
+                    0,
+                    5,
+                    new SimulationQuestChange(Chain, "second", [new SimulationQuestObjectiveProgress("grey", 1)], 0));
+        };
+        await harness.StartAsync();
+        try
+        {
+            var client = await harness.JoinAsync(archer);
+            client.Send(RealtimeProtocol.EncodeQuestIntent(
+                new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Chain)));
+            await harness.PollUntilAsync(() => gate.HasEntered, "the abandon to reach GameService");
+            foreach (var actorId in new[] { "mob.feral_wolf", "mob.grey_wolf" })
+            {
+                var mob = await WaitForMobAsync(harness, client, actorId);
+                client.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), mob.EntityId));
+                await harness.PollUntilAsync(
+                    () => Events(client).Any(value => value.Kind == RealtimeCombatEventKind.Died && value.TargetEntityId == mob.EntityId),
+                    "the " + actorId + " to die");
+            }
+
+            Assert.Single(harness.GameService.QuestOperations);
+
+            // The worker stops while the player stays connected, and the abandon answers only
+            // once the loop is gone, so both credits still wait in the lane.
+            var stopping = harness.Service.StopAsync(CancellationToken.None);
+            await Task.Delay(TimeSpan.FromMilliseconds(300), TestContext.Current.CancellationToken);
+            gate.Release();
+            await stopping;
+
+            Assert.Equal(
+                ["abandon_quest", "mob.feral_wolf", "mob.grey_wolf"],
+                harness.GameService.QuestOperations.Select(operation => operation.MobActorId ?? operation.OperationKind));
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private const string Chain = "quest.test.chain";
+
+    // One quest whose first step asks for a Feral Wolf and whose second for a Grey Wolf.
+    private static QuestCatalogRuntimeDocument ChainCatalog()
+    {
+        static QuestObjectiveDefinition Kill(string id, string actorId)
+        {
+            return new QuestObjectiveDefinition
+            {
+                Id = id,
+                Kind = QuestObjectiveKindIds.Kill,
+                Text = id,
+                Count = 1,
+                ActorIds = [actorId],
+                ActorTag = string.Empty,
+                ItemId = string.Empty,
+                NpcActorId = string.Empty,
+                Line = string.Empty,
+                DropSources = []
+            };
+        }
+
+        return new QuestCatalogRuntimeDocument
+        {
+            FormatVersion = RealtimeServerHarness.QuestCatalog.FormatVersion,
+            CatalogId = "test.chain",
+            Revision = "test-chain-revision",
+            MaximumActiveQuests = 25,
+            RetiredQuestIds = [],
+            Quests =
+            [
+                new QuestDefinition
+                {
+                    Id = Chain,
+                    Title = "Chain",
+                    GiverActorId = "npc.city_services",
+                    TurnInActorId = "npc.city_services",
+                    MinimumLevel = 1,
+                    RequiredQuestIds = [],
+                    Tags = [],
+                    OfferText = "Hunt.",
+                    ProgressText = "Hunt.",
+                    CompletionText = "Done.",
+                    StartItems = [],
+                    Steps =
+                    [
+                        new QuestStepDefinition { Id = "first", Objectives = [Kill("feral", "mob.feral_wolf")] },
+                        new QuestStepDefinition { Id = "second", Objectives = [Kill("grey", "mob.grey_wolf")] }
+                    ],
+                    RewardItems = [],
+                    RewardChoiceItems = [],
+                    StructuralFingerprint = "test-chain"
+                }
+            ]
+        };
+    }
+
+    // The Feral Wolf next to the spawn and a Grey Wolf on its other side.
+    private static WorldActorRuntimeDocument WolvesNextToTheSpawn()
+    {
+        var document = WolfNextToTheSpawn(respawnSeconds: 30f);
+        var wolf = document.SpawnInstances.Single(spawn => spawn.ActorId == "mob.feral_wolf");
+        document.SpawnInstances =
+        [
+            .. document.SpawnInstances,
+            new WorldActorSpawnInstanceDefinition
+            {
+                Id = wolf.Id + ".grey",
+                SpawnDefinitionId = wolf.SpawnDefinitionId,
+                ActorId = "mob.grey_wolf",
+                X = -4f,
+                Y = wolf.Y,
+                Z = -1f,
+                YawDegrees = wolf.YawDegrees,
+                PatrolPathId = string.Empty,
+                StructuralFingerprint = wolf.StructuralFingerprint
+            }
+        ];
+        return document;
+    }
+
+    private static async Task<RealtimeWorldActorSpawn> WaitForMobAsync(
+        RealtimeServerHarness harness,
+        RealtimeRecordingClient client,
+        string actorId)
+    {
+        RealtimeWorldActorSpawn? Spawn() => client
+            .Decode<RealtimeWorldActorSpawn>(RealtimeMessageType.WorldActorSpawn, RealtimeProtocol.TryDecodeWorldActorSpawn)
+            .FirstOrDefault(value => value.ActorDefinitionId == actorId);
+        await harness.PollUntilAsync(
+            () => Spawn() is { } spawn && States(client).Any(value => value.EntityId == spawn.EntityId),
+            "the " + actorId + " and its combat state");
+        return Spawn()!;
     }
 
     private static RealtimeServerHarness Create(float wolfRespawnSeconds = 30f, bool playerVersusPlayer = false)

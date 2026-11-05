@@ -430,7 +430,7 @@ internal sealed class PlayerCombatAuthority(
                     credits.Add(inFlight);
                 }
 
-                credits.AddRange(combatSession.QuestCredits.Where(credit => Counts(combatSession, credit)));
+                credits.AddRange(combatSession.QuestCredits);
                 combatSession.QuestCredits.Clear();
                 if (credits.Count > 0)
                 {
@@ -451,7 +451,9 @@ internal sealed class PlayerCombatAuthority(
     }
 
     // A worker that stops counts the kills that it credited and that have not committed, in kill
-    // order, with the operation id of each, so a credit that did commit replays its result.
+    // order, with the operation id of each, so a credit that did commit replays its result. Each
+    // credit is decided right before it goes, by the quest log that the credits before it left,
+    // as in the lane.
     private async Task FlushQuestCreditsAsync(
         PlayerCombatSession combatSession,
         IReadOnlyList<QuestKillCredit> credits,
@@ -459,6 +461,11 @@ internal sealed class PlayerCombatAuthority(
     {
         foreach (var credit in credits)
         {
+            if (!Counts(combatSession, credit))
+            {
+                continue;
+            }
+
             try
             {
                 var outcome = await executor.ExecuteAsync(
