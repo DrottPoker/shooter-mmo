@@ -20,7 +20,7 @@ namespace Mmorpg.Client.Ui
     // the open interaction, send every action through the interaction or the quest controller,
     // and own no quest rule. They also write the notices of every committed quest change into the
     // game messages. They run after the inventory windows, so an Escape that a dialog took does
-    // nothing else.
+    // nothing else; the abandon confirmation takes its Escape before the inventory windows.
     [DefaultExecutionOrder(InventoryWindows.ExecutionOrder + 1)]
     [DisallowMultipleComponent]
     public sealed class QuestWindows : MonoBehaviour
@@ -202,18 +202,11 @@ namespace Mmorpg.Client.Ui
                 SetLogOpen(!IsLogOpen);
             }
             else if (localPlayerInput.CancelPressedThisFrame
-                && (worldMenu == null || !worldMenu.CancelConsumedThisFrame))
+                && (worldMenu == null || !worldMenu.CancelConsumedThisFrame)
+                && IsLogOpen)
             {
-                // A confirmation closes alone; otherwise the log closes with the other windows.
-                if (confirmation != null && confirmation.IsOpen)
-                {
-                    confirmation.Close();
-                    worldMenu?.ConsumeCancel();
-                }
-                else if (IsLogOpen)
-                {
-                    SetLogOpen(false);
-                }
+                // The log closes with the other windows. A confirmation took its Escape earlier.
+                SetLogOpen(false);
             }
         }
 
@@ -692,6 +685,7 @@ namespace Mmorpg.Client.Ui
             log.Window.Place(new Vector2(0f, 1f), new Vector2(theme.ScreenMargin + DialogWidth + theme.WindowGap, -theme.WindowTop));
             log.Window.CloseRequested += () => SetLogOpen(false);
             confirmation = UiDialog.Create(theme, root);
+            gameObject.AddComponent<UiDialogEscape>().Initialize(confirmation, worldMenu, () => localPlayerInput);
             RefreshTracker();
         }
     }

@@ -110,6 +110,47 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A dialog that another window owns, such as the quest log's abandon question, takes its
+        // Escape before the inventory windows close their windows, and the quest log after them
+        // stays open.
+        [Test]
+        public void AnEscapeClosesAnotherWindowsDialogAloneBeforeTheInventoryWindows()
+        {
+            var escapeOrder = ExecutionOrderOf(typeof(UiDialogEscape));
+            Assert.That(escapeOrder, Is.GreaterThan(ExecutionOrderOf(typeof(WorldMenuController))));
+            Assert.That(escapeOrder, Is.LessThan(ExecutionOrderOf(typeof(InventoryWindows))));
+            Assert.That(ExecutionOrderOf(typeof(QuestWindows)), Is.GreaterThan(ExecutionOrderOf(typeof(InventoryWindows))));
+
+            var menuObject = new GameObject("World Menu");
+            try
+            {
+                var menu = menuObject.AddComponent<WorldMenuController>();
+                var escape = menuObject.AddComponent<UiDialogEscape>();
+                escape.Initialize(dialog, menu, () => null);
+                var confirmed = false;
+
+                Assert.That(escape.HandleCancel(true), Is.False, "A closed dialog leaves the Escape to the windows.");
+                Assert.That(menu.CancelConsumedThisFrame, Is.False);
+
+                dialog.AskConfirmation("Abandon Quest", "Abandon A Letter for the Outpost?", "Abandon", () => confirmed = true);
+                Assert.That(escape.HandleCancel(false), Is.False);
+                Assert.That(dialog.IsOpen, Is.True);
+
+                Assert.That(escape.HandleCancel(true), Is.True);
+                Assert.That(dialog.IsOpen, Is.False);
+                Assert.That(confirmed, Is.False);
+                Assert.That(menu.CancelConsumedThisFrame, Is.True, "The windows and the features leave a taken Escape alone.");
+
+                dialog.AskConfirmation("Abandon Quest", "Abandon A Letter for the Outpost?", "Abandon", () => confirmed = true);
+                Assert.That(escape.HandleCancel(true), Is.False, "An Escape that something earlier took leaves the dialog open.");
+                Assert.That(dialog.IsOpen, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(menuObject);
+            }
+        }
+
         private static int ExecutionOrderOf(System.Type type)
         {
             var attribute = (DefaultExecutionOrder)System.Attribute.GetCustomAttribute(type, typeof(DefaultExecutionOrder));

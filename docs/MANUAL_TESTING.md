@@ -794,10 +794,13 @@ Join Development World 2 with a new character, as
    `Wolves at the Gate` under `COMPLETED`. Choose the letter quest. Expected
    result: `Sealed Letter delivered 1/1`, `Ready to turn in.`, its text, and
    `Abandon` below.
-10. Press `Abandon`, then `Abandon` in the question. Expected result: the game
-    messages say `Quest abandoned: A Letter for the Outpost`, the Sealed Letter
-    leaves the inventory, the quest leaves the log, the tracker hides, and Mira
-    offers the quest again. Press `L` again. Expected result: the log closes.
+10. Press `I` to open the inventory, press `Abandon`, and press Escape.
+    Expected result: only the question closes; the inventory and the log stay
+    open. Press `Abandon`, then `Abandon` in the question. Expected result: the
+    game messages say `Quest abandoned: A Letter for the Outpost`, the Sealed
+    Letter leaves the inventory, the quest leaves the log, the tracker hides,
+    and Mira offers the quest again. Press `L` again. Expected result: the log
+    closes.
 
 ### Quest Commands On The Worker Quest Route
 

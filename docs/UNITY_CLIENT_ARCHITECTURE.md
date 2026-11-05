@@ -2305,9 +2305,11 @@ world action: a press in the world, Escape, or the pointer leaving the menu clos
 it, and a press over interface may choose a row. The controller runs before the
 features, at execution order -50, so combat, world interaction, and the inventory
 windows ignore an Escape whose frame reports `CancelConsumedThisFrame`, the Escape
-that closed the menu. The inventory windows run next, at -40, and an Escape that
+that closed the menu. The inventory windows run at -40, and an Escape that
 dismisses their dialog calls `ConsumeCancel`, so it neither closes the open
-interaction nor drops the combat target. `RunDefault` and `OpenMenu` run a left or right click for a
+interaction nor drops the combat target. `UiDialogEscape` runs just before them,
+at -41, and does the same for a dialog that another window owns, so that Escape
+leaves the inventory windows open too. `RunDefault` and `OpenMenu` run a left or right click for a
 given ray, for tools and harnesses. Options are plain values with their provider,
 an action code, the pointer candidate, an entity id, an argument such as a
 capability id, and the ray, so building the menu every frame allocates nothing. A
@@ -2862,10 +2864,11 @@ interaction. The temporary interaction panel's `Quests` button opens it again.
 `QuestWindows` also owns the quest log, `QuestLogWindow` beside the dialog,
 which the `ToggleQuestLog` action on `L` opens and closes unless a text field
 has focus, and `QuestTracker`, a panel at the right edge of the screen that
-takes no raycasts. `Abandon` asks through a `UiDialog`; an Escape closes that
-dialog alone, and otherwise closes the log with the other windows. The quest
-windows run right after the inventory windows, so an Escape that an inventory
-dialog took reaches them as taken.
+takes no raycasts. `Abandon` asks through a `UiDialog`, and its
+`UiDialogEscape` closes that dialog alone on Escape, before the inventory
+windows see the key. Otherwise an Escape closes the log with the other windows.
+The quest windows run right after the inventory windows, so an Escape that an
+inventory dialog took reaches them as taken.
 
 ## Test Architecture
 
