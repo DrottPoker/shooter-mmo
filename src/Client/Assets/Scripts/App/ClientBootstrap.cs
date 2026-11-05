@@ -129,7 +129,7 @@ namespace Mmorpg.Client.App
             UpdatePlayerEquipment();
 
             questController = GetOrAddComponent<QuestClientController>();
-            questController.Initialize(apiClient, simulationClient, config.QuestCatalog);
+            questController.Initialize(apiClient, simulationClient, config.QuestCatalog, inventoryController);
 
             corpseController = GetOrAddComponent<CorpseClientController>();
             corpseController.Initialize(simulationClient, inventoryController);
@@ -427,7 +427,8 @@ namespace Mmorpg.Client.App
                     questController,
                     inventoryController,
                     worldInteractionController,
-                    gameMessages));
+                    gameMessages,
+                    worldMenu));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(
                     worldActorController,

@@ -13,11 +13,15 @@ using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
 {
-    // The quest dialog that a quest NPC opens: what the NPC can do for the player now, and for
-    // the chosen entry its text, objectives, and rewards with the action that answers it. It
-    // reads the quest state, the inventory, and the open interaction, sends every action through
-    // the interaction, and owns no quest rule. It closes with the interaction. It also writes the
-    // notices of every committed quest change into the game messages.
+    // The quest windows: the quest dialog that a quest NPC opens, the quest log that L opens, and
+    // the tracker at the right edge of the screen. The dialog shows what the NPC can do for the
+    // player now, and for the chosen entry its text, objectives, and rewards with the action that
+    // answers it; it closes with the interaction. They read the quest state, the inventory, and
+    // the open interaction, send every action through the interaction or the quest controller,
+    // and own no quest rule. They also write the notices of every committed quest change into the
+    // game messages. They run after the inventory windows, so an Escape that a dialog took does
+    // nothing else; the abandon confirmation takes its Escape before the inventory windows.
+    [DefaultExecutionOrder(InventoryWindows.ExecutionOrder + 1)]
     [DisallowMultipleComponent]
     public sealed class QuestWindows : MonoBehaviour
     {
@@ -33,8 +37,13 @@ namespace Mmorpg.Client.Ui
         private InventoryClientController inventory;
         private WorldInteractionClientController interaction;
         private GameMessageLog messages;
+        private WorldMenuController worldMenu;
+        private LocalPlayerInput localPlayerInput;
         private readonly QuestProgressWatcher progressWatcher = new QuestProgressWatcher();
         private UiWindow dialog;
+        private QuestLogWindow log;
+        private QuestTracker tracker;
+        private UiDialog confirmation;
         private int watchedLoad = -1;
         private string npcActorId = string.Empty;
         private Guid dialogInteractionSessionId;
@@ -51,19 +60,57 @@ namespace Mmorpg.Client.Ui
             get { return dialog != null && dialog.IsOpen; }
         }
 
+        public UiWindow Log
+        {
+            get { return log?.Window; }
+        }
+
+        public bool IsLogOpen
+        {
+            get { return log != null && log.IsOpen; }
+        }
+
+        // The tracker's lines as it shows them, empty without active quests.
+        public string TrackerText
+        {
+            get { return tracker != null && tracker.Panel.gameObject.activeSelf ? tracker.Text : string.Empty; }
+        }
+
+        public UiDialog Confirmation
+        {
+            get { return confirmation; }
+        }
+
         // Called by the composition root before the component is activated.
         public void Initialize(
             UiTheme uiTheme,
             QuestClientController questController,
             InventoryClientController inventoryController,
             WorldInteractionClientController worldInteraction,
-            GameMessageLog gameMessages)
+            GameMessageLog gameMessages,
+            WorldMenuController menu = null)
         {
             theme = uiTheme;
             quests = questController;
             inventory = inventoryController;
             interaction = worldInteraction;
             messages = gameMessages;
+            worldMenu = menu;
+        }
+
+        public void SetLogOpen(bool open)
+        {
+            if (log == null)
+            {
+                return;
+            }
+
+            log.Window.SetOpen(open);
+            if (open)
+            {
+                quests?.EnsureLoaded();
+                RefreshLog();
+            }
         }
 
         // Opens the dialog for the NPC of the open interaction.
@@ -98,10 +145,12 @@ namespace Mmorpg.Client.Ui
         private void Start()
         {
             BuildUi();
+            FindPlayerInput();
             if (quests != null)
             {
                 quests.State.Changed += OnQuestStateChanged;
                 quests.State.QuestsChanged += OnQuestsChanged;
+                quests.IntentChanged += RefreshLog;
             }
 
             if (inventory != null)
@@ -122,6 +171,7 @@ namespace Mmorpg.Client.Ui
             {
                 quests.State.Changed -= OnQuestStateChanged;
                 quests.State.QuestsChanged -= OnQuestsChanged;
+                quests.IntentChanged -= RefreshLog;
             }
 
             if (inventory != null)
@@ -133,6 +183,91 @@ namespace Mmorpg.Client.Ui
             {
                 interaction.State.Changed -= OnInteractionChanged;
                 interaction.QuestCapabilityOpened -= OnQuestCapabilityOpened;
+            }
+        }
+
+        private void Update()
+        {
+            if (localPlayerInput == null)
+            {
+                FindPlayerInput();
+                if (localPlayerInput == null)
+                {
+                    return;
+                }
+            }
+
+            if (localPlayerInput.ToggleQuestLogPressedThisFrame && !IsTyping())
+            {
+                SetLogOpen(!IsLogOpen);
+            }
+            else if (localPlayerInput.CancelPressedThisFrame
+                && (worldMenu == null || !worldMenu.CancelConsumedThisFrame)
+                && IsLogOpen)
+            {
+                // The log closes with the other windows. A confirmation took its Escape earlier.
+                SetLogOpen(false);
+            }
+        }
+
+        // A key typed into a text field, such as the inventory search, is text.
+        private static bool IsTyping()
+        {
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+            var selectedObject = eventSystem != null ? eventSystem.currentSelectedGameObject : null;
+            return selectedObject != null
+                && selectedObject.TryGetComponent<TMP_InputField>(out var field)
+                && field.isFocused;
+        }
+
+        private void FindPlayerInput()
+        {
+            var localPlayer = FindAnyObjectByType<LocalPlayerController>();
+            localPlayerInput = localPlayer != null
+                ? localPlayer.PlayerInput
+                : FindAnyObjectByType<LocalPlayerInput>();
+        }
+
+        private void Abandon(QuestLogActiveEntry entry)
+        {
+            if (entry == null || confirmation == null)
+            {
+                return;
+            }
+
+            var questId = entry.Quest.Id;
+            confirmation.AskConfirmation(
+                "Abandon Quest",
+                "Abandon " + entry.Quest.Title + "? Its progress and its quest items are lost.",
+                "Abandon",
+                () =>
+                {
+                    if (!quests.TryAbandon(questId, out var error))
+                    {
+                        Say(new[] { error });
+                    }
+                });
+        }
+
+        private void RefreshLog()
+        {
+            if (log == null || quests == null)
+            {
+                return;
+            }
+
+            log.Refresh(
+                quests.State,
+                QuestCarriedItems.Counter(inventory?.State),
+                quests.HasPendingIntent,
+                quests.LastIntentError);
+        }
+
+        private void RefreshTracker()
+        {
+            if (tracker != null && quests != null)
+            {
+                tracker.Refresh(quests.State, QuestCarriedItems.Counter(inventory?.State));
             }
         }
 
@@ -170,6 +305,8 @@ namespace Mmorpg.Client.Ui
             }
 
             Refresh();
+            RefreshLog();
+            RefreshTracker();
         }
 
         private void OnQuestsChanged(IReadOnlyList<QuestClientChange> changes)
@@ -187,6 +324,8 @@ namespace Mmorpg.Client.Ui
             }
 
             Refresh();
+            RefreshLog();
+            RefreshTracker();
         }
 
         private void Say(IReadOnlyList<string> notices)
@@ -535,11 +674,19 @@ namespace Mmorpg.Client.Ui
             // reaches the world.
             var root = UiFactory.Create("QuestRoot", canvasObject.transform);
             UiFactory.Fill(root);
+            tracker = new QuestTracker(theme, root);
             dialog = UiWindow.Create(theme, root, DialogWindowName, null, "Quests", DialogWidth);
             dialog.Place(new Vector2(0f, 1f), new Vector2(theme.ScreenMargin, -theme.WindowTop));
             dialog.SetMaximumBodyHeight(1080f - theme.WindowTop - theme.ScreenMargin - 220f);
             dialog.CloseRequested += CloseDialog;
             dialog.SetOpen(false);
+            // The log stands beside the dialog, so both show at once.
+            log = new QuestLogWindow(theme, root, Abandon, RefreshLog);
+            log.Window.Place(new Vector2(0f, 1f), new Vector2(theme.ScreenMargin + DialogWidth + theme.WindowGap, -theme.WindowTop));
+            log.Window.CloseRequested += () => SetLogOpen(false);
+            confirmation = UiDialog.Create(theme, root);
+            gameObject.AddComponent<UiDialogEscape>().Initialize(confirmation, worldMenu, () => localPlayerInput);
+            RefreshTracker();
         }
     }
 }

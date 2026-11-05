@@ -21,6 +21,7 @@ namespace Mmorpg.Client.Gameplay
         private const string ToggleInventoryActionName = "ToggleInventory";
         private const string ToggleCharacterInventoryActionName = "ToggleCharacterInventory";
         private const string ToggleEquipmentInventoryActionName = "ToggleEquipmentInventory";
+        private const string ToggleQuestLogActionName = "ToggleQuestLog";
 
         private PlayerInput playerInput;
         private InputAction selectAction;
@@ -36,6 +37,7 @@ namespace Mmorpg.Client.Gameplay
         private InputAction toggleInventoryAction;
         private InputAction toggleCharacterInventoryAction;
         private InputAction toggleEquipmentInventoryAction;
+        private InputAction toggleQuestLogAction;
 
         public bool IsConfigured { get; private set; }
 
@@ -115,6 +117,11 @@ namespace Mmorpg.Client.Gameplay
             get { return IsConfigured && toggleEquipmentInventoryAction.WasPressedThisFrame(); }
         }
 
+        public bool ToggleQuestLogPressedThisFrame
+        {
+            get { return IsConfigured && toggleQuestLogAction.WasPressedThisFrame(); }
+        }
+
         private void Awake()
         {
             playerInput = GetComponent<PlayerInput>();
@@ -136,7 +143,7 @@ namespace Mmorpg.Client.Gameplay
                 "LocalPlayerInput requires a PlayerInput actions asset containing "
                 + "Select, ContextMenu, PointerPosition, CameraOrbit, CameraOrbitDelta, CameraRotate, "
                 + "CameraZoom, Cancel, ToggleDebugMenu, ToggleAdminMenu, ToggleInventory, "
-                + "ToggleCharacterInventory, and ToggleEquipmentInventory actions.",
+                + "ToggleCharacterInventory, ToggleEquipmentInventory, and ToggleQuestLog actions.",
                 this);
         }
 
@@ -181,6 +188,7 @@ namespace Mmorpg.Client.Gameplay
             toggleEquipmentInventoryAction = actions.FindAction(
                 ToggleEquipmentInventoryActionName,
                 false);
+            toggleQuestLogAction = actions.FindAction(ToggleQuestLogActionName, false);
 
             return selectAction != null
                 && contextMenuAction != null
@@ -194,7 +202,8 @@ namespace Mmorpg.Client.Gameplay
                 && toggleAdminMenuAction != null
                 && toggleInventoryAction != null
                 && toggleCharacterInventoryAction != null
-                && toggleEquipmentInventoryAction != null;
+                && toggleEquipmentInventoryAction != null
+                && toggleQuestLogAction != null;
         }
     }
 }
