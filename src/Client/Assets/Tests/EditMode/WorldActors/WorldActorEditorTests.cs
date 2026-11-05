@@ -33,7 +33,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 Array.Find(compiled.Actors, actor => actor.Id == "npc.city_services")
                     .Capabilities,
-                Has.Length.EqualTo(8));
+                Has.Length.EqualTo(7));
         }
 
         [Test]

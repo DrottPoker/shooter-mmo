@@ -7,6 +7,7 @@ using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
@@ -51,7 +52,15 @@ internal sealed record RealtimeServerDependencies(
     SimulationGatheringService? GatheringService = null,
     CombatDependencies? Combat = null,
     AppearanceDependencies? Appearance = null,
-    DevelopmentAdminOptions? DevelopmentAdmin = null);
+    DevelopmentAdminOptions? DevelopmentAdmin = null,
+    QuestDependencies? Quests = null);
+
+// What quests need beyond the realtime services: the quest logs of the active characters and
+// the executor that runs quest actions through GameService. Without an executor no quest intent
+// runs.
+internal sealed record QuestDependencies(
+    CharacterQuestLogStore QuestLogs,
+    QuestOperationExecutor? Executor);
 
 // What looks need beyond the realtime services: the looks of the active characters, the
 // appearance content's defaults, and GameService for changes. Without it no player has a look
@@ -138,6 +147,7 @@ internal static class RealtimeServerComposition
             logger);
         var appearanceDependencies = dependencies.Appearance
             ?? new AppearanceDependencies(new CharacterLookStore(), AppearanceReplicationSettings.Default, null);
+        var questDependencies = dependencies.Quests ?? new QuestDependencies(new CharacterQuestLogStore(), null);
         var teardown = new RealtimeSessionTeardown(
             peers,
             sender,
@@ -149,7 +159,8 @@ internal static class RealtimeServerComposition
             connectionBindings,
             entityRegistry,
             networkMetrics,
-            appearanceDependencies.Looks);
+            appearanceDependencies.Looks,
+            questDependencies.QuestLogs);
         var appearances = new AppearanceReplicator(
             peers,
             sender,
@@ -392,6 +403,18 @@ internal static class RealtimeServerComposition
         {
             CloseWorldInteraction = worldInteractions.CloseForPeer
         };
+        var questIntents = new QuestIntentHandler(
+            peers,
+            sender,
+            entityRegistry,
+            carrySync,
+            teardown,
+            authorityScheduler,
+            operationTracker,
+            completions,
+            questDependencies.Executor,
+            logger,
+            combatAuthority);
         var admin = new AdminIntentHandler(
             config,
             dependencies.DevelopmentAdmin ?? DevelopmentAdminOptions.Disabled,
@@ -489,7 +512,8 @@ internal static class RealtimeServerComposition
                 sessions.HandleLeaveRequest,
                 combat.HandleIntent,
                 appearanceIntents.HandleIntent,
-                admin.HandleIntent));
+                admin.HandleIntent,
+                questIntents.HandleIntent));
         var completionProcessor = new RealtimeCompletionProcessor(
             completions,
             peers,

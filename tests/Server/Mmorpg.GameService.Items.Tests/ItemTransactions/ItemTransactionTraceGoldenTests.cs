@@ -955,7 +955,7 @@ public sealed class ItemTransactionTraceGoldenTests
         await world.EquipAsync(characterId, pickaxeId, ItemEquipmentSlotIds.Tool);
         var oreId = await world.GrantAsync(characterId, Ore, 3, inventoryId, 1);
         var session = await world.JoinAsync(player);
-        var vendorAccess = new ItemTransactionLiveAccess(false, false, false, false, Vendor);
+        var vendorAccess = new ItemTransactionLiveAccess(false, false, false, Vendor);
 
         state = await world.LoadStateAsync(characterId);
         var purchaseId = Guid.NewGuid();

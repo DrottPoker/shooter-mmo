@@ -392,6 +392,12 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.AdminStateChanged:
                 Decode<RealtimeAdminStateChanged>(packet, "invalid_admin_state", RealtimeProtocol.TryDecodeAdminStateChanged, out _);
                 break;
+            case RealtimeMessageType.QuestIntentResult:
+                Decode<RealtimeQuestIntentResult>(packet, "invalid_quest_intent_result", RealtimeProtocol.TryDecodeQuestIntentResult, out _);
+                break;
+            case RealtimeMessageType.QuestLogChanged:
+                Decode<RealtimeQuestLogChanged>(packet, "invalid_quest_log_change", RealtimeProtocol.TryDecodeQuestLogChanged, out _);
+                break;
             case RealtimeMessageType.WorldInteractionOpened:
                 Decode<RealtimeWorldInteractionOpened>(packet, "invalid_world_interaction_opened", RealtimeProtocol.TryDecodeWorldInteractionOpened, out _);
                 break;

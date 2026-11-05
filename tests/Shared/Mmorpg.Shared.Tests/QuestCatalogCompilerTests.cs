@@ -80,7 +80,7 @@ public sealed class QuestCatalogCompilerTests
         missing.GiverActorId = "npc.nobody";
 
         Assert.Contains(Errors(mobGiver), error => error.StartsWith("quests[0].giverActorId names 'mob.feral_wolf'", StringComparison.Ordinal));
-        Assert.Contains(Errors(guardTurnIn), error => error.Contains("not an NPC with a quest capability", StringComparison.Ordinal));
+        Assert.Contains(Errors(guardTurnIn), error => error.Contains("not an NPC with the quests capability", StringComparison.Ordinal));
         Assert.Contains(Errors(missing), error => error.Contains("names missing id 'npc.nobody'", StringComparison.Ordinal));
     }
 

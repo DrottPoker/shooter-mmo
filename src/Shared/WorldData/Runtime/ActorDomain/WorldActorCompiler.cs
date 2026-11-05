@@ -86,8 +86,7 @@ namespace Mmorpg.WorldData.Actors
             {
                 WorldActorCapabilityKindIds.Dialogue,
                 WorldActorCapabilityKindIds.Vendor,
-                WorldActorCapabilityKindIds.QuestOffer,
-                WorldActorCapabilityKindIds.QuestTurnIn,
+                WorldActorCapabilityKindIds.Quests,
                 WorldActorCapabilityKindIds.Crafting,
                 WorldActorCapabilityKindIds.Insurance,
                 WorldActorCapabilityKindIds.Trainer,

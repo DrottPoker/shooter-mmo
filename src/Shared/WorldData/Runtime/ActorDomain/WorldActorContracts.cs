@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 7;
+        public const int Version = 8;
     }
 
     // Collision bounds block character movement. Only resource nodes have them: they never move,
@@ -141,8 +141,7 @@ namespace Mmorpg.WorldData.Actors
     {
         public const string Dialogue = "dialogue";
         public const string Vendor = "vendor";
-        public const string QuestOffer = "quest_offer";
-        public const string QuestTurnIn = "quest_turn_in";
+        public const string Quests = "quests";
         public const string Crafting = "crafting";
         public const string Insurance = "insurance";
         public const string Trainer = "trainer";

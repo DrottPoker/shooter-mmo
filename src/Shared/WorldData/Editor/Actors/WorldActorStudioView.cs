@@ -60,8 +60,7 @@ namespace Mmorpg.WorldData.Editor.Actors
         {
             (WorldActorCapabilityKindIds.Dialogue, "Dialogue"),
             (WorldActorCapabilityKindIds.Vendor, "Vendor"),
-            (WorldActorCapabilityKindIds.QuestOffer, "Quest Offer"),
-            (WorldActorCapabilityKindIds.QuestTurnIn, "Quest Turn In"),
+            (WorldActorCapabilityKindIds.Quests, "Quests"),
             (WorldActorCapabilityKindIds.Crafting, "Crafting"),
             (WorldActorCapabilityKindIds.Insurance, "Insurance"),
             (WorldActorCapabilityKindIds.Trainer, "Trainer"),

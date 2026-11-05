@@ -99,6 +99,140 @@ public sealed class GameServiceClientTests
                 request.Path));
     }
 
+    // A quest action that moves no item, such as talking to an NPC, names no character revision.
+    [Fact]
+    public async Task QuestOperationsUseTheQuestRouteAndMayCommitWithoutAnItemChange()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var requestBody = QuestOperation(Guid.NewGuid());
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(QuestTransaction(requestBody, requestBody.CharacterId)));
+        var client = CreateClient(handler);
+
+        var result = await client.MutateSimulationQuestsAsync(simulationSessionId, requestBody, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Empty(result.Value!.CharacterRevisions);
+        var quest = Assert.Single(result.Value.QuestLog!.Quests);
+        Assert.Equal(("quest.wolves", "report", 1), (quest.QuestId, quest.StepId, quest.Objectives[0].Progress));
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal($"/api/simulation-sessions/{simulationSessionId}/quest-operations", request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal("talk_to_quest_npc", body.RootElement.GetProperty("operationKind").GetString());
+        Assert.Equal("npc.city_services", body.RootElement.GetProperty("questNpcActorId").GetString());
+        Assert.Equal("report", body.RootElement.GetProperty("objectiveId").GetString());
+    }
+
+    [Fact]
+    public async Task QuestOperationsRejectTheQuestLogOfAnotherCharacter()
+    {
+        var requestBody = QuestOperation(Guid.NewGuid());
+        var client = CreateClient(new RecordingHttpMessageHandler(
+            _ => CreateJsonResponse(QuestTransaction(requestBody, Guid.NewGuid()))));
+
+        var result = await client.MutateSimulationQuestsAsync(Guid.NewGuid(), requestBody, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task TheQuestLogReadUsesTheSessionRouteAndRejectsAQuestListedTwice()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var requestBody = new SimulationQuestLogRequest(
+            Guid.NewGuid(),
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token");
+        var wolves = new
+        {
+            questId = "quest.wolves",
+            stepId = "hunt",
+            acceptedAt = DateTime.UtcNow,
+            objectives = new[] { new { objectiveId = "wolves", progress = 1 } }
+        };
+        var valid = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            characterId,
+            questCatalogRevision = new string('c', 64),
+            questLogRevision = 3,
+            activeQuests = new[] { wolves },
+            completedQuests = new[] { new { questId = "quest.ore_run", completionCount = 2, lastCompletedAt = DateTime.UtcNow } }
+        }));
+        var duplicated = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            characterId,
+            questCatalogRevision = new string('c', 64),
+            questLogRevision = 3,
+            activeQuests = new[] { wolves, wolves },
+            completedQuests = Array.Empty<object>()
+        }));
+
+        var read = await CreateClient(valid).ReadSimulationQuestLogAsync(simulationSessionId, requestBody, CancellationToken.None);
+        var rejected = await CreateClient(duplicated).ReadSimulationQuestLogAsync(simulationSessionId, requestBody, CancellationToken.None);
+
+        Assert.True(read.Succeeded, read.Error?.Message);
+        Assert.Equal(3, read.Value!.QuestLogRevision);
+        Assert.Equal(2, Assert.Single(read.Value.CompletedQuests).CompletionCount);
+        var request = Assert.Single(valid.Requests);
+        Assert.Equal($"/api/simulation-sessions/{simulationSessionId}/quest-log", request.Path);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal(characterId, body.RootElement.GetProperty("characterId").GetGuid());
+        Assert.Equal("simulation-session-token", body.RootElement.GetProperty("sessionToken").GetString());
+        Assert.False(rejected.Succeeded);
+        Assert.Equal("invalid_auth_response", rejected.Error!.Code);
+    }
+
+    private static SimulationQuestOperationRequest QuestOperation(Guid characterId)
+    {
+        return new SimulationQuestOperationRequest(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token",
+            "talk_to_quest_npc",
+            "quest.wolves",
+            "npc.city_services",
+            "report");
+    }
+
+    private static object QuestTransaction(SimulationQuestOperationRequest request, Guid questLogCharacterId)
+    {
+        return new
+        {
+            operationId = request.OperationId,
+            operationKind = request.OperationKind,
+            succeeded = true,
+            error = (object?)null,
+            characterRevisions = Array.Empty<object>(),
+            containerRevisions = Array.Empty<object>(),
+            itemRevisions = Array.Empty<object>(),
+            recoveryDeliveryIds = Array.Empty<Guid>(),
+            characterState = CharacterStateTestData.Create(request.CharacterId, 7),
+            questLog = new
+            {
+                characterId = questLogCharacterId,
+                revision = 4,
+                quests = new[]
+                {
+                    new
+                    {
+                        questId = "quest.wolves",
+                        stepId = "report",
+                        objectives = new[] { new { objectiveId = "wolves", progress = 1 } },
+                        completionCount = 0
+                    }
+                }
+            }
+        };
+    }
+
     [Fact]
     public async Task SimulationItemMutationSendsExactLiveAuthorityAndValidatesCommittedCarry()
     {

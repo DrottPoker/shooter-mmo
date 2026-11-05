@@ -132,7 +132,7 @@ namespace Mmorpg.Client.WorldActors
     // mirrors the interaction panel: a capability that needs a choice there only opens.
     public enum WorldCapabilityActivation
     {
-        // Dialogue, insurance, and quest offers: the panel presents the choices.
+        // Dialogue, insurance, and quests: the panel presents the choices.
         OpenOnly,
 
         // Vendor, bank, Recovery Storage, and the other services run at once.
@@ -271,7 +271,7 @@ namespace Mmorpg.Client.WorldActors
                     return WorldCapabilityActivation.StartGathering;
                 case RealtimeWorldActorCapabilityKind.Dialogue:
                 case RealtimeWorldActorCapabilityKind.Insurance:
-                case RealtimeWorldActorCapabilityKind.QuestOffer:
+                case RealtimeWorldActorCapabilityKind.Quests:
                     return WorldCapabilityActivation.OpenOnly;
                 default:
                     return WorldCapabilityActivation.Execute;

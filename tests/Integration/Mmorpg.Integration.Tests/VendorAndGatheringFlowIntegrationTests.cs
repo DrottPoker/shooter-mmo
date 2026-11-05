@@ -158,7 +158,7 @@ public sealed class VendorAndGatheringFlowIntegrationTests
             session.WorkerRuntimeId,
             session.ShardId,
             session.SimulationSessionToken,
-            new WorkerAccessRequest(false, false, false, false, vendorProfileId),
+            new WorkerAccessRequest(false, false, false, vendorProfileId),
             operationKind,
             expectedCharacterRevision,
             InteractionSessionId: Guid.NewGuid(),

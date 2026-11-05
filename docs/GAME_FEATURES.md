@@ -638,10 +638,9 @@ real corpse from an offline character with the development item tools; see
   inventory with that storage; `Trade` opens it with the vendor; each stays
   usable while the interaction is open.
 - `Insurance` lists the character's insurance-eligible items, each with
-  `Insure: <item>` or `Insured, remove: <item>`. `Quest item lifecycle`, at
-  Mira and at Sergeant Hale, offers to accept the one configured quest, which
-  grants its required item, the Sealed Letter, and to abandon it, which removes
-  that item again. The inventory and Recovery Storage show the result.
+  `Insure: <item>` or `Insured, remove: <item>`. The inventory and Recovery
+  Storage show the result. `Quests`, the first option at Mira and Sergeant Hale,
+  says that the quest dialog is not available yet.
 - Talk, crafting, training, and quest completion answer that they are not
   available yet; they never pretend to succeed. Quest progression and crafting
   are not implemented.

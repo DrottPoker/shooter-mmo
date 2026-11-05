@@ -2226,9 +2226,12 @@ prefab.
 The persistent realtime client decodes the actor, interaction, and gathering
 messages through the shared GameProtocol source and keeps the explicit mismatch
 path for older or partially updated clients. Typed insurance apply or remove,
-quest accept or abandon, vendor purchase and sale, and start gathering payloads
-ride on the capability action instead of a second NPC or item interaction
-transport; see [Capability Actions](REALTIME_PROTOCOL.md#capability-actions).
+quest actions, vendor purchase and sale, and start gathering payloads ride on
+the capability action instead of a second NPC or item interaction transport;
+see [Capability Actions](REALTIME_PROTOCOL.md#capability-actions). The client
+raises every `QuestLogChanged` and `QuestIntentResult` as an event and sends a
+`QuestIntent` with `TrySendQuestIntent`; no quest window uses them yet, so the
+panel's `Quests` section only says that the quest dialog is not available yet.
 `TryPurchase` and `TrySell` send the expected price and the character revision,
 together with the offer definition and quantity or with the item, its revision,
 and the quantity. `TryStartGathering` sends no revision or trade terms. A
@@ -2249,9 +2252,8 @@ coordination, not corpse custody.
 The panel displays only the authoritative capability summary received after an
 interaction opens. Insurance actions enumerate eligible items from the persistent
 authoritative inventory snapshot and submit exact character and item revisions.
-Quest item-lifecycle actions submit the exact character revision and Permanent
-Inventory destination. The panel never applies an optimistic policy, grant,
-removal, currency charge, or item deletion. A committed result triggers a full
+The panel never applies an optimistic policy, grant, removal, currency charge,
+or item deletion. A committed result triggers a full
 inventory refresh at the returned item-state revision.
 
 Inventory policy summaries carry a safe presentation source, not a raw grant or

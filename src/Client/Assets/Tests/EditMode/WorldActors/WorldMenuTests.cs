@@ -305,7 +305,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 RealtimeWorldActorCapabilityKind.Dialogue,
                 RealtimeWorldActorCapabilityKind.Insurance,
-                RealtimeWorldActorCapabilityKind.QuestOffer
+                RealtimeWorldActorCapabilityKind.Quests
             })
             {
                 Assert.That(
@@ -319,7 +319,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 RealtimeWorldActorCapabilityKind.Vendor,
                 RealtimeWorldActorCapabilityKind.Bank,
                 RealtimeWorldActorCapabilityKind.RecoveryStorage,
-                RealtimeWorldActorCapabilityKind.QuestTurnIn,
                 RealtimeWorldActorCapabilityKind.Crafting,
                 RealtimeWorldActorCapabilityKind.Trainer
             })

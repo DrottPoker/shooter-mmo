@@ -219,7 +219,7 @@ namespace Mmorpg.Client.Ui
                         continue;
                     }
 
-                    if (capability.Kind == RealtimeWorldActorCapabilityKind.QuestOffer)
+                    if (capability.Kind == RealtimeWorldActorCapabilityKind.Quests)
                     {
                         DrawQuestCapability(capability);
                         continue;
@@ -420,44 +420,15 @@ namespace Mmorpg.Client.Ui
             }
         }
 
+        // The quest dialog arrives with the quest windows, so the panel only names the quests.
         private void DrawQuestCapability(RealtimeWorldActorCapability capability)
         {
-            AddSectionTitle("Quest item lifecycle");
-            var state = inventoryController?.State;
-            if (!capability.IsAvailable || state?.FullSnapshot == null)
-            {
-                AddText(
-                    capability.IsAvailable
-                        ? "Authoritative inventory state is loading."
-                        : "Quest lifecycle is currently unavailable.",
-                    14,
-                    FontStyles.Normal,
-                    TemporaryUiKit.TextSecondary);
-                return;
-            }
-
-            AddButton(
-                "Accept quest and grant required item",
-                state.CanMutate,
-                () => SubmitLifecycle(
-                    capability.Id,
-                    RealtimeCapabilityActionKind.AcceptQuest,
-                    state.KnownItemStateRevision,
-                    Guid.Empty,
-                    0,
-                    state.FullSnapshot.PermanentInventory.ContainerId,
-                    -1));
-            AddButton(
-                "Abandon quest and remove its grant lineage",
-                state.CanMutate,
-                () => SubmitLifecycle(
-                    capability.Id,
-                    RealtimeCapabilityActionKind.AbandonQuest,
-                    state.KnownItemStateRevision,
-                    Guid.Empty,
-                    0,
-                    Guid.Empty,
-                    -1));
+            AddSectionTitle(capability.DisplayName);
+            AddText(
+                "The quest dialog is not available yet.",
+                14,
+                FontStyles.Normal,
+                TemporaryUiKit.TextSecondary);
         }
 
         private void SubmitLifecycle(

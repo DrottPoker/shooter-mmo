@@ -51,17 +51,6 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
         }
     }
 
-    public void EnsureQuestNpcAccess()
-    {
-        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
-            || !Actor.Simulation!.LiveAccess.QuestNpc)
-        {
-            Reject(
-                ItemTransactionErrorCodes.AuthorityRequired,
-                "This operation requires a validated quest NPC interaction.");
-        }
-    }
-
     // A quest action at an NPC needs a live interaction with that NPC's quest capability.
     public void EnsureQuestNpcAccess(string npcActorId)
     {

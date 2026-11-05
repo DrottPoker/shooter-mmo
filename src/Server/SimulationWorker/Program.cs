@@ -17,6 +17,7 @@ using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Health;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
@@ -131,10 +132,10 @@ builder.Services.AddSingleton<IWorldActorCapabilityAvailabilityPolicy,
 builder.Services.AddSingleton<NpcItemLifecycleCapabilityExecutor>();
 builder.Services.AddSingleton<IWorldActorCapabilityHandler,
     InsuranceWorldActorCapabilityHandler>();
+builder.Services.AddSingleton<CharacterQuestLogStore>();
+builder.Services.AddSingleton<QuestOperationExecutor>();
 builder.Services.AddSingleton<IWorldActorCapabilityHandler,
-    QuestOfferWorldActorCapabilityHandler>();
-builder.Services.AddSingleton<IWorldActorCapabilityHandler,
-    QuestTurnInWorldActorCapabilityHandler>();
+    QuestsWorldActorCapabilityHandler>();
 builder.Services.AddSingleton<IWorldActorCapabilityHandler>(
     new ItemStorageWorldActorCapabilityHandler(RealtimeWorldActorCapabilityKind.Bank));
 builder.Services.AddSingleton<IWorldActorCapabilityHandler>(

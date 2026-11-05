@@ -15,12 +15,6 @@ namespace Mmorpg.WorldData.Quests
     // quests[2].steps[0].objectives[1].count, so the content tools can point at it.
     public static class QuestCatalogCompiler
     {
-        private static readonly HashSet<string> QuestCapabilityKinds = new HashSet<string>(StringComparer.Ordinal)
-        {
-            WorldActorCapabilityKindIds.QuestOffer,
-            WorldActorCapabilityKindIds.QuestTurnIn
-        };
-
         private static readonly HashSet<string> ObjectiveKinds = new HashSet<string>(StringComparer.Ordinal)
         {
             QuestObjectiveKindIds.Kill,
@@ -1198,7 +1192,7 @@ namespace Mmorpg.WorldData.Quests
                     && IsQuestItem(item);
             }
 
-            // An NPC that takes part in quests has a quest capability and stands in some World.
+            // An NPC that takes part in quests has the quests capability and stands in some World.
             public void ValidateQuestNpc(string actorId, string path, List<string> errors)
             {
                 if (!actors.TryGetValue(actorId ?? string.Empty, out var actor))
@@ -1209,9 +1203,12 @@ namespace Mmorpg.WorldData.Quests
 
                 if (!string.Equals(actor.Kind, WorldActorKindIds.Npc, StringComparison.Ordinal)
                     || !(actor.Capabilities ?? Array.Empty<WorldActorCapabilityDefinition>())
-                        .Any(capability => QuestCapabilityKinds.Contains(capability.Kind)))
+                        .Any(capability => string.Equals(
+                            capability.Kind,
+                            WorldActorCapabilityKindIds.Quests,
+                            StringComparison.Ordinal)))
                 {
-                    errors.Add(path + " names '" + actorId + "', which is not an NPC with a quest capability.");
+                    errors.Add(path + " names '" + actorId + "', which is not an NPC with the quests capability.");
                     return;
                 }
 

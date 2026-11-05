@@ -229,8 +229,10 @@ public sealed class NpcItemLifecycleIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.CurrencyInsufficient, insufficient.Error!.Code);
     }
 
+    // Quests grant and remove their items through the quest route, so the item route no longer
+    // offers the quest item lifecycle that came before it.
     [PostgresIntegrationFact]
-    public async Task QuestNpcAcceptAbandonAndReacceptUseOneExactProtectedGrantLineage()
+    public async Task TheItemRouteOffersNoQuestItemLifecycle()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync(
@@ -239,86 +241,25 @@ public sealed class NpcItemLifecycleIntegrationTests
             "NPC Quest Hero");
         var snapshot = await GetSnapshotAsync(context, player);
         var session = await JoinAsync(context, player);
-        var interactionSessionId = Guid.NewGuid();
 
-        var accepted = await ExecuteAsync(
-            context,
-            session,
-            CreateNpcRequest(
+        foreach (var operationKind in new[] { ItemOperationKinds.Grant, ItemOperationKinds.AbandonQuestItems })
+        {
+            var rejected = await ExecuteAsync(
+                context,
                 session,
-                ItemOperationKinds.Grant,
-                snapshot.ItemStateRevision,
-                interactionSessionId,
-                "services.quest_offer",
-                questAccess: true,
-                destinationContainerId: snapshot.PermanentInventory.ContainerId));
-        Assert.True(accepted.Succeeded, accepted.Error?.Message);
-        var questItem = Assert.Single(accepted.Value!.ItemRevisions);
-        var currentRevision = Assert.Single(accepted.Value.CharacterRevisions).Revision;
-        Assert.Equal(1, await CountQuestGrantItemsAsync(context));
+                CreateNpcRequest(
+                    session,
+                    operationKind,
+                    snapshot.ItemStateRevision,
+                    Guid.NewGuid(),
+                    "services.quests",
+                    destinationContainerId: snapshot.PermanentInventory.ContainerId));
+            Assert.False(rejected.Succeeded);
+            Assert.Equal(400, rejected.StatusCode);
+            Assert.Equal(ItemApiErrorCodes.SimulationOperationInvalid, rejected.Error!.Code);
+        }
 
-        var duplicate = await ExecuteAsync(
-            context,
-            session,
-            CreateNpcRequest(
-                session,
-                ItemOperationKinds.Grant,
-                currentRevision,
-                interactionSessionId,
-                "services.quest_offer",
-                questAccess: true,
-                destinationContainerId: snapshot.PermanentInventory.ContainerId));
-        Assert.True(duplicate.Succeeded, duplicate.Error?.Message);
-        Assert.Equal(questItem.ItemInstanceId, Assert.Single(duplicate.Value!.ItemRevisions).ItemInstanceId);
-        Assert.Equal(1, await CountQuestGrantItemsAsync(context));
-
-        var directDestroy = await ExecuteAsync(
-            context,
-            session,
-            new SimulationItemOperationRequest(
-                Guid.NewGuid(),
-                session.AccountId,
-                session.CharacterId,
-                session.WorkerId,
-                session.WorkerRuntimeId,
-                session.ShardId,
-                session.SimulationSessionToken,
-                new SimulationItemAccessRequest(false, false, false),
-                ItemOperationKinds.Destroy,
-                currentRevision,
-                questItem.ItemInstanceId,
-                questItem.Revision));
-        Assert.False(directDestroy.Succeeded);
-        Assert.Equal(ItemTransactionErrorCodes.ItemPolicyRestricted, directDestroy.Error!.Code);
-
-        var abandoned = await ExecuteAsync(
-            context,
-            session,
-            CreateNpcRequest(
-                session,
-                ItemOperationKinds.AbandonQuestItems,
-                currentRevision,
-                interactionSessionId,
-                "services.quest_offer",
-                questAccess: true));
-        Assert.True(abandoned.Succeeded, abandoned.Error?.Message);
-        currentRevision = Assert.Single(abandoned.Value!.CharacterRevisions).Revision;
-        Assert.Equal(0, await CountQuestGrantItemsAsync(context));
-
-        var reaccepted = await ExecuteAsync(
-            context,
-            session,
-            CreateNpcRequest(
-                session,
-                ItemOperationKinds.Grant,
-                currentRevision,
-                interactionSessionId,
-                "services.quest_offer",
-                questAccess: true,
-                destinationContainerId: snapshot.PermanentInventory.ContainerId));
-        Assert.True(reaccepted.Succeeded, reaccepted.Error?.Message);
-        Assert.NotEqual(questItem.ItemInstanceId, Assert.Single(reaccepted.Value!.ItemRevisions).ItemInstanceId);
-        Assert.Equal(1, await CountQuestGrantItemsAsync(context));
+        Assert.Equal(snapshot.ItemStateRevision, (await GetSnapshotAsync(context, player)).ItemStateRevision);
     }
 
     private static SimulationItemOperationRequest CreateNpcRequest(
@@ -328,7 +269,6 @@ public sealed class NpcItemLifecycleIntegrationTests
         Guid interactionSessionId,
         string capabilityId,
         bool insuranceAccess = false,
-        bool questAccess = false,
         Guid itemInstanceId = default,
         long itemRevision = 0,
         Guid destinationContainerId = default)
@@ -344,8 +284,7 @@ public sealed class NpcItemLifecycleIntegrationTests
             new SimulationItemAccessRequest(
                 false,
                 false,
-                insuranceAccess,
-                questAccess),
+                insuranceAccess),
             operationKind,
             characterRevision,
             ItemInstanceId: itemInstanceId == Guid.Empty ? null : itemInstanceId,
@@ -468,25 +407,5 @@ public sealed class NpcItemLifecycleIntegrationTests
         return await connection.QuerySingleAsync<long>(
             "select currency from characters where id = @CharacterId;",
             new { CharacterId = characterId });
-    }
-
-    private static async Task<int> CountQuestGrantItemsAsync(
-        PostgresIntegrationTestContext context)
-    {
-        await using var connection = await context.DataSource.OpenConnectionAsync();
-        return await connection.QuerySingleAsync<int>(
-            """
-            select count(*)
-            from item_instance_policies
-            where policy_kind = 'protected_on_death'
-              and status = 'active'
-              and source_kind = @SourceKind
-              and source_id = @SourceId;
-            """,
-            new
-            {
-                SourceKind = ItemPolicySourceKinds.QuestGrant,
-                SourceId = GameServiceTestComposition.FixtureNpcLifecycle.QuestGrantId
-            });
     }
 }

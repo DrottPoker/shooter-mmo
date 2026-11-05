@@ -11,7 +11,7 @@ internal sealed class SimulationQuestMutationService(
     ItemTransactionService transactionService,
     SimulationCharacterStates characterStates)
 {
-    public async Task<ServiceResult<SimulationQuestOperationResponse>> ExecuteAsync(
+    public async Task<ServiceResult<SimulationItemOperationResponse>> ExecuteAsync(
         string authenticatedWorkerId,
         Guid simulationSessionId,
         SimulationQuestOperationRequest request,
@@ -19,7 +19,7 @@ internal sealed class SimulationQuestMutationService(
     {
         if (!string.Equals(authenticatedWorkerId, request.WorkerId, StringComparison.Ordinal))
         {
-            return ServiceResult<SimulationQuestOperationResponse>.Forbidden(
+            return ServiceResult<SimulationItemOperationResponse>.Forbidden(
                 ItemTransactionErrorCodes.WrongSimulationWorker,
                 "The authenticated simulation worker cannot submit another worker's quest operation.");
         }
@@ -124,18 +124,12 @@ internal sealed class SimulationQuestMutationService(
         var result = await operation;
         if (!result.Succeeded)
         {
-            return SimulationItemRejections.Map<SimulationQuestOperationResponse>(result);
+            return SimulationItemRejections.Map<SimulationItemOperationResponse>(result);
         }
 
-        return ServiceResult<SimulationQuestOperationResponse>.Ok(new SimulationQuestOperationResponse(
-            result.OperationId,
-            result.OperationKind,
-            result.Succeeded,
-            result.Error,
-            result.CharacterRevisions,
-            result.ItemChanges,
-            await characterStates.ReadAsync(request.CharacterId, cancellationToken),
-            result.QuestLog));
+        return ServiceResult<SimulationItemOperationResponse>.Ok(SimulationItemOperationResponse.From(
+            result,
+            await characterStates.ReadAsync(request.CharacterId, cancellationToken)));
     }
 
     private static bool IsOptionalContentIdentifier(string? value)
@@ -143,9 +137,9 @@ internal sealed class SimulationQuestMutationService(
         return value is null || Identifiers.IsContentIdentifier(value);
     }
 
-    private static ServiceResult<SimulationQuestOperationResponse> Invalid(string message)
+    private static ServiceResult<SimulationItemOperationResponse> Invalid(string message)
     {
-        return ServiceResult<SimulationQuestOperationResponse>.BadRequest(
+        return ServiceResult<SimulationItemOperationResponse>.BadRequest(
             ItemApiErrorCodes.SimulationOperationInvalid,
             message);
     }

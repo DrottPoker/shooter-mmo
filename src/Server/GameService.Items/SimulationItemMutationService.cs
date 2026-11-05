@@ -99,7 +99,6 @@ internal sealed class SimulationItemMutationService(
                 request.Access!.Bank,
                 request.Access.RecoveryStorage,
                 request.Access.InsuranceNpc,
-                request.Access.QuestNpc,
                 string.IsNullOrWhiteSpace(request.Access.VendorProfileId)
                     ? null
                     : request.Access.VendorProfileId.Trim()));
@@ -144,14 +143,6 @@ internal sealed class SimulationItemMutationService(
                 request,
                 cancellationToken),
             ItemOperationKinds.RemoveInsurancePolicy => ExecuteInsuranceRemovalAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.Grant => ExecuteQuestGrantAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.AbandonQuestItems => ExecuteQuestAbandonAsync(
                 actor,
                 request,
                 cancellationToken),
@@ -398,52 +389,6 @@ internal sealed class SimulationItemMutationService(
                         request.ExpectedCharacterRevision,
                         request.ItemInstanceId!.Value,
                         request.ExpectedItemRevision!.Value)),
-                cancellationToken)
-            : null;
-    }
-
-    private Task<ItemTransactionResult>? ExecuteQuestGrantAsync(
-        ItemTransactionActor actor,
-        SimulationItemOperationRequest request,
-        CancellationToken cancellationToken)
-    {
-        return HasNpcContext(request)
-            && request.Access!.QuestNpc
-            && request.DestinationContainerId is not null
-            && request.DestinationContainerId != Guid.Empty
-            && request.DestinationSlotIndex is null or >= 0
-            ? transactionService.ExecuteAsync(
-                new ItemTransactionRequest<GrantItemCommand>(
-                    request.OperationId,
-                    actor,
-                    new GrantItemCommand(
-                        request.CharacterId,
-                        request.ExpectedCharacterRevision,
-                        npcOptions.QuestItemDefinitionId,
-                        npcOptions.QuestItemQuantity,
-                        request.DestinationContainerId.Value,
-                        request.DestinationSlotIndex,
-                        ItemPolicySourceKinds.QuestGrant,
-                        npcOptions.QuestGrantId)),
-                cancellationToken)
-            : null;
-    }
-
-    private Task<ItemTransactionResult>? ExecuteQuestAbandonAsync(
-        ItemTransactionActor actor,
-        SimulationItemOperationRequest request,
-        CancellationToken cancellationToken)
-    {
-        return HasNpcContext(request)
-            && request.Access!.QuestNpc
-            ? transactionService.ExecuteAsync(
-                new ItemTransactionRequest<AbandonQuestItemsCommand>(
-                    request.OperationId,
-                    actor,
-                    new AbandonQuestItemsCommand(
-                        request.CharacterId,
-                        request.ExpectedCharacterRevision,
-                        npcOptions.QuestGrantId)),
                 cancellationToken)
             : null;
     }

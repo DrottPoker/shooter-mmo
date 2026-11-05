@@ -72,14 +72,13 @@ namespace Mmorpg.GameProtocol
     {
         Dialogue = 1,
         Vendor = 2,
-        QuestOffer = 3,
-        QuestTurnIn = 4,
         Crafting = 5,
         Insurance = 6,
         Trainer = 7,
         Bank = 8,
         RecoveryStorage = 9,
-        Gathering = 10
+        Gathering = 10,
+        Quests = 11
     }
 
     /// <summary>
@@ -91,10 +90,13 @@ namespace Mmorpg.GameProtocol
         ApplyInsurance = 1,
         RemoveInsurance = 2,
         AcceptQuest = 3,
-        AbandonQuest = 4,
         VendorPurchase = 5,
         VendorSale = 6,
-        StartGathering = 7
+        StartGathering = 7,
+        RegrantQuestItems = 8,
+        TalkToQuestNpc = 9,
+        DeliverQuestItems = 10,
+        TurnInQuest = 11
     }
 
     /// <summary>
@@ -518,7 +520,10 @@ namespace Mmorpg.GameProtocol
             int destinationSlotIndex,
             string offerDefinitionId,
             int quantity,
-            long expectedPrice)
+            long expectedPrice,
+            string questId,
+            string questObjectiveId,
+            string rewardChoiceDefinitionId)
         {
             OperationId = operationId;
             SimulationSessionId = simulationSessionId;
@@ -540,6 +545,9 @@ namespace Mmorpg.GameProtocol
             OfferDefinitionId = offerDefinitionId ?? string.Empty;
             Quantity = quantity;
             ExpectedPrice = expectedPrice;
+            QuestId = questId ?? string.Empty;
+            QuestObjectiveId = questObjectiveId ?? string.Empty;
+            RewardChoiceDefinitionId = rewardChoiceDefinitionId ?? string.Empty;
         }
 
         /// <summary>
@@ -642,6 +650,21 @@ namespace Mmorpg.GameProtocol
         /// </summary>
         public long ExpectedPrice { get; }
 
+        /// <summary>
+        /// The quest a quest action is about, or empty.
+        /// </summary>
+        public string QuestId { get; }
+
+        /// <summary>
+        /// The talk-to or deliver objective a quest action completes, or empty.
+        /// </summary>
+        public string QuestObjectiveId { get; }
+
+        /// <summary>
+        /// The item definition of the reward choice a quest turn-in takes, or empty.
+        /// </summary>
+        public string RewardChoiceDefinitionId { get; }
+
         public static RealtimeWorldInteractionIntent CreateOpen(
             Guid operationId,
             Guid simulationSessionId,
@@ -670,7 +693,10 @@ namespace Mmorpg.GameProtocol
                 -1,
                 string.Empty,
                 0,
-                0);
+                0,
+                string.Empty,
+                string.Empty,
+                string.Empty);
         }
 
         public static RealtimeWorldInteractionIntent CreateClose(
@@ -702,7 +728,10 @@ namespace Mmorpg.GameProtocol
                 -1,
                 string.Empty,
                 0,
-                0);
+                0,
+                string.Empty,
+                string.Empty,
+                string.Empty);
         }
 
         public static RealtimeWorldInteractionIntent CreateCapabilityAction(
@@ -724,7 +753,10 @@ namespace Mmorpg.GameProtocol
             int destinationSlotIndex = -1,
             string offerDefinitionId = default,
             int quantity = 0,
-            long expectedPrice = 0)
+            long expectedPrice = 0,
+            string questId = default,
+            string questObjectiveId = default,
+            string rewardChoiceDefinitionId = default)
         {
             return new RealtimeWorldInteractionIntent(
                 operationId,
@@ -746,7 +778,10 @@ namespace Mmorpg.GameProtocol
                 destinationSlotIndex,
                 offerDefinitionId,
                 quantity,
-                expectedPrice);
+                expectedPrice,
+                questId,
+                questObjectiveId,
+                rewardChoiceDefinitionId);
         }
     }
 
@@ -1680,6 +1715,9 @@ namespace Mmorpg.GameProtocol
                     writer.WriteString(value.OfferDefinitionId);
                     writer.WriteInt32(value.Quantity);
                     writer.WriteInt64(value.ExpectedPrice);
+                    writer.WriteString(value.QuestId);
+                    writer.WriteString(value.QuestObjectiveId);
+                    writer.WriteString(value.RewardChoiceDefinitionId);
                     break;
                 }
                 default:
@@ -1707,6 +1745,9 @@ namespace Mmorpg.GameProtocol
                     size += 74;
                     size += StringSize(value.CapabilityId);
                     size += StringSize(value.OfferDefinitionId);
+                    size += StringSize(value.QuestId);
+                    size += StringSize(value.QuestObjectiveId);
+                    size += StringSize(value.RewardChoiceDefinitionId);
                     break;
                 }
                 default:
@@ -1777,6 +1818,9 @@ namespace Mmorpg.GameProtocol
             string offerDefinitionId = string.Empty;
             int quantity = 0;
             long expectedPrice = 0;
+            string questId = string.Empty;
+            string questObjectiveId = string.Empty;
+            string rewardChoiceDefinitionId = string.Empty;
 
             switch (operationKind)
             {
@@ -1855,6 +1899,21 @@ namespace Mmorpg.GameProtocol
                         return false;
                     }
 
+                    if (!reader.TryReadString(MaximumIdentifierLength, out questId, out error, allowBlank: true))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadString(MaximumIdentifierLength, out questObjectiveId, out error, allowBlank: true))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadString(MaximumDefinitionIdLength, out rewardChoiceDefinitionId, out error, allowBlank: true))
+                    {
+                        return false;
+                    }
+
                     break;
                 }
                 default:
@@ -1864,7 +1923,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            value = new RealtimeWorldInteractionIntent(operationId, simulationSessionId, interactionSessionId, operationKind, targetKind, targetEntityId, targetRuntimeId, expectedTargetRevision, capabilityId, capabilityKind, expectedCapabilityRevision, capabilityAction, expectedCharacterRevision, itemInstanceId, expectedItemRevision, destinationContainerId, destinationSlotIndex, offerDefinitionId, quantity, expectedPrice);
+            value = new RealtimeWorldInteractionIntent(operationId, simulationSessionId, interactionSessionId, operationKind, targetKind, targetEntityId, targetRuntimeId, expectedTargetRevision, capabilityId, capabilityKind, expectedCapabilityRevision, capabilityAction, expectedCharacterRevision, itemInstanceId, expectedItemRevision, destinationContainerId, destinationSlotIndex, offerDefinitionId, quantity, expectedPrice, questId, questObjectiveId, rewardChoiceDefinitionId);
             return true;
         }
 
@@ -1911,7 +1970,13 @@ namespace Mmorpg.GameProtocol
                         || value.ExpectedCapabilityRevision < 1
                         || !IsDefined(value.CapabilityAction)
                         || value.OfferDefinitionId == null
-                        || value.OfferDefinitionId.Length > MaximumDefinitionIdLength)
+                        || value.OfferDefinitionId.Length > MaximumDefinitionIdLength
+                        || value.QuestId == null
+                        || value.QuestId.Length > MaximumIdentifierLength
+                        || value.QuestObjectiveId == null
+                        || value.QuestObjectiveId.Length > MaximumIdentifierLength
+                        || value.RewardChoiceDefinitionId == null
+                        || value.RewardChoiceDefinitionId.Length > MaximumDefinitionIdLength)
                     {
                         return false;
                     }
@@ -2736,7 +2801,7 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeWorldActorCapabilityKind value)
         {
-            return (byte)value >= 1 && (byte)value <= 10;
+            return (byte)value == 1 || (byte)value == 2 || (byte)value == 5 || (byte)value == 6 || (byte)value == 7 || (byte)value == 8 || (byte)value == 9 || (byte)value == 10 || (byte)value == 11;
         }
 
         private static bool IsDefined(RealtimeWorldActorKind value)
@@ -2776,7 +2841,7 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeCapabilityActionKind value)
         {
-            return (byte)value >= 0 && (byte)value <= 7;
+            return (byte)value == 0 || (byte)value == 1 || (byte)value == 2 || (byte)value == 3 || (byte)value == 5 || (byte)value == 6 || (byte)value == 7 || (byte)value == 8 || (byte)value == 9 || (byte)value == 10 || (byte)value == 11;
         }
     }
 }

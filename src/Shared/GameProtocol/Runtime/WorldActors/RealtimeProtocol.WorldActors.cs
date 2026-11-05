@@ -20,27 +20,31 @@ namespace Mmorpg.GameProtocol
                     return HasNoCharacterRevision(intent)
                         && HasNoItem(intent)
                         && HasNoDestination(intent)
-                        && HasNoVendorTerms(intent);
+                        && HasNoVendorTerms(intent)
+                        && HasNoQuestTerms(intent);
                 case RealtimeCapabilityActionKind.ApplyInsurance:
                 case RealtimeCapabilityActionKind.RemoveInsurance:
                     return intent.CapabilityKind == RealtimeWorldActorCapabilityKind.Insurance
                         && intent.ExpectedCharacterRevision >= 0
                         && HasItem(intent)
                         && HasNoDestination(intent)
-                        && HasNoVendorTerms(intent);
+                        && HasNoVendorTerms(intent)
+                        && HasNoQuestTerms(intent);
                 case RealtimeCapabilityActionKind.AcceptQuest:
-                    return intent.CapabilityKind == RealtimeWorldActorCapabilityKind.QuestOffer
-                        && intent.ExpectedCharacterRevision >= 0
-                        && HasNoItem(intent)
-                        && intent.DestinationContainerId != Guid.Empty
-                        && intent.DestinationSlotIndex >= -1
-                        && HasNoVendorTerms(intent);
-                case RealtimeCapabilityActionKind.AbandonQuest:
-                    return intent.CapabilityKind == RealtimeWorldActorCapabilityKind.QuestOffer
-                        && intent.ExpectedCharacterRevision >= 0
-                        && HasNoItem(intent)
-                        && HasNoDestination(intent)
-                        && HasNoVendorTerms(intent);
+                case RealtimeCapabilityActionKind.RegrantQuestItems:
+                    return IsQuestAction(intent)
+                        && intent.QuestObjectiveId.Length == 0
+                        && intent.RewardChoiceDefinitionId.Length == 0;
+                case RealtimeCapabilityActionKind.TalkToQuestNpc:
+                case RealtimeCapabilityActionKind.DeliverQuestItems:
+                    return IsQuestAction(intent)
+                        && !string.IsNullOrWhiteSpace(intent.QuestObjectiveId)
+                        && intent.RewardChoiceDefinitionId.Length == 0;
+                case RealtimeCapabilityActionKind.TurnInQuest:
+                    return IsQuestAction(intent)
+                        && intent.QuestObjectiveId.Length == 0
+                        && (intent.RewardChoiceDefinitionId.Length == 0
+                            || !string.IsNullOrWhiteSpace(intent.RewardChoiceDefinitionId));
                 case RealtimeCapabilityActionKind.VendorPurchase:
                     return intent.CapabilityKind == RealtimeWorldActorCapabilityKind.Vendor
                         && intent.ExpectedCharacterRevision >= 0
@@ -48,7 +52,8 @@ namespace Mmorpg.GameProtocol
                         && HasNoDestination(intent)
                         && !string.IsNullOrWhiteSpace(intent.OfferDefinitionId)
                         && intent.Quantity >= 1
-                        && intent.ExpectedPrice >= 0;
+                        && intent.ExpectedPrice >= 0
+                        && HasNoQuestTerms(intent);
                 case RealtimeCapabilityActionKind.VendorSale:
                     return intent.CapabilityKind == RealtimeWorldActorCapabilityKind.Vendor
                         && intent.ExpectedCharacterRevision >= 0
@@ -56,16 +61,37 @@ namespace Mmorpg.GameProtocol
                         && HasNoDestination(intent)
                         && intent.OfferDefinitionId.Length == 0
                         && intent.Quantity >= 1
-                        && intent.ExpectedPrice >= 0;
+                        && intent.ExpectedPrice >= 0
+                        && HasNoQuestTerms(intent);
                 case RealtimeCapabilityActionKind.StartGathering:
                     return intent.CapabilityKind == RealtimeWorldActorCapabilityKind.Gathering
                         && HasNoCharacterRevision(intent)
                         && HasNoItem(intent)
                         && HasNoDestination(intent)
-                        && HasNoVendorTerms(intent);
+                        && HasNoVendorTerms(intent)
+                        && HasNoQuestTerms(intent);
                 default:
                     return false;
             }
+        }
+
+        // A quest action at a quest NPC names its quest. GameService places and takes the items,
+        // so the action carries no item, destination, or expected item-state revision.
+        private static bool IsQuestAction(RealtimeWorldInteractionIntent intent)
+        {
+            return intent.CapabilityKind == RealtimeWorldActorCapabilityKind.Quests
+                && HasNoCharacterRevision(intent)
+                && HasNoItem(intent)
+                && HasNoDestination(intent)
+                && HasNoVendorTerms(intent)
+                && !string.IsNullOrWhiteSpace(intent.QuestId);
+        }
+
+        private static bool HasNoQuestTerms(RealtimeWorldInteractionIntent intent)
+        {
+            return intent.QuestId.Length == 0
+                && intent.QuestObjectiveId.Length == 0
+                && intent.RewardChoiceDefinitionId.Length == 0;
         }
 
         private static bool HasNoCharacterRevision(RealtimeWorldInteractionIntent intent)

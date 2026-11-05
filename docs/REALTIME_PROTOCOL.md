@@ -297,6 +297,9 @@ of every message type, generated from the schema:
 | 39 | `AdminIntent` | Admin | Client to server | Control | Reliable ordered |
 | 40 | `AdminIntentResult` | Admin | Server to client | Control | Reliable ordered |
 | 41 | `AdminStateChanged` | Admin | Server to client | Control | Reliable ordered |
+| 42 | `QuestIntent` | Quests | Client to server | Control | Reliable ordered |
+| 43 | `QuestIntentResult` | Quests | Server to client | Control | Reliable ordered |
+| 44 | `QuestLogChanged` | Quests | Server to client | Control | Reliable ordered |
 
 The control channel is 0, the movement input channel is 1, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
@@ -621,13 +624,19 @@ value without a despawn is an identity conflict. The level limit is public, and
 ### Capability Actions
 
 A `WorldInteractionIntent` of kind `CapabilityAction` carries a
-`CapabilityActionKind`: `None` (0) opens the capability, `ApplyInsurance` (1),
-`RemoveInsurance` (2), `AcceptQuest` (3), and `AbandonQuest` (4) are the
-insurance and quest actions, and `VendorPurchase` (5), `VendorSale` (6), and
-`StartGathering` (7) trade and gather. The action also carries the expected
-character revision, an item, a destination, `OfferDefinitionId`, `Quantity`,
-and `ExpectedPrice`. The hand-written rules accept only the fields each action
-uses:
+`CapabilityActionKind`: `None` (0) opens the capability, `ApplyInsurance` (1)
+and `RemoveInsurance` (2) are the insurance actions, `VendorPurchase` (5),
+`VendorSale` (6), and `StartGathering` (7) trade and gather, and `AcceptQuest`
+(3), `RegrantQuestItems` (8), `TalkToQuestNpc` (9), `DeliverQuestItems` (10),
+and `TurnInQuest` (11) are the actions of a `Quests` (11) capability. The action
+also carries the expected character revision, an item, a destination,
+`OfferDefinitionId`, `Quantity`, `ExpectedPrice`, `QuestId`,
+`QuestObjectiveId`, and `RewardChoiceDefinitionId`. The `QuestOffer` (3) and
+`QuestTurnIn` (4) capability kinds and the `AbandonQuest` (4) action that came
+before quest content are retired, so those values stay unused. With every text
+at its limit the intent can exceed the packet limit, so it sets
+`runtimeSizeCheck`; content identifiers are ASCII and always fit. The
+hand-written rules accept only the fields each action uses:
 
 - `VendorPurchase` targets a `Vendor` capability and needs an offer definition,
   a quantity of at least 1, and an expected price of 0 or more, with no item and
@@ -637,6 +646,11 @@ uses:
   destination.
 - `StartGathering` targets a `Gathering` capability and carries no character
   revision, item, destination, or vendor terms.
+- A quest action targets a `Quests` capability and names its quest, with no
+  character revision, item, destination, or vendor terms, because GameService
+  places and takes the items. `TalkToQuestNpc` and `DeliverQuestItems` also name
+  the objective, `TurnInQuest` may name a reward choice, and the other quest
+  actions name neither. Every other action carries no quest fields.
 
 The expected price is the total the player was shown; GameService rejects a
 different current price with `vendor_price_changed`.
@@ -695,6 +709,34 @@ item-state revision that holds the yield.
   `OutOfRange`, `LineOfSightBlocked`, `EquipmentLockout`, `WeaponMissing`,
   `AmmunitionMissing`, `AmmunitionIncompatible`, `Dead`, and `NotEnoughMana`),
   not errors. Only the owner learns its mana.
+
+## Quest Messages
+
+The Quests family carries the quest actions outside an interaction and the
+changes of the owner's quest log, as [Quests](SERVICE_FEATURES.md#quests)
+describes.
+
+- `QuestIntent` (42) carries an operation id, a `QuestIntentKind`, and the
+  quest. `Abandon` (1) is the only kind.
+- `QuestIntentResult` (43) echoes the operation id and kind and carries the
+  item-state revision after the intent, and an `Error` when it failed.
+- `QuestLogChanged` (44) lists every quest that one committed change of the
+  owner touched, as the quest log holds it after the change: up to
+  `MaximumQuestLogChanges` (8) distinct `QuestChange` structs, each with the
+  quest, its current step as optional text, which is empty once the quest is no
+  longer active, up to `MaximumQuestObjectives` (8) distinct
+  `QuestObjectiveProgress` structs of the step's counted objectives with a
+  progress from 0 to `MaximumQuestObjectiveProgress` (1,000), and the completion
+  count. It also carries the operation that caused the change, or empty, the
+  `PreviousQuestLogRevision` the change applies to, and the `QuestLogRevision`
+  after it, which the hand-written rule requires to be higher. A change that
+  one packet cannot list sets `ReloadRequired` and lists no quest, and the
+  client then reads its quest log again; a quest without a step has no progress.
+  The message can exceed the packet limit, so it sets `runtimeSizeCheck`, and
+  `RealtimeProtocol.CanEncodeQuestLogChanged` lets the worker check a change.
+  It goes out after the operation's `OwnerItemStateChanged` and before its
+  result. A client whose quest log revision differs from the previous revision
+  reads its quest log again instead of patching it.
 
 ## Development Admin Tools
 

@@ -54,7 +54,7 @@ internal static class QuestScenario
         };
     }
 
-    public static async Task<ServiceResult<SimulationQuestOperationResponse>> RouteAsync(
+    public static async Task<ServiceResult<SimulationItemOperationResponse>> RouteAsync(
         PostgresIntegrationTestContext context,
         ConsumedSimulationJoinTicketResponse session,
         string operationKind,

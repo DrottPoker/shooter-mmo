@@ -8,7 +8,6 @@ internal sealed record SimulationItemAccessRequest(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
-    bool QuestNpc = false,
     string? VendorProfileId = null);
 
 internal sealed record SimulationItemOperationRequest(
@@ -67,7 +66,8 @@ internal sealed record SimulationCharacterStateResponse(
     IReadOnlyList<SimulationEquippedItem> Equipment);
 
 // A committed item transaction together with the acting character's state afterwards. A
-// gathering yield that counted for quest objectives names the changed quests.
+// quest action, or a gathering yield that counted for quest objectives, names the changed
+// quests.
 internal sealed record SimulationItemOperationResponse(
     Guid OperationId,
     string OperationKind,
