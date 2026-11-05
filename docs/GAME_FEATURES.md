@@ -21,9 +21,10 @@ to check each feature by hand is in [Manual Testing](MANUAL_TESTING.md).
 | Middle mouse button, dragged | Turns and tilts the camera |
 | Arrow keys | Left and right turn the camera, up and down tilt it |
 | Scroll wheel | Zooms the camera |
-| `Escape` | Closes an open world menu or inventory dialog, or puts back a stack part carried on the pointer, and does nothing else; otherwise ends the attack, closes the open interaction and every inventory window, and cancels an Admin teleport pick |
+| `Escape` | Closes an open world menu, inventory dialog, or quest confirmation, or puts back a stack part carried on the pointer, and does nothing else; otherwise ends the attack, closes the open interaction, every inventory window, and the quest log, and cancels an Admin teleport pick |
 | `B` or `I` | Opens or closes the Inventory window |
 | `C` | Opens or closes the Equipment window |
+| `L` | Opens or closes the [quest log](#quests) |
 | `Shift`, held while dragging a stack | Drags half of the stack |
 | `Shift`, held while right-clicking a stack | Sends half of the stack where a right-click sends it |
 | `Ctrl`, held while clicking a stack | Asks how many items to take and carries them on the pointer |
@@ -674,8 +675,20 @@ personal, and its progress survives death, leaving, and Shard switches.
   `Quest updated: <quest>` when a quest moves to its next step,
   `<quest> is ready to turn in.` once a quest is done, also when looting its last
   item finishes it, and `Quest completed: <quest>` or `Quest abandoned: <quest>`.
-- The quest log, the tracker, the markers over NPCs, and abandoning a quest are
-  not in the client yet.
+- `L` opens the quest log beside the quest dialog. It lists the active quests
+  by title with `ACTIVE n / 25`, a quest that is done marked `(Ready)`.
+  Choosing one shows the current objectives with their progress, `Ready to turn
+  in.` when it is done, and the quest's text, with `Abandon` below; choosing it
+  again hides them. Under `COMPLETED` the log lists the completed quests, a
+  repeatable one with how often it was completed.
+- `Abandon` asks `Abandon <quest>? Its progress and its quest items are lost.`
+  and abandons the quest from anywhere once confirmed: its progress and every
+  item it gave or dropped leave, also from the Bank and Recovery Storage, and it
+  can be accepted again. A refusal shows its reason in red in the log.
+- The tracker at the right edge of the screen shows up to six active quests by
+  title with their current objectives, or `Ready to turn in`, and how many more
+  the quest log holds. It hides without active quests and takes no clicks.
+- The markers over NPCs are not in the client yet.
 
 ## Currency And Vendor Trade
 

@@ -50,7 +50,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 "ToggleAdminMenu",
                 "ToggleInventory",
                 "ToggleCharacterInventory",
-                "ToggleEquipmentInventory"
+                "ToggleEquipmentInventory",
+                "ToggleQuestLog"
             })
             {
                 Assert.That(actions.FindAction(actionName, false), Is.Not.Null, actionName);
@@ -95,6 +96,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Does.Contain("<Keyboard>/b"));
             Assert.That(actions.FindAction("ToggleEquipmentInventory").bindings.Select(binding => binding.path),
                 Does.Contain("<Keyboard>/c"));
+            Assert.That(actions.FindAction("ToggleQuestLog").bindings.Select(binding => binding.path),
+                Does.Contain("<Keyboard>/l"));
         }
 
         [Test]
@@ -107,6 +110,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(config.ItemGameplayCatalog, Is.Not.Null);
                 Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"catalogId\""));
                 Assert.That(config.ItemGameplayCatalog.text, Does.Contain("\"revision\""));
+                Assert.That(config.QuestCatalog, Is.Not.Null);
+                Assert.That(config.QuestCatalog.text, Does.Contain("\"quests\""));
             }
             finally
             {

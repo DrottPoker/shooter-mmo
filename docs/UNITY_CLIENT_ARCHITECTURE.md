@@ -2839,6 +2839,14 @@ windows in `Mmorpg.Client.Ui` present it.
   whatever made it ready, once. A load of the quest log starts it over without
   messages.
 
+`QuestLogModel` lists the active quests by title with the current step's
+objectives and whether each is ready, and the completed quests with their
+counts, for the quest log and the tracker. `QuestClientController.TryAbandon`
+sends a `QuestIntent` to abandon an active quest, one at a time; the quest
+change and the removed items arrive before its result, whose refusal the log
+shows, and a committed result with an item revision brings the inventory up to
+it.
+
 Choosing the `quests` capability raises
 `WorldInteractionClientController.QuestCapabilityOpened`, and `QuestWindows`
 opens the quest dialog at the screen's left edge for the NPC of the open
@@ -2850,6 +2858,14 @@ Each action goes through `TryExecuteQuestAction` with the quest, objective, and
 reward choice, and the dialog follows the quest log the change patches. A
 rejection shows its message in the dialog, and the dialog closes with its
 interaction. The temporary interaction panel's `Quests` button opens it again.
+
+`QuestWindows` also owns the quest log, `QuestLogWindow` beside the dialog,
+which the `ToggleQuestLog` action on `L` opens and closes unless a text field
+has focus, and `QuestTracker`, a panel at the right edge of the screen that
+takes no raycasts. `Abandon` asks through a `UiDialog`; an Escape closes that
+dialog alone, and otherwise closes the log with the other windows. The quest
+windows run right after the inventory windows, so an Escape that an inventory
+dialog took reaches them as taken.
 
 ## Test Architecture
 

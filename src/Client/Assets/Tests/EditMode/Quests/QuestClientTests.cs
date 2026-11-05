@@ -197,6 +197,25 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(retry.IsDue(202f), Is.True);
         }
 
+        // The quest log and the tracker list the active quests by title with the current step's
+        // objectives, a ready quest as ready, and the completed quests with their counts.
+        [Test]
+        public void TheQuestLogListsActiveQuestsWithTheirObjectivesAndTheCompletedOnes()
+        {
+            var state = Ready(
+                Active(FixtureQuestCatalog.Wolves, "hunt", ("wolves", 2)),
+                Active(FixtureQuestCatalog.Trophies, "collect"));
+
+            var active = QuestLogModel.Active(state, id => id == "fixture.letter" ? 1 : 0);
+            var completed = QuestLogModel.Completed(state);
+
+            Assert.That(active.Select(entry => entry.Quest.Title), Is.EqualTo(new[] { "Fixture Trophies", "Fixture Wolves" }));
+            Assert.That(active[0].Objectives.Select(line => line.Text), Is.EqualTo(new[] { "Stolen letters 1/2" }));
+            Assert.That(active.Select(entry => entry.IsReady), Is.EqualTo(new[] { false, true }));
+            Assert.That(completed.Single().Quest.Id, Is.EqualTo(FixtureQuestCatalog.OreRun));
+            Assert.That(completed.Single().CompletionCount, Is.EqualTo(2));
+        }
+
         private static IReadOnlyList<QuestDialogEntry> Entries(QuestClientState state, Func<string, int> carried)
         {
             return QuestDialogEntries.For(FixtureQuestCatalog.Mira, state, carried);

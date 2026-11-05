@@ -787,6 +787,17 @@ Join Development World 2 with a new character, as
    of the Bank again.
 7. Walk away from Mira while the dialog is open. Expected result: the dialog
    closes with the interaction.
+8. Look at the right edge of the screen. Expected result: the tracker shows
+   `A Letter for the Outpost` with `Ready to turn in`.
+9. Press `L`. Expected result: the quest log opens beside the dialog's place
+   with `ACTIVE 1 / 25` and `A Letter for the Outpost (Ready)`, and lists
+   `Wolves at the Gate` under `COMPLETED`. Choose the letter quest. Expected
+   result: `Sealed Letter delivered 1/1`, `Ready to turn in.`, its text, and
+   `Abandon` below.
+10. Press `Abandon`, then `Abandon` in the question. Expected result: the game
+    messages say `Quest abandoned: A Letter for the Outpost`, the Sealed Letter
+    leaves the inventory, the quest leaves the log, the tracker hides, and Mira
+    offers the quest again. Press `L` again. Expected result: the log closes.
 
 ### Quest Commands On The Worker Quest Route
 
@@ -905,13 +916,16 @@ Then run the client's quest state and dialog rules in the Unity Editor:
 ./tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter QuestClientTests
 ```
 
-Expected result: every test passes. The quest log loads for the character and
+Run them with `-Filter QuestClientTests,QuestTrackerTests` to include the
+tracker. Expected result: every test passes. The quest log loads for the character and
 its catalog and refuses another catalog revision, realtime changes apply in
 revision order and a gap asks for a reload, Mira lists her offers, the ready
 turn-in, the errand's talk, delivery, and lost letter, a change writes the
 accepted, progress, completed, and abandoned notices, carried letters write the
-trophies' progress and readiness once, and a failed read is tried again after a
-growing delay.
+trophies' progress and readiness once, a failed read is tried again after a
+growing delay, the quest log lists the active quests with their objectives and
+the completed ones, and the tracker shows each quest's objectives or that it is
+ready.
 
 ## Debug Menu (F2)
 

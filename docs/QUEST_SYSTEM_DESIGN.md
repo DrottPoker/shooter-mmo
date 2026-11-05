@@ -48,12 +48,14 @@ Implemented:
   [Service Features](SERVICE_FEATURES.md#quests) describes.
 - The client keeps the quest log of the joined character and opens the quest
   dialog at a quest NPC, where the player accepts, talks, hands over, asks for
-  lost start items, and turns in with a reward choice, and the game messages
-  report every committed quest change, as
+  lost start items, and turns in with a reward choice. The quest log on `L`
+  lists the active and completed quests and abandons a quest after a
+  confirmation, the tracker shows the active quests' objectives, and the game
+  messages report every committed quest change, as
   [Quest Client](UNITY_CLIENT_ARCHITECTURE.md#quest-client) describes.
 
-Planned: everything else in this document, next the quest log, the tracker, the
-NPC markers, and the Admin menu's quest tools.
+Planned: everything else in this document, next the NPC markers and the Admin
+menu's quest tools.
 
 ## Goals
 

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using UnityEngine;
@@ -25,6 +26,8 @@ namespace Mmorpg.Client.Quests
         private readonly QuestLogRetry retry = new QuestLogRetry();
         private ApiClient apiClient;
         private RealtimeSimulationClient simulationClient;
+        private IInventoryOperationQueue inventory;
+        private Guid pendingIntentId;
         private bool initialized;
         private bool observedJoin;
         private bool loading;
@@ -37,7 +40,22 @@ namespace Mmorpg.Client.Quests
 
         public QuestClientState State { get; } = new QuestClientState();
 
-        public void Initialize(ApiClient client, RealtimeSimulationClient realtimeClient, TextAsset questCatalog)
+        // Raised when an abandon is sent or answered, so the quest log shows its state.
+        public event Action IntentChanged;
+
+        public bool HasPendingIntent
+        {
+            get { return pendingIntentId != Guid.Empty; }
+        }
+
+        // Why the last abandon was refused, or empty.
+        public string LastIntentError { get; private set; } = string.Empty;
+
+        public void Initialize(
+            ApiClient client,
+            RealtimeSimulationClient realtimeClient,
+            TextAsset questCatalog,
+            IInventoryOperationQueue inventoryQueue = null)
         {
             if (initialized)
             {
@@ -46,6 +64,7 @@ namespace Mmorpg.Client.Quests
 
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
             simulationClient = realtimeClient ?? throw new ArgumentNullException(nameof(realtimeClient));
+            inventory = inventoryQueue;
             if (ClientQuestCatalog.TryLoad(questCatalog, out var catalog, out var error))
             {
                 State.SetCatalog(catalog);
@@ -57,10 +76,41 @@ namespace Mmorpg.Client.Quests
             }
 
             simulationClient.QuestLogChanged += OnQuestLogChanged;
+            simulationClient.QuestIntentCompleted += OnQuestIntentCompleted;
             simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
             observedJoin = simulationClient.IsJoined;
             ObserveSessionIdentity();
+        }
+
+        // Abandons an active quest from anywhere. The worker queues it behind the character's
+        // other work; the quest change and the removed quest items arrive before its answer.
+        public bool TryAbandon(string questId, out string error)
+        {
+            error = string.Empty;
+            if (!initialized || !State.IsReady || !State.IsActive(questId))
+            {
+                error = "That quest is not active.";
+                return false;
+            }
+
+            if (pendingIntentId != Guid.Empty)
+            {
+                error = "Wait for the last quest action to finish.";
+                return false;
+            }
+
+            var operationId = Guid.NewGuid();
+            if (!simulationClient.TrySendQuestIntent(new RealtimeQuestIntent(operationId, RealtimeQuestIntentKind.Abandon, questId)))
+            {
+                error = "The abandon request could not be sent.";
+                return false;
+            }
+
+            pendingIntentId = operationId;
+            LastIntentError = string.Empty;
+            IntentChanged?.Invoke();
+            return true;
         }
 
         // Reads the quest log at once when a read failed, such as for a quest window that needs it.
@@ -124,6 +174,7 @@ namespace Mmorpg.Client.Quests
             if (simulationClient != null)
             {
                 simulationClient.QuestLogChanged -= OnQuestLogChanged;
+                simulationClient.QuestIntentCompleted -= OnQuestIntentCompleted;
                 simulationClient.SessionEnded -= OnSessionEnded;
             }
         }
@@ -149,6 +200,23 @@ namespace Mmorpg.Client.Quests
             }
         }
 
+        private void OnQuestIntentCompleted(RealtimeQuestIntentResult result)
+        {
+            if (result == null || result.OperationId != pendingIntentId)
+            {
+                return;
+            }
+
+            pendingIntentId = Guid.Empty;
+            LastIntentError = result.Succeeded ? string.Empty : result.Error?.Message ?? "The quest action was refused.";
+            if (result.Succeeded && result.ItemStateRevision > 0)
+            {
+                inventory?.EnsureFullState(result.ItemStateRevision);
+            }
+
+            IntentChanged?.Invoke();
+        }
+
         private void OnSessionEnded(RealtimeClientError error)
         {
             loadGeneration++;
@@ -156,6 +224,11 @@ namespace Mmorpg.Client.Quests
             reloadQueued = false;
             waitingChanges.Clear();
             observedJoin = false;
+            if (pendingIntentId != Guid.Empty)
+            {
+                pendingIntentId = Guid.Empty;
+                IntentChanged?.Invoke();
+            }
         }
 
         private IEnumerator LoadRoutine(int generation)
