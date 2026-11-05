@@ -12,6 +12,10 @@ namespace Mmorpg.Client.Core
         [SerializeField] private int sessionValidationIntervalSeconds = 5;
         [SerializeField] private TextAsset itemGameplayCatalog;
 
+        // The compiled quest catalog, core.quest-catalog.json, whose texts and rules the quest
+        // windows read.
+        [SerializeField] private TextAsset questCatalog;
+
         // The material of primitives that runtime presentation creates itself. Referencing it
         // here puts it and its URP shader into the client content.
         [SerializeField] private Material runtimePrimitiveMaterial;
@@ -52,6 +56,11 @@ namespace Mmorpg.Client.Core
         public TextAsset ItemGameplayCatalog
         {
             get { return itemGameplayCatalog; }
+        }
+
+        public TextAsset QuestCatalog
+        {
+            get { return questCatalog; }
         }
 
         public Material RuntimePrimitiveMaterial

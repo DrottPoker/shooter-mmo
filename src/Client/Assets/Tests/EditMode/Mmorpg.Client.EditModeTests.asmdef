@@ -7,6 +7,7 @@
     "Mmorpg.Client.Worlds",
     "Mmorpg.Client.Networking",
     "Mmorpg.Client.Items",
+    "Mmorpg.Client.Quests",
     "Mmorpg.Client.Gameplay",
     "Mmorpg.Client.Cloth",
     "Unity.Mathematics",

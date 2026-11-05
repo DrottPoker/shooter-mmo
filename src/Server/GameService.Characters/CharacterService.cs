@@ -21,7 +21,8 @@ internal sealed class CharacterService(
     {
         const string sql = """
             select character.id as "Id", character.name as "Name", character.currency as "Currency",
-                   character.created_at as "CreatedAt", appearance.body_model as "BodyModel"
+                   character.created_at as "CreatedAt", appearance.body_model as "BodyModel",
+                   character.level as "Level"
             from characters character
             join character_appearances appearance on appearance.character_id = character.id
             where character.account_id = @AccountId and character.deleted_at is null
@@ -93,7 +94,7 @@ internal sealed class CharacterService(
                 insert into characters (id, account_id, name, normalized_name)
                 values (@Id, @AccountId, @Name, @NormalizedName)
                 returning id as "Id", name as "Name", currency as "Currency", created_at as "CreatedAt",
-                          @BodyModel as "BodyModel";
+                          @BodyModel as "BodyModel", level as "Level";
                 """;
 
             var characterId = Guid.NewGuid();

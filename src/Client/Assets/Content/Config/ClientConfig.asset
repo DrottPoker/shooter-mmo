@@ -17,6 +17,7 @@ MonoBehaviour:
   realtimeTimeoutSeconds: 10
   sessionValidationIntervalSeconds: 5
   itemGameplayCatalog: {fileID: 4900000, guid: b9e39606ce95458cbda2929358919150, type: 3}
+  questCatalog: {fileID: 4900000, guid: 849dd63965b35e948a63ae2d156b0106, type: 3}
   runtimePrimitiveMaterial: {fileID: 2100000, guid: 286ed17e91773e3438e71482a4bf1c5f, type: 2}
   debugLineMaterial: {fileID: 2100000, guid: ac4cff4bbb31eca4faafff544c3d9df5, type: 2}
   arrowModel: {fileID: 919132149155446097, guid: 89d15f4d9e430474c905f1f6946d5b22, type: 3}

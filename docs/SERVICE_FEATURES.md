@@ -124,6 +124,9 @@ the distributed limit.
 ## Character Access
 
 - Character names are validated and normalized.
+- The character list and a newly created character name each character's id,
+  name, balance, creation time, body model, and level, which the client reads
+  for quest availability.
 - Character ownership is checked on every protected operation.
 - The configured maximum character count is enforced transactionally.
 - Soft-deleted characters are excluded from active queries.

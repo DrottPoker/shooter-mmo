@@ -420,15 +420,13 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        // The quest dialog arrives with the quest windows, so the panel only names the quests.
+        // The quest windows show the NPC's quests; the panel opens the quest dialog again.
         private void DrawQuestCapability(RealtimeWorldActorCapability capability)
         {
-            AddSectionTitle(capability.DisplayName);
-            AddText(
-                "The quest dialog is not available yet.",
-                14,
-                FontStyles.Normal,
-                TemporaryUiKit.TextSecondary);
+            AddButton(
+                capability.DisplayName + (capability.IsAvailable ? string.Empty : " (Unavailable)"),
+                capability.IsAvailable,
+                () => interactionController.ActivateCapability(capability.Id));
         }
 
         private void SubmitLifecycle(

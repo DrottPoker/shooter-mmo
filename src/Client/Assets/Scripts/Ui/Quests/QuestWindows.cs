@@ -1,0 +1,512 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.Items;
+using Mmorpg.Client.Quests;
+using Mmorpg.Client.WorldActors;
+using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Quests;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace Mmorpg.Client.Ui
+{
+    // The quest dialog that a quest NPC opens: what the NPC can do for the player now, and for
+    // the chosen entry its text, objectives, and rewards with the action that answers it. It
+    // reads the quest state, the inventory, and the open interaction, sends every action through
+    // the interaction, and owns no quest rule. It closes with the interaction. It also writes the
+    // notices of every committed quest change into the game messages.
+    [DisallowMultipleComponent]
+    public sealed class QuestWindows : MonoBehaviour
+    {
+        public const string DialogWindowName = "QuestDialogWindow";
+
+        // Above the interaction panel and below the inventory, whose tooltips draw over it.
+        public const int CanvasSortingOrder = 90;
+
+        private const float DialogWidth = 460f;
+
+        private UiTheme theme;
+        private QuestClientController quests;
+        private InventoryClientController inventory;
+        private WorldInteractionClientController interaction;
+        private GameMessageLog messages;
+        private UiWindow dialog;
+        private string npcActorId = string.Empty;
+        private Guid dialogInteractionSessionId;
+        private QuestDialogEntry selected;
+        private string rewardChoice = string.Empty;
+
+        public UiWindow Dialog
+        {
+            get { return dialog; }
+        }
+
+        public bool IsDialogOpen
+        {
+            get { return dialog != null && dialog.IsOpen; }
+        }
+
+        // Called by the composition root before the component is activated.
+        public void Initialize(
+            UiTheme uiTheme,
+            QuestClientController questController,
+            InventoryClientController inventoryController,
+            WorldInteractionClientController worldInteraction,
+            GameMessageLog gameMessages)
+        {
+            theme = uiTheme;
+            quests = questController;
+            inventory = inventoryController;
+            interaction = worldInteraction;
+            messages = gameMessages;
+        }
+
+        // Opens the dialog for the NPC of the open interaction.
+        public void OpenDialog()
+        {
+            var active = interaction?.State.ActiveInteraction;
+            if (dialog == null || active == null || !interaction.TryGetActiveActor(out var actor))
+            {
+                return;
+            }
+
+            npcActorId = actor.ActorDefinitionId;
+            dialogInteractionSessionId = active.InteractionSessionId;
+            selected = null;
+            rewardChoice = string.Empty;
+            dialog.SetTitle(active.DisplayName);
+            dialog.SetOpen(true);
+            Refresh();
+        }
+
+        public void CloseDialog()
+        {
+            selected = null;
+            rewardChoice = string.Empty;
+            if (dialog != null)
+            {
+                dialog.SetOpen(false);
+            }
+        }
+
+        private void Start()
+        {
+            BuildUi();
+            if (quests != null)
+            {
+                quests.State.Changed += Refresh;
+                quests.State.QuestsChanged += OnQuestsChanged;
+            }
+
+            if (inventory != null)
+            {
+                inventory.State.Changed += Refresh;
+            }
+
+            if (interaction != null)
+            {
+                interaction.State.Changed += OnInteractionChanged;
+                interaction.QuestCapabilityOpened += OnQuestCapabilityOpened;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (quests != null)
+            {
+                quests.State.Changed -= Refresh;
+                quests.State.QuestsChanged -= OnQuestsChanged;
+            }
+
+            if (inventory != null)
+            {
+                inventory.State.Changed -= Refresh;
+            }
+
+            if (interaction != null)
+            {
+                interaction.State.Changed -= OnInteractionChanged;
+                interaction.QuestCapabilityOpened -= OnQuestCapabilityOpened;
+            }
+        }
+
+        private void OnQuestCapabilityOpened(RealtimeWorldActorCapability capability)
+        {
+            OpenDialog();
+        }
+
+        // The dialog belongs to one interaction and closes when it ends.
+        private void OnInteractionChanged()
+        {
+            if (!IsDialogOpen)
+            {
+                return;
+            }
+
+            var active = interaction.State.ActiveInteraction;
+            if (active == null || active.InteractionSessionId != dialogInteractionSessionId)
+            {
+                CloseDialog();
+                return;
+            }
+
+            Refresh();
+        }
+
+        private void OnQuestsChanged(IReadOnlyList<QuestClientChange> changes)
+        {
+            if (messages == null)
+            {
+                return;
+            }
+
+            foreach (var notice in QuestNotices.For(changes, quests.State.Catalog, QuestCarriedItems.Counter(inventory?.State)))
+            {
+                messages.Add(notice, Time.unscaledTime);
+            }
+        }
+
+        private void Refresh()
+        {
+            if (!IsDialogOpen || quests == null || interaction == null)
+            {
+                return;
+            }
+
+            UiFactory.ClearChildren(dialog.Body);
+            UiFactory.ClearChildren(dialog.Footer);
+            var state = quests.State;
+            if (!state.IsReady)
+            {
+                AddParagraph(StatusText(state), theme.MutedTextColor);
+                dialog.FitBody();
+                return;
+            }
+
+            var carried = QuestCarriedItems.Counter(inventory?.State);
+            var entries = QuestDialogEntries.For(
+                npcActorId,
+                state,
+                carried,
+                QuestCarriedItems.OwnedQuestGrantCounter(inventory?.State));
+            if (selected != null)
+            {
+                selected = entries.FirstOrDefault(entry => IsSameEntry(entry, selected));
+                if (selected == null)
+                {
+                    rewardChoice = string.Empty;
+                }
+            }
+
+            if (selected == null)
+            {
+                BuildList(entries);
+            }
+            else
+            {
+                BuildDetail(selected, carried);
+            }
+
+            var interactionState = interaction.State;
+            if (!string.IsNullOrEmpty(interactionState.LastErrorCode) && !string.IsNullOrWhiteSpace(interactionState.LastMessage))
+            {
+                AddParagraph(interactionState.LastMessage, theme.DangerColor);
+            }
+
+            dialog.FitBody();
+        }
+
+        private void BuildList(IReadOnlyList<QuestDialogEntry> entries)
+        {
+            if (entries.Count == 0)
+            {
+                AddParagraph("There is nothing more to do here for now.", theme.MutedTextColor);
+                return;
+            }
+
+            foreach (var entry in entries)
+            {
+                var chosen = entry;
+                UiFactory.Button(
+                    theme,
+                    dialog.Body,
+                    MarkerOf(entry.Kind) + "  " + LabelOf(entry),
+                    () => Select(chosen),
+                    entry.Kind == QuestDialogEntryKind.InProgress ? UiButtonTone.Normal : UiButtonTone.Primary);
+            }
+        }
+
+        private void BuildDetail(QuestDialogEntry entry, Func<string, int> carried)
+        {
+            var quest = entry.Quest;
+            UiFactory.SectionHeading(theme, dialog.Body, quest.Title, null, out _);
+            AddParagraph(TextOf(entry, carried), theme.TextColor);
+
+            var objectives = entry.Kind == QuestDialogEntryKind.Offer
+                ? QuestRules.CurrentObjectives(quest, 0).Select(objective => new QuestObjectiveLine(objective, 0)).ToArray()
+                : QuestProgress.CurrentObjectives(quest, entry.Active, carried);
+            if (objectives.Count > 0)
+            {
+                UiFactory.SectionHeading(theme, dialog.Body, "Objectives", null, out _);
+                foreach (var line in objectives)
+                {
+                    AddParagraph(
+                        entry.Kind == QuestDialogEntryKind.Offer ? ObjectiveTextOf(line.Objective) : line.Text,
+                        line.IsComplete ? theme.MutedTextColor : theme.TextColor);
+                }
+            }
+
+            if (entry.Kind is QuestDialogEntryKind.Offer or QuestDialogEntryKind.TurnIn or QuestDialogEntryKind.InProgress)
+            {
+                BuildRewards(quest, entry.Kind == QuestDialogEntryKind.TurnIn);
+            }
+
+            var idle = interaction.State.PendingOperationId == Guid.Empty;
+            UiFactory.Button(theme, dialog.Footer, "Back", Back);
+            switch (entry.Kind)
+            {
+                case QuestDialogEntryKind.Offer:
+                    AddAction("Accept", idle, () => Send(RealtimeCapabilityActionKind.AcceptQuest, string.Empty, string.Empty));
+                    break;
+                case QuestDialogEntryKind.TurnIn:
+                    var needsChoice = quest.RewardChoiceItems != null && quest.RewardChoiceItems.Length > 0;
+                    AddAction(
+                        "Complete",
+                        idle && (!needsChoice || !string.IsNullOrEmpty(rewardChoice)),
+                        () => Send(RealtimeCapabilityActionKind.TurnInQuest, string.Empty, needsChoice ? rewardChoice : string.Empty));
+                    break;
+                case QuestDialogEntryKind.TalkTo:
+                    AddAction("Continue", idle, () => Send(RealtimeCapabilityActionKind.TalkToQuestNpc, entry.Objective.Id, string.Empty));
+                    break;
+                case QuestDialogEntryKind.Deliver:
+                    AddAction(
+                        "Hand over",
+                        idle && carried(entry.Objective.ItemId) >= entry.Objective.Count,
+                        () => Send(RealtimeCapabilityActionKind.DeliverQuestItems, entry.Objective.Id, string.Empty));
+                    break;
+                case QuestDialogEntryKind.LostStartItems:
+                    AddAction("Ask again", idle, () => Send(RealtimeCapabilityActionKind.RegrantQuestItems, string.Empty, string.Empty));
+                    break;
+            }
+        }
+
+        private void BuildRewards(QuestDefinition quest, bool choosing)
+        {
+            var items = quest.RewardItems ?? Array.Empty<QuestItemQuantityDefinition>();
+            var choices = quest.RewardChoiceItems ?? Array.Empty<QuestItemQuantityDefinition>();
+            if (quest.RewardGold <= 0 && items.Length == 0 && choices.Length == 0)
+            {
+                return;
+            }
+
+            UiFactory.SectionHeading(theme, dialog.Body, "Rewards", null, out _);
+            if (quest.RewardGold > 0)
+            {
+                AddParagraph(quest.RewardGold + " Gold", theme.GoldTextColor);
+            }
+
+            foreach (var item in items)
+            {
+                AddParagraph(ItemText(item), theme.TextColor);
+            }
+
+            if (choices.Length == 0)
+            {
+                return;
+            }
+
+            AddParagraph("Choose one of:", theme.MutedTextColor);
+            foreach (var choice in choices)
+            {
+                var definitionId = choice.DefinitionId;
+                if (!choosing)
+                {
+                    AddParagraph(ItemText(choice), theme.TextColor);
+                    continue;
+                }
+
+                var chosen = string.Equals(rewardChoice, definitionId, StringComparison.Ordinal);
+                UiFactory.Button(
+                    theme,
+                    dialog.Body,
+                    (chosen ? "> " : string.Empty) + ItemText(choice),
+                    () =>
+                    {
+                        rewardChoice = definitionId;
+                        Refresh();
+                    },
+                    chosen ? UiButtonTone.Primary : UiButtonTone.Normal);
+            }
+        }
+
+        private void Select(QuestDialogEntry entry)
+        {
+            selected = entry;
+            rewardChoice = string.Empty;
+            interaction.State.ClearMessage();
+            Refresh();
+        }
+
+        private void Back()
+        {
+            selected = null;
+            rewardChoice = string.Empty;
+            interaction.State.ClearMessage();
+            Refresh();
+        }
+
+        private void Send(RealtimeCapabilityActionKind action, string objectiveId, string choice)
+        {
+            if (selected == null)
+            {
+                return;
+            }
+
+            if (!interaction.TryExecuteQuestAction(action, selected.Quest.Id, objectiveId, choice, out var error))
+            {
+                interaction.State.SetLocalError("quest_action_unavailable", error);
+            }
+        }
+
+        private void AddAction(string label, bool enabled, Action onClick)
+        {
+            var button = UiFactory.Button(theme, dialog.Footer, label, onClick, UiButtonTone.Primary);
+            button.interactable = enabled;
+        }
+
+        private void AddParagraph(string text, Color color)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            var paragraph = UiFactory.BodyText(theme, dialog.Body, "Text", theme.BodySize, color, TextAlignmentOptions.TopLeft, text);
+            paragraph.textWrappingMode = TextWrappingModes.Normal;
+        }
+
+        private string TextOf(QuestDialogEntry entry, Func<string, int> carried)
+        {
+            switch (entry.Kind)
+            {
+                case QuestDialogEntryKind.Offer:
+                    return entry.Quest.OfferText;
+                case QuestDialogEntryKind.TurnIn:
+                    return entry.Quest.CompletionText;
+                case QuestDialogEntryKind.TalkTo:
+                    return string.IsNullOrWhiteSpace(entry.Objective.Line) ? entry.Quest.ProgressText : entry.Objective.Line;
+                case QuestDialogEntryKind.Deliver:
+                    return "Hand over " + ItemText(new QuestItemQuantityDefinition
+                    {
+                        DefinitionId = entry.Objective.ItemId,
+                        Quantity = entry.Objective.Count
+                    }) + ". You carry " + carried(entry.Objective.ItemId) + ".";
+                case QuestDialogEntryKind.LostStartItems:
+                    return "You no longer have what you were given for this quest: "
+                        + string.Join(", ", entry.Quest.StartItems.Select(ItemText))
+                        + ". Ask for it again.";
+                default:
+                    return entry.Quest.ProgressText;
+            }
+        }
+
+        private string LabelOf(QuestDialogEntry entry)
+        {
+            switch (entry.Kind)
+            {
+                case QuestDialogEntryKind.TurnIn:
+                    return entry.Quest.Title + " (Complete)";
+                case QuestDialogEntryKind.TalkTo:
+                case QuestDialogEntryKind.Deliver:
+                    return entry.Quest.Title + ": " + entry.Objective.Text;
+                case QuestDialogEntryKind.LostStartItems:
+                    return entry.Quest.Title + ": lost items";
+                case QuestDialogEntryKind.InProgress:
+                    return entry.Quest.Title + " (in progress)";
+                default:
+                    return entry.Quest.Title;
+            }
+        }
+
+        // The marker that the quest windows and the NPC markers share: ! for a quest to accept,
+        // ? for something to finish here.
+        private static string MarkerOf(QuestDialogEntryKind kind)
+        {
+            return kind is QuestDialogEntryKind.Offer or QuestDialogEntryKind.LostStartItems ? "!" : "?";
+        }
+
+        private static string ObjectiveTextOf(QuestObjectiveDefinition objective)
+        {
+            return objective.Text + " 0/" + objective.Count;
+        }
+
+        private string ItemText(QuestItemQuantityDefinition item)
+        {
+            var catalog = inventory?.State.Catalog;
+            var name = catalog != null && catalog.TryGetDefinition(item.DefinitionId, out var definition)
+                ? definition.DisplayName
+                : item.DefinitionId;
+            return item.Quantity > 1 ? item.Quantity + " x " + name : name;
+        }
+
+        private static string StatusText(QuestClientState state)
+        {
+            switch (state.Status)
+            {
+                case QuestClientStatus.Loading:
+                case QuestClientStatus.Unavailable:
+                    return "Reading your quests...";
+                case QuestClientStatus.UpdateRequired:
+                    return "This client build requires a quest catalog update.";
+                default:
+                    return string.IsNullOrWhiteSpace(state.ErrorMessage)
+                        ? "Your quests are unavailable."
+                        : "Your quests are unavailable: " + state.ErrorMessage;
+            }
+        }
+
+        private static bool IsSameEntry(QuestDialogEntry entry, QuestDialogEntry other)
+        {
+            return entry.Kind == other.Kind
+                && string.Equals(entry.Quest.Id, other.Quest.Id, StringComparison.Ordinal)
+                && string.Equals(entry.Objective?.Id, other.Objective?.Id, StringComparison.Ordinal);
+        }
+
+        private void BuildUi()
+        {
+            if (theme == null)
+            {
+                theme = UiTheme.Load(out _);
+            }
+
+            TemporaryUiKit.EnsureEventSystem();
+            var canvasObject = new GameObject(
+                "QuestCanvas",
+                typeof(RectTransform),
+                typeof(Canvas),
+                typeof(CanvasScaler),
+                typeof(GraphicRaycaster));
+            canvasObject.transform.SetParent(transform, false);
+            var canvas = canvasObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = CanvasSortingOrder;
+            var scaler = canvasObject.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            // The root only groups the windows and draws nothing, so a click beside them still
+            // reaches the world.
+            var root = UiFactory.Create("QuestRoot", canvasObject.transform);
+            UiFactory.Fill(root);
+            dialog = UiWindow.Create(theme, root, DialogWindowName, null, "Quests", DialogWidth);
+            dialog.Place(new Vector2(0f, 1f), new Vector2(theme.ScreenMargin, -theme.WindowTop));
+            dialog.SetMaximumBodyHeight(1080f - theme.WindowTop - theme.ScreenMargin - 220f);
+            dialog.CloseRequested += CloseDialog;
+            dialog.SetOpen(false);
+        }
+    }
+}
