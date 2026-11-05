@@ -737,6 +737,12 @@ describes.
   It goes out after the operation's `OwnerItemStateChanged` and before its
   result. A client whose quest log revision differs from the previous revision
   reads its quest log again instead of patching it.
+- `QuestDropInCorpse` (45) tells the owner of a new Mob corpse about one quest
+  item that the corpse holds for them: the corpse, the Mob's name of up to
+  `MaximumCorpseSourceNameLength` (128) characters, the quest, the item
+  definition, and a quantity of at least 1. The worker sends one for every
+  quest drop once the corpse exists, live or durable, and none to an owner who
+  is not connected; the corpse view shows the items as usual.
 
 ## Development Admin Tools
 

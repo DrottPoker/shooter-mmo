@@ -2843,7 +2843,9 @@ windows in `Mmorpg.Client.Ui` present it.
   `QuestRules.Evaluate` holds back only for the level shows a grey `!`.
 - `QuestNotices` writes the game messages of a committed change: an accepted
   quest, counted progress such as `Feral Wolves slain 3/5`, a step that moved on,
-  and a completed or abandoned quest. `QuestProgressWatcher` follows every
+  and a completed or abandoned quest. `QuestClientController.QuestDropped`
+  passes on every `QuestDropInCorpse`, and `QuestNotices.ForDrop` writes it as
+  `Feral Wolf dropped 2 x Wolf Fang for Pelts and Fangs.` `QuestProgressWatcher` follows every
   quest change and every inventory change and writes the progress that carried
   items make, such as `Wolf Pelts 2/3`, and a quest that became ready to turn in,
   whatever made it ready, once. A load of the quest log starts it over without

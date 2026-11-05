@@ -161,7 +161,8 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 && Math.Abs(((response.Corpse.ExpiresAt - response.Corpse.CreatedAt)
                         - TimeSpan.FromSeconds(request.LifetimeSeconds)).TotalMilliseconds)
                     <= 1d
-                && IsValidDurableCorpse(response.Corpse, request.ShardId, null),
+                && IsValidDurableCorpse(response.Corpse, request.ShardId, null)
+                && IsValidKeptQuestDrops(response.QuestDrops, request.Loot),
             cancellationToken);
     }
 
@@ -730,24 +731,45 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 == response.CompletedQuests.Count;
     }
 
-    // The answer keeps the requested order and never grows a drop, so each needed drop is a
-    // requested one in turn.
     private static bool IsValidQuestDrops(SimulationQuestDropResponse response, SimulationQuestDropRequest request)
     {
-        if (response.Drops is null || response.Drops.Count > request.Drops.Count)
+        return response.Drops is not null && IsNeededSubsequence(request.Drops, response.Drops);
+    }
+
+    // A durable corpse keeps the quest drops of its request that the owner needs; a response
+    // without the list keeps none.
+    private static bool IsValidKeptQuestDrops(
+        IReadOnlyList<SimulationQuestDrop>? kept,
+        IReadOnlyList<MobCorpseLootEntryRequest> loot)
+    {
+        return kept is null
+            || IsNeededSubsequence(
+                loot.Where(entry => entry.QuestId is not null)
+                    .Select(entry => new SimulationQuestDrop(entry.QuestId!, entry.DefinitionId, entry.Quantity))
+                    .ToArray(),
+                kept);
+    }
+
+    // The needed drops keep the requested order and never grow a drop, so each needed drop is a
+    // requested one in turn.
+    private static bool IsNeededSubsequence(
+        IReadOnlyList<SimulationQuestDrop> requested,
+        IReadOnlyList<SimulationQuestDrop> needed)
+    {
+        if (needed.Count > requested.Count)
         {
             return false;
         }
 
         var next = 0;
-        foreach (var drop in response.Drops)
+        foreach (var drop in needed)
         {
-            while (next < request.Drops.Count && !IsNeededPart(request.Drops[next], drop))
+            while (next < requested.Count && !IsNeededPart(requested[next], drop))
             {
                 next++;
             }
 
-            if (next == request.Drops.Count)
+            if (next == requested.Count)
             {
                 return false;
             }

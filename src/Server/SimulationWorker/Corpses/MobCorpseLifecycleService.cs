@@ -39,17 +39,35 @@ public sealed record MobCorpseCreationResult(
 {
     public bool Succeeded => Error is null;
 
+    // The quest drops that the corpse holds for its owner, in corpse order, which the owner is
+    // told about.
+    public IReadOnlyList<MobCorpseQuestDropSeed> QuestDrops { get; init; } = [];
+
     // The Mob rolled only quest drops, and its owner needs none of them, so it leaves no corpse.
     public static MobCorpseCreationResult Empty { get; } = new(null, null, null);
 
     public static MobCorpseCreationResult Live(LiveMobCorpseState corpse)
     {
-        return new MobCorpseCreationResult(corpse, null, null);
+        return new MobCorpseCreationResult(corpse, null, null)
+        {
+            QuestDrops = corpse.Loot
+                .Where(entry => entry.QuestId is not null)
+                .OrderBy(entry => entry.SlotIndex)
+                .Select(entry => new MobCorpseQuestDropSeed(entry.QuestId!, entry.DefinitionId, entry.Quantity))
+                .ToArray()
+        };
     }
 
-    public static MobCorpseCreationResult Durable(DurableCorpseResponse corpse)
+    public static MobCorpseCreationResult Durable(
+        DurableCorpseResponse corpse,
+        IReadOnlyList<SimulationQuestDrop>? questDrops = null)
     {
-        return new MobCorpseCreationResult(null, corpse, null);
+        return new MobCorpseCreationResult(null, corpse, null)
+        {
+            QuestDrops = (questDrops ?? [])
+                .Select(drop => new MobCorpseQuestDropSeed(drop.QuestId, drop.DefinitionId, drop.Quantity))
+                .ToArray()
+        };
     }
 
     public static MobCorpseCreationResult Rejected(SimulationWorkerErrorResponse error)
@@ -213,7 +231,7 @@ public sealed class MobCorpseLifecycleService(
         }
 
         durableCorpseStore.Apply(durableResult.Value!.Corpse);
-        return MobCorpseCreationResult.Durable(durableResult.Value.Corpse);
+        return MobCorpseCreationResult.Durable(durableResult.Value.Corpse, durableResult.Value.QuestDrops);
     }
 
     // The quest drops that a live corpse's owner still needs, asked through the owner's current

@@ -5,7 +5,8 @@ using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SharedTests
 {
-    // The quest intents outside an interaction, their results, and the owner's quest log changes.
+    // The quest intents outside an interaction, their results, the owner's quest log changes, and
+    // the quest items that a corpse holds for its owner.
     public static partial class RealtimeProtocolGolden
     {
         private static void RegisterQuests(Registry r)
@@ -14,6 +15,7 @@ namespace Mmorpg.SharedTests
             RegisterQuestIntentCases(r);
             RegisterQuestIntentResultCases(r);
             RegisterQuestLogChangedCases(r);
+            RegisterQuestDropInCorpseCases(r);
         }
 
         private static void RegisterQuestVectors(Registry r)
@@ -21,6 +23,7 @@ namespace Mmorpg.SharedTests
             const RealtimeMessageType intent = RealtimeMessageType.QuestIntent;
             const RealtimeMessageType result = RealtimeMessageType.QuestIntentResult;
             const RealtimeMessageType change = RealtimeMessageType.QuestLogChanged;
+            const RealtimeMessageType drop = RealtimeMessageType.QuestDropInCorpse;
 
             r.Vector(
                 "Quests/QuestIntent/abandon",
@@ -106,6 +109,15 @@ namespace Mmorpg.SharedTests
                     12,
                     true,
                     null)));
+            r.Vector(
+                "Quests/QuestDropInCorpse/two wolf fangs",
+                drop,
+                () => RealtimeProtocol.EncodeQuestDropInCorpse(new RealtimeQuestDropInCorpse(
+                    G(1),
+                    "Feral Wolf",
+                    "quest.pelts_and_fangs",
+                    "quest_item.wolf_fang",
+                    2)));
         }
 
         private static void RegisterQuestIntentCases(Registry r)
@@ -242,6 +254,39 @@ namespace Mmorpg.SharedTests
                         .ToArray())));
         }
 
+        private static void RegisterQuestDropInCorpseCases(Registry r)
+        {
+            r.Accepts("Quests/QuestDropInCorpse/baseline", QuestDropInCorpseWire());
+            r.Accepts(
+                "Quests/QuestDropInCorpse/128 character texts",
+                QuestDropInCorpseWire(source: Repeat("s", 128), quest: Repeat("q", 128), definition: Repeat("d", 128)));
+            r.Rejects("Quests/QuestDropInCorpse/129 character source", QuestDropInCorpseWire(source: Repeat("s", 129)));
+            r.Rejects("Quests/QuestDropInCorpse/129 character quest", QuestDropInCorpseWire(quest: Repeat("q", 129)));
+            r.Rejects("Quests/QuestDropInCorpse/129 character item", QuestDropInCorpseWire(definition: Repeat("d", 129)));
+            r.Rejects("Quests/QuestDropInCorpse/empty corpse id", QuestDropInCorpseWire(corpseId: Guid.Empty));
+            r.Rejects("Quests/QuestDropInCorpse/whitespace source", QuestDropInCorpseWire(source: " "));
+            r.Rejects("Quests/QuestDropInCorpse/empty quest", QuestDropInCorpseWire(quest: ""));
+            r.Rejects("Quests/QuestDropInCorpse/empty item", QuestDropInCorpseWire(definition: ""));
+            r.Rejects("Quests/QuestDropInCorpse/quantity 0", QuestDropInCorpseWire(quantity: 0));
+            r.Rejects("Quests/QuestDropInCorpse/negative quantity", QuestDropInCorpseWire(quantity: -1));
+            r.RejectsEncode(
+                "Quests/QuestDropInCorpse/quantity 0",
+                () => RealtimeProtocol.EncodeQuestDropInCorpse(new RealtimeQuestDropInCorpse(
+                    G(1),
+                    "Feral Wolf",
+                    "quest.pelts_and_fangs",
+                    "quest_item.wolf_fang",
+                    0)));
+            r.RejectsEncode(
+                "Quests/QuestDropInCorpse/empty corpse id",
+                () => RealtimeProtocol.EncodeQuestDropInCorpse(new RealtimeQuestDropInCorpse(
+                    Guid.Empty,
+                    "Feral Wolf",
+                    "quest.pelts_and_fangs",
+                    "quest_item.wolf_fang",
+                    1)));
+        }
+
         private static Wire QuestIntentWire(Guid? operationId = null, byte kind = 1, WireText quest = null)
         {
             return Wire.Message(RealtimeMessageType.QuestIntent)
@@ -310,6 +355,21 @@ namespace Mmorpg.SharedTests
         private static Wire ObjectiveFragment(WireText objective, int progress)
         {
             return Wire.Fragment().Text(objective).I32(progress);
+        }
+
+        private static Wire QuestDropInCorpseWire(
+            Guid? corpseId = null,
+            WireText source = null,
+            WireText quest = null,
+            WireText definition = null,
+            int quantity = 2)
+        {
+            return Wire.Message(RealtimeMessageType.QuestDropInCorpse)
+                .Guid(corpseId ?? G(1))
+                .Text(source ?? "Feral Wolf")
+                .Text(quest ?? "quest.pelts_and_fangs")
+                .Text(definition ?? "quest_item.wolf_fang")
+                .I32(quantity);
         }
     }
 }

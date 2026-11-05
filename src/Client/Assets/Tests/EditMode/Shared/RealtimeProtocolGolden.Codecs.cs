@@ -147,7 +147,10 @@ namespace Mmorpg.SharedTests
                     RealtimeProtocol.EncodeQuestIntentResult),
                 [RealtimeMessageType.QuestLogChanged] = Typed<RealtimeQuestLogChanged>(
                     RealtimeProtocol.TryDecodeQuestLogChanged,
-                    RealtimeProtocol.EncodeQuestLogChanged)
+                    RealtimeProtocol.EncodeQuestLogChanged),
+                [RealtimeMessageType.QuestDropInCorpse] = Typed<RealtimeQuestDropInCorpse>(
+                    RealtimeProtocol.TryDecodeQuestDropInCorpse,
+                    RealtimeProtocol.EncodeQuestDropInCorpse)
             };
         }
 

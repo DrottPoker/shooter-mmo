@@ -121,6 +121,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         replicator.Ammunition = this;
         mobDeaths.Respawned = OnMobRespawned;
         mobDeaths.Despawned = mobs.Remove;
+        mobDeaths.QuestDropsPlaced = OnQuestDropsPlaced;
     }
 
     // Closes the world interaction of a character that died; set by the composition.
@@ -894,6 +895,28 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
             {
                 mob.RetagEntity(entity.NetworkEntityId);
             }
+        }
+    }
+
+    // Tells the corpse's owner, while connected, which quest items it holds for them.
+    private void OnQuestDropsPlaced(MobCorpseQuestDrops placed)
+    {
+        if (!entityRegistry.TryGetPlayerByCharacterId(placed.OwnerCharacterId, out var entity)
+            || !connectionBindings.TryGetConnectionId(entity!.NetworkEntityId, out var connectionId)
+            || !peers.TryGetContext(connectionId, out var context)
+            || !peers.TryGetCurrentPeer(context, out var peer))
+        {
+            return;
+        }
+
+        foreach (var drop in placed.Drops)
+        {
+            sender.SendControl(peer, RealtimeProtocol.EncodeQuestDropInCorpse(new RealtimeQuestDropInCorpse(
+                placed.CorpseId,
+                placed.SourceDisplayName,
+                drop.QuestId,
+                drop.DefinitionId,
+                drop.Quantity)));
         }
     }
 

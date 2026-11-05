@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
+using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.Client.Quests
 {
     // The game messages for the quests that one committed change touched: an accepted quest, the
     // progress of a counted objective such as "Feral Wolves slain 3/5", a step that moved on, and
-    // a completed or abandoned quest. QuestProgressWatcher tells the collect progress and when a
-    // quest is ready to turn in.
+    // a completed or abandoned quest, and for a quest item that a Mob left in its corpse.
+    // QuestProgressWatcher tells the collect progress and when a quest is ready to turn in.
     public static class QuestNotices
     {
         public static IReadOnlyList<string> For(
@@ -61,6 +62,31 @@ namespace Mmorpg.Client.Quests
             }
 
             return notices;
+        }
+
+        // Such as "Feral Wolf dropped 2 x Wolf Fang for Pelts and Fangs."
+        public static string ForDrop(
+            RealtimeQuestDropInCorpse drop,
+            ClientQuestCatalog catalog,
+            Func<string, string> itemName)
+        {
+            if (drop == null)
+            {
+                return string.Empty;
+            }
+
+            var quest = catalog != null && catalog.TryGet(drop.QuestId, out var definition)
+                ? definition.Title
+                : drop.QuestId;
+            var item = itemName?.Invoke(drop.DefinitionId);
+            if (string.IsNullOrEmpty(item))
+            {
+                item = drop.DefinitionId;
+            }
+
+            return drop.SourceDisplayName + " dropped "
+                + (drop.Quantity > 1 ? drop.Quantity + " x " + item : item)
+                + " for " + quest + ".";
         }
     }
 }

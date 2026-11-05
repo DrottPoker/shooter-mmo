@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 34,
+    "version": 35,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -3175,6 +3175,48 @@
           "distinctBy": "QuestId",
           "nullAsEmpty": true,
           "description": "Every quest the change touched, as the quest log holds it after the change."
+        }
+      ]
+    },
+    {
+      "name": "QuestDropInCorpse",
+      "id": 45,
+      "family": "Quests",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A quest item that a dying Mob left in its corpse for the recipient's quest, which only the recipient sees and loots. The worker sends one for every quest drop once the corpse exists.",
+      "parameter": "drop",
+      "fields": [
+        {
+          "name": "CorpseId",
+          "type": "guid",
+          "nonEmpty": true,
+          "description": "The corpse that holds the item."
+        },
+        {
+          "name": "SourceDisplayName",
+          "type": "string",
+          "maxLength": "MaximumCorpseSourceNameLength",
+          "description": "The name of the Mob that left the corpse."
+        },
+        {
+          "name": "QuestId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The quest that needs the item."
+        },
+        {
+          "name": "DefinitionId",
+          "type": "string",
+          "maxLength": "MaximumDefinitionIdLength",
+          "description": "The quest item."
+        },
+        {
+          "name": "Quantity",
+          "type": "i32",
+          "minimum": 1,
+          "description": "How many of the item the corpse holds for the quest."
         }
       ]
     }

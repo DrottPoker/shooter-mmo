@@ -124,6 +124,9 @@ namespace Mmorpg.Client.Networking
 
         public event Action<RealtimeQuestIntentResult> QuestIntentCompleted;
 
+        // A quest item that a dying Mob left in its corpse for the controlled character's quest.
+        public event Action<RealtimeQuestDropInCorpse> QuestDropInCorpse;
+
         public RealtimeConnectionState State { get; private set; }
 
         // The gameplay rules of the joined Shard, or null outside a joined session.
@@ -974,6 +977,9 @@ namespace Mmorpg.Client.Networking
                     case RealtimeMessageType.QuestLogChanged:
                         HandleQuestLogChanged(packet);
                         break;
+                    case RealtimeMessageType.QuestDropInCorpse:
+                        HandleQuestDropInCorpse(packet);
+                        break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
                         break;
@@ -1023,6 +1029,7 @@ namespace Mmorpg.Client.Networking
                 case RealtimeMessageType.AdminStateChanged:
                 case RealtimeMessageType.QuestIntentResult:
                 case RealtimeMessageType.QuestLogChanged:
+                case RealtimeMessageType.QuestDropInCorpse:
                     return true;
                 default:
                     return false;
@@ -1864,6 +1871,25 @@ namespace Mmorpg.Client.Networking
             }
 
             QuestLogChanged?.Invoke(change);
+        }
+
+        private void HandleQuestDropInCorpse(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_quest_drop",
+                    "A quest drop arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeQuestDropInCorpse(packet, out var drop, out var error))
+            {
+                FailProtocol("invalid_quest_drop", error);
+                return;
+            }
+
+            QuestDropInCorpse?.Invoke(drop);
         }
 
         private void HandleAdminStateChanged(byte[] packet)
