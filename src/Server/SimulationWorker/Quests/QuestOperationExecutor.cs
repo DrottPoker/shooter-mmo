@@ -44,8 +44,11 @@ public sealed record QuestOperationOutcome(
 }
 
 // Runs one quest action of a live character through GameService and applies what it committed:
-// the character's item state and its quest log. It runs off the realtime loop and touches only
-// the synchronized stores.
+// the character's item state and its quest log. An answer that may have been lost after the
+// commit, such as a timeout, asks once more with the same operation id, which replays a committed
+// result. When that is uncertain too, the worker reads the quest log again and the client reloads
+// its own; a log that cannot be read is read before the next quest action. It runs off the
+// realtime loop and touches only the synchronized stores.
 public sealed class QuestOperationExecutor(
     GameServiceClient gameServiceClient,
     CharacterItemStateStore itemStateStore,
@@ -68,28 +71,60 @@ public sealed class QuestOperationExecutor(
                 "Synthetic development sessions never take part in quests.");
         }
 
+        // The log the action builds on must hold every committed change.
+        long? reloadFrom = null;
+        if (questLogs.IsStale(session.CharacterId, session.SimulationSessionId))
+        {
+            reloadFrom = await ReadAgainAsync(session, cancellationToken);
+            if (reloadFrom is null)
+            {
+                return QuestOperationOutcome.Rejected(
+                    "quest_log_unavailable",
+                    "The quest log could not be read from GameService. Try again shortly.");
+            }
+        }
+
+        var request = new SimulationQuestOperationRequest(
+            operation.OperationId,
+            session.AccountId,
+            session.CharacterId,
+            session.WorkerId,
+            session.WorkerRuntimeId,
+            session.ShardId,
+            session.SimulationSessionToken,
+            operation.OperationKind,
+            operation.QuestId,
+            operation.QuestNpcActorId,
+            operation.ObjectiveId,
+            operation.RewardChoiceDefinitionId);
         var result = await gameServiceClient.MutateSimulationQuestsAsync(
             session.SimulationSessionId,
-            new SimulationQuestOperationRequest(
-                operation.OperationId,
-                session.AccountId,
-                session.CharacterId,
-                session.WorkerId,
-                session.WorkerRuntimeId,
-                session.ShardId,
-                session.SimulationSessionToken,
-                operation.OperationKind,
-                operation.QuestId,
-                operation.QuestNpcActorId,
-                operation.ObjectiveId,
-                operation.RewardChoiceDefinitionId),
+            request,
             cancellationToken);
+        if (IsUncertain(result))
+        {
+            result = await gameServiceClient.MutateSimulationQuestsAsync(
+                session.SimulationSessionId,
+                request,
+                cancellationToken);
+        }
+
         if (!result.Succeeded)
         {
+            if (IsUncertain(result))
+            {
+                questLogs.MarkStale(session.CharacterId, session.SimulationSessionId);
+                reloadFrom ??= CurrentRevision(session);
+                await ReadAgainAsync(session, cancellationToken);
+            }
+
             return QuestOperationOutcome.Rejected(
                 result.Error!.Code,
                 result.Error.Message,
-                GameServiceOutcome.EndsItemSession(result.Error.Code));
+                GameServiceOutcome.EndsItemSession(result.Error.Code)) with
+            {
+                QuestLogChange = ReloadNotice(session, operation.OperationId, reloadFrom)
+            };
         }
 
         var transaction = result.Value!;
@@ -109,8 +144,9 @@ public sealed class QuestOperationExecutor(
             : null;
         var questChange = transaction.QuestLog is { } log
             && questLogs.TryApply(session.CharacterId, session.SimulationSessionId, log, out var previousRevision)
+            && reloadFrom is null
                 ? QuestLogChangeMapper.Create(operation.OperationId, previousRevision, log)
-                : null;
+                : ReloadNotice(session, operation.OperationId, reloadFrom);
         return new QuestOperationOutcome(
             true,
             string.Empty,
@@ -118,6 +154,53 @@ public sealed class QuestOperationExecutor(
             current.ItemStateRevision,
             ItemStateChange: itemChange,
             QuestLogChange: questChange);
+    }
+
+    // A lost answer, or a failure after the commit such as a read of the committed state.
+    private static bool IsUncertain(GameServiceResult<SimulationItemTransactionResponse> result)
+    {
+        return !result.Succeeded
+            && !GameServiceOutcome.EndsItemSession(result.Error!.Code)
+            && (GameServiceOutcome.IsUncertain(result.Error.Code) || result.StatusCode >= 500);
+    }
+
+    // Replaces a stale log with GameService's and returns the revision it replaced, or null when
+    // GameService could not be read and the log stays stale.
+    private async Task<long?> ReadAgainAsync(ActiveSimulationSession session, CancellationToken cancellationToken)
+    {
+        var result = await gameServiceClient.ReadSimulationQuestLogAsync(
+            session.SimulationSessionId,
+            new SimulationQuestLogRequest(
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken),
+            cancellationToken);
+        return result.Succeeded
+            && questLogs.TryReplace(
+                session.CharacterId,
+                session.SimulationSessionId,
+                CharacterQuestLog.From(result.Value!),
+                out var replaced)
+                ? replaced
+                : null;
+    }
+
+    private long CurrentRevision(ActiveSimulationSession session)
+    {
+        return questLogs.TryGet(session.CharacterId, session.SimulationSessionId, out var log) ? log!.Revision : 0;
+    }
+
+    // Tells the client to read its quest log again once the worker's moved past the revision it
+    // last sent, because the client may have missed what came between.
+    private RealtimeQuestLogChanged? ReloadNotice(ActiveSimulationSession session, Guid operationId, long? reloadFrom)
+    {
+        var current = CurrentRevision(session);
+        return reloadFrom is { } previous && current > previous
+            ? new RealtimeQuestLogChanged(operationId, previous, current, true, [])
+            : null;
     }
 
     private static QuestOperationOutcome Diverged()

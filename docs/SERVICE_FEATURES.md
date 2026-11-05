@@ -1284,6 +1284,14 @@ the quest actions of the realtime protocol through these routes:
   quest log change, sends the item change and then a `QuestLogChanged` from
   the revision it held, and then the result. A rejection keeps the session
   unless its code ends it, as `simulation_session_invalid` does.
+- An answer that may have been lost after the commit, a timeout, an unreachable
+  GameService, or a 5xx answer, asks once more with the same operation id,
+  which replays a committed result. When that answer is uncertain too, the
+  worker reads the quest log again, and a `QuestLogChanged` with
+  `ReloadRequired` tells the client to read its own when it changed. A log that
+  cannot be read stays stale: the next quest action reads it first and fails
+  with `quest_log_unavailable` while GameService cannot answer, so no change
+  builds on a log that misses one.
 
 ## Error Codes
 
@@ -1352,7 +1360,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Corpses | `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active`, `corpse_interaction_invalid`, `corpse_interaction_unavailable`, `corpse_operation_failed`, `live_mob_corpse_operation_unsupported` |
 | Corpse view closures | `corpse_view_closed` when the viewer closed the view, `corpse_emptied` when the last item of a live Mob corpse was taken, `corpse_expired` at the deadline, `corpse_invalidated` when the corpse disappeared or its state can no longer be trusted, `corpse_not_found` when the worker or GameService no longer knows it, and `corpse_not_lootable` when the corpse belongs to the player who tagged its Mob; a view also closes with `combat_character_dead` when its viewer dies, and with the code of a rejection that ends it, such as `wrong_simulation_worker` |
 | World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `world_interaction_closed`, `world_interaction_failed`, `world_interaction_unavailable`, `world_interaction_queue_full`, `world_interaction_rate_limited`, `npc_lifecycle_action_invalid`, `npc_lifecycle_unavailable`, `quest_action_invalid` |
-| Quests | `quests_unavailable`, `quest_intent_unavailable`, `invalid_quest_intent`, `quest_intent_queue_full`, `quest_intent_failed`, `simulation_worker_quest_catalog_mismatch`, and the GameService rejection of a quest action, such as `quest_not_active` |
+| Quests | `quests_unavailable`, `quest_intent_unavailable`, `invalid_quest_intent`, `quest_intent_queue_full`, `quest_intent_failed`, `quest_log_unavailable`, `simulation_worker_quest_catalog_mismatch`, and the GameService rejection of a quest action, such as `quest_not_active` |
 | Gathering | `resource_node_depleted`, `gathering_interrupted`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_failed`, and the GameService rejection of a yield, such as `gathering_tool_required` |
 | Combat | `combat_target_not_found`, `combat_target_not_attackable`, `combat_target_dead`, `combat_target_self`, `combat_player_versus_player_disabled`, `combat_character_dead`, `combat_intent_invalid`, `combat_intent_rate_limited`, `combat_unavailable` |
 | Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent` |

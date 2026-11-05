@@ -71,7 +71,8 @@ public sealed record CharacterActiveQuest(string StepId, IReadOnlyDictionary<str
 // session. A join registers the log GameService stores, and every committed change after it
 // applies in order, because the authority operations of a character run one at a time. A change
 // that is not newer than the log, such as a replay or one already in the log a reconnect read,
-// changes nothing. Joins and authority operations write from any thread.
+// changes nothing. A log that may miss a change, because an action's answer was lost, is stale
+// until GameService's log replaces it. Joins and authority operations write from any thread.
 public sealed class CharacterQuestLogStore
 {
     private readonly object syncRoot = new();
@@ -128,6 +129,53 @@ public sealed class CharacterQuestLogStore
         return false;
     }
 
+    public void MarkStale(Guid characterId, Guid simulationSessionId)
+    {
+        lock (syncRoot)
+        {
+            if (logsByCharacterId.TryGetValue(characterId, out var entry)
+                && entry.SimulationSessionId == simulationSessionId)
+            {
+                logsByCharacterId[characterId] = entry with { Stale = true };
+            }
+        }
+    }
+
+    public bool IsStale(Guid characterId, Guid simulationSessionId)
+    {
+        lock (syncRoot)
+        {
+            return logsByCharacterId.TryGetValue(characterId, out var entry)
+                && entry.SimulationSessionId == simulationSessionId
+                && entry.Stale;
+        }
+    }
+
+    // Replaces the log with the one GameService holds, unless it is older, and returns the
+    // revision it replaced.
+    public bool TryReplace(
+        Guid characterId,
+        Guid simulationSessionId,
+        CharacterQuestLog log,
+        out long previousRevision)
+    {
+        ArgumentNullException.ThrowIfNull(log);
+        lock (syncRoot)
+        {
+            if (logsByCharacterId.TryGetValue(characterId, out var entry)
+                && entry.SimulationSessionId == simulationSessionId
+                && log.Revision >= entry.Log.Revision)
+            {
+                previousRevision = entry.Log.Revision;
+                logsByCharacterId[characterId] = new Entry(simulationSessionId, log);
+                return true;
+            }
+        }
+
+        previousRevision = 0;
+        return false;
+    }
+
     public void Remove(Guid characterId, Guid simulationSessionId)
     {
         lock (syncRoot)
@@ -140,5 +188,5 @@ public sealed class CharacterQuestLogStore
         }
     }
 
-    private sealed record Entry(Guid SimulationSessionId, CharacterQuestLog Log);
+    private sealed record Entry(Guid SimulationSessionId, CharacterQuestLog Log, bool Stale = false);
 }

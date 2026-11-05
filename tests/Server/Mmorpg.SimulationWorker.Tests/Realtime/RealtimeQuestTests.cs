@@ -122,6 +122,102 @@ public sealed class RealtimeQuestTests
         Assert.Equal(0, log!.Revision);
     }
 
+    // A lost answer asks again with the same operation, which replays a committed result.
+    [Fact]
+    public async Task AQuestActionWhoseAnswerIsLostAsksAgainWithTheSameOperation()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
+        var character = harness.AddCharacter("Quest Retrier");
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)));
+        var attempts = 0;
+        harness.GameService.OnQuestOperation = (_, request, _) => Interlocked.Increment(ref attempts) == 1
+            ? throw new HttpRequestException("The answer was lost.")
+            : Task.FromResult(ScriptedGameServiceHandler.CommittedQuestOperation(
+                request,
+                0,
+                4,
+                new SimulationQuestChange(Wolves, null, [], 0)));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        client.Send(RealtimeProtocol.EncodeQuestIntent(
+            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the abandon result");
+
+        Assert.True(Assert.Single(QuestResults(client)).Succeeded);
+        Assert.Equal(2, harness.GameService.QuestOperations.Count);
+        Assert.Single(harness.GameService.QuestOperations.Select(operation => operation.OperationId).Distinct());
+        var change = Assert.Single(QuestChanges(client));
+        Assert.Equal((3L, 4L, false), (change.PreviousQuestLogRevision, change.QuestLogRevision, change.ReloadRequired));
+    }
+
+    // An action that may have committed without an answer reads the quest log again, and the
+    // client reloads its own; a log that cannot be read is read before the next action, which
+    // waits for it.
+    [Fact]
+    public async Task AnUncertainQuestActionReadsTheQuestLogAgainBeforeTheNextOne()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
+        var character = harness.AddCharacter("Quest Uncertain");
+        var logRevision = 3L;
+        var logAvailable = true;
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(logAvailable
+            ? ScriptedGameServiceHandler.QuestLog(request.CharacterId, Interlocked.Read(ref logRevision), ActiveWolves(1))
+            : ScriptedGameServiceHandler.Problem(HttpStatusCode.ServiceUnavailable, "database_unavailable", "Try again."));
+        var committing = true;
+        harness.GameService.OnQuestOperation = (_, request, _) => committing
+            ? throw new HttpRequestException("The answer was lost.")
+            : Task.FromResult(ScriptedGameServiceHandler.CommittedQuestOperation(
+                request,
+                0,
+                Interlocked.Read(ref logRevision) + 1,
+                new SimulationQuestChange(Wolves, null, [], 0)));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        // The action committed behind a lost answer, and GameService's log now holds it.
+        Interlocked.Exchange(ref logRevision, 4);
+        client.Send(RealtimeProtocol.EncodeQuestIntent(
+            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the uncertain result");
+
+        Assert.Equal("auth_service_unavailable", QuestResults(client)[0].Error!.Code);
+        var reload = Assert.Single(QuestChanges(client));
+        Assert.Equal((3L, 4L, true), (reload.PreviousQuestLogRevision, reload.QuestLogRevision, reload.ReloadRequired));
+        Assert.Empty(reload.Quests);
+        Assert.False(harness.QuestLogs!.IsStale(character.CharacterId, character.SimulationSessionId));
+
+        // Neither the answer nor the log comes through, so the next action first reads the log.
+        logAvailable = false;
+        client.Send(RealtimeProtocol.EncodeQuestIntent(
+            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 2, "the second uncertain result");
+        Assert.True(harness.QuestLogs.IsStale(character.CharacterId, character.SimulationSessionId));
+        var operations = harness.GameService.QuestOperations.Count;
+
+        client.Send(RealtimeProtocol.EncodeQuestIntent(
+            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 3, "the refused action");
+        Assert.Equal("quest_log_unavailable", QuestResults(client)[2].Error!.Code);
+        Assert.Equal(operations, harness.GameService.QuestOperations.Count);
+
+        Interlocked.Exchange(ref logRevision, 6);
+        logAvailable = true;
+        committing = false;
+        client.Send(RealtimeProtocol.EncodeQuestIntent(
+            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 4, "the committed action");
+
+        Assert.True(QuestResults(client)[3].Succeeded);
+        var after = QuestChanges(client)[^1];
+        Assert.Equal((4L, 7L, true), (after.PreviousQuestLogRevision, after.QuestLogRevision, after.ReloadRequired));
+        Assert.False(harness.QuestLogs.IsStale(character.CharacterId, character.SimulationSessionId));
+        Assert.True(harness.QuestLogs.TryGet(character.CharacterId, character.SimulationSessionId, out var log));
+        Assert.Equal(7, log!.Revision);
+        Assert.Empty(log.ActiveQuests);
+    }
+
     [Fact]
     public async Task AQuestActionAtTheQuestNpcNamesTheNpcAndPatchesTheQuestLog()
     {
