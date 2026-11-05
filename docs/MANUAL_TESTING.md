@@ -769,7 +769,7 @@ and run:
 dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests|FullyQualifiedName~QuestDropIntegrationTests"
 ```
 
-Expected result: 20 tests pass. Each one joins a character to the Shard and
+Expected result: 21 tests pass. Each one joins a character to the Shard and
 checks one outcome:
 
 - Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the
@@ -795,6 +795,8 @@ checks one outcome:
   Loot all takes the two letters the quest needs and leaves the third in the
   corpse. A durable Mob corpse keeps the letter its owner needs, which the owner
   then loots, and is not created when its only loot is a letter nobody needs.
+  Three letters in one durable corpse keep only the two the quest needs, and
+  Loot all then takes only the one still needed.
 
 Then run the worker's side of the same actions:
 

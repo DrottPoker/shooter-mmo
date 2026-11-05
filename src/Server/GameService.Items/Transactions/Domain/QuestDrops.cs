@@ -53,6 +53,12 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
         return Math.Clamp(objective.Count - owned, 0, quantity);
     }
 
+    // The drops of one transaction share what their quests still need.
+    public QuestDropPlan Plan()
+    {
+        return new QuestDropPlan(this);
+    }
+
     // Only a protected quest item carries a quest's lineage.
     public static bool IsQuestDropItem(ResolvedItemDefinition definition)
     {
@@ -106,5 +112,69 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
                 SourceId = questId
             })
             .ToArray();
+    }
+}
+
+// What the quest drops of one transaction still need: drops of one quest item share it, so two
+// letters in one corpse never take more than the quest asks for.
+internal sealed class QuestDropPlan(QuestDrops questDrops)
+{
+    private readonly QuestDrops questDrops = questDrops;
+    private readonly Dictionary<(string QuestId, string DefinitionId), int> planned = [];
+
+    // The part of a drop that its quest still needs after the drops planned before it.
+    public async Task<int> TakeAsync(
+        ItemTransactionContext context,
+        Guid characterId,
+        string questId,
+        string sourceActorDefinitionId,
+        ResolvedItemDefinition definition,
+        int quantity,
+        CancellationToken cancellationToken)
+    {
+        var key = (questId, definition.RuntimeDefinition.Id);
+        var before = planned.GetValueOrDefault(key);
+        var needed = Math.Max(
+            0,
+            await questDrops.NeededAsync(
+                context,
+                characterId,
+                questId,
+                sourceActorDefinitionId,
+                definition,
+                quantity + before,
+                cancellationToken) - before);
+        planned[key] = before + needed;
+        return needed;
+    }
+
+    // Whether the quest still needs all of a drop after the drops planned before it; only then
+    // does the plan count it.
+    public async Task<bool> TakeAllAsync(
+        ItemTransactionContext context,
+        Guid characterId,
+        string questId,
+        string sourceActorDefinitionId,
+        ResolvedItemDefinition definition,
+        int quantity,
+        CancellationToken cancellationToken)
+    {
+        var key = (questId, definition.RuntimeDefinition.Id);
+        var before = planned.GetValueOrDefault(key);
+        var needed = await questDrops.NeededAsync(
+            context,
+            characterId,
+            questId,
+            sourceActorDefinitionId,
+            definition,
+            quantity + before,
+            cancellationToken) - before;
+        if (needed < quantity)
+        {
+            return false;
+        }
+
+        planned[key] = before + quantity;
+        return true;
     }
 }

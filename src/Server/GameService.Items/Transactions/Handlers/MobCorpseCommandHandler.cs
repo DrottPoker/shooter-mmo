@@ -45,6 +45,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
         }
 
         var kept = new List<KeptLoot>(command.Loot.Count);
+        var questDropPlan = questDrops.Plan();
         foreach (var loot in command.Loot)
         {
             var definition = await context.State.LoadDefinitionAsync(
@@ -67,7 +68,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                     "A quest drop must be a protected quest item within its stack limit for the corpse's owner.");
             }
 
-            var needed = await questDrops.NeededAsync(
+            var needed = await questDropPlan.TakeAsync(
                 context,
                 ownerId!.Value,
                 loot.QuestId,

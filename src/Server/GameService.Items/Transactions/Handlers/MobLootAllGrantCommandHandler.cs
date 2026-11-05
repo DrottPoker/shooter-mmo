@@ -47,7 +47,7 @@ internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IIt
         var grants = new Dictionary<Guid, MobLootGrantEntry>();
         var items = new List<LootAllCorpseItem>();
         var unneededQuestDrops = 0;
-        var plannedQuestDrops = new Dictionary<(string QuestId, string DefinitionId), int>();
+        var questDropPlan = questDrops.Plan();
         foreach (var loot in command.Loot.Where(loot => !alreadyGranted.Contains(loot.GrantId)))
         {
             var definition = await state.LoadDefinitionAsync(loot.DefinitionId, cancellationToken);
@@ -59,19 +59,13 @@ internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IIt
             }
             else
             {
-                // Drops of one quest item share what the quest still needs.
-                var key = (loot.QuestId, definition.RuntimeDefinition.Id);
-                var planned = plannedQuestDrops.GetValueOrDefault(key);
-                quantity = Math.Max(
-                    0,
-                    await NeededQuestDropAsync(context, command, loot, definition, planned, cancellationToken));
+                quantity = await NeededQuestDropAsync(context, command, loot, definition, questDropPlan, cancellationToken);
                 if (quantity == 0)
                 {
                     unneededQuestDrops++;
                     continue;
                 }
 
-                plannedQuestDrops[key] = planned + quantity;
                 policies = QuestDrops.LineagePolicies(definition, loot.QuestId);
             }
 
@@ -140,13 +134,13 @@ internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IIt
     }
 
     // A quest drop is a protected quest item within its stack limit, granted up to the quantity
-    // that its quest still needs.
-    private async Task<int> NeededQuestDropAsync(
+    // that its quest still needs after the drops of the same item before it.
+    private static async Task<int> NeededQuestDropAsync(
         ItemTransactionContext context,
         GrantMobLootAllCommand command,
         MobLootGrantEntry loot,
         ResolvedItemDefinition definition,
-        int planned,
+        QuestDropPlan questDropPlan,
         CancellationToken cancellationToken)
     {
         if (!QuestDrops.IsQuestDropItem(definition)
@@ -157,14 +151,14 @@ internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IIt
                 "A quest drop must be a protected quest item within its stack limit.");
         }
 
-        return await questDrops.NeededAsync(
+        return await questDropPlan.TakeAsync(
             context,
             command.CharacterId,
             loot.QuestId!,
             command.SourceActorDefinitionId,
             definition,
-            loot.Quantity + planned,
-            cancellationToken) - planned;
+            loot.Quantity,
+            cancellationToken);
     }
 
     private static async Task ExecuteStepAsync(

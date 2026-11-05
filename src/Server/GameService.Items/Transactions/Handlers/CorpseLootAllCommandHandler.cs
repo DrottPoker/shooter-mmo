@@ -296,6 +296,7 @@ internal sealed class CorpseLootAllCommandHandler(QuestDrops questDrops) : IItem
             cancellationToken: cancellationToken))).ToArray();
 
         var entries = new List<LootAllCorpseEntry>(rows.Length);
+        var questDropPlan = questDrops.Plan();
         foreach (var row in rows)
         {
             var definition = await state.LoadDefinitionAsync(row.DefinitionId, cancellationToken);
@@ -321,7 +322,15 @@ internal sealed class CorpseLootAllCommandHandler(QuestDrops questDrops) : IItem
                     row.SectionKind,
                     LootAllState.MergeKey(definition, policies),
                     capabilities.CanChangeOwningCharacter
-                        || await IsNeededQuestDropAsync(context, corpse, characterId, policies, definition, row.Quantity, cancellationToken),
+                        || await IsNeededQuestDropAsync(
+                            context,
+                            corpse,
+                            characterId,
+                            policies,
+                            definition,
+                            row.Quantity,
+                            questDropPlan,
+                            cancellationToken),
                     bag),
                 row.SectionContainerId));
         }
@@ -329,26 +338,29 @@ internal sealed class CorpseLootAllCommandHandler(QuestDrops questDrops) : IItem
         return entries;
     }
 
-    private async Task<bool> IsNeededQuestDropAsync(
+    // A quest drop moves whole, so its quest must still need all of it after the drops of the
+    // same item before it.
+    private static async Task<bool> IsNeededQuestDropAsync(
         ItemTransactionContext context,
         LockedCorpseRow corpse,
         Guid characterId,
         IReadOnlyList<LockedItemPolicy> policies,
         ResolvedItemDefinition definition,
         int quantity,
+        QuestDropPlan questDropPlan,
         CancellationToken cancellationToken)
     {
         return QuestDrops.LineageQuestId(policies) is { } questId
             && await QuestDrops.OwnMobCorpseSourceAsync(context, corpse.CorpseId, characterId, cancellationToken)
                 is { } sourceActorDefinitionId
-            && await questDrops.NeededAsync(
+            && await questDropPlan.TakeAllAsync(
                 context,
                 characterId,
                 questId,
                 sourceActorDefinitionId,
                 definition,
                 quantity,
-                cancellationToken) == quantity;
+                cancellationToken);
     }
 
     private sealed record LootAllCorpseEntry(LootAllCorpseItem Item, Guid SectionContainerId);

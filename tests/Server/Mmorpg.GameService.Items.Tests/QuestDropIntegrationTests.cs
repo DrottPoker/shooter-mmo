@@ -127,6 +127,48 @@ public sealed class QuestDropIntegrationTests
         Assert.NotEqual(inventoryId, (await world.LoadItemAsync(secondLetterId)).ContainerId);
     }
 
+    // Two letters of one corpse share what the quest still needs, at creation and in Loot all.
+    [PostgresIntegrationFact]
+    public async Task LettersOfOneDurableCorpseShareWhatTheQuestStillNeeds()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("quest_drop_sharer");
+        var characterId = player.Character.Id;
+        var session = await world.JoinAsync(player);
+        var inventoryId = (await world.LoadStateAsync(characterId)).PermanentInventoryContainerId;
+        ItemScenarioWorld.AssertCommitted(
+            await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
+        var corpseId = Guid.NewGuid();
+        MobCorpseLootEntryRequest[] letters =
+        [
+            new(Guid.NewGuid(), Letter, 1, Trophies),
+            new(Guid.NewGuid(), Letter, 1, Trophies),
+            new(Guid.NewGuid(), Letter, 1, Trophies)
+        ];
+
+        ItemScenarioWorld.AssertCommitted(await CreateCorpseAsync(world, corpseId, characterId, letters));
+        Assert.Equal(2, await CountCorpseItemsAsync(world, corpseId));
+        ItemScenarioWorld.AssertCommitted(await GrantAsync(world, session, characterId, Wolf, Trophies, inventoryId, 0));
+        ItemScenarioWorld.AssertCommitted(await LootAllAsync(world, characterId, corpseId));
+
+        Assert.Equal(2, (await LineageItemsAsync(context, characterId, Trophies)).Count);
+        Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId));
+    }
+
+    private static async Task<int> CountCorpseItemsAsync(ItemScenarioWorld world, Guid corpseId)
+    {
+        await using var connection = await world.Context.DataSource.OpenConnectionAsync();
+        return await connection.QuerySingleAsync<int>(
+            """
+            select count(*)::integer
+            from corpse_sections section
+            join item_instances item on item.container_id = section.container_id
+            where section.corpse_id = @CorpseId;
+            """,
+            new { CorpseId = corpseId });
+    }
+
     private static async Task<ItemTransactionResult> GrantAsync(
         ItemScenarioWorld world,
         ConsumedSimulationJoinTicketResponse session,
