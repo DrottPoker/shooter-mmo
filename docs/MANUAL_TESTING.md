@@ -769,7 +769,7 @@ and run:
 dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests|FullyQualifiedName~QuestDropIntegrationTests"
 ```
 
-Expected result: 21 tests pass. Each one joins a character to the Shard and
+Expected result: 22 tests pass. Each one joins a character to the Shard and
 checks one outcome:
 
 - Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the
@@ -797,6 +797,10 @@ checks one outcome:
   then loots, and is not created when its only loot is a letter nobody needs.
   Three letters in one durable corpse keep only the two the quest needs, and
   Loot all then takes only the one still needed.
+- The worker's quest drop read for three rolled letters answers the two the
+  quest needs, and after one letter was looted only one; before the acceptance
+  and for a Grey Wolf it answers none, and another session token is refused
+  with `simulation_session_invalid`.
 
 Then run the worker's side of the same actions:
 
@@ -812,7 +816,10 @@ letter back; each action reaches the player as a `QuestLogChanged` from the
 revision before it, sent before the action's result. Through the same routes, a
 credited Feral Wolf kill brings the hunt's `wolves` to 1 once, also when the
 worker asks again with the same operation, a Grey Wolf counts for nothing, and
-an Iron Vein yield with the pickaxe brings the errand's `ore` to 1. A join whose
+an Iron Vein yield with the pickaxe brings the errand's `ore` to 1. With the
+trophies accepted, the worker's quest drop read for three rolled letters
+answers two, a letter looted with the quest's lineage counts, and the next
+read answers one. A join whose
 quest log cannot be read, or that GameService answers with another quest
 catalog, is rejected and released, and a development bot never reads a quest
 log.
@@ -836,6 +843,22 @@ in the lane, deciding each one after the one before it, so a Grey Wolf behind
 the Feral Wolf that finishes a step counts for the next step. An Iron Vein yield names `resource.iron_vein`
 while the errand needs ore and none once the ore is done, a retry sends the same
 request, and a lost answer makes the worker read the quest log again.
+
+Then run the worker's quest drops:
+
+```powershell
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~RealtimeQuestDropTests|FullyQualifiedName~QuestDropRollerTests|FullyQualifiedName~MobCorpseLifecycleServiceTests"
+```
+
+Expected result: every test passes. An archer on `quest.fixture.trophies` kills
+a Feral Wolf, and its corpse holds the wolf's own loot and then a
+`fixture.letter` that names the quest; looting the letter sends the quest with
+the grant. A wolf without loot of its own leaves a corpse with only the letter,
+and none when GameService answers that the quest needs no more letters. A
+player without the quest gets no letter, and the worker asks GameService
+nothing. A lost answer of the quest drop read fails the corpse, which the Mob
+retries, an owner whose session ended gets no letter, and a durable corpse
+sends its letter to GameService with the quest.
 
 The in-game checks of the quest dialog replace this section once the quest
 windows exist.

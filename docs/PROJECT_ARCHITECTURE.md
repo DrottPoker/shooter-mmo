@@ -1052,8 +1052,8 @@ shared motor and route planner for Mob movement without changing them.
    resolves due projectile impacts, then starts, releases, or cancels attacks
    for every combatant in entity id order, then resolves deaths, and then
    updates the combat flags, regeneration, and respawns. One injectable random
-   source per worker runtime rolls damage and loot, so every outcome is
-   reproducible in tests.
+   source per worker runtime rolls damage, loot, and quest drops, so every
+   outcome is reproducible in tests.
 3. Every changed combatant and every combat event reaches its viewers once at
    the end of the tick.
 4. Durable effects leave the loop as tracked operations that retry with the
@@ -1063,7 +1063,9 @@ shared motor and route planner for Mob movement without changing them.
    authority lane; a durable Mob corpse commits through the durable Mob corpse
    route. An arrow batch gives up after a bounded number of attempts and leaves
    its arrows with the player, while a death and a durable Mob corpse retry
-   until they commit or GameService refuses them for good.
+   until they commit or GameService refuses them for good, and a live Mob
+   corpse with quest drops retries its read of what the owner still needs
+   until GameService answers.
 5. A dead player respawns only after its death committed and the committed
    carry state was applied.
 

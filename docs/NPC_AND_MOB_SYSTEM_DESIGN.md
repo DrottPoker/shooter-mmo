@@ -646,8 +646,9 @@ but never an interaction. The combat system produces its death, as
 - The loot profile is rolled once at the death, and a Mob with contributor
   credit rolls it once for every credited player, as
   [Mob Corpse Lifecycle](INVENTORY_AND_DEATH_LOOT_DESIGN.md#mob-corpse-lifecycle)
-  describes. An empty roll leaves no corpse. Quest drops that add personal
-  entries are planned.
+  describes. The owner of each corpse also rolls the Mob's
+  [quest drops](QUEST_SYSTEM_DESIGN.md#quest-drops), which add personal
+  entries after the Mob's own loot. An empty roll leaves no corpse.
 - The actor despawns once its corpse exists or its death has reached the
   viewers. Its respawn profile recreates the same compiled spawn instance with
   a fresh runtime id and network entity id through the central timer queue, and

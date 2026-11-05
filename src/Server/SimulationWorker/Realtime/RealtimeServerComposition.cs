@@ -374,7 +374,10 @@ internal static class RealtimeServerComposition
             completions,
             operationTracker,
             combatRandom,
-            logger);
+            logger,
+            questDependencies.Catalog is null
+                ? null
+                : new QuestDropRoller(questDependencies.QuestLogs, questDependencies.Catalog));
         var combatLineOfSight = new CombatLineOfSight(dependencies.CollisionWorld);
         var mobs = new MobSystem(
             config,

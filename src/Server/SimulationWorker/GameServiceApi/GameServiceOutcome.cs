@@ -32,6 +32,13 @@ public static class GameServiceOutcome
     // that ends the session is final.
     public static bool MayHaveCommitted(string code, int statusCode)
     {
+        return IsTransient(code, statusCode);
+    }
+
+    // A failure that the same request may get past: a timeout, a lost connection, or a server
+    // error. An answer that ends the session is final.
+    public static bool IsTransient(string code, int statusCode)
+    {
         return !EndsItemSession(code) && (IsUncertain(code) || statusCode >= 500);
     }
 }

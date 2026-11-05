@@ -1,17 +1,21 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using Mmorpg.Server.Common.Identity;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.SimulationWorker.Corpses;
 
+// QuestId names the quest of a quest drop, which only the corpse's owner loots and which
+// GameService grants with the quest's lineage; ordinary loot names none.
 public sealed record LiveMobCorpseLootEntry(
     Guid LootEntryId,
     Guid GrantId,
     string DefinitionId,
     int Quantity,
-    int SlotIndex);
+    int SlotIndex,
+    string? QuestId = null);
 
 public sealed record LiveMobCorpseState(
     Guid CorpseId,
@@ -355,7 +359,9 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
                 || entry.GrantId == Guid.Empty
                 || string.IsNullOrWhiteSpace(entry.DefinitionId)
                 || entry.Quantity <= 0
-                || entry.SlotIndex < 0)
+                || entry.SlotIndex < 0
+                || (entry.QuestId is not null
+                    && (corpse.OwnerCharacterId is null || !Identifiers.IsContentIdentifier(entry.QuestId))))
             || corpse.Loot.Select(entry => entry.LootEntryId).Distinct().Count()
                 != corpse.Loot.Count
             || corpse.Loot.Select(entry => entry.GrantId).Distinct().Count()
@@ -371,7 +377,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
 
     private static string CreateFingerprint(LiveMobCorpseState corpse)
     {
-        var components = new List<string>(15 + (corpse.Loot.Count * 5))
+        var components = new List<string>(17 + (corpse.Loot.Count * 6))
         {
             corpse.CorpseId.ToString("N"),
             corpse.SourceActorRuntimeId.ToString("N"),
@@ -398,6 +404,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             components.Add(loot.DefinitionId);
             components.Add(loot.Quantity.ToString(CultureInfo.InvariantCulture));
             components.Add(loot.SlotIndex.ToString(CultureInfo.InvariantCulture));
+            components.Add(loot.QuestId ?? string.Empty);
         }
 
         return Convert.ToHexStringLower(

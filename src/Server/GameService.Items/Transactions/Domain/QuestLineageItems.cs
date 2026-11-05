@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
@@ -16,7 +17,17 @@ internal static class QuestLineageItems
         string definitionId,
         CancellationToken cancellationToken)
     {
-        return context.Connection.ExecuteScalarAsync<int>(new CommandDefinition(
+        return CountOwnedAsync(context.Scope, characterId, lineageId, definitionId, cancellationToken);
+    }
+
+    public static Task<int> CountOwnedAsync(
+        PostgresTransactionScope scope,
+        Guid characterId,
+        string lineageId,
+        string definitionId,
+        CancellationToken cancellationToken)
+    {
+        return scope.Connection.ExecuteScalarAsync<int>(new CommandDefinition(
             $"""
             select coalesce(sum(item.quantity), 0)::integer
             from item_instances item
@@ -39,7 +50,7 @@ internal static class QuestLineageItems
                 PolicyKind = ItemPolicyIds.ProtectedOnDeath,
                 ActiveStatus = ItemPolicyRules.ActiveStatus
             },
-            context.Transaction,
+            scope.Transaction,
             cancellationToken: cancellationToken));
     }
 
