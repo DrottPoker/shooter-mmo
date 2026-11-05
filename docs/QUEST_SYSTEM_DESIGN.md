@@ -35,6 +35,9 @@ Implemented:
   accepting, abandoning, granting start items again, talking, delivering,
   counting credited kills, and the turn-in with its rewards, and the count of
   gathering yields in the gathering transaction. No worker calls them yet.
+- SimulationWorker loads the quest catalog and reports its revision, and
+  placement requires it to match the mirrored revision. The worker route that
+  reads a joining character's quest log exists; no worker calls it yet.
 
 Planned: everything else in this document. Quest content replaces the
 configured quest, one `quests` capability replaces both quest capability kinds,

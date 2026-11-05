@@ -412,6 +412,58 @@ public sealed class AuthSimulationFlowIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task JoinRequiresTheWorkerToRunTheMirroredQuestCatalog()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(
+            heartbeatSeedShard: false);
+        var player = await context.RegisterPlayerAsync();
+        var mismatched = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                QuestCatalogRevision = "another-quest-catalog-revision"
+            },
+            CancellationToken.None);
+        Assert.True(mismatched.Succeeded, mismatched.Error?.Message);
+        Assert.Equal("another-quest-catalog-revision", mismatched.Value!.QuestCatalogRevision);
+
+        var rejected = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.False(rejected.Succeeded);
+        Assert.Equal(StatusCodes.Status409Conflict, rejected.StatusCode);
+        Assert.Equal("simulation_worker_quest_catalog_mismatch", rejected.Error!.Code);
+        Assert.Equal(0, await CountActiveTicketsAsync(context));
+
+        var matching = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest(),
+            CancellationToken.None);
+        Assert.True(matching.Succeeded, matching.Error?.Message);
+        Assert.Equal(
+            PostgresIntegrationTestContext.FixtureQuestCatalogRevision,
+            matching.Value!.QuestCatalogRevision);
+        var join = await context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            LocalShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
+        Assert.True(join.Succeeded, join.Error?.Message);
+
+        var missing = await context.SimulationWorkerRegistryService.HeartbeatAsync(
+            LocalWorkerId,
+            PostgresIntegrationTestContext.CreateHeartbeatRequest() with
+            {
+                QuestCatalogRevision = null
+            },
+            CancellationToken.None);
+        Assert.False(missing.Succeeded);
+        Assert.Equal(StatusCodes.Status400BadRequest, missing.StatusCode);
+    }
+
+    [PostgresIntegrationFact]
     public async Task RetriedJoinIsNotBlockedByTheAccountsOwnPendingTicket()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync(

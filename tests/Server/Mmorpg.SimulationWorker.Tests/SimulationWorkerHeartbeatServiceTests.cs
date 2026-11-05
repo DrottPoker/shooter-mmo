@@ -30,6 +30,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             DateTime.UtcNow.AddMinutes(-1));
         var collisionWorld = CollisionTestWorldFactory.Create();
         var itemCatalog = ItemCatalogTestData.CompileFixture();
+        var questCatalog = QuestCatalogTestData.CompileFixture();
         var shardRules = new SimulationShardRules();
         var registrationLease = new SimulationWorkerRegistrationLease(TimeProvider.System);
         using var service = new SimulationWorkerHeartbeatService(
@@ -40,6 +41,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             readiness,
             collisionWorld,
             itemCatalog,
+            questCatalog,
             CombatRulesLoader.Load(Path.Combine(AppContext.BaseDirectory, SimulationWorkerConfig.DefaultCombatRulesPath)),
             shardRules,
             NullLogger<SimulationWorkerHeartbeatService>.Instance,
@@ -79,6 +81,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
         Assert.Equal(0, handler.HeartbeatRequest.ActiveConnections);
         Assert.Equal(collisionWorld.Revision, handler.HeartbeatRequest.CollisionRevision);
         Assert.Equal(itemCatalog.Revision, handler.HeartbeatRequest.ItemCatalogRevision);
+        Assert.Equal(questCatalog.Revision, handler.HeartbeatRequest.QuestCatalogRevision);
         Assert.True(shardRules.IsKnown);
         Assert.True(shardRules.Current.PlayerVersusPlayer);
         Assert.Equal("test-worker-runtime", handler.OfflineRequest!.RuntimeId);
@@ -108,6 +111,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             readiness,
             CollisionTestWorldFactory.Create(),
             ItemCatalogTestData.CompileFixture(),
+            QuestCatalogTestData.CompileFixture(),
             CombatRulesLoader.Load(Path.Combine(AppContext.BaseDirectory, SimulationWorkerConfig.DefaultCombatRulesPath)),
             new SimulationShardRules(),
             NullLogger<SimulationWorkerHeartbeatService>.Instance,
@@ -210,6 +214,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
             readiness,
             CollisionTestWorldFactory.Create(),
             ItemCatalogTestData.CompileFixture(),
+            QuestCatalogTestData.CompileFixture(),
             CombatRulesLoader.Load(Path.Combine(AppContext.BaseDirectory, SimulationWorkerConfig.DefaultCombatRulesPath)),
             new SimulationShardRules(),
             NullLogger<SimulationWorkerHeartbeatService>.Instance,
@@ -297,6 +302,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
                     HeartbeatRequest.SimulationRevision,
                     HeartbeatRequest.CollisionRevision,
                     HeartbeatRequest.ItemCatalogRevision,
+                    HeartbeatRequest.QuestCatalogRevision,
                     now,
                     now.AddSeconds(30)));
             }
@@ -422,6 +428,7 @@ public sealed class SimulationWorkerHeartbeatServiceTests
                     heartbeat.SimulationRevision,
                     heartbeat.CollisionRevision,
                     heartbeat.ItemCatalogRevision,
+                    heartbeat.QuestCatalogRevision,
                     now,
                     now.AddSeconds(30)))
             };

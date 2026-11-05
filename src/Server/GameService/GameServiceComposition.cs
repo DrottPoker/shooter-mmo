@@ -28,7 +28,8 @@ internal static class GameServiceComposition
         typeof(ICharacterLifecycleHandler),
         typeof(ISimulationCharacterStateProvider),
         typeof(IShardWorldLocalStateProbe),
-        typeof(IItemCatalogRevisionProvider)
+        typeof(IItemCatalogRevisionProvider),
+        typeof(IQuestCatalogRevisionProvider)
     ];
 
     // Modules in dependency order. Services register and routes map in this order.

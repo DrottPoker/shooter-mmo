@@ -10,6 +10,7 @@ using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldCollision;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.Registry;
 
@@ -21,6 +22,7 @@ public sealed class SimulationWorkerHeartbeatService(
     RealtimeTransportReadiness transportReadiness,
     ChunkedStaticCollisionWorld collisionWorld,
     ItemCatalogRuntimeDocument itemCatalog,
+    QuestCatalogRuntimeDocument questCatalog,
     CombatRules combatRules,
     SimulationShardRules shardRules,
     ILogger<SimulationWorkerHeartbeatService> logger,
@@ -100,7 +102,8 @@ public sealed class SimulationWorkerHeartbeatService(
                 RealtimeProtocol.Version,
                 GameSimulationCompatibility.Revision,
                 collisionWorld.Revision,
-                itemCatalog.Revision),
+                itemCatalog.Revision,
+                questCatalog.Revision),
             cancellationToken);
 
         if (!result.Succeeded)

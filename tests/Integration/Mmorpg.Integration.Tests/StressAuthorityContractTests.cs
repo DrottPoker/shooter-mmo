@@ -52,7 +52,8 @@ public sealed class StressAuthorityContractTests
                 RealtimeProtocol.Version,
                 "simulation-revision",
                 "collision-revision",
-                "item-catalog-revision"),
+                "item-catalog-revision",
+                "quest-catalog-revision"),
             cancellationToken);
         Assert.True(registration.Succeeded, registration.Error?.Code);
 

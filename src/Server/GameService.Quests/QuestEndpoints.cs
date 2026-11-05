@@ -23,6 +23,24 @@ internal static class QuestEndpoints
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
+        // The worker reads a joining character's quest log with the session's credentials.
+        app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/quest-log", async (
+            Guid simulationSessionId,
+            SimulationQuestLogRequest request,
+            ClaimsPrincipal principal,
+            SimulationQuestLogService questLogService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await questLogService.ReadAsync(
+                principal.GetSimulationWorkerId(),
+                simulationSessionId,
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        })
+            .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
+            .WithMetadata(new SensitiveResponseAttribute());
+
         return app;
     }
 }

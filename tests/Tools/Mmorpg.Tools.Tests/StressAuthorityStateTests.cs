@@ -110,7 +110,8 @@ public sealed class StressAuthorityStateTests
                 RealtimeProtocol.Version,
                 "simulation-revision",
                 "collision-revision",
-                "item-catalog-revision"));
+                "item-catalog-revision",
+                "quest-catalog-revision"));
 
         Assert.True(heartbeat.Succeeded);
         Assert.Equal(7, state.CaptureWorkerRegistration()!.ActiveConnections);
@@ -142,7 +143,8 @@ public sealed class StressAuthorityStateTests
                 RealtimeProtocol.Version,
                 "simulation-revision",
                 "collision-revision",
-                "item-catalog-revision"));
+                "item-catalog-revision",
+                "quest-catalog-revision"));
 
         Assert.True(heartbeat.Succeeded);
         var value = heartbeat.Value!;
@@ -166,6 +168,7 @@ public sealed class StressAuthorityStateTests
                 DateTime.UtcNow,
                 value.LastHeartbeatAt,
                 value.OnlineUntil,
-                value.ItemCatalogRevision));
+                value.ItemCatalogRevision,
+                value.QuestCatalogRevision));
     }
 }

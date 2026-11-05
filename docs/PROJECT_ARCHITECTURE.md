@@ -489,9 +489,9 @@ Quest definitions live below `content/quests` and compile into
 `src/Shared/WorldData/Generated/Quests/core.quest-catalog.json`.
 `tools/QuestCatalogCompiler` and the tests use the framework-neutral quest
 compiler and runtime validator in WorldData, next to the shared quest rules for
-availability and step progression. No service loads the quest catalog yet;
-[Quest System Design](QUEST_SYSTEM_DESIGN.md#authority) describes how the
-services will share the authority over quests.
+availability and step progression. GameService and SimulationWorker load the
+compiled catalog, and [Quest System Design](QUEST_SYSTEM_DESIGN.md#authority)
+describes how they share the authority over quests.
 
 The pure item rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, empty and non-empty Bag locations, Bag containment-cycle rejection, item policy capabilities, unitless
@@ -749,7 +749,7 @@ transaction protocol stay authoritative for corpse contents.
 | `fleets` | Regional or operational compute groups |
 | `simulation_nodes` | Machines or hosts assigned to fleets |
 | `shards` | Player-selectable simulations with their Fleet, rule set, and current World binding |
-| `simulation_workers` | Logical workers and current runtime metadata, including the protocol, simulation, collision, and item catalog revisions |
+| `simulation_workers` | Logical workers and current runtime metadata, including the protocol, simulation, collision, item catalog, and quest catalog revisions |
 | `simulation_assignments` | Historical and active worker-to-shard mappings |
 | `simulation_join_tickets` | Short-lived exact-runtime admission credentials, stored as hashes |
 | `character_simulation_sessions` | Global active simulation leases |
@@ -934,8 +934,8 @@ adds a production code path:
 4. Unity requests `POST /api/shards/{shardId}/join` for an owned character.
 5. GameService locks the account and character, applies global active-session
    rules, reserves authoritative session and pending-ticket capacity under a
-   worker row lock, refuses a worker whose item catalog revision differs from
-   the mirrored catalog, and creates a ticket.
+   worker row lock, refuses a worker whose item or quest catalog revision
+   differs from the mirrored catalog, and creates a ticket.
 6. The response contains the selected shard plus an exact worker runtime
    endpoint and compatibility metadata.
 

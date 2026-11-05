@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 using Mmorpg.GameService.Quests.Contracts;
@@ -29,7 +30,9 @@ public sealed class QuestsModule(QuestsModuleOptions options) : IGameServiceModu
         services.AddSingleton<IQuestDefinitions>(questDefinitions);
         services.AddSingleton<IDatabaseSeeder, QuestCatalogSeeder>();
         services.AddSingleton<ICharacterQuestLog, CharacterQuestLog>();
+        services.AddSingleton<IQuestCatalogRevisionProvider, QuestCatalogRevisionProvider>();
         services.AddScoped<QuestLogQueryService>();
+        services.AddScoped<SimulationQuestLogService>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)

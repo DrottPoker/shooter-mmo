@@ -38,7 +38,8 @@ internal sealed record SimulationWorkerHeartbeatRequest(
     int ProtocolVersion,
     string? SimulationRevision,
     string? CollisionRevision,
-    string? ItemCatalogRevision);
+    string? ItemCatalogRevision,
+    string? QuestCatalogRevision = null);
 
 internal sealed record SimulationWorkerHeartbeatResponse(
     string WorkerId,
@@ -56,6 +57,7 @@ internal sealed record SimulationWorkerHeartbeatResponse(
     string SimulationRevision,
     string CollisionRevision,
     string ItemCatalogRevision,
+    string QuestCatalogRevision,
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil);
 

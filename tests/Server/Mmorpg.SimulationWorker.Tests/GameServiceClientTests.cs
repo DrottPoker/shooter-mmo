@@ -375,6 +375,7 @@ public sealed class GameServiceClientTests
             simulationRevision = requestBody.SimulationRevision,
             collisionRevision = requestBody.CollisionRevision,
             itemCatalogRevision = requestBody.ItemCatalogRevision,
+            questCatalogRevision = requestBody.QuestCatalogRevision,
             lastHeartbeatAt = DateTime.UtcNow,
             onlineUntil = DateTime.UtcNow.AddSeconds(30)
         }));
@@ -401,6 +402,45 @@ public sealed class GameServiceClientTests
         Assert.Equal(
             "item-catalog-revision-1",
             body.RootElement.GetProperty("itemCatalogRevision").GetString());
+        Assert.Equal(
+            "quest-catalog-revision-1",
+            body.RootElement.GetProperty("questCatalogRevision").GetString());
+    }
+
+    [Fact]
+    public async Task SimulationWorkerHeartbeatRejectsAnotherQuestCatalogRevision()
+    {
+        var requestBody = CreateHeartbeatRequest();
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            workerId = "local-simulation-worker-1",
+            runtimeId = requestBody.RuntimeId,
+            fleetId = requestBody.FleetId,
+            nodeId = requestBody.NodeId,
+            shardId = requestBody.ShardId,
+            worldId = "development-world-1",
+            ruleSet = "mvp-open-risk",
+            host = requestBody.Host,
+            udpPort = requestBody.UdpPort,
+            maxConnections = requestBody.MaxConnections,
+            activeConnections = requestBody.ActiveConnections,
+            protocolVersion = requestBody.ProtocolVersion,
+            simulationRevision = requestBody.SimulationRevision,
+            collisionRevision = requestBody.CollisionRevision,
+            itemCatalogRevision = requestBody.ItemCatalogRevision,
+            questCatalogRevision = "quest-catalog-revision-2",
+            lastHeartbeatAt = DateTime.UtcNow,
+            onlineUntil = DateTime.UtcNow.AddSeconds(30)
+        }));
+        var client = CreateClient(handler);
+
+        var result = await client.HeartbeatSimulationWorkerAsync(
+            "local-simulation-worker-1",
+            requestBody,
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
     }
 
     [Fact]
@@ -1094,7 +1134,8 @@ public sealed class GameServiceClientTests
             RealtimeProtocol.Version,
             GameSimulationCompatibility.Revision,
             "collision-revision-1",
-            "item-catalog-revision-1");
+            "item-catalog-revision-1",
+            "quest-catalog-revision-1");
     }
 
     private static object[] CreateCorpseSections()

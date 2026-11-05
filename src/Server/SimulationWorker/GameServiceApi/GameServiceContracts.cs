@@ -329,6 +329,7 @@ public sealed record SimulationWorkerHeartbeatResponse(
     string SimulationRevision,
     string CollisionRevision,
     string ItemCatalogRevision,
+    string QuestCatalogRevision,
     DateTime LastHeartbeatAt,
     DateTime OnlineUntil);
 
@@ -346,7 +347,8 @@ public sealed record SimulationWorkerHeartbeatRequest(
     int ProtocolVersion,
     string SimulationRevision,
     string CollisionRevision,
-    string ItemCatalogRevision);
+    string ItemCatalogRevision,
+    string QuestCatalogRevision);
 
 public sealed record SimulationWorkerOfflineRequest(string RuntimeId);
 

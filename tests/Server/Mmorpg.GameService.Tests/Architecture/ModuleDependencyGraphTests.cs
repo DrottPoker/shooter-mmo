@@ -16,7 +16,8 @@ public sealed class ModuleDependencyGraphTests
             ["Mmorpg.GameService.Placement"] =
                 ["Mmorpg.GameService.Accounts", "Mmorpg.GameService.Characters", "Mmorpg.GameService.Platform"],
             // Quests reads characters only through constant SQL fragments, which compile into it.
-            ["Mmorpg.GameService.Quests"] = ["Mmorpg.GameService.Accounts", "Mmorpg.GameService.Platform"],
+            ["Mmorpg.GameService.Quests"] =
+                ["Mmorpg.GameService.Accounts", "Mmorpg.GameService.Placement", "Mmorpg.GameService.Platform"],
             ["Mmorpg.GameService.Items"] =
             [
                 "Mmorpg.GameService.Accounts",

@@ -52,7 +52,8 @@ public sealed class MigrationHistoryTests
         "202611021700_reduce_permanent_inventory 8adf70388be6ba9201c8ca9bf963aa01ba382f22e81c2db66525285e49c5e0e1",
         "202611041800_mob_corpse_ownership 81caf0d88f2a9d455fcd1c1b91edff964910c1875137d345db65dedd999e7a8d",
         "202611042200_quest_log 3cbc04bd2a97fc8d53f4732a4764a198691de145f94bf3bacf3dba9e24d3cbb7",
-        "202611050900_quest_reward_currency f8e5efb4a110fa4d3a12b1653116bf179a7f2ef8a0d047b7bdc566ec9ab8eca1"
+        "202611050900_quest_reward_currency f8e5efb4a110fa4d3a12b1653116bf179a7f2ef8a0d047b7bdc566ec9ab8eca1",
+        "202611051200_worker_quest_catalog_revision d6d02b43741186c8b57089c9ae0ac8e1f099f0ff221afa1e388b3e25d859fca2"
     ];
 
     [Fact]

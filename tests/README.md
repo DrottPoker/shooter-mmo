@@ -24,7 +24,7 @@ and the check before every push in
 | `Mmorpg.GameService.Accounts.Tests` | `Server/Mmorpg.GameService.Accounts.Tests` | Accounts, including PostgreSQL and Redis tests |
 | `Mmorpg.GameService.Characters.Tests` | `Server/Mmorpg.GameService.Characters.Tests` | Characters, including PostgreSQL tests of character looks |
 | `Mmorpg.GameService.Placement.Tests` | `Server/Mmorpg.GameService.Placement.Tests` | Placement |
-| `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, and the quest log read |
+| `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, the owner's and the worker's quest log reads, and the revision that placement compares |
 | `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel boundary tests under `ItemTransactions` |
 | `Mmorpg.GameService.Tests` | `Server/Mmorpg.GameService.Tests` | The GameService host configuration and the module architecture guard tests under `Architecture` |
 | `Mmorpg.SimulationWorker.Tests` | `Server/Mmorpg.SimulationWorker.Tests` | SimulationWorker; socket and in-memory tests of `Mmorpg.SimulationWorker.Realtime` and their shared harness under `Realtime` |

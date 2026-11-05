@@ -11,6 +11,7 @@ using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Items;
+using Mmorpg.Server.Common.Quests;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.Testing;
 using Npgsql;
@@ -211,6 +212,12 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     private static readonly Lazy<string> FixtureCatalogRevision = new(() =>
         ItemCatalogFileLoader.Load(RepositoryPaths.ItemCatalogFixtureRuntimePath).Revision);
 
+    // The fixture quest catalog GameService mirrors in tests, which a worker heartbeat reports.
+    public static string FixtureQuestCatalogRevision => FixtureQuestRevision.Value;
+
+    private static readonly Lazy<string> FixtureQuestRevision = new(() =>
+        QuestCatalogFileLoader.Load(RepositoryPaths.QuestCatalogFixtureRuntimePath).Revision);
+
     public static SimulationWorkerHeartbeatRequest CreateHeartbeatRequest(
         string runtimeId = "integration-worker-runtime",
         string host = "127.0.0.1",
@@ -231,7 +238,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             RealtimeProtocol.Version,
             GameSimulationCompatibility.Revision,
             "integration-collision-revision",
-            FixtureItemCatalogRevision);
+            FixtureItemCatalogRevision,
+            FixtureQuestCatalogRevision);
     }
 
     public async Task<IntegrationPlayer> RegisterPlayerAsync(
