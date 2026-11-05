@@ -59,6 +59,48 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
         return new QuestDropPlan(this);
     }
 
+    // Plans a Loot all in which quest drops share what their quests still need. Only the drops
+    // that the plan places take from it; a drop beyond what is left leaves the items, and the
+    // plan is made again without it, so a drop that does not fit never holds back the drops
+    // behind it.
+    public async Task<LootAllPlan> PlanLootAllAsync(
+        ItemTransactionContext context,
+        Guid characterId,
+        List<LootAllCorpseItem> items,
+        IReadOnlyDictionary<Guid, PlannedQuestDrop> questDropItems,
+        Func<IReadOnlyList<LootAllCorpseItem>, LootAllPlan> plan,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var planned = plan(items);
+            var shared = Plan();
+            var excess = new HashSet<Guid>();
+            foreach (var step in planned.Steps)
+            {
+                if (questDropItems.TryGetValue(step.Item.ItemInstanceId, out var drop)
+                    && !await shared.TakeAllAsync(
+                        context,
+                        characterId,
+                        drop.QuestId,
+                        drop.SourceActorDefinitionId,
+                        drop.Definition,
+                        step.Quantity,
+                        cancellationToken))
+                {
+                    excess.Add(step.Item.ItemInstanceId);
+                }
+            }
+
+            if (excess.Count == 0)
+            {
+                return planned;
+            }
+
+            items.RemoveAll(item => excess.Contains(item.ItemInstanceId));
+        }
+    }
+
     // Only a protected quest item carries a quest's lineage.
     public static bool IsQuestDropItem(ResolvedItemDefinition definition)
     {
@@ -114,6 +156,9 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
             .ToArray();
     }
 }
+
+// A quest drop that a Loot all may move, with what its quest needs to know about it.
+internal sealed record PlannedQuestDrop(string QuestId, string SourceActorDefinitionId, ResolvedItemDefinition Definition);
 
 // What the quest drops of one transaction still need: drops of one quest item share it, so two
 // letters in one corpse never take more than the quest asks for.
