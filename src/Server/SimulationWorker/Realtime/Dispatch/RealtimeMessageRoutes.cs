@@ -35,7 +35,8 @@ internal static class RealtimeMessageRoutes
         RealtimeMessageHandler leave,
         RealtimeMessageHandler combat,
         RealtimeMessageHandler appearance,
-        RealtimeMessageHandler admin)
+        RealtimeMessageHandler admin,
+        RealtimeMessageHandler quest)
     {
         return
         [
@@ -81,6 +82,12 @@ internal static class RealtimeMessageRoutes
                     "invalid_admin_delivery",
                     "Admin intents require the reliable ordered control channel."),
                 admin),
+            Route(
+                RealtimeMessageType.QuestIntent,
+                new RealtimeRejection(
+                    "invalid_quest_delivery",
+                    "Quest intents require the reliable ordered control channel."),
+                quest),
             Route(RealtimeMessageType.LeaveRequest, UnexpectedMessage, leave) with
             {
                 RejectWhen = static context => context.LeaveStarted

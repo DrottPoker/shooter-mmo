@@ -72,9 +72,7 @@ internal static class GameServiceTestComposition
         return services.BuildServiceProvider(validateScopes: true);
     }
 
-    // The NPC lifecycle grants the fixture catalog's quest item.
-    public static NpcItemLifecycleOptions FixtureNpcLifecycle { get; } =
-        new(100, "quest.fixture.letter", "fixture.letter", 1);
+    public static NpcItemLifecycleOptions FixtureNpcLifecycle { get; } = new(100);
 
     // The settings every integration test runs with. Redis acceleration stays disabled,
     // so tests never reach Redis.

@@ -119,7 +119,7 @@ public sealed class VendorAndGatheringIntegrationTests
                 operationId,
                 ItemScenarioWorld.SimulationActor(
                     session,
-                    new ItemTransactionLiveAccess(false, false, false, false, "vendor.other")),
+                    new ItemTransactionLiveAccess(false, false, false, "vendor.other")),
                 new PurchaseFromVendorCommand(
                     characterId,
                     await RevisionAsync(world, characterId),
@@ -422,7 +422,7 @@ public sealed class VendorAndGatheringIntegrationTests
             session.WorkerRuntimeId,
             session.ShardId,
             session.SimulationSessionToken,
-            new SimulationItemAccessRequest(false, false, false, false, vendorProfileId),
+            new SimulationItemAccessRequest(false, false, false, vendorProfileId),
             operationKind,
             expectedCharacterRevision,
             InteractionSessionId: Guid.NewGuid(),

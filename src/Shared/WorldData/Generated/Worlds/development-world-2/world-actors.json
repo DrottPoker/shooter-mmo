@@ -1,8 +1,8 @@
 {
-  "formatVersion": 7,
+  "formatVersion": 8,
   "catalogId": "core",
   "worldId": "development-world-2",
-  "revision": "11cc6da4236ad3c30418202882ecb637f2bfb0f72de73653fe01058ad225c75d",
+  "revision": "2dae343b4e1d00e6b02aea865a8c838c121f898e99494621cf222aea8dde24dc",
   "factions": [
     {
       "id": "city",
@@ -431,6 +431,14 @@
       },
       "capabilities": [
         {
+          "id": "services.quests",
+          "kind": "quests",
+          "displayName": "Quests",
+          "menuOption": "Quests",
+          "profileId": "",
+          "structuralFingerprint": "087df63df8faa498584381d1f19558952bb8f647900034bb1c679b89c0724d30"
+        },
+        {
           "id": "services.dialogue",
           "kind": "dialogue",
           "displayName": "Talk",
@@ -471,22 +479,6 @@
           "structuralFingerprint": "a9915ccf506ff7b11cf9da749fa0c5be00354fc9e04e25f232fbe1dfb2236e6b"
         },
         {
-          "id": "services.quest_offer",
-          "kind": "quest_offer",
-          "displayName": "Available Quests",
-          "menuOption": "Quests",
-          "profileId": "",
-          "structuralFingerprint": "efef12736a4c0f47d2968593e914f2b88d7736485433788ccc7be1bb7c0b6f0b"
-        },
-        {
-          "id": "services.quest_turn_in",
-          "kind": "quest_turn_in",
-          "displayName": "Complete Quest",
-          "menuOption": "Turn-in",
-          "profileId": "",
-          "structuralFingerprint": "cb2611e8f2990d3393248117616b411f69a5e7f2a7c2257fbc92858973e73b2f"
-        },
-        {
           "id": "services.crafting",
           "kind": "crafting",
           "displayName": "Crafting",
@@ -505,7 +497,7 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "a09f2f95f7870b1a821743175840f95095f9003101366ef5f77a9308575ba981"
+      "structuralFingerprint": "f3234eb7362828969fbd21392ccbcd4a8686fb61052d409f6673f208bb773f2d"
     },
     {
       "id": "npc.outpost_sergeant",
@@ -538,20 +530,12 @@
       },
       "capabilities": [
         {
-          "id": "sergeant.quest_offer",
-          "kind": "quest_offer",
-          "displayName": "Available Quests",
+          "id": "sergeant.quests",
+          "kind": "quests",
+          "displayName": "Quests",
           "menuOption": "Quests",
           "profileId": "",
-          "structuralFingerprint": "e48041ea8c20a2cdd806b1363c125ecf17dff7077eba5dd60b5f83882913ba63"
-        },
-        {
-          "id": "sergeant.quest_turn_in",
-          "kind": "quest_turn_in",
-          "displayName": "Complete Quest",
-          "menuOption": "Turn-in",
-          "profileId": "",
-          "structuralFingerprint": "94a3f8e8538605769fb376c7eda55f8146bb23072022c94d4244a162051af295"
+          "structuralFingerprint": "2d42555c123921fff4a932d80b860f91aa592e73175accbf9381ad4564d6839a"
         }
       ],
       "activityProfileId": "",
@@ -564,7 +548,7 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "81dd3c00158e6baec7ed8220c58a823285c3590e9ce03adf19b5fdc8a1283ce3"
+      "structuralFingerprint": "fb5234c93c428064b173bbbf6b198c6d54915da6ba76c889ca317dabec717954"
     },
     {
       "id": "resource.iron_vein",

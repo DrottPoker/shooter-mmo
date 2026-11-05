@@ -15,18 +15,15 @@ follow the item rules of
 
 Implemented:
 
-- The `quest_offer` and `quest_turn_in` capability kinds of NPCs and the
-  `quest_item` item category.
-- Protected quest items with a quest-grant lineage. One quest that GameService
-  configuration names grants one Sealed Letter when it is accepted at any NPC
-  with a `quest_offer` capability and removes it again when it is abandoned, as
+- The `quests` capability kind of NPCs and the `quest_item` item category.
+- Protected quest items with a quest-grant lineage, as
   [Protected On Death](INVENTORY_AND_DEATH_LOOT_DESIGN.md#protected-on-death)
-  describes. Quest turn-in answers that it is unavailable.
+  describes.
 - Quest content in `content/quests/`, its compiler `tools/QuestCatalogCompiler`
   with the [validation](#validation) and the [limits](#limits) below, and the
   shared availability and step rules in WorldData. The checked-in quests are the
   development chain that [Game Content](../content/README.md#quests) lists.
-- A quest NPC is an NPC with a `quest_offer` or `quest_turn_in` capability.
+- A quest NPC is an NPC with the `quests` capability.
 - The GameService Quests module: the quest catalog loaded at startup with the
   checks of [Changing Released Quests](#changing-released-quests), the stored
   [quest state](#quest-state), and the owning account's read of it, as
@@ -34,14 +31,18 @@ Implemented:
 - Every quest command as an item transaction on the worker quest route:
   accepting, abandoning, granting start items again, talking, delivering,
   counting credited kills, and the turn-in with its rewards, and the count of
-  gathering yields in the gathering transaction. No worker calls them yet.
+  gathering yields in the gathering transaction.
 - SimulationWorker loads the quest catalog and reports its revision, and
-  placement requires it to match the mirrored revision. The worker route that
-  reads a joining character's quest log exists; no worker calls it yet.
+  placement requires it to match the mirrored revision. The worker reads every
+  player's quest log when the player joins and keeps it from the committed
+  results. It runs accepting, granting start items again, talking, delivering,
+  and the turn-in at a quest NPC through the open interaction, and abandoning
+  from anywhere as a quest intent, and sends every committed quest change to the
+  client, as [Service Features](SERVICE_FEATURES.md#quests) describes.
 
-Planned: everything else in this document. Quest content replaces the
-configured quest, one `quests` capability replaces both quest capability kinds,
-and quest kill credit follows Mob tagging.
+Planned: everything else in this document. The worker does not count kills,
+gathering yields, or quest drops for quests yet, and the client receives the
+quest messages but shows no quest window yet.
 
 ## Goals
 
@@ -312,8 +313,7 @@ quest is ready to turn in when its last step is complete.
 
 ## Quest NPCs And The Quest Dialog
 
-- An NPC takes part in quests through one `quests` capability, which replaces
-  the `quest_offer` and `quest_turn_in` kinds. Its menu option, such as
+- An NPC takes part in quests through one `quests` capability. Its menu option, such as
   `Quests`, opens the quest dialog. A quest NPC lists its `quests` capability
   first, so a left click opens the dialog.
 - The dialog lists, for the player, what this NPC can do now: quests to turn in,

@@ -11,6 +11,7 @@ using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
@@ -20,6 +21,7 @@ using Mmorpg.Testing.Content;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Characters;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
@@ -60,6 +62,10 @@ internal sealed class RealtimeServerHarnessOptions
 
     // Mobs that die leave corpses through the real lifecycle service.
     public bool EnableMobCorpses { get; init; }
+
+    // Players get their quest log at join, and quest actions run through the quests capability
+    // and quest intents against the fixture quest catalog.
+    public bool EnableQuests { get; init; }
 }
 
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
@@ -127,6 +133,18 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
         }
 
         WorldActorDocument = options.WorldActorDocument ?? (options.EnableWorldActors ? WorldActorTestData.Compile() : null);
+        var capabilityHandlers = options.CapabilityHandlers;
+        if (options.EnableQuests)
+        {
+            QuestLogs = new CharacterQuestLogStore();
+            QuestOperations = new QuestOperationExecutor(
+                GameServiceClient,
+                CharacterItemStateStore,
+                SessionStore,
+                QuestLogs);
+            capabilityHandlers = [.. capabilityHandlers, new QuestsWorldActorCapabilityHandler(QuestOperations)];
+        }
+
         if (options.EnableWorldActors)
         {
             WorldActors = new WorldActorStore(WorldActorDocument!, EntityRegistry);
@@ -140,7 +158,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 WorldInteractionLeases,
                 new WorldActorCapabilityRegistry(
                     new DefaultWorldActorCapabilityAvailabilityPolicy(),
-                    options.CapabilityHandlers),
+                    capabilityHandlers),
                 new WorldActorLineOfSightService(CollisionWorld),
                 WorldActorMetrics);
         }
@@ -177,7 +195,9 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 Config,
                 Identity,
                 Looks,
-                new DevelopmentBotLooks(AppearanceCatalog, options.ItemCatalog ?? ItemCatalogTestData.CompileFixture())),
+                new DevelopmentBotLooks(AppearanceCatalog, options.ItemCatalog ?? ItemCatalogTestData.CompileFixture()),
+                QuestLogs,
+                options.EnableQuests ? QuestCatalog : null),
             new SimulationSessionReleaseService(
                 GameServiceClient,
                 SessionStore,
@@ -216,8 +236,20 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             combatMetrics: CombatMetrics,
             lookStore: Looks,
             appearanceCatalog: AppearanceCatalog,
-            developmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null);
+            developmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null,
+            questLogs: QuestLogs,
+            questOperations: QuestOperations);
     }
+
+    // The fixture quest catalog that the quest tests run.
+    public static QuestCatalogRuntimeDocument QuestCatalog => CompiledQuestCatalog.Value;
+
+    private static readonly Lazy<QuestCatalogRuntimeDocument> CompiledQuestCatalog = new(
+        QuestCatalogTestData.CompileFixture);
+
+    public CharacterQuestLogStore? QuestLogs { get; }
+
+    public QuestOperationExecutor? QuestOperations { get; }
 
     // The checked-in appearance content, as the worker loads it.
     public static CharacterAppearanceCatalog AppearanceCatalog => LoadedAppearanceCatalog.Value;
@@ -539,6 +571,56 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         OnAmmunitionConsumption = (_, request, _) => Task.FromResult(DefaultAmmunitionConsumption(request));
         OnPlayerDeath = (_, request, _) => Task.FromResult(DefaultPlayerDeath(request));
         OnAppearanceChange = (sessionId, request, _) => Task.FromResult(DefaultAppearanceChange(sessionId, request));
+        OnQuestLog = (_, request, _) => Task.FromResult(QuestLog(request.CharacterId, 0));
+        OnQuestOperation = (_, _, _) => Task.FromResult(
+            Problem(HttpStatusCode.NotFound, "quest_not_found", "The quest catalog holds no such quest."));
+    }
+
+    public Func<Guid, SimulationQuestLogRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnQuestLog
+    { get; set; }
+
+    public Func<Guid, SimulationQuestOperationRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnQuestOperation
+    { get; set; }
+
+    public List<SimulationQuestLogRequest> QuestLogReads { get; } = [];
+
+    public List<SimulationQuestOperationRequest> QuestOperations { get; } = [];
+
+    // A quest log of the fixture quest catalog with the given active quests.
+    public static HttpResponseMessage QuestLog(
+        Guid characterId,
+        long revision,
+        params SimulationActiveQuest[] activeQuests)
+    {
+        return Json(new SimulationQuestLogResponse(
+            characterId,
+            RealtimeServerHarness.QuestCatalog.Revision,
+            revision,
+            activeQuests,
+            []));
+    }
+
+    // A quest action that moved no item and changed the given quests.
+    public static HttpResponseMessage CommittedQuestOperation(
+        SimulationQuestOperationRequest request,
+        long itemStateRevision,
+        long questLogRevision,
+        params SimulationQuestChange[] quests)
+    {
+        return Json(new SimulationItemTransactionResponse(
+            request.OperationId,
+            request.OperationKind,
+            true,
+            null,
+            [],
+            [],
+            [],
+            [],
+            CharacterStateTestData.Create(request.CharacterId, itemStateRevision),
+            null,
+            new SimulationQuestLogChange(request.CharacterId, questLogRevision, quests)));
     }
 
     public Func<Guid, SimulationAppearanceChangeRequest, CancellationToken, Task<HttpResponseMessage>>
@@ -902,6 +984,30 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 }
 
                 return await OnAppearanceChange(simulationSessionId, change!, cancellationToken);
+            }
+
+            if (segments.Length == 4 && segments[3] == "quest-log")
+            {
+                var read = await request.Content!
+                    .ReadFromJsonAsync<SimulationQuestLogRequest>(cancellationToken);
+                lock (sync)
+                {
+                    QuestLogReads.Add(read!);
+                }
+
+                return await OnQuestLog(simulationSessionId, read!, cancellationToken);
+            }
+
+            if (segments.Length == 4 && segments[3] == "quest-operations")
+            {
+                var operation = await request.Content!
+                    .ReadFromJsonAsync<SimulationQuestOperationRequest>(cancellationToken);
+                lock (sync)
+                {
+                    QuestOperations.Add(operation!);
+                }
+
+                return await OnQuestOperation(simulationSessionId, operation!, cancellationToken);
             }
 
             if (segments.Length == 4 && segments[3] == "item-operations")

@@ -323,7 +323,7 @@ system services.
 | `swap_bag_aggregates` | `SwapBagAggregatesCommand` | `BagAggregateCommandHandler` | No caller outside tests yet; it swaps complete Bag aggregates, also between characters |
 | `add_recovery_delivery`, `claim_recovery_delivery` | `AddRecoveryDeliveryCommand`, `ClaimRecoveryDeliveryCommand` | `RecoveryDeliveryCommandHandler` | Development item packages add deliveries; the worker route claims them |
 | `apply_item_policy`, `remove_insurance_policy` | `ApplyItemPolicyCommand`, `RemoveInsurancePolicyCommand` | `ItemPolicyCommandHandler` | Worker route, for the insurance capability |
-| `abandon_quest_items` | `AbandonQuestItemsCommand` | `QuestItemCommandHandler` | Worker route, for the quest capability |
+| `abandon_quest_items` | `AbandonQuestItemsCommand` | `QuestItemCommandHandler` | System test tools |
 | `accept_quest`, `abandon_quest`, `regrant_quest_items` | `AcceptQuestCommand`, `AbandonQuestCommand`, `RegrantQuestItemsCommand` | `QuestCommandHandler` | Worker quest route |
 | `talk_to_quest_npc`, `deliver_quest_items`, `turn_in_quest` | `TalkToQuestNpcCommand`, `DeliverQuestItemsCommand`, `TurnInQuestCommand` | `QuestCommandHandler` | Worker quest route |
 | `credit_quest_kill` | `CreditQuestKillCommand` | `QuestCommandHandler` | Worker quest route, for every character a Mob's death credits |
@@ -532,6 +532,7 @@ topology names.
 | 32 | `202611042200_quest_log` | Quests |
 | 33 | `202611050900_quest_reward_currency` | Characters |
 | 34 | `202611051200_worker_quest_catalog_revision` | Placement |
+| 35 | `202611051300_remove_placeholder_quest_items` | Items |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.

@@ -94,7 +94,7 @@ public sealed class WorldActorCompilerTests
         var mira = expected.Actors.Single(value => value.Id == "npc.city_services");
 
         Assert.Equal(
-            ["Talk-to", "Trade", "Bank", "Recover", "Insure", "Quests", "Turn-in", "Craft"],
+            ["Quests", "Talk-to", "Trade", "Bank", "Recover", "Insure", "Craft"],
             mira.Capabilities.Select(value => value.MenuOption));
 
         Array.Reverse(actors.Actors.Single(value => value.Id == "npc.city_services").Capabilities);
@@ -177,10 +177,11 @@ public sealed class WorldActorCompilerTests
         var actor = runtime.Actors.Single(value => value.Id == "npc.city_services");
 
         Assert.Equal(WorldActorKindIds.Npc, actor.Kind);
-        Assert.Equal(8, actor.Capabilities.Length);
+        Assert.Equal(7, actor.Capabilities.Length);
+        Assert.Equal(WorldActorCapabilityKindIds.Quests, actor.Capabilities[0].Kind);
         Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.Dialogue);
         Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.Vendor);
-        Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.QuestOffer);
+        Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.Quests);
         Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.Crafting);
         Assert.All(runtime.Actors, value => Assert.IsType<WorldActorDefinition>(value));
     }

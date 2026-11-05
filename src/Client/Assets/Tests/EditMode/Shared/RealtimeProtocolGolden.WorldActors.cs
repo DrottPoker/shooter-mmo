@@ -98,7 +98,7 @@ namespace Mmorpg.SharedTests
                 () => RealtimeProtocol.EncodeWorldInteractionOpened(OpenedModel(Enumerable.Range(0, 16)
                     .Select(index => new RealtimeWorldActorCapability(
                         "capability." + index.ToString("00"),
-                        (RealtimeWorldActorCapabilityKind)(1 + (index % 10)),
+                        CapabilityKinds[index % CapabilityKinds.Length],
                         "Capability " + index.ToString("00"),
                         index % 3 == 0 ? "profile." + index.ToString("00") : string.Empty,
                         index % 2 == 0,
@@ -235,42 +235,34 @@ namespace Mmorpg.SharedTests
                         6)));
             }
 
-            r.Vector(
-                "WorldActors/WorldInteractionIntent/AcceptQuest",
-                intent,
-                () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
-                    G(7),
-                    G(8),
-                    G(9),
-                    actor,
-                    ActorEntityId,
-                    G(6),
-                    4,
-                    "quest.first",
-                    RealtimeWorldActorCapabilityKind.QuestOffer,
-                    5,
-                    RealtimeCapabilityActionKind.AcceptQuest,
-                    0,
-                    Guid.Empty,
-                    0,
-                    G(3),
-                    9)));
-            r.Vector(
-                "WorldActors/WorldInteractionIntent/AbandonQuest",
-                intent,
-                () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
-                    G(7),
-                    G(8),
-                    G(9),
-                    actor,
-                    ActorEntityId,
-                    G(6),
-                    4,
-                    "quest.first",
-                    RealtimeWorldActorCapabilityKind.QuestOffer,
-                    5,
-                    RealtimeCapabilityActionKind.AbandonQuest,
-                    long.MaxValue)));
+            foreach (var quest in new[]
+                {
+                    (RealtimeCapabilityActionKind.AcceptQuest, "", ""),
+                    (RealtimeCapabilityActionKind.RegrantQuestItems, "", ""),
+                    (RealtimeCapabilityActionKind.TalkToQuestNpc, "report", ""),
+                    (RealtimeCapabilityActionKind.DeliverQuestItems, "letter", ""),
+                    (RealtimeCapabilityActionKind.TurnInQuest, "", "clothing.leather_gloves")
+                })
+            {
+                r.Vector(
+                    "WorldActors/WorldInteractionIntent/" + quest.Item1,
+                    intent,
+                    () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+                        G(7),
+                        G(8),
+                        G(9),
+                        actor,
+                        ActorEntityId,
+                        G(6),
+                        4,
+                        "services.quests",
+                        RealtimeWorldActorCapabilityKind.Quests,
+                        5,
+                        quest.Item1,
+                        questId: "quest.wolves_at_the_gate",
+                        questObjectiveId: quest.Item2,
+                        rewardChoiceDefinitionId: quest.Item3)));
+            }
             r.Vector(
                 "WorldActors/WorldInteractionIntent/VendorPurchase",
                 intent,
@@ -404,7 +396,10 @@ namespace Mmorpg.SharedTests
             r.Rejects("WorldActors/WorldActorSpawn/whitespace menu option capability", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(capabilityId: " ") }));
             r.Rejects("WorldActors/WorldActorSpawn/menu option kind 0", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 0) }));
             r.Accepts("WorldActors/WorldActorSpawn/gathering menu option", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 10, label: "Mine") }));
-            r.Rejects("WorldActors/WorldActorSpawn/menu option kind 11", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 11) }));
+            r.Accepts("WorldActors/WorldActorSpawn/menu option kind 11", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 11) }));
+            r.Rejects("WorldActors/WorldActorSpawn/menu option kind 12", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 12) }));
+            r.Rejects("WorldActors/WorldActorSpawn/menu option retired kind 3", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 3) }));
+            r.Rejects("WorldActors/WorldActorSpawn/menu option retired kind 4", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(kind: 4) }));
             r.Rejects("WorldActors/WorldActorSpawn/whitespace menu option label", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(label: "\t") }));
             r.Accepts("WorldActors/WorldActorSpawn/32 character menu option label", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(label: Repeat("m", 32)) }));
             r.Rejects("WorldActors/WorldActorSpawn/33 character menu option label", WorldActorSpawnWire(menuOptions: new[] { MenuOptionWire(label: Repeat("m", 33)) }));
@@ -524,9 +519,17 @@ namespace Mmorpg.SharedTests
             r.Accepts("WorldActors/WorldInteractionIntent/action 128 character capability", ActionWire(CapabilityPayloadWire(capabilityId: Repeat("c", 128))));
             r.Rejects("WorldActors/WorldInteractionIntent/action 129 character capability", ActionWire(CapabilityPayloadWire(capabilityId: Repeat("c", 129))));
             r.Rejects("WorldActors/WorldInteractionIntent/action capability kind 0", ActionWire(CapabilityPayloadWire(capabilityKind: 0)));
-            r.Rejects("WorldActors/WorldInteractionIntent/action capability kind 11", ActionWire(CapabilityPayloadWire(capabilityKind: 11)));
+            r.Rejects("WorldActors/WorldInteractionIntent/action capability kind 12", ActionWire(CapabilityPayloadWire(capabilityKind: 12)));
+            r.Rejects("WorldActors/WorldInteractionIntent/action retired capability kind 3", ActionWire(CapabilityPayloadWire(capabilityKind: 3)));
+            r.Rejects("WorldActors/WorldInteractionIntent/action retired capability kind 4", ActionWire(CapabilityPayloadWire(capabilityKind: 4)));
             r.Rejects("WorldActors/WorldInteractionIntent/action capability revision 0", ActionWire(CapabilityPayloadWire(capabilityRevision: 0)));
-            r.Rejects("WorldActors/WorldInteractionIntent/action kind 8", ActionWire(CapabilityPayloadWire(lifecycle: 8)));
+            r.Rejects("WorldActors/WorldInteractionIntent/action kind 12", ActionWire(CapabilityPayloadWire(lifecycle: 12)));
+            r.Rejects("WorldActors/WorldInteractionIntent/retired action kind 4", ActionWire(CapabilityPayloadWire(lifecycle: 4)));
+            r.Rejects("WorldActors/WorldInteractionIntent/no action with quest", ActionWire(CapabilityPayloadWire(quest: "quest.first")));
+            r.Rejects("WorldActors/WorldInteractionIntent/no action with objective", ActionWire(CapabilityPayloadWire(objective: "report")));
+            r.Rejects(
+                "WorldActors/WorldInteractionIntent/no action with reward choice",
+                ActionWire(CapabilityPayloadWire(rewardChoice: "clothing.leather_gloves")));
             r.Rejects("WorldActors/WorldInteractionIntent/no action with offer", ActionWire(CapabilityPayloadWire(offer: "potion.minor_healing")));
             r.Rejects("WorldActors/WorldInteractionIntent/no action with quantity", ActionWire(CapabilityPayloadWire(quantity: 1)));
             r.Rejects("WorldActors/WorldInteractionIntent/no action with price", ActionWire(CapabilityPayloadWire(price: 1)));
@@ -569,40 +572,86 @@ namespace Mmorpg.SharedTests
             }
 
             Wire Quest(
-                byte lifecycle,
-                byte capabilityKind = 3,
+                byte action,
+                byte capabilityKind = 11,
                 long characterRevision = 0,
                 Guid? item = null,
                 long itemRevision = 0,
                 Guid? destination = null,
-                int slot = -1)
+                int slot = -1,
+                WireText offer = null,
+                WireText quest = null,
+                WireText objective = null,
+                WireText rewardChoice = null)
             {
                 return ActionWire(CapabilityPayloadWire(
-                    capabilityId: "quest.first",
+                    capabilityId: "services.quests",
                     capabilityKind: capabilityKind,
                     capabilityRevision: 5,
-                    lifecycle: lifecycle,
+                    lifecycle: action,
                     characterRevision: characterRevision,
                     item: item,
                     itemRevision: itemRevision,
                     destination: destination,
-                    slot: slot));
+                    slot: slot,
+                    offer: offer,
+                    quest: quest ?? "quest.wolves_at_the_gate",
+                    objective: objective,
+                    rewardChoice: rewardChoice));
             }
 
-            r.Accepts("WorldActors/WorldInteractionIntent/accept quest baseline", Quest(3, destination: G(3)));
-            r.Accepts("WorldActors/WorldInteractionIntent/accept quest into slot 4", Quest(3, destination: G(3), slot: 4));
-            r.Rejects("WorldActors/WorldInteractionIntent/accept quest into slot -2", Quest(3, destination: G(3), slot: -2));
-            r.Rejects("WorldActors/WorldInteractionIntent/accept quest without destination", Quest(3));
-            r.Rejects("WorldActors/WorldInteractionIntent/accept quest with item", Quest(3, destination: G(3), item: G(2)));
-            r.Rejects("WorldActors/WorldInteractionIntent/accept quest with item revision", Quest(3, destination: G(3), itemRevision: 1));
-            r.Rejects("WorldActors/WorldInteractionIntent/accept quest at a turn-in", Quest(3, capabilityKind: 4, destination: G(3)));
+            foreach (var questAction in new byte[] { 3, 8 })
+            {
+                var prefix = "WorldActors/WorldInteractionIntent/quest action " + questAction + " ";
+                r.Accepts(prefix + "baseline", Quest(questAction));
+                r.Accepts(prefix + "128 character quest", Quest(questAction, quest: Repeat("q", 128)));
+                r.Rejects(prefix + "129 character quest", Quest(questAction, quest: Repeat("q", 129)));
+                r.Rejects(prefix + "without quest", Quest(questAction, quest: ""));
+                r.Rejects(prefix + "whitespace quest", Quest(questAction, quest: " "));
+                r.Rejects(prefix + "with objective", Quest(questAction, objective: "report"));
+                r.Rejects(prefix + "with reward choice", Quest(questAction, rewardChoice: "clothing.leather_gloves"));
+                r.Rejects(prefix + "at insurance", Quest(questAction, capabilityKind: 6));
+                r.Rejects(prefix + "with character revision", Quest(questAction, characterRevision: 1));
+                r.Rejects(prefix + "with item", Quest(questAction, item: G(2)));
+                r.Rejects(prefix + "with item revision", Quest(questAction, itemRevision: 1));
+                r.Rejects(prefix + "with destination", Quest(questAction, destination: G(3)));
+                r.Rejects(prefix + "with slot 0", Quest(questAction, slot: 0));
+                r.Rejects(prefix + "with offer", Quest(questAction, offer: "potion.minor_healing"));
+            }
+
+            foreach (var questAction in new byte[] { 9, 10 })
+            {
+                var prefix = "WorldActors/WorldInteractionIntent/quest action " + questAction + " ";
+                r.Accepts(prefix + "baseline", Quest(questAction, objective: "report"));
+                r.Accepts(prefix + "128 character objective", Quest(questAction, objective: Repeat("o", 128)));
+                r.Rejects(prefix + "129 character objective", Quest(questAction, objective: Repeat("o", 129)));
+                r.Rejects(prefix + "without objective", Quest(questAction));
+                r.Rejects(prefix + "whitespace objective", Quest(questAction, objective: " "));
+                r.Rejects(prefix + "without quest", Quest(questAction, quest: "", objective: "report"));
+                r.Rejects(prefix + "with reward choice", Quest(questAction, objective: "report", rewardChoice: "clothing.leather_gloves"));
+                r.Rejects(prefix + "at a vendor", Quest(questAction, capabilityKind: 2, objective: "report"));
+            }
+
+            r.Accepts("WorldActors/WorldInteractionIntent/turn in baseline", Quest(11));
+            r.Accepts("WorldActors/WorldInteractionIntent/turn in with reward choice", Quest(11, rewardChoice: "clothing.leather_gloves"));
+            r.Rejects("WorldActors/WorldInteractionIntent/turn in whitespace reward choice", Quest(11, rewardChoice: " "));
             r.Rejects(
-                "WorldActors/WorldInteractionIntent/accept quest with negative character revision",
-                Quest(3, characterRevision: -1, destination: G(3)));
-            r.Accepts("WorldActors/WorldInteractionIntent/abandon quest baseline", Quest(4, characterRevision: 8));
-            r.Rejects("WorldActors/WorldInteractionIntent/abandon quest with destination", Quest(4, destination: G(3)));
-            r.Rejects("WorldActors/WorldInteractionIntent/abandon quest with slot 0", Quest(4, slot: 0));
-            r.Rejects("WorldActors/WorldInteractionIntent/abandon quest with item", Quest(4, item: G(2)));
+                "WorldActors/WorldInteractionIntent/turn in 129 character reward choice",
+                Quest(11, rewardChoice: Repeat("r", 129)));
+            r.Rejects("WorldActors/WorldInteractionIntent/turn in with objective", Quest(11, objective: "report"));
+            r.Rejects("WorldActors/WorldInteractionIntent/turn in without quest", Quest(11, quest: ""));
+            r.Rejects("WorldActors/WorldInteractionIntent/turn in with destination", Quest(11, destination: G(3)));
+            r.Rejects(
+                "WorldActors/WorldInteractionIntent/insurance with quest",
+                ActionWire(CapabilityPayloadWire(
+                    capabilityId: "insurance.basic",
+                    capabilityKind: 6,
+                    capabilityRevision: 3,
+                    lifecycle: 1,
+                    characterRevision: 11,
+                    item: G(2),
+                    itemRevision: 6,
+                    quest: "quest.first")));
 
             Wire Vendor(
                 byte action,
@@ -663,8 +712,50 @@ namespace Mmorpg.SharedTests
             r.Rejects(
                 "WorldActors/WorldInteractionIntent/start gathering with character revision",
                 Vendor(7, capabilityKind: 10, quantity: 0, price: 0));
+            r.Rejects(
+                "WorldActors/WorldInteractionIntent/purchase with quest",
+                ActionWire(CapabilityPayloadWire(
+                    capabilityId: "vendor.trade",
+                    capabilityKind: 2,
+                    capabilityRevision: 6,
+                    lifecycle: 5,
+                    characterRevision: 12,
+                    offer: "potion.minor_healing",
+                    quantity: 3,
+                    price: 75,
+                    quest: "quest.first")));
 
             r.RejectsEncode("WorldActors/WorldInteractionIntent/null", () => RealtimeProtocol.EncodeWorldInteractionIntent(null));
+            r.RejectsEncode(
+                "WorldActors/WorldInteractionIntent/accept quest without quest",
+                () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+                    G(7),
+                    G(8),
+                    G(9),
+                    RealtimeWorldInteractionTargetKind.WorldActor,
+                    ActorEntityId,
+                    G(6),
+                    4,
+                    "services.quests",
+                    RealtimeWorldActorCapabilityKind.Quests,
+                    5,
+                    RealtimeCapabilityActionKind.AcceptQuest)));
+            r.RejectsOversize(
+                "WorldActors/WorldInteractionIntent/action with every text at its limit",
+                () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+                    G(7),
+                    G(8),
+                    G(9),
+                    RealtimeWorldInteractionTargetKind.WorldActor,
+                    ActorEntityId,
+                    G(6),
+                    4,
+                    Repeat("\u20ac", 128),
+                    RealtimeWorldActorCapabilityKind.Quests,
+                    5,
+                    RealtimeCapabilityActionKind.TurnInQuest,
+                    questId: Repeat("\u20ac", 128),
+                    rewardChoiceDefinitionId: Repeat("\u20ac", 128))));
             r.RejectsEncode(
                 "WorldActors/WorldInteractionIntent/purchase without offer",
                 () => RealtimeProtocol.EncodeWorldInteractionIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
@@ -771,7 +862,10 @@ namespace Mmorpg.SharedTests
             r.Rejects("WorldActors/WorldInteractionOpened/whitespace capability id", OpenedWire(capabilities: new[] { CapabilityWire(id: " ") }));
             r.Rejects("WorldActors/WorldInteractionOpened/capability kind 0", OpenedWire(capabilities: new[] { CapabilityWire(kind: 0) }));
             r.Accepts("WorldActors/WorldInteractionOpened/gathering capability", OpenedWire(capabilities: new[] { CapabilityWire(kind: 10, profileId: "resource.iron_vein") }));
-            r.Rejects("WorldActors/WorldInteractionOpened/capability kind 11", OpenedWire(capabilities: new[] { CapabilityWire(kind: 11) }));
+            r.Accepts("WorldActors/WorldInteractionOpened/capability kind 11", OpenedWire(capabilities: new[] { CapabilityWire(kind: 11) }));
+            r.Rejects("WorldActors/WorldInteractionOpened/capability kind 12", OpenedWire(capabilities: new[] { CapabilityWire(kind: 12) }));
+            r.Rejects("WorldActors/WorldInteractionOpened/retired capability kind 3", OpenedWire(capabilities: new[] { CapabilityWire(kind: 3) }));
+            r.Rejects("WorldActors/WorldInteractionOpened/retired capability kind 4", OpenedWire(capabilities: new[] { CapabilityWire(kind: 4) }));
             r.Accepts(
                 "WorldActors/WorldInteractionOpened/128 character profile",
                 OpenedWire(capabilities: new[] { CapabilityWire(kind: 2, profileId: Repeat("p", 128)) }));
@@ -1148,6 +1242,10 @@ namespace Mmorpg.SharedTests
                 .Text(reason ?? "despawned");
         }
 
+        // Every capability kind, in value order, so a vector of sixteen covers each.
+        private static readonly RealtimeWorldActorCapabilityKind[] CapabilityKinds =
+            (RealtimeWorldActorCapabilityKind[])Enum.GetValues(typeof(RealtimeWorldActorCapabilityKind));
+
         private static Wire InteractionIntentWire(
             byte operationKind,
             Guid? operationId = null,
@@ -1183,7 +1281,10 @@ namespace Mmorpg.SharedTests
             int slot = -1,
             WireText offer = null,
             int quantity = 0,
-            long price = 0)
+            long price = 0,
+            WireText quest = null,
+            WireText objective = null,
+            WireText rewardChoice = null)
         {
             return Wire.Fragment()
                 .Text(capabilityId ?? "dialogue.greeting")
@@ -1197,7 +1298,10 @@ namespace Mmorpg.SharedTests
                 .I32(slot)
                 .Text(offer ?? "")
                 .I32(quantity)
-                .I64(price);
+                .I64(price)
+                .Text(quest ?? "")
+                .Text(objective ?? "")
+                .Text(rewardChoice ?? "");
         }
 
         private static Wire CapabilityWire(

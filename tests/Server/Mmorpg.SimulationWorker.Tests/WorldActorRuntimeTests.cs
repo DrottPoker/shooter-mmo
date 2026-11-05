@@ -288,13 +288,12 @@ public sealed class WorldActorRuntimeTests
         Assert.Equal(mira.Definition.ExamineText, miraSpawn.ExamineText);
         Assert.Equal(
             [
+                "services.quests:Quests:Quests",
                 "services.dialogue:Dialogue:Talk-to",
                 "services.vendor:Vendor:Trade",
                 "services.bank:Bank:Bank",
                 "services.recovery:RecoveryStorage:Recover",
                 "services.insurance:Insurance:Insure",
-                "services.quest_offer:QuestOffer:Quests",
-                "services.quest_turn_in:QuestTurnIn:Turn-in",
                 "services.crafting:Crafting:Craft"
             ],
             miraSpawn.MenuOptions.Select(option => option.CapabilityId + ":" + option.Kind + ":" + option.Label));

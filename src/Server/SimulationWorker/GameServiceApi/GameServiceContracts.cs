@@ -100,7 +100,6 @@ public sealed record SimulationItemAccessRequest(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
-    bool QuestNpc = false,
     string? VendorProfileId = null);
 
 public sealed record SimulationItemRevisionExpectation(
@@ -260,7 +259,69 @@ public sealed record SimulationItemTransactionResponse(
     IReadOnlyList<SimulationItemInstanceRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     SimulationCharacterState? CharacterState = null,
-    IReadOnlyList<SimulationItemChange>? ItemChanges = null);
+    IReadOnlyList<SimulationItemChange>? ItemChanges = null,
+    SimulationQuestLogChange? QuestLog = null);
+
+// The quests a committed transaction changed, as the quest log holds them after it, with the
+// quest log revision after it. A quest without a step is no longer active.
+public sealed record SimulationQuestLogChange(
+    Guid CharacterId,
+    long Revision,
+    IReadOnlyList<SimulationQuestChange> Quests);
+
+public sealed record SimulationQuestChange(
+    string QuestId,
+    string? StepId,
+    IReadOnlyList<SimulationQuestObjectiveProgress> Objectives,
+    int CompletionCount);
+
+public sealed record SimulationQuestObjectiveProgress(string ObjectiveId, int Progress);
+
+// A quest action of a live character on GameService's quest route, which answers like the
+// item route. QuestNpcActorId is the actor definition of the NPC whose quests capability the
+// worker validated; abandoning needs none, and a kill credit names the Mob instead.
+public sealed record SimulationQuestOperationRequest(
+    Guid OperationId,
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken,
+    string OperationKind,
+    string? QuestId,
+    string? QuestNpcActorId = null,
+    string? ObjectiveId = null,
+    string? RewardChoiceDefinitionId = null,
+    string? MobActorId = null,
+    IReadOnlyList<string>? MobTags = null);
+
+public sealed record SimulationQuestLogRequest(
+    Guid AccountId,
+    Guid CharacterId,
+    string WorkerId,
+    string WorkerRuntimeId,
+    string ShardId,
+    string SessionToken);
+
+// A joining character's quest log with the revision of the quest catalog GameService runs.
+public sealed record SimulationQuestLogResponse(
+    Guid CharacterId,
+    string QuestCatalogRevision,
+    long QuestLogRevision,
+    IReadOnlyList<SimulationActiveQuest> ActiveQuests,
+    IReadOnlyList<SimulationCompletedQuest> CompletedQuests);
+
+public sealed record SimulationActiveQuest(
+    string QuestId,
+    string StepId,
+    DateTime AcceptedAt,
+    IReadOnlyList<SimulationQuestObjectiveProgress> Objectives);
+
+public sealed record SimulationCompletedQuest(
+    string QuestId,
+    int CompletionCount,
+    DateTime LastCompletedAt);
 
 // The final state of one item a transaction changed. GameService leaves the list out when
 // the transaction changed too many items, and a removed item has no definition. A Bag in

@@ -29,17 +29,10 @@
     },
     "capabilities": [
         {
-            "id": "sergeant.quest_offer",
-            "kind": "quest_offer",
-            "displayName": "Available Quests",
+            "id": "sergeant.quests",
+            "kind": "quests",
+            "displayName": "Quests",
             "menuOption": "Quests",
-            "profileId": ""
-        },
-        {
-            "id": "sergeant.quest_turn_in",
-            "kind": "quest_turn_in",
-            "displayName": "Complete Quest",
-            "menuOption": "Turn-in",
             "profileId": ""
         }
     ],

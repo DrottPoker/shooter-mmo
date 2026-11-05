@@ -7,6 +7,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Health;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.SimulationWorker.Telemetry;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
 
@@ -316,6 +317,35 @@ public sealed class GameServiceClient(HttpClient httpClient)
             cancellationToken);
     }
 
+    // A quest action answers like an item operation and names the quests it changed.
+    public Task<GameServiceResult<SimulationItemTransactionResponse>>
+        MutateSimulationQuestsAsync(
+            Guid simulationSessionId,
+            SimulationQuestOperationRequest request,
+            CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationQuestOperationRequest, SimulationItemTransactionResponse>(
+            "GameService.MutateSimulationQuests",
+            $"/api/simulation-sessions/{simulationSessionId}/quest-operations",
+            request,
+            response => IsValidSimulationQuestTransaction(response, request),
+            cancellationToken);
+    }
+
+    // The quest log the worker keeps for a joining character.
+    public Task<GameServiceResult<SimulationQuestLogResponse>> ReadSimulationQuestLogAsync(
+        Guid simulationSessionId,
+        SimulationQuestLogRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationQuestLogRequest, SimulationQuestLogResponse>(
+            "GameService.ReadSimulationQuestLog",
+            $"/api/simulation-sessions/{simulationSessionId}/quest-log",
+            request,
+            response => IsValidQuestLog(response, request.CharacterId),
+            cancellationToken);
+    }
+
     // Each call is one span named after its operation. A failure code lands on that
     // span, and the HTTP client span and the GameService request nest below it.
     private async Task<GameServiceResult<TResponse>> PostAsync<TRequest, TResponse>(
@@ -597,25 +627,123 @@ public sealed class GameServiceClient(HttpClient httpClient)
             return false;
         }
 
-        var characterValid = response.CharacterRevisions.Count == 0
-            ? request.OperationKind is "grant" or "abandon_quest_items"
-            : response.CharacterRevisions[0].CharacterId == request.CharacterId
-                && response.CharacterRevisions[0].Revision
-                    >= request.ExpectedCharacterRevision
-                && IsValidCarryState(
-                    response.CharacterRevisions[0].Revision,
-                    response.CharacterRevisions[0].CarriedWeight,
-                    response.CharacterRevisions[0].CarryCapacity);
-        return characterValid
-            && response.ContainerRevisions.All(
-                revision => revision.ContainerId != Guid.Empty && revision.Revision >= 0)
-            && response.ItemRevisions.All(
-                revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
-            && response.RecoveryDeliveryIds.All(deliveryId => deliveryId != Guid.Empty)
+        return response.CharacterRevisions.Count == 1
+            && response.CharacterRevisions[0].CharacterId == request.CharacterId
+            && response.CharacterRevisions[0].Revision >= request.ExpectedCharacterRevision
+            && IsValidCarryState(
+                response.CharacterRevisions[0].Revision,
+                response.CharacterRevisions[0].CarriedWeight,
+                response.CharacterRevisions[0].CarryCapacity)
+            && HasValidRevisions(response)
             && IsValidCharacterState(
                 response.CharacterState,
                 request.CharacterId,
-                response.CharacterRevisions.Count == 0 ? 0 : response.CharacterRevisions[0].Revision);
+                response.CharacterRevisions[0].Revision)
+            && IsValidQuestLogChange(response.QuestLog, request.CharacterId);
+    }
+
+    // A quest action that moves no item, such as talking to an NPC, leaves the character's item
+    // state as it was and names no character revision.
+    private static bool IsValidSimulationQuestTransaction(
+        SimulationItemTransactionResponse response,
+        SimulationQuestOperationRequest request)
+    {
+        if (response.OperationId != request.OperationId
+            || !string.Equals(
+                response.OperationKind,
+                request.OperationKind,
+                StringComparison.Ordinal)
+            || !response.Succeeded
+            || response.Error is not null
+            || response.CharacterRevisions is null
+            || response.ContainerRevisions is null
+            || response.ItemRevisions is null
+            || response.RecoveryDeliveryIds is null
+            || response.CharacterRevisions.Count > 1
+            || response.ContainerRevisions.Count > MaximumOperationContainerRevisions
+            || response.ItemRevisions.Count > MaximumOperationItemRevisions
+            || response.RecoveryDeliveryIds.Count > MaximumOperationRecoveryDeliveries)
+        {
+            return false;
+        }
+
+        var committedRevision = response.CharacterRevisions.Count == 0
+            ? 0
+            : response.CharacterRevisions[0].Revision;
+        return (response.CharacterRevisions.Count == 0
+                || (response.CharacterRevisions[0].CharacterId == request.CharacterId
+                    && IsValidCarryState(
+                        response.CharacterRevisions[0].Revision,
+                        response.CharacterRevisions[0].CarriedWeight,
+                        response.CharacterRevisions[0].CarryCapacity)))
+            && HasValidRevisions(response)
+            && IsValidCharacterState(response.CharacterState, request.CharacterId, committedRevision)
+            && IsValidQuestLogChange(response.QuestLog, request.CharacterId);
+    }
+
+    private static bool HasValidRevisions(SimulationItemTransactionResponse response)
+    {
+        return response.ContainerRevisions.All(
+                revision => revision.ContainerId != Guid.Empty && revision.Revision >= 0)
+            && response.ItemRevisions.All(
+                revision => revision.ItemInstanceId != Guid.Empty && revision.Revision >= 0)
+            && response.RecoveryDeliveryIds.All(deliveryId => deliveryId != Guid.Empty);
+    }
+
+    // The worker keeps this quest log while the character plays, so it holds no more than the
+    // quest catalog allows: each quest once, with the bounded progress of its current step.
+    private static bool IsValidQuestLog(SimulationQuestLogResponse response, Guid characterId)
+    {
+        return response.CharacterId == characterId
+            && !string.IsNullOrWhiteSpace(response.QuestCatalogRevision)
+            && response.QuestLogRevision >= 0
+            && response.ActiveQuests is not null
+            && response.CompletedQuests is not null
+            && response.ActiveQuests.Count <= QuestContentRules.MaximumActiveQuestLimit
+            && response.ActiveQuests.All(quest =>
+                quest is not null
+                && Identifiers.IsContentIdentifier(quest.QuestId)
+                && Identifiers.IsContentIdentifier(quest.StepId)
+                && IsValidQuestProgress(quest.Objectives))
+            && response.ActiveQuests.Select(quest => quest.QuestId).Distinct(StringComparer.Ordinal).Count()
+                == response.ActiveQuests.Count
+            && response.CompletedQuests.All(quest =>
+                quest is not null
+                && Identifiers.IsContentIdentifier(quest.QuestId)
+                && quest.CompletionCount > 0)
+            && response.CompletedQuests.Select(quest => quest.QuestId).Distinct(StringComparer.Ordinal).Count()
+                == response.CompletedQuests.Count;
+    }
+
+    private static bool IsValidQuestLogChange(SimulationQuestLogChange? change, Guid characterId)
+    {
+        return change is null
+            || (change.CharacterId == characterId
+                && change.Revision >= 0
+                && change.Quests is not null
+                && change.Quests.Count <= QuestContentRules.MaximumActiveQuestLimit
+                && change.Quests.All(quest =>
+                    quest is not null
+                    && Identifiers.IsContentIdentifier(quest.QuestId)
+                    && (quest.StepId is null || Identifiers.IsContentIdentifier(quest.StepId))
+                    && quest.CompletionCount >= 0
+                    && IsValidQuestProgress(quest.Objectives)
+                    && (quest.StepId is not null || quest.Objectives.Count == 0))
+                && change.Quests.Select(quest => quest.QuestId).Distinct(StringComparer.Ordinal).Count()
+                    == change.Quests.Count);
+    }
+
+    private static bool IsValidQuestProgress(IReadOnlyList<SimulationQuestObjectiveProgress>? objectives)
+    {
+        return objectives is not null
+            && objectives.Count <= QuestContentRules.MaximumObjectivesPerStep
+            && objectives.All(objective =>
+                objective is not null
+                && Identifiers.IsContentIdentifier(objective.ObjectiveId)
+                && objective.Progress >= 0
+                && objective.Progress <= QuestContentRules.MaximumObjectiveCount)
+            && objectives.Select(objective => objective.ObjectiveId).Distinct(StringComparer.Ordinal).Count()
+                == objectives.Count;
     }
 
     private static bool IsValidAmmunitionConsumption(

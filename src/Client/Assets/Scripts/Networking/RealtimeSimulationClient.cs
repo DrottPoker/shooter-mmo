@@ -118,6 +118,12 @@ namespace Mmorpg.Client.Networking
 
         public event Action<RealtimeAdminIntentResult> AdminIntentCompleted;
 
+        // Every quest one committed change of the controlled character touched, sent before the
+        // result of the operation that caused it.
+        public event Action<RealtimeQuestLogChanged> QuestLogChanged;
+
+        public event Action<RealtimeQuestIntentResult> QuestIntentCompleted;
+
         public RealtimeConnectionState State { get; private set; }
 
         // The gameplay rules of the joined Shard, or null outside a joined session.
@@ -666,6 +672,35 @@ namespace Mmorpg.Client.Networking
             }
         }
 
+        public bool TrySendQuestIntent(RealtimeQuestIntent intent)
+        {
+            if (State != RealtimeConnectionState.Joined
+                || serverPeer == null
+                || intent == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var packet = RealtimeProtocol.EncodeQuestIntent(intent);
+                serverPeer.Send(
+                    packet,
+                    RealtimeProtocol.ControlChannel,
+                    DeliveryMethod.ReliableOrdered);
+                RecordSentPacket(packet.Length);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException || exception is InvalidOperationException)
+            {
+                ClientLog.Error(
+                    ClientLogCategory.Client,
+                    "Quest intent could not be encoded: " + exception.Message);
+                return false;
+            }
+        }
+
         public bool TrySendCombatIntent(RealtimeCombatIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
@@ -933,6 +968,12 @@ namespace Mmorpg.Client.Networking
                     case RealtimeMessageType.AdminStateChanged:
                         HandleAdminStateChanged(packet);
                         break;
+                    case RealtimeMessageType.QuestIntentResult:
+                        HandleQuestIntentResult(packet);
+                        break;
+                    case RealtimeMessageType.QuestLogChanged:
+                        HandleQuestLogChanged(packet);
+                        break;
                     default:
                         FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
                         break;
@@ -980,6 +1021,8 @@ namespace Mmorpg.Client.Networking
                 case RealtimeMessageType.AppearanceIntentResult:
                 case RealtimeMessageType.AdminIntentResult:
                 case RealtimeMessageType.AdminStateChanged:
+                case RealtimeMessageType.QuestIntentResult:
+                case RealtimeMessageType.QuestLogChanged:
                     return true;
                 default:
                     return false;
@@ -1783,6 +1826,44 @@ namespace Mmorpg.Client.Networking
             }
 
             AdminIntentCompleted?.Invoke(result);
+        }
+
+        private void HandleQuestIntentResult(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_quest_intent_result",
+                    "A quest intent result arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeQuestIntentResult(packet, out var result, out var error))
+            {
+                FailProtocol("invalid_quest_intent_result", error);
+                return;
+            }
+
+            QuestIntentCompleted?.Invoke(result);
+        }
+
+        private void HandleQuestLogChanged(byte[] packet)
+        {
+            if (State != RealtimeConnectionState.Joined)
+            {
+                FailProtocol(
+                    "unexpected_quest_log_change",
+                    "A quest log change arrived without an active simulation session.");
+                return;
+            }
+
+            if (!RealtimeProtocol.TryDecodeQuestLogChanged(packet, out var change, out var error))
+            {
+                FailProtocol("invalid_quest_log_change", error);
+                return;
+            }
+
+            QuestLogChanged?.Invoke(change);
         }
 
         private void HandleAdminStateChanged(byte[] packet)

@@ -74,11 +74,10 @@ internal sealed record ItemTransactionLiveAccess(
     bool Bank,
     bool RecoveryStorage,
     bool InsuranceNpc,
-    bool QuestNpc = false,
     string? VendorProfileId = null,
     string? QuestNpcActorId = null)
 {
-    public static ItemTransactionLiveAccess None { get; } = new(false, false, false, false);
+    public static ItemTransactionLiveAccess None { get; } = new(false, false, false);
 }
 
 internal sealed record ItemTransactionRequest<TCommand>(

@@ -29,6 +29,13 @@
     },
     "capabilities": [
         {
+            "id": "services.quests",
+            "kind": "quests",
+            "displayName": "Quests",
+            "menuOption": "Quests",
+            "profileId": ""
+        },
+        {
             "id": "services.dialogue",
             "kind": "dialogue",
             "displayName": "Talk",
@@ -61,20 +68,6 @@
             "kind": "insurance",
             "displayName": "Insurance",
             "menuOption": "Insure",
-            "profileId": ""
-        },
-        {
-            "id": "services.quest_offer",
-            "kind": "quest_offer",
-            "displayName": "Available Quests",
-            "menuOption": "Quests",
-            "profileId": ""
-        },
-        {
-            "id": "services.quest_turn_in",
-            "kind": "quest_turn_in",
-            "displayName": "Complete Quest",
-            "menuOption": "Turn-in",
             "profileId": ""
         },
         {

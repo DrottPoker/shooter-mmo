@@ -11,14 +11,7 @@ internal sealed class QuestItemCommandHandler
         AbandonQuestItemsCommand command,
         CancellationToken cancellationToken)
     {
-        if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
-        {
-            context.Authority.EnsureQuestNpcAccess();
-        }
-        else
-        {
-            context.Authority.EnsureSystemAuthority();
-        }
+        context.Authority.EnsureSystemAuthority();
         if (string.IsNullOrWhiteSpace(command.QuestGrantId))
         {
             ItemTransactionContext.Reject(

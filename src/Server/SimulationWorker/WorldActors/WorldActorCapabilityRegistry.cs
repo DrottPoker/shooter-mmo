@@ -45,7 +45,8 @@ public sealed record WorldActorCapabilityOperationContext(
 
 // GatheringNode names the resource node whose gathering the realtime loop starts once the
 // interaction result is final. ItemStateChange is the committed item change the client patches
-// its inventory with, when the transaction describes all of it.
+// its inventory with, when the transaction describes all of it, and QuestLogChange the committed
+// quest log change.
 public sealed record WorldActorCapabilityDispatchResult(
     bool Succeeded,
     string Code,
@@ -53,7 +54,8 @@ public sealed record WorldActorCapabilityDispatchResult(
     long ItemStateRevision = 0,
     bool ShouldDisconnect = false,
     WorldActorRuntimeState? GatheringNode = null,
-    RealtimeOwnerItemStateChanged? ItemStateChange = null);
+    RealtimeOwnerItemStateChanged? ItemStateChange = null,
+    RealtimeQuestLogChanged? QuestLogChange = null);
 
 public interface IWorldActorCapabilityHandler
 {
@@ -209,8 +211,7 @@ public sealed class WorldActorCapabilityRegistry
         {
             WorldActorCapabilityKindIds.Dialogue => RealtimeWorldActorCapabilityKind.Dialogue,
             WorldActorCapabilityKindIds.Vendor => RealtimeWorldActorCapabilityKind.Vendor,
-            WorldActorCapabilityKindIds.QuestOffer => RealtimeWorldActorCapabilityKind.QuestOffer,
-            WorldActorCapabilityKindIds.QuestTurnIn => RealtimeWorldActorCapabilityKind.QuestTurnIn,
+            WorldActorCapabilityKindIds.Quests => RealtimeWorldActorCapabilityKind.Quests,
             WorldActorCapabilityKindIds.Crafting => RealtimeWorldActorCapabilityKind.Crafting,
             WorldActorCapabilityKindIds.Insurance => RealtimeWorldActorCapabilityKind.Insurance,
             WorldActorCapabilityKindIds.Trainer => RealtimeWorldActorCapabilityKind.Trainer,

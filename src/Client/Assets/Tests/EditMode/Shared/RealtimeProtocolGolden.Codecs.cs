@@ -138,7 +138,16 @@ namespace Mmorpg.SharedTests
                     RealtimeProtocol.EncodeAdminIntentResult),
                 [RealtimeMessageType.AdminStateChanged] = Typed<RealtimeAdminStateChanged>(
                     RealtimeProtocol.TryDecodeAdminStateChanged,
-                    RealtimeProtocol.EncodeAdminStateChanged)
+                    RealtimeProtocol.EncodeAdminStateChanged),
+                [RealtimeMessageType.QuestIntent] = Typed<RealtimeQuestIntent>(
+                    RealtimeProtocol.TryDecodeQuestIntent,
+                    RealtimeProtocol.EncodeQuestIntent),
+                [RealtimeMessageType.QuestIntentResult] = Typed<RealtimeQuestIntentResult>(
+                    RealtimeProtocol.TryDecodeQuestIntentResult,
+                    RealtimeProtocol.EncodeQuestIntentResult),
+                [RealtimeMessageType.QuestLogChanged] = Typed<RealtimeQuestLogChanged>(
+                    RealtimeProtocol.TryDecodeQuestLogChanged,
+                    RealtimeProtocol.EncodeQuestLogChanged)
             };
         }
 

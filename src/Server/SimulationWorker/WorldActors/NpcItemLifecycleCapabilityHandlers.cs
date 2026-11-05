@@ -21,20 +21,6 @@ public sealed class InsuranceWorldActorCapabilityHandler(
     }
 }
 
-public sealed class QuestOfferWorldActorCapabilityHandler(
-    NpcItemLifecycleCapabilityExecutor executor) : IWorldActorCapabilityHandler
-{
-    public RealtimeWorldActorCapabilityKind Kind =>
-        RealtimeWorldActorCapabilityKind.QuestOffer;
-
-    public Task<WorldActorCapabilityDispatchResult> ExecuteAsync(
-        WorldActorCapabilityOperationContext context,
-        CancellationToken cancellationToken)
-    {
-        return executor.ExecuteAsync(context, cancellationToken);
-    }
-}
-
 // Opening the vendor confirms it without durable state, so the client can show its offers.
 // Purchases and sales commit through GameService with the capability's vendor profile.
 public sealed class VendorWorldActorCapabilityHandler(
@@ -57,23 +43,6 @@ public sealed class VendorWorldActorCapabilityHandler(
         }
 
         return executor.ExecuteAsync(context, cancellationToken);
-    }
-}
-
-public sealed class QuestTurnInWorldActorCapabilityHandler : IWorldActorCapabilityHandler
-{
-    public RealtimeWorldActorCapabilityKind Kind =>
-        RealtimeWorldActorCapabilityKind.QuestTurnIn;
-
-    public Task<WorldActorCapabilityDispatchResult> ExecuteAsync(
-        WorldActorCapabilityOperationContext context,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        return Task.FromResult(new WorldActorCapabilityDispatchResult(
-            false,
-            "quest_turn_in_unavailable",
-            "Quest completion arrives together with quest definitions."));
     }
 }
 
@@ -103,16 +72,12 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         {
             return Rejected(
                 "npc_lifecycle_action_invalid",
-                "Select an insurance, quest, or vendor action before submitting this capability.");
+                "Select an insurance or vendor action before submitting this capability.");
         }
 
         var insurance = string.Equals(
             context.Capability.Kind,
             WorldActorCapabilityKindIds.Insurance,
-            StringComparison.Ordinal);
-        var quest = string.Equals(
-            context.Capability.Kind,
-            WorldActorCapabilityKindIds.QuestOffer,
             StringComparison.Ordinal);
         var vendor = string.Equals(
             context.Capability.Kind,
@@ -121,9 +86,6 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         if ((!insurance || intent.CapabilityAction is not (
                 RealtimeCapabilityActionKind.ApplyInsurance
                 or RealtimeCapabilityActionKind.RemoveInsurance))
-            && (!quest || intent.CapabilityAction is not (
-                RealtimeCapabilityActionKind.AcceptQuest
-                or RealtimeCapabilityActionKind.AbandonQuest))
             && (!vendor || intent.CapabilityAction is not (
                 RealtimeCapabilityActionKind.VendorPurchase
                 or RealtimeCapabilityActionKind.VendorSale)))
@@ -145,7 +107,6 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 false,
                 false,
                 insurance,
-                quest,
                 vendor ? context.Capability.ProfileId : null),
             operationKind,
             context.ExpectedCharacterRevision,
@@ -230,8 +191,6 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         {
             RealtimeCapabilityActionKind.ApplyInsurance => "apply_item_policy",
             RealtimeCapabilityActionKind.RemoveInsurance => "remove_insurance_policy",
-            RealtimeCapabilityActionKind.AcceptQuest => "grant",
-            RealtimeCapabilityActionKind.AbandonQuest => "abandon_quest_items",
             RealtimeCapabilityActionKind.VendorPurchase => "vendor_purchase",
             RealtimeCapabilityActionKind.VendorSale => "vendor_sale",
             _ => null
@@ -246,10 +205,6 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 "Insurance applied. The policy covers one protecting death.",
             RealtimeCapabilityActionKind.RemoveInsurance =>
                 "Insurance removed. Normal transfer rules are restored.",
-            RealtimeCapabilityActionKind.AcceptQuest =>
-                "Quest accepted. The required protected item grant is active.",
-            RealtimeCapabilityActionKind.AbandonQuest =>
-                "Quest abandoned. Only items from this quest grant were removed.",
             RealtimeCapabilityActionKind.VendorPurchase => "Purchased.",
             RealtimeCapabilityActionKind.VendorSale => "Sold.",
             _ => string.Empty

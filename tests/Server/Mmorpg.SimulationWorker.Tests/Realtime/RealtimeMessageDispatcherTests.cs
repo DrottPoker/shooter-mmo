@@ -342,7 +342,8 @@ public sealed class RealtimeMessageDispatcherTests
                     Record("leave"),
                     Record("combat"),
                     Record("appearance"),
-                    Record("admin")));
+                    Record("admin"),
+                    Record("quest")));
         }
 
         public RealtimeNetworkMetrics Metrics { get; } = new();

@@ -213,7 +213,22 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The development admin state of the recipient's character. A worker that allows the admin tools sends it after every JoinAccepted and every change; its absence means the tools are off.
         /// </summary>
-        AdminStateChanged = 41
+        AdminStateChanged = 41,
+
+        /// <summary>
+        /// A quest action outside any interaction, such as abandoning a quest from the quest log.
+        /// </summary>
+        QuestIntent = 42,
+
+        /// <summary>
+        /// The outcome of a quest intent; the changed quest log and items follow before it as a QuestLogChanged and an OwnerItemStateChanged.
+        /// </summary>
+        QuestIntentResult = 43,
+
+        /// <summary>
+        /// Every quest that one committed change of the owner touched, so the client patches its quest log without reading it again. The worker sends it before the result of the operation that caused it.
+        /// </summary>
+        QuestLogChanged = 44
     }
 
     /// <summary>
@@ -369,6 +384,21 @@ namespace Mmorpg.GameProtocol
         /// The fastest walk speed a development admin chooses, in percent of the World's walk speed.
         /// </summary>
         public const int MaximumAdminSpeedPercent = 1000;
+
+        /// <summary>
+        /// Quests that one quest log change lists; a change of more quests asks the client to reload its quest log.
+        /// </summary>
+        public const int MaximumQuestLogChanges = 8;
+
+        /// <summary>
+        /// Objectives of one quest step, as the quest catalog allows.
+        /// </summary>
+        public const int MaximumQuestObjectives = 8;
+
+        /// <summary>
+        /// The highest count an objective asks for, as the quest catalog allows.
+        /// </summary>
+        public const int MaximumQuestObjectiveProgress = 1000;
     }
 
     // Framing, versioning, channels, and limits of the realtime protocol.
@@ -377,7 +407,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 33;
+        public const ushort Version = 34;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -446,6 +476,9 @@ namespace Mmorpg.GameProtocol
         private const int MaximumCombatEventsPerBatch = RealtimeProtocolLimits.MaximumCombatEventsPerBatch;
         private const int MinimumAdminSpeedPercent = RealtimeProtocolLimits.MinimumAdminSpeedPercent;
         private const int MaximumAdminSpeedPercent = RealtimeProtocolLimits.MaximumAdminSpeedPercent;
+        private const int MaximumQuestLogChanges = RealtimeProtocolLimits.MaximumQuestLogChanges;
+        private const int MaximumQuestObjectives = RealtimeProtocolLimits.MaximumQuestObjectives;
+        private const int MaximumQuestObjectiveProgress = RealtimeProtocolLimits.MaximumQuestObjectiveProgress;
         private const int MaximumTimestampLength = 64;
         private const int MaximumErrorCodeLength = 64;
         private const int MaximumErrorMessageLength = 512;
@@ -511,7 +544,10 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.AdminIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.AdminIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.AdminStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.AdminStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestLogChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>

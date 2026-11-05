@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 33,
+    "version": 34,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -272,6 +272,24 @@
       "value": 1000,
       "visibility": "public",
       "description": "The fastest walk speed a development admin chooses, in percent of the World's walk speed."
+    },
+    {
+      "name": "MaximumQuestLogChanges",
+      "value": 8,
+      "visibility": "public",
+      "description": "Quests that one quest log change lists; a change of more quests asks the client to reload its quest log."
+    },
+    {
+      "name": "MaximumQuestObjectives",
+      "value": 8,
+      "visibility": "public",
+      "description": "Objectives of one quest step, as the quest catalog allows."
+    },
+    {
+      "name": "MaximumQuestObjectiveProgress",
+      "value": 1000,
+      "visibility": "public",
+      "description": "The highest count an objective asks for, as the quest catalog allows."
     }
   ],
   "enums": [
@@ -368,14 +386,13 @@
       "values": [
         { "name": "Dialogue", "value": 1 },
         { "name": "Vendor", "value": 2 },
-        { "name": "QuestOffer", "value": 3 },
-        { "name": "QuestTurnIn", "value": 4 },
         { "name": "Crafting", "value": 5 },
         { "name": "Insurance", "value": 6 },
         { "name": "Trainer", "value": 7 },
         { "name": "Bank", "value": 8 },
         { "name": "RecoveryStorage", "value": 9 },
-        { "name": "Gathering", "value": 10 }
+        { "name": "Gathering", "value": 10 },
+        { "name": "Quests", "value": 11 }
       ]
     },
     {
@@ -387,10 +404,13 @@
         { "name": "ApplyInsurance", "value": 1 },
         { "name": "RemoveInsurance", "value": 2 },
         { "name": "AcceptQuest", "value": 3 },
-        { "name": "AbandonQuest", "value": 4 },
         { "name": "VendorPurchase", "value": 5 },
         { "name": "VendorSale", "value": 6 },
-        { "name": "StartGathering", "value": 7 }
+        { "name": "StartGathering", "value": 7 },
+        { "name": "RegrantQuestItems", "value": 8 },
+        { "name": "TalkToQuestNpc", "value": 9 },
+        { "name": "DeliverQuestItems", "value": 10 },
+        { "name": "TurnInQuest", "value": 11 }
       ]
     },
     {
@@ -491,6 +511,12 @@
       "family": "Items",
       "description": "Where a changed item is after its transaction.",
       "values": [ { "name": "Removed", "value": 1 }, { "name": "Container", "value": 2 }, { "name": "Equipment", "value": 3 } ]
+    },
+    {
+      "name": "QuestIntentKind",
+      "family": "Quests",
+      "description": "What a quest intent outside any interaction asks for.",
+      "values": [ { "name": "Abandon", "value": 1 } ]
     }
   ],
   "structs": [
@@ -1125,6 +1151,57 @@
           "name": "AttackStyle",
           "type": "CombatAttackStyle",
           "description": "For a started, released, or cancelled attack, the combat style of the attack; Melee otherwise."
+        }
+      ]
+    },
+    {
+      "name": "QuestObjectiveProgress",
+      "family": "Quests",
+      "description": "The progress of one counted objective of a quest's current step.",
+      "fields": [
+        {
+          "name": "ObjectiveId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The objective."
+        },
+        {
+          "name": "Progress",
+          "type": "i32",
+          "minimum": 0,
+          "maximum": "MaximumQuestObjectiveProgress",
+          "description": "How much of the objective's count is done."
+        }
+      ]
+    },
+    {
+      "name": "QuestChange",
+      "family": "Quests",
+      "description": "A quest as the quest log holds it after a change.",
+      "fields": [
+        { "name": "QuestId", "type": "string", "maxLength": "MaximumIdentifierLength", "description": "The quest." },
+        {
+          "name": "StepId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The current step of the active quest, or empty once it is no longer active."
+        },
+        {
+          "name": "Objectives",
+          "type": "array",
+          "items": "QuestObjectiveProgress",
+          "maxCount": "MaximumQuestObjectives",
+          "distinctBy": "ObjectiveId",
+          "nullAsEmpty": true,
+          "description": "The progress of the current step's counted objectives; collect objectives count carried items and are not listed."
+        },
+        {
+          "name": "CompletionCount",
+          "type": "i32",
+          "minimum": 0,
+          "description": "How many times the character completed the quest."
         }
       ]
     }
@@ -2208,6 +2285,7 @@
       "description": "Asks to open, close, or act on a world interaction.",
       "parameter": "intent",
       "rules": true,
+      "runtimeSizeCheck": true,
       "fields": [
         {
           "name": "OperationId",
@@ -2314,6 +2392,30 @@
             "name": "ExpectedPrice",
             "type": "i64",
             "description": "The total price the client showed for a vendor purchase or sale, or 0."
+          },
+          {
+            "name": "QuestId",
+            "type": "string",
+            "maxLength": "MaximumIdentifierLength",
+            "blank": "allow",
+            "nullAsEmpty": true,
+            "description": "The quest a quest action is about, or empty."
+          },
+          {
+            "name": "QuestObjectiveId",
+            "type": "string",
+            "maxLength": "MaximumIdentifierLength",
+            "blank": "allow",
+            "nullAsEmpty": true,
+            "description": "The talk-to or deliver objective a quest action completes, or empty."
+          },
+          {
+            "name": "RewardChoiceDefinitionId",
+            "type": "string",
+            "maxLength": "MaximumDefinitionIdLength",
+            "blank": "allow",
+            "nullAsEmpty": true,
+            "description": "The item definition of the reward choice a quest turn-in takes, or empty."
           }
         ],
         "cases": [
@@ -2342,7 +2444,10 @@
               { "field": "DestinationSlotIndex", "parameterDefault": -1 },
               { "field": "OfferDefinitionId", "parameterDefault": "default" },
               { "field": "Quantity", "parameterDefault": 0 },
-              { "field": "ExpectedPrice", "parameterDefault": 0 }
+              { "field": "ExpectedPrice", "parameterDefault": 0 },
+              { "field": "QuestId", "parameterDefault": "default" },
+              { "field": "QuestObjectiveId", "parameterDefault": "default" },
+              { "field": "RewardChoiceDefinitionId", "parameterDefault": "default" }
             ]
           }
         ]
@@ -2988,6 +3093,89 @@
           "description": "The walk speed in percent of the World's walk speed, which the client predicts with."
         },
         { "name": "Invulnerable", "type": "bool", "description": "Whether hits leave the character's health as it is." }
+      ]
+    },
+    {
+      "name": "QuestIntent",
+      "id": 42,
+      "family": "Quests",
+      "direction": "clientToServer",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "A quest action outside any interaction, such as abandoning a quest from the quest log.",
+      "parameter": "intent",
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "Correlates the result." },
+        { "name": "Kind", "type": "QuestIntentKind", "description": "What the intent asks for." },
+        { "name": "QuestId", "type": "string", "maxLength": "MaximumIdentifierLength", "description": "The quest." }
+      ]
+    },
+    {
+      "name": "QuestIntentResult",
+      "id": 43,
+      "family": "Quests",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "The outcome of a quest intent; the changed quest log and items follow before it as a QuestLogChanged and an OwnerItemStateChanged.",
+      "parameter": "result",
+      "runtimeSizeCheck": true,
+      "fields": [
+        { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "The intent this answers." },
+        { "name": "Kind", "type": "QuestIntentKind", "description": "What the intent asked for." },
+        { "name": "Succeeded", "type": "bool", "description": "Whether the intent committed." },
+        {
+          "name": "ItemStateRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The character item-state revision after the intent."
+        },
+        { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the intent failed." }
+      ]
+    },
+    {
+      "name": "QuestLogChanged",
+      "id": 44,
+      "family": "Quests",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Every quest that one committed change of the owner touched, so the client patches its quest log without reading it again. The worker sends it before the result of the operation that caused it.",
+      "parameter": "change",
+      "rules": true,
+      "runtimeSizeCheck": true,
+      "fields": [
+        {
+          "name": "OperationId",
+          "type": "guid",
+          "description": "The client operation that committed the change, or empty when no client intent caused it, such as a kill."
+        },
+        {
+          "name": "PreviousQuestLogRevision",
+          "type": "i64",
+          "minimum": 0,
+          "description": "The quest log revision the change applies to."
+        },
+        {
+          "name": "QuestLogRevision",
+          "type": "i64",
+          "minimum": 1,
+          "description": "The quest log revision after the change."
+        },
+        {
+          "name": "ReloadRequired",
+          "type": "bool",
+          "description": "Whether the change touched more quests than one message lists, so the client reads its quest log again; Quests is then empty."
+        },
+        {
+          "name": "Quests",
+          "type": "array",
+          "items": "QuestChange",
+          "maxCount": "MaximumQuestLogChanges",
+          "distinctBy": "QuestId",
+          "nullAsEmpty": true,
+          "description": "Every quest the change touched, as the quest log holds it after the change."
+        }
       ]
     }
   ]

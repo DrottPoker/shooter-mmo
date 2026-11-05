@@ -720,13 +720,13 @@ Remove the variable with
 `Remove-Item Env:DevelopmentItemInteractions__GlobalBankAndRecoveryAccess`
 when finished.
 
-### Insurance And Quest Items
+### Insurance
 
 Mira offers one-death insurance, for 100 Gold with the checked-in GameService
-settings, and a quest that grants one Sealed Letter. While the character is
-offline, give it a `weapon.training_shortbow` in Permanent Inventory. A new
-character starts with 100 Gold, enough for one policy; give more with `Give
-Currency` for repeated tries. Then join and left-click Mira.
+settings. While the character is offline, give it a `weapon.training_shortbow`
+in Permanent Inventory. A new character starts with 100 Gold, enough for one
+policy; give more with `Give Currency` for repeated tries. Then join, right-click
+Mira, and choose `Insure`.
 
 1. In the `Insurance` section, click `Insure: Training Shortbow`. Expected
    result: the button turns into `Insured, remove: Training Shortbow`, the
@@ -734,17 +734,11 @@ Currency` for repeated tries. Then join and left-click Mira.
    Gold. The item can hold only one active policy.
 2. Click `Insured, remove: Training Shortbow`. Expected result: the item stays
    and loses its insurance.
-3. In `Quest item lifecycle`, click `Accept quest and grant required item`
-   twice. Expected result: one Sealed Letter appears, whose tooltip lists
-   `Protected on death (Quest grant)`, and the second acceptance adds none.
-4. Drag the Sealed Letter out of the Inventory window and drop it on the
-   world. Expected result: no dialog opens, the game messages say
-   `This item cannot be destroyed by the player.`, and the tooltip says
-   `Cannot be destroyed`. Click `Abandon quest
-   and remove its grant lineage`, then accept again. Expected result: abandoning
-   removes exactly that letter, and accepting creates exactly one new one.
-5. Walk more than 3.5 meters away, or out of sight. Expected result: the
+3. Walk more than 3.5 meters away, or out of sight. Expected result: the
    interaction closes, as every interaction does.
+4. Left-click Mira. Expected result: the interaction opens on `Quests`, the
+   first option of her menu, which says that the quest dialog is not available
+   yet.
 
 The [currency ledger](#look-into-the-database) has an `insurance` row for the
 charge. After a death, Recovery Storage labels a consumed insurance as
@@ -763,9 +757,9 @@ identities, and no old actor or interaction survives.
 
 ### Quest Commands On The Worker Quest Route
 
-No client or worker calls the quest route yet, so its commands are checked
-against a real PostgreSQL database through the GameService services, the way
-the worker will call them, with the test quests of
+The worker runs the quest actions, but no quest window shows them yet, so they
+are checked against a real PostgreSQL database through the GameService services
+and the worker's own GameService client, with the test quests of
 [Quest Catalog Fixture](../tests/README.md#quest-catalog-fixture). Start the
 test containers with `docker compose -f docker-compose.test.yml up -d --wait`,
 set `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` to their values in `.env`,
@@ -796,8 +790,23 @@ checks one outcome:
 - Abandoning the errand removes its letter with the `quest_abandoned` reason,
   and Mira grants a lost start item again, never a second one.
 
-The in-game checks of the quest dialog replace this section once the worker
-calls the quest route.
+Then run the worker's side of the same actions:
+
+```powershell
+dotnet test tests/Integration/Mmorpg.Integration.Tests --configuration Release --filter "FullyQualifiedName~QuestFlowIntegrationTests"
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~RealtimeQuestTests|FullyQualifiedName~CharacterQuestLogStoreTests"
+```
+
+Expected result: every test passes. The worker reads the joining character's
+quest log, refuses the errand at the guard with `quest_npc_access_required`,
+accepts it at Mira, which grants the letter, and abandons it, which takes the
+letter back; each action reaches the player as a `QuestLogChanged` from the
+revision before it, sent before the action's result. A join whose quest log
+cannot be read, or that GameService answers with another quest catalog, is
+rejected and released, and a development bot never reads a quest log.
+
+The in-game checks of the quest dialog replace this section once the quest
+windows exist.
 
 ## Debug Menu (F2)
 

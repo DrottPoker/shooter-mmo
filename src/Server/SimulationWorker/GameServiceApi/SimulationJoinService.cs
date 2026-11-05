@@ -1,9 +1,11 @@
 using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.Telemetry;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
 
@@ -14,7 +16,9 @@ public sealed class SimulationJoinService(
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity,
     CharacterLookStore? lookStore = null,
-    DevelopmentBotLooks? botLooks = null)
+    DevelopmentBotLooks? botLooks = null,
+    CharacterQuestLogStore? questLogs = null,
+    QuestCatalogRuntimeDocument? questCatalog = null)
 {
     // One span covers the ticket consumption and any release a rejected join needs.
     public async Task<SimulationJoinResult<ActiveSimulationSession>> JoinAsync(
@@ -75,6 +79,21 @@ public sealed class SimulationJoinService(
         }
 
         var session = ActiveSimulationSession.FromJoinTicket(consumedTicket.Value, requestedAt);
+        var questLog = await ReadQuestLogAsync(session, cancellationToken);
+        if (!questLog.Succeeded)
+        {
+            await gameServiceClient.ReleaseSimulationSessionAsync(
+                session.SimulationSessionId,
+                session.WorkerRuntimeId,
+                session.SimulationSessionToken,
+                cancellationToken);
+
+            return SimulationJoinResult<ActiveSimulationSession>.Failure(
+                questLog.StatusCode,
+                questLog.Error!.Code,
+                questLog.Error.Message);
+        }
+
         var registration = sessionStore.Register(session);
 
         if (registration == ActiveSimulationSessionRegistration.Conflict)
@@ -134,8 +153,55 @@ public sealed class SimulationJoinService(
             lookStore?.Register(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, look);
         }
 
+        if (questLog.Value is not null)
+        {
+            questLogs?.Register(session.CharacterId, session.SimulationSessionId, questLog.Value);
+        }
+
         sessionStore.TryGet(session.CharacterId, out var registeredSession);
 
         return SimulationJoinResult<ActiveSimulationSession>.Success(registeredSession!);
+    }
+
+    // The worker keeps the quest log of every player while it plays, so it counts quest progress
+    // without asking GameService. Development bots never take part in quests. GameService may
+    // have started with another quest catalog since it placed the character here.
+    private async Task<GameServiceResult<CharacterQuestLog?>> ReadQuestLogAsync(
+        ActiveSimulationSession session,
+        CancellationToken cancellationToken)
+    {
+        if (questLogs is null || session.IsSyntheticBot)
+        {
+            return GameServiceResult<CharacterQuestLog?>.Success(null);
+        }
+
+        var result = await gameServiceClient.ReadSimulationQuestLogAsync(
+            session.SimulationSessionId,
+            new SimulationQuestLogRequest(
+                session.AccountId,
+                session.CharacterId,
+                session.WorkerId,
+                session.WorkerRuntimeId,
+                session.ShardId,
+                session.SimulationSessionToken),
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            return GameServiceResult<CharacterQuestLog?>.Failure(
+                result.StatusCode,
+                result.Error!.Code,
+                result.Error.Message);
+        }
+
+        if (questCatalog is not null
+            && !string.Equals(result.Value!.QuestCatalogRevision, questCatalog.Revision, StringComparison.Ordinal))
+        {
+            return GameServiceResult<CharacterQuestLog?>.Failure(
+                409,
+                "simulation_worker_quest_catalog_mismatch",
+                "The simulation worker runs another quest catalog revision than GameService.");
+        }
+
+        return GameServiceResult<CharacterQuestLog?>.Success(CharacterQuestLog.From(result.Value!));
     }
 }

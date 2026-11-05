@@ -203,12 +203,19 @@ internal sealed class WorldInteractionHandler(
         }
 
         // The item change goes before the carry state, so the client patches its inventory
-        // when it sees the new revision.
+        // when it sees the new revision. The quest log change follows it, before the result.
         if (completed.Result.ItemStateChange is not null)
         {
             sender.SendControl(
                 peer,
                 RealtimeProtocol.EncodeOwnerItemStateChanged(completed.Result.ItemStateChange));
+        }
+
+        if (completed.Result.QuestLogChange is not null)
+        {
+            sender.SendControl(
+                peer,
+                RealtimeProtocol.EncodeQuestLogChanged(completed.Result.QuestLogChange));
         }
 
         if (entityRegistry.TryGetPlayerByCharacterId(

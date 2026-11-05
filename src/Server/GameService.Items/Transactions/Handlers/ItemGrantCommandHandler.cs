@@ -53,14 +53,7 @@ internal sealed class ItemGrantCommandHandler
             : definition.RuntimeDefinition.Id;
         if (hasPolicySourceKind)
         {
-            if (context.Actor.Authority == ItemTransactionAuthority.SimulationWorker)
-            {
-                context.Authority.EnsureQuestNpcAccess();
-            }
-            else
-            {
-                context.Authority.EnsureSystemAuthority();
-            }
+            context.Authority.EnsureSystemAuthority();
 
             if (!string.Equals(
                     policySourceKind,

@@ -566,14 +566,12 @@ them as follows:
   actor-specific despawn contract. Each interest pass drops a tombstone once no
   connection still has the actor in its interest set, so they stay bounded by
   current visibility.
-- Insurance, quest offer, quest completion, bank, Recovery Storage, vendor, and
-  gathering have handlers; every other capability kind answers with
+- Insurance, quests, bank, Recovery Storage, vendor, and gathering have
+  handlers; every other capability kind answers with
   `world_interaction_capability_deferred` until its business authority exists.
-  Quest completion answers `quest_turn_in_unavailable`, because no progression
-  authority exists yet.
-- Bank, Recovery Storage, and an opened vendor only confirm the capability;
-  their item access follows the open interaction. Insurance apply or removal,
-  quest accept or abandon, and vendor purchase or sale reuse the interaction
+- Bank, Recovery Storage, and opened quests or vendor only confirm the
+  capability; their item access follows the open interaction. Insurance apply
+  or removal, quest actions, and vendor purchase or sale reuse the interaction
   session, and a started gathering activity runs in the central gathering pass
   while the session stays open.
 - One world-interaction authority validates the exact simulation session,
@@ -592,16 +590,11 @@ them as follows:
   interact with the same actor, but one player cannot overlap an actor
   interaction and a corpse view.
 
-The insurance and quest actions bridge the validated interaction to the worker
-item route. Insurance applies or removes a one-death policy and charges
+The insurance actions bridge the validated interaction to the worker item
+route. Insurance applies or removes a one-death policy and charges
 `Items:NpcLifecycle:InsurancePrice` through the wallet with an `insurance`
-ledger row. Accepting the quest grants `Items:NpcLifecycle:QuestItemQuantity` of
-`QuestItemDefinitionId` with the exact quest-grant lineage
-`Items:NpcLifecycle:QuestGrantId` and suppresses a duplicate active grant.
-Abandoning removes only the active protected items of that lineage; an item held
-in Recovery Storage also loses its slot row, and an unclaimed delivery left
-without items is removed, so no empty delivery remains. Insurance removal keeps
-the item instance.
+ledger row, and insurance removal keeps the item instance. The quest actions
+use the worker quest route of [Quests](#quests).
 
 ## Vendor Trades
 
@@ -1264,10 +1257,33 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
     an action at another NPC `403` with `quest_npc_access_required`, and a quest
     that is not active `409` with `quest_not_active`.
 
-  The response carries the committed item changes, the character's carry state
-  as the item route returns it, and `questLog`: the quest log revision and, for
-  each changed quest, its current step or none once it is no longer active, the
-  progress of its counted objectives, and its completion count.
+  The response is the worker item route's response. Its `questLog` carries the
+  quest log revision and, for each changed quest, its current step or none once
+  it is no longer active, the progress of its counted objectives, and its
+  completion count. An action that moves no item, such as a talk, names no
+  character revision; granting start items again changes no quest and names no
+  `questLog`.
+
+SimulationWorker keeps the quest log of every player in its sessions and runs
+the quest actions of the realtime protocol through these routes:
+
+- After it consumed a join ticket, it reads the character's quest log with the
+  worker route. When the read fails, or GameService answers with another quest
+  catalog revision than the worker runs, which is
+  `simulation_worker_quest_catalog_mismatch`, it releases the session and
+  rejects the join. A development bot never takes part in quests.
+- The `quests` capability opens without GameService. Its actions,
+  `AcceptQuest`, `RegrantQuestItems`, `TalkToQuestNpc`, `DeliverQuestItems`, and
+  `TurnInQuest`, run through the open interaction, so range, line of sight, and
+  the interaction lease apply, and name the NPC's actor definition as
+  `questNpcActorId`, which GameService checks against the quest.
+- A `QuestIntent` abandons a quest from anywhere. It queues behind the player's
+  other authority work, like every quest action, so the worker applies the
+  committed changes in order, and a dead character cannot send one.
+- After every committed action the worker applies the carry state and the
+  quest log change, sends the item change and then a `QuestLogChanged` from
+  the revision it held, and then the result. A rejection keeps the session
+  unless its code ends it, as `simulation_session_invalid` does.
 
 ## Error Codes
 
@@ -1335,7 +1351,8 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Items | `item_operation_queue_full`, `item_operation_failed`, `item_operation_unavailable`, `item_state_diverged` |
 | Corpses | `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active`, `corpse_interaction_invalid`, `corpse_interaction_unavailable`, `corpse_operation_failed`, `live_mob_corpse_operation_unsupported` |
 | Corpse view closures | `corpse_view_closed` when the viewer closed the view, `corpse_emptied` when the last item of a live Mob corpse was taken, `corpse_expired` at the deadline, `corpse_invalidated` when the corpse disappeared or its state can no longer be trusted, `corpse_not_found` when the worker or GameService no longer knows it, and `corpse_not_lootable` when the corpse belongs to the player who tagged its Mob; a view also closes with `combat_character_dead` when its viewer dies, and with the code of a rejection that ends it, such as `wrong_simulation_worker` |
-| World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `world_interaction_closed`, `world_interaction_failed`, `world_interaction_unavailable`, `world_interaction_queue_full`, `world_interaction_rate_limited`, `npc_lifecycle_action_invalid`, `npc_lifecycle_unavailable`, `quest_turn_in_unavailable` |
+| World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `world_interaction_closed`, `world_interaction_failed`, `world_interaction_unavailable`, `world_interaction_queue_full`, `world_interaction_rate_limited`, `npc_lifecycle_action_invalid`, `npc_lifecycle_unavailable`, `quest_action_invalid` |
+| Quests | `quests_unavailable`, `quest_intent_unavailable`, `invalid_quest_intent`, `quest_intent_queue_full`, `quest_intent_failed`, `simulation_worker_quest_catalog_mismatch`, and the GameService rejection of a quest action, such as `quest_not_active` |
 | Gathering | `resource_node_depleted`, `gathering_interrupted`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_failed`, and the GameService rejection of a yield, such as `gathering_tool_required` |
 | Combat | `combat_target_not_found`, `combat_target_not_attackable`, `combat_target_dead`, `combat_target_self`, `combat_player_versus_player_disabled`, `combat_character_dead`, `combat_intent_invalid`, `combat_intent_rate_limited`, `combat_unavailable` |
 | Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent` |
@@ -1434,7 +1451,6 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Items:Operations:CleanupBatchSize` | `64` | Rows per maintenance batch, 1 to 1,000 |
 | `Items:Operations:AuditRetentionDays`, `ClosedCorpseRetentionDays` | `30`, `30` | Retention of completed operations and of closed corpses, 1 to 3,650 days; the corpse retention cannot be shorter than the audit retention |
 | `Items:NpcLifecycle:InsurancePrice` | `100` | Server-owned insurance price |
-| `Items:NpcLifecycle:QuestGrantId`, `QuestItemDefinitionId`, `QuestItemQuantity` | `quest.local.sealed_letter`, `quest_item.sealed_letter`, `1` | The quest grant of the quest offer capability |
 | `Items:Development:ItemPackagesPath` | `Content/Development/item-packages.json` in the output | The Development item packages |
 | `DevelopmentSimulationBots:*` and `ACTIVE_SIMULATION_BOTS_SECRET` | off | Development only: `Enabled`, ticket and lease lifetimes of `30` seconds, the `CharacterNamePrefix` `Active Bot`, and `ReservedPlayerConnections` `8` |
 | `StackStressFixtures:*` and `STACK_STRESS_FIXTURE_SECRET` | off | Development only: `Enabled` and the inventory and loot definitions that the fixtures grant |

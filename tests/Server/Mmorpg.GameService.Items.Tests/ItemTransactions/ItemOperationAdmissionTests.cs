@@ -46,7 +46,7 @@ public sealed class ItemOperationAdmissionTests
                 "runtime-1",
                 "shard-1",
                 "secret-token-hash",
-                new ItemTransactionLiveAccess(true, true, true, true)),
+                new ItemTransactionLiveAccess(true, true, true)),
             new DestroyItemCommand(Second, 3, Third, 5, "player_destroyed"));
 
         Assert.Equal(

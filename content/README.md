@@ -207,8 +207,9 @@ fields of its kind, and leaves every other field empty:
 The compiler checks every quest against the compiled item catalog and the
 compiled actors of every World and rejects what
 [Validation](../docs/QUEST_SYSTEM_DESIGN.md#validation) lists, within the
-[limits](../docs/QUEST_SYSTEM_DESIGN.md#limits). A quest NPC is an NPC with a
-`quest_offer` or `quest_turn_in` capability. Each quest gets a structural
+[limits](../docs/QUEST_SYSTEM_DESIGN.md#limits). A quest NPC is an NPC with
+the `quests` capability, listed first so that a left click opens the quest
+dialog. Each quest gets a structural
 fingerprint over its steps and its objectives' ids, kinds, and targets, which
 stored progress depends on, and the catalog gets a revision over everything.
 

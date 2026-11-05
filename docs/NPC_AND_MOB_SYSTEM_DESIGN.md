@@ -236,8 +236,7 @@ registry. The capability kinds are:
 
 - Dialogue.
 - Vendor.
-- Quest offer.
-- Quest turn-in.
+- Quests.
 - Crafting.
 - Insurance.
 - Trainer.
@@ -245,8 +244,8 @@ registry. The capability kinds are:
 - Recovery Storage.
 - Gathering, which only a resource node may have.
 
-The planned `quests` kind replaces quest offer and quest turn-in with one quest
-dialog, as
+The `quests` kind opens one quest dialog for everything the NPC offers and
+completes, as
 [Quest NPCs And The Quest Dialog](QUEST_SYSTEM_DESIGN.md#quest-npcs-and-the-quest-dialog)
 describes. An NPC may contain any valid combination of the NPC kinds. The compiled
 definition keeps the authored capability order, which is the order of the
